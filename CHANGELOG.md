@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/NeosiaNexus/siteping/compare/v0.2.3...v0.3.0) (2026-04-02)
+
+
+### Features
+
+* **cli:** smart schema sync — detect missing fields and type changes ([abc050c](https://github.com/NeosiaNexus/siteping/commit/abc050cc0db0b3227ebd4d3e617de073ec0f2c67))
+
 ## [0.2.3](https://github.com/NeosiaNexus/siteping/compare/v0.2.2...v0.2.3) (2026-04-02)
 
 
