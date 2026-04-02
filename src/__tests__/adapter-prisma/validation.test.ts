@@ -4,35 +4,7 @@ import {
   feedbackPatchSchema,
   formatValidationErrors,
 } from "../../adapter-prisma/validation.js";
-
-const validAnnotation = {
-  anchor: {
-    cssSelector: "div.main > section:nth-child(2)",
-    xpath: "/html/body/div[1]/section[2]",
-    textSnippet: "Welcome to our platform",
-    elementTag: "SECTION",
-    elementId: "hero",
-  },
-  rect: { xPct: 0.1, yPct: 0.2, wPct: 0.5, hPct: 0.3 },
-  scrollX: 0,
-  scrollY: 150,
-  viewportW: 1920,
-  viewportH: 1080,
-  devicePixelRatio: 2,
-};
-
-const validPayload = {
-  projectName: "test-project",
-  type: "bug" as const,
-  message: "The button is misaligned",
-  url: "https://example.com/page",
-  viewport: "1920x1080",
-  userAgent: "Mozilla/5.0",
-  authorName: "Alice",
-  authorEmail: "alice@example.com",
-  annotations: [validAnnotation],
-  clientId: "uuid-123",
-};
+import { validAnnotation, validPayload } from "../fixtures.js";
 
 describe("feedbackCreateSchema", () => {
   it("accepts a valid payload", () => {
@@ -115,6 +87,71 @@ describe("feedbackCreateSchema", () => {
       });
       expect(result.success).toBe(true);
     }
+  });
+
+  it("rejects annotation missing fingerprint", () => {
+    const { fingerprint, ...anchorWithout } = validAnnotation.anchor;
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      annotations: [{ ...validAnnotation, anchor: anchorWithout }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects annotation missing textPrefix", () => {
+    const { textPrefix, ...anchorWithout } = validAnnotation.anchor;
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      annotations: [{ ...validAnnotation, anchor: anchorWithout }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects annotation missing textSnippet", () => {
+    const { textSnippet, ...anchorWithout } = validAnnotation.anchor;
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      annotations: [{ ...validAnnotation, anchor: anchorWithout }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects annotation missing textSuffix", () => {
+    const { textSuffix, ...anchorWithout } = validAnnotation.anchor;
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      annotations: [{ ...validAnnotation, anchor: anchorWithout }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects annotation missing neighborText", () => {
+    const { neighborText, ...anchorWithout } = validAnnotation.anchor;
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      annotations: [{ ...validAnnotation, anchor: anchorWithout }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts empty strings for text context fields", () => {
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      annotations: [
+        {
+          ...validAnnotation,
+          anchor: {
+            ...validAnnotation.anchor,
+            textSnippet: "",
+            textPrefix: "",
+            textSuffix: "",
+            fingerprint: "",
+            neighborText: "",
+          },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
   });
 });
 

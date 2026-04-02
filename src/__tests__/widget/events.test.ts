@@ -85,4 +85,13 @@ describe("EventBus", () => {
     const bus = new EventBus<TestEvents>();
     expect(() => bus.emit("ping")).not.toThrow();
   });
+
+  it("double unsubscribe does not throw", () => {
+    const bus = new EventBus<TestEvents>();
+    const fn = vi.fn();
+
+    const unsub = bus.on("ping", fn);
+    unsub();
+    expect(() => unsub()).not.toThrow();
+  });
 });

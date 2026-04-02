@@ -1,23 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { createSitepingHandler } from "../../adapter-prisma/index.js";
-
-const validPayload = {
-  projectName: "test",
-  type: "bug",
-  message: "broken button",
-  url: "https://example.com",
-  viewport: "1920x1080",
-  userAgent: "Mozilla/5.0",
-  authorName: "Alice",
-  authorEmail: "alice@test.com",
-  annotations: [],
-  clientId: "uuid-1",
-};
+import { validAnnotation, validPayloadNoAnnotations } from "../fixtures.js";
 
 function mockPrisma() {
   return {
     sitepingFeedback: {
-      create: vi.fn().mockResolvedValue({ id: "fb-1", ...validPayload, status: "open", createdAt: new Date().toISOString(), resolvedAt: null, annotations: [] }),
+      create: vi.fn().mockResolvedValue({ id: "fb-1", ...validPayloadNoAnnotations, status: "open", createdAt: new Date().toISOString(), resolvedAt: null, annotations: [] }),
       findMany: vi.fn().mockResolvedValue([]),
       findUnique: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({ id: "fb-1", status: "resolved", resolvedAt: new Date().toISOString(), annotations: [] }),
@@ -39,7 +27,7 @@ describe("createSitepingHandler", () => {
     it("creates a feedback with valid payload", async () => {
       const req = new Request("http://localhost/api/siteping", {
         method: "POST",
-        body: JSON.stringify(validPayload),
+        body: JSON.stringify(validPayloadNoAnnotations),
       });
       const res = await handler.POST(req);
       expect(res.status).toBe(201);
@@ -70,7 +58,7 @@ describe("createSitepingHandler", () => {
     it("returns 400 for invalid email", async () => {
       const req = new Request("http://localhost/api/siteping", {
         method: "POST",
-        body: JSON.stringify({ ...validPayload, authorEmail: "not-email" }),
+        body: JSON.stringify({ ...validPayloadNoAnnotations, authorEmail: "not-email" }),
       });
       const res = await handler.POST(req);
       expect(res.status).toBe(400);
@@ -78,10 +66,10 @@ describe("createSitepingHandler", () => {
 
     it("handles duplicate clientId gracefully", async () => {
       prisma.sitepingFeedback.create.mockRejectedValue({ code: "P2002" });
-      prisma.sitepingFeedback.findUnique.mockResolvedValue({ id: "fb-1", ...validPayload });
+      prisma.sitepingFeedback.findUnique.mockResolvedValue({ id: "fb-1", ...validPayloadNoAnnotations });
       const req = new Request("http://localhost/api/siteping", {
         method: "POST",
-        body: JSON.stringify(validPayload),
+        body: JSON.stringify(validPayloadNoAnnotations),
       });
       const res = await handler.POST(req);
       expect(res.status).toBe(201);
@@ -91,10 +79,49 @@ describe("createSitepingHandler", () => {
       prisma.sitepingFeedback.create.mockRejectedValue(new Error("DB down"));
       const req = new Request("http://localhost/api/siteping", {
         method: "POST",
-        body: JSON.stringify(validPayload),
+        body: JSON.stringify(validPayloadNoAnnotations),
       });
       const res = await handler.POST(req);
       expect(res.status).toBe(500);
+    });
+
+    it("maps annotation anchor fields to Prisma create", async () => {
+      const payloadWithAnnotation = {
+        ...validPayloadNoAnnotations,
+        annotations: [validAnnotation],
+      };
+
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify(payloadWithAnnotation),
+      });
+
+      await handler.POST(req);
+
+      expect(prisma.sitepingFeedback.create).toHaveBeenCalledOnce();
+      const createArg = prisma.sitepingFeedback.create.mock.calls[0][0] as {
+        data: { annotations: { create: Array<Record<string, unknown>> } };
+      };
+      const flatAnnotation = createArg.data.annotations.create[0];
+
+      expect(flatAnnotation.cssSelector).toBe("div.main > section:nth-child(2)");
+      expect(flatAnnotation.xpath).toBe("/html/body/div[1]/section[2]");
+      expect(flatAnnotation.textSnippet).toBe("Welcome to our platform");
+      expect(flatAnnotation.elementTag).toBe("SECTION");
+      expect(flatAnnotation.elementId).toBe("hero");
+      expect(flatAnnotation.textPrefix).toBe("Navigation links here");
+      expect(flatAnnotation.textSuffix).toBe("Learn more about us");
+      expect(flatAnnotation.fingerprint).toBe("3:1:a1b2c3");
+      expect(flatAnnotation.neighborText).toBe("Previous section | Next section");
+      expect(flatAnnotation.xPct).toBe(0.1);
+      expect(flatAnnotation.yPct).toBe(0.2);
+      expect(flatAnnotation.wPct).toBe(0.5);
+      expect(flatAnnotation.hPct).toBe(0.3);
+      expect(flatAnnotation.scrollX).toBe(0);
+      expect(flatAnnotation.scrollY).toBe(150);
+      expect(flatAnnotation.viewportW).toBe(1920);
+      expect(flatAnnotation.viewportH).toBe(1080);
+      expect(flatAnnotation.devicePixelRatio).toBe(2);
     });
   });
 
