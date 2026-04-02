@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/NeosiaNexus/siteping/compare/v0.2.2...v0.2.3) (2026-04-02)
+
+
+### Documentation
+
+* add release & versioning guide to CONTRIBUTING.md ([fe0f6ee](https://github.com/NeosiaNexus/siteping/commit/fe0f6eeaa7495e909699fd3adec1a58d8edadf4f))
+
 ## [0.2.2](https://github.com/NeosiaNexus/siteping/compare/v0.2.1...v0.2.2) (2026-04-02)
 
 
