@@ -1,6 +1,6 @@
 {
   "name": "@neosianexus/siteping",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Feedback widget for client review during development — annotations, bugs, questions directly on the site",
   "type": "module",
   "exports": {
