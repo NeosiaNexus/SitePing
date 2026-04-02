@@ -4,7 +4,7 @@ import { initCommand } from "./commands/init.js";
 const program = new Command()
   .name("siteping")
   .description("CLI pour configurer @neosianexus/siteping")
-  .version("0.2.0"); // x-release-please-version
+  .version("0.2.1"); // x-release-please-version
 
 program.command("init").description("Configure le schema Prisma et la route API dans votre projet").action(initCommand);
 
