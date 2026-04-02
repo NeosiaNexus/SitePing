@@ -1,0 +1,73 @@
+{
+  "name": "@neosianexus/siteping",
+  "version": "0.1.0",
+  "description": "Feedback widget for client review during development — annotations, bugs, questions directly on the site",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/widget/index.d.mts",
+      "import": "./dist/widget/index.mjs",
+      "require": "./dist/widget/index.cjs"
+    },
+    "./adapter-prisma": {
+      "types": "./dist/adapter-prisma/index.d.mts",
+      "import": "./dist/adapter-prisma/index.mjs",
+      "require": "./dist/adapter-prisma/index.cjs"
+    }
+  },
+  "bin": {
+    "siteping": "./dist/cli/index.mjs"
+  },
+  "main": "./dist/widget/index.cjs",
+  "module": "./dist/widget/index.mjs",
+  "types": "./dist/widget/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "check": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:e2e": "playwright test",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "feedback",
+    "widget",
+    "annotation",
+    "client-review",
+    "development",
+    "prisma"
+  ],
+  "author": "neosianexus",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neosianexus/siteping.git"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
+  "peerDependencies": {
+    "@prisma/client": "^5.0.0 || ^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@prisma/client": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@clack/prompts": "^0.9.0",
+    "@medv/finder": "^3.2.0",
+    "@mrleebo/prisma-ast": "^0.12.0",
+    "@playwright/test": "^1.59.1",
+    "@prisma/client": "^6.0.0",
+    "@types/node": "^25.5.0",
+    "commander": "^13.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
