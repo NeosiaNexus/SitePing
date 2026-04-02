@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/NeosiaNexus/siteping/compare/v0.3.0...v0.4.0) (2026-04-02)
+
+
+### Features
+
+* **cli:** add sync, status, and doctor commands ([b9a4b27](https://github.com/NeosiaNexus/siteping/commit/b9a4b27d2852c3709f1222cb82383cd27e88f80b))
+
 ## [0.3.0](https://github.com/NeosiaNexus/siteping/compare/v0.2.3...v0.3.0) (2026-04-02)
 
 

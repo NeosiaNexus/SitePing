@@ -7,7 +7,7 @@ import { syncCommand } from "./commands/sync.js";
 const program = new Command()
   .name("siteping")
   .description("CLI pour configurer @neosianexus/siteping")
-  .version("0.3.0"); // x-release-please-version
+  .version("0.4.0"); // x-release-please-version
 
 program.command("init").description("Configure le schema Prisma et la route API dans votre projet").action(initCommand);
 
