@@ -1,4 +1,4 @@
-import { getTypeColor, type ThemeColors } from "../styles/theme.js";
+import { getTypeColor, getTypeBgColor, type ThemeColors } from "../styles/theme.js";
 import type { FeedbackResponse, FeedbackType } from "../types.js";
 import type { ApiClient } from "./api-client.js";
 import { el, formatRelativeDate, parseSvg, setText } from "./dom-utils.js";
@@ -14,10 +14,11 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 /**
- * Side panel (380px) with feedback history, filters, and search.
+ * Side panel (400px) with feedback history, filters, and search.
  *
  * Lives inside the Shadow DOM.
- * Slide-in from right, 350ms ease-out-expo.
+ * Glassmorphism: glass background, staggered card animations,
+ * loading states, resolve feedback with disabled state.
  */
 export class Panel {
   private root: HTMLElement;
@@ -27,6 +28,7 @@ export class Panel {
   private feedbacks: FeedbackResponse[] = [];
   private isOpen = false;
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
+  private isLoading = false;
 
   constructor(
     shadowRoot: ShadowRoot,
@@ -45,6 +47,7 @@ export class Panel {
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "sp-panel-close";
+    closeBtn.setAttribute("aria-label", "Fermer le panneau");
     closeBtn.appendChild(parseSvg(ICON_CLOSE));
     closeBtn.addEventListener("click", () => this.close());
 
@@ -62,6 +65,7 @@ export class Panel {
     this.searchInput.type = "text";
     this.searchInput.className = "sp-search";
     this.searchInput.placeholder = "Rechercher...";
+    this.searchInput.setAttribute("aria-label", "Rechercher dans les feedbacks");
     this.searchInput.addEventListener("input", () => {
       if (this.searchTimeout) clearTimeout(this.searchTimeout);
       this.searchTimeout = setTimeout(() => this.loadFeedbacks(), 200);
@@ -136,6 +140,15 @@ export class Panel {
     this.bus.emit("close");
   }
 
+  private showLoading(): void {
+    this.isLoading = true;
+    this.listContainer.replaceChildren();
+    const loading = el("div", { class: "sp-loading" });
+    const spinner = el("div", { class: "sp-spinner" });
+    loading.appendChild(spinner);
+    this.listContainer.appendChild(loading);
+  }
+
   private async loadFeedbacks(): Promise<void> {
     const search = this.searchInput.value.trim() || undefined;
     const typeFilter = this.activeFilters.has("all") ? undefined : (Array.from(this.activeFilters)[0] as FeedbackType);
@@ -144,12 +157,16 @@ export class Panel {
     if (typeFilter) options.type = typeFilter;
     if (search) options.search = search;
 
+    this.showLoading();
+
     try {
       const { feedbacks } = await this.apiClient.getFeedbacks(this.projectName, options);
       this.feedbacks = feedbacks;
+      this.isLoading = false;
       this.renderList();
       this.markers.render(feedbacks);
     } catch (error) {
+      this.isLoading = false;
       this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
     }
   }
@@ -168,6 +185,8 @@ export class Panel {
 
     this.feedbacks.forEach((feedback, index) => {
       const card = this.createCard(feedback, index + 1);
+      // Stagger animation via CSS custom property
+      card.style.setProperty("--sp-card-i", String(index));
       this.listContainer.appendChild(card);
     });
   }
@@ -195,7 +214,9 @@ export class Panel {
     setText(num, `#${number}`);
 
     const badge = el("span", { class: "sp-badge" });
-    badge.style.background = typeColor;
+    const typeBg = getTypeBgColor(feedback.type, this.colors);
+    badge.style.background = typeBg;
+    badge.style.color = typeColor;
     setText(badge, TYPE_LABELS[feedback.type] ?? feedback.type);
 
     const date = el("span", { class: "sp-card-date" });
@@ -214,10 +235,12 @@ export class Panel {
     expandBtn.className = "sp-card-expand";
     setText(expandBtn, "Voir plus");
     expandBtn.style.display = "none";
+    expandBtn.setAttribute("aria-expanded", "false");
     expandBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       const isExpanded = message.classList.toggle("sp-card-message--expanded");
       setText(expandBtn, isExpanded ? "Voir moins" : "Voir plus");
+      expandBtn.setAttribute("aria-expanded", String(isExpanded));
     });
 
     // Check if text is clamped (after render)
@@ -245,7 +268,7 @@ export class Panel {
     }
     resolveBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      await this.toggleResolve(feedback);
+      await this.toggleResolve(feedback, resolveBtn);
     });
 
     footer.appendChild(resolveBtn);
@@ -275,12 +298,15 @@ export class Panel {
     return card;
   }
 
-  private async toggleResolve(feedback: FeedbackResponse): Promise<void> {
-    const newResolved = feedback.status !== "resolved";
+  private async toggleResolve(feedback: FeedbackResponse, btn: HTMLButtonElement): Promise<void> {
+    // Disable button during async operation
+    btn.disabled = true;
     try {
+      const newResolved = feedback.status !== "resolved";
       await this.apiClient.resolveFeedback(feedback.id, newResolved);
       await this.loadFeedbacks();
     } catch (error) {
+      btn.disabled = false;
       this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
     }
   }

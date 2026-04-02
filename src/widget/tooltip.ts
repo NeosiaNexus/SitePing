@@ -1,18 +1,20 @@
-import { getTypeColor, type ThemeColors } from "../styles/theme.js";
+import { getTypeColor, getTypeBgColor, type ThemeColors } from "../styles/theme.js";
 import type { FeedbackResponse } from "../types.js";
 import { el, formatRelativeDate, setText } from "./dom-utils.js";
 
-const SHOW_DELAY = 150;
-const HIDE_DELAY = 100;
+const SHOW_DELAY = 120;
+const HIDE_DELAY = 80;
 
 /**
  * Tooltip shown on annotation marker hover.
  *
- * All user content is set via textContent (never innerHTML).
- * Lives outside Shadow DOM (same layer as markers/overlay).
+ * Glassmorphism design: frosted glass with pastel badge,
+ * smooth entrance animation, directional arrow.
+ * Lives outside Shadow DOM.
  */
 export class Tooltip {
   private root: HTMLElement;
+  private arrow: HTMLElement;
   private showTimer: ReturnType<typeof setTimeout> | null = null;
   private hideTimer: ReturnType<typeof setTimeout> | null = null;
   private currentFeedbackId: string | null = null;
@@ -22,20 +24,37 @@ export class Tooltip {
       style: `
         position: fixed;
         z-index: 2147483647;
-        max-width: 260px;
-        padding: 10px 12px;
-        border-radius: 8px;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 280px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.04);
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
         pointer-events: auto;
         opacity: 0;
-        transform: translateY(4px);
-        transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+        transform: translateY(6px) scale(0.97);
+        transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         visibility: hidden;
+        -webkit-font-smoothing: antialiased;
       `,
     });
+
+    // Arrow element
+    this.arrow = el("div", {
+      style: `
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        background: rgba(255, 255, 255, 0.88);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        transform: rotate(45deg);
+        pointer-events: none;
+      `,
+    });
+    this.root.appendChild(this.arrow);
 
     this.root.addEventListener("mouseenter", () => this.cancelHide());
     this.root.addEventListener("mouseleave", () => this.scheduleHide());
@@ -53,7 +72,7 @@ export class Tooltip {
       this.position(anchorRect);
       this.root.style.visibility = "visible";
       this.root.style.opacity = "1";
-      this.root.style.transform = "translateY(0)";
+      this.root.style.transform = "translateY(0) scale(1)";
     }, SHOW_DELAY);
   }
 
@@ -66,12 +85,12 @@ export class Tooltip {
     this.cancelShow();
     this.currentFeedbackId = null;
     this.root.style.opacity = "0";
-    this.root.style.transform = "translateY(4px)";
+    this.root.style.transform = "translateY(6px) scale(0.97)";
     setTimeout(() => {
       if (!this.currentFeedbackId) {
         this.root.style.visibility = "hidden";
       }
-    }, 150);
+    }, 200);
   }
 
   private cancelShow(): void {
@@ -89,21 +108,30 @@ export class Tooltip {
   }
 
   private render(feedback: FeedbackResponse): void {
-    // Clear previous content safely
-    this.root.replaceChildren();
+    // Clear previous content safely (except arrow)
+    const children = Array.from(this.root.children);
+    for (const child of children) {
+      if (child !== this.arrow) child.remove();
+    }
 
     const typeColor = getTypeColor(feedback.type, this.colors);
+    const typeBg = getTypeBgColor(feedback.type, this.colors);
     const typeLabel = feedback.type.charAt(0).toUpperCase() + feedback.type.slice(1);
 
     // Header row: badge + date
-    const header = el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" });
+    const header = el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:8px;" });
 
     const badge = el("span", {
-      style: `padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;color:#fff;background:${typeColor};`,
+      style: `
+        padding:3px 10px;border-radius:9999px;
+        font-size:11px;font-weight:600;
+        color:${typeColor};background:${typeBg};
+        letter-spacing:0.02em;
+      `,
     });
     setText(badge, typeLabel);
 
-    const date = el("span", { style: "font-size:11px;color:#6b7280;margin-left:auto;" });
+    const date = el("span", { style: "font-size:11px;color:#64748b;margin-left:auto;" });
     setText(date, formatRelativeDate(feedback.createdAt));
 
     header.appendChild(badge);
@@ -112,26 +140,67 @@ export class Tooltip {
     // Message body (safe — textContent only)
     const body = el("div", {
       style:
-        "font-size:13px;line-height:1.4;color:#1a1a1a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;",
+        "font-size:13px;line-height:1.55;color:#0f172a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;",
     });
     setText(body, feedback.message);
 
-    this.root.appendChild(header);
-    this.root.appendChild(body);
+    // Insert content before arrow
+    this.root.insertBefore(header, this.arrow);
+    this.root.insertBefore(body, this.arrow);
   }
 
   private position(anchorRect: DOMRect): void {
     const tooltipRect = this.root.getBoundingClientRect();
-    const gap = 8;
+    const gap = 10;
 
     let top = anchorRect.top - tooltipRect.height - gap;
     let left = anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2;
+    let isAbove = true;
 
-    if (top < 8) top = anchorRect.bottom + gap;
+    // Flip below if not enough space above
+    if (top < 8) {
+      top = anchorRect.bottom + gap;
+      isAbove = false;
+    }
+
     left = Math.max(8, Math.min(left, window.innerWidth - tooltipRect.width - 8));
 
     this.root.style.top = `${top}px`;
     this.root.style.left = `${left}px`;
+
+    // Position arrow
+    const arrowLeft = Math.max(16, Math.min(
+      anchorRect.left + anchorRect.width / 2 - left - 6,
+      tooltipRect.width - 22,
+    ));
+
+    if (isAbove) {
+      // Arrow at bottom, pointing down
+      this.arrow.style.cssText = `
+        position:absolute;
+        width:12px;height:12px;
+        background:rgba(255, 255, 255, 0.88);
+        border-right:1px solid rgba(255, 255, 255, 0.35);
+        border-bottom:1px solid rgba(255, 255, 255, 0.35);
+        transform:rotate(45deg);
+        pointer-events:none;
+        bottom:-6px;
+        left:${arrowLeft}px;
+      `;
+    } else {
+      // Arrow at top, pointing up
+      this.arrow.style.cssText = `
+        position:absolute;
+        width:12px;height:12px;
+        background:rgba(255, 255, 255, 0.88);
+        border-left:1px solid rgba(255, 255, 255, 0.35);
+        border-top:1px solid rgba(255, 255, 255, 0.35);
+        transform:rotate(45deg);
+        pointer-events:none;
+        top:-6px;
+        left:${arrowLeft}px;
+      `;
+    }
   }
 
   destroy(): void {

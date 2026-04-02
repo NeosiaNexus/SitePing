@@ -1,4 +1,4 @@
-import { getTypeColor, type ThemeColors } from "../styles/theme.js";
+import { getTypeColor, getTypeBgColor, type ThemeColors } from "../styles/theme.js";
 import type { FeedbackType } from "../types.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
@@ -24,8 +24,8 @@ const TYPE_OPTIONS: TypeOption[] = [
 /**
  * Popup form shown after drawing an annotation rectangle.
  *
- * Positioned at the bottom-left corner of the rect with viewport collision detection.
- * Layout: segmented type selector + textarea + submit/cancel buttons.
+ * Glassmorphism design: frosted glass background, soft shadows,
+ * pill-shaped type buttons, gradient submit button.
  * Lives outside Shadow DOM.
  */
 export class Popup {
@@ -40,36 +40,39 @@ export class Popup {
       style: `
         position:fixed;
         z-index:2147483647;
-        width:280px;
-        padding:14px;
-        border-radius:12px;
-        background:#fff;
-        border:1px solid #e5e7eb;
-        box-shadow:0 8px 24px rgba(0,0,0,0.12);
-        font-family:system-ui,-apple-system,sans-serif;
+        width:300px;
+        padding:16px;
+        border-radius:16px;
+        background:rgba(255, 255, 255, 0.82);
+        backdrop-filter:blur(24px);
+        -webkit-backdrop-filter:blur(24px);
+        border:1px solid rgba(255, 255, 255, 0.35);
+        box-shadow:0 8px 32px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.04);
+        font-family:"Inter",system-ui,-apple-system,sans-serif;
         opacity:0;
-        transform:translateY(6px);
-        transition:opacity 0.2s ease-out,transform 0.2s ease-out;
+        transform:translateY(8px) scale(0.98);
+        transition:opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1),transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         display:none;
+        -webkit-font-smoothing:antialiased;
       `,
     });
 
     // Type selector row
-    const typeRow = el("div", { style: "display:flex;gap:4px;margin-bottom:10px;" });
+    const typeRow = el("div", { style: "display:flex;gap:6px;margin-bottom:12px;" });
     for (const option of TYPE_OPTIONS) {
       const btn = document.createElement("button");
       btn.style.cssText = `
-        flex:1;height:32px;
-        border-radius:6px;border:1px solid #e5e7eb;
-        background:#fff;cursor:pointer;
+        flex:1;height:34px;
+        border-radius:9999px;border:1px solid #e2e8f0;
+        background:rgba(255,255,255,0.8);cursor:pointer;
         display:flex;align-items:center;justify-content:center;gap:4px;
-        font-family:system-ui,-apple-system,sans-serif;
-        font-size:11px;font-weight:500;color:#6b7280;
-        transition:all 0.15s ease;
-        padding:0 4px;
+        font-family:"Inter",system-ui,-apple-system,sans-serif;
+        font-size:11px;font-weight:500;color:#64748b;
+        transition:all 0.2s ease;
+        padding:0 6px;
       `;
       const icon = parseSvg(option.icon);
-      icon.setAttribute("style", "width:14px;height:14px;flex-shrink:0;");
+      icon.setAttribute("style", "width:13px;height:13px;flex-shrink:0;");
       btn.appendChild(icon);
       const labelSpan = document.createElement("span");
       setText(labelSpan, option.label);
@@ -80,26 +83,63 @@ export class Popup {
         this.selectType(option.type, typeRow);
       });
 
+      btn.addEventListener("mouseenter", () => {
+        if (btn.dataset.type !== this.selectedType) {
+          const bgColor = getTypeBgColor(btn.dataset.type ?? "", this.colors);
+          btn.style.background = bgColor;
+          btn.style.borderColor = getTypeColor(btn.dataset.type ?? "", this.colors) + "40";
+        }
+      });
+
+      btn.addEventListener("mouseleave", () => {
+        if (btn.dataset.type !== this.selectedType) {
+          btn.style.background = "rgba(255,255,255,0.8)";
+          btn.style.borderColor = "#e2e8f0";
+        }
+      });
+
       typeRow.appendChild(btn);
     }
 
     // Textarea
     this.textarea = document.createElement("textarea");
     this.textarea.style.cssText = `
-      width:100%;min-height:64px;max-height:144px;
-      padding:8px 10px;border-radius:8px;
-      border:1px solid #e5e7eb;background:#fff;
-      color:#1a1a1a;font-family:system-ui,-apple-system,sans-serif;
-      font-size:13px;line-height:1.4;resize:vertical;
-      outline:none;transition:border-color 0.15s ease;
+      width:100%;min-height:72px;max-height:152px;
+      padding:10px 12px;border-radius:12px;
+      border:1px solid #e2e8f0;
+      background:rgba(255,255,255,0.85);
+      color:#0f172a;font-family:"Inter",system-ui,-apple-system,sans-serif;
+      font-size:13px;line-height:1.5;resize:vertical;
+      outline:none;transition:all 0.2s ease;
       box-sizing:border-box;
     `;
     this.textarea.placeholder = "Décrivez votre retour...";
+    this.textarea.setAttribute("aria-label", "Message de feedback");
+
+    // Keyboard shortcut hint
+    const hint = el("div", {
+      style: `
+        font-size:11px;color:#94a3b8;
+        text-align:right;margin-top:4px;
+        font-family:"Inter",system-ui,-apple-system,sans-serif;
+        letter-spacing:0.01em;
+      `,
+    });
+    const isMac = navigator.platform.includes("Mac");
+    setText(hint, isMac ? "\u2318+Entr\u00e9e pour envoyer" : "Ctrl+Entr\u00e9e pour envoyer");
+
     this.textarea.addEventListener("focus", () => {
       this.textarea.style.borderColor = this.colors.accent;
+      this.textarea.style.boxShadow = `0 0 0 3px ${this.colors.accent}14`;
+      this.textarea.style.background = "#fff";
     });
     this.textarea.addEventListener("blur", () => {
-      this.textarea.style.borderColor = "#e5e7eb";
+      this.textarea.style.borderColor = "#e2e8f0";
+      this.textarea.style.boxShadow = "none";
+      this.textarea.style.background = "rgba(255,255,255,0.85)";
+    });
+    this.textarea.addEventListener("input", () => {
+      this.updateSubmitState();
     });
     this.textarea.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -112,26 +152,37 @@ export class Popup {
     });
 
     // Button row
-    const btnRow = el("div", { style: "display:flex;justify-content:flex-end;gap:8px;margin-top:10px;" });
+    const btnRow = el("div", { style: "display:flex;justify-content:flex-end;gap:8px;margin-top:12px;" });
 
     const cancelBtn = document.createElement("button");
     cancelBtn.style.cssText = `
-      height:32px;padding:0 14px;border-radius:6px;
-      border:1px solid #e5e7eb;background:transparent;
-      color:#6b7280;font-family:system-ui,-apple-system,sans-serif;
-      font-size:13px;cursor:pointer;transition:all 0.15s ease;
+      height:34px;padding:0 16px;border-radius:9999px;
+      border:1px solid #e2e8f0;
+      background:rgba(255,255,255,0.8);
+      color:#64748b;font-family:"Inter",system-ui,-apple-system,sans-serif;
+      font-size:13px;font-weight:500;cursor:pointer;
+      transition:all 0.2s ease;
     `;
     setText(cancelBtn, "Annuler");
     cancelBtn.addEventListener("click", () => this.cancel());
+    cancelBtn.addEventListener("mouseenter", () => {
+      cancelBtn.style.borderColor = this.colors.accent;
+      cancelBtn.style.color = this.colors.accent;
+    });
+    cancelBtn.addEventListener("mouseleave", () => {
+      cancelBtn.style.borderColor = "#e2e8f0";
+      cancelBtn.style.color = "#64748b";
+    });
 
     this.submitBtn = document.createElement("button");
     this.submitBtn.style.cssText = `
-      height:32px;padding:0 14px;border-radius:6px;
-      border:none;background:${this.colors.accent};
-      color:#fff;font-family:system-ui,-apple-system,sans-serif;
-      font-size:13px;font-weight:500;cursor:pointer;
-      opacity:0.5;pointer-events:none;
-      transition:all 0.15s ease;
+      height:34px;padding:0 18px;border-radius:9999px;
+      border:none;background:${this.colors.accentGradient};
+      color:#fff;font-family:"Inter",system-ui,-apple-system,sans-serif;
+      font-size:13px;font-weight:600;cursor:pointer;
+      opacity:0.35;pointer-events:none;
+      transition:all 0.2s ease;
+      box-shadow:0 2px 8px ${this.colors.accentGlow};
     `;
     setText(this.submitBtn, "Envoyer");
     this.submitBtn.addEventListener("click", () => this.submit());
@@ -141,6 +192,7 @@ export class Popup {
 
     this.root.appendChild(typeRow);
     this.root.appendChild(this.textarea);
+    this.root.appendChild(hint);
     this.root.appendChild(btnRow);
     document.body.appendChild(this.root);
   }
@@ -162,12 +214,12 @@ export class Popup {
       let left = rectBounds.left;
 
       // Collision: flip up if not enough space below
-      if (top + 200 > window.innerHeight) {
-        top = rectBounds.top - 200 - 8;
+      if (top + 220 > window.innerHeight) {
+        top = rectBounds.top - 220 - 8;
       }
       // Collision: flip right if not enough space on left
-      if (left + 280 > window.innerWidth) {
-        left = rectBounds.right - 280;
+      if (left + 300 > window.innerWidth) {
+        left = rectBounds.right - 300;
       }
       left = Math.max(8, left);
       top = Math.max(8, top);
@@ -179,7 +231,7 @@ export class Popup {
       // Trigger animation
       requestAnimationFrame(() => {
         this.root.style.opacity = "1";
-        this.root.style.transform = "translateY(0)";
+        this.root.style.transform = "translateY(0) scale(1)";
         this.textarea.focus();
       });
     });
@@ -191,9 +243,11 @@ export class Popup {
     for (const btn of buttons) {
       const isActive = btn.dataset.type === type;
       const color = getTypeColor(btn.dataset.type ?? "", this.colors);
-      btn.style.background = isActive ? color : "#fff";
-      btn.style.borderColor = isActive ? color : "#e5e7eb";
-      btn.style.color = isActive ? "#fff" : "#6b7280";
+      const bgColor = getTypeBgColor(btn.dataset.type ?? "", this.colors);
+      btn.style.background = isActive ? bgColor : "rgba(255,255,255,0.8)";
+      btn.style.borderColor = isActive ? color + "60" : "#e2e8f0";
+      btn.style.color = isActive ? color : "#64748b";
+      btn.style.fontWeight = isActive ? "600" : "500";
     }
     this.updateSubmitState();
   }
@@ -201,15 +255,16 @@ export class Popup {
   private resetTypeButtons(): void {
     const buttons = this.root.querySelectorAll<HTMLButtonElement>("button[data-type]");
     for (const btn of buttons) {
-      btn.style.background = "#fff";
-      btn.style.borderColor = "#e5e7eb";
-      btn.style.color = "#6b7280";
+      btn.style.background = "rgba(255,255,255,0.8)";
+      btn.style.borderColor = "#e2e8f0";
+      btn.style.color = "#64748b";
+      btn.style.fontWeight = "500";
     }
   }
 
   private updateSubmitState(): void {
     const enabled = this.selectedType !== null && this.textarea.value.trim().length > 0;
-    this.submitBtn.style.opacity = enabled ? "1" : "0.5";
+    this.submitBtn.style.opacity = enabled ? "1" : "0.35";
     this.submitBtn.style.pointerEvents = enabled ? "auto" : "none";
   }
 
@@ -228,10 +283,10 @@ export class Popup {
 
   private hideElement(): void {
     this.root.style.opacity = "0";
-    this.root.style.transform = "translateY(6px)";
+    this.root.style.transform = "translateY(8px) scale(0.98)";
     setTimeout(() => {
       this.root.style.display = "none";
-    }, 200);
+    }, 250);
   }
 
   destroy(): void {

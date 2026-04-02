@@ -35,9 +35,9 @@ const HIGHLIGHT_FADE = 300;
 /**
  * Numbered markers on the page for each feedback annotation.
  *
- * 24x24px circles at top-right of annotation rects.
+ * Glassmorphism design: frosted glass circles with accent glow,
+ * smooth hover lift, premium feel.
  * Lives OUTSIDE Shadow DOM (appended to document.body).
- * All user content set via textContent.
  */
 export class MarkerManager {
   private container: HTMLElement;
@@ -88,7 +88,7 @@ export class MarkerManager {
       const resolved = resolveAnnotation(toAnchorData(annotation), toRectData(annotation));
       if (!resolved) continue;
       const marker = this.createMarker(index, feedback, resolved.rect);
-      marker.style.animation = "sp-marker-in 0.3s cubic-bezier(0.34,1.56,0.64,1) both";
+      marker.style.animation = "sp-marker-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both";
       this.container.appendChild(marker);
       entry.elements.push(marker);
     }
@@ -103,34 +103,42 @@ export class MarkerManager {
     const marker = el("div", {
       style: `
         position:absolute;
-        top:${rect.top + window.scrollY - 12}px;
-        left:${rect.right + window.scrollX - 12}px;
-        width:24px;height:24px;
+        top:${rect.top + window.scrollY - 13}px;
+        left:${rect.right + window.scrollX - 13}px;
+        width:26px;height:26px;
         border-radius:50%;
-        background:${isResolved ? "#f3f4f6" : "#fff"};
-        border:2px solid ${isResolved ? "#9ca3af" : typeColor};
+        background:${isResolved ? "rgba(241,245,249,0.9)" : "rgba(255,255,255,0.92)"};
+        backdrop-filter:blur(12px);
+        -webkit-backdrop-filter:blur(12px);
+        border:2px solid ${isResolved ? "#cbd5e1" : typeColor};
         display:flex;align-items:center;justify-content:center;
-        font-family:system-ui,-apple-system,sans-serif;
-        font-size:12px;font-weight:600;
-        color:${isResolved ? "#9ca3af" : typeColor};
+        font-family:"Inter",system-ui,-apple-system,sans-serif;
+        font-size:11px;font-weight:700;
+        color:${isResolved ? "#94a3b8" : typeColor};
         cursor:pointer;pointer-events:auto;
-        transition:transform 0.15s ease,box-shadow 0.15s ease;
+        box-shadow:${isResolved ? "0 2px 8px rgba(0,0,0,0.06)" : `0 2px 12px ${typeColor}25, 0 2px 6px rgba(0,0,0,0.06)`};
+        transition:all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         user-select:none;
+        -webkit-font-smoothing:antialiased;
       `,
     });
     marker.dataset.feedbackId = feedback.id;
     setText(marker, isResolved ? "\u2713" : String(number));
 
     marker.addEventListener("mouseenter", () => {
-      marker.style.transform = "scale(1.17)";
-      marker.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+      marker.style.transform = "scale(1.2)";
+      marker.style.boxShadow = isResolved
+        ? "0 4px 16px rgba(0,0,0,0.1)"
+        : `0 4px 20px ${typeColor}35, 0 4px 12px rgba(0,0,0,0.08)`;
       this.tooltip.show(feedback, marker.getBoundingClientRect());
       if (!this.pinnedFeedback) this.showHighlight(feedback);
     });
 
     marker.addEventListener("mouseleave", () => {
       marker.style.transform = "scale(1)";
-      marker.style.boxShadow = "none";
+      marker.style.boxShadow = isResolved
+        ? "0 2px 8px rgba(0,0,0,0.06)"
+        : `0 2px 12px ${typeColor}25, 0 2px 6px rgba(0,0,0,0.06)`;
       this.tooltip.scheduleHide();
       if (!this.pinnedFeedback) this.clearHighlight();
     });
@@ -166,7 +174,7 @@ export class MarkerManager {
     for (const entry of this.entries) {
       if (entry.feedback.id === feedbackId) {
         for (const markerEl of entry.elements) {
-          markerEl.style.animation = "sp-pulse-outline 0.6s ease-out";
+          markerEl.style.animation = "sp-pulse-ring 0.7s ease-out";
           markerEl.addEventListener(
             "animationend",
             () => {
@@ -197,11 +205,12 @@ export class MarkerManager {
           width:${rect.width}px;
           height:${rect.height}px;
           border:2px solid ${typeColor};
-          background:${typeColor}1a;
-          border-radius:4px;
+          background:${typeColor}0c;
+          border-radius:8px;
           pointer-events:none;
           z-index:-1;
           opacity:0;
+          box-shadow:0 0 16px ${typeColor}20;
           transition:opacity ${HIGHLIGHT_FADE}ms ease;
         `,
       });

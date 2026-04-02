@@ -14,12 +14,10 @@ export interface AnnotationComplete {
 /**
  * Annotation mode: full-page overlay with rectangle drawing.
  *
- * Architecture:
- * - Overlay lives OUTSIDE Shadow DOM (sibling of <siteping-widget>)
- * - z-index: 2147483646 (one below the widget)
- * - Blocks page scroll while active
- * - mousedown/mousemove/mouseup for rectangle drawing
- * - After drawing: shows Popup for type + message
+ * Glassmorphism design:
+ * - Frosted glass toolbar at top
+ * - Subtle tinted overlay
+ * - Accent-colored drawing rectangle with glow
  */
 export class Annotator {
   private overlay: HTMLElement | null = null;
@@ -51,44 +49,74 @@ export class Annotator {
     this.savedOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Overlay
+    // Overlay — subtle blue tint for depth
     this.overlay = el("div", {
       style: `
         position:fixed;inset:0;
         z-index:2147483646;
-        background:rgba(0,0,0,0.05);
+        background:rgba(15, 23, 42, 0.04);
         cursor:crosshair;
       `,
     });
 
-    // Toolbar
+    // Toolbar — glassmorphism bar
     this.toolbar = el("div", {
       style: `
         position:fixed;top:0;left:0;right:0;
         z-index:2147483647;
-        height:48px;
-        background:#fff;
-        border-bottom:1px solid #e5e7eb;
+        height:52px;
+        background:rgba(255, 255, 255, 0.82);
+        backdrop-filter:blur(24px);
+        -webkit-backdrop-filter:blur(24px);
+        border-bottom:1px solid rgba(255, 255, 255, 0.35);
         display:flex;align-items:center;justify-content:center;gap:16px;
-        font-family:system-ui,-apple-system,sans-serif;
-        font-size:14px;color:#1a1a1a;
-        box-shadow:0 2px 8px rgba(0,0,0,0.06);
+        font-family:"Inter",system-ui,-apple-system,sans-serif;
+        font-size:14px;color:#0f172a;
+        box-shadow:0 4px 16px rgba(0,0,0,0.06);
+        -webkit-font-smoothing:antialiased;
       `,
     });
 
-    const instruction = el("span");
+    const dot = el("span", {
+      style: `
+        width:8px;height:8px;border-radius:50%;
+        background:${this.colors.accent};
+        box-shadow:0 0 8px ${this.colors.accentGlow};
+        animation:pulse 1.5s ease-in-out infinite;
+      `,
+    });
+
+    // Add pulse animation inline
+    const style = document.createElement("style");
+    style.textContent = `@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`;
+    this.toolbar.appendChild(style);
+
+    const instruction = el("span", { style: "font-weight:500;letter-spacing:-0.01em;" });
     setText(instruction, "Tracez un rectangle sur la zone \u00e0 commenter");
 
     const cancelBtn = document.createElement("button");
     cancelBtn.style.cssText = `
-      height:32px;padding:0 16px;border-radius:6px;
-      border:1px solid #e5e7eb;background:#fff;
-      color:#6b7280;font-family:system-ui,-apple-system,sans-serif;
-      font-size:13px;cursor:pointer;
+      height:34px;padding:0 18px;border-radius:9999px;
+      border:1px solid #e2e8f0;
+      background:rgba(255,255,255,0.8);
+      color:#64748b;font-family:"Inter",system-ui,-apple-system,sans-serif;
+      font-size:13px;font-weight:500;cursor:pointer;
+      transition:all 0.2s ease;
     `;
     setText(cancelBtn, "Annuler");
     cancelBtn.addEventListener("click", () => this.deactivate());
+    cancelBtn.addEventListener("mouseenter", () => {
+      cancelBtn.style.borderColor = "#ef4444";
+      cancelBtn.style.color = "#ef4444";
+      cancelBtn.style.background = "rgba(239,68,68,0.06)";
+    });
+    cancelBtn.addEventListener("mouseleave", () => {
+      cancelBtn.style.borderColor = "#e2e8f0";
+      cancelBtn.style.color = "#64748b";
+      cancelBtn.style.background = "rgba(255,255,255,0.8)";
+    });
 
+    this.toolbar.appendChild(dot);
     this.toolbar.appendChild(instruction);
     this.toolbar.appendChild(cancelBtn);
 
@@ -137,9 +165,11 @@ export class Annotator {
       style: `
         position:fixed;
         border:2px solid ${this.colors.accent};
-        background:${this.colors.accent}1a;
+        background:${this.colors.accent}12;
         pointer-events:none;
-        border-radius:4px;
+        border-radius:8px;
+        box-shadow:0 0 16px ${this.colors.accentGlow};
+        transition:box-shadow 0.15s ease;
       `,
     });
     this.overlay?.appendChild(this.drawingRect);

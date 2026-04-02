@@ -130,6 +130,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
 /**
  * Show a modal identity form inside the Shadow DOM.
+ * Glassmorphism: frosted backdrop, glass modal, gradient CTA.
  * Returns null if the user cancels.
  */
 function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
@@ -137,21 +138,32 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = `
       position:fixed;inset:0;
-      background:rgba(0,0,0,0.3);
+      background:rgba(15, 23, 42, 0.2);
+      backdrop-filter:blur(8px);
+      -webkit-backdrop-filter:blur(8px);
       display:flex;align-items:center;justify-content:center;
       z-index:2147483647;
+      opacity:0;transition:opacity 0.25s ease;
     `;
 
     const modal = document.createElement("div");
     modal.style.cssText = `
-      width:320px;padding:24px;border-radius:12px;
-      background:#fff;box-shadow:0 8px 32px rgba(0,0,0,0.15);
-      font-family:system-ui,-apple-system,sans-serif;
+      width:340px;padding:28px;border-radius:20px;
+      background:rgba(255, 255, 255, 0.85);
+      backdrop-filter:blur(32px);
+      -webkit-backdrop-filter:blur(32px);
+      border:1px solid rgba(255, 255, 255, 0.35);
+      box-shadow:0 16px 48px rgba(0,0,0,0.12), 0 8px 16px rgba(0,0,0,0.06);
+      font-family:"Inter",system-ui,-apple-system,sans-serif;
+      transform:translateY(12px) scale(0.97);
+      transition:transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      -webkit-font-smoothing:antialiased;
     `;
 
     const title = document.createElement("div");
     title.className = "sp-identity-title";
     title.textContent = "Identifiez-vous";
+    title.style.marginBottom = "20px";
 
     const nameLabel = document.createElement("label");
     nameLabel.className = "sp-input-label";
@@ -160,6 +172,7 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
     nameInput.className = "sp-input";
     nameInput.type = "text";
     nameInput.placeholder = "Votre nom";
+    nameInput.style.marginBottom = "14px";
 
     const emailLabel = document.createElement("label");
     emailLabel.className = "sp-input-label";
@@ -170,14 +183,15 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
     emailInput.placeholder = "votre@email.com";
 
     const btnRow = document.createElement("div");
-    btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:16px;";
+    btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:20px;";
 
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "sp-btn-ghost";
     cancelBtn.textContent = "Annuler";
     cancelBtn.addEventListener("click", () => {
-      backdrop.remove();
-      resolve(null);
+      backdrop.style.opacity = "0";
+      modal.style.transform = "translateY(12px) scale(0.97)";
+      setTimeout(() => { backdrop.remove(); resolve(null); }, 250);
     });
 
     const submitBtn = document.createElement("button");
@@ -187,8 +201,9 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
       const name = nameInput.value.trim();
       const email = emailInput.value.trim();
       if (!name || !email) return;
-      backdrop.remove();
-      resolve({ name, email });
+      backdrop.style.opacity = "0";
+      modal.style.transform = "translateY(12px) scale(0.97)";
+      setTimeout(() => { backdrop.remove(); resolve({ name, email }); }, 250);
     });
 
     btnRow.appendChild(cancelBtn);
@@ -203,6 +218,12 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
     backdrop.appendChild(modal);
 
     shadowRoot.appendChild(backdrop);
-    nameInput.focus();
+
+    // Animate in
+    requestAnimationFrame(() => {
+      backdrop.style.opacity = "1";
+      modal.style.transform = "translateY(0) scale(1)";
+      nameInput.focus();
+    });
   });
 }

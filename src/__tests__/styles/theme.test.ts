@@ -10,7 +10,7 @@ describe("buildThemeColors", () => {
   it("normalizes 6-digit hex", () => {
     const colors = buildThemeColors("#ff5500");
     expect(colors.accent).toBe("#ff5500");
-    expect(colors.accentLight).toBe("#ff55001a");
+    expect(colors.accentLight).toBe("#ff550014");
   });
 
   it("expands 3-digit shorthand hex", () => {

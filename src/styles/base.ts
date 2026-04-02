@@ -4,11 +4,16 @@ import { cssVariables, type ThemeColors } from "./theme.js";
 /**
  * Build the complete CSS stylesheet for the Shadow DOM.
  *
- * Design principles:
- * - :host uses `all: initial` to block inherited styles from bleeding in
- * - All classes prefixed with sp- even inside Shadow DOM (defense in depth)
+ * Design: Glassmorphism — frosted glass surfaces, soft depth,
+ * accent gradients, premium micro-interactions.
+ *
+ * Principles:
+ * - :host uses `all: initial` to block inherited styles
+ * - All classes prefixed with sp- (defense in depth)
  * - CSS custom properties for theming
- * - No external fonts — system-ui stack only
+ * - No external fonts — system-ui stack (Inter if available)
+ * - :focus-visible on all interactive elements
+ * - prefers-reduced-motion support
  */
 export function buildStyles(colors: ThemeColors): string {
   return `
@@ -20,6 +25,8 @@ export function buildStyles(colors: ThemeColors): string {
       font-size: 14px;
       line-height: 1.5;
       color: var(--sp-text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
       ${cssVariables(colors)}
     }
 
@@ -29,32 +36,55 @@ export function buildStyles(colors: ThemeColors): string {
       padding: 0;
     }
 
-    /* ---- FAB (Floating Action Button) ---- */
+    /* ============================
+       Focus visible (accessibility)
+       ============================ */
+
+    :focus-visible {
+      outline: 2px solid var(--sp-accent);
+      outline-offset: 2px;
+    }
+
+    /* ============================
+       FAB (Floating Action Button)
+       ============================ */
 
     .sp-fab {
       position: fixed;
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      background: var(--sp-accent);
+      width: 52px;
+      height: 52px;
+      border-radius: var(--sp-radius-full);
+      background: var(--sp-accent-gradient);
       color: #fff;
       border: none;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px var(--sp-shadow), 0 2px 4px var(--sp-shadow);
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow:
+        0 4px 20px var(--sp-accent-glow),
+        0 2px 8px rgba(0, 0, 0, 0.08);
+      transition:
+        transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+        box-shadow 0.3s ease;
       outline: none;
     }
 
+    .sp-fab:focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 3px;
+    }
+
     .sp-fab:hover {
-      transform: scale(1.05);
-      box-shadow: 0 6px 20px var(--sp-shadow), 0 3px 6px var(--sp-shadow);
+      transform: translateY(-2px) scale(1.05);
+      box-shadow:
+        0 8px 28px var(--sp-accent-glow),
+        0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
     .sp-fab:active {
-      transform: scale(0.95);
+      transform: translateY(0) scale(0.95);
+      transition-duration: 0.1s;
     }
 
     .sp-fab--bottom-right {
@@ -68,18 +98,44 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-fab svg {
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       fill: currentColor;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
-    /* ---- Radial Menu ---- */
+    /* ---- FAB Badge ---- */
+
+    .sp-fab-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: var(--sp-radius-full);
+      background: #ef4444;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #fff;
+      pointer-events: none;
+      font-family: var(--sp-font);
+      line-height: 1;
+    }
+
+    /* ============================
+       Radial Menu
+       ============================ */
 
     .sp-radial {
       position: fixed;
       pointer-events: none;
-      width: 56px;
-      height: 56px;
+      width: 52px;
+      height: 52px;
     }
 
     .sp-radial--bottom-right {
@@ -94,33 +150,39 @@ export function buildStyles(colors: ThemeColors): string {
 
     .sp-radial-item {
       position: absolute;
-      /* Center 44px items on the 56px FAB */
-      left: 6px;
-      bottom: 6px;
+      left: 4px;
+      bottom: 4px;
       width: 44px;
       height: 44px;
-      border-radius: 50%;
-      background: var(--sp-bg);
+      border-radius: var(--sp-radius-full);
+      background: var(--sp-glass-bg-heavy);
+      backdrop-filter: blur(var(--sp-blur));
+      -webkit-backdrop-filter: blur(var(--sp-blur));
       color: var(--sp-text);
-      border: 1px solid var(--sp-border);
+      border: 1px solid var(--sp-glass-border);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 2px 8px var(--sp-shadow);
+      box-shadow: var(--sp-shadow-md);
       font-size: 12px;
       font-weight: 600;
     }
 
-    .sp-radial-item:hover {
-      background: var(--sp-bg-hover);
+    .sp-radial-item:hover,
+    .sp-radial-item:focus-visible {
+      background: rgba(255, 255, 255, 0.95);
       border-color: var(--sp-accent);
       color: var(--sp-accent);
+      box-shadow:
+        var(--sp-shadow-md),
+        0 0 0 3px var(--sp-accent-light);
+      outline: none;
     }
 
     .sp-radial-item svg {
-      width: 20px;
-      height: 20px;
+      width: 18px;
+      height: 18px;
       flex-shrink: 0;
       stroke: currentColor;
       fill: none;
@@ -128,59 +190,86 @@ export function buildStyles(colors: ThemeColors): string {
 
     .sp-radial-label {
       white-space: nowrap;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 500;
-      color: var(--sp-text-secondary);
+      color: var(--sp-text);
       pointer-events: none;
       opacity: 0;
-      transition: opacity 0.15s ease;
+      padding: 4px 12px;
+      border-radius: var(--sp-radius);
+      background: var(--sp-glass-bg-heavy);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--sp-glass-border);
+      box-shadow: var(--sp-shadow-sm);
+      transform: translateX(4px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
     }
 
-    .sp-radial-item:hover .sp-radial-label {
+    .sp-radial-item:hover .sp-radial-label,
+    .sp-radial-item:focus-visible .sp-radial-label {
       opacity: 1;
+      transform: translateX(0);
     }
 
-    /* ---- Panel ---- */
+    /* ============================
+       Panel (Side drawer)
+       ============================ */
 
     .sp-panel {
       position: fixed;
       top: 0;
       right: 0;
-      width: 380px;
+      width: 400px;
+      max-width: 100vw;
       height: 100vh;
-      background: var(--sp-bg);
-      box-shadow: -4px 0 16px var(--sp-shadow);
+      background: var(--sp-glass-bg);
+      backdrop-filter: blur(var(--sp-blur-heavy));
+      -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
+      border-left: 1px solid var(--sp-glass-border);
+      box-shadow: var(--sp-shadow-xl);
       display: flex;
       flex-direction: column;
       overflow: hidden;
+    }
+
+    @media (max-width: 480px) {
+      .sp-panel {
+        width: 100vw;
+        border-left: none;
+      }
     }
 
     .sp-panel-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 20px;
+      padding: 20px 24px;
       border-bottom: 1px solid var(--sp-border);
+      background: var(--sp-glass-bg-heavy);
+      backdrop-filter: blur(var(--sp-blur));
+      -webkit-backdrop-filter: blur(var(--sp-blur));
     }
 
     .sp-panel-title {
-      font-size: 16px;
-      font-weight: 600;
+      font-size: 17px;
+      font-weight: 700;
       color: var(--sp-text);
+      letter-spacing: -0.02em;
     }
 
     .sp-panel-close {
       width: 32px;
       height: 32px;
-      border-radius: 6px;
+      border-radius: var(--sp-radius);
       border: none;
       background: transparent;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--sp-text-secondary);
-      transition: background 0.15s ease, color 0.15s ease;
+      color: var(--sp-text-tertiary);
+      transition: all 0.2s ease;
     }
 
     .sp-panel-close:hover {
@@ -188,48 +277,69 @@ export function buildStyles(colors: ThemeColors): string {
       color: var(--sp-text);
     }
 
-    /* ---- Filter bar ---- */
+    .sp-panel-close svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* ============================
+       Filters & Search
+       ============================ */
 
     .sp-filters {
-      padding: 12px 20px;
+      padding: 16px 24px;
       border-bottom: 1px solid var(--sp-border);
+      background: var(--sp-glass-bg-heavy);
+      backdrop-filter: blur(var(--sp-blur));
+      -webkit-backdrop-filter: blur(var(--sp-blur));
       position: sticky;
       top: 0;
-      background: var(--sp-bg);
       z-index: 1;
+    }
+
+    .sp-search-wrap {
+      position: relative;
+      margin-bottom: 12px;
     }
 
     .sp-search {
       width: 100%;
       height: 40px;
-      padding: 0 12px 0 36px;
+      padding: 0 12px 0 38px;
       border-radius: var(--sp-radius);
       border: 1px solid var(--sp-border);
-      background: var(--sp-bg);
+      background: var(--sp-glass-bg-heavy);
       color: var(--sp-text);
       font-family: var(--sp-font);
       font-size: 13px;
       outline: none;
-      transition: border-color 0.15s ease;
+      transition: all 0.2s ease;
+    }
+
+    .sp-search::placeholder {
+      color: var(--sp-text-tertiary);
     }
 
     .sp-search:focus {
       border-color: var(--sp-accent);
-    }
-
-    .sp-search-wrap {
-      position: relative;
-      margin-bottom: 10px;
+      box-shadow: 0 0 0 3px var(--sp-accent-light);
+      background: #fff;
     }
 
     .sp-search-icon {
       position: absolute;
-      left: 10px;
+      left: 12px;
       top: 50%;
       transform: translateY(-50%);
-      color: var(--sp-text-secondary);
-      width: 18px;
-      height: 18px;
+      color: var(--sp-text-tertiary);
+      width: 16px;
+      height: 16px;
+      transition: color 0.2s ease;
+    }
+
+    .sp-search:focus ~ .sp-search-icon,
+    .sp-search-wrap:focus-within .sp-search-icon {
+      color: var(--sp-accent);
     }
 
     .sp-chips {
@@ -239,54 +349,93 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-chip {
-      padding: 4px 10px;
-      border-radius: 16px;
+      padding: 5px 14px;
+      border-radius: var(--sp-radius-full);
       border: 1px solid var(--sp-border);
-      background: var(--sp-bg);
+      background: var(--sp-glass-bg-heavy);
       color: var(--sp-text-secondary);
       font-family: var(--sp-font);
       font-size: 12px;
       font-weight: 500;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: all 0.2s ease;
       white-space: nowrap;
+      letter-spacing: 0.01em;
     }
 
     .sp-chip:hover {
       border-color: var(--sp-accent);
       color: var(--sp-accent);
+      background: var(--sp-accent-light);
     }
 
     .sp-chip--active {
-      background: var(--sp-accent);
-      border-color: var(--sp-accent);
+      background: var(--sp-accent-gradient);
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 2px 8px var(--sp-accent-glow);
+    }
+
+    .sp-chip--active:hover {
+      background: var(--sp-accent-gradient);
+      border-color: transparent;
       color: #fff;
     }
 
-    /* ---- Feedback list ---- */
+    /* ============================
+       Feedback Cards
+       ============================ */
 
     .sp-list {
       flex: 1;
       overflow-y: auto;
-      padding: 8px 0;
+      padding: 8px 12px;
+    }
+
+    .sp-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sp-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .sp-list::-webkit-scrollbar-thumb {
+      background: var(--sp-border);
+      border-radius: var(--sp-radius-full);
+    }
+
+    .sp-list::-webkit-scrollbar-thumb:hover {
+      background: var(--sp-text-tertiary);
     }
 
     .sp-card {
       display: flex;
-      padding: 12px 20px;
+      padding: 14px 16px;
+      margin-bottom: 6px;
       cursor: pointer;
-      transition: background 0.15s ease;
-      border-bottom: 1px solid var(--sp-border);
+      border-radius: var(--sp-radius);
+      background: var(--sp-glass-bg-heavy);
+      border: 1px solid var(--sp-glass-border);
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
     .sp-card:hover {
-      background: var(--sp-bg-hover);
+      background: #fff;
+      border-color: var(--sp-border);
+      box-shadow: var(--sp-shadow-md);
+      transform: translateY(-2px);
+    }
+
+    .sp-card:active {
+      transform: translateY(0) scale(0.99);
+      transition-duration: 0.1s;
     }
 
     .sp-card-bar {
-      width: 4px;
-      border-radius: 2px;
-      margin-right: 12px;
+      width: 3px;
+      border-radius: var(--sp-radius-full);
+      margin-right: 14px;
       flex-shrink: 0;
     }
 
@@ -299,32 +448,33 @@ export function buildStyles(colors: ThemeColors): string {
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
 
     .sp-card-number {
       font-size: 12px;
-      font-weight: 600;
-      color: var(--sp-text-secondary);
+      font-weight: 700;
+      color: var(--sp-text-tertiary);
+      font-variant-numeric: tabular-nums;
     }
 
     .sp-badge {
-      padding: 2px 8px;
-      border-radius: 10px;
+      padding: 2px 10px;
+      border-radius: var(--sp-radius-full);
       font-size: 11px;
       font-weight: 600;
-      color: #fff;
+      letter-spacing: 0.02em;
     }
 
     .sp-card-date {
       font-size: 11px;
-      color: var(--sp-text-secondary);
+      color: var(--sp-text-tertiary);
       margin-left: auto;
     }
 
     .sp-card-message {
       font-size: 13px;
-      line-height: 1.4;
+      line-height: 1.5;
       color: var(--sp-text);
       display: -webkit-box;
       -webkit-line-clamp: 3;
@@ -338,139 +488,198 @@ export function buildStyles(colors: ThemeColors): string {
 
     .sp-card-expand {
       font-size: 12px;
+      font-weight: 500;
       color: var(--sp-accent);
       cursor: pointer;
       background: none;
       border: none;
       padding: 4px 0;
       font-family: var(--sp-font);
+      transition: opacity 0.15s ease;
+    }
+
+    .sp-card-expand:hover {
+      opacity: 0.8;
     }
 
     .sp-card-footer {
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      margin-top: 8px;
+      margin-top: 10px;
     }
 
     .sp-btn-resolve {
-      padding: 4px 12px;
-      border-radius: var(--sp-radius);
+      padding: 5px 14px;
+      border-radius: var(--sp-radius-full);
       border: 1px solid var(--sp-border);
       background: transparent;
       color: var(--sp-text-secondary);
       font-family: var(--sp-font);
       font-size: 12px;
+      font-weight: 500;
       cursor: pointer;
-      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s ease;
+    }
+
+    .sp-btn-resolve svg {
+      width: 14px;
+      height: 14px;
     }
 
     .sp-btn-resolve:hover {
       border-color: #22c55e;
       color: #22c55e;
+      background: rgba(34, 197, 94, 0.06);
+    }
+
+    .sp-btn-resolve:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
     }
 
     .sp-card--resolved {
-      opacity: 0.6;
+      opacity: 0.5;
     }
 
     .sp-card--resolved .sp-card-message {
       text-decoration: line-through;
+      text-decoration-color: var(--sp-text-tertiary);
     }
 
-    /* ---- Identity form ---- */
+    /* ============================
+       Loading State
+       ============================ */
+
+    .sp-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
+    }
+
+    /* ============================
+       Identity Form
+       ============================ */
 
     .sp-identity-title {
-      font-size: 15px;
-      font-weight: 600;
+      font-size: 17px;
+      font-weight: 700;
       color: var(--sp-text);
+      letter-spacing: -0.02em;
     }
 
     .sp-input {
       width: 100%;
-      height: 40px;
-      padding: 0 12px;
+      height: 42px;
+      padding: 0 14px;
       border-radius: var(--sp-radius);
       border: 1px solid var(--sp-border);
-      background: var(--sp-bg);
+      background: var(--sp-glass-bg-heavy);
       color: var(--sp-text);
       font-family: var(--sp-font);
-      font-size: 13px;
+      font-size: 14px;
       outline: none;
-      transition: border-color 0.15s ease;
+      transition: all 0.2s ease;
+    }
+
+    .sp-input::placeholder {
+      color: var(--sp-text-tertiary);
     }
 
     .sp-input:focus {
       border-color: var(--sp-accent);
+      box-shadow: 0 0 0 3px var(--sp-accent-light);
+      background: #fff;
     }
 
     .sp-input-label {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
       color: var(--sp-text-secondary);
-      margin-bottom: 4px;
+      margin-bottom: 6px;
+      display: block;
     }
+
+    /* ============================
+       Buttons
+       ============================ */
 
     .sp-btn-primary {
       height: 40px;
-      padding: 0 20px;
+      padding: 0 22px;
       border-radius: var(--sp-radius);
       border: none;
-      background: var(--sp-accent);
+      background: var(--sp-accent-gradient);
       color: #fff;
       font-family: var(--sp-font);
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
-      transition: background 0.15s ease, transform 0.1s ease;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px var(--sp-accent-glow);
     }
 
     .sp-btn-primary:hover {
-      filter: brightness(1.1);
+      box-shadow: 0 4px 16px var(--sp-accent-glow);
+      transform: translateY(-1px);
     }
 
     .sp-btn-primary:active {
-      transform: scale(0.98);
+      transform: translateY(0) scale(0.98);
+      transition-duration: 0.1s;
     }
 
     .sp-btn-primary:disabled {
-      opacity: 0.5;
+      opacity: 0.4;
       cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
     }
 
     .sp-btn-ghost {
       height: 40px;
-      padding: 0 20px;
+      padding: 0 22px;
       border-radius: var(--sp-radius);
       border: 1px solid var(--sp-border);
-      background: transparent;
+      background: var(--sp-glass-bg-heavy);
       color: var(--sp-text-secondary);
       font-family: var(--sp-font);
       font-size: 14px;
+      font-weight: 500;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: all 0.2s ease;
     }
 
     .sp-btn-ghost:hover {
       border-color: var(--sp-accent);
       color: var(--sp-accent);
+      background: var(--sp-accent-light);
     }
 
-    /* ---- Empty state ---- */
+    /* ============================
+       Empty State
+       ============================ */
 
     .sp-empty {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 48px 20px;
-      color: var(--sp-text-secondary);
+      padding: 56px 24px;
+      color: var(--sp-text-tertiary);
       text-align: center;
       gap: 8px;
+      animation: sp-fade-in 0.3s ease-out both;
     }
 
     .sp-empty-text {
       font-size: 14px;
+      font-weight: 500;
     }
 
     ${ANIMATION_CSS}
