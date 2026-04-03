@@ -112,7 +112,7 @@ export class ApiClient {
         throw new Error(`Failed to send feedback: ${response.status} ${text}`);
       }
 
-      return await response.json();
+      return (await response.json()) as FeedbackResponse; // Server validates via Zod
     } catch (error) {
       queueForRetry(this.endpoint, payload);
       throw error;
@@ -142,7 +142,7 @@ export class ApiClient {
       throw new Error(`Failed to fetch feedbacks: ${response.status}`);
     }
 
-    return await response.json();
+    return (await response.json()) as { feedbacks: FeedbackResponse[]; total: number }; // Server validates via Zod
   }
 
   async resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse> {
@@ -156,7 +156,7 @@ export class ApiClient {
       throw new Error(`Failed to update feedback: ${response.status}`);
     }
 
-    return await response.json();
+    return (await response.json()) as FeedbackResponse; // Server validates via Zod
   }
 
   async deleteFeedback(id: string): Promise<void> {

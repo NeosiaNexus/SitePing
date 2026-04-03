@@ -125,7 +125,8 @@ export class Popup {
         letter-spacing:0.01em;
       `,
     });
-    const isMac = navigator.platform.includes("Mac");
+    const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
+    const isMac = uaData ? uaData.platform === "macOS" : (navigator.platform?.includes("Mac") ?? false);
     setText(hint, isMac ? "\u2318+Entr\u00e9e pour envoyer" : "Ctrl+Entr\u00e9e pour envoyer");
 
     this.textarea.addEventListener("focus", () => {

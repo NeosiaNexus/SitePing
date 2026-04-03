@@ -453,7 +453,7 @@ export class MarkerManager {
       });
       this.container.appendChild(highlight);
       this.highlightElements.push(highlight);
-      highlight.offsetHeight;
+      void highlight.offsetHeight; // Force reflow for CSS transition
       highlight.style.opacity = "1";
     }
   }

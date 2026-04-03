@@ -1,6 +1,10 @@
 import * as zod from "zod";
 
-// Namespace import required: vitest resolves zod's CJS entry where named imports are unavailable.
+// Namespace import required: Zod publishes dual CJS/ESM, and bundlers (tsup, vitest) may
+// resolve the CJS entry where `import { z } from "zod"` fails because CJS wraps
+// the entire module under a default/namespace key. This workaround normalizes access
+// regardless of which entry point the bundler resolves.
+// See: https://github.com/colinhacks/zod/issues/2697
 const z: typeof zod.z = ("z" in zod ? zod.z : zod) as typeof zod.z;
 
 const anchorSchema = z.object({

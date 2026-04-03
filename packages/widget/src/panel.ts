@@ -81,7 +81,7 @@ export class Panel {
     this.searchInput.setAttribute("aria-label", "Rechercher dans les feedbacks");
     this.searchInput.addEventListener("input", () => {
       if (this.searchTimeout) clearTimeout(this.searchTimeout);
-      this.searchTimeout = setTimeout(() => this.loadFeedbacks(), 200);
+      this.searchTimeout = setTimeout(() => this.loadFeedbacks().catch(() => {}), 200);
     });
     searchWrap.appendChild(searchIcon);
     searchWrap.appendChild(this.searchInput);
@@ -170,7 +170,7 @@ export class Panel {
     retryBtn.className = "sp-btn-ghost";
     retryBtn.style.marginTop = "8px";
     setText(retryBtn, "Réessayer");
-    retryBtn.addEventListener("click", () => this.loadFeedbacks());
+    retryBtn.addEventListener("click", () => this.loadFeedbacks().catch(() => {}));
     empty.appendChild(text);
     empty.appendChild(retryBtn);
     this.listContainer.appendChild(empty);
@@ -484,7 +484,7 @@ export class Panel {
       chip.classList.toggle("sp-chip--active", isActive);
     }
 
-    this.loadFeedbacks();
+    this.loadFeedbacks().catch(() => {});
   }
 
   scrollToFeedback(feedbackId: string): void {
