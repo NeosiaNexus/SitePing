@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.0...adapter-prisma-v0.4.1) (2026-04-03)
+
+
+### Miscellaneous
+
+* rename repo to SitePing and improve project presence ([c1c6e1b](https://github.com/NeosiaNexus/SitePing/commit/c1c6e1bfa3f1a00f8df3523a3e8beb26422a886a))
+
 ## [0.4.0](https://github.com/NeosiaNexus/siteping/compare/adapter-prisma-v0.3.0...adapter-prisma-v0.4.0) (2026-04-03)
 
 
