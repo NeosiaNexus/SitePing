@@ -7,9 +7,9 @@
 A lightweight feedback widget that lets your clients annotate websites during development.
 Draw rectangles, leave comments, track bugs — directly on the live site.
 
-[![npm version](https://img.shields.io/npm/v/@neosianexus/siteping?style=flat&colorA=000000&colorB=000000)](https://www.npmjs.com/package/@neosianexus/siteping)
-[![npm downloads](https://img.shields.io/npm/dm/@neosianexus/siteping?style=flat&colorA=000000&colorB=000000)](https://www.npmjs.com/package/@neosianexus/siteping)
-[![license](https://img.shields.io/npm/l/@neosianexus/siteping?style=flat&colorA=000000&colorB=000000)](./LICENSE)
+[![npm version](https://img.shields.io/npm/v/@siteping/widget?style=flat&colorA=000000&colorB=000000)](https://www.npmjs.com/package/@siteping/widget)
+[![npm downloads](https://img.shields.io/npm/dm/@siteping/widget?style=flat&colorA=000000&colorB=000000)](https://www.npmjs.com/package/@siteping/widget)
+[![license](https://img.shields.io/npm/l/@siteping/widget?style=flat&colorA=000000&colorB=000000)](./LICENSE)
 [![build](https://img.shields.io/github/actions/workflow/status/NeosiaNexus/siteping/ci.yml?style=flat&colorA=000000&colorB=000000)](https://github.com/NeosiaNexus/siteping/actions)
 
 [Getting Started](#getting-started) &middot; [Configuration](#configuration) &middot; [API Reference](#api-reference) &middot; [CLI](#cli) &middot; [Architecture](#architecture)
@@ -47,7 +47,8 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **Retry with backoff** — Failed submissions are queued in localStorage and retried automatically
 - **Zero config auth** — Clients identify once (name + email), persisted locally
 - **Full event system** — `onOpen`, `onClose`, `onFeedbackSent`, `onError`, `onAnnotationStart`, `onAnnotationEnd`
-- **CLI scaffold** — `npx @neosianexus/siteping init` sets up Prisma schema + API route
+- **CLI scaffold** — `npx @siteping/cli init` sets up Prisma schema + API route
+- **Monorepo** — Split into independent packages (`widget`, `adapter-prisma`, `cli`)
 - **Dev-only by default** — Widget auto-hides in production unless `forceShow: true`
 
 ---
@@ -57,15 +58,15 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 ### 1. Install
 
 ```bash
-npm install @neosianexus/siteping
+npm install @siteping/widget
 # or
-bun add @neosianexus/siteping
+bun add @siteping/widget
 ```
 
 ### 2. Run the CLI
 
 ```bash
-npx @neosianexus/siteping init
+npx @siteping/cli init
 ```
 
 This will:
@@ -84,7 +85,7 @@ npx prisma db push
 // app/layout.tsx (or any client component)
 'use client'
 
-import { initSiteping } from '@neosianexus/siteping'
+import { initSiteping } from '@siteping/widget'
 import { useEffect } from 'react'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -146,7 +147,7 @@ The adapter handles all API logic — validation, persistence, error handling.
 
 ```ts
 // app/api/siteping/route.ts
-import { createSitepingHandler } from '@neosianexus/siteping/adapter-prisma'
+import { createSitepingHandler } from '@siteping/adapter-prisma'
 import { prisma } from '@/lib/prisma'
 
 export const { GET, POST, PATCH } = createSitepingHandler({ prisma })
@@ -224,7 +225,7 @@ model SitepingAnnotation {
 ## CLI
 
 ```bash
-npx @neosianexus/siteping init
+npx @siteping/cli init
 ```
 
 Interactive setup that:
@@ -263,15 +264,15 @@ Browser                          Server
 - **Percentage-relative rectangles** — Annotation positions are stored as fractions of the anchor element's bounding box, so they survive responsive layout changes
 - **Event bus with error isolation** — User callbacks (`onError`, etc.) cannot crash internal widget logic
 
-### Package exports
+### Packages
 
-| Import | Platform | Description |
-|--------|----------|-------------|
-| `@neosianexus/siteping` | Browser | Widget: `initSiteping()` |
-| `@neosianexus/siteping/adapter-prisma` | Node.js | Server: `createSitepingHandler()` |
-| `npx @neosianexus/siteping` | CLI | Setup: `init` command |
+| Package | Platform | Description |
+|---------|----------|-------------|
+| [`@siteping/widget`](https://www.npmjs.com/package/@siteping/widget) | Browser | Widget: `initSiteping()` |
+| [`@siteping/adapter-prisma`](https://www.npmjs.com/package/@siteping/adapter-prisma) | Node.js | Server: `createSitepingHandler()` |
+| [`@siteping/cli`](https://www.npmjs.com/package/@siteping/cli) | CLI | Setup: `init`, `sync`, `status`, `doctor` |
 
-Each export is independently tree-shakeable. The widget bundle never includes Prisma or Zod. The adapter never includes DOM code.
+Each package is independently published and tree-shakeable. The widget bundle never includes Prisma or Zod. The adapter never includes DOM code.
 
 ---
 
@@ -290,7 +291,7 @@ import type {
   AnnotationPayload,
   AnchorData,
   RectData,
-} from '@neosianexus/siteping'
+} from '@siteping/widget'
 ```
 
 ---
