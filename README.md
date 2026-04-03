@@ -117,7 +117,11 @@ initSiteping({
 
   // Optional
   position: 'bottom-right',       // 'bottom-right' | 'bottom-left'
+  accentColor: '#0066ff',         // Widget accent color
+  theme: 'light',                 // 'light' | 'dark' | 'auto'
+  locale: 'fr',                   // 'fr' | 'en' (default: 'fr')
   forceShow: false,               // Show in production? Default: false
+  debug: false,                   // Enable debug logging
 
   // Events
   onOpen: () => {},
@@ -126,16 +130,24 @@ initSiteping({
   onError: (error) => {},
   onAnnotationStart: () => {},
   onAnnotationEnd: () => {},
+  onSkip: (reason) => {},         // Called when widget is skipped (production/mobile)
 })
 ```
 
 ### Return value
 
 ```ts
-const { destroy } = initSiteping({ ... })
+const widget = initSiteping({ ... })
 
-// Call destroy() to remove the widget and clean up all DOM elements + listeners
-destroy()
+widget.open()       // Open the feedback panel
+widget.close()      // Close the feedback panel
+widget.refresh()    // Refresh feedbacks from the server
+widget.destroy()    // Remove the widget and clean up all DOM elements + listeners
+
+// Event listeners (alternative to config callbacks)
+const unsub = widget.on('feedbackSent', (feedback) => { ... })
+unsub()             // Unsubscribe
+widget.off('feedbackSent', handler)
 ```
 
 ---
@@ -168,7 +180,7 @@ export const { GET, POST, PATCH, DELETE } = createSitepingHandler({ prisma })
 | Param | Type | Description |
 |-------|------|-------------|
 | `projectName` | `string` | **Required.** Filter by project |
-| `type` | `string` | Filter: `question`, `changement`, `bug`, `autre` |
+| `type` | `string` | Filter: `question`, `change`, `bug`, `other` |
 | `status` | `string` | Filter: `open`, `resolved` |
 | `search` | `string` | Full-text search on message content |
 | `page` | `number` | Pagination (default: 1) |
@@ -182,7 +194,7 @@ The CLI generates these models automatically. If you prefer manual setup:
 model SitepingFeedback {
   id          String   @id @default(cuid())
   projectName String
-  type        String   // question | changement | bug | autre
+  type        String   // question | change | bug | other
   message     String
   status      String   @default("open")
   url         String
@@ -286,11 +298,13 @@ Full type definitions are included. Key exported types:
 import type {
   SitepingConfig,
   SitepingInstance,
-  FeedbackType,       // 'question' | 'changement' | 'bug' | 'autre'
+  SitepingPublicEvents,
+  FeedbackType,       // 'question' | 'change' | 'bug' | 'other'
   FeedbackStatus,     // 'open' | 'resolved'
   FeedbackPayload,
   FeedbackResponse,
   AnnotationPayload,
+  AnnotationResponse,
   AnchorData,
   RectData,
 } from '@siteping/widget'
@@ -367,7 +381,7 @@ Contributions are welcome. Please open an issue first to discuss what you'd like
 git clone https://github.com/NeosiaNexus/SitePing.git
 cd SitePing
 bun install
-bun run dev        # Watch mode
+bun run build      # Build all packages
 bun run test       # Tests in watch mode
 bun run test:e2e   # E2E tests
 ```
