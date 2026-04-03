@@ -18,6 +18,13 @@ export class EventBus<E extends { [K in keyof E]: unknown[] }> {
     };
   }
 
+  off<K extends keyof E>(event: K, listener: (...args: E[K]) => void): void {
+    const set = this.listeners.get(event);
+    if (set) {
+      set.delete(listener as Listener);
+    }
+  }
+
   emit<K extends keyof E>(event: K, ...args: E[K]): void {
     const set = this.listeners.get(event);
     if (!set) return;
@@ -52,4 +59,12 @@ export interface WidgetEvents {
   "annotation:complete": [import("./annotator.js").AnnotationComplete];
   "annotations:toggle": [boolean];
   "panel:toggle": [boolean];
+}
+
+/** Subset of WidgetEvents exposed to consumers via SitepingInstance */
+export interface PublicWidgetEvents {
+  "feedback:sent": [import("@siteping/core").FeedbackResponse];
+  "feedback:deleted": [string];
+  "panel:open": [];
+  "panel:close": [];
 }

@@ -42,6 +42,38 @@ export const { GET, POST, PATCH, DELETE } = createSitepingHandler({ prisma })
 | `page` | `number` | Pagination (default: 1) |
 | `limit` | `number` | Items per page (default: 50, max: 100) |
 
+## Validation Constraints
+
+All incoming requests are validated with Zod before hitting the database.
+
+### POST — Create feedback (`feedbackCreateSchema`)
+
+| Field | Constraint |
+|-------|-----------|
+| `projectName` | Non-empty string |
+| `type` | `"question"` \| `"changement"` \| `"bug"` \| `"autre"` |
+| `message` | 1 to **5000** characters |
+| `url` | Valid URL format |
+| `viewport` | Non-empty string |
+| `userAgent` | Non-empty string |
+| `authorName` | 1 to **200** characters |
+| `authorEmail` | Valid email format, max **200** characters |
+| `clientId` | Non-empty string (client-generated UUID for deduplication) |
+| `annotations` | Array of annotation objects (see below) |
+
+**Annotation fields:** `cssSelector`, `xpath`, `elementTag` must be non-empty. `wPct`, `hPct` must be positive. `viewportW`, `viewportH` must be positive integers. `devicePixelRatio` must be positive (defaults to `1`).
+
+### PATCH — Resolve/unresolve (`feedbackPatchSchema`)
+
+| Field | Constraint |
+|-------|-----------|
+| `id` | Non-empty string |
+| `status` | `"open"` \| `"resolved"` |
+
+### DELETE — Remove feedback (`feedbackDeleteSchema`)
+
+Either provide `{ id }` to delete a single feedback, or `{ projectName, deleteAll: true }` to delete all feedbacks for a project.
+
 ## Prisma Schema
 
 Use the CLI to set up models automatically:

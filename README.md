@@ -115,7 +115,6 @@ initSiteping({
 
   // Optional
   position: 'bottom-right',       // 'bottom-right' | 'bottom-left'
-  accentColor: '#6366f1',         // Any hex color (3, 6, or 8 digits)
   forceShow: false,               // Show in production? Default: false
 
   // Events
@@ -150,7 +149,7 @@ The adapter handles all API logic — validation, persistence, error handling.
 import { createSitepingHandler } from '@siteping/adapter-prisma'
 import { prisma } from '@/lib/prisma'
 
-export const { GET, POST, PATCH } = createSitepingHandler({ prisma })
+export const { GET, POST, PATCH, DELETE } = createSitepingHandler({ prisma })
 ```
 
 #### Endpoints
@@ -160,6 +159,7 @@ export const { GET, POST, PATCH } = createSitepingHandler({ prisma })
 | `POST` | Create a feedback with annotations | `201` with full feedback object |
 | `GET` | List feedbacks (filterable by type, status, search) | `200` with `{ feedbacks, total }` |
 | `PATCH` | Resolve or unresolve a feedback | `200` with updated feedback |
+| `DELETE` | Delete a feedback or all feedbacks for a project | `200` with `{ deleted: true }` |
 
 #### Query parameters (GET)
 
@@ -313,6 +313,35 @@ bun run check
 |-------|-------|----------------|
 | Unit (Vitest) | 188 | Zod validation, API handlers, EventBus, API client retry, identity persistence, theme normalization, DOM anchoring, resolver, fuzzy matching, fingerprinting, XPath, text context |
 | E2E (Playwright) | 17 | Full browser: widget injection, FAB, panel, annotation draw, popup submit, marker creation, API persistence, cleanup |
+
+---
+
+## Troubleshooting
+
+### Widget doesn't appear
+
+The widget is **dev-only by default**. It auto-hides when `NODE_ENV=production` or `import.meta.env.MODE === 'production'`.
+
+- **Fix:** Pass `forceShow: true` in the config to show it in production.
+- The widget also hides on viewports narrower than **768px** (mobile). This is by design — annotation drawing requires a pointer device.
+
+### Prisma errors after setup
+
+If you see errors like `The table does not exist in the current database`, the schema hasn't been pushed yet.
+
+```bash
+npx prisma db push
+```
+
+If you changed your schema manually, ensure the `SitepingFeedback` and `SitepingAnnotation` models match the expected structure. Run `npx @siteping/cli doctor` to verify.
+
+### Widget styles look broken
+
+The widget renders inside a **closed Shadow DOM**, so host page styles cannot leak in. If you see style issues:
+
+- Ensure no script is removing the `<siteping-widget>` element from the DOM.
+- The annotation overlay and markers live **outside** the Shadow DOM (in the main DOM) to avoid `overflow: hidden` clipping. This is expected behavior.
+- If a CSS reset targets `*` with `!important`, it may affect the overlay elements. Scope your reset to avoid `siteping-*` elements.
 
 ---
 

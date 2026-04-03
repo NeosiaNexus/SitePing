@@ -5,6 +5,11 @@ on:
     branches: [main, 'release-please--**']
   pull_request:
     branches: [main]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
@@ -14,7 +19,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.11"
 
       - run: bun install --frozen-lockfile
 
@@ -29,3 +34,31 @@ jobs:
 
       - name: Test
         run: bun run test:run
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Run e2e tests
+        run: bun run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

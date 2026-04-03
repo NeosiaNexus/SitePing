@@ -1,7 +1,7 @@
-import type { FeedbackPayload, SitepingConfig, SitepingInstance } from "@siteping/core";
+import type { FeedbackPayload, SitepingConfig, SitepingInstance, SitepingPublicEvents } from "@siteping/core";
 import { Annotator } from "./annotator.js";
 import { ApiClient, flushRetryQueue } from "./api-client.js";
-import { EventBus, type WidgetEvents } from "./events.js";
+import { EventBus, type PublicWidgetEvents, type WidgetEvents } from "./events.js";
 import { Fab } from "./fab.js";
 import { getIdentity, type Identity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
@@ -9,6 +9,19 @@ import { Panel } from "./panel.js";
 import { buildStyles } from "./styles/base.js";
 import { buildThemeColors } from "./styles/theme.js";
 import { Tooltip } from "./tooltip.js";
+
+/** Build a no-op SitepingInstance for when the widget is skipped */
+function skippedInstance(): SitepingInstance {
+  const noop = () => {};
+  return {
+    destroy: noop,
+    open: noop,
+    close: noop,
+    refresh: noop,
+    on: () => noop,
+    off: noop,
+  };
+}
 
 /**
  * Main widget launcher — orchestrates all UI components.
@@ -20,6 +33,11 @@ import { Tooltip } from "./tooltip.js";
  * - Overlay, markers, tooltips live outside (appended to document.body)
  */
 export function launch(config: SitepingConfig): SitepingInstance {
+  // Debug helper — only logs when config.debug is true
+  const log: (...args: unknown[]) => void = config.debug
+    ? (...args: unknown[]) => console.debug("[siteping]", ...args)
+    : () => {};
+
   // Guard: only show in development (forceShow bypasses)
   if (!config.forceShow) {
     try {
@@ -27,7 +45,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
       const proc = (globalThis as unknown as { process?: { env?: { NODE_ENV?: string } } }).process;
       const mode = meta.env?.MODE ?? proc?.env?.NODE_ENV;
       if (mode === "production") {
-        return { destroy: () => {} };
+        const reason = "production";
+        console.info("[siteping] Widget not loaded: production mode detected. Use forceShow: true to override.");
+        config.onSkip?.(reason);
+        return skippedInstance();
       }
     } catch {
       // import.meta access may throw in non-ESM contexts — ignore
@@ -36,11 +57,17 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // Guard: desktop only (< 768px = hidden)
   if (window.innerWidth < 768) {
-    return { destroy: () => {} };
+    const reason = "mobile";
+    console.info("[siteping] Widget not loaded: viewport width < 768px (mobile not supported).");
+    config.onSkip?.(reason);
+    return skippedInstance();
   }
 
-  const colors = buildThemeColors(config.accentColor);
+  log("Initializing widget", { projectName: config.projectName, theme: config.theme ?? "light" });
+
+  const colors = buildThemeColors(config.accentColor, config.theme);
   const bus = new EventBus<WidgetEvents>();
+  const publicBus = new EventBus<PublicWidgetEvents>();
   const apiClient = new ApiClient(config.endpoint);
 
   // Wire config callbacks to event bus
@@ -51,13 +78,41 @@ export function launch(config: SitepingConfig): SitepingInstance {
   if (config.onAnnotationStart) bus.on("annotation:start", config.onAnnotationStart);
   if (config.onAnnotationEnd) bus.on("annotation:end", config.onAnnotationEnd);
 
+  // Bridge internal events to public bus
+  bus.on("feedback:sent", (fb) => publicBus.emit("feedback:sent", fb));
+  bus.on("feedback:deleted", (id) => publicBus.emit("feedback:deleted", id));
+  bus.on("open", () => publicBus.emit("panel:open"));
+  bus.on("close", () => publicBus.emit("panel:close"));
+
+  // Debug logging for key lifecycle events
+  bus.on("open", () => log("Panel opened"));
+  bus.on("close", () => log("Panel closed"));
+  bus.on("feedback:sent", (fb) => log("Feedback sent", fb.id));
+  bus.on("feedback:error", (err) => log("Feedback failed", err.message));
+  bus.on("annotation:start", () => log("Annotation started"));
+  bus.on("annotation:end", () => log("Annotation ended"));
+
   // Create host element + Shadow DOM
   const host = document.createElement("siteping-widget");
   host.style.cssText = "position:fixed;z-index:2147483647;";
-  // Use open mode only for testing — closed in production for CSS isolation
-  const shadowMode = (config as unknown as Record<string, unknown>).__testMode
-    ? ("open" as const)
-    : ("closed" as const);
+  // Use open mode only for testing — closed in production for CSS isolation.
+  // Shadow DOM mode is determined by environment, never by public config.
+  const isTestEnv = (() => {
+    try {
+      const meta = import.meta as unknown as { env?: { MODE?: string } };
+      if (meta.env?.MODE === "test") return true;
+    } catch {
+      // import.meta access may throw in non-ESM contexts
+    }
+    try {
+      const proc = (globalThis as unknown as { process?: { env?: { NODE_ENV?: string } } }).process;
+      if (proc?.env?.NODE_ENV === "test") return true;
+    } catch {
+      // process may not exist in browser
+    }
+    return false;
+  })();
+  const shadowMode = isTestEnv ? ("open" as const) : ("closed" as const);
   const shadow = host.attachShadow({ mode: shadowMode });
 
   // Inject styles into Shadow DOM via adoptedStyleSheets
@@ -122,10 +177,11 @@ export function launch(config: SitepingConfig): SitepingInstance {
     });
 
   // Flush retry queue on load
-  flushRetryQueue(config.endpoint);
+  flushRetryQueue(config.endpoint).then(() => log("Retry queue flushed"));
 
   return {
     destroy: () => {
+      log("Destroying widget");
       unsubAnnotation();
       fab.destroy();
       panel.destroy();
@@ -133,7 +189,23 @@ export function launch(config: SitepingConfig): SitepingInstance {
       markers.destroy();
       tooltip.destroy();
       bus.removeAll();
+      publicBus.removeAll();
       host.remove();
+    },
+    open: () => {
+      panel.open();
+    },
+    close: () => {
+      panel.close();
+    },
+    refresh: () => {
+      panel.refresh();
+    },
+    on: <K extends keyof SitepingPublicEvents>(event: K, listener: (...args: SitepingPublicEvents[K]) => void) => {
+      return publicBus.on(event as string as keyof PublicWidgetEvents, listener as never);
+    },
+    off: <K extends keyof SitepingPublicEvents>(event: K, listener: (...args: SitepingPublicEvents[K]) => void) => {
+      publicBus.off(event as string as keyof PublicWidgetEvents, listener as never);
     },
   };
 }

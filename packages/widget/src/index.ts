@@ -12,6 +12,7 @@ export type {
   RectData,
   SitepingConfig,
   SitepingInstance,
+  SitepingPublicEvents,
 } from "@siteping/core";
 
 /**

@@ -1,4 +1,5 @@
 {
+  "packages/core": "0.1.0",
   "packages/widget": "0.8.1",
   "packages/adapter-prisma": "0.3.0",
   "packages/cli": "0.3.0"

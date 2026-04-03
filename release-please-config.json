@@ -11,6 +11,12 @@
     { "type": "chore", "section": "Miscellaneous" }
   ],
   "packages": {
+    "packages/core": {
+      "release-type": "node",
+      "component": "core",
+      "bump-minor-pre-major": true,
+      "skip-github-release": true
+    },
     "packages/widget": {
       "release-type": "node",
       "component": "widget",

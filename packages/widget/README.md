@@ -46,7 +46,6 @@ initSiteping({
 
   // Optional
   position: 'bottom-right',       // 'bottom-right' | 'bottom-left'
-  accentColor: '#6366f1',         // Any hex color
   forceShow: false,               // Show in production? Default: false
 
   // Events

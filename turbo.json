@@ -11,6 +11,15 @@
       "inputs": ["src/**", "package.json", "tsconfig.json"],
       "outputs": []
     },
+    "lint": {
+      "inputs": ["src/**", "package.json", "biome.json"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "inputs": ["src/**", "tests/**", "package.json"],
+      "outputs": []
+    },
     "dev": {
       "cache": false,
       "persistent": true

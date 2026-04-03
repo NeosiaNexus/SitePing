@@ -51,9 +51,56 @@ function darkenHex(hex: string, amount: number): string {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
-export function buildThemeColors(accent: string = DEFAULT_ACCENT): ThemeColors {
+/** Detect if user prefers dark mode via media query */
+function prefersDark(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+/** Resolve 'auto' theme to 'light' or 'dark' based on system preference */
+export function resolveTheme(theme?: "light" | "dark" | "auto"): "light" | "dark" {
+  if (theme === "dark") return "dark";
+  if (theme === "auto") return prefersDark() ? "dark" : "light";
+  return "light";
+}
+
+export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light" | "dark" | "auto"): ThemeColors {
   const hex = normalizeHex(accent);
   const dark = darkenHex(hex, 0.15);
+  const resolved = resolveTheme(theme);
+
+  if (resolved === "dark") {
+    return {
+      accent: hex,
+      accentLight: hex + "22", // slightly more visible on dark bg
+      accentDark: dark,
+      accentGlow: hex + "44",
+      accentGradient: `linear-gradient(135deg, ${hex}, ${dark})`,
+      bg: "#0f172a",
+      bgHover: "#1e293b",
+      text: "#f1f5f9",
+      textSecondary: "#94a3b8",
+      textTertiary: "#64748b",
+      border: "#334155",
+      shadow: "rgba(0, 0, 0, 0.3)",
+      // Glass tokens — dark frosted glass
+      glassBg: "rgba(15, 23, 42, 0.78)",
+      glassBgHeavy: "rgba(15, 23, 42, 0.88)",
+      glassBorder: "rgba(51, 65, 85, 0.5)",
+      glassBorderSubtle: "rgba(51, 65, 85, 0.3)",
+      // Type colors stay vibrant on dark
+      typeQuestion: "#60a5fa",
+      typeChangement: "#fbbf24",
+      typeBug: "#f87171",
+      typeAutre: "#94a3b8",
+      // Dark pastel backgrounds
+      typeQuestionBg: "rgba(59, 130, 246, 0.15)",
+      typeChangementBg: "rgba(245, 158, 11, 0.15)",
+      typeBugBg: "rgba(239, 68, 68, 0.15)",
+      typeAutreBg: "rgba(100, 116, 139, 0.15)",
+    };
+  }
+
   return {
     accent: hex,
     accentLight: hex + "14", // 8% opacity

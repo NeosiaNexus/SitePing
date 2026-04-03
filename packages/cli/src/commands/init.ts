@@ -49,7 +49,7 @@ export async function initCommand(): Promise<void> {
     }
   } else {
     p.log.warn("Aucun fichier schema.prisma trouvé. Vous devrez ajouter les modèles manuellement.");
-    p.log.info("Consultez la documentation : https://github.com/neosianexus/siteping#prisma-schema");
+    p.log.info("Consultez la documentation : https://github.com/NeosiaNexus/siteping#prisma-schema-1");
   }
 
   // Step 2: API route
