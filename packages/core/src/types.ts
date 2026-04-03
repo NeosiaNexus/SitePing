@@ -110,11 +110,11 @@ export interface AnnotationCreateInput {
 /** Query parameters for fetching feedbacks. */
 export interface FeedbackQuery {
   projectName: string;
-  type?: string;
-  status?: string;
-  search?: string;
-  page?: number;
-  limit?: number;
+  type?: string | undefined;
+  status?: string | undefined;
+  search?: string | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
 }
 
 /** Update payload for patching a feedback. */
