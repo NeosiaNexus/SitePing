@@ -11,7 +11,7 @@ import { buildThemeColors } from "./styles/theme.js";
 import { Tooltip } from "./tooltip.js";
 
 /**
- * Main widget launcher — orchestrates all components.
+ * Main widget launcher — orchestrates all UI components.
  *
  * Architecture:
  * - Creates a <siteping-widget> custom element in the document
