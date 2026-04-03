@@ -96,8 +96,47 @@ export class Fab {
     };
     document.addEventListener("click", this.onDocumentClick);
 
-    this.fab.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && this.isOpen) this.close();
+    // Escape on FAB or menu container closes the menu
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && this.isOpen) {
+        e.stopPropagation();
+        this.close();
+      }
+    };
+    this.fab.addEventListener("keydown", handleEscape);
+    this.radialContainer.addEventListener("keydown", handleEscape);
+
+    // Arrow key navigation within the radial menu
+    this.radialContainer.addEventListener("keydown", (e) => {
+      const items = Array.from(this.radialContainer.querySelectorAll<HTMLButtonElement>(".sp-radial-item"));
+      if (items.length === 0 || !this.isOpen) return;
+      const activeEl = (shadowRoot.activeElement ?? document.activeElement) as HTMLElement;
+      const currentIndex = items.indexOf(activeEl as HTMLButtonElement);
+
+      switch (e.key) {
+        case "ArrowUp": {
+          e.preventDefault();
+          const nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
+          items[nextIndex].focus();
+          break;
+        }
+        case "ArrowDown": {
+          e.preventDefault();
+          const nextIndex = currentIndex >= items.length - 1 ? 0 : currentIndex + 1;
+          items[nextIndex].focus();
+          break;
+        }
+        case "Home": {
+          e.preventDefault();
+          items[0].focus();
+          break;
+        }
+        case "End": {
+          e.preventDefault();
+          items[items.length - 1].focus();
+          break;
+        }
+      }
     });
   }
 
@@ -136,6 +175,12 @@ export class Fab {
       btn.style.transform = `translate(0px, ${y}px) scale(1)`;
       btn.classList.add("sp-radial-item--open");
     });
+
+    // Focus the first menu item after animation
+    requestAnimationFrame(() => {
+      const firstItem = this.radialContainer.querySelector<HTMLButtonElement>(".sp-radial-item");
+      firstItem?.focus();
+    });
   }
 
   private close(): void {
@@ -148,6 +193,9 @@ export class Fab {
       btn.style.transform = "translate(0, 0) scale(0.8)";
       btn.classList.remove("sp-radial-item--open");
     });
+
+    // Return focus to FAB
+    this.fab.focus();
   }
 
   private setFabIcon(svgStr: string): void {

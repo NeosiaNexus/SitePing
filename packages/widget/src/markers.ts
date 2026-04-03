@@ -376,6 +376,13 @@ export class MarkerManager {
       `,
     });
     marker.dataset.feedbackId = feedback.id;
+    marker.setAttribute("tabindex", "0");
+    marker.setAttribute("role", "button");
+    marker.setAttribute(
+      "aria-label",
+      `Feedback #${number}: ${feedback.type} — ${feedback.message.slice(0, 60)}${feedback.message.length > 60 ? "..." : ""}`,
+    );
+    marker.setAttribute("aria-describedby", this.tooltip.tooltipId);
     setText(marker, isResolved ? "\u2713" : String(number));
 
     marker.addEventListener("mouseenter", () => {
@@ -396,8 +403,8 @@ export class MarkerManager {
       if (!this.pinnedFeedback) this.clearHighlight();
     });
 
-    marker.addEventListener("click", (e) => {
-      if (this.handleClusterClick(marker, e)) return;
+    const activateMarker = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof MouseEvent && this.handleClusterClick(marker, e)) return;
       this.pinHighlight(feedback);
       this.bus.emit("panel:toggle", true);
       marker.dispatchEvent(
@@ -406,6 +413,14 @@ export class MarkerManager {
           bubbles: true,
         }),
       );
+    };
+
+    marker.addEventListener("click", (e) => activateMarker(e));
+    marker.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        activateMarker(e);
+      }
     });
 
     return marker;

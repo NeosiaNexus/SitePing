@@ -24,6 +24,7 @@ export class Panel {
   private root: HTMLElement;
   private listContainer: HTMLElement;
   private searchInput: HTMLInputElement;
+  private closeBtn: HTMLButtonElement;
   private deleteAllBtn: HTMLButtonElement;
   private activeFilters = new Set<string>(["all"]);
   private feedbacks: FeedbackResponse[] = [];
@@ -39,17 +40,20 @@ export class Panel {
     private readonly markers: MarkerManager,
   ) {
     this.root = el("div", { class: "sp-panel" });
+    this.root.setAttribute("role", "complementary");
+    this.root.setAttribute("aria-label", "Siteping feedback panel");
+    this.root.setAttribute("aria-hidden", "true");
 
     // Header
     const header = el("div", { class: "sp-panel-header" });
     const title = el("span", { class: "sp-panel-title" });
     setText(title, "Feedbacks");
 
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "sp-panel-close";
-    closeBtn.setAttribute("aria-label", "Fermer le panneau");
-    closeBtn.appendChild(parseSvg(ICON_CLOSE));
-    closeBtn.addEventListener("click", () => this.close());
+    this.closeBtn = document.createElement("button");
+    this.closeBtn.className = "sp-panel-close";
+    this.closeBtn.setAttribute("aria-label", "Fermer le panneau");
+    this.closeBtn.appendChild(parseSvg(ICON_CLOSE));
+    this.closeBtn.addEventListener("click", () => this.close());
 
     this.deleteAllBtn = document.createElement("button");
     this.deleteAllBtn.className = "sp-btn-delete-all";
@@ -62,7 +66,7 @@ export class Panel {
 
     const headerRight = el("div", { class: "sp-panel-header-right" });
     headerRight.appendChild(this.deleteAllBtn);
-    headerRight.appendChild(closeBtn);
+    headerRight.appendChild(this.closeBtn);
 
     header.appendChild(title);
     header.appendChild(headerRight);
@@ -104,6 +108,7 @@ export class Panel {
       }
       setText(chip, option.label);
       chip.dataset.filter = option.value;
+      chip.setAttribute("aria-pressed", option.value === "all" ? "true" : "false");
       chip.addEventListener("click", () => this.toggleFilter(option.value, chips));
       chips.appendChild(chip);
     }
@@ -113,6 +118,8 @@ export class Panel {
 
     // List
     this.listContainer = el("div", { class: "sp-list" });
+    this.listContainer.setAttribute("role", "list");
+    this.listContainer.setAttribute("aria-label", "Liste des feedbacks");
 
     this.root.appendChild(header);
     this.root.appendChild(filters);
@@ -142,20 +149,36 @@ export class Panel {
     if (this.isOpen) return;
     this.isOpen = true;
     this.root.classList.add("sp-panel--open");
+    this.root.setAttribute("aria-hidden", "false");
     this.bus.emit("open");
     await this.loadFeedbacks();
+    // Move focus into the panel (search input or close button)
+    requestAnimationFrame(() => {
+      if (this.searchInput) {
+        this.searchInput.focus();
+      } else {
+        this.closeBtn.focus();
+      }
+    });
   }
 
   close(): void {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.root.classList.remove("sp-panel--open");
+    this.root.setAttribute("aria-hidden", "true");
     this.bus.emit("close");
+    // Restore focus to the FAB
+    const fab = (this.root.getRootNode() as ShadowRoot).querySelector<HTMLButtonElement>(".sp-fab");
+    fab?.focus();
   }
 
   private showLoading(): void {
     this.listContainer.replaceChildren();
     const loading = el("div", { class: "sp-loading" });
+    loading.setAttribute("role", "status");
+    loading.setAttribute("aria-live", "polite");
+    loading.setAttribute("aria-label", "Chargement des feedbacks");
     const spinner = el("div", { class: "sp-spinner" });
     loading.appendChild(spinner);
     this.listContainer.appendChild(loading);
@@ -164,6 +187,8 @@ export class Panel {
   private showError(): void {
     this.listContainer.replaceChildren();
     const empty = el("div", { class: "sp-empty" });
+    empty.setAttribute("role", "status");
+    empty.setAttribute("aria-live", "polite");
     const text = el("div", { class: "sp-empty-text" });
     setText(text, "Erreur de chargement");
     const retryBtn = document.createElement("button");
@@ -204,6 +229,8 @@ export class Panel {
 
     if (this.feedbacks.length === 0) {
       const empty = el("div", { class: "sp-empty" });
+      empty.setAttribute("role", "status");
+      empty.setAttribute("aria-live", "polite");
       const emptyText = el("div", { class: "sp-empty-text" });
       setText(emptyText, "Aucun feedback pour le moment");
       empty.appendChild(emptyText);
@@ -226,6 +253,12 @@ export class Panel {
     const card = el("div", {
       class: `sp-card ${isResolved ? "sp-card--resolved" : ""}`,
     });
+    card.setAttribute("role", "listitem");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute(
+      "aria-label",
+      `Feedback #${number}: ${TYPE_LABELS[feedback.type] ?? feedback.type} — ${feedback.message.slice(0, 80)}`,
+    );
     card.dataset.feedbackId = feedback.id;
 
     // Color bar
@@ -327,11 +360,18 @@ export class Panel {
     });
 
     // Click: scroll page to annotation + show highlight
-    card.addEventListener("click", () => {
+    const activateCard = () => {
       if (feedback.annotations.length > 0) {
         const ann = feedback.annotations[0];
         window.scrollTo({ left: ann.scrollX, top: ann.scrollY, behavior: "smooth" });
         this.markers.pinHighlight(feedback);
+      }
+    };
+    card.addEventListener("click", activateCard);
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        activateCard();
       }
     });
 
@@ -482,6 +522,7 @@ export class Panel {
     for (const chip of chips) {
       const isActive = this.activeFilters.has(chip.dataset.filter ?? "");
       chip.classList.toggle("sp-chip--active", isActive);
+      chip.setAttribute("aria-pressed", String(isActive));
     }
 
     this.loadFeedbacks();

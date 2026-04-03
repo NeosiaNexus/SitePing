@@ -74,7 +74,7 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT): ThemeColors {
     glassBorderSubtle: "rgba(255, 255, 255, 0.18)",
     // Vibrant type colors
     typeQuestion: "#3b82f6",
-    typeChangement: "#f59e0b",
+    typeChangement: "#b45309",
     typeBug: "#ef4444",
     typeAutre: "#64748b",
     // Pastel backgrounds

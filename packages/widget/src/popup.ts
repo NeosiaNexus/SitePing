@@ -34,6 +34,8 @@ export class Popup {
   private textarea: HTMLTextAreaElement;
   private submitBtn: HTMLButtonElement;
   private resolve: ((result: PopupResult | null) => void) | null = null;
+  private previouslyFocused: HTMLElement | null = null;
+  private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
 
   constructor(private readonly colors: ThemeColors) {
     this.root = el("div", {
@@ -56,6 +58,9 @@ export class Popup {
         -webkit-font-smoothing:antialiased;
       `,
     });
+    this.root.setAttribute("role", "dialog");
+    this.root.setAttribute("aria-modal", "true");
+    this.root.setAttribute("aria-label", "Formulaire de feedback");
 
     // Type selector grid (2x2)
     const typeRow = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;" });
@@ -78,6 +83,7 @@ export class Popup {
       setText(labelSpan, option.label);
       btn.appendChild(labelSpan);
       btn.dataset.type = option.type;
+      btn.setAttribute("aria-pressed", "false");
 
       btn.addEventListener("click", () => {
         this.selectType(option.type, typeRow);
@@ -209,6 +215,9 @@ export class Popup {
       this.updateSubmitState();
       this.resetTypeButtons();
 
+      // Save focus to restore on close
+      this.previouslyFocused = document.activeElement as HTMLElement | null;
+
       // Position: bottom-left of rect, 8px below
       let top = rectBounds.bottom + 8;
       let left = rectBounds.left;
@@ -227,6 +236,32 @@ export class Popup {
       this.root.style.top = `${top}px`;
       this.root.style.left = `${left}px`;
       this.root.style.display = "block";
+
+      // Install focus trap
+      this.onKeydownTrap = (e: KeyboardEvent) => {
+        if (e.key === "Tab") {
+          const focusableEls = Array.from(
+            this.root.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])',
+            ),
+          );
+          if (focusableEls.length === 0) return;
+          const first = focusableEls[0];
+          const last = focusableEls[focusableEls.length - 1];
+          if (e.shiftKey) {
+            if (document.activeElement === first || !this.root.contains(document.activeElement)) {
+              e.preventDefault();
+              last.focus();
+            }
+          } else {
+            if (document.activeElement === last || !this.root.contains(document.activeElement)) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+        }
+      };
+      this.root.addEventListener("keydown", this.onKeydownTrap);
 
       // Trigger animation
       requestAnimationFrame(() => {
@@ -248,6 +283,7 @@ export class Popup {
       btn.style.borderColor = isActive ? color + "60" : "#e2e8f0";
       btn.style.color = isActive ? color : "#64748b";
       btn.style.fontWeight = isActive ? "600" : "500";
+      btn.setAttribute("aria-pressed", String(isActive));
     }
     this.updateSubmitState();
   }
@@ -264,6 +300,7 @@ export class Popup {
 
   private updateSubmitState(): void {
     const enabled = this.selectedType !== null && this.textarea.value.trim().length > 0;
+    this.submitBtn.disabled = !enabled;
     this.submitBtn.style.opacity = enabled ? "1" : "0.35";
     this.submitBtn.style.pointerEvents = enabled ? "auto" : "none";
   }
@@ -282,8 +319,16 @@ export class Popup {
   }
 
   private hideElement(): void {
+    // Remove focus trap
+    if (this.onKeydownTrap) {
+      this.root.removeEventListener("keydown", this.onKeydownTrap);
+      this.onKeydownTrap = null;
+    }
     this.root.style.opacity = "0";
     this.root.style.transform = "translateY(8px) scale(0.98)";
+    // Restore focus to the previously focused element
+    this.previouslyFocused?.focus();
+    this.previouslyFocused = null;
     setTimeout(() => {
       this.root.style.display = "none";
     }, 250);

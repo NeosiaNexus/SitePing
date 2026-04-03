@@ -145,6 +145,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
  */
 function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
   return new Promise((resolve) => {
+    // Save the currently focused element to restore on close
+    const previouslyFocused = (shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null;
+
     const backdrop = document.createElement("div");
     backdrop.style.cssText = `
       position:fixed;inset:0;
@@ -170,16 +173,27 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
       -webkit-font-smoothing:antialiased;
     `;
 
+    const titleId = `sp-identity-title-${Date.now()}`;
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", titleId);
+
     const title = document.createElement("div");
     title.className = "sp-identity-title";
+    title.id = titleId;
     title.textContent = "Identifiez-vous";
     title.style.marginBottom = "20px";
+
+    const nameInputId = `sp-identity-name-${Date.now()}`;
+    const emailInputId = `sp-identity-email-${Date.now()}`;
 
     const nameLabel = document.createElement("label");
     nameLabel.className = "sp-input-label";
     nameLabel.textContent = "Nom";
+    nameLabel.setAttribute("for", nameInputId);
     const nameInput = document.createElement("input");
     nameInput.className = "sp-input";
+    nameInput.id = nameInputId;
     nameInput.type = "text";
     nameInput.placeholder = "Votre nom";
     nameInput.style.marginBottom = "14px";
@@ -187,25 +201,31 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
     const emailLabel = document.createElement("label");
     emailLabel.className = "sp-input-label";
     emailLabel.textContent = "Email";
+    emailLabel.setAttribute("for", emailInputId);
     const emailInput = document.createElement("input");
     emailInput.className = "sp-input";
+    emailInput.id = emailInputId;
     emailInput.type = "email";
     emailInput.placeholder = "votre@email.com";
 
     const btnRow = document.createElement("div");
     btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:20px;";
 
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "sp-btn-ghost";
-    cancelBtn.textContent = "Annuler";
-    cancelBtn.addEventListener("click", () => {
+    const closeModal = (result: Identity | null) => {
+      backdrop.removeEventListener("keydown", onKeydown);
       backdrop.style.opacity = "0";
       modal.style.transform = "translateY(12px) scale(0.97)";
       setTimeout(() => {
         backdrop.remove();
-        resolve(null);
+        previouslyFocused?.focus();
+        resolve(result);
       }, 250);
-    });
+    };
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "sp-btn-ghost";
+    cancelBtn.textContent = "Annuler";
+    cancelBtn.addEventListener("click", () => closeModal(null));
 
     const submitBtn = document.createElement("button");
     submitBtn.className = "sp-btn-primary";
@@ -214,12 +234,41 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
       const name = nameInput.value.trim();
       const email = emailInput.value.trim();
       if (!name || !email) return;
-      backdrop.style.opacity = "0";
-      modal.style.transform = "translateY(12px) scale(0.97)";
-      setTimeout(() => {
-        backdrop.remove();
-        resolve({ name, email });
-      }, 250);
+      closeModal({ name, email });
+    });
+
+    // Focus trap: cycle Tab/Shift+Tab within the modal
+    const focusableSelectors = 'input, button, [tabindex]:not([tabindex="-1"])';
+    const onKeydown = (e: Event) => {
+      const ke = e as KeyboardEvent;
+      if (ke.key === "Escape") {
+        closeModal(null);
+        return;
+      }
+      if (ke.key === "Tab") {
+        const focusableEls = Array.from(modal.querySelectorAll<HTMLElement>(focusableSelectors));
+        if (focusableEls.length === 0) return;
+        const first = focusableEls[0];
+        const last = focusableEls[focusableEls.length - 1];
+        const active = shadowRoot.activeElement as HTMLElement | null;
+        if (ke.shiftKey) {
+          if (active === first || !modal.contains(active)) {
+            ke.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (active === last || !modal.contains(active)) {
+            ke.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+    backdrop.addEventListener("keydown", onKeydown);
+
+    // Close on backdrop click
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) closeModal(null);
     });
 
     btnRow.appendChild(cancelBtn);

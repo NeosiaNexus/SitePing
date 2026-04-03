@@ -19,6 +19,8 @@ export class Tooltip {
   private hideTimer: ReturnType<typeof setTimeout> | null = null;
   private currentFeedbackId: string | null = null;
 
+  readonly tooltipId = "sp-tooltip";
+
   constructor(private readonly colors: ThemeColors) {
     this.root = el("div", {
       style: `
@@ -41,6 +43,8 @@ export class Tooltip {
         -webkit-font-smoothing: antialiased;
       `,
     });
+    this.root.setAttribute("role", "tooltip");
+    this.root.id = this.tooltipId;
 
     // Arrow element
     this.arrow = el("div", {
