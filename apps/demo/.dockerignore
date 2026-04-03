@@ -1,0 +1,10 @@
+node_modules
+.git
+.turbo
+.next
+dist
+test-results
+playwright-report
+coverage
+e2e
+.claude
