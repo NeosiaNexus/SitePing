@@ -8,3 +8,4 @@ playwright-report/
 coverage/
 .env
 .env.local
+.claude/worktrees/
