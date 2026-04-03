@@ -129,7 +129,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // Components inside Shadow DOM
   const fab = new Fab(shadow, config, bus);
   const panel = new Panel(shadow, colors, bus, apiClient, config.projectName, markers);
-  const annotator = new Annotator(config, colors, bus);
+  const annotator = new Annotator(colors, bus);
 
   // Handle annotation completion via event bus (not DOM events)
   const unsubAnnotation = bus.on("annotation:complete", async (data) => {
@@ -177,7 +177,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
     });
 
   // Flush retry queue on load
-  flushRetryQueue(config.endpoint).then(() => log("Retry queue flushed"));
+  flushRetryQueue(config.endpoint)
+    .then(() => log("Retry queue flushed"))
+    .catch(() => {});
 
   return {
     destroy: () => {

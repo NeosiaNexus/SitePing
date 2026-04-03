@@ -1,4 +1,4 @@
-import type { AnnotationPayload, FeedbackType, SitepingConfig } from "@siteping/core";
+import type { AnnotationPayload, FeedbackType } from "@siteping/core";
 import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anchor.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
@@ -31,7 +31,6 @@ export class Annotator {
   private savedOverflow = "";
 
   constructor(
-    private readonly config: SitepingConfig,
     private readonly colors: ThemeColors,
     private readonly bus: EventBus<WidgetEvents>,
   ) {
@@ -43,7 +42,6 @@ export class Annotator {
   private activate(): void {
     if (this.isActive) return;
     this.isActive = true;
-    this.config.onAnnotationStart?.();
 
     // Lock page scroll
     this.savedOverflow = document.body.style.overflow;
@@ -147,7 +145,6 @@ export class Annotator {
     this.toolbar = null;
     this.drawingRect = null;
 
-    this.config.onAnnotationEnd?.();
     this.bus.emit("annotation:end");
   }
 

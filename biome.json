@@ -17,13 +17,13 @@
     "rules": {
       "recommended": true,
       "suspicious": {
-        "noExplicitAny": "off"
+        "noExplicitAny": "error"
       },
       "complexity": {
         "noForEach": "off"
       },
       "style": {
-        "noNonNullAssertion": "off",
+        "noNonNullAssertion": "error",
         "useTemplate": "off"
       }
     }
@@ -37,5 +37,33 @@
   },
   "files": {
     "includes": ["**", "!**/dist/", "!**/node_modules/", "!**/bun.lock", "!**/e2e/server.mjs"]
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/widget/src/events.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noExplicitAny": "off" },
+          "style": { "noNonNullAssertion": "off" }
+        }
+      }
+    },
+    {
+      "includes": ["packages/cli/src/generators/prisma.ts"],
+      "linter": {
+        "rules": {
+          "style": { "noNonNullAssertion": "off" }
+        }
+      }
+    },
+    {
+      "includes": ["**/__tests__/**", "e2e/**"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noExplicitAny": "off" },
+          "style": { "noNonNullAssertion": "off" }
+        }
+      }
+    }
+  ]
 }

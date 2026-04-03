@@ -51,13 +51,13 @@ function findWidgetUsage(cwd: string): string | null {
 function searchInDir(dir: string, extensions: string[], patterns: string[]): string | null {
   let entries: Dirent[];
   try {
-    entries = readdirSync(dir, { withFileTypes: true }) as Dirent[];
+    entries = readdirSync(dir, { withFileTypes: true });
   } catch {
     return null;
   }
 
   for (const entry of entries) {
-    const name = entry.name as unknown as string;
+    const name = entry.name;
     const fullPath = join(dir, name);
 
     if (entry.isDirectory()) {
