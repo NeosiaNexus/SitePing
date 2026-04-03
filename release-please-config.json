@@ -1,20 +1,31 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "include-component-in-tag": false,
+  "include-component-in-tag": true,
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refactoring" },
+    { "type": "test", "section": "Tests" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "chore", "section": "Miscellaneous" }
+  ],
   "packages": {
-    ".": {
+    "packages/widget": {
       "release-type": "node",
+      "component": "widget",
+      "bump-minor-pre-major": true
+    },
+    "packages/adapter-prisma": {
+      "release-type": "node",
+      "component": "adapter-prisma",
+      "bump-minor-pre-major": true
+    },
+    "packages/cli": {
+      "release-type": "node",
+      "component": "cli",
       "bump-minor-pre-major": true,
-      "changelog-sections": [
-        { "type": "feat", "section": "Features" },
-        { "type": "fix", "section": "Bug Fixes" },
-        { "type": "perf", "section": "Performance" },
-        { "type": "refactor", "section": "Refactoring" },
-        { "type": "test", "section": "Tests" },
-        { "type": "docs", "section": "Documentation" },
-        { "type": "chore", "section": "Miscellaneous" }
-      ],
-      "extra-files": ["src/cli/index.ts"]
+      "extra-files": ["src/index.ts"]
     }
   }
 }

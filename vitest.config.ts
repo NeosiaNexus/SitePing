@@ -5,6 +5,6 @@ export default defineConfig({
     conditions: ["import", "module", "default"],
   },
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["packages/**/__tests__/**/*.test.ts"],
   },
 });

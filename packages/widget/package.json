@@ -1,0 +1,43 @@
+{
+  "name": "@siteping/widget",
+  "version": "0.6.0",
+  "description": "Feedback widget for client review during development — annotations, bugs, questions directly on the site",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "feedback",
+    "widget",
+    "annotation",
+    "client-review",
+    "development"
+  ],
+  "author": "neosianexus",
+  "license": "MIT",
+  "homepage": "https://github.com/NeosiaNexus/siteping/tree/main/packages/widget",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NeosiaNexus/siteping.git",
+    "directory": "packages/widget"
+  },
+  "devDependencies": {
+    "@medv/finder": "^3.2.0",
+    "@siteping/core": "workspace:*"
+  }
+}

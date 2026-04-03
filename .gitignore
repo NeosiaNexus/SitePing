@@ -1,6 +1,10 @@
 node_modules/
 dist/
+.turbo/
 *.tsbuildinfo
 .DS_Store
 test-results/
 playwright-report/
+coverage/
+.env
+.env.local

@@ -1,0 +1,39 @@
+{
+  "name": "@siteping/cli",
+  "version": "0.1.0",
+  "description": "CLI pour configurer Siteping dans votre projet",
+  "type": "module",
+  "bin": {
+    "siteping": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "siteping",
+    "cli",
+    "prisma",
+    "setup"
+  ],
+  "author": "neosianexus",
+  "license": "MIT",
+  "homepage": "https://github.com/NeosiaNexus/siteping/tree/main/packages/cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NeosiaNexus/siteping.git",
+    "directory": "packages/cli"
+  },
+  "dependencies": {
+    "commander": "^13.0.0",
+    "@clack/prompts": "^0.9.0",
+    "@mrleebo/prisma-ast": "^0.12.0"
+  },
+  "devDependencies": {
+    "@siteping/core": "workspace:*"
+  }
+}

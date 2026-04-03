@@ -1,0 +1,47 @@
+{
+  "name": "@siteping/adapter-prisma",
+  "version": "0.1.0",
+  "description": "Prisma adapter for Siteping — server-side request handlers",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "siteping",
+    "prisma",
+    "adapter",
+    "feedback"
+  ],
+  "author": "neosianexus",
+  "license": "MIT",
+  "homepage": "https://github.com/NeosiaNexus/siteping/tree/main/packages/adapter-prisma",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NeosiaNexus/siteping.git",
+    "directory": "packages/adapter-prisma"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@siteping/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@prisma/client": "^5.0.0 || ^6.0.0"
+  }
+}
