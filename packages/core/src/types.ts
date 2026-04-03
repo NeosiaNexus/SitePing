@@ -17,6 +17,8 @@ export interface SitepingConfig {
   debug?: boolean;
   /** Color theme — defaults to 'light' */
   theme?: "light" | "dark" | "auto";
+  /** UI locale — defaults to 'fr' for backwards compatibility */
+  locale?: string | undefined;
   /** Called when the widget is skipped (production mode, mobile viewport) */
   onSkip?: (reason: string) => void;
 
@@ -59,7 +61,7 @@ export interface SitepingPublicEvents {
 // ---------------------------------------------------------------------------
 
 /** Single source of truth for feedback types — used by both TS types and Zod schemas. */
-export const FEEDBACK_TYPES = ["question", "changement", "bug", "autre"] as const;
+export const FEEDBACK_TYPES = ["question", "change", "bug", "other"] as const;
 export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 
 /** Single source of truth for feedback statuses. */

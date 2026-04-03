@@ -2,6 +2,7 @@ import type { AnchorData, FeedbackResponse, RectData } from "@siteping/core";
 import { resolveAnnotation } from "./dom/resolver.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
+import type { TFunction } from "./i18n/index.js";
 import { getTypeColor, type ThemeColors } from "./styles/theme.js";
 import type { Tooltip } from "./tooltip.js";
 
@@ -86,6 +87,7 @@ export class MarkerManager {
     private readonly colors: ThemeColors,
     private readonly tooltip: Tooltip,
     private readonly bus: EventBus<WidgetEvents>,
+    private readonly t: TFunction,
   ) {
     this.container = el("div", {
       style: "position:absolute;top:0;left:0;pointer-events:none;z-index:2147483646;",
@@ -341,7 +343,7 @@ export class MarkerManager {
     if (confidence < LOW_CONFIDENCE_THRESHOLD && !isResolved) {
       marker.style.borderStyle = "dashed";
       marker.style.opacity = "0.7";
-      marker.title = `Position approximative (confiance : ${Math.round(confidence * 100)}%)`;
+      marker.title = this.t("marker.approximate").replace("{confidence}", String(Math.round(confidence * 100)));
     } else {
       marker.style.borderStyle = "solid";
       marker.style.opacity = "1";

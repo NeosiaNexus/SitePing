@@ -1,5 +1,6 @@
 import type { FeedbackResponse } from "@siteping/core";
 import { el, formatRelativeDate, setText } from "./dom-utils.js";
+import { createT, getTypeLabel } from "./i18n/index.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 const SHOW_DELAY = 120;
@@ -21,7 +22,10 @@ export class Tooltip {
 
   readonly tooltipId = "sp-tooltip";
 
-  constructor(private readonly colors: ThemeColors) {
+  constructor(
+    private readonly colors: ThemeColors,
+    private readonly locale: string = "fr",
+  ) {
     this.root = el("div", {
       style: `
         position: fixed;
@@ -120,7 +124,8 @@ export class Tooltip {
 
     const typeColor = getTypeColor(feedback.type, this.colors);
     const typeBg = getTypeBgColor(feedback.type, this.colors);
-    const typeLabel = feedback.type.charAt(0).toUpperCase() + feedback.type.slice(1);
+    const t = createT(this.locale);
+    const typeLabel = getTypeLabel(feedback.type, t);
 
     // Header row: badge + date
     const header = el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:8px;" });
@@ -136,7 +141,7 @@ export class Tooltip {
     setText(badge, typeLabel);
 
     const date = el("span", { style: "font-size:11px;color:#64748b;margin-left:auto;" });
-    setText(date, formatRelativeDate(feedback.createdAt));
+    setText(date, formatRelativeDate(feedback.createdAt, this.locale));
 
     header.appendChild(badge);
     header.appendChild(date);

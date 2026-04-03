@@ -2,16 +2,10 @@ import type { FeedbackResponse, FeedbackType } from "@siteping/core";
 import type { ApiClient } from "./api-client.js";
 import { el, formatRelativeDate, parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
+import { getTypeLabel, type TFunction } from "./i18n/index.js";
 import { ICON_CHECK, ICON_CLOSE, ICON_SEARCH, ICON_TRASH, ICON_UNDO } from "./icons.js";
 import type { MarkerManager } from "./markers.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
-
-const TYPE_LABELS: Record<string, string> = {
-  question: "Question",
-  changement: "Changement",
-  bug: "Bug",
-  autre: "Autre",
-};
 
 /**
  * Side panel (400px) with feedback history, filters, and search.
@@ -38,6 +32,8 @@ export class Panel {
     private readonly apiClient: ApiClient,
     private readonly projectName: string,
     private readonly markers: MarkerManager,
+    private readonly t: TFunction,
+    private readonly locale: string,
   ) {
     this.root = el("div", { class: "sp-panel" });
     this.root.setAttribute("role", "complementary");
@@ -47,20 +43,20 @@ export class Panel {
     // Header
     const header = el("div", { class: "sp-panel-header" });
     const title = el("span", { class: "sp-panel-title" });
-    setText(title, "Feedbacks");
+    setText(title, this.t("panel.title"));
 
     this.closeBtn = document.createElement("button");
     this.closeBtn.className = "sp-panel-close";
-    this.closeBtn.setAttribute("aria-label", "Fermer le panneau");
+    this.closeBtn.setAttribute("aria-label", this.t("panel.close"));
     this.closeBtn.appendChild(parseSvg(ICON_CLOSE));
     this.closeBtn.addEventListener("click", () => this.close());
 
     this.deleteAllBtn = document.createElement("button");
     this.deleteAllBtn.className = "sp-btn-delete-all";
-    this.deleteAllBtn.setAttribute("aria-label", "Tout supprimer");
+    this.deleteAllBtn.setAttribute("aria-label", this.t("panel.deleteAll"));
     this.deleteAllBtn.appendChild(parseSvg(ICON_TRASH));
     const deleteAllLabel = document.createElement("span");
-    setText(deleteAllLabel, " Tout supprimer");
+    setText(deleteAllLabel, ` ${this.t("panel.deleteAll")}`);
     this.deleteAllBtn.appendChild(deleteAllLabel);
     this.deleteAllBtn.addEventListener("click", () => this.confirmDeleteAll());
 
@@ -81,8 +77,8 @@ export class Panel {
     this.searchInput = document.createElement("input");
     this.searchInput.type = "text";
     this.searchInput.className = "sp-search";
-    this.searchInput.placeholder = "Rechercher...";
-    this.searchInput.setAttribute("aria-label", "Rechercher dans les feedbacks");
+    this.searchInput.placeholder = this.t("panel.search");
+    this.searchInput.setAttribute("aria-label", this.t("panel.searchAria"));
     this.searchInput.addEventListener("input", () => {
       if (this.searchTimeout) clearTimeout(this.searchTimeout);
       this.searchTimeout = setTimeout(() => this.loadFeedbacks().catch(() => {}), 200);
@@ -93,11 +89,11 @@ export class Panel {
     // Chips
     const chips = el("div", { class: "sp-chips" });
     const chipOptions = [
-      { value: "all", label: "Tous" },
-      { value: "question", label: "Question" },
-      { value: "changement", label: "Changement" },
-      { value: "bug", label: "Bug" },
-      { value: "autre", label: "Autre" },
+      { value: "all", label: this.t("panel.filterAll") },
+      { value: "question", label: this.t("type.question") },
+      { value: "change", label: this.t("type.change") },
+      { value: "bug", label: this.t("type.bug") },
+      { value: "other", label: this.t("type.other") },
     ];
 
     for (const option of chipOptions) {
@@ -190,11 +186,11 @@ export class Panel {
     empty.setAttribute("role", "status");
     empty.setAttribute("aria-live", "polite");
     const text = el("div", { class: "sp-empty-text" });
-    setText(text, "Erreur de chargement");
+    setText(text, this.t("panel.loadError"));
     const retryBtn = document.createElement("button");
     retryBtn.className = "sp-btn-ghost";
     retryBtn.style.marginTop = "8px";
-    setText(retryBtn, "Réessayer");
+    setText(retryBtn, this.t("panel.retry"));
     retryBtn.addEventListener("click", () => this.loadFeedbacks().catch(() => {}));
     empty.appendChild(text);
     empty.appendChild(retryBtn);
@@ -232,7 +228,7 @@ export class Panel {
       empty.setAttribute("role", "status");
       empty.setAttribute("aria-live", "polite");
       const emptyText = el("div", { class: "sp-empty-text" });
-      setText(emptyText, "Aucun feedback pour le moment");
+      setText(emptyText, this.t("panel.empty"));
       empty.appendChild(emptyText);
       this.listContainer.appendChild(empty);
       return;
@@ -278,10 +274,10 @@ export class Panel {
     const typeBg = getTypeBgColor(feedback.type, this.colors);
     badge.style.background = typeBg;
     badge.style.color = typeColor;
-    setText(badge, TYPE_LABELS[feedback.type] ?? feedback.type);
+    setText(badge, getTypeLabel(feedback.type, this.t));
 
     const date = el("span", { class: "sp-card-date" });
-    setText(date, formatRelativeDate(feedback.createdAt));
+    setText(date, formatRelativeDate(feedback.createdAt, this.locale));
 
     header.appendChild(num);
     header.appendChild(badge);
@@ -294,13 +290,13 @@ export class Panel {
     // Expand button
     const expandBtn = document.createElement("button");
     expandBtn.className = "sp-card-expand";
-    setText(expandBtn, "Voir plus");
+    setText(expandBtn, this.t("panel.showMore"));
     expandBtn.style.display = "none";
     expandBtn.setAttribute("aria-expanded", "false");
     expandBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       const isExpanded = message.classList.toggle("sp-card-message--expanded");
-      setText(expandBtn, isExpanded ? "Voir moins" : "Voir plus");
+      setText(expandBtn, isExpanded ? this.t("panel.showLess") : this.t("panel.showMore"));
       expandBtn.setAttribute("aria-expanded", String(isExpanded));
     });
 
@@ -319,12 +315,12 @@ export class Panel {
     if (isResolved) {
       resolveBtn.appendChild(parseSvg(ICON_UNDO));
       const span = document.createElement("span");
-      setText(span, " Rouvrir");
+      setText(span, ` ${this.t("panel.reopen")}`);
       resolveBtn.appendChild(span);
     } else {
       resolveBtn.appendChild(parseSvg(ICON_CHECK));
       const span = document.createElement("span");
-      setText(span, " Résoudre");
+      setText(span, ` ${this.t("panel.resolve")}`);
       resolveBtn.appendChild(span);
     }
     resolveBtn.addEventListener("click", async (e) => {
@@ -336,7 +332,7 @@ export class Panel {
     deleteBtn.className = "sp-btn-delete";
     deleteBtn.appendChild(parseSvg(ICON_TRASH));
     const deleteLabel = document.createElement("span");
-    setText(deleteLabel, " Supprimer");
+    setText(deleteLabel, ` ${this.t("panel.delete")}`);
     deleteBtn.appendChild(deleteLabel);
     deleteBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -392,8 +388,8 @@ export class Panel {
 
   private async confirmDeleteAll(): Promise<void> {
     const confirmed = await this.showConfirmDialog(
-      "Tout supprimer",
-      "Supprimer tous les feedbacks de ce projet ? Cette action est irréversible.",
+      this.t("panel.deleteAllConfirmTitle"),
+      this.t("panel.deleteAllConfirmMessage"),
     );
     if (!confirmed) return;
 
@@ -435,12 +431,12 @@ export class Panel {
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button";
       cancelBtn.className = "sp-btn-ghost";
-      setText(cancelBtn, "Annuler");
+      setText(cancelBtn, this.t("panel.cancel"));
 
       const confirmBtn = document.createElement("button");
       confirmBtn.type = "button";
       confirmBtn.className = "sp-btn-danger";
-      setText(confirmBtn, "Supprimer");
+      setText(confirmBtn, this.t("panel.confirmDelete"));
 
       let closed = false;
       const close = (result: boolean) => {

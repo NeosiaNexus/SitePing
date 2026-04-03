@@ -3,6 +3,7 @@ import { Annotator } from "./annotator.js";
 import { ApiClient, flushRetryQueue } from "./api-client.js";
 import { EventBus, type PublicWidgetEvents, type WidgetEvents } from "./events.js";
 import { Fab } from "./fab.js";
+import { createT, type TFunction } from "./i18n/index.js";
 import { getIdentity, type Identity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
 import { Panel } from "./panel.js";
@@ -63,7 +64,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
     return skippedInstance();
   }
 
-  log("Initializing widget", { projectName: config.projectName, theme: config.theme ?? "light" });
+  const locale = config.locale ?? "fr";
+  const t = createT(locale);
+
+  log("Initializing widget", { projectName: config.projectName, theme: config.theme ?? "light", locale });
 
   const colors = buildThemeColors(config.accentColor, config.theme);
   const bus = new EventBus<WidgetEvents>();
@@ -123,13 +127,13 @@ export function launch(config: SitepingConfig): SitepingInstance {
   document.body.appendChild(host);
 
   // Components outside Shadow DOM
-  const tooltip = new Tooltip(colors);
-  const markers = new MarkerManager(colors, tooltip, bus);
+  const tooltip = new Tooltip(colors, locale);
+  const markers = new MarkerManager(colors, tooltip, bus, t);
 
   // Components inside Shadow DOM
-  const fab = new Fab(shadow, config, bus);
-  const panel = new Panel(shadow, colors, bus, apiClient, config.projectName, markers);
-  const annotator = new Annotator(colors, bus);
+  const fab = new Fab(shadow, config, bus, t);
+  const panel = new Panel(shadow, colors, bus, apiClient, config.projectName, markers, t, locale);
+  const annotator = new Annotator(colors, bus, t);
 
   // Handle annotation completion via event bus (not DOM events)
   const unsubAnnotation = bus.on("annotation:complete", async (data) => {
@@ -138,7 +142,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     // Ensure identity
     let identity = getIdentity();
     if (!identity) {
-      identity = await promptIdentity(shadow);
+      identity = await promptIdentity(shadow, t);
       if (!identity) return; // User cancelled
       saveIdentity(identity);
     }
@@ -217,7 +221,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
  * Glassmorphism: frosted backdrop, glass modal, gradient CTA.
  * Returns null if the user cancels.
  */
-function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
+function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity | null> {
   return new Promise((resolve) => {
     // Save the currently focused element to restore on close
     const previouslyFocused = (shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null;
@@ -255,7 +259,7 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
     const title = document.createElement("div");
     title.className = "sp-identity-title";
     title.id = titleId;
-    title.textContent = "Identifiez-vous";
+    title.textContent = t("identity.title");
     title.style.marginBottom = "20px";
 
     const nameInputId = `sp-identity-name-${Date.now()}`;
@@ -263,24 +267,24 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
 
     const nameLabel = document.createElement("label");
     nameLabel.className = "sp-input-label";
-    nameLabel.textContent = "Nom";
+    nameLabel.textContent = t("identity.nameLabel");
     nameLabel.setAttribute("for", nameInputId);
     const nameInput = document.createElement("input");
     nameInput.className = "sp-input";
     nameInput.id = nameInputId;
     nameInput.type = "text";
-    nameInput.placeholder = "Votre nom";
+    nameInput.placeholder = t("identity.namePlaceholder");
     nameInput.style.marginBottom = "14px";
 
     const emailLabel = document.createElement("label");
     emailLabel.className = "sp-input-label";
-    emailLabel.textContent = "Email";
+    emailLabel.textContent = t("identity.emailLabel");
     emailLabel.setAttribute("for", emailInputId);
     const emailInput = document.createElement("input");
     emailInput.className = "sp-input";
     emailInput.id = emailInputId;
     emailInput.type = "email";
-    emailInput.placeholder = "votre@email.com";
+    emailInput.placeholder = t("identity.emailPlaceholder");
 
     const btnRow = document.createElement("div");
     btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:20px;";
@@ -298,12 +302,12 @@ function promptIdentity(shadowRoot: ShadowRoot): Promise<Identity | null> {
 
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "sp-btn-ghost";
-    cancelBtn.textContent = "Annuler";
+    cancelBtn.textContent = t("identity.cancel");
     cancelBtn.addEventListener("click", () => closeModal(null));
 
     const submitBtn = document.createElement("button");
     submitBtn.className = "sp-btn-primary";
-    submitBtn.textContent = "Continuer";
+    submitBtn.textContent = t("identity.submit");
     submitBtn.addEventListener("click", () => {
       const name = nameInput.value.trim();
       const email = emailInput.value.trim();

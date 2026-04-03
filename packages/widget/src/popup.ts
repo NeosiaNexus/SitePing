@@ -1,5 +1,6 @@
 import type { FeedbackType } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
+import type { TFunction } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
@@ -13,13 +14,6 @@ interface TypeOption {
   label: string;
   icon: string;
 }
-
-const TYPE_OPTIONS: TypeOption[] = [
-  { type: "question", label: "Question", icon: ICON_QUESTION },
-  { type: "changement", label: "Changement", icon: ICON_CHANGE },
-  { type: "bug", label: "Bug", icon: ICON_BUG },
-  { type: "autre", label: "Autre", icon: ICON_OTHER },
-];
 
 /**
  * Popup form shown after drawing an annotation rectangle.
@@ -37,7 +31,10 @@ export class Popup {
   private previouslyFocused: HTMLElement | null = null;
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
 
-  constructor(private readonly colors: ThemeColors) {
+  constructor(
+    private readonly colors: ThemeColors,
+    private readonly t: TFunction,
+  ) {
     this.root = el("div", {
       style: `
         position:fixed;
@@ -63,8 +60,14 @@ export class Popup {
     this.root.setAttribute("aria-label", "Formulaire de feedback");
 
     // Type selector grid (2x2)
+    const typeOptions: TypeOption[] = [
+      { type: "question", label: this.t("type.question"), icon: ICON_QUESTION },
+      { type: "change", label: this.t("type.change"), icon: ICON_CHANGE },
+      { type: "bug", label: this.t("type.bug"), icon: ICON_BUG },
+      { type: "other", label: this.t("type.other"), icon: ICON_OTHER },
+    ];
     const typeRow = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;" });
-    for (const option of TYPE_OPTIONS) {
+    for (const option of typeOptions) {
       const btn = document.createElement("button");
       btn.style.cssText = `
         height:34px;
@@ -119,8 +122,8 @@ export class Popup {
       outline:none;transition:all 0.2s ease;
       box-sizing:border-box;
     `;
-    this.textarea.placeholder = "Décrivez votre retour...";
-    this.textarea.setAttribute("aria-label", "Message de feedback");
+    this.textarea.placeholder = this.t("popup.placeholder");
+    this.textarea.setAttribute("aria-label", this.t("popup.textareaAria"));
 
     // Keyboard shortcut hint
     const hint = el("div", {
@@ -133,7 +136,7 @@ export class Popup {
     });
     const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
     const isMac = uaData ? uaData.platform === "macOS" : (navigator.platform?.includes("Mac") ?? false);
-    setText(hint, isMac ? "\u2318+Entr\u00e9e pour envoyer" : "Ctrl+Entr\u00e9e pour envoyer");
+    setText(hint, isMac ? this.t("popup.submitHintMac") : this.t("popup.submitHintOther"));
 
     this.textarea.addEventListener("focus", () => {
       this.textarea.style.borderColor = this.colors.accent;
@@ -170,7 +173,7 @@ export class Popup {
       font-size:13px;font-weight:500;cursor:pointer;
       transition:all 0.2s ease;
     `;
-    setText(cancelBtn, "Annuler");
+    setText(cancelBtn, this.t("popup.cancel"));
     cancelBtn.addEventListener("click", () => this.cancel());
     cancelBtn.addEventListener("mouseenter", () => {
       cancelBtn.style.borderColor = this.colors.accent;
@@ -191,7 +194,7 @@ export class Popup {
       transition:all 0.2s ease;
       box-shadow:0 2px 8px ${this.colors.accentGlow};
     `;
-    setText(this.submitBtn, "Envoyer");
+    setText(this.submitBtn, this.t("popup.submit"));
     this.submitBtn.addEventListener("click", () => this.submit());
 
     btnRow.appendChild(cancelBtn);

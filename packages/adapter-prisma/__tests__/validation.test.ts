@@ -76,7 +76,7 @@ describe("feedbackCreateSchema", () => {
   });
 
   it("validates all four feedback types", () => {
-    for (const type of ["question", "changement", "bug", "autre"]) {
+    for (const type of ["question", "change", "bug", "other"]) {
       const result = feedbackCreateSchema.safeParse({
         ...validPayload,
         type,

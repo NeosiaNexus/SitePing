@@ -42,15 +42,24 @@ export function setText(element: HTMLElement | SVGElement, text: string): void {
   element.textContent = text;
 }
 
-/** Format a relative date string in French */
-export function formatRelativeDate(isoString: string): string {
+/** Format a relative date string using Intl.RelativeTimeFormat for locale support */
+export function formatRelativeDate(isoString: string, locale = "fr"): string {
   const diff = Date.now() - new Date(isoString).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "maintenant";
-  if (minutes < 60) return `il y a ${minutes}min`;
+  const seconds = Math.floor(diff / 1000);
+
+  if (seconds < 60) {
+    return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(0, "second");
+  }
+
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "always", style: "narrow" });
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return rtf.format(-minutes, "minute");
+
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `il y a ${hours}h`;
+  if (hours < 24) return rtf.format(-hours, "hour");
+
   const days = Math.floor(hours / 24);
-  if (days < 7) return `il y a ${days}j`;
-  return new Date(isoString).toLocaleDateString("fr-FR");
+  if (days < 7) return rtf.format(-days, "day");
+
+  return new Date(isoString).toLocaleDateString(locale);
 }

@@ -1,6 +1,7 @@
 import type { SitepingConfig } from "@siteping/core";
 import { parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
+import type { TFunction } from "./i18n/index.js";
 import { ICON_ANNOTATE, ICON_CHAT, ICON_CLOSE, ICON_EYE, ICON_EYE_OFF, ICON_SITEPING } from "./icons.js";
 
 interface RadialItem {
@@ -31,15 +32,16 @@ export class Fab {
     shadowRoot: ShadowRoot,
     config: SitepingConfig,
     private readonly bus: EventBus<WidgetEvents>,
+    t: TFunction,
   ) {
     const position = config.position ?? "bottom-right";
     const isRight = position === "bottom-right";
 
     // Vertical stack above the FAB
     this.items = [
-      { id: "chat", icon: ICON_CHAT, label: "Messages" },
-      { id: "annotate", icon: ICON_ANNOTATE, label: "Annoter" },
-      { id: "toggle-annotations", icon: ICON_EYE, iconAlt: ICON_EYE_OFF, label: "Annotations" },
+      { id: "chat", icon: ICON_CHAT, label: t("fab.messages") },
+      { id: "annotate", icon: ICON_ANNOTATE, label: t("fab.annotate") },
+      { id: "toggle-annotations", icon: ICON_EYE, iconAlt: ICON_EYE_OFF, label: t("fab.annotations") },
     ];
 
     // FAB button — needs position:relative for badge positioning
@@ -47,7 +49,7 @@ export class Fab {
     this.fab.className = `sp-fab sp-fab--${position} sp-anim-fab-in`;
     this.fab.style.position = "fixed"; // ensure fixed even with relative children
     this.fab.appendChild(parseSvg(ICON_SITEPING));
-    this.fab.setAttribute("aria-label", "Siteping — Menu feedback");
+    this.fab.setAttribute("aria-label", t("fab.aria"));
     this.fab.setAttribute("aria-expanded", "false");
     this.fab.addEventListener("click", () => this.toggle());
 

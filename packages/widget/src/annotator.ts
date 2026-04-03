@@ -2,6 +2,7 @@ import type { AnnotationPayload, FeedbackType } from "@siteping/core";
 import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anchor.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
+import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -33,8 +34,9 @@ export class Annotator {
   constructor(
     private readonly colors: ThemeColors,
     private readonly bus: EventBus<WidgetEvents>,
+    private readonly t: TFunction,
   ) {
-    this.popup = new Popup(colors);
+    this.popup = new Popup(colors, t);
 
     this.bus.on("annotation:start", () => this.activate());
   }
@@ -91,7 +93,7 @@ export class Annotator {
     this.toolbar.appendChild(style);
 
     const instruction = el("span", { style: "font-weight:500;letter-spacing:-0.01em;" });
-    setText(instruction, "Tracez un rectangle sur la zone \u00e0 commenter");
+    setText(instruction, this.t("annotator.instruction"));
 
     const cancelBtn = document.createElement("button");
     cancelBtn.style.cssText = `
@@ -102,7 +104,7 @@ export class Annotator {
       font-size:13px;font-weight:500;cursor:pointer;
       transition:all 0.2s ease;
     `;
-    setText(cancelBtn, "Annuler");
+    setText(cancelBtn, this.t("annotator.cancel"));
     cancelBtn.addEventListener("click", () => this.deactivate());
     cancelBtn.addEventListener("mouseenter", () => {
       cancelBtn.style.borderColor = "#ef4444";

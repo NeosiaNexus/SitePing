@@ -46,16 +46,16 @@ describe("getTypeColor", () => {
     expect(getTypeColor("question", colors)).toBe(colors.typeQuestion);
   });
 
-  it("returns orange for changement", () => {
-    expect(getTypeColor("changement", colors)).toBe(colors.typeChangement);
+  it("returns orange for change", () => {
+    expect(getTypeColor("change", colors)).toBe(colors.typeChange);
   });
 
   it("returns red for bug", () => {
     expect(getTypeColor("bug", colors)).toBe(colors.typeBug);
   });
 
-  it("returns gray for autre and unknown", () => {
-    expect(getTypeColor("autre", colors)).toBe(colors.typeAutre);
-    expect(getTypeColor("unknown", colors)).toBe(colors.typeAutre);
+  it("returns gray for other and unknown", () => {
+    expect(getTypeColor("other", colors)).toBe(colors.typeOther);
+    expect(getTypeColor("unknown", colors)).toBe(colors.typeOther);
   });
 });
