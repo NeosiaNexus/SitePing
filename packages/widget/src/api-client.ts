@@ -65,20 +65,19 @@ export async function flushRetryQueue(endpoint: string): Promise<void> {
     const toRetry = queue.filter((e) => e.endpoint === endpoint);
     if (toRetry.length === 0) return;
 
-    const failed: Array<{ endpoint: string; payload: FeedbackPayload }> = [];
-
-    for (const entry of toRetry) {
-      try {
-        const res = await fetch(endpoint, {
+    const results = await Promise.allSettled(
+      toRetry.map((entry) =>
+        fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(entry.payload),
-        });
-        if (!res.ok) failed.push(entry);
-      } catch {
-        failed.push(entry);
-      }
-    }
+        }).then((res) => ({ entry, ok: res.ok })),
+      ),
+    );
+
+    const failed = results
+      .map((r, i) => (r.status === "rejected" || !r.value.ok ? toRetry[i] : null))
+      .filter((e): e is NonNullable<typeof e> => e !== null);
 
     // Rebuild queue: keep unrelated entries + failed retries
     const remaining = queue.filter((e) => e.endpoint !== endpoint).concat(failed);

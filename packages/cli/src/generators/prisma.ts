@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import type { AttributeArgument, Field, Model } from "@mrleebo/prisma-ast";
+import type { AttributeArgument, BlockAttribute, Field, Model, Property } from "@mrleebo/prisma-ast";
 import { getSchema, printSchema } from "@mrleebo/prisma-ast";
-import { type FieldDef, SITEPING_MODELS } from "@siteping/core";
+import { type FieldDef, type IndexDef, SITEPING_MODELS } from "@siteping/core";
 
 const DEFAULT_SCHEMA_PATH = "prisma/schema.prisma";
 
@@ -52,6 +52,11 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
       const model: Model = { type: "model", name: modelName, properties: [] };
       for (const [fieldName, fieldDef] of Object.entries(modelDef.fields)) {
         model.properties.push(buildField(fieldName, fieldDef));
+      }
+      if (modelDef.indexes) {
+        for (const idx of modelDef.indexes) {
+          model.properties.push(buildBlockIndex(idx));
+        }
       }
       schema.list.push(model);
       addedModels.push(modelName);
@@ -106,6 +111,21 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
         existingModel.properties.splice(createdAtIdx, 0, ...fieldsToAdd);
       } else {
         existingModel.properties.push(...fieldsToAdd);
+      }
+    }
+
+    // Sync @@index block attributes
+    if (modelDef.indexes) {
+      for (const idx of modelDef.indexes) {
+        if (!hasBlockIndex(existingModel, idx)) {
+          existingModel.properties.push(buildBlockIndex(idx));
+          changes.push({
+            model: modelName,
+            field: `@@index([${idx.fields.join(", ")}])`,
+            action: "added",
+            detail: "index",
+          });
+        }
       }
     }
   }
@@ -234,4 +254,33 @@ function buildField(name: string, def: FieldDef): Field {
   }
 
   return field;
+}
+
+function buildBlockIndex(idx: IndexDef): Property {
+  return {
+    type: "attribute",
+    kind: "object",
+    name: "index",
+    args: [
+      {
+        type: "attributeArgument",
+        value: { type: "array", args: idx.fields },
+      } as AttributeArgument,
+    ],
+  } as BlockAttribute;
+}
+
+function hasBlockIndex(model: Model, idx: IndexDef): boolean {
+  const key = idx.fields.join(",");
+  return model.properties.some((p) => {
+    if (p.type !== "attribute" || (p as BlockAttribute).name !== "index") return false;
+    const attr = p as BlockAttribute;
+    const firstArg = attr.args?.[0];
+    if (!firstArg || firstArg.type !== "attributeArgument") return false;
+    const val = firstArg.value;
+    if (typeof val === "object" && val !== null && "type" in val && val.type === "array") {
+      return (val as { type: "array"; args: string[] }).args.join(",") === key;
+    }
+    return false;
+  });
 }

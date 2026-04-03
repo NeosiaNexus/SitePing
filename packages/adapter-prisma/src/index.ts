@@ -140,7 +140,7 @@ export function createSitepingHandler({ prisma }: HandlerOptions) {
           prisma.sitepingFeedback.count({ where }),
         ]);
 
-        return Response.json({ feedbacks, total });
+        return Response.json({ feedbacks, total }, { headers: { "Cache-Control": "private, max-age=5" } });
       } catch (error) {
         console.error("[siteping] Failed to fetch feedbacks:", error);
         return Response.json({ error: "Internal server error" }, { status: 500 });

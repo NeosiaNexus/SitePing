@@ -25,8 +25,13 @@ export interface FieldDef {
   isUnique?: boolean;
 }
 
+export interface IndexDef {
+  fields: string[];
+}
+
 interface ModelDef {
   fields: Record<string, FieldDef>;
+  indexes?: IndexDef[];
 }
 
 export const SITEPING_MODELS: Record<string, ModelDef> = {
@@ -50,6 +55,7 @@ export const SITEPING_MODELS: Record<string, ModelDef> = {
         relation: { kind: "1-to-many", model: "SitepingAnnotation" },
       },
     },
+    indexes: [{ fields: ["projectName"] }],
   },
   SitepingAnnotation: {
     fields: {
@@ -85,5 +91,6 @@ export const SITEPING_MODELS: Record<string, ModelDef> = {
       devicePixelRatio: { type: "Float", default: "1" },
       createdAt: { type: "DateTime", default: "now()" },
     },
+    indexes: [{ fields: ["feedbackId"] }],
   },
 };

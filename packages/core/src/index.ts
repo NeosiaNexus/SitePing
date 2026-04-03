@@ -1,4 +1,4 @@
-export type { FieldDef } from "./schema.js";
+export type { FieldDef, IndexDef } from "./schema.js";
 
 export { SITEPING_MODELS } from "./schema.js";
 export type {

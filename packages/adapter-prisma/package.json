@@ -3,6 +3,7 @@
   "version": "0.3.0",
   "description": "Prisma adapter for Siteping — server-side request handlers",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

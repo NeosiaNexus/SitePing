@@ -4,6 +4,7 @@
   "private": true,
   "description": "Shared types and schema definitions for @siteping packages",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },
