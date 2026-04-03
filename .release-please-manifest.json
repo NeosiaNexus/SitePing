@@ -1,6 +1,6 @@
 {
-  "packages/core": "0.1.0",
-  "packages/widget": "0.8.1",
-  "packages/adapter-prisma": "0.3.0",
-  "packages/cli": "0.3.0"
+  "packages/core": "0.2.0",
+  "packages/widget": "0.9.0",
+  "packages/adapter-prisma": "0.4.0",
+  "packages/cli": "0.4.0"
 }

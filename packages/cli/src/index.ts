@@ -4,7 +4,7 @@ import { initCommand } from "./commands/init.js";
 import { statusCommand } from "./commands/status.js";
 import { syncCommand } from "./commands/sync.js";
 
-const program = new Command().name("siteping").description("CLI pour configurer @siteping/*").version("0.3.0"); // x-release-please-version
+const program = new Command().name("siteping").description("CLI pour configurer @siteping/*").version("0.4.0"); // x-release-please-version
 
 program
   .command("init")
