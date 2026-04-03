@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/NeosiaNexus/siteping/compare/widget-v0.8.0...widget-v0.8.1) (2026-04-03)
+
+
+### Documentation
+
+* **widget:** clarify launcher jsdoc ([1a14004](https://github.com/NeosiaNexus/siteping/commit/1a14004a8373fd8ed33af37c9e977164e2a5443e))
+
 ## [0.8.0](https://github.com/NeosiaNexus/siteping/compare/widget-v0.7.0...widget-v0.8.0) (2026-04-03)
 
 
