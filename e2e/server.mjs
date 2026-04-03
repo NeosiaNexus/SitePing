@@ -4,7 +4,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const widgetJs = readFileSync(join(__dirname, "../dist/widget/index.js"), "utf-8");
+const widgetJs = readFileSync(join(__dirname, "../packages/widget/dist/index.js"), "utf-8");
 
 /** In-memory feedback store */
 let feedbacks = [];
