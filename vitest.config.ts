@@ -6,5 +6,14 @@ export default defineConfig({
   },
   test: {
     include: ["packages/**/__tests__/**/*.test.ts"],
+    coverage: {
+      provider: "istanbul",
+      reporter: ["text", "lcov", "json-summary"],
+      include: ["packages/*/src/**/*.ts"],
+      exclude: ["**/*.test.ts", "**/index.ts", "**/icons.ts", "**/styles/**"],
+      thresholds: {
+        lines: 20,
+      },
+    },
   },
 });

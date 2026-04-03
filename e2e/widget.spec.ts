@@ -51,6 +51,28 @@ function shadow(page: ReturnType<typeof test.extend>) {
         { sel: selector, a: attr },
       );
     },
+    /** Wait for an element to appear inside shadow root */
+    async waitFor(selector: string, options?: { timeout?: number }) {
+      await page.waitForFunction(
+        (sel) => {
+          const host = document.querySelector("siteping-widget");
+          return host?.shadowRoot?.querySelector(sel) !== null;
+        },
+        selector,
+        { timeout: options?.timeout ?? 5000 },
+      );
+    },
+    /** Wait for an element to disappear inside shadow root */
+    async waitForHidden(selector: string, options?: { timeout?: number }) {
+      await page.waitForFunction(
+        (sel) => {
+          const host = document.querySelector("siteping-widget");
+          return host?.shadowRoot?.querySelector(sel) === null;
+        },
+        selector,
+        { timeout: options?.timeout ?? 5000 },
+      );
+    },
   };
 }
 
@@ -78,16 +100,16 @@ test.describe("FAB radial menu", () => {
   test("opens on click and shows 3 items", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(300);
+    await s.waitFor(".sp-radial-item--open");
     expect(await s.count(".sp-radial-item--open")).toBe(3);
   });
 
   test("closes on second click", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor(".sp-radial-item--open");
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitForHidden(".sp-radial-item--open");
     expect(await s.count(".sp-radial-item--open")).toBe(0);
   });
 
@@ -95,7 +117,7 @@ test.describe("FAB radial menu", () => {
     const s = shadow(page);
     expect(await s.attr(".sp-fab", "aria-expanded")).toBe("false");
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor(".sp-radial-item--open");
     expect(await s.attr(".sp-fab", "aria-expanded")).toBe("true");
   });
 });
@@ -104,18 +126,18 @@ test.describe("Panel", () => {
   test("opens when chat button is clicked", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="chat"]');
     await s.click('[data-item-id="chat"]');
-    await page.waitForTimeout(400);
+    await s.waitFor(".sp-panel--open");
     expect(await s.query(".sp-panel--open")).toBe(true);
   });
 
   test("shows empty state", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="chat"]');
     await s.click('[data-item-id="chat"]');
-    await page.waitForTimeout(500);
+    await s.waitFor(".sp-empty-text");
     const text = await s.text(".sp-empty-text");
     expect(text).toContain("Aucun feedback");
   });
@@ -123,20 +145,20 @@ test.describe("Panel", () => {
   test("has 5 filter chips", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="chat"]');
     await s.click('[data-item-id="chat"]');
-    await page.waitForTimeout(400);
+    await s.waitFor(".sp-chip");
     expect(await s.count(".sp-chip")).toBe(5);
   });
 
   test("closes via close button", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="chat"]');
     await s.click('[data-item-id="chat"]');
-    await page.waitForTimeout(400);
+    await s.waitFor(".sp-panel--open");
     await s.click(".sp-panel-close");
-    await page.waitForTimeout(400);
+    await s.waitForHidden(".sp-panel--open");
     expect(await s.query(".sp-panel--open")).toBe(false);
   });
 });
@@ -145,10 +167,10 @@ test.describe("Annotation mode", () => {
   test("activates overlay on annotate click", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="annotate"]');
     await s.click('[data-item-id="annotate"]');
-    await page.waitForTimeout(300);
 
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
     const hasOverlay = await page.evaluate(() => !!document.querySelector("div[style*='crosshair']"));
     expect(hasOverlay).toBe(true);
   });
@@ -156,10 +178,13 @@ test.describe("Annotation mode", () => {
   test("shows cancel button in toolbar", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="annotate"]');
     await s.click('[data-item-id="annotate"]');
-    await page.waitForTimeout(300);
 
+    await page.waitForFunction(() => {
+      const btns = document.querySelectorAll("button");
+      return Array.from(btns).some((b) => b.textContent === "Annuler");
+    });
     const hasCancel = await page.evaluate(() => {
       const btns = document.querySelectorAll("button");
       return Array.from(btns).some((b) => b.textContent === "Annuler");
@@ -170,11 +195,12 @@ test.describe("Annotation mode", () => {
   test("deactivates on Escape", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="annotate"]');
     await s.click('[data-item-id="annotate"]');
-    await page.waitForTimeout(300);
+
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => !document.querySelector("div[style*='crosshair']"));
 
     const hasOverlay = await page.evaluate(() => !!document.querySelector("div[style*='crosshair']"));
     expect(hasOverlay).toBe(false);
@@ -183,9 +209,10 @@ test.describe("Annotation mode", () => {
   test("draws a rectangle on drag", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="annotate"]');
     await s.click('[data-item-id="annotate"]');
-    await page.waitForTimeout(300);
+
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
 
     const box = await page.locator("#target-element").boundingBox();
     await page.mouse.move(box!.x + 10, box!.y + 10);
@@ -211,9 +238,9 @@ test.describe("Full annotation flow", () => {
 
     // 1. Annotate mode
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="annotate"]');
     await s.click('[data-item-id="annotate"]');
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
 
     // 2. Draw rectangle over target
     const box = await page.locator("#target-element").boundingBox();
@@ -221,13 +248,13 @@ test.describe("Full annotation flow", () => {
     await page.mouse.down();
     await page.mouse.move(box!.x + 250, box!.y + 60, { steps: 5 });
     await page.mouse.up();
-    await page.waitForTimeout(500);
 
     // 3. Popup should appear — select Bug
+    await page.waitForSelector("button[data-type='bug']");
     await page.click("button[data-type='bug']");
-    await page.waitForTimeout(100);
 
     // 4. Type message
+    await page.waitForSelector("textarea");
     await page.fill("textarea", "Le bouton est cassé");
 
     // 5. Submit (use evaluate — the overlay may intercept pointer events)
@@ -240,9 +267,9 @@ test.describe("Full annotation flow", () => {
         }
       }
     });
-    await page.waitForTimeout(500);
 
     // 6. Identity modal — fill if needed
+    await page.waitForTimeout(500);
     const identityTitle = await page.evaluate(() => {
       const host = document.querySelector("siteping-widget");
       return host?.shadowRoot?.querySelector(".sp-identity-title") !== null;
@@ -264,7 +291,14 @@ test.describe("Full annotation flow", () => {
     }
 
     // 7. Verify marker appeared
-    await page.waitForTimeout(500);
+    await page.waitForFunction(
+      () => {
+        const c = document.getElementById("siteping-markers");
+        return (c?.querySelectorAll("[data-feedback-id]").length ?? 0) >= 1;
+      },
+      undefined,
+      { timeout: 5000 },
+    );
     const markerCount = await page.evaluate(() => {
       const c = document.getElementById("siteping-markers");
       return c?.querySelectorAll("[data-feedback-id]").length ?? 0;
@@ -286,10 +320,13 @@ test.describe("Annotation toggle", () => {
 
     // Toggle off
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="toggle-annotations"]');
     await s.click('[data-item-id="toggle-annotations"]');
-    await page.waitForTimeout(200);
 
+    await page.waitForFunction(() => {
+      const c = document.getElementById("siteping-markers");
+      return c?.style.display === "none";
+    });
     const hidden = await page.evaluate(() => {
       const c = document.getElementById("siteping-markers");
       return c?.style.display === "none";
@@ -298,10 +335,13 @@ test.describe("Annotation toggle", () => {
 
     // Toggle on
     await s.click(".sp-fab");
-    await page.waitForTimeout(200);
+    await s.waitFor('[data-item-id="toggle-annotations"]');
     await s.click('[data-item-id="toggle-annotations"]');
-    await page.waitForTimeout(200);
 
+    await page.waitForFunction(() => {
+      const c = document.getElementById("siteping-markers");
+      return c?.style.display !== "none";
+    });
     const visible = await page.evaluate(() => {
       const c = document.getElementById("siteping-markers");
       return c?.style.display !== "none";
@@ -317,8 +357,8 @@ test.describe("Cleanup", () => {
     await page.evaluate(() => {
       (window as unknown as { __siteping: { destroy: () => void } }).__siteping.destroy();
     });
-    await page.waitForTimeout(300);
 
+    await page.waitForFunction(() => !document.querySelector("siteping-widget"));
     const widgetGone = await page.evaluate(() => !document.querySelector("siteping-widget"));
     const markersGone = await page.evaluate(() => !document.getElementById("siteping-markers"));
     expect(widgetGone).toBe(true);

@@ -87,6 +87,7 @@ describe("createSitepingHandler", () => {
     });
 
     it("returns 500 on unexpected DB error", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       prisma.sitepingFeedback.create.mockRejectedValue(new Error("DB down"));
       const req = new Request("http://localhost/api/siteping", {
         method: "POST",
@@ -94,6 +95,7 @@ describe("createSitepingHandler", () => {
       });
       const res = await handler.POST(req);
       expect(res.status).toBe(500);
+      consoleSpy.mockRestore();
     });
 
     it("maps annotation anchor fields to Prisma create", async () => {
@@ -257,6 +259,7 @@ describe("createSitepingHandler", () => {
     });
 
     it("returns 500 on unexpected DB error", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       prisma.sitepingFeedback.delete.mockRejectedValue(new Error("DB down"));
       const req = new Request("http://localhost/api/siteping", {
         method: "DELETE",
@@ -264,6 +267,7 @@ describe("createSitepingHandler", () => {
       });
       const res = await handler.DELETE(req);
       expect(res.status).toBe(500);
+      consoleSpy.mockRestore();
     });
   });
 });
