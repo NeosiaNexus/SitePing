@@ -44,7 +44,7 @@
     "directory": "packages/widget"
   },
   "dependencies": {
-    "@medv/finder": "^3.2.0"
+    "@medv/finder": "^4.0.2"
   },
   "devDependencies": {
     "@siteping/core": "workspace:*"

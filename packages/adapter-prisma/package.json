@@ -42,7 +42,7 @@
     "directory": "packages/adapter-prisma"
   },
   "dependencies": {
-    "zod": "^3.24.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@siteping/core": "workspace:*"
