@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.4](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.3...widget-v0.9.4) (2026-04-04)
+
+
+### Bug Fixes
+
+* **widget:** prevent spam-click race condition on resolve/delete buttons ([9958150](https://github.com/NeosiaNexus/SitePing/commit/9958150f0be87df3a95f0d5816e68921827ab9c7))
+
 ## [0.9.3](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.2...widget-v0.9.3) (2026-04-04)
 
 
