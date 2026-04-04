@@ -121,9 +121,11 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // Shadow DOM mode is determined by environment, never by public config.
   let isTestEnv = false;
   try {
-    // Check for Node test environments — avoid import.meta
-    // which causes "Critical dependency" warnings in Next.js webpack builds
-    if (typeof process !== "undefined" && process.env?.NODE_ENV === "test") {
+    // Dynamic key prevents bundlers (tsup/esbuild) from statically replacing
+    // process.env.NODE_ENV at build time — the widget needs runtime detection
+    // so E2E tests can set globalThis.process = { env: { NODE_ENV: 'test' } }
+    const envKey = "NODE_" + "ENV";
+    if (typeof process !== "undefined" && process.env?.[envKey] === "test") {
       isTestEnv = true;
     }
   } catch {
