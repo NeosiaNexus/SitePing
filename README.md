@@ -56,6 +56,7 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **CLI scaffold** — `npx @siteping/cli init` sets up Prisma schema + API route
 - **Monorepo** — Split into independent packages (`widget`, `adapter-prisma`, `cli`)
 - **Dev-only by default** — Widget auto-hides in production unless `forceShow: true`
+- **Lightweight** — ~23KB gzipped
 
 ---
 
@@ -142,7 +143,7 @@ initSiteping({
   position: 'bottom-right',       // 'bottom-right' | 'bottom-left'
   accentColor: '#0066ff',         // Widget accent color
   theme: 'light',                 // 'light' | 'dark' | 'auto'
-  locale: 'fr',                   // 'fr' | 'en' (default: 'fr')
+  locale: 'en',                   // 'en' | 'fr' (default: 'en')
   forceShow: false,               // Show in production? Default: false
   debug: false,                   // Enable debug logging
 
@@ -192,8 +193,10 @@ The adapter handles all API logic — validation, persistence, error handling.
 import { createSitepingHandler } from '@siteping/adapter-prisma'
 import { prisma } from '@/lib/prisma'
 
-export const { GET, POST, PATCH, DELETE } = createSitepingHandler({ prisma })
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ prisma })
 ```
+
+> **Note:** The handler does not include rate limiting. Consider adding rate limiting middleware in production.
 
 #### Endpoints
 
@@ -234,6 +237,7 @@ model SitepingFeedback {
   clientId    String   @unique
   resolvedAt  DateTime?
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   annotations SitepingAnnotation[]
 }
 
@@ -319,6 +323,15 @@ Each package is independently published and tree-shakeable. The widget bundle ne
 
 ---
 
+## Data & Privacy
+
+- **What the widget collects:** author name, email, feedback message, page URL, viewport dimensions, user agent, and DOM anchoring data (CSS selector, XPath, text snippet, element coordinates).
+- **No screenshots or full DOM snapshots** are captured — only the minimal data needed to re-anchor annotations.
+- **Self-hosted** — all data is stored in your own database. Nothing is sent to third-party servers.
+- **Sensitive URL parameters are automatically stripped** before submission to prevent accidental data leakage.
+
+---
+
 ## TypeScript
 
 Full type definitions are included. Key exported types:
@@ -396,6 +409,23 @@ The widget renders inside a **closed Shadow DOM**, so host page styles cannot le
 
 ---
 
+## Upgrading
+
+### Upgrading to v1.0.0
+
+After updating the packages, run:
+
+```bash
+npx siteping sync
+npx prisma db push
+```
+
+This adds the `updatedAt` column to your feedback table. Existing rows will get the current timestamp. The `@updatedAt` attribute means Prisma automatically sets this field on every update -- no application code changes needed.
+
+This migration is safe for all supported databases (PostgreSQL, MySQL, SQLite): Prisma adds the column with a `DEFAULT CURRENT_TIMESTAMP`, so existing rows are backfilled automatically.
+
+---
+
 ## Roadmap
 
 - [ ] Drizzle adapter
@@ -410,7 +440,7 @@ The widget renders inside a **closed Shadow DOM**, so host page styles cannot le
 
 ## Contributing
 
-Contributions are welcome. Please open an issue first to discuss what you'd like to change.
+Contributions are welcome! Please read the [contributing guide](./CONTRIBUTING.md) first, and open an issue to discuss what you'd like to change.
 
 ```bash
 git clone https://github.com/NeosiaNexus/SitePing.git

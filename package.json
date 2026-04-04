@@ -1,7 +1,8 @@
 {
   "name": "siteping",
   "private": true,
-  "description": "Monorepo for @siteping/* packages",
+  "description": "Client feedback widget — self-hosted, DOM-anchored annotations for websites",
+  "homepage": "https://siteping.dev",
   "type": "module",
   "author": "neosianexus",
   "license": "MIT",

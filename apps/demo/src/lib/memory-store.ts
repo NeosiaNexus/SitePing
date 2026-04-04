@@ -72,6 +72,7 @@ function createStore(): SitepingStore {
         clientId: data.clientId,
         resolvedAt: null,
         createdAt: now,
+        updatedAt: now,
         annotations,
       };
 
@@ -106,6 +107,10 @@ function createStore(): SitepingStore {
       const idx = feedbacks.findIndex((f) => f.id === id);
       if (idx === -1) throw Object.assign(new Error("Not found"), { code: "P2025" });
       feedbacks.splice(idx, 1);
+    },
+
+    async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
+      return feedbacks.find((f) => f.clientId === clientId) ?? null;
     },
 
     async deleteAllFeedbacks(projectName: string): Promise<void> {

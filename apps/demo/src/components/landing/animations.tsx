@@ -60,6 +60,8 @@ export function LandingAnimations() {
     // Feature cards — large cards: fade up with scale
     const featureCardsLarge = gsap.utils.toArray<Element>('[data-gsap="feature-card-large"]');
     if (featureCardsLarge.length > 0) {
+      const triggerEl = featureCardsLarge[0];
+      if (!triggerEl) return;
       gsap.set(featureCardsLarge, { opacity: 0, y: 30, scale: 0.97 });
       gsap.to(featureCardsLarge, {
         opacity: 1,
@@ -69,7 +71,7 @@ export function LandingAnimations() {
         stagger: 0.15,
         ease: "power2.out",
         scrollTrigger: {
-          trigger: featureCardsLarge[0],
+          trigger: triggerEl,
           start: "top 85%",
           once: true,
         },
@@ -79,6 +81,8 @@ export function LandingAnimations() {
     // Feature cards — small cards: staggered fade up
     const featureCards = gsap.utils.toArray<Element>('[data-gsap="feature-card"]');
     if (featureCards.length > 0) {
+      const triggerEl = featureCards[0];
+      if (!triggerEl) return;
       gsap.set(featureCards, { opacity: 0, y: 30 });
       gsap.to(featureCards, {
         opacity: 1,
@@ -87,7 +91,7 @@ export function LandingAnimations() {
         stagger: 0.1,
         ease: "power2.out",
         scrollTrigger: {
-          trigger: featureCards[0],
+          trigger: triggerEl,
           start: "top 85%",
           once: true,
         },
@@ -97,6 +101,8 @@ export function LandingAnimations() {
     // Steps — sequential reveal
     const steps = gsap.utils.toArray<Element>('[data-gsap="step"]');
     if (steps.length > 0) {
+      const triggerEl = steps[0];
+      if (!triggerEl) return;
       gsap.set(steps, { opacity: 0, y: 30 });
       gsap.to(steps, {
         opacity: 1,
@@ -104,7 +110,7 @@ export function LandingAnimations() {
         duration: 0.7,
         stagger: 0.2,
         ease: "power2.out",
-        scrollTrigger: { trigger: steps[0], start: "top 85%", once: true },
+        scrollTrigger: { trigger: triggerEl, start: "top 85%", once: true },
       });
     }
 
@@ -124,6 +130,8 @@ export function LandingAnimations() {
     // FAQ items — staggered fade-up
     const faqItems = gsap.utils.toArray<Element>('[data-gsap="faq-item"]');
     if (faqItems.length > 0) {
+      const triggerEl = faqItems[0];
+      if (!triggerEl) return;
       gsap.set(faqItems, { opacity: 0, y: 30 });
       gsap.to(faqItems, {
         opacity: 1,
@@ -132,7 +140,7 @@ export function LandingAnimations() {
         stagger: 0.1,
         ease: "power2.out",
         scrollTrigger: {
-          trigger: faqItems[0],
+          trigger: triggerEl,
           start: "top 85%",
           once: true,
         },

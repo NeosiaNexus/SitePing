@@ -4,8 +4,8 @@ Thanks for your interest in contributing! This guide covers everything you need 
 
 ## Prerequisites
 
-- [Bun](https://bun.sh/) (latest)
-- Node.js 18+
+- [Bun](https://bun.sh/) (latest) — used as the package manager (workspaces, scripts, lockfile)
+- Node.js >= 18 — required for development and post-build scripts (cross-platform compatible)
 - A Chromium-based browser (for Playwright E2E tests)
 
 ## Setup
@@ -45,6 +45,8 @@ Monorepo with bun workspaces + Turborepo. All packages live in `packages/`:
 - **Core** is an Internal Package — it exports raw TypeScript (no build step). Consumers bundle it via `noExternal: ["@siteping/core"]` in their tsup config.
 - **Turborepo** handles build orchestration, dependency ordering, and local caching.
 - Each published package is built independently with tsup.
+
+> **`noEmit` in tsconfig:** `tsconfig.base.json` sets `noEmit: true` (type-check only — tsup handles emit for published packages). Core overrides this with `noEmit: false` because it uses `tsc` directly to emit `.d.ts` files. If you add a package that emits via `tsc` instead of tsup, you must also override `noEmit: false` in its `tsconfig.json`.
 
 ## Adding a New Package
 
