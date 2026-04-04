@@ -1,68 +1,83 @@
 import * as p from "@clack/prompts";
 
 export async function doctorCommand(options: { url?: string; endpoint?: string }): Promise<void> {
-  p.intro("siteping — Diagnostic réseau");
+  p.intro("siteping — Network diagnostics");
 
   const url =
     options.url ??
     (await p.text({
-      message: "URL du serveur de développement",
+      message: "Development server URL",
       placeholder: "http://localhost:3000",
       defaultValue: "http://localhost:3000",
     }));
 
   if (p.isCancel(url)) {
-    p.cancel("Annulé.");
+    p.cancel("Cancelled.");
     process.exit(0);
+  }
+
+  if (!/^https?:\/\//.test(url)) {
+    p.log.error("URL must start with http:// or https://");
+    process.exit(1);
   }
 
   const endpoint =
     options.endpoint ??
     (await p.text({
-      message: "Chemin de l'endpoint API",
+      message: "API endpoint path",
       placeholder: "/api/siteping",
       defaultValue: "/api/siteping",
     }));
 
   if (p.isCancel(endpoint)) {
-    p.cancel("Annulé.");
+    p.cancel("Cancelled.");
     process.exit(0);
   }
 
-  const fullUrl = `${url}${endpoint}?projectName=__siteping_health_check__`;
+  const projectName = "__siteping_health_check__";
+  const fullUrl = new URL(`${endpoint}?projectName=${encodeURIComponent(projectName)}`, url).toString();
 
   const spinner = p.spinner();
-  spinner.start(`Test de connexion à ${url}${endpoint}`);
+  spinner.start(`Testing connection to ${url}${endpoint}`);
 
   try {
     const start = performance.now();
-    const response = await fetch(fullUrl);
+    const response = await fetch(fullUrl, { signal: AbortSignal.timeout(10_000) });
     const elapsed = Math.round(performance.now() - start);
 
     if (response.ok) {
-      const data = await response.json();
-      spinner.stop(`Connexion réussie (${elapsed}ms)`);
+      let data: Record<string, unknown> | null;
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+      spinner.stop(`Connection successful (${elapsed}ms)`);
 
       if (data && typeof data.total === "number") {
-        p.log.success(`API fonctionnelle — ${data.total} feedback(s) trouvé(s)`);
+        p.log.success(`API is working — ${data.total} feedback(s) found`);
       } else {
-        p.log.warn("Réponse inattendue — vérifiez que l'endpoint utilise createSitepingHandler()");
+        p.log.warn("Unexpected response — make sure the endpoint uses createSitepingHandler()");
       }
     } else {
-      spinner.stop(`Erreur HTTP ${response.status} (${elapsed}ms)`);
+      spinner.stop(`HTTP error ${response.status} (${elapsed}ms)`);
       const text = await response.text().catch(() => "");
-      p.log.error(`Le serveur a répondu : ${response.status} ${response.statusText}`);
+      p.log.error(`Server responded with: ${response.status} ${response.statusText}`);
       if (text) p.log.info(text.slice(0, 200));
+      process.exit(1);
     }
   } catch (error) {
-    spinner.stop("Connexion échouée");
-    if (error instanceof TypeError && String(error).includes("fetch")) {
-      p.log.error("Impossible de se connecter — le serveur est-il lancé ?");
-      p.log.info(`Vérifiez que ${url} est accessible`);
+    spinner.stop("Connection failed");
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      p.log.error("Request timed out after 10 seconds");
+    } else if (error instanceof TypeError && String(error).includes("fetch")) {
+      p.log.error("Unable to connect — is the server running?");
+      p.log.info(`Check that ${url} is reachable`);
     } else {
-      p.log.error(`Erreur : ${error instanceof Error ? error.message : String(error)}`);
+      p.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     }
+    process.exit(1);
   }
 
-  p.outro("Diagnostic terminé");
+  p.outro("Diagnostics complete");
 }

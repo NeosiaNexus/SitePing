@@ -4,7 +4,7 @@ import { generateRoute } from "../generators/route.js";
 import { findPrismaSchema } from "../utils/find-schema.js";
 
 export async function initCommand(): Promise<void> {
-  p.intro("siteping — Configuration");
+  p.intro("siteping — Setup");
 
   const cwd = process.cwd();
 
@@ -12,14 +12,14 @@ export async function initCommand(): Promise<void> {
   const schemaPath = findPrismaSchema(cwd);
 
   if (schemaPath) {
-    p.log.info(`Schema Prisma trouvé : ${schemaPath}`);
+    p.log.info(`Prisma schema found: ${schemaPath}`);
 
     const shouldSync = await p.confirm({
-      message: "Synchroniser les modèles Siteping dans le schema Prisma ?",
+      message: "Sync Siteping models to your Prisma schema?",
     });
 
     if (p.isCancel(shouldSync)) {
-      p.cancel("Annulé.");
+      p.cancel("Cancelled.");
       process.exit(0);
     }
 
@@ -28,36 +28,38 @@ export async function initCommand(): Promise<void> {
         const { addedModels, changes } = syncPrismaModels(schemaPath);
 
         if (addedModels.length > 0) {
-          p.log.success(`Modèles créés : ${addedModels.join(", ")}`);
+          p.log.success(`Models synced: ${addedModels.join(", ")}`);
         }
 
         for (const change of changes) {
           if (change.action === "added") {
-            p.log.success(`${change.model}.${change.field} — ajouté (${change.detail})`);
+            p.log.success(`${change.model}.${change.field} — added (${change.detail})`);
           } else {
-            p.log.success(`${change.model}.${change.field} — mis à jour (${change.detail})`);
+            p.log.success(`${change.model}.${change.field} — updated (${change.detail})`);
           }
         }
 
         if (addedModels.length === 0 && changes.length === 0) {
-          p.log.info("Le schema est déjà à jour.");
+          p.log.info("Schema is already up to date.");
         }
       } catch (error) {
-        p.log.error(`Erreur : ${error instanceof Error ? error.message : String(error)}`);
+        p.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        p.outro("Fix the errors above and re-run `siteping init`.");
+        process.exit(1);
       }
     }
   } else {
-    p.log.warn("Aucun fichier schema.prisma trouvé. Vous devrez ajouter les modèles manuellement.");
-    p.log.info("Consultez la documentation : https://github.com/NeosiaNexus/SitePing#prisma-schema-1");
+    p.log.warn("No schema.prisma file found. You will need to add the models manually.");
+    p.log.info("See the documentation: https://github.com/NeosiaNexus/SitePing#prisma-schema-1");
   }
 
   // Step 2: API route
   const shouldRoute = await p.confirm({
-    message: "Générer la route API Next.js App Router ?",
+    message: "Generate the Next.js App Router API route?",
   });
 
   if (p.isCancel(shouldRoute)) {
-    p.cancel("Annulé.");
+    p.cancel("Cancelled.");
     process.exit(0);
   }
 
@@ -65,30 +67,32 @@ export async function initCommand(): Promise<void> {
     try {
       const { created, path } = generateRoute(cwd);
       if (created) {
-        p.log.success(`Route créée : ${path}`);
+        p.log.success(`Route created: ${path}`);
       } else {
-        p.log.info(`La route existe déjà : ${path}`);
+        p.log.info(`Route already exists: ${path}`);
       }
     } catch (error) {
-      p.log.error(`Erreur : ${error instanceof Error ? error.message : String(error)}`);
+      p.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      p.outro("Fix the errors above and re-run `siteping init`.");
+      process.exit(1);
     }
   }
 
   // Step 3: Next steps
   p.note(
     [
-      "1. Exécutez : npx prisma db push",
-      "2. Ajoutez le widget dans votre layout :",
+      "1. Run: npx prisma db push",
+      "2. Add the widget to your layout:",
       "",
       '   import { initSiteping } from "@siteping/widget"',
       "",
       "   initSiteping({",
       '     endpoint: "/api/siteping",',
-      '     projectName: "mon-projet",',
+      '     projectName: "my-project",',
       "   })",
     ].join("\n"),
-    "Prochaines étapes",
+    "Next steps",
   );
 
-  p.outro("Configuration terminée !");
+  p.outro("Setup complete!");
 }

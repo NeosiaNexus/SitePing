@@ -4,32 +4,36 @@ import { initCommand } from "./commands/init.js";
 import { statusCommand } from "./commands/status.js";
 import { syncCommand } from "./commands/sync.js";
 
-const program = new Command().name("siteping").description("CLI pour configurer @siteping/*").version("0.4.2"); // x-release-please-version
+const program = new Command()
+  .name("siteping")
+  .description("CLI to configure @siteping/* in your project")
+  .version("0.4.2"); // x-release-please-version
 
 program
   .command("init")
-  .description("Configure le schema Prisma et la route API dans votre projet")
+  .description("Set up the Prisma schema and API route in your project")
   .action(initCommand)
   .addHelpText("after", "\n  Examples:\n    $ siteping init");
 
 program
   .command("sync")
-  .description("Synchronise le schema Prisma (non-interactif, CI-friendly)")
-  .option("--schema <path>", "Chemin vers le fichier schema.prisma")
+  .description("Sync the Prisma schema (non-interactive, CI-friendly)")
+  .option("--schema <path>", "Path to the schema.prisma file")
   .action(syncCommand)
   .addHelpText("after", "\n  Examples:\n    $ siteping sync\n    $ siteping sync --schema prisma/schema.prisma");
 
 program
   .command("status")
-  .description("Diagnostic complet de l'intégration Siteping")
-  .option("--schema <path>", "Chemin vers le fichier schema.prisma")
-  .action(statusCommand);
+  .description("Full diagnostic of the Siteping integration")
+  .option("--schema <path>", "Path to the schema.prisma file")
+  .action(statusCommand)
+  .addHelpText("after", "\n  Examples:\n    $ siteping status\n    $ siteping status --schema prisma/schema.prisma");
 
 program
   .command("doctor")
-  .description("Test de connexion à l'API Siteping")
-  .option("--url <url>", "URL du serveur (défaut: http://localhost:3000)")
-  .option("--endpoint <path>", "Chemin de l'endpoint (défaut: /api/siteping)")
+  .description("Test the connection to the Siteping API")
+  .option("--url <url>", "Server URL (default: http://localhost:3000)")
+  .option("--endpoint <path>", "Endpoint path (default: /api/siteping)")
   .action(doctorCommand)
   .addHelpText(
     "after",

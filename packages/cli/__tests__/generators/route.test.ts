@@ -54,7 +54,9 @@ describe("generateRoute", () => {
   // -------------------------------------------------------------------------
 
   it("throws when no app/ directory exists", () => {
-    expect(() => generateRoute(tmpDir)).toThrow("Impossible de trouver le dossier app/");
+    expect(() => generateRoute(tmpDir)).toThrow(
+      "Cannot find the app/ directory. Are you in a Next.js App Router project?",
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -84,6 +86,9 @@ describe("generateRoute", () => {
 
     expect(content).toContain('import { createSitepingHandler } from "@siteping/adapter-prisma"');
     expect(content).toContain('import { prisma } from "@/lib/prisma"');
-    expect(content).toContain("export const { GET, POST, PATCH, DELETE } = createSitepingHandler({ prisma })");
+    expect(content).toContain("export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({");
+    expect(content).toContain("prisma,");
+    expect(content).toContain("// apiKey: process.env.SITEPING_API_KEY,");
+    expect(content).toContain('// allowedOrigins: ["https://your-site.com"],');
   });
 });

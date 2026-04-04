@@ -29,7 +29,7 @@ export interface SyncResult {
  */
 export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): SyncResult {
   if (!existsSync(schemaPath)) {
-    throw new Error(`Fichier schema introuvable : ${schemaPath}`);
+    throw new Error(`Schema file not found: ${schemaPath}`);
   }
 
   const source = readFileSync(schemaPath, "utf-8");
@@ -132,7 +132,15 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
 
   if (addedModels.length > 0 || changes.length > 0) {
     const output = printSchema(schema);
-    writeFileSync(schemaPath, output, "utf-8");
+    try {
+      writeFileSync(schemaPath, output, "utf-8");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EACCES" || code === "EPERM") {
+        throw new Error(`Permission denied: cannot write to ${schemaPath}. Check file permissions.`);
+      }
+      throw error;
+    }
   }
 
   return { schemaPath, addedModels, changes };
@@ -144,11 +152,12 @@ function fieldsMatch(existing: Field, expected: Field): boolean {
   if ((existing.optional ?? false) !== (expected.optional ?? false)) return false;
   if ((existing.array ?? false) !== (expected.array ?? false)) return false;
 
-  const existingAttrs = (existing.attributes ?? []).map((a) => a.name).sort();
-  const expectedAttrs = (expected.attributes ?? []).map((a) => a.name).sort();
+  const attrKey = (a: { group?: string; name: string }) => (a.group ? `${a.group}.${a.name}` : a.name);
+  const existingAttrs = (existing.attributes ?? []).map(attrKey).sort();
+  const expectedAttrs = (expected.attributes ?? []).map(attrKey).sort();
 
   if (existingAttrs.length !== expectedAttrs.length) return false;
-  return existingAttrs.every((name, i) => name === expectedAttrs[i]);
+  return existingAttrs.every((key, i) => key === expectedAttrs[i]);
 }
 
 /** Human-readable description of what changed. */
@@ -159,11 +168,12 @@ function describeChange(existing: Field, expected: Field): string {
     parts.push(`${existing.fieldType} → ${expected.fieldType}`);
   }
   if ((existing.optional ?? false) !== (expected.optional ?? false)) {
-    parts.push(expected.optional ? "requis \u2192 optionnel" : "optionnel \u2192 requis");
+    parts.push(expected.optional ? "required \u2192 optional" : "optional \u2192 required");
   }
 
-  const existingAttrs = new Set((existing.attributes ?? []).map((a) => a.name));
-  const expectedAttrs = new Set((expected.attributes ?? []).map((a) => a.name));
+  const attrKey = (a: { group?: string; name: string }) => (a.group ? `${a.group}.${a.name}` : a.name);
+  const existingAttrs = new Set((existing.attributes ?? []).map(attrKey));
+  const expectedAttrs = new Set((expected.attributes ?? []).map(attrKey));
   for (const attr of expectedAttrs) {
     if (!existingAttrs.has(attr)) parts.push(`+@${attr}`);
   }
@@ -171,7 +181,7 @@ function describeChange(existing: Field, expected: Field): string {
     if (!expectedAttrs.has(attr)) parts.push(`-@${attr}`);
   }
 
-  return parts.join(", ") || "attributs modifi\u00e9s";
+  return parts.join(", ") || "attributes changed";
 }
 
 /** Format a field definition for display. */
@@ -219,6 +229,14 @@ function buildField(name: string, def: FieldDef): Field {
         } as AttributeArgument,
       ],
     });
+  }
+
+  if (def.nativeType) {
+    field.attributes!.push({ type: "attribute", name: def.nativeType, kind: "field", group: "db" });
+  }
+
+  if (def.isUpdatedAt) {
+    field.attributes!.push({ type: "attribute", name: "updatedAt", kind: "field" });
   }
 
   if (def.isUnique) {

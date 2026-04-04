@@ -8,13 +8,13 @@ export function syncCommand(options: { schema?: string }): void {
   const schemaPath = options.schema ?? findPrismaSchema(cwd);
 
   if (!schemaPath) {
-    p.log.error("Aucun fichier schema.prisma trouvé.");
-    p.log.info("Spécifiez le chemin avec --schema <path>");
+    p.log.error("No schema.prisma file found.");
+    p.log.info("Specify the path with --schema <path>");
     process.exit(1);
   }
 
   if (!existsSync(schemaPath)) {
-    p.log.error(`Fichier introuvable : ${schemaPath}`);
+    p.log.error(`File not found: ${schemaPath}`);
     process.exit(1);
   }
 
@@ -22,24 +22,24 @@ export function syncCommand(options: { schema?: string }): void {
     const { addedModels, changes } = syncPrismaModels(schemaPath);
 
     if (addedModels.length === 0 && changes.length === 0) {
-      p.log.info("✓ Le schema est déjà à jour.");
+      p.log.info("Schema is already up to date.");
       return;
     }
 
     if (addedModels.length > 0) {
-      p.log.success(`Modèles créés : ${addedModels.join(", ")}`);
+      p.log.success(`Models synced: ${addedModels.join(", ")}`);
     }
 
     for (const change of changes) {
       const icon = change.action === "added" ? "+" : "~";
       p.log.success(
-        `${icon} ${change.model}.${change.field} — ${change.action === "added" ? "ajouté" : "mis à jour"} (${change.detail})`,
+        `${icon} ${change.model}.${change.field} — ${change.action === "added" ? "added" : "updated"} (${change.detail})`,
       );
     }
 
-    p.log.info("N'oubliez pas : npx prisma db push");
+    p.log.info("Don't forget to run: npx prisma db push");
   } catch (error) {
-    p.log.error(`Erreur : ${error instanceof Error ? error.message : String(error)}`);
+    p.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
 }

@@ -149,32 +149,30 @@ function pad(label: string, width: number): string {
 export function statusCommand(options: { schema?: string }): void {
   const cwd = process.cwd();
 
-  p.intro("siteping — Diagnostic");
+  p.intro("siteping — Status");
 
   // 1. Prisma schema
   const schemaPath = options.schema ?? findPrismaSchema(cwd);
   const schemaResult = checkSchema(schemaPath);
 
   if (!schemaResult.found) {
-    p.log.error(`${pad("Prisma schema", 25)}✗ Non trouvé`);
+    p.log.error(`${pad("Prisma schema", 25)}Not found`);
   } else {
     const issues = [
-      ...schemaResult.missingModels.map((m) => `modèle ${m}`),
+      ...schemaResult.missingModels.map((m) => `model ${m}`),
       ...schemaResult.missingFields,
       ...schemaResult.outdatedFields,
     ];
 
     if (issues.length === 0) {
-      p.log.success(`${pad("Prisma schema", 25)}✓ À jour`);
+      p.log.success(`${pad("Prisma schema", 25)}Up to date`);
     } else {
       const missingCount = schemaResult.missingModels.length + schemaResult.missingFields.length;
       const outdatedCount = schemaResult.outdatedFields.length;
       const parts: string[] = [];
-      if (missingCount > 0)
-        parts.push(`${missingCount} champ${missingCount > 1 ? "s" : ""} manquant${missingCount > 1 ? "s" : ""}`);
-      if (outdatedCount > 0)
-        parts.push(`${outdatedCount} champ${outdatedCount > 1 ? "s" : ""} obsolète${outdatedCount > 1 ? "s" : ""}`);
-      p.log.warn(`${pad("Prisma schema", 25)}⚠ ${parts.join(", ")} (${issues.join(", ")})`);
+      if (missingCount > 0) parts.push(`${missingCount} missing field${missingCount > 1 ? "s" : ""}`);
+      if (outdatedCount > 0) parts.push(`${outdatedCount} outdated field${outdatedCount > 1 ? "s" : ""}`);
+      p.log.warn(`${pad("Prisma schema", 25)}${parts.join(", ")} (${issues.join(", ")})`);
     }
   }
 
@@ -182,9 +180,9 @@ export function statusCommand(options: { schema?: string }): void {
   const routePath = findApiRoute(cwd);
 
   if (routePath) {
-    p.log.success(`${pad("Route API", 25)}✓ ${relative(cwd, routePath)}`);
+    p.log.success(`${pad("API route", 25)}${relative(cwd, routePath)}`);
   } else {
-    p.log.error(`${pad("Route API", 25)}✗ Non trouvée`);
+    p.log.error(`${pad("API route", 25)}Not found`);
   }
 
   // 3. Package in dependencies
@@ -196,21 +194,21 @@ export function statusCommand(options: { schema?: string }): void {
     const version = deps["@siteping/widget"] ?? devDeps["@siteping/widget"];
 
     if (version) {
-      p.log.success(`${pad("Package", 25)}✓ @siteping/widget@${version}`);
+      p.log.success(`${pad("Package", 25)}@siteping/widget@${version}`);
     } else {
-      p.log.error(`${pad("Package", 25)}✗ @siteping/widget non trouvé dans package.json`);
+      p.log.error(`${pad("Package", 25)}@siteping/widget not found in package.json`);
     }
   } else {
-    p.log.error(`${pad("Package", 25)}✗ package.json non trouvé`);
+    p.log.error(`${pad("Package", 25)}package.json not found`);
   }
 
   // 4. Widget integration
   const widgetFile = findWidgetUsage(cwd);
 
   if (widgetFile) {
-    p.log.success(`${pad("Widget intégré", 25)}✓ trouvé dans ${relative(cwd, widgetFile)}`);
+    p.log.success(`${pad("Widget integration", 25)}found in ${relative(cwd, widgetFile)}`);
   } else {
-    p.log.warn(`${pad("Widget intégré", 25)}⚠ initSiteping non trouvé dans les sources`);
+    p.log.warn(`${pad("Widget integration", 25)}initSiteping not found in source files`);
   }
 
   // Outro
@@ -230,10 +228,11 @@ export function statusCommand(options: { schema?: string }): void {
     !widgetFile;
 
   if (hasError) {
-    p.outro("Des éléments sont manquants — lancez `siteping init` pour configurer.");
+    p.outro("Some items are missing — run `siteping init` to set up.");
+    process.exit(1);
   } else if (hasWarning) {
-    p.outro("Quelques ajustements nécessaires — lancez `siteping sync` pour mettre à jour.");
+    p.outro("Some adjustments needed — run `siteping sync` to update.");
   } else {
-    p.outro("Tout est configuré !");
+    p.outro("Everything is set up!");
   }
 }

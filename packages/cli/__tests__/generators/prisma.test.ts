@@ -79,7 +79,7 @@ describe("syncPrismaModels", () => {
   // -----------------------------------------------------------------------
 
   it("throws when schema file does not exist", () => {
-    expect(() => syncPrismaModels(join(tmpDir, "nonexistent.prisma"))).toThrow("Fichier schema introuvable");
+    expect(() => syncPrismaModels(join(tmpDir, "nonexistent.prisma"))).toThrow("Schema file not found");
   });
 
   // -----------------------------------------------------------------------
@@ -226,6 +226,48 @@ describe("syncPrismaModels", () => {
     expect(output).toMatch(/resolvedAt\s+DateTime\?/);
     // createdAt with @default(now())
     expect(output).toMatch(/createdAt\s+DateTime\s+@default\(now\(\)\)/);
+  });
+
+  // -----------------------------------------------------------------------
+  // Native type attributes (@db.Text)
+  // -----------------------------------------------------------------------
+
+  it("adds @db.Text to fields with nativeType: 'Text' on fresh schema", () => {
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+
+    syncPrismaModels(schemaPath);
+
+    const output = readFileSync(schemaPath, "utf-8");
+
+    // SitepingFeedback.message should have @db.Text
+    expect(output).toMatch(/message\s+String\s+@db\.Text/);
+    // SitepingAnnotation fields with nativeType: "Text"
+    expect(output).toMatch(/cssSelector\s+String\s+@db\.Text/);
+    expect(output).toMatch(/xpath\s+String\s+@db\.Text/);
+    expect(output).toMatch(/textSnippet\s+String\s+@db\.Text/);
+    expect(output).toMatch(/textPrefix\s+String\s+@db\.Text/);
+    expect(output).toMatch(/textSuffix\s+String\s+@db\.Text/);
+    expect(output).toMatch(/neighborText\s+String\s+@db\.Text/);
+    // Fields without nativeType should NOT have @db.Text
+    expect(output).not.toMatch(/projectName\s+String\s+@db\.Text/);
+    expect(output).not.toMatch(/elementTag\s+String\s+@db\.Text/);
+  });
+
+  it("adds @db.Text when updating an existing field missing the attribute", () => {
+    writeFileSync(schemaPath, SCHEMA_WITH_PARTIAL_MODEL);
+
+    const result = syncPrismaModels(schemaPath);
+
+    const output = readFileSync(schemaPath, "utf-8");
+
+    // message existed but without @db.Text — should be updated
+    const messageChange = result.changes.find((c) => c.model === "SitepingFeedback" && c.field === "message");
+    expect(messageChange).toBeDefined();
+    expect(messageChange!.action).toBe("updated");
+    expect(messageChange!.detail).toContain("+@db.Text");
+
+    // After sync, the field should have @db.Text
+    expect(output).toMatch(/message\s+String\s+@db\.Text/);
   });
 
   it("generates correct relation fields", () => {
