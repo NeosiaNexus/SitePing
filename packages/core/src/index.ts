@@ -21,4 +21,12 @@ export type {
   SitepingPublicEvents,
   SitepingStore,
 } from "./types.js";
-export { FEEDBACK_STATUSES, FEEDBACK_TYPES } from "./types.js";
+export {
+  FEEDBACK_STATUSES,
+  FEEDBACK_TYPES,
+  flattenAnnotation,
+  isStoreDuplicate,
+  isStoreNotFound,
+  StoreDuplicateError,
+  StoreNotFoundError,
+} from "./types.js";

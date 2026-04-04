@@ -10,6 +10,9 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./testing": {
+      "default": "./src/testing.ts"
     }
   },
   "author": "neosianexus",
