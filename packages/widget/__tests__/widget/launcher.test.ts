@@ -35,10 +35,24 @@ vi.mock("../../src/api-client.js", () => ({
 }));
 
 // Mock heavy dependencies to keep tests fast and focused on launcher logic
-vi.mock("../../src/annotator.js", () => ({
-  Annotator: vi.fn().mockImplementation(() => ({
-    destroy: vi.fn(),
-  })),
+// Capture the EventBus so we can emit events for callback wiring tests.
+// Use a container object to work around vi.mock hoisting
+const annotatorCapture: { bus: { emit: (event: string, ...args: unknown[]) => void } | null } = { bus: null };
+
+vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
+  Annotator: vi.fn().mockImplementation(
+    (
+      _colors: unknown,
+      bus: {
+        emit: (event: string, ...args: unknown[]) => void;
+        on: (event: string, listener: (...args: unknown[]) => void) => () => void;
+      },
+    ) => {
+      annotatorCapture.bus = bus;
+      bus.on("annotation:start", () => {});
+      return { destroy: vi.fn() };
+    },
+  ),
 }));
 
 vi.mock("../../src/markers.js", () => ({
@@ -90,6 +104,7 @@ describe("launch", () => {
     for (const el of document.querySelectorAll('[role="status"]')) {
       el.remove();
     }
+    annotatorCapture.bus = null;
   });
 
   // -------------------------------------------------------------------------
@@ -377,6 +392,89 @@ describe("launch", () => {
       const shadow = widget.shadowRoot!;
       const panel = shadow.querySelector<HTMLElement>('[role="complementary"]')!;
       expect(panel.getAttribute("aria-label")).toBe("Siteping feedback panel");
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Config validation guards
+  // -------------------------------------------------------------------------
+
+  describe("config validation guards", () => {
+    it("returns no-op when endpoint is missing", () => {
+      const instance = launch({ projectName: "test", forceShow: true } as SitepingConfig);
+
+      const widget = document.querySelector("siteping-widget");
+      expect(widget).toBeNull();
+      expect(instance.destroy).toBeTypeOf("function");
+      instance.destroy();
+    });
+
+    it("returns no-op when endpoint is empty string", () => {
+      const instance = launch(defaultConfig({ endpoint: "" }));
+
+      const widget = document.querySelector("siteping-widget");
+      expect(widget).toBeNull();
+      instance.destroy();
+    });
+
+    it("returns no-op when projectName is missing", () => {
+      const instance = launch({ endpoint: "/api", forceShow: true } as SitepingConfig);
+
+      const widget = document.querySelector("siteping-widget");
+      expect(widget).toBeNull();
+      instance.destroy();
+    });
+
+    it("returns no-op when projectName is empty string", () => {
+      const instance = launch(defaultConfig({ projectName: "" }));
+
+      const widget = document.querySelector("siteping-widget");
+      expect(widget).toBeNull();
+      instance.destroy();
+    });
+
+    it("returns no-op when endpoint is not a string (number)", () => {
+      const instance = launch(defaultConfig({ endpoint: 42 as unknown as string }));
+
+      const widget = document.querySelector("siteping-widget");
+      expect(widget).toBeNull();
+      instance.destroy();
+    });
+
+    it("returns no-op when projectName is not a string", () => {
+      const instance = launch(defaultConfig({ projectName: 123 as unknown as string }));
+
+      const widget = document.querySelector("siteping-widget");
+      expect(widget).toBeNull();
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Additional callback wiring
+  // -------------------------------------------------------------------------
+
+  describe("additional callback wiring", () => {
+    it("onAnnotationStart callback fires on annotation:start event", () => {
+      const onAnnotationStart = vi.fn();
+      const instance = launch(defaultConfig({ onAnnotationStart }));
+
+      expect(annotatorCapture.bus).not.toBeNull();
+      annotatorCapture.bus!.emit("annotation:start");
+      expect(onAnnotationStart).toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("onAnnotationEnd callback fires on annotation:end event", () => {
+      const onAnnotationEnd = vi.fn();
+      const instance = launch(defaultConfig({ onAnnotationEnd }));
+
+      expect(annotatorCapture.bus).not.toBeNull();
+      annotatorCapture.bus!.emit("annotation:end");
+      expect(onAnnotationEnd).toHaveBeenCalled();
 
       instance.destroy();
     });

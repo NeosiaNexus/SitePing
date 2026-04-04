@@ -30,6 +30,7 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     authorEmail: "test@example.com",
     resolvedAt: null,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     annotations: [],
     ...overrides,
   };

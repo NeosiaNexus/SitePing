@@ -1,6 +1,6 @@
-import * as p from "@clack/prompts";
 import { syncPrismaModels } from "../generators/prisma.js";
 import { generateRoute } from "../generators/route.js";
+import { p } from "../prompts.js";
 import { findPrismaSchema } from "../utils/find-schema.js";
 
 export async function initCommand(): Promise<void> {

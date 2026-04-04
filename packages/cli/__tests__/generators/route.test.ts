@@ -91,4 +91,46 @@ describe("generateRoute", () => {
     expect(content).toContain("// apiKey: process.env.SITEPING_API_KEY,");
     expect(content).toContain('// allowedOrigins: ["https://your-site.com"],');
   });
+
+  // -------------------------------------------------------------------------
+  // Permission error
+  // -------------------------------------------------------------------------
+
+  it("throws descriptive error message on EACCES permission error", () => {
+    mkdirSync(join(tmpDir, "app"), { recursive: true });
+
+    // Create the directory structure so mkdirSync succeeds, but writeFileSync will fail
+    mkdirSync(join(tmpDir, "app", "api", "siteping"), { recursive: true });
+
+    // Make the target directory read-only to trigger EACCES on write
+    const { chmodSync } = require("node:fs");
+    const targetDir = join(tmpDir, "app", "api", "siteping");
+    chmodSync(targetDir, 0o444);
+
+    try {
+      expect(() => generateRoute(tmpDir)).toThrow(/Permission denied.*cannot write to/);
+    } finally {
+      // Restore permissions for cleanup
+      chmodSync(targetDir, 0o755);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Default basePath
+  // -------------------------------------------------------------------------
+
+  it("uses process.cwd() as default basePath when not provided", () => {
+    // generateRoute() without arguments should use process.cwd()
+    // Since cwd likely lacks an app/ directory, it should throw the expected error
+    const cwd = process.cwd();
+    const hasAppDir = existsSync(join(cwd, "src", "app")) || existsSync(join(cwd, "app"));
+
+    if (!hasAppDir) {
+      expect(() => generateRoute()).toThrow("Cannot find the app/ directory. Are you in a Next.js App Router project?");
+    } else {
+      // If cwd happens to have an app dir (unlikely in test), just verify it returns
+      const result = generateRoute();
+      expect(result.path).toContain("route.ts");
+    }
+  });
 });

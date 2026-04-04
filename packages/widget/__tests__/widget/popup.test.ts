@@ -447,4 +447,100 @@ describe("Popup", () => {
       expect(dialog).toBeNull();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Type button hover effects
+  // -------------------------------------------------------------------------
+
+  describe("type button hover effects", () => {
+    it("mouseenter on type button changes background", () => {
+      popup.show(makeBounds());
+
+      const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      bugBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+      // Background should change from default glassBg to a type-specific bg color
+      expect(bugBtn.style.background).not.toBe(colors.glassBg);
+    });
+
+    it("mouseleave on type button restores background", () => {
+      popup.show(makeBounds());
+
+      const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      bugBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      const hoverBg = bugBtn.style.background;
+
+      bugBtn.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+      // After mouseleave, background should differ from hover state
+      expect(bugBtn.style.background).not.toBe(hoverBg);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Textarea focus/blur styles
+  // -------------------------------------------------------------------------
+
+  describe("textarea focus/blur styles", () => {
+    it("focus on textarea changes border color to accent", () => {
+      popup.show(makeBounds());
+
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      const borderBefore = textarea.style.borderColor;
+
+      textarea.dispatchEvent(new Event("focus", { bubbles: true }));
+
+      // Border color should change on focus
+      expect(textarea.style.borderColor).not.toBe(borderBefore);
+    });
+
+    it("blur on textarea restores border color", () => {
+      popup.show(makeBounds());
+
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      textarea.dispatchEvent(new Event("focus", { bubbles: true }));
+      const focusBorder = textarea.style.borderColor;
+
+      textarea.dispatchEvent(new Event("blur", { bubbles: true }));
+
+      // Border color should revert from the focus state
+      expect(textarea.style.borderColor).not.toBe(focusBorder);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Popup position collision — horizontal flip
+  // -------------------------------------------------------------------------
+
+  describe("horizontal collision", () => {
+    it("popup flips left when not enough horizontal space (left + 300 > innerWidth)", () => {
+      // innerWidth defaults to 1024 in jsdom — place rect near right edge
+      popup.show(makeBounds({ left: 900, right: 950, bottom: 100, top: 50 }));
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      // Should flip: left = right - 300 = 950 - 300 = 650
+      expect(Number.parseInt(dialog.style.left, 10)).toBeLessThan(900);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Meta+Enter (Mac shortcut) submits the form
+  // -------------------------------------------------------------------------
+
+  describe("Meta+Enter shortcut", () => {
+    it("Meta+Enter (Mac shortcut) submits the form", async () => {
+      const promise = popup.show(makeBounds());
+
+      const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      bugBtn.click();
+
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      textarea.value = "Mac shortcut test";
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+
+      const result = await promise;
+      expect(result).toEqual({ type: "bug", message: "Mac shortcut test" });
+    });
+  });
 });

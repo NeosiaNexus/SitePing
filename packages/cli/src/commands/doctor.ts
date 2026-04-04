@@ -1,4 +1,4 @@
-import * as p from "@clack/prompts";
+import { p } from "../prompts.js";
 
 export async function doctorCommand(options: { url?: string; endpoint?: string }): Promise<void> {
   p.intro("siteping — Network diagnostics");

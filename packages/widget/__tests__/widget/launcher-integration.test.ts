@@ -110,6 +110,7 @@ function makeFeedbackResponse(overrides: Partial<FeedbackResponse> = {}): Feedba
     authorEmail: "test@example.com",
     resolvedAt: null,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     annotations: [],
     ...overrides,
   };
@@ -342,6 +343,84 @@ describe("launcher — annotation:complete integration", () => {
       expect(instance1).toBe(instance2);
 
       instance1.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // URL sanitization
+  // -------------------------------------------------------------------------
+
+  describe("URL sanitization", () => {
+    it("annotation:complete strips sensitive query params (token, key, secret, auth) from URL", async () => {
+      const response = makeFeedbackResponse();
+      mockSendFeedback.mockResolvedValue(response);
+
+      // Set location with sensitive params
+      const sensitiveUrl = "http://localhost/?token=abc&key=def&secret=ghi&auth=jkl&page=1";
+      Object.defineProperty(window, "location", {
+        value: new URL(sensitiveUrl),
+        writable: true,
+        configurable: true,
+      });
+
+      const instance = launch(defaultConfig());
+      expect(capturedBus).not.toBeNull();
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        expect(mockSendFeedback).toHaveBeenCalledOnce();
+      });
+
+      const payload = mockSendFeedback.mock.calls[0][0];
+      expect(payload.url).not.toContain("token=");
+      expect(payload.url).not.toContain("key=");
+      expect(payload.url).not.toContain("secret=");
+      expect(payload.url).not.toContain("auth=");
+      // Non-sensitive params should remain
+      expect(payload.url).toContain("page=1");
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Error handling
+  // -------------------------------------------------------------------------
+
+  describe("error handling", () => {
+    it("sendFeedback failure emits feedback:error and sets live region error text", async () => {
+      mockSendFeedback.mockRejectedValue(new Error("Network failure"));
+
+      const instance = launch(defaultConfig());
+      expect(capturedBus).not.toBeNull();
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        const liveRegion = document.querySelector<HTMLElement>('[role="status"][aria-live="polite"]');
+        expect(liveRegion).not.toBeNull();
+        expect(liveRegion!.textContent).not.toBe("");
+      });
+
+      instance.destroy();
+    });
+
+    it("onError callback is called on sendFeedback failure", async () => {
+      const error = new Error("Network failure");
+      mockSendFeedback.mockRejectedValue(error);
+
+      const onError = vi.fn();
+      const instance = launch(defaultConfig({ onError }));
+      expect(capturedBus).not.toBeNull();
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        expect(onError).toHaveBeenCalledWith(error);
+      });
+
+      instance.destroy();
     });
   });
 });

@@ -16,15 +16,15 @@ mockMatchMedia(false);
 // Mock Popup — avoid real popup DOM during annotation tests
 // ---------------------------------------------------------------------------
 
-vi.mock("../../src/popup.js", () => ({
+vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
   Popup: vi.fn().mockImplementation(() => ({
-    show: vi.fn().mockResolvedValue({ type: "bug", message: "Test message" }),
+    show: vi.fn().mockImplementation(() => Promise.resolve({ type: "bug" as const, message: "Test message" })),
     destroy: vi.fn(),
   })),
 }));
 
 // Mock anchor helpers to avoid @medv/finder dependency in jsdom
-vi.mock("../../src/dom/anchor.js", () => ({
+vi.mock(new URL("../../src/dom/anchor.js", import.meta.url).pathname, () => ({
   findAnchorElement: vi.fn().mockReturnValue(document.body),
   generateAnchor: vi.fn().mockReturnValue({
     cssSelector: "body",
@@ -82,6 +82,16 @@ describe("Annotator", () => {
 
   afterEach(() => {
     annotator.destroy();
+    // Remove any leftover overlay/toolbar DOM from async handlers that may not
+    // have completed before the test ended (e.g. finishDrawing's await)
+    for (const el of document.body.querySelectorAll('div[aria-hidden="true"]')) {
+      el.remove();
+    }
+    for (const btn of document.body.querySelectorAll("button")) {
+      if (btn.textContent === t("annotator.cancel")) {
+        btn.parentElement?.remove();
+      }
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -358,6 +368,238 @@ describe("Annotator", () => {
 
     it("can be called when not active without throwing", () => {
       expect(() => annotator.destroy()).not.toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Complete drawing flow (mouseup with valid rect)
+  // -------------------------------------------------------------------------
+
+  describe("complete drawing flow", () => {
+    it("mouse drag with valid size triggers popup.show and emits annotation:complete", async () => {
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      const data = completeListener.mock.calls[0][0];
+      expect(data.type).toBe("bug");
+      expect(data.message).toBe("Test message");
+      expect(data.annotation).toBeDefined();
+    });
+
+    it("after annotation:complete, overlay is removed (deactivated)", async () => {
+      bus.emit("annotation:start");
+      expect(findOverlay()).not.toBeNull();
+
+      const overlay = findOverlay()!;
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await vi.waitFor(() => {
+        expect(findOverlay()).toBeNull();
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Cancel button
+  // -------------------------------------------------------------------------
+
+  describe("cancel button", () => {
+    it("clicking cancel button deactivates the annotator", () => {
+      bus.emit("annotation:start");
+      expect(findOverlay()).not.toBeNull();
+
+      // The toolbar is the last div appended to body (after the overlay)
+      // Find all buttons and check which one has the cancel text
+      const allButtons = Array.from(document.body.querySelectorAll("button"));
+      const cancelButtons = allButtons.filter((btn) => btn.textContent === t("annotator.cancel"));
+      // There should be exactly one cancel button with this text
+      expect(cancelButtons).toHaveLength(1);
+
+      // The cancel button is the LAST one (most recently added by activate())
+      const cancelBtn = cancelButtons[cancelButtons.length - 1];
+
+      // Simulate clicking by dispatching the event on the button
+      const endListener = vi.fn();
+      bus.on("annotation:end", endListener);
+
+      cancelBtn.click();
+
+      expect(endListener).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Keyboard annotation (Enter key)
+  // -------------------------------------------------------------------------
+
+  describe("keyboard: Enter", () => {
+    it("pressing Enter on overlay with a pre-focused element emits annotation:complete with full-bounds annotation", async () => {
+      // Create a focusable element and focus it before activation
+      const target = document.createElement("button");
+      target.textContent = "Focus me";
+      document.body.appendChild(target);
+      // Mock getBoundingClientRect for the target
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 40));
+      target.focus();
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      const data = completeListener.mock.calls[0][0];
+      expect(data.annotation.rect).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
+
+      target.remove();
+    });
+
+    it("Enter on overlay without pre-focused element does nothing", async () => {
+      // Blur everything so there's no activeElement with bounds
+      (document.activeElement as HTMLElement)?.blur?.();
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+      // Give async handler time to run
+      await new Promise((r) => setTimeout(r, 50));
+      expect(completeListener).not.toHaveBeenCalled();
+    });
+
+    it("Enter with element that has zero bounds does nothing", async () => {
+      const target = document.createElement("span");
+      document.body.appendChild(target);
+      // Mock zero-size bounds
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 0, 0));
+      target.focus();
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(completeListener).not.toHaveBeenCalled();
+
+      target.remove();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Touch end
+  // -------------------------------------------------------------------------
+
+  describe("touch end", () => {
+    it("touchend with valid rectangle triggers popup and annotation:complete", async () => {
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      // touchstart
+      const startEvent = new Event("touchstart", { bubbles: true, cancelable: true });
+      Object.defineProperty(startEvent, "touches", { value: [{ clientX: 50, clientY: 50 }] });
+      Object.defineProperty(startEvent, "preventDefault", { value: vi.fn() });
+      overlay.dispatchEvent(startEvent);
+
+      // touchend
+      const endEvent = new Event("touchend", { bubbles: true });
+      Object.defineProperty(endEvent, "changedTouches", { value: [{ clientX: 200, clientY: 150 }] });
+      overlay.dispatchEvent(endEvent);
+
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      expect(completeListener.mock.calls[0][0].type).toBe("bug");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // rAF cleanup on deactivate
+  // -------------------------------------------------------------------------
+
+  describe("rAF cleanup on deactivate", () => {
+    it("deactivating during drawing cancels pending rAF", () => {
+      const cancelSpy = vi.spyOn(window, "cancelAnimationFrame");
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      // Start drawing and trigger a mousemove to schedule rAF
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 100, bubbles: true }));
+
+      // Deactivate while rAF is pending
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+      expect(cancelSpy).toHaveBeenCalled();
+      cancelSpy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Cancel button hover effects
+  // -------------------------------------------------------------------------
+
+  describe("cancel button hover effects", () => {
+    it("mouseenter on cancel changes styles", () => {
+      bus.emit("annotation:start");
+
+      const buttons = document.body.querySelectorAll("button");
+      const cancelBtn = Array.from(buttons).find((btn) => btn.textContent === t("annotator.cancel"))!;
+
+      const borderBefore = cancelBtn.style.borderColor;
+      const colorBefore = cancelBtn.style.color;
+
+      cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+      // jsdom normalizes hex to rgb — just check the style changed
+      expect(cancelBtn.style.borderColor).not.toBe(borderBefore);
+      expect(cancelBtn.style.color).not.toBe(colorBefore);
+    });
+
+    it("mouseleave on cancel restores styles", () => {
+      bus.emit("annotation:start");
+
+      const buttons = document.body.querySelectorAll("button");
+      const cancelBtn = Array.from(buttons).find((btn) => btn.textContent === t("annotator.cancel"))!;
+
+      cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      const hoverBorder = cancelBtn.style.borderColor;
+      const hoverColor = cancelBtn.style.color;
+
+      cancelBtn.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+      // After mouseleave, border and color should differ from hover state
+      expect(cancelBtn.style.borderColor).not.toBe(hoverBorder);
+      expect(cancelBtn.style.color).not.toBe(hoverColor);
     });
   });
 });

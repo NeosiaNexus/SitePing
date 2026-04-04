@@ -46,9 +46,21 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     authorEmail: "test@example.com",
     resolvedAt: null,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     annotations: [],
     ...overrides,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Polyfills for jsdom
+// ---------------------------------------------------------------------------
+
+// jsdom does not implement CSS.escape
+if (typeof globalThis.CSS === "undefined") {
+  (globalThis as Record<string, unknown>).CSS = { escape: (s: string) => s };
+} else if (!CSS.escape) {
+  CSS.escape = (s: string) => s;
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +469,611 @@ describe("Panel", () => {
 
       expect(spy).toHaveBeenCalledWith("sp-marker-click", expect.any(Function));
       spy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Card actions (event delegation)
+  // -------------------------------------------------------------------------
+
+  describe("card actions", () => {
+    const annotation = {
+      id: "ann-1",
+      feedbackId: "fb-1",
+      cssSelector: "div",
+      xpath: "/html/body/div",
+      textSnippet: "",
+      elementTag: "DIV",
+      elementId: null,
+      textPrefix: "",
+      textSuffix: "",
+      fingerprint: "0:0:0",
+      neighborText: "",
+      xPct: 0.1,
+      yPct: 0.2,
+      wPct: 0.3,
+      hPct: 0.4,
+      scrollX: 100,
+      scrollY: 200,
+      viewportW: 1920,
+      viewportH: 1080,
+      devicePixelRatio: 1,
+      createdAt: new Date().toISOString(),
+    };
+
+    it("clicking resolve button calls apiClient.resolveFeedback and reloads", async () => {
+      const fb = makeFeedback({ id: "fb-1", status: "open" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.resolveFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-resolve")!;
+      resolveBtn.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.resolveFeedback).toHaveBeenCalledWith("fb-1", true);
+        expect(apiClient.getFeedbacks).toHaveBeenCalled();
+      });
+    });
+
+    it("clicking resolve on resolved feedback reopens it", async () => {
+      const fb = makeFeedback({ id: "fb-2", status: "resolved" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.resolveFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-resolve")!;
+      resolveBtn.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.resolveFeedback).toHaveBeenCalledWith("fb-2", false);
+      });
+    });
+
+    it("clicking delete button calls apiClient.deleteFeedback and reloads", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+
+      const deleteBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-delete")!;
+      deleteBtn.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.deleteFeedback).toHaveBeenCalledWith("fb-1");
+        expect(apiClient.getFeedbacks).toHaveBeenCalled();
+      });
+    });
+
+    it("clicking expand button toggles sp-card-message--expanded class", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const expandBtn = shadow.querySelector<HTMLButtonElement>(".sp-card-expand")!;
+      // Make button visible for the test (normally depends on scrollHeight > clientHeight)
+      expandBtn.style.display = "block";
+      expandBtn.click();
+
+      const message = shadow.querySelector<HTMLElement>(".sp-card-message")!;
+      expect(message.classList.contains("sp-card-message--expanded")).toBe(true);
+    });
+
+    it("expand button updates aria-expanded attribute", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const expandBtn = shadow.querySelector<HTMLButtonElement>(".sp-card-expand")!;
+      expandBtn.style.display = "block";
+      expect(expandBtn.getAttribute("aria-expanded")).toBe("false");
+
+      expandBtn.click();
+      expect(expandBtn.getAttribute("aria-expanded")).toBe("true");
+
+      expandBtn.click();
+      expect(expandBtn.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("clicking a card with annotations scrolls to annotation position", async () => {
+      const fb = makeFeedback({ id: "fb-1", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+      card.click();
+
+      expect(scrollSpy).toHaveBeenCalledWith({ left: 100, top: 200, behavior: "smooth" });
+      scrollSpy.mockRestore();
+    });
+
+    it("clicking a card with annotations calls markers.pinHighlight", async () => {
+      const fb = makeFeedback({ id: "fb-1", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+      card.click();
+
+      expect(markers.pinHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "fb-1" }));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Keyboard navigation on cards
+  // -------------------------------------------------------------------------
+
+  describe("keyboard navigation on cards", () => {
+    const annotation = {
+      id: "ann-1",
+      feedbackId: "fb-1",
+      cssSelector: "div",
+      xpath: "/html/body/div",
+      textSnippet: "",
+      elementTag: "DIV",
+      elementId: null,
+      textPrefix: "",
+      textSuffix: "",
+      fingerprint: "0:0:0",
+      neighborText: "",
+      xPct: 0.1,
+      yPct: 0.2,
+      wPct: 0.3,
+      hPct: 0.4,
+      scrollX: 50,
+      scrollY: 150,
+      viewportW: 1920,
+      viewportH: 1080,
+      devicePixelRatio: 1,
+      createdAt: new Date().toISOString(),
+    };
+
+    it("Enter key on card triggers scroll + pinHighlight", async () => {
+      const fb = makeFeedback({ id: "fb-1", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+
+      // Dispatch keydown on the card (bubbles to listContainer)
+      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+      Object.defineProperty(event, "target", { value: card });
+      listContainer.dispatchEvent(event);
+
+      expect(scrollSpy).toHaveBeenCalledWith({ left: 50, top: 150, behavior: "smooth" });
+      expect(markers.pinHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "fb-1" }));
+      scrollSpy.mockRestore();
+    });
+
+    it("Space key on card triggers scroll + pinHighlight", async () => {
+      const fb = makeFeedback({ id: "fb-1", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+
+      const event = new KeyboardEvent("keydown", { key: " ", bubbles: true });
+      Object.defineProperty(event, "target", { value: card });
+      listContainer.dispatchEvent(event);
+
+      expect(scrollSpy).toHaveBeenCalledWith({ left: 50, top: 150, behavior: "smooth" });
+      expect(markers.pinHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "fb-1" }));
+      scrollSpy.mockRestore();
+    });
+
+    it("Enter on a button inside card does NOT trigger card scroll", async () => {
+      const fb = makeFeedback({ id: "fb-1", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-resolve")!;
+      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+
+      // target is the button, not the card itself
+      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+      Object.defineProperty(event, "target", { value: resolveBtn });
+      listContainer.dispatchEvent(event);
+
+      expect(scrollSpy).not.toHaveBeenCalled();
+      scrollSpy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Mouseover/mouseout on list
+  // -------------------------------------------------------------------------
+
+  describe("mouseover/mouseout on list", () => {
+    it("mouseover on a card calls markers.highlight(feedbackId)", async () => {
+      const fb = makeFeedback({ id: "fb-42" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-42"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+
+      const event = new MouseEvent("mouseover", { bubbles: true });
+      Object.defineProperty(event, "target", { value: card });
+      listContainer.dispatchEvent(event);
+
+      expect(markers.highlight).toHaveBeenCalledWith("fb-42");
+    });
+
+    it("mouseout leaving all cards calls markers.highlight('')", async () => {
+      const fb = makeFeedback({ id: "fb-42" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      // relatedTarget is outside the listContainer (e.g. the panel itself)
+      const panelRoot = shadow.querySelector<HTMLElement>(".sp-panel")!;
+      const event = new MouseEvent("mouseout", { bubbles: true, relatedTarget: panelRoot });
+      Object.defineProperty(event, "target", { value: listContainer });
+      listContainer.dispatchEvent(event);
+
+      expect(markers.highlight).toHaveBeenCalledWith("");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Delete all + confirm dialog
+  // -------------------------------------------------------------------------
+
+  describe("delete all", () => {
+    it("deleteAllBtn click triggers confirm dialog", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const deleteAllBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!;
+      deleteAllBtn.click();
+
+      // The confirm dialog backdrop should appear in the shadow root
+      await vi.waitFor(() => {
+        const backdrop = shadow.querySelector<HTMLElement>(".sp-confirm-backdrop");
+        expect(backdrop).not.toBeNull();
+      });
+    });
+
+    it("confirming delete all calls apiClient.deleteAllFeedbacks and reloads", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.deleteAllFeedbacks.mockResolvedValue(undefined);
+
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+
+      const deleteAllBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!;
+      deleteAllBtn.click();
+
+      await vi.waitFor(() => {
+        const confirmBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-danger");
+        expect(confirmBtn).not.toBeNull();
+      });
+
+      const confirmBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-danger")!;
+      confirmBtn.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.deleteAllFeedbacks).toHaveBeenCalledWith("test-project");
+      });
+    });
+
+    it("cancelling delete all does not call API", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const deleteAllBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!;
+      deleteAllBtn.click();
+
+      await vi.waitFor(() => {
+        const cancelBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-ghost.sp-btn-ghost");
+        expect(cancelBtn).not.toBeNull();
+      });
+
+      // Find the cancel button inside the confirm dialog actions
+      const backdrop = shadow.querySelector<HTMLElement>(".sp-confirm-backdrop")!;
+      const cancelBtn = backdrop.querySelector<HTMLButtonElement>(".sp-btn-ghost")!;
+      cancelBtn.click();
+
+      // Give time for dialog close animation
+      await new Promise((r) => setTimeout(r, 250));
+      expect(apiClient.deleteAllFeedbacks).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // scrollToFeedback
+  // -------------------------------------------------------------------------
+
+  describe("scrollToFeedback", () => {
+    it("scrolls card into view and adds flash animation", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+      // jsdom does not implement scrollIntoView — stub it on the element
+      card.scrollIntoView = vi.fn();
+
+      panel.scrollToFeedback("fb-1");
+
+      expect(card.scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+      expect(card.classList.contains("sp-anim-flash")).toBe(true);
+
+      // After animationend, the class is removed
+      card.dispatchEvent(new Event("animationend"));
+      expect(card.classList.contains("sp-anim-flash")).toBe(false);
+    });
+
+    it("scrollToFeedback on nonexistent id does nothing", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+
+      await panel.open();
+
+      // Should not throw
+      expect(() => panel.scrollToFeedback("nonexistent")).not.toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Search
+  // -------------------------------------------------------------------------
+
+  describe("search", () => {
+    it("search input triggers loadFeedbacks with search param after debounce", async () => {
+      vi.useFakeTimers();
+
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+
+      const searchInput = shadow.querySelector<HTMLInputElement>("input.sp-search")!;
+      searchInput.value = "hello";
+      searchInput.dispatchEvent(new Event("input"));
+
+      // Not called yet — debounce not elapsed
+      expect(apiClient.getFeedbacks).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(200);
+
+      await vi.waitFor(() => {
+        expect(apiClient.getFeedbacks).toHaveBeenCalledWith(
+          "test-project",
+          expect.objectContaining({ search: "hello" }),
+        );
+      });
+
+      vi.useRealTimers();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Keyboard: Escape + Focus trap
+  // -------------------------------------------------------------------------
+
+  describe("keyboard: escape and focus trap", () => {
+    it("Escape key closes the panel when open", async () => {
+      await panel.open();
+
+      const root = shadow.querySelector<HTMLElement>('[role="complementary"]')!;
+      expect(root.getAttribute("aria-hidden")).toBe("false");
+
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+      expect(root.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("Tab at last focusable wraps to first", async () => {
+      await panel.open();
+
+      const panelRoot = shadow.querySelector<HTMLElement>(".sp-panel")!;
+      const focusable = panelRoot.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      expect(focusable.length).toBeGreaterThan(0);
+
+      const last = focusable[focusable.length - 1]!;
+
+      // Simulate focus on last element
+      last.focus();
+
+      // Cannot override shiftKey after construction, so create a fresh event
+      const tabEvent = new KeyboardEvent("keydown", { key: "Tab", shiftKey: false, bubbles: true });
+      const preventSpy = vi.spyOn(tabEvent, "preventDefault");
+
+      // Simulate activeElement on shadow root
+      Object.defineProperty(shadow, "activeElement", { value: last, configurable: true });
+      shadow.dispatchEvent(tabEvent);
+
+      expect(preventSpy).toHaveBeenCalled();
+    });
+
+    it("Shift+Tab at first focusable wraps to last", async () => {
+      await panel.open();
+
+      const panelRoot = shadow.querySelector<HTMLElement>(".sp-panel")!;
+      const focusable = panelRoot.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      expect(focusable.length).toBeGreaterThan(0);
+
+      const first = focusable[0]!;
+
+      first.focus();
+
+      const tabEvent = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true });
+      const preventSpy = vi.spyOn(tabEvent, "preventDefault");
+
+      Object.defineProperty(shadow, "activeElement", { value: first, configurable: true });
+      shadow.dispatchEvent(tabEvent);
+
+      expect(preventSpy).toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Error handling edge cases
+  // -------------------------------------------------------------------------
+
+  describe("error handling edge cases", () => {
+    it("resolve failure re-enables button and emits error", async () => {
+      const fb = makeFeedback({ id: "fb-1", status: "open" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.resolveFeedback.mockRejectedValue(new Error("resolve failed"));
+
+      const errorListener = vi.fn();
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-resolve")!;
+      resolveBtn.click();
+
+      await vi.waitFor(() => {
+        expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
+        expect(resolveBtn.disabled).toBe(false);
+      });
+    });
+
+    it("delete failure re-enables button and emits error", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.deleteFeedback.mockRejectedValue(new Error("delete failed"));
+
+      const errorListener = vi.fn();
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+
+      const deleteBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-delete")!;
+      deleteBtn.click();
+
+      await vi.waitFor(() => {
+        expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
+        expect(deleteBtn.disabled).toBe(false);
+      });
+    });
+
+    it("deleteAllFeedbacks failure re-enables button", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.deleteAllFeedbacks.mockRejectedValue(new Error("delete all failed"));
+
+      const errorListener = vi.fn();
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+
+      const deleteAllBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!;
+      deleteAllBtn.click();
+
+      // Wait for confirm dialog to appear, then confirm
+      await vi.waitFor(() => {
+        const confirmBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-danger");
+        expect(confirmBtn).not.toBeNull();
+      });
+
+      const confirmBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-danger")!;
+      confirmBtn.click();
+
+      await vi.waitFor(() => {
+        expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
+        expect(deleteAllBtn.disabled).toBe(false);
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Loading states
+  // -------------------------------------------------------------------------
+
+  describe("loading states", () => {
+    it("showLoading creates spinner with role=status", async () => {
+      // First load will show loading spinner (feedbacks empty)
+      let resolveGetFeedbacks!: (value: { feedbacks: FeedbackResponse[]; total: number }) => void;
+      apiClient.getFeedbacks.mockReturnValue(
+        new Promise((resolve) => {
+          resolveGetFeedbacks = resolve;
+        }),
+      );
+
+      const openPromise = panel.open();
+
+      // While loading, spinner should be visible
+      const loading = shadow.querySelector<HTMLElement>('[role="status"]');
+      expect(loading).not.toBeNull();
+
+      const spinner = shadow.querySelector<HTMLElement>(".sp-spinner");
+      expect(spinner).not.toBeNull();
+
+      // Resolve the promise to finish
+      resolveGetFeedbacks({ feedbacks: [], total: 0 });
+      await openPromise;
+    });
+
+    it("loadFeedbacks with aborted request does not update UI", async () => {
+      const fb1 = makeFeedback({ id: "fb-1", message: "first" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1], total: 1 });
+
+      await panel.open();
+
+      // Now set up a slow request that will be aborted
+      let resolveSlowRequest!: (value: { feedbacks: FeedbackResponse[]; total: number }) => void;
+      apiClient.getFeedbacks.mockReturnValue(
+        new Promise((resolve) => {
+          resolveSlowRequest = resolve;
+        }),
+      );
+
+      // Trigger a reload (e.g., via filter click)
+      const bugChip = shadow.querySelector<HTMLButtonElement>('.sp-chip[data-filter="bug"]')!;
+      bugChip.click();
+
+      // Immediately trigger another reload which should abort the first
+      const fb2 = makeFeedback({ id: "fb-2", message: "second" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb2], total: 1 });
+
+      const allChip = shadow.querySelector<HTMLButtonElement>('.sp-chip[data-filter="all"]')!;
+      allChip.click();
+
+      // Now resolve the first (aborted) request — it should be ignored
+      resolveSlowRequest({ feedbacks: [makeFeedback({ id: "fb-stale", message: "stale" })], total: 1 });
+
+      await vi.waitFor(() => {
+        // The UI should show fb-2 from the second request, not fb-stale
+        const staleCard = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-stale"]');
+        expect(staleCard).toBeNull();
+      });
     });
   });
 });
