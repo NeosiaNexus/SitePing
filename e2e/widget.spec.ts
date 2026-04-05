@@ -152,13 +152,13 @@ test.describe("Panel", () => {
     expect(text).toContain("No feedback yet");
   });
 
-  test("has 5 filter chips", async ({ page }) => {
+  test("has 8 filter chips (5 type + 3 status)", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
     await s.waitFor('[data-item-id="chat"]');
     await s.click('[data-item-id="chat"]');
     await s.waitFor(".sp-chip");
-    expect(await s.count(".sp-chip")).toBe(5);
+    expect(await s.count(".sp-chip")).toBe(8);
   });
 
   test("closes via close button", async ({ page }) => {
