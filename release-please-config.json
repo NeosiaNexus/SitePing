@@ -15,8 +15,7 @@
     "packages/core": {
       "release-type": "node",
       "component": "core",
-      "bump-minor-pre-major": true,
-      "skip-github-release": true
+      "bump-minor-pre-major": true
     },
     "packages/widget": {
       "release-type": "node",
