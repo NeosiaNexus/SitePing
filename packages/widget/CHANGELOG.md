@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.5](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.4...widget-v0.9.5) (2026-04-05)
+
+
+### Bug Fixes
+
+* **widget:** add button loading spinner and fix stale GET cache on mutations ([bab698d](https://github.com/NeosiaNexus/SitePing/commit/bab698db4f5ca4f9020657196f3ddb6b689907a9))
+
 ## [0.9.4](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.3...widget-v0.9.4) (2026-04-04)
 
 
