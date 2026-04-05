@@ -465,19 +465,16 @@ export class Panel {
 
   private async deleteFeedback(feedback: FeedbackResponse, btn: HTMLButtonElement): Promise<void> {
     this.pendingMutations.add(feedback.id);
-    btn.disabled = true;
+    const restore = this.setButtonLoading(btn);
     try {
       await this.client.deleteFeedback(feedback.id);
       this.bus.emit("feedback:deleted", feedback.id);
       await this.loadFeedbacks();
     } catch (error) {
-      this.pendingMutations.delete(feedback.id);
-      btn.disabled = false;
+      restore();
       this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
     } finally {
-      if (this.pendingMutations.has(feedback.id)) {
-        setTimeout(() => this.pendingMutations.delete(feedback.id), 300);
-      }
+      this.pendingMutations.delete(feedback.id);
     }
   }
 
@@ -590,22 +587,28 @@ export class Panel {
     });
   }
 
+  private setButtonLoading(btn: HTMLButtonElement): () => void {
+    const snapshot = Array.from(btn.childNodes).map((n) => n.cloneNode(true));
+    btn.disabled = true;
+    btn.replaceChildren(el("div", { class: "sp-spinner sp-spinner--sm" }));
+    return () => {
+      btn.replaceChildren(...snapshot);
+      btn.disabled = false;
+    };
+  }
+
   private async toggleResolve(feedback: FeedbackResponse, btn: HTMLButtonElement): Promise<void> {
     this.pendingMutations.add(feedback.id);
-    btn.disabled = true;
+    const restore = this.setButtonLoading(btn);
     try {
       const newResolved = feedback.status !== "resolved";
       await this.client.resolveFeedback(feedback.id, newResolved);
       await this.loadFeedbacks();
     } catch (error) {
-      this.pendingMutations.delete(feedback.id);
-      btn.disabled = false;
+      restore();
       this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
     } finally {
-      // Brief cooldown prevents spam-click from immediately toggling back
-      if (this.pendingMutations.has(feedback.id)) {
-        setTimeout(() => this.pendingMutations.delete(feedback.id), 300);
-      }
+      this.pendingMutations.delete(feedback.id);
     }
   }
 

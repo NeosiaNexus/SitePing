@@ -557,6 +557,11 @@ export function buildStyles(colors: ThemeColors): string {
       pointer-events: none;
     }
 
+    .sp-spinner--sm {
+      width: 14px;
+      height: 14px;
+    }
+
     /* ---- Delete All (header) ---- */
 
     .sp-panel-header-right {
