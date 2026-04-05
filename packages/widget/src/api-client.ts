@@ -171,7 +171,10 @@ export class ApiClient {
     if (options?.status) params.set("status", options.status);
     if (options?.search) params.set("search", options.search);
 
-    const response = await resilientFetch(`${this.endpoint}?${params.toString()}`, { method: "GET", cache: "no-store" });
+    const response = await resilientFetch(`${this.endpoint}?${params.toString()}`, {
+      method: "GET",
+      cache: "no-store",
+    });
 
     if (!response.ok) {
       throw new Error(`Failed to fetch feedbacks: ${response.status}`);
