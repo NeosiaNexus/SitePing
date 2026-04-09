@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.6](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.5...widget-v0.9.6) (2026-04-05)
+
+
+### Bug Fixes
+
+* **widget,adapter-prisma:** harden retry queue, panel UX, and PATCH ownership ([26301d3](https://github.com/NeosiaNexus/SitePing/commit/26301d34f23c62a7e623741ca6f815841088ca4f))
+
 ## [0.9.5](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.4...widget-v0.9.5) (2026-04-05)
 
 

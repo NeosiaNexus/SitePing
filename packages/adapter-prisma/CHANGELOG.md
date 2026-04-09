@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.3...adapter-prisma-v0.4.4) (2026-04-05)
+
+
+### Bug Fixes
+
+* **widget,adapter-prisma:** harden retry queue, panel UX, and PATCH ownership ([26301d3](https://github.com/NeosiaNexus/SitePing/commit/26301d34f23c62a7e623741ca6f815841088ca4f))
+
 ## [0.4.3](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.2...adapter-prisma-v0.4.3) (2026-04-04)
 
 
