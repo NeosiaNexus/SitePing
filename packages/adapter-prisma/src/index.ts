@@ -56,6 +56,66 @@ export interface SitepingPrismaClient {
 const INCLUDE_ANNOTATIONS = { annotations: true };
 
 /**
+ * Prisma datasource providers that support the `mode: "insensitive"` option
+ * on string filters. SQLite, MongoDB, and SQL Server do not — using `mode`
+ * against them raises `Unsupported('Argument mode is not supported.')` for
+ * SQLite, and similar errors elsewhere. Source: Prisma docs §case-sensitivity.
+ */
+const PROVIDERS_SUPPORTING_INSENSITIVE_MODE = new Set(["postgresql", "postgres", "mysql", "cockroachdb"]);
+
+/**
+ * Best-effort detection of the active Prisma provider for a runtime client.
+ *
+ * The provider is not part of any public API on `PrismaClient`. We probe a
+ * few known internal locations across Prisma 5.x and 6.x and fall back to
+ * `null` (treated as "unknown — assume default Postgres-style behaviour")
+ * when none match.
+ */
+function detectActiveProvider(prisma: unknown): string | null {
+  const candidate = prisma as
+    | {
+        _activeProvider?: unknown;
+        _engineConfig?: { activeProvider?: unknown };
+        _engine?: { config?: { activeProvider?: unknown } };
+      }
+    | null
+    | undefined;
+  const fromActive = candidate?._activeProvider;
+  if (typeof fromActive === "string") return fromActive;
+  const fromEngineConfig = candidate?._engineConfig?.activeProvider;
+  if (typeof fromEngineConfig === "string") return fromEngineConfig;
+  const fromEngine = candidate?._engine?.config?.activeProvider;
+  if (typeof fromEngine === "string") return fromEngine;
+  return null;
+}
+
+/**
+ * Options accepted by `PrismaStore`.
+ */
+export interface PrismaStoreOptions {
+  /**
+   * When `true`, the `?search=` filter is built with `mode: "insensitive"`
+   * (case-insensitive across all letters, including non-ASCII).
+   *
+   * When `false`, the filter is built without `mode` — uses each database's
+   * default `LIKE` semantics (case-insensitive ASCII on SQLite by default;
+   * case-sensitive on MySQL/PostgreSQL with the standard `LIKE` operator).
+   *
+   * When omitted, the value is auto-detected from the Prisma client's active
+   * provider: providers known to support `mode: "insensitive"` (`postgresql`,
+   * `mysql`, `cockroachdb`) get `true`; others (`sqlite`, `sqlserver`,
+   * `mongodb`) get `false`. Unknown providers default to `true` to preserve
+   * the historical behaviour.
+   */
+  caseInsensitiveSearch?: boolean;
+  /**
+   * Optional storage backend for screenshots. Without it, the data URL is
+   * persisted inline on `Feedback.screenshotUrl` with a one-time warn.
+   */
+  screenshotStorage?: ScreenshotStorage | undefined;
+}
+
+/**
  * Prisma-backed implementation of `SitepingStore`.
  *
  * Wraps a PrismaClient to satisfy the abstract store interface.
@@ -71,10 +131,20 @@ export class PrismaStore implements SitepingStore {
   private readonly screenshotStorage: ScreenshotStorage | undefined;
   /** Module-level flag would leak across PrismaStore instances in tests; use per-instance. */
   private inlineFallbackWarned = false;
+  /** @internal */
+  private caseInsensitiveSearch: boolean;
 
-  constructor(prisma: SitepingPrismaClient, options?: { screenshotStorage?: ScreenshotStorage | undefined }) {
+  constructor(prisma: SitepingPrismaClient, options: PrismaStoreOptions = {}) {
     this.prisma = prisma;
-    this.screenshotStorage = options?.screenshotStorage;
+    this.screenshotStorage = options.screenshotStorage;
+    if (typeof options.caseInsensitiveSearch === "boolean") {
+      this.caseInsensitiveSearch = options.caseInsensitiveSearch;
+    } else {
+      const provider = detectActiveProvider(prisma);
+      // Default true when the provider can't be detected — preserves the
+      // historical Postgres-first behaviour for unknown setups.
+      this.caseInsensitiveSearch = provider === null || PROVIDERS_SUPPORTING_INSENSITIVE_MODE.has(provider);
+    }
   }
 
   async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
@@ -185,7 +255,11 @@ export class PrismaStore implements SitepingStore {
     if (status) where.status = status;
     if (url) where.url = url;
     if (urlPattern) where.urlPattern = urlPattern;
-    if (search) where.message = { contains: search, mode: "insensitive" as const };
+    if (search) {
+      where.message = this.caseInsensitiveSearch
+        ? { contains: search, mode: "insensitive" as const }
+        : { contains: search };
+    }
 
     const [feedbacks, total] = await Promise.all([
       this.prisma.sitepingFeedback.findMany({
@@ -268,6 +342,14 @@ export interface HandlerOptions {
   publicEndpoints?: Array<"GET" | "POST" | "PATCH" | "DELETE" | "OPTIONS">;
   /** Allowed CORS origins — when set, validates the Origin header */
   allowedOrigins?: string[] | undefined;
+  /**
+   * Override case-insensitive search behaviour for the built-in `PrismaStore`.
+   *
+   * Only applied when `prisma` is provided (not when a custom `store` is
+   * passed). See `PrismaStoreOptions.caseInsensitiveSearch` for details on
+   * auto-detection and per-provider semantics.
+   */
+  caseInsensitiveSearch?: boolean;
 }
 
 /**
@@ -367,6 +449,7 @@ export function createSitepingHandler({
   apiKey,
   publicEndpoints = apiKey ? ["POST", "OPTIONS"] : undefined,
   allowedOrigins,
+  caseInsensitiveSearch,
 }: HandlerOptions): SitepingHandler {
   if (!providedStore && !prisma) {
     throw new Error("[siteping] createSitepingHandler requires either `store` or `prisma`.");
@@ -374,7 +457,11 @@ export function createSitepingHandler({
 
   // Safe: the throw above guarantees at least one is defined
   const store: SitepingStore =
-    providedStore ?? new PrismaStore(prisma as NonNullable<typeof prisma>, { screenshotStorage });
+    providedStore ??
+    new PrismaStore(prisma as NonNullable<typeof prisma>, {
+      screenshotStorage,
+      ...(typeof caseInsensitiveSearch === "boolean" ? { caseInsensitiveSearch } : {}),
+    });
 
   const publicMethods = publicEndpoints ? new Set(publicEndpoints) : null;
 

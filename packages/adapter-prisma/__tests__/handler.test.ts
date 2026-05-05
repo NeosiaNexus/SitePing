@@ -171,6 +171,86 @@ describe("createSitepingHandler", () => {
       expect(callArgs.where.type).toBe("bug");
       expect(callArgs.where.status).toBe("open");
     });
+
+    describe("?search filter — case-insensitive mode", () => {
+      it("emits mode:'insensitive' for the default Postgres-style client", async () => {
+        prisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        prisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await handler.GET(req);
+        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
+      });
+
+      it("omits mode when caseInsensitiveSearch:false is passed explicitly", async () => {
+        const sqliteHandler = createSitepingHandler({ prisma, caseInsensitiveSearch: false });
+        prisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        prisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await sqliteHandler.GET(req);
+        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello" });
+        expect(callArgs.where.message).not.toHaveProperty("mode");
+      });
+
+      it("auto-detects sqlite via _activeProvider and omits mode", async () => {
+        const sqlitePrisma = Object.assign(mockPrisma(), { _activeProvider: "sqlite" });
+        const sqliteHandler = createSitepingHandler({ prisma: sqlitePrisma });
+        sqlitePrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        sqlitePrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await sqliteHandler.GET(req);
+        const callArgs = sqlitePrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello" });
+      });
+
+      it("auto-detects postgresql via _activeProvider and keeps mode", async () => {
+        const pgPrisma = Object.assign(mockPrisma(), { _activeProvider: "postgresql" });
+        const pgHandler = createSitepingHandler({ prisma: pgPrisma });
+        pgPrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        pgPrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await pgHandler.GET(req);
+        const callArgs = pgPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
+      });
+
+      it("explicit caseInsensitiveSearch:true overrides sqlite auto-detect", async () => {
+        const sqlitePrisma = Object.assign(mockPrisma(), { _activeProvider: "sqlite" });
+        const overriddenHandler = createSitepingHandler({
+          prisma: sqlitePrisma,
+          caseInsensitiveSearch: true,
+        });
+        sqlitePrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        sqlitePrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await overriddenHandler.GET(req);
+        const callArgs = sqlitePrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
+      });
+
+      it("does not touch where.message when search is absent", async () => {
+        const sqliteHandler = createSitepingHandler({ prisma, caseInsensitiveSearch: false });
+        prisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        prisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test");
+        await sqliteHandler.GET(req);
+        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: Record<string, unknown>;
+        };
+        expect(callArgs.where).not.toHaveProperty("message");
+      });
+    });
   });
 
   describe("PATCH", () => {
