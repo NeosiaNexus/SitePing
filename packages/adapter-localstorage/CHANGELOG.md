@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.4](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.4.3...adapter-localstorage-v0.4.4) (2026-05-06)
+
+
+### Features
+
+* page-scoped annotations + semantic anchors (data-feedback-anchor) ([#55](https://github.com/NeosiaNexus/SitePing/issues/55)) ([db722de](https://github.com/NeosiaNexus/SitePing/commit/db722deab9f69cfdeb6fbe6f7f0bea57e2995e5c))
+* screenshot capture with pluggable storage ([#58](https://github.com/NeosiaNexus/SitePing/issues/58)) ([f14ecd2](https://github.com/NeosiaNexus/SitePing/commit/f14ecd2f2f05a547a4a52e5a6ad4d794d438008c))
+
 ## [0.4.3](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.4.2...adapter-localstorage-v0.4.3) (2026-04-04)
 
 

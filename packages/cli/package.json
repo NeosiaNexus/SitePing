@@ -1,6 +1,6 @@
 {
   "name": "@siteping/cli",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "CLI tool to set up Siteping in your project",
   "type": "module",
   "bin": {
