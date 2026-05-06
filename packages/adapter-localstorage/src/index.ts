@@ -132,6 +132,11 @@ export class LocalStorageStore implements SitepingStore {
       createdAt: now,
       updatedAt: now,
       annotations,
+      // localStorage has its own ~5 MB hard cap; storing data URLs inline is
+      // OK for prototyping and demos but will hit the cap quickly with many
+      // screenshots. Production users should use adapter-prisma with a
+      // configured ScreenshotStorage.
+      screenshotUrl: data.screenshotDataUrl ?? null,
     };
 
     feedbacks.unshift(record);

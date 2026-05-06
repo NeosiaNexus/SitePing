@@ -5,12 +5,18 @@ import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
+import { captureScreenshot } from "./screenshot.js";
 import type { ThemeColors } from "./styles/theme.js";
 
 export interface AnnotationComplete {
   annotation: AnnotationPayload;
   type: FeedbackType;
   message: string;
+  /**
+   * Base64 JPEG `data:` URL captured by html2canvas, or null when capture
+   * is disabled / failed / the peer dep is missing.
+   */
+  screenshotDataUrl?: string | null | undefined;
 }
 
 /**
@@ -39,10 +45,21 @@ export class Annotator {
     private readonly colors: ThemeColors,
     private readonly bus: EventBus<WidgetEvents>,
     private readonly t: TFunction,
+    private readonly enableScreenshot: boolean = false,
   ) {
     this.popup = new Popup(colors, t);
 
     this.bus.on("annotation:start", () => this.activate());
+  }
+
+  /**
+   * Capture a screenshot of the drawn rect when `enableScreenshot` is on.
+   * Returns null on disable / capture failure / missing peer dep — the
+   * feedback is always submitted regardless.
+   */
+  private async maybeCapture(rect: DOMRect): Promise<string | null> {
+    if (!this.enableScreenshot) return null;
+    return captureScreenshot(rect);
   }
 
   private activate(): void {
@@ -215,12 +232,17 @@ export class Annotator {
       devicePixelRatio: window.devicePixelRatio,
     };
 
+    // Capture before deactivate — overlay is intentionally ignored by the
+    // capture predicate but the rect must still be on the page.
+    const screenshotDataUrl = await this.maybeCapture(rectBounds);
+
     this.deactivate();
 
     this.bus.emit("annotation:complete", {
       annotation,
       type: result.type,
       message: result.message,
+      screenshotDataUrl,
     });
   };
 
@@ -326,6 +348,12 @@ export class Annotator {
     const annotation = this.buildAnnotation(rectBounds);
     this.drawingRect?.remove();
     this.drawingRect = null;
+
+    // Capture before deactivate — html2canvas walks the live DOM, and the
+    // capture predicate skips siteping-widget elements so the overlay being
+    // present on screen doesn't matter.
+    const screenshotDataUrl = await this.maybeCapture(rectBounds);
+
     this.deactivate();
 
     // Emit via event bus (not DOM — overlay is already null after deactivate)
@@ -333,6 +361,7 @@ export class Annotator {
       annotation,
       type: result.type,
       message: result.message,
+      screenshotDataUrl,
     });
   };
 

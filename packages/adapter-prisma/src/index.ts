@@ -7,6 +7,7 @@ import {
   flattenAnnotation,
   isStoreDuplicate,
   isStoreNotFound,
+  type ScreenshotStorage,
   type SitepingStore,
 } from "@siteping/core";
 import {
@@ -17,7 +18,7 @@ import {
   getQuerySchema,
 } from "./validation.js";
 
-export type { SitepingStore } from "@siteping/core";
+export type { ScreenshotStorage, SitepingStore } from "@siteping/core";
 export { flattenAnnotation, StoreDuplicateError, StoreNotFoundError } from "@siteping/core";
 export type {
   FeedbackCreateInput as FeedbackCreateSchemaInput,
@@ -58,16 +59,27 @@ const INCLUDE_ANNOTATIONS = { annotations: true };
  * Prisma-backed implementation of `SitepingStore`.
  *
  * Wraps a PrismaClient to satisfy the abstract store interface.
+ *
+ * Pass `screenshotStorage` to externalise screenshots (S3, R2, B2, …) — the
+ * widget's data URL is uploaded and only the returned URL is persisted, so
+ * the database stays small. Without `screenshotStorage`, the data URL is
+ * persisted inline (logged once on first use as a heads-up).
  */
 export class PrismaStore implements SitepingStore {
   /** @internal */
   private prisma: SitepingPrismaClient;
+  private readonly screenshotStorage: ScreenshotStorage | undefined;
+  /** Module-level flag would leak across PrismaStore instances in tests; use per-instance. */
+  private inlineFallbackWarned = false;
 
-  constructor(prisma: SitepingPrismaClient) {
+  constructor(prisma: SitepingPrismaClient, options?: { screenshotStorage?: ScreenshotStorage | undefined }) {
     this.prisma = prisma;
+    this.screenshotStorage = options?.screenshotStorage;
   }
 
   async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
+    const screenshotUrl = await this.persistScreenshot(data.screenshotDataUrl, data.clientId);
+
     return (await this.prisma.sitepingFeedback.create({
       data: {
         projectName: data.projectName,
@@ -76,6 +88,7 @@ export class PrismaStore implements SitepingStore {
         status: data.status,
         url: data.url,
         urlPattern: data.urlPattern ?? null,
+        screenshotUrl,
         viewport: data.viewport,
         userAgent: data.userAgent,
         authorName: data.authorName,
@@ -107,6 +120,42 @@ export class PrismaStore implements SitepingStore {
       },
       include: INCLUDE_ANNOTATIONS,
     })) as FeedbackRecord;
+  }
+
+  /**
+   * Resolve the value to persist on `Feedback.screenshotUrl`.
+   *
+   * - No data URL → null
+   * - Storage configured → upload, return remote URL. Upload failures fall
+   *   back to inline so a transient S3 outage doesn't drop the screenshot.
+   * - No storage → inline base64, with a one-time warn so prod operators
+   *   notice the footgun.
+   */
+  private async persistScreenshot(dataUrl: string | null | undefined, clientId: string): Promise<string | null> {
+    if (!dataUrl) return null;
+
+    if (this.screenshotStorage) {
+      try {
+        // Use clientId as the upload-time identifier — the feedback row's
+        // own id isn't created yet and clientId is unique + stable.
+        const { url } = await this.screenshotStorage.upload(dataUrl, {
+          feedbackId: clientId,
+          mimeType: "image/jpeg",
+        });
+        return url;
+      } catch (err) {
+        console.warn("[siteping] screenshotStorage.upload failed, falling back to inline:", err);
+        return dataUrl;
+      }
+    }
+
+    if (!this.inlineFallbackWarned) {
+      this.inlineFallbackWarned = true;
+      console.warn(
+        "[siteping] enableScreenshot is on but no `screenshotStorage` is configured — base64 data URLs will be persisted inline on Feedback.screenshotUrl. Configure a ScreenshotStorage (S3/R2/…) for production.",
+      );
+    }
+    return dataUrl;
   }
 
   async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
@@ -181,6 +230,13 @@ export interface HandlerOptions {
   prisma?: SitepingPrismaClient;
   /** Abstract store — when provided, takes precedence over `prisma`. */
   store?: SitepingStore;
+  /**
+   * Optional storage backend for screenshots. Used only with `prisma`
+   * (ignored when a custom `store` is passed — that store is responsible
+   * for its own screenshot strategy). Without a storage, the data URL is
+   * persisted inline on `Feedback.screenshotUrl` with a one-time warn.
+   */
+  screenshotStorage?: ScreenshotStorage;
   /**
    * Optional API key for bearer-token authentication.
    *
@@ -295,6 +351,7 @@ function safeCompare(a: string, b: string): boolean {
 export function createSitepingHandler({
   prisma,
   store: providedStore,
+  screenshotStorage,
   apiKey,
   publicEndpoints = apiKey ? ["POST", "OPTIONS"] : undefined,
   allowedOrigins,
@@ -304,7 +361,8 @@ export function createSitepingHandler({
   }
 
   // Safe: the throw above guarantees at least one is defined
-  const store: SitepingStore = providedStore ?? new PrismaStore(prisma as NonNullable<typeof prisma>);
+  const store: SitepingStore =
+    providedStore ?? new PrismaStore(prisma as NonNullable<typeof prisma>, { screenshotStorage });
 
   const publicMethods = publicEndpoints ? new Set(publicEndpoints) : null;
 
@@ -365,6 +423,7 @@ export function createSitepingHandler({
           authorEmail: data.authorEmail,
           clientId: data.clientId,
           annotations: data.annotations.map(flattenAnnotation),
+          screenshotDataUrl: data.screenshotDataUrl ?? null,
         });
 
         return withCors(Response.json(feedback, { status: 201 }), corsHeaders);

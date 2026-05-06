@@ -202,7 +202,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     getScope,
     scopeAnnotationsByUrl,
   });
-  const annotator = new Annotator(colors, bus, t);
+  const annotator = new Annotator(colors, bus, t, config.enableScreenshot ?? false);
 
   // Handle annotation completion via event bus (not DOM events)
   // Concurrency guard: prevent duplicate submissions if user draws two annotations quickly
@@ -211,7 +211,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     if (submitting) return;
     submitting = true;
     try {
-      const { annotation, type, message } = data;
+      const { annotation, type, message, screenshotDataUrl } = data;
 
       // Ensure identity
       let identity = getIdentity();
@@ -250,6 +250,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
         authorEmail: identity.email,
         annotations: [annotation],
         clientId,
+        screenshotDataUrl: screenshotDataUrl ?? null,
       };
 
       try {

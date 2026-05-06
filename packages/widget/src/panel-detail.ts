@@ -48,6 +48,8 @@ export const DETAIL_I18N_EN = {
   "detail.title": "Feedback #{number}",
   "detail.status": "Status",
   "detail.message": "Message",
+  "detail.screenshot": "Screenshot",
+  "detail.screenshotAlt": "Screenshot of the annotated area",
   "detail.metadata": "Details",
   "detail.annotation": "Annotation",
   "detail.page": "Page",
@@ -70,6 +72,8 @@ export const DETAIL_I18N_FR = {
   "detail.title": "Feedback n\u00b0{number}",
   "detail.status": "Statut",
   "detail.message": "Message",
+  "detail.screenshot": "Capture d'\u00e9cran",
+  "detail.screenshotAlt": "Capture d'\u00e9cran de la zone annot\u00e9e",
   "detail.metadata": "D\u00e9tails",
   "detail.annotation": "Annotation",
   "detail.page": "Page",
@@ -381,6 +385,19 @@ export const DETAIL_CSS = /* css */ `
     background: var(--sp-glass-bg-heavy);
     white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  /* ---- Screenshot Section ---- */
+
+  .sp-detail-screenshot {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
+    border-radius: var(--sp-radius);
+    border: 1px solid var(--sp-glass-border);
+    background: var(--sp-glass-bg-heavy);
   }
 
   /* ---- Metadata Section ---- */
@@ -755,6 +772,22 @@ export class DetailView {
     setText(messageBlock, feedback.message);
     messageSection.appendChild(messageBlock);
     this.content.appendChild(messageSection);
+
+    // Section 2b: Screenshot (when captured)
+    if (feedback.screenshotUrl) {
+      const screenshotSection = this.buildSection(sectionIndex++);
+      const screenshotSectionTitle = el("div", { class: "sp-detail-section-title" });
+      setText(screenshotSectionTitle, this.i18n["detail.screenshot"]);
+      screenshotSection.appendChild(screenshotSectionTitle);
+
+      const img = document.createElement("img");
+      img.className = "sp-detail-screenshot";
+      img.src = feedback.screenshotUrl;
+      img.alt = this.i18n["detail.screenshotAlt"];
+      img.loading = "lazy";
+      screenshotSection.appendChild(img);
+      this.content.appendChild(screenshotSection);
+    }
 
     // Section 3: Metadata
     const metaSection = this.buildSection(sectionIndex++);

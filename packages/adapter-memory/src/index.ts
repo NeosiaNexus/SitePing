@@ -89,6 +89,10 @@ export class MemoryStore implements SitepingStore {
       createdAt: now,
       updatedAt: now,
       annotations,
+      // No external storage in memory adapter — keep the data URL inline.
+      // Fine for tests and dev; production users should configure a real
+      // ScreenshotStorage on adapter-prisma.
+      screenshotUrl: data.screenshotDataUrl ?? null,
     };
 
     this.feedbacks.unshift(record);

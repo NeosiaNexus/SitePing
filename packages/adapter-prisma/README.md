@@ -90,6 +90,45 @@ npx @siteping/cli init
 npx prisma db push
 ```
 
+## Screenshot Storage
+
+When the widget is configured with `enableScreenshot: true`, every feedback POST may include a base64 JPEG `screenshotDataUrl`. By default the adapter persists the data URL **inline** on `Feedback.screenshotUrl`, which is convenient for dev but quickly blows up your DB in production (a 1200px JPEG is ~50–150 KB per row).
+
+For production, plug a `ScreenshotStorage` (S3, R2, B2, Cloudflare Images, local FS, …) into the handler:
+
+```ts
+import type { ScreenshotStorage } from "@siteping/adapter-prisma";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+const s3 = new S3Client({ region: "eu-west-3" });
+
+const screenshotStorage: ScreenshotStorage = {
+  async upload(dataUrl, ctx) {
+    const buf = Buffer.from(dataUrl.split(",")[1], "base64");
+    const key = `feedback/${ctx.feedbackId}.jpg`;
+    await s3.send(new PutObjectCommand({
+      Bucket: "my-bucket",
+      Key: key,
+      Body: buf,
+      ContentType: ctx.mimeType,
+    }));
+    return { url: `https://cdn.example.com/${key}` };
+  },
+  // Optional: cleanup on feedback delete
+  async delete(url) {
+    const key = url.split("/").pop();
+    if (key) await s3.send(new DeleteObjectCommand({ Bucket: "my-bucket", Key: key }));
+  },
+};
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  prisma,
+  screenshotStorage,
+});
+```
+
+When the upload fails (transient S3 outage etc.), the adapter falls back to inline persistence so the screenshot is not lost — a warn surfaces the underlying error.
+
 ## Authentication
 
 By default, all endpoints are publicly accessible. To protect read/update/delete operations, pass an `apiKey`:

@@ -41,6 +41,16 @@ export interface SitepingConfig {
    * Set to `false` to revert to the legacy project-wide behavior.
    */
   scopeAnnotationsByUrl?: boolean | undefined;
+  /**
+   * Capture a JPEG screenshot of the annotated area on submit. Defaults to
+   * `false` — opt-in because:
+   *
+   * - it requires `html2canvas` to be installed as a peer dependency,
+   * - it adds bundle weight (~40 KB gzip dynamic chunk),
+   * - it embeds page content in the feedback (privacy/GDPR consideration —
+   *   inform end users in your widget host UI when enabling).
+   */
+  enableScreenshot?: boolean | undefined;
   /** Called when the widget is skipped (production mode, mobile viewport) */
   onSkip?: (reason: "production" | "mobile") => void;
 
@@ -134,6 +144,15 @@ export interface FeedbackCreateInput {
   authorEmail: string;
   clientId: string;
   annotations: AnnotationCreateInput[];
+  /**
+   * Base64 JPEG `data:` URL captured by the widget at submit time.
+   *
+   * Adapters with a configured `ScreenshotStorage` are expected to upload
+   * this and persist the returned URL on `FeedbackRecord.screenshotUrl`.
+   * Adapters without storage may persist the data URL inline (memory /
+   * localStorage / dev) — the widget then renders it directly.
+   */
+  screenshotDataUrl?: string | null | undefined;
 }
 
 /** Input for a single annotation when creating a feedback. */
@@ -214,6 +233,13 @@ export interface FeedbackRecord {
   createdAt: Date;
   updatedAt: Date;
   annotations: AnnotationRecord[];
+  /**
+   * URL the widget renders as `<img src>`. Either an `https://...` from a
+   * configured `ScreenshotStorage`, or a `data:image/jpeg;base64,...` URL
+   * inline-persisted by adapters without storage. Null when no screenshot
+   * was captured (legacy records, capture failed, or host disabled it).
+   */
+  screenshotUrl: string | null;
 }
 
 /** A persisted annotation record returned by the store. */
@@ -373,6 +399,12 @@ export interface FeedbackPayload {
   annotations: AnnotationPayload[];
   /** Client-generated UUID for deduplication */
   clientId: string;
+  /**
+   * Base64 JPEG `data:` URL of the annotated area. Captured by the widget
+   * when `enableScreenshot: true` is set in `SitepingConfig`. Null when
+   * disabled or when capture failed silently.
+   */
+  screenshotDataUrl?: string | null | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -453,6 +485,8 @@ export interface FeedbackResponse {
   createdAt: string;
   updatedAt: string;
   annotations: AnnotationResponse[];
+  /** Screenshot URL (data: or http:) — see `FeedbackRecord.screenshotUrl`. */
+  screenshotUrl: string | null;
 }
 
 /** Annotation record as returned by the API. */
