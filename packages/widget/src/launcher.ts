@@ -279,9 +279,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // current page — preventing annotations from one page accidentally rendering
   // on another (when CSS selectors happen to match unrelated elements).
   const initialScope = getScope();
-  const initialOptions = scopeAnnotationsByUrl
-    ? { limit: PAGE_SIZE, url: initialScope.url }
-    : { limit: PAGE_SIZE };
+  const initialOptions = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: initialScope.url } : { limit: PAGE_SIZE };
   client
     .getFeedbacks(config.projectName, initialOptions)
     .then(({ feedbacks }: { feedbacks: FeedbackResponse[] }) => {

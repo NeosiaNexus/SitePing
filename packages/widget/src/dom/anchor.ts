@@ -63,9 +63,7 @@ export function generateAnchor(element: Element): AnchorData {
 /** Whether `el`'s bounding box fully contains `rect`. */
 function containsRect(el: Element, rect: DOMRect): boolean {
   const b = el.getBoundingClientRect();
-  return (
-    b.left <= rect.x && b.top <= rect.y && b.right >= rect.x + rect.width && b.bottom >= rect.y + rect.height
-  );
+  return b.left <= rect.x && b.top <= rect.y && b.right >= rect.x + rect.width && b.bottom >= rect.y + rect.height;
 }
 
 /**
