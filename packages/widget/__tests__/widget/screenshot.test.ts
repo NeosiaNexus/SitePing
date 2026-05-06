@@ -15,11 +15,11 @@ const { _resetScreenshotCacheForTests, captureScreenshot } = await import("../..
 // -----------------------------------------------------------------------
 // Graceful-degrade contract: captureScreenshot NEVER throws.
 //
-// The "missing peer dep" path is now a build-time concern (bundlers fail
-// the host build when html2canvas is absent). At runtime the only failure
-// modes that matter are: html2canvas threw (content-tainted canvas, version
-// mismatch) and the dynamic import resolved to something unexpected. Both
-// must result in `null` so the feedback submission still completes.
+// html2canvas is a regular dependency, so it's always installed — the
+// runtime failure modes that matter are: html2canvas threw (content-
+// tainted canvas, version mismatch) and the dynamic import resolved to
+// something unexpected (interop edge case). Both must result in `null`
+// so the feedback submission still completes.
 // -----------------------------------------------------------------------
 
 describe("captureScreenshot — graceful degrade", () => {

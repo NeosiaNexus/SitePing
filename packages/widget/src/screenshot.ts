@@ -1,14 +1,14 @@
 /**
  * Screenshot capture via html2canvas.
  *
- * `html2canvas` is an **optional peer dependency** — it is not bundled with
- * the widget. Hosts that want screenshots install it themselves; hosts that
- * don't keep a smaller bundle. We dynamic-import it so the chunk is only
- * pulled in when `enableScreenshot: true` is set.
+ * `html2canvas` is a regular `dependency` of `@siteping/widget` — every
+ * install gets it. We dynamic-import it so bundlers emit a separate chunk
+ * loaded only when `enableScreenshot: true` triggers the first capture;
+ * hosts that never enable screenshots pay only the disk-space cost.
  *
- * On failure (capture error, library not installed, content-tainted canvas)
- * we return `null` rather than throwing — the feedback is still submitted,
- * just without an image.
+ * On capture failure (content-tainted canvas, version mismatch, missing 2D
+ * context) we return `null` rather than throwing — the feedback is still
+ * submitted, just without an image.
  */
 
 type Html2CanvasFn = (element: HTMLElement, options?: Html2CanvasOptions) => Promise<HTMLCanvasElement>;
@@ -32,21 +32,21 @@ async function loadHtml2Canvas(): Promise<Html2CanvasFn | null> {
   if (cachedHtml2Canvas !== undefined) return cachedHtml2Canvas;
   try {
     // Static dynamic import — bundlers (Vite, webpack, esbuild) resolve this
-    // at build time and emit a separate chunk loaded on first capture. If the
-    // host hasn't installed `html2canvas`, the BUILD fails with a clear
-    // missing-module error — that's the contract we want for an opt-in
-    // feature that requires a peer dep. (Earlier "magic comment" attempts to
-    // dodge static resolution silently broke production: bare specifiers
-    // can't be resolved at runtime in browsers without import maps.)
+    // at build time and emit a separate chunk loaded only on first capture.
+    // html2canvas ships as a regular dependency so this resolves on every
+    // install. Earlier attempts to dodge static resolution via magic comments
+    // silently broke production: bare specifiers can't be resolved at runtime
+    // in browsers without import maps.
     const mod = (await import("html2canvas")) as { default?: Html2CanvasFn } & Html2CanvasFn;
     cachedHtml2Canvas = (mod.default ?? mod) as Html2CanvasFn;
     return cachedHtml2Canvas;
-  } catch {
+  } catch (err) {
     cachedHtml2Canvas = null;
     if (!warnedAboutMissingDep) {
       warnedAboutMissingDep = true;
       console.warn(
-        "[siteping] enableScreenshot is on but html2canvas could not be loaded. Run `npm install html2canvas` (or your equivalent) and rebuild to enable capture, or remove `enableScreenshot` from the config to silence this warning.",
+        "[siteping] html2canvas import failed unexpectedly. Capture is disabled for this session — feedbacks are still submitted, just without screenshots. Underlying error:",
+        err,
       );
     }
     return null;

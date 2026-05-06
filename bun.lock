@@ -84,17 +84,13 @@
     "packages/widget": {
       "name": "@siteping/widget",
       "version": "0.9.6",
+      "dependencies": {
+        "html2canvas": "^1.4.1",
+      },
       "devDependencies": {
         "@medv/finder": "^3.2.0",
         "@siteping/core": "workspace:*",
-        "html2canvas": "^1.4.1",
       },
-      "peerDependencies": {
-        "html2canvas": "^1.4.1",
-      },
-      "optionalPeers": [
-        "html2canvas",
-      ],
     },
   },
   "packages": {
