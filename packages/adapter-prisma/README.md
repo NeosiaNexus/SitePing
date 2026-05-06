@@ -55,9 +55,9 @@ matches case-insensitively depends on the database provider:
 
 | Provider | Default `caseInsensitiveSearch` | Behaviour |
 |----------|---------------------------------|-----------|
-| `postgresql`, `mysql`, `cockroachdb` | `true` (auto) | Emits `mode: "insensitive"` — case-insensitive across all letters, including non-ASCII. |
-| `sqlite`, `sqlserver`, `mongodb` | `false` (auto) | No `mode` field — uses each database's default `LIKE` semantics. SQLite is ASCII-case-insensitive by default; SQL Server depends on column collation. |
-| Unknown / undetectable | `true` (auto) | Preserves historical Postgres-style behaviour. |
+| `postgresql`, `mongodb`, `cockroachdb` | `true` (auto) | Emits `mode: "insensitive"` — case-insensitive across all letters, including non-ASCII. These are the providers whose generated Prisma client exposes `mode?: QueryMode` on string filters. |
+| `mysql`, `sqlite`, `sqlserver` | `false` (auto) | No `mode` field (Prisma's generated client doesn't expose it for these providers — passing it raises `PrismaClientValidationError: Unknown argument 'mode'`). Falls back to each database's default `LIKE` semantics: MySQL is case-insensitive on `_ci` collations (the default); SQLite is case-insensitive on ASCII; SQL Server depends on column collation. |
+| Unknown / undetectable | `false` (auto) | `contains` without `mode` works on every provider; `mode: "insensitive"` would throw on MySQL/SQLite/SQL Server. Pass `caseInsensitiveSearch: true` explicitly if you know your client is Postgres/Mongo/Cockroach but the provider auto-detection failed. |
 
 Auto-detection reads the active provider from the Prisma client at runtime.
 Override it explicitly when the default is wrong for your setup:

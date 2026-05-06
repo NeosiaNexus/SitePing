@@ -56,12 +56,16 @@ export interface SitepingPrismaClient {
 const INCLUDE_ANNOTATIONS = { annotations: true };
 
 /**
- * Prisma datasource providers that support the `mode: "insensitive"` option
- * on string filters. SQLite, MongoDB, and SQL Server do not — using `mode`
- * against them raises `Unsupported('Argument mode is not supported.')` for
- * SQLite, and similar errors elsewhere. Source: Prisma docs §case-sensitivity.
+ * Prisma datasource providers whose generated client exposes `mode?: QueryMode`
+ * on string filters. Verified against Prisma 6.x by inspecting the generated
+ * `StringFilter` type per provider:
+ *   - postgresql, mongodb, cockroachdb → emit `mode?: QueryMode`
+ *   - mysql, sqlite, sqlserver → no `mode` field; passing it raises
+ *     `PrismaClientValidationError: Unknown argument 'mode'` at runtime.
+ * `postgres` is kept as a defensive alias in case `_activeProvider` ever
+ * surfaces the legacy spelling.
  */
-const PROVIDERS_SUPPORTING_INSENSITIVE_MODE = new Set(["postgresql", "postgres", "mysql", "cockroachdb"]);
+const PROVIDERS_SUPPORTING_INSENSITIVE_MODE = new Set(["postgresql", "postgres", "mongodb", "cockroachdb"]);
 
 /**
  * Best-effort detection of the active Prisma provider for a runtime client.
@@ -72,21 +76,25 @@ const PROVIDERS_SUPPORTING_INSENSITIVE_MODE = new Set(["postgresql", "postgres",
  * when none match.
  */
 function detectActiveProvider(prisma: unknown): string | null {
-  const candidate = prisma as
-    | {
-        _activeProvider?: unknown;
-        _engineConfig?: { activeProvider?: unknown };
-        _engine?: { config?: { activeProvider?: unknown } };
-      }
-    | null
-    | undefined;
-  const fromActive = candidate?._activeProvider;
-  if (typeof fromActive === "string") return fromActive;
-  const fromEngineConfig = candidate?._engineConfig?.activeProvider;
-  if (typeof fromEngineConfig === "string") return fromEngineConfig;
-  const fromEngine = candidate?._engine?.config?.activeProvider;
-  if (typeof fromEngine === "string") return fromEngine;
-  return null;
+  try {
+    const candidate = prisma as
+      | {
+          _activeProvider?: unknown;
+          _engineConfig?: { activeProvider?: unknown };
+          _engine?: { config?: { activeProvider?: unknown } };
+        }
+      | null
+      | undefined;
+    const fromActive = candidate?._activeProvider;
+    if (typeof fromActive === "string") return fromActive;
+    const fromEngineConfig = candidate?._engineConfig?.activeProvider;
+    if (typeof fromEngineConfig === "string") return fromEngineConfig;
+    const fromEngine = candidate?._engine?.config?.activeProvider;
+    if (typeof fromEngine === "string") return fromEngine;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -99,13 +107,16 @@ export interface PrismaStoreOptions {
    *
    * When `false`, the filter is built without `mode` — uses each database's
    * default `LIKE` semantics (case-insensitive ASCII on SQLite by default;
-   * case-sensitive on MySQL/PostgreSQL with the standard `LIKE` operator).
+   * case-sensitive on PostgreSQL with the standard `LIKE` operator;
+   * collation-driven on MySQL and SQL Server).
    *
    * When omitted, the value is auto-detected from the Prisma client's active
-   * provider: providers known to support `mode: "insensitive"` (`postgresql`,
-   * `mysql`, `cockroachdb`) get `true`; others (`sqlite`, `sqlserver`,
-   * `mongodb`) get `false`. Unknown providers default to `true` to preserve
-   * the historical behaviour.
+   * provider: providers whose generated client exposes `mode?: QueryMode`
+   * (`postgresql`, `mongodb`, `cockroachdb`) get `true`; others (`mysql`,
+   * `sqlite`, `sqlserver`) get `false`. Unknown / undetectable providers
+   * default to `false` — `contains` without `mode` works on every provider;
+   * `mode: "insensitive"` throws on MySQL/SQLite/SQL Server, so the safer
+   * default is to omit it.
    */
   caseInsensitiveSearch?: boolean;
   /**
@@ -141,9 +152,12 @@ export class PrismaStore implements SitepingStore {
       this.caseInsensitiveSearch = options.caseInsensitiveSearch;
     } else {
       const provider = detectActiveProvider(prisma);
-      // Default true when the provider can't be detected — preserves the
-      // historical Postgres-first behaviour for unknown setups.
-      this.caseInsensitiveSearch = provider === null || PROVIDERS_SUPPORTING_INSENSITIVE_MODE.has(provider);
+      // When the provider can't be detected, default to `false`: `contains`
+      // without `mode` works on every Prisma provider; `mode: "insensitive"`
+      // throws on MySQL/SQLite/SQL Server. Trades non-ASCII case-insensitivity
+      // on undetectable Postgres clients (rare — _activeProvider is set on
+      // every real Prisma 5/6 client) for not crashing on the others.
+      this.caseInsensitiveSearch = provider !== null && PROVIDERS_SUPPORTING_INSENSITIVE_MODE.has(provider);
     }
   }
 
