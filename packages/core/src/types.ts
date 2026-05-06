@@ -22,6 +22,25 @@ export interface SitepingConfig {
   theme?: "light" | "dark" | "auto";
   /** UI locale — defaults to 'en'. Built-in: en, fr, de, es, it, pt (Brazilian), ru. Any other string falls back to English. */
   locale?: "en" | "fr" | "de" | "es" | "it" | "pt" | "ru" | (string & {}) | undefined;
+  /**
+   * Returns the current page scope for annotations and panel filtering.
+   * Called on every initial markers load and on `instance.refresh()`.
+   *
+   * Default: `{ url: window.location.pathname, urlPattern: null }` — annotations
+   * are scoped strictly to the current pathname.
+   *
+   * Apps with parameterized routes (e.g. React Router) should return both the
+   * concrete URL and the route template (e.g. `/orders/:orderId`) so the panel
+   * can offer a "this type of page" filter that groups feedbacks by template.
+   */
+  getPageScope?: (() => PageScope) | undefined;
+  /**
+   * When true (default), the widget filters initial markers and panel results
+   * by `feedback.url === scope.url`, so annotations created on one page never
+   * leak to other pages — even if their CSS selector accidentally matches.
+   * Set to `false` to revert to the legacy project-wide behavior.
+   */
+  scopeAnnotationsByUrl?: boolean | undefined;
   /** Called when the widget is skipped (production mode, mobile viewport) */
   onSkip?: (reason: "production" | "mobile") => void;
 
@@ -77,6 +96,20 @@ export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 export const FEEDBACK_STATUSES = ["open", "resolved"] as const;
 export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
 
+/**
+ * Page scope returned by `SitepingConfig.getPageScope()`.
+ *
+ * - `url`: concrete page identifier — usually `window.location.pathname`,
+ *   used as the strict scope for marker rendering.
+ * - `urlPattern`: optional parameterized template (e.g. `/orders/:orderId`)
+ *   used by the panel's "this type of page" filter to group feedbacks across
+ *   instances of the same page kind.
+ */
+export interface PageScope {
+  url: string;
+  urlPattern: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Abstract Store — adapter pattern
 // ---------------------------------------------------------------------------
@@ -88,6 +121,13 @@ export interface FeedbackCreateInput {
   message: string;
   status: FeedbackStatus;
   url: string;
+  /**
+   * Optional parameterized URL template (e.g. `/orders/:orderId`) for the page
+   * where the feedback was created. Allows the panel to filter feedbacks by
+   * "this type of page" across different instances. Null when the host did not
+   * provide a `getPageScope` callback or the route has no template.
+   */
+  urlPattern?: string | null;
   viewport: string;
   userAgent: string;
   authorName: string;
@@ -109,6 +149,13 @@ export interface AnnotationCreateInput {
   textSuffix: string;
   fingerprint: string;
   neighborText: string;
+  /**
+   * Semantic anchor identifier from the closest ancestor's `data-feedback-anchor`
+   * attribute. When set, this is the most stable re-anchoring signal because
+   * hosts deliberately place these on layout/section roots that survive DOM
+   * refactors and viewport changes. Null when no semantic ancestor exists.
+   */
+  anchorKey?: string | null;
   xPct: number;
   yPct: number;
   wPct: number;
@@ -128,6 +175,17 @@ export interface FeedbackQuery {
   search?: string | undefined;
   page?: number | undefined;
   limit?: number | undefined;
+  /**
+   * Filter to feedbacks created on this exact URL (path). Used by the panel's
+   * "this page" filter and by the markers loader to keep page scopes isolated.
+   */
+  url?: string | undefined;
+  /**
+   * Filter to feedbacks created on this URL pattern (e.g. `/orders/:orderId`).
+   * Used by the panel's "this type of page" filter to group feedbacks across
+   * different concrete instances of the same template.
+   */
+  urlPattern?: string | undefined;
 }
 
 /** Update payload for patching a feedback. */
@@ -144,6 +202,11 @@ export interface FeedbackRecord {
   status: FeedbackStatus;
   projectName: string;
   url: string;
+  /**
+   * Parameterized URL template the feedback was created on.
+   * Null for legacy records or hosts without `getPageScope`.
+   */
+  urlPattern: string | null;
   authorName: string;
   authorEmail: string;
   viewport: string;
@@ -168,6 +231,11 @@ export interface AnnotationRecord {
   textSuffix: string;
   fingerprint: string;
   neighborText: string;
+  /**
+   * Semantic anchor identifier from `data-feedback-anchor`. Null for legacy
+   * annotations or those drawn outside any anchored region.
+   */
+  anchorKey: string | null;
   xPct: number;
   yPct: number;
   wPct: number;
@@ -241,6 +309,7 @@ export function flattenAnnotation(ann: AnnotationPayload): AnnotationCreateInput
     textSuffix: ann.anchor.textSuffix,
     fingerprint: ann.anchor.fingerprint,
     neighborText: ann.anchor.neighborText,
+    anchorKey: ann.anchor.anchorKey ?? null,
     xPct: ann.rect.xPct,
     yPct: ann.rect.yPct,
     wPct: ann.rect.wPct,
@@ -294,6 +363,12 @@ export interface FeedbackPayload {
   type: FeedbackType;
   message: string;
   url: string;
+  /**
+   * Optional parameterized URL template (e.g. `/orders/:orderId`) supplied by
+   * `SitepingConfig.getPageScope()`. Hosts use this to enable cross-instance
+   * filtering in the panel.
+   */
+  urlPattern?: string | null;
   viewport: string;
   userAgent: string;
   authorName: string;
@@ -329,6 +404,13 @@ export interface AnchorData {
   fingerprint: string;
   /** Text content of adjacent sibling elements (context) */
   neighborText: string;
+  /**
+   * Semantic anchor identifier from the closest ancestor's `data-feedback-anchor`
+   * attribute. When set, this is the highest-priority re-anchoring signal —
+   * hosts deliberately place these on layout/section roots that survive
+   * viewport changes and DOM refactors.
+   */
+  anchorKey?: string | null;
 }
 
 /** Drawn rectangle coordinates as percentages relative to the anchor element. */
@@ -366,6 +448,8 @@ export interface FeedbackResponse {
   message: string;
   status: FeedbackStatus;
   url: string;
+  /** Parameterized URL template the feedback was created on, or null. */
+  urlPattern: string | null;
   viewport: string;
   userAgent: string;
   authorName: string;
@@ -389,6 +473,8 @@ export interface AnnotationResponse {
   textSuffix: string;
   fingerprint: string;
   neighborText: string;
+  /** Semantic anchor identifier from `data-feedback-anchor`, or null. */
+  anchorKey: string | null;
   xPct: number;
   yPct: number;
   wPct: number;

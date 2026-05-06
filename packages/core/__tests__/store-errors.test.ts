@@ -214,6 +214,7 @@ describe("flattenAnnotation", () => {
     const result = flattenAnnotation(sampleAnnotation);
     const keys = Object.keys(result).sort();
     expect(keys).toEqual([
+      "anchorKey",
       "cssSelector",
       "devicePixelRatio",
       "elementId",

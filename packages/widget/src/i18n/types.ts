@@ -39,6 +39,13 @@ export interface Translations {
   // Status segmented control label
   "status.label": string;
 
+  // Page scope segmented control — keep panel results focused on the current
+  // page or expand to the same template / all pages
+  "scope.label": string;
+  "scope.thisPage": string;
+  "scope.thisType": string;
+  "scope.all": string;
+
   // FAB menu
   "fab.aria": string;
   "fab.messages": string;

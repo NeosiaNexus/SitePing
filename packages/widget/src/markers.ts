@@ -20,6 +20,7 @@ function toAnchorData(a: Annotation): AnchorData {
     textSuffix: a.textSuffix,
     fingerprint: a.fingerprint,
     neighborText: a.neighborText,
+    anchorKey: a.anchorKey ?? null,
   };
 }
 

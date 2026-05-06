@@ -42,6 +42,12 @@ export const it: Translations = {
   // Status segmented control label
   "status.label": "Stato",
 
+  // Page scope segmented control
+  "scope.label": "Ambito",
+  "scope.thisPage": "Questa pagina",
+  "scope.thisType": "Questo tipo",
+  "scope.all": "Tutte le pagine",
+
   // FAB menu
   "fab.aria": "Siteping — Menu feedback",
   "fab.messages": "Messaggi",

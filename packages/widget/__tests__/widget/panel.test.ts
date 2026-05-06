@@ -195,7 +195,13 @@ describe("Panel", () => {
     it("calls getFeedbacks on open", async () => {
       await panel.open();
 
-      expect(apiClient.getFeedbacks).toHaveBeenCalledWith("test-project", { page: 1, limit: 20 });
+      // Default scope filter is "this page" — uses window.location.pathname
+      // (in jsdom this resolves to "/").
+      expect(apiClient.getFeedbacks).toHaveBeenCalledWith("test-project", {
+        page: 1,
+        limit: 20,
+        url: "/",
+      });
     });
 
     it("sets aria-hidden=true when closed", async () => {

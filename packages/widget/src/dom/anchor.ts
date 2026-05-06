@@ -4,13 +4,19 @@ import { generateFingerprint } from "./fingerprint.js";
 import { adjacentText, neighborText } from "./text-context.js";
 import { generateXPath } from "./xpath.js";
 
+/** HTML attribute hosts use to mark stable semantic anchors. */
+export const ANCHOR_KEY_ATTR = "data-feedback-anchor";
+
 /**
  * Generate a multi-selector anchor for a DOM element.
  *
- * Uses three complementary strategies (Hypothesis-inspired):
- * 1. CSS selector via @medv/finder (primary — fast, compact)
- * 2. XPath (fallback — survives class changes)
- * 3. Text snippet (fallback — survives structural changes)
+ * Resolution priority (used by `resolveAnchor`):
+ * 1. Semantic anchor (`data-feedback-anchor` on closest ancestor) — hosts opt
+ *    into stable, narrow anchors that survive viewport changes and refactors
+ * 2. Element id
+ * 3. CSS selector via @medv/finder
+ * 4. XPath
+ * 5. Smart scan (fingerprint + text + prefix/suffix + neighbor)
  */
 export function generateAnchor(element: Element): AnchorData {
   const cssSelector = finder(element, {
@@ -34,6 +40,12 @@ export function generateAnchor(element: Element): AnchorData {
   const fingerprint = generateFingerprint(element);
   const neighbor = neighborText(element);
 
+  // Semantic anchor: nearest ancestor with `data-feedback-anchor`, including
+  // the element itself. Returns null when no semantic ancestor exists, in
+  // which case re-anchoring falls back to the existing chain.
+  const semanticAncestor = element.closest(`[${ANCHOR_KEY_ATTR}]`);
+  const anchorKey = semanticAncestor?.getAttribute(ANCHOR_KEY_ATTR) ?? null;
+
   return {
     cssSelector,
     xpath,
@@ -44,16 +56,28 @@ export function generateAnchor(element: Element): AnchorData {
     neighborText: neighbor,
     elementTag: element.tagName,
     elementId: element.id || undefined,
+    anchorKey,
   };
 }
 
+/** Whether `el`'s bounding box fully contains `rect`. */
+function containsRect(el: Element, rect: DOMRect): boolean {
+  const b = el.getBoundingClientRect();
+  return (
+    b.left <= rect.x && b.top <= rect.y && b.right >= rect.x + rect.width && b.bottom >= rect.y + rect.height
+  );
+}
+
 /**
- * Find the smallest DOM element whose bounding box fully contains the drawn rectangle.
+ * Find the best DOM element to use as the rect's anchor.
  *
- * Walks up from the element at the rect's center until an ancestor contains the
- * full rectangle. Falls back to `document.body` when no ancestor matches — without
- * this fallback, callers compute percentages against a too-small anchor and produce
- * out-of-range values (negative / > 1).
+ * Priority:
+ * 1. Closest ancestor with `data-feedback-anchor` whose bounds contain the rect
+ *    (semantic anchors are typically narrow section roots — anchoring against
+ *    them keeps the percentage-based rect stable across viewport changes,
+ *    instead of stretching to the width of `<main>`).
+ * 2. Smallest ancestor that contains the rect (legacy behavior).
+ * 3. `document.body` fallback — ensures percentages stay in [0, 1].
  */
 export function findAnchorElement(rect: DOMRect, root: Element = document.documentElement): Element {
   const centerX = rect.x + rect.width / 2;
@@ -62,17 +86,19 @@ export function findAnchorElement(rect: DOMRect, root: Element = document.docume
   const elementAtCenter = document.elementFromPoint(centerX, centerY);
   if (!elementAtCenter || elementAtCenter === root) return document.body;
 
+  // Pass 1 — semantic anchor (host-controlled, most stable)
   let current: Element | null = elementAtCenter;
   while (current && current !== document.body) {
-    const bounds = current.getBoundingClientRect();
-    if (
-      bounds.left <= rect.x &&
-      bounds.top <= rect.y &&
-      bounds.right >= rect.x + rect.width &&
-      bounds.bottom >= rect.y + rect.height
-    ) {
+    if (current.hasAttribute(ANCHOR_KEY_ATTR) && containsRect(current, rect)) {
       return current;
     }
+    current = current.parentElement;
+  }
+
+  // Pass 2 — original behavior: smallest ancestor that contains the rect
+  current = elementAtCenter;
+  while (current && current !== document.body) {
+    if (containsRect(current, rect)) return current;
     current = current.parentElement;
   }
 

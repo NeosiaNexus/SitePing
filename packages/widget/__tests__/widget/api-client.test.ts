@@ -295,6 +295,24 @@ describe("ApiClient", () => {
     expect(calledUrl).toContain("search=broken");
   });
 
+  it("forwards the page-scope filter (url) as a query parameter", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
+
+    await client.getFeedbacks("test-project", { url: "/orders/2177138" });
+
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("url=%2Forders%2F2177138");
+  });
+
+  it("forwards the page-scope template filter (urlPattern) as a query parameter", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
+
+    await client.getFeedbacks("test-project", { urlPattern: "/orders/:orderId" });
+
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("urlPattern=%2Forders%2F%3AorderId");
+  });
+
   it("resolveFeedback sends status='open' when resolved=false", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ id: "fb-2", status: "open" })));
 
