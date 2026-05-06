@@ -10,7 +10,18 @@ export default defineConfig({
       provider: "istanbul",
       reporter: ["text", "lcov", "json-summary"],
       include: ["packages/*/src/**/*.ts"],
-      exclude: ["**/*.test.ts", "**/index.ts", "**/icons.ts", "**/styles/**"],
+      exclude: [
+        "**/*.test.ts",
+        "**/index.ts",
+        "**/icons.ts",
+        "**/styles/**",
+        // html2canvas wrapper — the success/downscale paths require a real
+        // browser canvas (jsdom can't drive `getContext('2d').drawImage` or
+        // `toDataURL` for image data). Failure-path test lives in
+        // `__tests__/widget/screenshot.test.ts`; the happy path is covered
+        // by E2E and manual smoke tests.
+        "**/widget/src/screenshot.ts",
+      ],
       thresholds: {
         lines: 95,
         functions: 95,
