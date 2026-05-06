@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.9.7](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.6...widget-v0.9.7) (2026-05-06)
+
+
+### Features
+
+* page-scoped annotations + semantic anchors (data-feedback-anchor) ([#55](https://github.com/NeosiaNexus/SitePing/issues/55)) ([db722de](https://github.com/NeosiaNexus/SitePing/commit/db722deab9f69cfdeb6fbe6f7f0bea57e2995e5c))
+* screenshot capture with pluggable storage ([#58](https://github.com/NeosiaNexus/SitePing/issues/58)) ([f14ecd2](https://github.com/NeosiaNexus/SitePing/commit/f14ecd2f2f05a547a4a52e5a6ad4d794d438008c))
+
+
+### Bug Fixes
+
+* **widget:** clamp popup inside viewport when rect leaves no room above or below ([#54](https://github.com/NeosiaNexus/SitePing/issues/54)) ([1aeffd2](https://github.com/NeosiaNexus/SitePing/commit/1aeffd2ee25e9595faf8e30d9993abacda5a9eb7))
+
+
+### Tests
+
+* raise unit test coverage to 99%+ across all packages ([f2e9f9e](https://github.com/NeosiaNexus/SitePing/commit/f2e9f9e406a6f0a3971b9df864af4e96d742304a))
+
 ## [0.9.6](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.5...widget-v0.9.6) (2026-05-02)
 
 
