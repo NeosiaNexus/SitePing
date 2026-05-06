@@ -171,6 +171,183 @@ describe("createSitepingHandler", () => {
       expect(callArgs.where.type).toBe("bug");
       expect(callArgs.where.status).toBe("open");
     });
+
+    describe("?search filter — case-insensitive mode", () => {
+      it("falls back to omitting mode when the active provider can't be detected", async () => {
+        // The default mockPrisma() exposes none of the internal probe paths,
+        // so detectActiveProvider returns null. The safe default is to omit
+        // `mode` — `contains` works on every provider; `mode: "insensitive"`
+        // would throw on MySQL/SQLite/SQL Server.
+        prisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        prisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await handler.GET(req);
+        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello" });
+        expect(callArgs.where.message).not.toHaveProperty("mode");
+      });
+
+      it("omits mode when caseInsensitiveSearch:false is passed explicitly", async () => {
+        const sqliteHandler = createSitepingHandler({ prisma, caseInsensitiveSearch: false });
+        prisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        prisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await sqliteHandler.GET(req);
+        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello" });
+        expect(callArgs.where.message).not.toHaveProperty("mode");
+      });
+
+      it("auto-detects sqlite via _activeProvider and omits mode", async () => {
+        const sqlitePrisma = Object.assign(mockPrisma(), { _activeProvider: "sqlite" });
+        const sqliteHandler = createSitepingHandler({ prisma: sqlitePrisma });
+        sqlitePrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        sqlitePrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await sqliteHandler.GET(req);
+        const callArgs = sqlitePrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello" });
+      });
+
+      it("auto-detects postgresql via _activeProvider and keeps mode", async () => {
+        const pgPrisma = Object.assign(mockPrisma(), { _activeProvider: "postgresql" });
+        const pgHandler = createSitepingHandler({ prisma: pgPrisma });
+        pgPrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        pgPrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await pgHandler.GET(req);
+        const callArgs = pgPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
+      });
+
+      it("explicit caseInsensitiveSearch:true overrides sqlite auto-detect", async () => {
+        const sqlitePrisma = Object.assign(mockPrisma(), { _activeProvider: "sqlite" });
+        const overriddenHandler = createSitepingHandler({
+          prisma: sqlitePrisma,
+          caseInsensitiveSearch: true,
+        });
+        sqlitePrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        sqlitePrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await overriddenHandler.GET(req);
+        const callArgs = sqlitePrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
+      });
+
+      it("does not touch where.message when search is absent", async () => {
+        const sqliteHandler = createSitepingHandler({ prisma, caseInsensitiveSearch: false });
+        prisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        prisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test");
+        await sqliteHandler.GET(req);
+        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: Record<string, unknown>;
+        };
+        expect(callArgs.where).not.toHaveProperty("message");
+      });
+
+      it("auto-detects mysql via _activeProvider and omits mode", async () => {
+        // MySQL's generated Prisma client does not expose `mode?:` on string
+        // filters — passing it raises `Unknown argument 'mode'` at runtime.
+        const mysqlPrisma = Object.assign(mockPrisma(), { _activeProvider: "mysql" });
+        const mysqlHandler = createSitepingHandler({ prisma: mysqlPrisma });
+        mysqlPrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        mysqlPrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await mysqlHandler.GET(req);
+        const callArgs = mysqlPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).not.toHaveProperty("mode");
+      });
+
+      it("auto-detects mongodb via _activeProvider and keeps mode", async () => {
+        // MongoDB's generated Prisma client exposes `mode?: QueryMode` (Prisma
+        // compiles it to a case-insensitive $regex under the hood).
+        const mongoPrisma = Object.assign(mockPrisma(), { _activeProvider: "mongodb" });
+        const mongoHandler = createSitepingHandler({ prisma: mongoPrisma });
+        mongoPrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        mongoPrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await mongoHandler.GET(req);
+        const callArgs = mongoPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
+      });
+
+      it("auto-detects cockroachdb via _activeProvider and keeps mode", async () => {
+        const cockroachPrisma = Object.assign(mockPrisma(), { _activeProvider: "cockroachdb" });
+        const cockroachHandler = createSitepingHandler({ prisma: cockroachPrisma });
+        cockroachPrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        cockroachPrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await cockroachHandler.GET(req);
+        const callArgs = cockroachPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
+      });
+
+      it("auto-detects sqlserver via _activeProvider and omits mode", async () => {
+        const mssqlPrisma = Object.assign(mockPrisma(), { _activeProvider: "sqlserver" });
+        const mssqlHandler = createSitepingHandler({ prisma: mssqlPrisma });
+        mssqlPrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        mssqlPrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await mssqlHandler.GET(req);
+        const callArgs = mssqlPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).not.toHaveProperty("mode");
+      });
+
+      it("reads provider from _engineConfig.activeProvider when _activeProvider is missing", async () => {
+        const altPrisma = Object.assign(mockPrisma(), { _engineConfig: { activeProvider: "postgresql" } });
+        const altHandler = createSitepingHandler({ prisma: altPrisma });
+        altPrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        altPrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await altHandler.GET(req);
+        const callArgs = altPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
+      });
+
+      it("survives a prisma client whose provider probe throws", async () => {
+        // Some test doubles use Proxies whose get-traps throw — the constructor
+        // must still build a working store rather than crash.
+        const throwingPrisma = new Proxy(mockPrisma(), {
+          get(target, prop, receiver) {
+            if (prop === "_activeProvider" || prop === "_engineConfig" || prop === "_engine") {
+              throw new Error("probe denied");
+            }
+            return Reflect.get(target, prop, receiver);
+          },
+        }) as unknown as ReturnType<typeof mockPrisma>;
+        const throwingHandler = createSitepingHandler({ prisma: throwingPrisma });
+        throwingPrisma.sitepingFeedback.findMany.mockResolvedValue([]);
+        throwingPrisma.sitepingFeedback.count.mockResolvedValue(0);
+        const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
+        await throwingHandler.GET(req);
+        const callArgs = throwingPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+          where: { message?: { contains: string; mode?: string } };
+        };
+        // Probe threw → fallback → no mode (safe default).
+        expect(callArgs.where.message).not.toHaveProperty("mode");
+      });
+    });
   });
 
   describe("PATCH", () => {

@@ -42,11 +42,38 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ pri
 | `projectName` | `string` | **Required.** Filter by project |
 | `type` | `string` | `question` \| `change` \| `bug` \| `other` |
 | `status` | `string` | `open` \| `resolved` |
-| `search` | `string` | Full-text search on message content |
+| `search` | `string` | Substring match on message content (see [Search and case sensitivity](#search-and-case-sensitivity)) |
 | `url` | `string` | Restrict to feedbacks created on this exact URL — used by the panel's "this page" filter |
 | `urlPattern` | `string` | Restrict to feedbacks created on this URL template (e.g. `/orders/:id`) — used by the panel's "this type of page" filter |
 | `page` | `number` | Pagination (default: 1) |
 | `limit` | `number` | Items per page (default: 50, max: 100) |
+
+### Search and case sensitivity
+
+The `?search=` filter is built with Prisma's `contains` operator. Whether it
+matches case-insensitively depends on the database provider:
+
+| Provider | Default `caseInsensitiveSearch` | Behaviour |
+|----------|---------------------------------|-----------|
+| `postgresql`, `mongodb`, `cockroachdb` | `true` (auto) | Emits `mode: "insensitive"` — case-insensitive across all letters, including non-ASCII. These are the providers whose generated Prisma client exposes `mode?: QueryMode` on string filters. |
+| `mysql`, `sqlite`, `sqlserver` | `false` (auto) | No `mode` field (Prisma's generated client doesn't expose it for these providers — passing it raises `PrismaClientValidationError: Unknown argument 'mode'`). Falls back to each database's default `LIKE` semantics: MySQL is case-insensitive on `_ci` collations (the default); SQLite is case-insensitive on ASCII; SQL Server depends on column collation. |
+| Unknown / undetectable | `false` (auto) | `contains` without `mode` works on every provider; `mode: "insensitive"` would throw on MySQL/SQLite/SQL Server. Pass `caseInsensitiveSearch: true` explicitly if you know your client is Postgres/Mongo/Cockroach but the provider auto-detection failed. |
+
+Auto-detection reads the active provider from the Prisma client at runtime.
+Override it explicitly when the default is wrong for your setup:
+
+```ts
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  prisma,
+  caseInsensitiveSearch: false, // force ASCII-only match (e.g. SQL Server with case-sensitive collation)
+})
+```
+
+Or when constructing `PrismaStore` directly:
+
+```ts
+const store = new PrismaStore(prisma, { caseInsensitiveSearch: false })
+```
 
 ## Validation Constraints
 
