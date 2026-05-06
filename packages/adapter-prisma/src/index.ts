@@ -75,6 +75,7 @@ export class PrismaStore implements SitepingStore {
         message: data.message,
         status: data.status,
         url: data.url,
+        urlPattern: data.urlPattern ?? null,
         viewport: data.viewport,
         userAgent: data.userAgent,
         authorName: data.authorName,
@@ -91,6 +92,7 @@ export class PrismaStore implements SitepingStore {
             textSuffix: ann.textSuffix,
             fingerprint: ann.fingerprint,
             neighborText: ann.neighborText,
+            anchorKey: ann.anchorKey ?? null,
             xPct: ann.xPct,
             yPct: ann.yPct,
             wPct: ann.wPct,
@@ -115,11 +117,13 @@ export class PrismaStore implements SitepingStore {
   }
 
   async getFeedbacks(query: FeedbackQuery): Promise<{ feedbacks: FeedbackRecord[]; total: number }> {
-    const { projectName, type, status, search, page = 1, limit = 50 } = query;
+    const { projectName, type, status, search, url, urlPattern, page = 1, limit = 50 } = query;
 
     const where: Record<string, unknown> = { projectName };
     if (type) where.type = type;
     if (status) where.status = status;
+    if (url) where.url = url;
+    if (urlPattern) where.urlPattern = urlPattern;
     if (search) where.message = { contains: search, mode: "insensitive" as const };
 
     const [feedbacks, total] = await Promise.all([
@@ -354,6 +358,7 @@ export function createSitepingHandler({
           message: data.message,
           status: "open",
           url: data.url,
+          urlPattern: data.urlPattern ?? null,
           viewport: data.viewport,
           userAgent: data.userAgent,
           authorName: data.authorName,
@@ -383,7 +388,7 @@ export function createSitepingHandler({
 
       const url = new URL(request.url);
       const rawQuery: Record<string, unknown> = {};
-      for (const key of ["projectName", "page", "limit", "type", "status", "search"]) {
+      for (const key of ["projectName", "page", "limit", "type", "status", "search", "url", "urlPattern"]) {
         const val = url.searchParams.get(key);
         if (val !== null) rawQuery[key] = val;
       }

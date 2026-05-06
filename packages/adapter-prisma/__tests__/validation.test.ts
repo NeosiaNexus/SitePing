@@ -54,12 +54,30 @@ describe("feedbackCreateSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects invalid URL", () => {
+  it("rejects empty url", () => {
+    // Hosts override `getPageScope()` to return any string identifier
+    // (pathname, full URL, opaque slug, …); we only require non-empty.
     const result = feedbackCreateSchema.safeParse({
       ...validPayload,
-      url: "not-a-url",
+      url: "",
     });
     expect(result.success).toBe(false);
+  });
+
+  it("rejects whitespace-only url (trimmed to empty)", () => {
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      url: "   ",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts pathname url (default getPageScope output)", () => {
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      url: "/orders/42",
+    });
+    expect(result.success).toBe(true);
   });
 
   it("rejects negative annotation rect dimensions", () => {

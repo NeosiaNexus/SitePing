@@ -27,6 +27,7 @@ model SitepingFeedback {
   message      String              @db.Text
   status       String              @default("open")
   url          String
+  urlPattern   String?
   viewport     String
   userAgent    String
   authorName   String
@@ -39,6 +40,7 @@ model SitepingFeedback {
 
   @@index([projectName])
   @@index([projectName, status, createdAt])
+  @@index([projectName, url])
 }
 
 model SitepingAnnotation {
@@ -54,6 +56,7 @@ model SitepingAnnotation {
   textSuffix       String           @db.Text
   fingerprint      String
   neighborText     String           @db.Text
+  anchorKey        String?
   xPct             Float
   yPct             Float
   wPct             Float
@@ -174,6 +177,7 @@ model SitepingFeedback {
   message      String              @db.Text
   status       String              @default("open")
   url          String
+  urlPattern   String?
   viewport     String
   userAgent    String
   authorName   String
@@ -197,6 +201,7 @@ model SitepingAnnotation {
   textSuffix       String           @db.Text
   fingerprint      String
   neighborText     String           @db.Text
+  anchorKey        String?
   xPct             Float
   yPct             Float
   wPct             Float

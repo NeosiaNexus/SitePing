@@ -1,4 +1,11 @@
-import type { FeedbackPayload, SitepingConfig, SitepingInstance, SitepingPublicEvents } from "@siteping/core";
+import type {
+  FeedbackPayload,
+  FeedbackResponse,
+  PageScope,
+  SitepingConfig,
+  SitepingInstance,
+  SitepingPublicEvents,
+} from "@siteping/core";
 import { Annotator } from "./annotator.js";
 import { ApiClient, flushRetryQueue, type WidgetClient } from "./api-client.js";
 import { MOBILE_BREAKPOINT, PAGE_SIZE, Z_INDEX_MAX } from "./constants.js";
@@ -89,7 +96,27 @@ export function launch(config: SitepingConfig): SitepingInstance {
   const locale = config.locale ?? "en";
   const t = createT(locale);
 
-  log("Initializing widget", { projectName: config.projectName, theme: config.theme ?? "light", locale });
+  // Page scope — concrete URL + optional template, used to keep annotations
+  // and panel results scoped to the current page. The widget calls this on
+  // every initial markers load and on `instance.refresh()`, so SPA hosts can
+  // re-fetch when the route changes.
+  const scopeAnnotationsByUrl = config.scopeAnnotationsByUrl ?? true;
+  const getScope = (): PageScope => {
+    try {
+      const result = config.getPageScope?.();
+      if (result) return result;
+    } catch (e) {
+      log("getPageScope() threw, falling back to pathname:", e);
+    }
+    return { url: window.location.pathname, urlPattern: null };
+  };
+
+  log("Initializing widget", {
+    projectName: config.projectName,
+    theme: config.theme ?? "light",
+    locale,
+    scopeAnnotationsByUrl,
+  });
 
   const colors = buildThemeColors(config.accentColor, config.theme);
   const bus = new EventBus<WidgetEvents>();
@@ -171,7 +198,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // Components inside Shadow DOM
   const fab = new Fab(shadow, config, bus, t);
-  const panel = new Panel(shadow, colors, bus, client, config.projectName, markers, t, locale);
+  const panel = new Panel(shadow, colors, bus, client, config.projectName, markers, t, locale, {
+    getScope,
+    scopeAnnotationsByUrl,
+  });
   const annotator = new Annotator(colors, bus, t);
 
   // Handle annotation completion via event bus (not DOM events)
@@ -191,15 +221,6 @@ export function launch(config: SitepingConfig): SitepingInstance {
         saveIdentity(identity);
       }
 
-      // Sanitize URL — strip sensitive query params before sending
-      const rawUrl = new URL(window.location.href);
-      for (const key of [...rawUrl.searchParams.keys()]) {
-        if (/token|key|secret|auth|session|password|code/i.test(key)) {
-          rawUrl.searchParams.delete(key);
-        }
-      }
-      const sanitizedUrl = rawUrl.toString();
-
       // crypto.randomUUID() throws in non-secure contexts (plain HTTP)
       const clientId = (() => {
         try {
@@ -209,11 +230,20 @@ export function launch(config: SitepingConfig): SitepingInstance {
         }
       })();
 
+      // Use scope.url as the single source of truth — same identifier the
+      // panel filter and marker filter use. If we stored full URLs here while
+      // filtering by pathname, freshly-created feedbacks would never match
+      // their own scope filter and would vanish from the UI immediately.
+      // Default scope.url is `window.location.pathname` (no query string,
+      // so token/key/secret query params can't leak by construction). Hosts
+      // that need origin or query in the identifier override `getPageScope`.
+      const scope = getScope();
       const payload: FeedbackPayload = {
         projectName: config.projectName,
         type,
         message,
-        url: sanitizedUrl,
+        url: scope.url,
+        urlPattern: scope.urlPattern,
         viewport: `${window.innerWidth}x${window.innerHeight}`,
         userAgent: navigator.userAgent,
         authorName: identity.name,
@@ -225,7 +255,12 @@ export function launch(config: SitepingConfig): SitepingInstance {
       try {
         const response = await client.sendFeedback(payload);
         bus.emit("feedback:sent", response);
-        markers.addFeedback(response, markers.count + 1);
+        // Compare against the scope captured before submit (route may have
+        // changed during the network round-trip — re-reading scope here
+        // would race with SPA navigation).
+        if (!scopeAnnotationsByUrl || response.url === scope.url) {
+          markers.addFeedback(response, markers.count + 1);
+        }
         liveRegion.textContent = t("feedback.sent.confirmation");
         await panel.refresh();
       } catch (error) {
@@ -237,11 +272,18 @@ export function launch(config: SitepingConfig): SitepingInstance {
     }
   });
 
-  // Load markers immediately on page load
+  // Load markers immediately on page load. We always pass the current page URL
+  // when scopeAnnotationsByUrl is enabled so the server narrows results to the
+  // current page — preventing annotations from one page accidentally rendering
+  // on another (when CSS selectors happen to match unrelated elements).
+  const initialScope = getScope();
+  const initialOptions = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: initialScope.url } : { limit: PAGE_SIZE };
   client
-    .getFeedbacks(config.projectName, { limit: PAGE_SIZE })
-    .then(({ feedbacks }) => {
-      markers.render(feedbacks);
+    .getFeedbacks(config.projectName, initialOptions)
+    .then(({ feedbacks }: { feedbacks: FeedbackResponse[] }) => {
+      // Defensive client-side filter — backend may not yet support the `url` query.
+      const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === initialScope.url) : feedbacks;
+      markers.render(visible);
     })
     .catch((err) => {
       log("Failed to load initial markers:", err);
@@ -276,7 +318,26 @@ export function launch(config: SitepingConfig): SitepingInstance {
       panel.close();
     },
     refresh: () => {
-      panel.refresh();
+      // When the panel is open, its `refresh()` already runs `loadFeedbacks()`
+      // which renders markers. Doing a second fetch here would race with that
+      // one — the loser overwrites the winner's markers, off by a generation.
+      // So: when the panel is open, delegate. When it's closed, fetch markers
+      // ourselves (the panel won't, but SPA hosts still need the new page's
+      // markers after a route change).
+      if (panel.isCurrentlyOpen) {
+        panel.refresh();
+        return;
+      }
+
+      const scope = getScope();
+      const opts = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: scope.url } : { limit: PAGE_SIZE };
+      client
+        .getFeedbacks(config.projectName, opts)
+        .then(({ feedbacks }: { feedbacks: FeedbackResponse[] }) => {
+          const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === scope.url) : feedbacks;
+          markers.render(visible);
+        })
+        .catch(() => {});
     },
     on: <K extends keyof SitepingPublicEvents>(event: K, listener: (...args: SitepingPublicEvents[K]) => void) => {
       // Safe cast: SitepingPublicEvents and PublicWidgetEvents have identical keys and value types

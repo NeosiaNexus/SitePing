@@ -40,6 +40,12 @@ export const ru: Translations = {
   // Status segmented control label
   "status.label": "Статус",
 
+  // Page scope segmented control
+  "scope.label": "Область",
+  "scope.thisPage": "Эта страница",
+  "scope.thisType": "Этот тип",
+  "scope.all": "Все страницы",
+
   // FAB menu
   "fab.aria": "Siteping — Меню обратной связи",
   "fab.messages": "Сообщения",

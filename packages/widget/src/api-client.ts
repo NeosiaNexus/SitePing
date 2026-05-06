@@ -10,11 +10,24 @@ export interface WidgetClient {
   sendFeedback(payload: FeedbackPayload): Promise<FeedbackResponse>;
   getFeedbacks(
     projectName: string,
-    options?: { page?: number; limit?: number; type?: FeedbackType; status?: FeedbackStatus; search?: string },
+    options?: GetFeedbacksOptions,
   ): Promise<{ feedbacks: FeedbackResponse[]; total: number }>;
   resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse>;
   deleteFeedback(id: string): Promise<void>;
   deleteAllFeedbacks(projectName: string): Promise<void>;
+}
+
+/** Options accepted by `WidgetClient.getFeedbacks`. */
+export interface GetFeedbacksOptions {
+  page?: number;
+  limit?: number;
+  type?: FeedbackType;
+  status?: FeedbackStatus;
+  search?: string;
+  /** Restrict to feedbacks created on this exact URL (path). */
+  url?: string;
+  /** Restrict to feedbacks created on this URL pattern (e.g. `/orders/:orderId`). */
+  urlPattern?: string;
 }
 
 const MAX_RETRIES = 3;
@@ -172,13 +185,7 @@ export class ApiClient {
 
   async getFeedbacks(
     projectName: string,
-    options?: {
-      page?: number;
-      limit?: number;
-      type?: FeedbackType;
-      status?: FeedbackStatus;
-      search?: string;
-    },
+    options?: GetFeedbacksOptions,
   ): Promise<{ feedbacks: FeedbackResponse[]; total: number }> {
     const params = new URLSearchParams({ projectName });
     if (options?.page) params.set("page", String(options.page));
@@ -186,6 +193,8 @@ export class ApiClient {
     if (options?.type) params.set("type", options.type);
     if (options?.status) params.set("status", options.status);
     if (options?.search) params.set("search", options.search);
+    if (options?.url) params.set("url", options.url);
+    if (options?.urlPattern) params.set("urlPattern", options.urlPattern);
 
     const response = await resilientFetch(`${this.endpoint}?${params.toString()}`, {
       method: "GET",

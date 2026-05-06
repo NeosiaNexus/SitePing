@@ -159,7 +159,11 @@ test.describe("Panel", () => {
     await s.click('[data-item-id="chat"]');
     await s.waitFor(".sp-filter-dropdown-btn");
     expect(await s.count(".sp-filter-dropdown-btn")).toBe(1);
-    expect(await s.count(".sp-segmented__btn")).toBe(3);
+    // 3 status buttons + 3 scope buttons (page-scope feature). Use a
+    // scoped selector so adding more segmented controls doesn't break
+    // this assertion.
+    expect(await s.count("[data-status-filter]")).toBe(3);
+    expect(await s.count("[data-scope-filter]")).toBe(3);
   });
 
   test("closes via close button", async ({ page }) => {

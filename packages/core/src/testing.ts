@@ -141,6 +141,42 @@ export function testSitepingStore(factory: () => SitepingStore): void {
         expect(record.annotations[0]?.elementId).toBeNull();
       });
 
+      it("persists anchorKey when provided", async () => {
+        freshStore();
+        const input = createInput({
+          annotations: [
+            {
+              cssSelector: "section",
+              xpath: "/section",
+              textSnippet: "Services",
+              elementTag: "SECTION",
+              textPrefix: "",
+              textSuffix: "",
+              fingerprint: "1:0:x",
+              neighborText: "",
+              anchorKey: "order-card.services",
+              xPct: 0,
+              yPct: 0,
+              wPct: 1,
+              hPct: 1,
+              scrollX: 0,
+              scrollY: 0,
+              viewportW: 1920,
+              viewportH: 1080,
+              devicePixelRatio: 1,
+            },
+          ],
+        });
+        const record = await store.createFeedback(input);
+        expect(record.annotations[0]?.anchorKey).toBe("order-card.services");
+      });
+
+      it("persists anchorKey as null when omitted", async () => {
+        freshStore();
+        const record = await store.createFeedback(createInput());
+        expect(record.annotations[0]?.anchorKey).toBeNull();
+      });
+
       it("deduplicates by clientId (idempotent)", async () => {
         freshStore();
         const input = createInput({ clientId: "same-id" });
@@ -225,6 +261,32 @@ export function testSitepingStore(factory: () => SitepingStore): void {
         const result = await store.getFeedbacks({ projectName: "test-project", search: "BROKEN" });
         expect(result.feedbacks).toHaveLength(1);
         expect(result.feedbacks[0]?.message).toBe("Button is broken");
+      });
+
+      it("filters by exact url", async () => {
+        freshStore();
+        await store.createFeedback(createInput({ url: "https://app.test/orders/42" }));
+        await store.createFeedback(createInput({ url: "https://app.test/dashboard" }));
+
+        const result = await store.getFeedbacks({ projectName: "test-project", url: "https://app.test/dashboard" });
+        expect(result.feedbacks).toHaveLength(1);
+        expect(result.feedbacks[0]?.url).toBe("https://app.test/dashboard");
+      });
+
+      it("filters by urlPattern", async () => {
+        freshStore();
+        await store.createFeedback(createInput({ url: "https://app.test/orders/42", urlPattern: "/orders/:id" }));
+        await store.createFeedback(createInput({ url: "https://app.test/orders/99", urlPattern: "/orders/:id" }));
+        await store.createFeedback(createInput({ url: "https://app.test/dashboard", urlPattern: "/dashboard" }));
+
+        const result = await store.getFeedbacks({ projectName: "test-project", urlPattern: "/orders/:id" });
+        expect(result.feedbacks).toHaveLength(2);
+      });
+
+      it("persists urlPattern as null when omitted from input", async () => {
+        freshStore();
+        const record = await store.createFeedback(createInput());
+        expect(record.urlPattern).toBeNull();
       });
 
       it("paginates correctly", async () => {

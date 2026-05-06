@@ -43,6 +43,8 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ pri
 | `type` | `string` | `question` \| `change` \| `bug` \| `other` |
 | `status` | `string` | `open` \| `resolved` |
 | `search` | `string` | Full-text search on message content |
+| `url` | `string` | Restrict to feedbacks created on this exact URL — used by the panel's "this page" filter |
+| `urlPattern` | `string` | Restrict to feedbacks created on this URL template (e.g. `/orders/:id`) — used by the panel's "this type of page" filter |
 | `page` | `number` | Pagination (default: 1) |
 | `limit` | `number` | Items per page (default: 50, max: 100) |
 
@@ -63,9 +65,10 @@ All incoming requests are validated with Zod before hitting the database.
 | `authorName` | 1 to **200** characters |
 | `authorEmail` | Valid email format, max **200** characters |
 | `clientId` | Non-empty string (client-generated UUID for deduplication) |
+| `urlPattern` | Optional string (max 2000) or `null` — parameterized route template for cross-instance grouping |
 | `annotations` | Array of annotation objects (see below) |
 
-**Annotation fields:** `cssSelector`, `xpath`, `elementTag` must be non-empty. `wPct`, `hPct` must be positive. `viewportW`, `viewportH` must be positive integers. `devicePixelRatio` must be positive (defaults to `1`).
+**Annotation fields:** `cssSelector`, `xpath`, `elementTag` must be non-empty. `wPct`, `hPct` must be positive. `viewportW`, `viewportH` must be positive integers. `devicePixelRatio` must be positive (defaults to `1`). `anchorKey` is optional (max 200 chars) — semantic anchor identifier from the closest `data-feedback-anchor` ancestor.
 
 ### PATCH — Resolve/unresolve (`feedbackPatchSchema`)
 

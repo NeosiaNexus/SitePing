@@ -4,12 +4,10 @@ import {
   type FeedbackPayload,
   type FeedbackRecord,
   type FeedbackResponse,
-  type FeedbackStatus,
-  type FeedbackType,
   flattenAnnotation,
   type SitepingStore,
 } from "@siteping/core";
-import type { WidgetClient } from "./api-client.js";
+import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
 
 /**
  * `WidgetClient` implementation that delegates directly to a `SitepingStore`.
@@ -31,6 +29,7 @@ export class StoreClient implements WidgetClient {
       message: payload.message,
       status: "open",
       url: payload.url,
+      urlPattern: payload.urlPattern ?? null,
       viewport: payload.viewport,
       userAgent: payload.userAgent,
       authorName: payload.authorName,
@@ -44,7 +43,7 @@ export class StoreClient implements WidgetClient {
 
   async getFeedbacks(
     projectName: string,
-    options?: { page?: number; limit?: number; type?: FeedbackType; status?: FeedbackStatus; search?: string },
+    options?: GetFeedbacksOptions,
   ): Promise<{ feedbacks: FeedbackResponse[]; total: number }> {
     const { feedbacks, total } = await this.store.getFeedbacks({
       projectName,
@@ -53,6 +52,8 @@ export class StoreClient implements WidgetClient {
       type: options?.type,
       status: options?.status,
       search: options?.search,
+      url: options?.url,
+      urlPattern: options?.urlPattern,
     });
 
     return { feedbacks: feedbacks.map(toResponse), total };
@@ -87,6 +88,7 @@ function toResponse(record: FeedbackRecord): FeedbackResponse {
     message: record.message,
     status: record.status,
     url: record.url,
+    urlPattern: record.urlPattern ?? null,
     viewport: record.viewport,
     userAgent: record.userAgent,
     authorName: record.authorName,
@@ -111,6 +113,7 @@ function toAnnotationResponse(ann: AnnotationRecord): AnnotationResponse {
     textSuffix: ann.textSuffix,
     fingerprint: ann.fingerprint,
     neighborText: ann.neighborText,
+    anchorKey: ann.anchorKey ?? null,
     xPct: ann.xPct,
     yPct: ann.yPct,
     wPct: ann.wPct,

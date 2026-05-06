@@ -195,7 +195,8 @@ describe("Panel", () => {
     it("calls getFeedbacks on open", async () => {
       await panel.open();
 
-      expect(apiClient.getFeedbacks).toHaveBeenCalledWith("test-project", { page: 1, limit: 20 });
+      // Default scope filter is "this", so url=/ (jsdom pathname) is passed.
+      expect(apiClient.getFeedbacks).toHaveBeenCalledWith("test-project", { page: 1, limit: 20, url: "/" });
     });
 
     it("sets aria-hidden=true when closed", async () => {
@@ -3265,6 +3266,105 @@ describe("Panel", () => {
   // -------------------------------------------------------------------------
   // showError on subsequent loads — covers line 490 idx 1 (hasContent true, no error UI)
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // Page scope segmented control
+  // -------------------------------------------------------------------------
+
+  describe("scope segmented control", () => {
+    it("renders three scope buttons with 'this page' selected by default", () => {
+      const scopeSegmented = shadow.querySelector<HTMLElement>(".sp-segmented--scope")!;
+      expect(scopeSegmented).not.toBeNull();
+      expect(scopeSegmented.getAttribute("role")).toBe("radiogroup");
+      expect(scopeSegmented.getAttribute("aria-label")).toBe(t("scope.label"));
+
+      const buttons = scopeSegmented.querySelectorAll<HTMLButtonElement>(".sp-segmented__btn");
+      expect(buttons.length).toBe(3);
+      const thisBtn = scopeSegmented.querySelector<HTMLButtonElement>('[data-scope-filter="this"]')!;
+      expect(thisBtn.getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("hides 'this type' button when scope has no urlPattern", () => {
+      const scopeSegmented = shadow.querySelector<HTMLElement>(".sp-segmented--scope")!;
+      const templateBtn = scopeSegmented.querySelector<HTMLButtonElement>('[data-scope-filter="template"]')!;
+      // jsdom has no urlPattern by default — button is display:none
+      expect(templateBtn.style.display).toBe("none");
+    });
+
+    it("passes url filter to getFeedbacks when default scope active", async () => {
+      apiClient.getFeedbacks.mockClear();
+      await panel.open();
+      expect(apiClient.getFeedbacks).toHaveBeenCalledWith("test-project", expect.objectContaining({ url: "/" }));
+    });
+
+    it("clicking 'all pages' clears the scope filter from queries", async () => {
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+
+      const allBtn = shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!;
+      allBtn.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.getFeedbacks).toHaveBeenCalled();
+      });
+      const lastCall = apiClient.getFeedbacks.mock.calls[apiClient.getFeedbacks.mock.calls.length - 1];
+      expect(lastCall?.[1]).not.toHaveProperty("url");
+      expect(lastCall?.[1]).not.toHaveProperty("urlPattern");
+    });
+
+    it("respects custom getScope option for url and urlPattern", async () => {
+      panel.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      bus = new EventBus<WidgetEvents>();
+      apiClient = createMockApiClient();
+      markers = createMockMarkers();
+      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+        getScope: () => ({ url: "/orders/42", urlPattern: "/orders/:id" }),
+        scopeAnnotationsByUrl: true,
+      });
+
+      // The "this type" button should now be visible
+      const scopeSegmented = shadow.querySelector<HTMLElement>(".sp-segmented--scope")!;
+      const templateBtn = scopeSegmented.querySelector<HTMLButtonElement>('[data-scope-filter="template"]')!;
+
+      apiClient.getFeedbacks.mockClear();
+      await panel.open();
+      // syncScopeAvailability runs on loadFeedbacks; templateBtn is now visible
+      expect(templateBtn.style.display).not.toBe("none");
+
+      // Default scope is "this" → url filter is /orders/42
+      expect(apiClient.getFeedbacks).toHaveBeenCalledWith(
+        "test-project",
+        expect.objectContaining({ url: "/orders/42" }),
+      );
+
+      // Switch to "this type" → urlPattern filter
+      apiClient.getFeedbacks.mockClear();
+      templateBtn.click();
+      await vi.waitFor(() => {
+        expect(apiClient.getFeedbacks).toHaveBeenCalled();
+      });
+      const lastCall = apiClient.getFeedbacks.mock.calls[apiClient.getFeedbacks.mock.calls.length - 1];
+      expect(lastCall?.[1]).toMatchObject({ urlPattern: "/orders/:id" });
+    });
+
+    it("filters markers to current url even when panel shows wider scope", async () => {
+      const here = makeFeedback({ id: "here", url: "/" });
+      const elsewhere = makeFeedback({ id: "elsewhere", url: "/other" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [here, elsewhere], total: 2 });
+
+      await panel.open();
+      const allBtn = shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!;
+      allBtn.click();
+
+      await vi.waitFor(() => {
+        // Markers should always render only the local subset
+        const lastCall = markers.render.mock.calls[markers.render.mock.calls.length - 1];
+        expect(lastCall?.[0]).toEqual([here]);
+      });
+    });
+  });
 
   describe("loadFeedbacks error handling with prior content", () => {
     it("error after prior content keeps content visible and emits feedback:error", async () => {

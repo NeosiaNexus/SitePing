@@ -1,9 +1,10 @@
 import type { AnchorData, RectData } from "@siteping/core";
+import { ANCHOR_KEY_ATTR } from "./anchor.js";
 import { scoreFingerprint } from "./fingerprint.js";
 import { fuzzyIncludes, similarity } from "./fuzzy.js";
 import { adjacentText, neighborText } from "./text-context.js";
 
-export type ResolutionStrategy = "id" | "css" | "xpath" | "scan";
+export type ResolutionStrategy = "anchorKey" | "id" | "css" | "xpath" | "scan";
 
 export interface AnchorResolution {
   element: Element;
@@ -40,6 +41,10 @@ function textMatches(el: Element, anchor: AnchorData): boolean {
  * with text verification and confidence scoring.
  *
  * Resolution order:
+ * 0. Semantic anchor key (`[data-feedback-anchor="X"]`) — confidence 1.0
+ *    when host explicitly tagged the section. Tag name is NOT enforced —
+ *    hosts may legitimately refactor the wrapper element while keeping the
+ *    semantic key stable.
  * 1. getElementById + text verification — confidence 1.0
  * 2. CSS selector + text verification — confidence 0.95
  * 3. XPath + text verification — confidence 0.9
@@ -49,6 +54,21 @@ function textMatches(el: Element, anchor: AnchorData): boolean {
  * Returns null if all strategies fail (annotation is orphaned).
  */
 export function resolveAnchor(anchor: AnchorData): AnchorResolution | null {
+  // Level 0: Semantic anchor key (host-controlled, most stable)
+  if (anchor.anchorKey) {
+    // Escape backslash and double-quote so an arbitrary key never breaks the selector
+    const escaped = anchor.anchorKey.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    try {
+      const el = document.querySelector(`[${ANCHOR_KEY_ATTR}="${escaped}"]`);
+      // Skip tagName check — semantic anchor identifies a section, not a tag
+      if (el && textMatches(el, anchor)) {
+        return { element: el, confidence: 1.0, strategy: "anchorKey" };
+      }
+    } catch {
+      // Invalid attribute value — fall through to next strategy
+    }
+  }
+
   // Level 1: Element ID (most stable, still verify text)
   if (anchor.elementId) {
     const el = document.getElementById(anchor.elementId);

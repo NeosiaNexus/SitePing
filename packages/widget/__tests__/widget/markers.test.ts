@@ -647,6 +647,36 @@ describe("MarkerManager", () => {
 
       vi.useRealTimers();
     });
+
+    it("re-renders the pinned highlight rectangle so it tracks the layout on resize", () => {
+      vi.useFakeTimers();
+
+      const fb = makeFeedback({ id: "fb-pin" });
+      markers.render([fb]);
+      markers.pinHighlight(fb);
+
+      // The highlight is a div with no [data-feedback-id] inside
+      // #siteping-markers — distinct from marker dots which carry the id.
+      const container = document.getElementById("siteping-markers")!;
+      const findHighlights = () => Array.from(container.children).filter((c) => !(c as HTMLElement).dataset.feedbackId);
+
+      const before = findHighlights();
+      expect(before.length).toBeGreaterThan(0);
+
+      // Simulate viewport resize — the layout has shifted, the percentage-
+      // based rect resolves to a new pixel position. repositionAll should
+      // re-render the highlight so it tracks the new layout.
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      const after = findHighlights();
+      expect(after.length).toBeGreaterThan(0);
+      // showHighlight calls removeHighlightElements first then appends fresh
+      // elements — so the post-resize element is a different instance.
+      expect(after[0]).not.toBe(before[0]);
+
+      vi.useRealTimers();
+    });
   });
 
   // -------------------------------------------------------------------------

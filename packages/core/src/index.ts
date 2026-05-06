@@ -15,6 +15,7 @@ export type {
   FeedbackStatus,
   FeedbackType,
   FeedbackUpdateInput,
+  PageScope,
   RectData,
   SitepingConfig,
   SitepingInstance,

@@ -102,6 +102,7 @@ export class LocalStorageStore implements SitepingStore {
       textSuffix: ann.textSuffix,
       fingerprint: ann.fingerprint,
       neighborText: ann.neighborText,
+      anchorKey: ann.anchorKey ?? null,
       xPct: ann.xPct,
       yPct: ann.yPct,
       wPct: ann.wPct,
@@ -121,6 +122,7 @@ export class LocalStorageStore implements SitepingStore {
       status: data.status,
       projectName: data.projectName,
       url: data.url,
+      urlPattern: data.urlPattern ?? null,
       authorName: data.authorName,
       authorEmail: data.authorEmail,
       viewport: data.viewport,
@@ -142,6 +144,8 @@ export class LocalStorageStore implements SitepingStore {
 
     if (query.type) results = results.filter((f) => f.type === query.type);
     if (query.status) results = results.filter((f) => f.status === query.status);
+    if (query.url) results = results.filter((f) => f.url === query.url);
+    if (query.urlPattern) results = results.filter((f) => f.urlPattern === query.urlPattern);
     if (query.search) {
       const s = query.search.toLowerCase();
       results = results.filter((f) => f.message.toLowerCase().includes(s));

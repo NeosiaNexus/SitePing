@@ -19,6 +19,9 @@ const anchorSchema = z.object({
   textSuffix: z.string().max(200),
   fingerprint: z.string().max(200),
   neighborText: z.string().max(500),
+  // Optional semantic anchor identifier from `data-feedback-anchor`.
+  // Null when no semantic ancestor exists; widget always sends this field.
+  anchorKey: z.string().max(200).nullable().optional(),
 });
 
 const rectSchema = z.object({
@@ -42,7 +45,16 @@ export const feedbackCreateSchema = z.object({
   projectName: z.string().min(1).max(200),
   type: z.enum(FEEDBACK_TYPES),
   message: z.string().min(1).max(5000),
-  url: z.string().max(2000).url(),
+  // Page-scope identifier the widget uses to group feedbacks. Defaults to
+  // `window.location.pathname` ("/orders/42"), but hosts can override
+  // `getPageScope()` to return a full URL, an opaque slug, anything they
+  // want. We trim + require non-empty so whitespace-only payloads don't
+  // leak into the DB; otherwise the value is opaque to the server and only
+  // used as a literal Prisma equality filter, so the loose shape is safe.
+  url: z.string().trim().min(1).max(2000),
+  // Optional parameterized URL template (e.g. "/orders/:orderId") provided
+  // by the host via `getPageScope()`. Null when host omits it.
+  urlPattern: z.string().max(2000).nullable().optional(),
   viewport: z.string().min(1).max(50),
   userAgent: z.string().min(1).max(500),
   authorName: z.string().min(1).max(200),
@@ -69,6 +81,9 @@ export const getQuerySchema = z.object({
   type: z.enum(FEEDBACK_TYPES).optional(),
   status: z.enum(FEEDBACK_STATUSES).optional(),
   search: z.string().max(200).optional(),
+  // Page scope filters — used by the panel's "this page / this type" controls
+  url: z.string().max(2000).optional(),
+  urlPattern: z.string().max(2000).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -85,6 +100,7 @@ export interface AnchorInput {
   textSuffix: string;
   fingerprint: string;
   neighborText: string;
+  anchorKey?: string | null | undefined;
 }
 
 export interface RectInput {
@@ -110,6 +126,7 @@ export interface FeedbackCreateInput {
   type: FeedbackType;
   message: string;
   url: string;
+  urlPattern?: string | null | undefined;
   viewport: string;
   userAgent: string;
   authorName: string;
@@ -145,6 +162,8 @@ export interface GetQueryInput {
   type?: FeedbackType | undefined;
   status?: FeedbackStatus | undefined;
   search?: string | undefined;
+  url?: string | undefined;
+  urlPattern?: string | undefined;
 }
 
 // ---------------------------------------------------------------------------

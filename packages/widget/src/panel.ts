@@ -1,5 +1,5 @@
-import type { FeedbackResponse, FeedbackStatus, FeedbackType } from "@siteping/core";
-import type { WidgetClient } from "./api-client.js";
+import type { FeedbackResponse, FeedbackStatus, FeedbackType, PageScope } from "@siteping/core";
+import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
 import { PAGE_SIZE } from "./constants.js";
 import { el, formatRelativeDate, parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
@@ -84,6 +84,15 @@ export class Panel {
   // i18n helpers
   private readonly bulkI18n: typeof BULK_I18N_EN;
 
+  // Page scope — supplied by launcher so the panel can scope its results to
+  // the current page (or template) and filter markers accordingly.
+  private readonly getScope: () => PageScope;
+  private readonly scopeAnnotationsByUrl: boolean;
+  /** "this" = current url, "template" = url pattern, "all" = no scope filter */
+  private activeScopeFilter: "this" | "template" | "all" = "this";
+  private scopeSegmented!: HTMLElement;
+  private scopeOptions!: ReadonlyArray<{ value: "this" | "template" | "all"; label: string }>;
+
   constructor(
     shadowRoot: ShadowRoot,
     private readonly colors: ThemeColors,
@@ -93,9 +102,12 @@ export class Panel {
     private readonly markers: MarkerManager,
     private readonly t: TFunction,
     private readonly locale: string,
+    pageScopeOptions?: { getScope: () => PageScope; scopeAnnotationsByUrl: boolean },
   ) {
     this.shadowRoot = shadowRoot;
     this.bulkI18n = locale === "fr" ? BULK_I18N_FR : BULK_I18N_EN;
+    this.getScope = pageScopeOptions?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
+    this.scopeAnnotationsByUrl = pageScopeOptions?.scopeAnnotationsByUrl ?? true;
 
     this.root = el("div", { class: "sp-panel" });
     this.root.setAttribute("role", "complementary");
@@ -156,10 +168,13 @@ export class Panel {
     searchWrap.appendChild(searchIcon);
     searchWrap.appendChild(this.searchInput);
 
-    // Filter bar (type dropdown + status segmented control)
+    // Filter bar (type dropdown + status segmented + scope segmented).
+    // The scope control gives users a fast way to widen results to "this type
+    // of page" or "all pages" when the host provides a route template.
     const filterBar = el("div", { class: "sp-filter-bar" });
     filterBar.appendChild(this.buildTypeDropdown());
     filterBar.appendChild(this.buildStatusSegmented());
+    filterBar.appendChild(this.buildScopeSegmented());
 
     // Sort controls
     this.sortControls = new PanelSortControls(colors, () => this.renderList(), locale);
@@ -464,13 +479,21 @@ export class Panel {
     const typeFilter = this.activeFilters.has("all") ? undefined : (Array.from(this.activeFilters)[0] as FeedbackType);
     const statusFilter = this.activeStatusFilter === "all" ? undefined : this.activeStatusFilter;
 
-    const options: { page: number; limit: number; type?: FeedbackType; status?: FeedbackStatus; search?: string } = {
+    const scope = this.getScope();
+    // Refresh scope-filter button visibility based on current scope (SPA nav).
+    this.syncScopeAvailability();
+    const options: GetFeedbacksOptions & { page: number; limit: number } = {
       page: 1,
       limit: PAGE_SIZE,
     };
     if (typeFilter) options.type = typeFilter;
     if (statusFilter) options.status = statusFilter;
     if (search) options.search = search;
+    if (this.activeScopeFilter === "this") {
+      options.url = scope.url;
+    } else if (this.activeScopeFilter === "template" && scope.urlPattern) {
+      options.urlPattern = scope.urlPattern;
+    }
 
     // Only show spinner on first load (empty list) — otherwise keep current content visible
     const hasContent = this.feedbacks.length > 0;
@@ -484,7 +507,11 @@ export class Panel {
       this.stats.update(feedbacks, total);
       this.bulk.reset();
       this.renderList();
-      this.markers.render(feedbacks);
+      // Markers always render only the current-URL slice — even when the panel
+      // shows a wider scope ("template" or "all"), markers stay strictly local
+      // so the user never sees out-of-context dots on the page.
+      const markerFeedbacks = this.scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === scope.url) : feedbacks;
+      this.markers.render(markerFeedbacks);
     } catch (error) {
       if (signal.aborted) return; // Expected abort, not a real error
       if (!hasContent) this.showError();
@@ -505,13 +532,19 @@ export class Panel {
     const typeFilter = this.activeFilters.has("all") ? undefined : (Array.from(this.activeFilters)[0] as FeedbackType);
     const statusFilter = this.activeStatusFilter === "all" ? undefined : this.activeStatusFilter;
 
-    const options: { page: number; limit: number; type?: FeedbackType; status?: FeedbackStatus; search?: string } = {
+    const scope = this.getScope();
+    const options: GetFeedbacksOptions & { page: number; limit: number } = {
       page: nextPage,
       limit: PAGE_SIZE,
     };
     if (typeFilter) options.type = typeFilter;
     if (statusFilter) options.status = statusFilter;
     if (search) options.search = search;
+    if (this.activeScopeFilter === "this") {
+      options.url = scope.url;
+    } else if (this.activeScopeFilter === "template" && scope.urlPattern) {
+      options.urlPattern = scope.urlPattern;
+    }
 
     // Show spinner on the "Load more" button
     const loadMoreBtn = this.listContainer.querySelector<HTMLButtonElement>(".sp-btn-load-more");
@@ -526,7 +559,10 @@ export class Panel {
       this.feedbacks = [...this.feedbacks, ...feedbacks];
       this.stats.update(this.feedbacks, total);
       this.renderList();
-      this.markers.render(this.feedbacks);
+      const markerFeedbacks = this.scopeAnnotationsByUrl
+        ? this.feedbacks.filter((f) => f.url === scope.url)
+        : this.feedbacks;
+      this.markers.render(markerFeedbacks);
     } catch (error) {
       if (restoreBtn) restoreBtn();
       this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
@@ -1141,6 +1177,112 @@ export class Panel {
     this.loadFeedbacks().catch(() => {});
   }
 
+  /**
+   * Build the page-scope segmented control: "this page / this type / all".
+   * The "this type" button is hidden when the current scope has no urlPattern
+   * (host did not provide one for this route). Visibility is refreshed on
+   * every `loadFeedbacks` so SPA navigation stays consistent.
+   */
+  private buildScopeSegmented(): HTMLElement {
+    this.scopeOptions = [
+      { value: "this", label: this.t("scope.thisPage") },
+      { value: "template", label: this.t("scope.thisType") },
+      { value: "all", label: this.t("scope.all") },
+    ];
+
+    this.scopeSegmented = el("div", { class: "sp-segmented sp-segmented--scope", role: "radiogroup" });
+    this.scopeSegmented.setAttribute("aria-label", this.t("scope.label"));
+
+    for (const option of this.scopeOptions) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `sp-segmented__btn sp-segmented__btn--scope-${option.value}`;
+      btn.dataset.scopeFilter = option.value;
+      btn.setAttribute("role", "radio");
+      const isActive = this.activeScopeFilter === option.value;
+      btn.setAttribute("aria-checked", String(isActive));
+      btn.tabIndex = isActive ? 0 : -1;
+      if (isActive) btn.classList.add("sp-segmented__btn--active");
+
+      const labelEl = el("span", { class: "sp-segmented__label" });
+      setText(labelEl, option.label);
+      btn.appendChild(labelEl);
+
+      btn.addEventListener("click", () => this.selectScopeFilter(option.value));
+      btn.addEventListener("keydown", (e) => this.handleScopeKey(e, option.value));
+
+      this.scopeSegmented.appendChild(btn);
+    }
+
+    // Initial visibility — "this type" only meaningful when scope has urlPattern
+    this.syncScopeAvailability();
+    return this.scopeSegmented;
+  }
+
+  private handleScopeKey(e: KeyboardEvent, current: "this" | "template" | "all"): void {
+    const visibleValues = this.scopeOptions
+      .map((o) => o.value)
+      .filter((v) => {
+        const btn = this.scopeSegmented.querySelector<HTMLButtonElement>(`[data-scope-filter="${v}"]`);
+        return btn && btn.style.display !== "none";
+      });
+    const idx = visibleValues.indexOf(current);
+    if (idx < 0) return;
+    let nextIdx: number;
+    switch (e.key) {
+      case "ArrowLeft":
+        nextIdx = (idx - 1 + visibleValues.length) % visibleValues.length;
+        break;
+      case "ArrowRight":
+        nextIdx = (idx + 1) % visibleValues.length;
+        break;
+      case "Home":
+        nextIdx = 0;
+        break;
+      case "End":
+        nextIdx = visibleValues.length - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    const next = visibleValues[nextIdx];
+    if (!next) return;
+    this.selectScopeFilter(next);
+    const btn = this.scopeSegmented.querySelector<HTMLButtonElement>(`[data-scope-filter="${next}"]`);
+    btn?.focus();
+  }
+
+  private selectScopeFilter(value: "this" | "template" | "all"): void {
+    this.activeScopeFilter = value;
+    const buttons = this.scopeSegmented.querySelectorAll<HTMLButtonElement>(".sp-segmented__btn");
+    for (const btn of buttons) {
+      const isActive = btn.dataset.scopeFilter === value;
+      btn.classList.toggle("sp-segmented__btn--active", isActive);
+      btn.setAttribute("aria-checked", String(isActive));
+      btn.tabIndex = isActive ? 0 : -1;
+    }
+    this.loadFeedbacks().catch(() => {});
+  }
+
+  /**
+   * Hide the "this type" button when the current scope has no urlPattern, and
+   * fall back to "this page" if it was the active selection. Called on every
+   * `loadFeedbacks` so SPA navigation stays consistent.
+   */
+  private syncScopeAvailability(): void {
+    if (!this.scopeSegmented) return;
+    const scope = this.getScope();
+    const templateBtn = this.scopeSegmented.querySelector<HTMLButtonElement>(`[data-scope-filter="template"]`);
+    if (!templateBtn) return;
+    const showTemplate = !!scope.urlPattern;
+    templateBtn.style.display = showTemplate ? "" : "none";
+    if (!showTemplate && this.activeScopeFilter === "template") {
+      this.activeScopeFilter = "this";
+      this.selectScopeFilter("this");
+    }
+  }
+
   /** Get the focused feedback (for keyboard shortcuts) */
   private getFocusedFeedback(): FeedbackResponse | undefined {
     const idx = getFocusedCardIndex(this.listContainer);
@@ -1171,6 +1313,11 @@ export class Panel {
     if (this.isOpen) {
       await this.loadFeedbacks();
     }
+  }
+
+  /** Whether the panel is currently open — used by the launcher to coordinate marker refreshes. */
+  get isCurrentlyOpen(): boolean {
+    return this.isOpen;
   }
 
   destroy(): void {
