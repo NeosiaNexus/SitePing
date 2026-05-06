@@ -1315,6 +1315,11 @@ export class Panel {
     }
   }
 
+  /** Whether the panel is currently open — used by the launcher to coordinate marker refreshes. */
+  get isCurrentlyOpen(): boolean {
+    return this.isOpen;
+  }
+
   destroy(): void {
     this.loadController?.abort();
     if (this.searchTimeout) clearTimeout(this.searchTimeout);

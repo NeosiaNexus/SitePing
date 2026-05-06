@@ -221,15 +221,6 @@ export function launch(config: SitepingConfig): SitepingInstance {
         saveIdentity(identity);
       }
 
-      // Sanitize URL — strip sensitive query params before sending
-      const rawUrl = new URL(window.location.href);
-      for (const key of [...rawUrl.searchParams.keys()]) {
-        if (/token|key|secret|auth|session|password|code/i.test(key)) {
-          rawUrl.searchParams.delete(key);
-        }
-      }
-      const sanitizedUrl = rawUrl.toString();
-
       // crypto.randomUUID() throws in non-secure contexts (plain HTTP)
       const clientId = (() => {
         try {
@@ -239,12 +230,19 @@ export function launch(config: SitepingConfig): SitepingInstance {
         }
       })();
 
+      // Use scope.url as the single source of truth — same identifier the
+      // panel filter and marker filter use. If we stored full URLs here while
+      // filtering by pathname, freshly-created feedbacks would never match
+      // their own scope filter and would vanish from the UI immediately.
+      // Default scope.url is `window.location.pathname` (no query string,
+      // so token/key/secret query params can't leak by construction). Hosts
+      // that need origin or query in the identifier override `getPageScope`.
       const scope = getScope();
       const payload: FeedbackPayload = {
         projectName: config.projectName,
         type,
         message,
-        url: sanitizedUrl,
+        url: scope.url,
         urlPattern: scope.urlPattern,
         viewport: `${window.innerWidth}x${window.innerHeight}`,
         userAgent: navigator.userAgent,
@@ -257,9 +255,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
       try {
         const response = await client.sendFeedback(payload);
         bus.emit("feedback:sent", response);
-        // Only show the marker for the current scope; out-of-scope feedbacks
-        // are still saved but don't render a marker on this page.
-        if (!scopeAnnotationsByUrl || response.url === sanitizedUrl) {
+        // Compare against the scope captured before submit (route may have
+        // changed during the network round-trip — re-reading scope here
+        // would race with SPA navigation).
+        if (!scopeAnnotationsByUrl || response.url === scope.url) {
           markers.addFeedback(response, markers.count + 1);
         }
         liveRegion.textContent = t("feedback.sent.confirmation");
@@ -319,8 +318,17 @@ export function launch(config: SitepingConfig): SitepingInstance {
       panel.close();
     },
     refresh: () => {
-      // Also reload markers — important for SPA hosts that call refresh() on
-      // route change so annotations re-scope to the new pathname.
+      // When the panel is open, its `refresh()` already runs `loadFeedbacks()`
+      // which renders markers. Doing a second fetch here would race with that
+      // one — the loser overwrites the winner's markers, off by a generation.
+      // So: when the panel is open, delegate. When it's closed, fetch markers
+      // ourselves (the panel won't, but SPA hosts still need the new page's
+      // markers after a route change).
+      if (panel.isCurrentlyOpen) {
+        panel.refresh();
+        return;
+      }
+
       const scope = getScope();
       const opts = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: scope.url } : { limit: PAGE_SIZE };
       client
@@ -330,7 +338,6 @@ export function launch(config: SitepingConfig): SitepingInstance {
           markers.render(visible);
         })
         .catch(() => {});
-      panel.refresh();
     },
     on: <K extends keyof SitepingPublicEvents>(event: K, listener: (...args: SitepingPublicEvents[K]) => void) => {
       // Safe cast: SitepingPublicEvents and PublicWidgetEvents have identical keys and value types
