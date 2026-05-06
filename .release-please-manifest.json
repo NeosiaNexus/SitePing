@@ -1,7 +1,7 @@
 {
-  "packages/core": "0.7.0",
-  "packages/widget": "0.9.5",
-  "packages/adapter-prisma": "0.4.3",
+  "packages/core": "0.7.1",
+  "packages/widget": "0.9.6",
+  "packages/adapter-prisma": "0.4.4",
   "packages/adapter-memory": "0.4.3",
   "packages/adapter-localstorage": "0.4.3",
   "packages/cli": "0.4.3"

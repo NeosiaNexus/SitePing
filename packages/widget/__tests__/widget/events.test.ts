@@ -94,4 +94,64 @@ describe("EventBus", () => {
     unsub();
     expect(() => unsub()).not.toThrow();
   });
+
+  describe("off", () => {
+    it("removes a registered listener", () => {
+      const bus = new EventBus<TestEvents>();
+      const fn = vi.fn();
+
+      bus.on("ping", fn);
+      bus.off("ping", fn);
+      bus.emit("ping");
+
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it("does nothing for events without listeners", () => {
+      const bus = new EventBus<TestEvents>();
+      const fn = vi.fn();
+
+      // off() on event that has never been registered should be a no-op
+      expect(() => bus.off("ping", fn)).not.toThrow();
+    });
+
+    it("only removes the matching listener — others are kept", () => {
+      const bus = new EventBus<TestEvents>();
+      const fn1 = vi.fn();
+      const fn2 = vi.fn();
+
+      bus.on("ping", fn1);
+      bus.on("ping", fn2);
+      bus.off("ping", fn1);
+      bus.emit("ping");
+
+      expect(fn1).not.toHaveBeenCalled();
+      expect(fn2).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("emit error isolation", () => {
+    it("isolates listener errors and continues invoking others", () => {
+      const bus = new EventBus<TestEvents>();
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const failing = vi.fn(() => {
+        throw new Error("boom");
+      });
+      const surviving = vi.fn();
+
+      bus.on("ping", failing);
+      bus.on("ping", surviving);
+      bus.emit("ping");
+
+      expect(failing).toHaveBeenCalledOnce();
+      expect(surviving).toHaveBeenCalledOnce();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error in event listener for "ping"'),
+        expect.any(Error),
+      );
+
+      errorSpy.mockRestore();
+    });
+  });
 });

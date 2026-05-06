@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
@@ -86,6 +86,127 @@ model SitepingFeedback {
   type        String
   message     String
   createdAt   DateTime @default(now())
+}
+`;
+
+/**
+ * Schema where every Siteping model is present but a single field has the
+ * wrong type — exercises the `outdatedFields.push` branch in checkSchema.
+ * `SitepingFeedback.id` is declared `Int` instead of the expected `String`.
+ */
+const OUTDATED_SCHEMA = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id           Int                 @id @default(autoincrement())
+  projectName  String
+  type         String
+  message      String              @db.Text
+  status       String              @default("open")
+  url          String
+  viewport     String
+  userAgent    String
+  authorName   String
+  authorEmail  String
+  clientId     String              @unique
+  resolvedAt   DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  annotations  SitepingAnnotation[]
+
+  @@index([projectName])
+}
+
+model SitepingAnnotation {
+  id               String           @id @default(cuid())
+  feedbackId       String
+  feedback         SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  cssSelector      String           @db.Text
+  xpath            String           @db.Text
+  textSnippet      String           @db.Text
+  elementTag       String
+  elementId        String?
+  textPrefix       String           @db.Text
+  textSuffix       String           @db.Text
+  fingerprint      String
+  neighborText     String           @db.Text
+  xPct             Float
+  yPct             Float
+  wPct             Float
+  hPct             Float
+  scrollX          Float
+  scrollY          Float
+  viewportW        Int
+  viewportH        Int
+  devicePixelRatio Float            @default(1)
+  createdAt        DateTime         @default(now())
+
+  @@index([feedbackId])
+}
+`;
+
+/**
+ * Schema with exactly one missing field — used to exercise the "1 missing
+ * field" pluralisation branch (`missingCount > 1 ? "s" : ""` → "").
+ * Drops only `updatedAt` from the otherwise complete model.
+ */
+const SINGLE_MISSING_FIELD_SCHEMA = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id           String              @id @default(cuid())
+  projectName  String
+  type         String
+  message      String              @db.Text
+  status       String              @default("open")
+  url          String
+  viewport     String
+  userAgent    String
+  authorName   String
+  authorEmail  String
+  clientId     String              @unique
+  resolvedAt   DateTime?
+  createdAt    DateTime            @default(now())
+  annotations  SitepingAnnotation[]
+}
+
+model SitepingAnnotation {
+  id               String           @id @default(cuid())
+  feedbackId       String
+  feedback         SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  cssSelector      String           @db.Text
+  xpath            String           @db.Text
+  textSnippet      String           @db.Text
+  elementTag       String
+  elementId        String?
+  textPrefix       String           @db.Text
+  textSuffix       String           @db.Text
+  fingerprint      String
+  neighborText     String           @db.Text
+  xPct             Float
+  yPct             Float
+  wPct             Float
+  hPct             Float
+  scrollX          Float
+  scrollY          Float
+  viewportW        Int
+  viewportH        Int
+  devicePixelRatio Float            @default(1)
+  createdAt        DateTime         @default(now())
 }
 `;
 
@@ -352,6 +473,211 @@ describe("statusCommand", () => {
 
       statusCommand({});
 
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Edge cases — uncommon execution paths
+  // -------------------------------------------------------------------------
+
+  describe("edge cases", () => {
+    it("returns null from readPackageJson when package.json has invalid JSON", () => {
+      // Malformed JSON triggers the catch branch in readPackageJson, which
+      // returns null and causes statusCommand to log "package.json not found"
+      // (the same error path as missing-file).
+      writeFileSync(join(tmpDir, "package.json"), "{ this is not valid json");
+
+      statusCommand({});
+
+      const errors = allMessages(logErrorSpy);
+      expect(errors.some((m) => m.includes("package.json"))).toBe(true);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("skips node_modules and .next directories during widget scan", () => {
+      // Place an initSiteping reference inside node_modules — the scan must
+      // skip the directory entirely rather than report a false-positive match.
+      // Same for .next, which Next.js generates during dev/build.
+      const nodeModulesDir = join(tmpDir, "src", "node_modules");
+      mkdirSync(nodeModulesDir, { recursive: true });
+      writeFileSync(join(nodeModulesDir, "trap.ts"), 'import { initSiteping } from "@siteping/widget";');
+      const nextDir = join(tmpDir, "src", ".next");
+      mkdirSync(nextDir, { recursive: true });
+      writeFileSync(join(nextDir, "trap.ts"), 'import { initSiteping } from "@siteping/widget";');
+
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+
+      statusCommand({});
+
+      const warnings = allMessages(logWarnSpy);
+      expect(warnings.some((m) => m.includes("Widget"))).toBe(true);
+    });
+
+    it("skips files with non-source extensions during widget scan", () => {
+      // Create a valid widget usage file alongside non-source extension files.
+      // The scan must still find the .ts/.tsx file and ignore the others —
+      // exercising the "extension does not match" branch of searchInDir.
+      const srcDir = join(tmpDir, "src");
+      mkdirSync(srcDir, { recursive: true });
+      writeFileSync(join(srcDir, "README.md"), "# initSiteping reference");
+      writeFileSync(join(srcDir, "data.json"), '{"initSiteping": "fake"}');
+      writeFileSync(join(srcDir, "feedback.ts"), 'import { initSiteping } from "@siteping/widget";');
+
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+
+      statusCommand({});
+
+      const successes = allMessages(logSuccessSpy);
+      expect(successes.some((m) => m.includes("Widget"))).toBe(true);
+    });
+
+    it("finds widget usage in nested subdirectories", () => {
+      // Confirms the recursive descent in searchInDir returns matches from
+      // arbitrary depth (the `if (match) return match` branch on the recursion).
+      const deepDir = join(tmpDir, "src", "components", "ui", "feedback");
+      mkdirSync(deepDir, { recursive: true });
+      writeFileSync(join(deepDir, "widget.ts"), 'import { initSiteping } from "@siteping/widget";');
+
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+
+      statusCommand({});
+
+      const successes = allMessages(logSuccessSpy);
+      expect(successes.some((m) => m.includes("Widget"))).toBe(true);
+    });
+
+    it("survives unreadable directories during widget scan", () => {
+      // Make a directory unreadable so readdirSync throws — searchInDir's catch
+      // returns null without crashing the command.
+      const restrictedDir = join(tmpDir, "src", "restricted");
+      mkdirSync(restrictedDir, { recursive: true });
+      writeFileSync(join(restrictedDir, "file.ts"), "// content");
+      // 0o000 → no read/write/execute permission for anyone.
+      chmodSync(restrictedDir, 0o000);
+
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+
+      try {
+        // Should not throw — the catch swallows the EACCES.
+        statusCommand({});
+        // Widget integration is reported as warning when not found.
+        const warnings = allMessages(logWarnSpy);
+        expect(warnings.some((m) => m.includes("Widget"))).toBe(true);
+      } finally {
+        // Restore permission so afterEach can rm -rf the tmpDir.
+        chmodSync(restrictedDir, 0o755);
+      }
+    });
+
+    it("reports outdated fields when a Prisma field has the wrong type", () => {
+      // SitepingFeedback.id is declared `Int` instead of the expected `String`,
+      // so checkSchema must record it as outdated and emit a warning that
+      // mentions the outdated field count.
+      createPrismaSchema(tmpDir, OUTDATED_SCHEMA);
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      const warnings = allMessages(logWarnSpy);
+      expect(warnings.some((m) => m.includes("outdated"))).toBe(true);
+      // Outdated alone is a soft warning, not a hard error.
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("uses plural 'outdated fields' when more than one is outdated", () => {
+      // Two field-type mismatches in SitepingFeedback (`id` Int instead of
+      // String, `projectName` Boolean instead of String) so the warning
+      // message exercises the `outdatedCount > 1 ? "s" : ""` plural branch.
+      const multiOutdated = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id           Int                 @id @default(autoincrement())
+  projectName  Boolean
+  type         String
+  message      String              @db.Text
+  status       String              @default("open")
+  url          String
+  viewport     String
+  userAgent    String
+  authorName   String
+  authorEmail  String
+  clientId     String              @unique
+  resolvedAt   DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  annotations  SitepingAnnotation[]
+}
+
+model SitepingAnnotation {
+  id               String           @id @default(cuid())
+  feedbackId       String
+  feedback         SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  cssSelector      String           @db.Text
+  xpath            String           @db.Text
+  textSnippet      String           @db.Text
+  elementTag       String
+  elementId        String?
+  textPrefix       String           @db.Text
+  textSuffix       String           @db.Text
+  fingerprint      String
+  neighborText     String           @db.Text
+  xPct             Float
+  yPct             Float
+  wPct             Float
+  hPct             Float
+  scrollX          Float
+  scrollY          Float
+  viewportW        Int
+  viewportH        Int
+  devicePixelRatio Float            @default(1)
+  createdAt        DateTime         @default(now())
+}
+`;
+      createPrismaSchema(tmpDir, multiOutdated);
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      const warnings = allMessages(logWarnSpy);
+      // Plural "outdated fields" (with trailing s) must appear in the warning.
+      expect(warnings.some((m) => /\d+ outdated fields/.test(m))).toBe(true);
+    });
+
+    it("formats the warning correctly when exactly one field is missing (no plural)", () => {
+      // Only `updatedAt` is missing — exercises the singular branch of
+      // `missingCount > 1 ? "s" : ""` ("missing field" without trailing "s").
+      createPrismaSchema(tmpDir, SINGLE_MISSING_FIELD_SCHEMA);
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      const warnings = allMessages(logWarnSpy);
+      // The phrasing should be "1 missing field" (singular), not "1 missing fields".
+      expect(warnings.some((m) => /1 missing field(?!s)/.test(m))).toBe(true);
+    });
+
+    it("survives package.json without dependencies/devDependencies keys", () => {
+      // The status command falls back to `{}` when either deps key is missing
+      // (the right side of `?? {}`). With no deps at all, the widget package
+      // is reported as missing and the command exits 1.
+      writeFileSync(join(tmpDir, "package.json"), JSON.stringify({ name: "minimal" }));
+
+      statusCommand({});
+
+      const errors = allMessages(logErrorSpy);
+      expect(errors.some((m) => m.includes("@siteping/widget"))).toBe(true);
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -112,6 +112,24 @@ describe("generateRoute", () => {
     } finally {
       // Restore permissions for cleanup
       chmodSync(targetDir, 0o755);
+    }
+  });
+
+  it("rethrows non-permission errors (e.g. ENOTDIR) verbatim", () => {
+    // Create app/ as a directory, then create a regular file at app/api so
+    // mkdirSync recursive cannot create app/api/siteping (ENOTDIR).
+    mkdirSync(join(tmpDir, "app"), { recursive: true });
+    writeFileSync(join(tmpDir, "app", "api"), "blocker");
+
+    // The generator should throw, but NOT with a "Permission denied" message
+    expect(() => generateRoute(tmpDir)).toThrow();
+    try {
+      generateRoute(tmpDir);
+    } catch (e) {
+      const msg = (e as Error).message;
+      // Should be the original Node error, not the wrapped "Permission denied" one
+      expect(msg).not.toMatch(/Permission denied/);
+      expect((e as NodeJS.ErrnoException).code).toBe("ENOTDIR");
     }
   });
 

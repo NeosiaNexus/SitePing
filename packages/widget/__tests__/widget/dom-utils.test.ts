@@ -114,6 +114,29 @@ describe("parseSvg", () => {
   it("throws for empty string", () => {
     expect(() => parseSvg("")).toThrow();
   });
+
+  it("strips on* event handler attributes from the root SVG element", () => {
+    const svgString =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" onclick="alert(1)" onload="alert(2)"><circle cx="8" cy="8" r="6"/></svg>';
+    const result = parseSvg(svgString);
+    expect(result.hasAttribute("onclick")).toBe(false);
+    expect(result.hasAttribute("onload")).toBe(false);
+    // Non-on* attributes are preserved
+    expect(result.getAttribute("width")).toBe("16");
+  });
+
+  it("strips on* event handler attributes from descendant elements", () => {
+    const svgString =
+      '<svg xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" onclick="alert(1)" onmouseover="alert(2)"/><rect onfocus="alert(3)"/></svg>';
+    const result = parseSvg(svgString);
+    const circle = result.querySelector("circle")!;
+    const rect = result.querySelector("rect")!;
+    expect(circle.hasAttribute("onclick")).toBe(false);
+    expect(circle.hasAttribute("onmouseover")).toBe(false);
+    expect(rect.hasAttribute("onfocus")).toBe(false);
+    // Non-on* attributes are preserved
+    expect(circle.getAttribute("cx")).toBe("8");
+  });
 });
 
 // ---------------------------------------------------------------------------

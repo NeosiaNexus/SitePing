@@ -338,4 +338,52 @@ model SitepingFeedback {
       expect(p.note).toHaveBeenCalledWith(expect.stringContaining("prisma db push"), "Next steps");
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Non-Error throwables — covers `String(error)` fallback in both catches
+  // -------------------------------------------------------------------------
+
+  describe("non-Error throwables", () => {
+    it("formats sync failures via String() when a non-Error value is thrown", async () => {
+      // Stub syncPrismaModels to throw a plain string. The init catch block
+      // chooses `String(error)` because the value is not an Error instance,
+      // covering the falsy branch of the conditional in the schema-sync path.
+      createPrismaSchema(tmpDir);
+      const prismaModule = await import("../../src/generators/prisma.js");
+      const stub = vi.spyOn(prismaModule, "syncPrismaModels").mockImplementation(() => {
+        throw "plain-string sync failure"; // not an Error
+      });
+
+      vi.mocked(p.confirm).mockResolvedValueOnce(true); // confirm sync
+
+      const err = await initCommand().catch((e) => e);
+
+      expect(err).toBeInstanceOf(ExitError);
+      expect((err as ExitError).code).toBe(1);
+      expect(p.log.error).toHaveBeenCalledWith(expect.stringContaining("plain-string sync failure"));
+      expect(p.outro).toHaveBeenCalledWith(expect.stringContaining("Fix the errors"));
+
+      stub.mockRestore();
+    });
+
+    it("formats route-generation failures via String() when a non-Error value is thrown", async () => {
+      // Stub generateRoute to throw a plain string in the route-creation path.
+      const routeModule = await import("../../src/generators/route.js");
+      const stub = vi.spyOn(routeModule, "generateRoute").mockImplementation(() => {
+        throw "plain-string route failure"; // not an Error
+      });
+
+      // No schema → flow goes straight to route prompt; confirm route generation.
+      vi.mocked(p.confirm).mockResolvedValueOnce(true);
+
+      const err = await initCommand().catch((e) => e);
+
+      expect(err).toBeInstanceOf(ExitError);
+      expect((err as ExitError).code).toBe(1);
+      expect(p.log.error).toHaveBeenCalledWith(expect.stringContaining("plain-string route failure"));
+      expect(p.outro).toHaveBeenCalledWith(expect.stringContaining("Fix the errors"));
+
+      stub.mockRestore();
+    });
+  });
 });

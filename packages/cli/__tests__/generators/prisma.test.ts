@@ -1,7 +1,32 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// ---------------------------------------------------------------------------
+// Conditional mock for node:fs to test writeFileSync error paths
+// ---------------------------------------------------------------------------
+
+interface WriteFileMock {
+  fn: ((...args: unknown[]) => void) | null;
+}
+
+const writeFileMock: WriteFileMock = { fn: null };
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    writeFileSync: (...args: unknown[]) => {
+      if (writeFileMock.fn) {
+        writeFileMock.fn(...args);
+        return;
+      }
+      return actual.writeFileSync(...(args as Parameters<typeof actual.writeFileSync>));
+    },
+  };
+});
+
 import { syncPrismaModels } from "../../src/generators/prisma.js";
 
 // ---------------------------------------------------------------------------
@@ -307,5 +332,395 @@ describe("syncPrismaModels", () => {
 
     // File should not have been written to
     expect(mtimeAfter).toBe(mtimeBefore);
+  });
+
+  // -----------------------------------------------------------------------
+  // Field updates: type changes, optional changes, attribute removal
+  // -----------------------------------------------------------------------
+
+  it("updates a field whose fieldType differs from expected", () => {
+    // Schema with status field as Int instead of String
+    const schemaWithWrongType = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id          String   @id @default(cuid())
+  projectName String
+  type        String
+  message     String   @db.Text
+  status      Int      @default(0)
+  url         String
+  viewport    String
+  userAgent   String
+  authorName  String
+  authorEmail String
+  clientId    String   @unique
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  annotations SitepingAnnotation[]
+}
+`;
+    writeFileSync(schemaPath, schemaWithWrongType);
+
+    const result = syncPrismaModels(schemaPath);
+
+    const statusChange = result.changes.find((c) => c.model === "SitepingFeedback" && c.field === "status");
+    expect(statusChange).toBeDefined();
+    expect(statusChange!.action).toBe("updated");
+    // Detail should contain the type change arrow
+    expect(statusChange!.detail).toContain("Int");
+    expect(statusChange!.detail).toContain("String");
+  });
+
+  it("updates a field whose optional state differs (required to optional)", () => {
+    // resolvedAt is optional in SITEPING_MODELS — make it required in schema
+    const schemaWithReqResolvedAt = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id          String   @id @default(cuid())
+  projectName String
+  type        String
+  message     String   @db.Text
+  status      String   @default("open")
+  url         String
+  viewport    String
+  userAgent   String
+  authorName  String
+  authorEmail String
+  clientId    String   @unique
+  resolvedAt  DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  annotations SitepingAnnotation[]
+}
+`;
+    writeFileSync(schemaPath, schemaWithReqResolvedAt);
+
+    const result = syncPrismaModels(schemaPath);
+
+    const resolvedChange = result.changes.find((c) => c.model === "SitepingFeedback" && c.field === "resolvedAt");
+    expect(resolvedChange).toBeDefined();
+    expect(resolvedChange!.action).toBe("updated");
+    // The change detail mentions optional/required transition
+    expect(resolvedChange!.detail).toMatch(/optional|required/);
+  });
+
+  it("updates a field whose optional state differs (optional to required)", () => {
+    // projectName is required in SITEPING_MODELS — make it optional in schema
+    const schemaWithOptProjectName = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id          String   @id @default(cuid())
+  projectName String?
+  type        String
+  message     String   @db.Text
+  status      String   @default("open")
+  url         String
+  viewport    String
+  userAgent   String
+  authorName  String
+  authorEmail String
+  clientId    String   @unique
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  annotations SitepingAnnotation[]
+}
+`;
+    writeFileSync(schemaPath, schemaWithOptProjectName);
+
+    const result = syncPrismaModels(schemaPath);
+
+    const projectChange = result.changes.find((c) => c.model === "SitepingFeedback" && c.field === "projectName");
+    expect(projectChange).toBeDefined();
+    expect(projectChange!.action).toBe("updated");
+    expect(projectChange!.detail).toMatch(/optional|required/);
+  });
+
+  it("updates a field that has an extra attribute not in the expected definition", () => {
+    // projectName has @unique attribute that shouldn't be there
+    const schemaWithExtraAttr = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id          String   @id @default(cuid())
+  projectName String   @unique
+  type        String
+  message     String   @db.Text
+  status      String   @default("open")
+  url         String
+  viewport    String
+  userAgent   String
+  authorName  String
+  authorEmail String
+  clientId    String   @unique
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  annotations SitepingAnnotation[]
+}
+`;
+    writeFileSync(schemaPath, schemaWithExtraAttr);
+
+    const result = syncPrismaModels(schemaPath);
+
+    const projectChange = result.changes.find((c) => c.model === "SitepingFeedback" && c.field === "projectName");
+    expect(projectChange).toBeDefined();
+    expect(projectChange!.action).toBe("updated");
+    // Attribute should be removed: detail contains -@unique
+    expect(projectChange!.detail).toContain("-@unique");
+  });
+
+  it("updates a field whose array state differs", () => {
+    // annotations should be SitepingAnnotation[] but defined as SitepingAnnotation
+    const schemaWithWrongArray = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id          String   @id @default(cuid())
+  projectName String
+  type        String
+  message     String   @db.Text
+  status      String   @default("open")
+  url         String
+  viewport    String
+  userAgent   String
+  authorName  String
+  authorEmail String
+  clientId    String   @unique
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  annotations SitepingAnnotation
+}
+`;
+    writeFileSync(schemaPath, schemaWithWrongArray);
+
+    const result = syncPrismaModels(schemaPath);
+
+    const annotChange = result.changes.find((c) => c.model === "SitepingFeedback" && c.field === "annotations");
+    expect(annotChange).toBeDefined();
+    expect(annotChange!.action).toBe("updated");
+  });
+
+  // -----------------------------------------------------------------------
+  // Edge case: model exists but has no createdAt field
+  // -----------------------------------------------------------------------
+
+  it("appends new fields when existing model lacks createdAt", () => {
+    // SitepingFeedback exists but has no createdAt — fields should be appended at end
+    const schemaWithoutCreatedAt = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id          String   @id @default(cuid())
+  projectName String
+  type        String
+}
+`;
+    writeFileSync(schemaPath, schemaWithoutCreatedAt);
+
+    const result = syncPrismaModels(schemaPath);
+
+    // Many fields should be added
+    expect(result.changes.length).toBeGreaterThan(0);
+    const addedFields = result.changes.filter((c) => c.action === "added" && c.model === "SitepingFeedback");
+    expect(addedFields.length).toBeGreaterThan(0);
+
+    // Output should still be valid and contain all the missing fields
+    const output = readFileSync(schemaPath, "utf-8");
+    expect(output).toContain("model SitepingFeedback");
+    expect(output).toContain("createdAt");
+    expect(output).toContain("clientId");
+  });
+
+  // -----------------------------------------------------------------------
+  // Edge case: existing @@index block in non-array form
+  // -----------------------------------------------------------------------
+
+  it("treats @@index with non-array argument as missing and adds correct index", () => {
+    // SitepingFeedback exists with an unusual @@index(projectName) (non-array form)
+    // hasBlockIndex should return false for this, and a new array-form index should be added
+    const schemaWithNonArrayIndex = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id          String   @id @default(cuid())
+  projectName String
+  type        String
+  message     String   @db.Text
+  status      String   @default("open")
+  url         String
+  viewport    String
+  userAgent   String
+  authorName  String
+  authorEmail String
+  clientId    String   @unique
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  annotations SitepingAnnotation[]
+
+  @@index(projectName)
+}
+`;
+    writeFileSync(schemaPath, schemaWithNonArrayIndex);
+
+    const result = syncPrismaModels(schemaPath);
+
+    // Sync should succeed without throwing — the non-array @@index is not recognized,
+    // so the array-form index is added.
+    const indexChanges = result.changes.filter((c) => c.field.startsWith("@@index"));
+    expect(indexChanges.length).toBeGreaterThan(0);
+  });
+
+  it("treats empty @@index() block as missing (no firstArg)", () => {
+    // SitepingFeedback exists with @@index() (no arguments) — hasBlockIndex's firstArg is undefined.
+    // The array-form indexes should be added.
+    const schemaWithEmptyIndex = `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id          String   @id @default(cuid())
+  projectName String
+  type        String
+  message     String   @db.Text
+  status      String   @default("open")
+  url         String
+  viewport    String
+  userAgent   String
+  authorName  String
+  authorEmail String
+  clientId    String   @unique
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  annotations SitepingAnnotation[]
+
+  @@index()
+}
+`;
+    writeFileSync(schemaPath, schemaWithEmptyIndex);
+
+    const result = syncPrismaModels(schemaPath);
+
+    // The @@index() with no args is unrecognized, so the proper indexes should be added.
+    const indexChanges = result.changes.filter((c) => c.field.startsWith("@@index"));
+    expect(indexChanges.length).toBeGreaterThan(0);
+  });
+
+  // -----------------------------------------------------------------------
+  // Default schema path argument
+  // -----------------------------------------------------------------------
+
+  it("uses default schema path when called with no argument", () => {
+    // Calling syncPrismaModels() with no args should use prisma/schema.prisma as default.
+    // Since that path likely doesn't exist in the test environment, it should throw.
+    expect(() => syncPrismaModels()).toThrow("Schema file not found");
+  });
+
+  // -----------------------------------------------------------------------
+  // writeFileSync error handling — using mocked fs writeFileSync
+  // -----------------------------------------------------------------------
+
+  describe("write error handling", () => {
+    afterEach(() => {
+      writeFileMock.fn = null;
+    });
+
+    it("wraps EACCES errors with a helpful message", () => {
+      writeFileSync(schemaPath, MINIMAL_SCHEMA);
+
+      writeFileMock.fn = () => {
+        const e = new Error("permission denied") as NodeJS.ErrnoException;
+        e.code = "EACCES";
+        throw e;
+      };
+
+      expect(() => syncPrismaModels(schemaPath)).toThrow(/Permission denied.*Check file permissions/);
+    });
+
+    it("wraps EPERM errors with a helpful message", () => {
+      writeFileSync(schemaPath, MINIMAL_SCHEMA);
+
+      writeFileMock.fn = () => {
+        const e = new Error("operation not permitted") as NodeJS.ErrnoException;
+        e.code = "EPERM";
+        throw e;
+      };
+
+      expect(() => syncPrismaModels(schemaPath)).toThrow(/Permission denied.*Check file permissions/);
+    });
+
+    it("rethrows non-permission errors verbatim", () => {
+      writeFileSync(schemaPath, MINIMAL_SCHEMA);
+
+      writeFileMock.fn = () => {
+        const e = new Error("disk full") as NodeJS.ErrnoException;
+        e.code = "ENOSPC";
+        throw e;
+      };
+
+      expect(() => syncPrismaModels(schemaPath)).toThrow("disk full");
+    });
   });
 });

@@ -16,9 +16,18 @@ mockMatchMedia(false);
 // Mock Popup — avoid real popup DOM during annotation tests
 // ---------------------------------------------------------------------------
 
+const popupMocks = vi.hoisted(() => {
+  return {
+    nextResult: { type: "bug" as const, message: "Test message" } as {
+      type: "bug" | "improvement" | "praise" | "question";
+      message: string;
+    } | null,
+  };
+});
+
 vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
   Popup: vi.fn().mockImplementation(() => ({
-    show: vi.fn().mockImplementation(() => Promise.resolve({ type: "bug" as const, message: "Test message" })),
+    show: vi.fn().mockImplementation(() => Promise.resolve(popupMocks.nextResult)),
     destroy: vi.fn(),
   })),
 }));
@@ -77,6 +86,7 @@ describe("Annotator", () => {
   let bus: EventBus<WidgetEvents>;
 
   beforeEach(() => {
+    popupMocks.nextResult = { type: "bug", message: "Test message" };
     ({ annotator, bus } = createAnnotator());
   });
 
@@ -600,6 +610,256 @@ describe("Annotator", () => {
       // After mouseleave, border and color should differ from hover state
       expect(cancelBtn.style.borderColor).not.toBe(hoverBorder);
       expect(cancelBtn.style.color).not.toBe(hoverColor);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Popup dismissal branches (lines 320-322)
+  // -------------------------------------------------------------------------
+
+  describe("popup dismissal during drawing", () => {
+    it("mouse drag completed but popup returns null cleans up drawing rect without emitting", async () => {
+      popupMocks.nextResult = null;
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+
+      // Wait for the async finishDrawing handler to complete
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(completeListener).not.toHaveBeenCalled();
+
+      // Annotator should still be active (popup dismissal does not deactivate)
+      expect(findOverlay()).not.toBeNull();
+      // The drawing rect should have been removed
+      const overlayAfter = findOverlay()!;
+      const rectsInOverlay = overlayAfter.querySelectorAll("div");
+      expect(rectsInOverlay.length).toBe(0);
+    });
+
+    it("touchend completed but popup returns null cleans up drawing rect without emitting", async () => {
+      popupMocks.nextResult = null;
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      const startEvent = new Event("touchstart", { bubbles: true, cancelable: true });
+      Object.defineProperty(startEvent, "touches", { value: [{ clientX: 50, clientY: 50 }] });
+      Object.defineProperty(startEvent, "preventDefault", { value: vi.fn() });
+      overlay.dispatchEvent(startEvent);
+
+      const endEvent = new Event("touchend", { bubbles: true });
+      Object.defineProperty(endEvent, "changedTouches", { value: [{ clientX: 200, clientY: 150 }] });
+      overlay.dispatchEvent(endEvent);
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(completeListener).not.toHaveBeenCalled();
+      expect(findOverlay()).not.toBeNull();
+    });
+
+    it("Enter keyboard with popup returning null does not emit annotation:complete", async () => {
+      popupMocks.nextResult = null;
+
+      const target = document.createElement("button");
+      document.body.appendChild(target);
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 40));
+      target.focus();
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(completeListener).not.toHaveBeenCalled();
+
+      target.remove();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Defensive branches — early returns / missing inputs
+  // -------------------------------------------------------------------------
+
+  describe("defensive branches", () => {
+    it("non-Enter keydown on overlay is ignored (early return)", async () => {
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      // Press a non-Enter key — handler returns immediately
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(completeListener).not.toHaveBeenCalled();
+    });
+
+    it("Enter on overlay when activeElement is not an HTMLElement does nothing", async () => {
+      // Force pre-active element to be null/non-HTMLElement
+      // Blur first so activeElement is body, then mock document.activeElement
+      (document.activeElement as HTMLElement)?.blur?.();
+
+      // Make activeElement return a non-HTMLElement via querySelector trickery
+      // Easier: blur all and let body be activeElement (which IS HTMLElement)
+      // But we need a CASE where target is not an HTMLElement
+      // Use a SVGElement as activeElement (NOT an HTMLElement)
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      // SVG can't be focused easily; instead spy on document.activeElement
+      const focusableSvg = document.createElement("button"); // placeholder
+
+      // Replace document.activeElement to be an SVGElement
+      const restore = Object.getOwnPropertyDescriptor(Document.prototype, "activeElement");
+      Object.defineProperty(document, "activeElement", {
+        configurable: true,
+        get: () => svg,
+      });
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(completeListener).not.toHaveBeenCalled();
+
+      // Restore activeElement getter
+      if (restore) {
+        Object.defineProperty(document, "activeElement", restore);
+      } else {
+        delete (document as unknown as { activeElement?: unknown }).activeElement;
+      }
+      focusableSvg.remove();
+    });
+
+    it("touchstart with no touches is ignored", () => {
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      const touchEvent = new Event("touchstart", { bubbles: true, cancelable: true });
+      Object.defineProperty(touchEvent, "touches", { value: [] });
+      Object.defineProperty(touchEvent, "preventDefault", { value: vi.fn() });
+
+      // Should not throw, no drawing rect created
+      overlay.dispatchEvent(touchEvent);
+      expect(overlay.querySelector("div")).toBeNull();
+    });
+
+    it("touchmove with no touches is ignored", () => {
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      // Start drawing first
+      const startEvent = new Event("touchstart", { bubbles: true, cancelable: true });
+      Object.defineProperty(startEvent, "touches", { value: [{ clientX: 50, clientY: 50 }] });
+      Object.defineProperty(startEvent, "preventDefault", { value: vi.fn() });
+      overlay.dispatchEvent(startEvent);
+
+      // touchmove with empty touches
+      const moveEvent = new Event("touchmove", { bubbles: true, cancelable: true });
+      Object.defineProperty(moveEvent, "touches", { value: [] });
+      Object.defineProperty(moveEvent, "preventDefault", { value: vi.fn() });
+      overlay.dispatchEvent(moveEvent);
+
+      // No throw, no update applied
+      const drawingRect = overlay.querySelector<HTMLElement>("div")!;
+      // Width/height should not have been set since touchmove had no touches
+      expect(drawingRect.style.width).toBe("");
+    });
+
+    it("touchend with no changedTouches is ignored", async () => {
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      const startEvent = new Event("touchstart", { bubbles: true, cancelable: true });
+      Object.defineProperty(startEvent, "touches", { value: [{ clientX: 50, clientY: 50 }] });
+      Object.defineProperty(startEvent, "preventDefault", { value: vi.fn() });
+      overlay.dispatchEvent(startEvent);
+
+      const endEvent = new Event("touchend", { bubbles: true });
+      Object.defineProperty(endEvent, "changedTouches", { value: [] });
+      overlay.dispatchEvent(endEvent);
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(completeListener).not.toHaveBeenCalled();
+    });
+
+    it("scheduleRectUpdate returns early when not currently drawing (mousemove before mousedown)", () => {
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      const rafSpy = vi.spyOn(window, "requestAnimationFrame");
+
+      // mousemove without prior mousedown — isDrawing is false
+      overlay.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 100, bubbles: true }));
+
+      // No rAF scheduled because the early-return branch fires
+      expect(rafSpy).not.toHaveBeenCalled();
+      rafSpy.mockRestore();
+    });
+
+    it("finishDrawing returns early when called without prior drawing (mouseup before mousedown)", async () => {
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      // mouseup without mousedown — isDrawing is false
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 200, bubbles: true }));
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(completeListener).not.toHaveBeenCalled();
+    });
+
+    it("rAF callback returns early after deactivation (drawingRect is null)", () => {
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      // Start drawing
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+
+      // Capture the rAF callback so we can invoke it AFTER deactivate (drawingRect=null)
+      let capturedCallback: FrameRequestCallback | null = null;
+      const origRAF = window.requestAnimationFrame;
+      window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+        capturedCallback = cb;
+        return 1;
+      }) as typeof window.requestAnimationFrame;
+
+      // Schedule rAF
+      overlay.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 100, bubbles: true }));
+
+      // Deactivate before rAF fires (this nullifies drawingRect)
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+      // Now manually invoke captured callback — should hit the early return branch
+      expect(() => {
+        capturedCallback?.(0);
+      }).not.toThrow();
+
+      window.requestAnimationFrame = origRAF;
     });
   });
 });

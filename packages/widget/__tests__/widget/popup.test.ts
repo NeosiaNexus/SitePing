@@ -523,6 +523,214 @@ describe("Popup", () => {
   });
 
   // -------------------------------------------------------------------------
+  // Reduced motion / focus trap edge cases
+  // -------------------------------------------------------------------------
+
+  describe("reduced motion + focus trap edge cases", () => {
+    it("disables transitions when prefers-reduced-motion is reduce", () => {
+      vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+        matches: query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      popup.show(makeBounds());
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      expect(dialog.style.transition).toBe("none");
+    });
+
+    it("keeps the popup visible when Tab is pressed but no focusable elements exist", () => {
+      popup.show(makeBounds());
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      // Remove every focusable child so the trap returns early
+      for (const focusable of dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])',
+      )) {
+        focusable.remove();
+      }
+
+      const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+      const preventSpy = vi.spyOn(event, "preventDefault");
+      dialog.dispatchEvent(event);
+
+      expect(preventSpy).not.toHaveBeenCalled();
+    });
+
+    it("Tab from outside the popup focuses the first focusable element", () => {
+      popup.show(makeBounds());
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      // Move focus to the body so document.activeElement is not contained
+      document.body.focus();
+
+      const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+      const preventSpy = vi.spyOn(event, "preventDefault");
+      dialog.dispatchEvent(event);
+
+      expect(preventSpy).toHaveBeenCalled();
+    });
+
+    it("Shift+Tab from outside the popup focuses the last focusable element", () => {
+      popup.show(makeBounds());
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      document.body.focus();
+
+      const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true });
+      const preventSpy = vi.spyOn(event, "preventDefault");
+      dialog.dispatchEvent(event);
+
+      expect(preventSpy).toHaveBeenCalled();
+    });
+
+    it("Shift+Tab from a middle element does not preventDefault", () => {
+      popup.show(makeBounds());
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      const focusableEls = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      // Focus a middle element (not the first, not outside the popup)
+      const middle = focusableEls[Math.floor(focusableEls.length / 2)];
+      middle.focus();
+
+      const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true });
+      const preventSpy = vi.spyOn(event, "preventDefault");
+      dialog.dispatchEvent(event);
+
+      expect(preventSpy).not.toHaveBeenCalled();
+    });
+
+    it("Tab forward from a middle element does not preventDefault", () => {
+      popup.show(makeBounds());
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      const focusableEls = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const middle = focusableEls[Math.floor(focusableEls.length / 2)];
+      middle.focus();
+
+      const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+      const preventSpy = vi.spyOn(event, "preventDefault");
+      dialog.dispatchEvent(event);
+
+      expect(preventSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Hover on already-selected type button (no-op branch)
+  // -------------------------------------------------------------------------
+
+  describe("type button hover with missing data-type attribute", () => {
+    it("mouseenter falls back to empty type when data-type is removed", () => {
+      popup.show(makeBounds());
+
+      const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      delete bugBtn.dataset.type;
+
+      // Should not throw; uses the empty-string fallback for getTypeBgColor/getTypeColor
+      bugBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    });
+
+    it("selectType handles a button whose data-type was removed", () => {
+      popup.show(makeBounds());
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      const buttons = dialog.querySelectorAll<HTMLButtonElement>("[data-type]");
+      // Strip data-type from one of the existing buttons before selectType iterates
+      const target = buttons[0];
+      delete target.dataset.type;
+
+      // Click another button to trigger selectType which loops over all buttons
+      buttons[2].click();
+
+      // Should not throw — branch fallback `?? ""` is exercised
+      expect(buttons[2].getAttribute("aria-pressed")).toBe("true");
+    });
+  });
+
+  describe("hover on selected type button", () => {
+    it("does not change background on mouseenter when the button is already selected", () => {
+      popup.show(makeBounds());
+
+      const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      bugBtn.click(); // make it selected
+      const selectedBg = bugBtn.style.background;
+
+      bugBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+      expect(bugBtn.style.background).toBe(selectedBg);
+    });
+
+    it("does not restore background on mouseleave when the button is already selected", () => {
+      popup.show(makeBounds());
+
+      const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      bugBtn.click();
+      const selectedBg = bugBtn.style.background;
+
+      bugBtn.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+
+      expect(bugBtn.style.background).toBe(selectedBg);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Cancel button hover effects
+  // -------------------------------------------------------------------------
+
+  describe("cancel button hover effects", () => {
+    function getCancelButton(): HTMLButtonElement {
+      const buttons = document.querySelectorAll<HTMLButtonElement>("button");
+      return Array.from(buttons).find((btn) => btn.textContent === t("popup.cancel"))!;
+    }
+
+    it("mouseenter on cancel button changes border and text color to accent", () => {
+      popup.show(makeBounds());
+
+      const cancelBtn = getCancelButton();
+      const beforeBorder = cancelBtn.style.borderColor;
+      const beforeColor = cancelBtn.style.color;
+
+      cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+      expect(cancelBtn.style.borderColor).not.toBe(beforeBorder);
+      expect(cancelBtn.style.color).not.toBe(beforeColor);
+    });
+
+    it("mouseleave on cancel button restores border and text color", () => {
+      popup.show(makeBounds());
+
+      const cancelBtn = getCancelButton();
+      cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      const hoverBorder = cancelBtn.style.borderColor;
+      const hoverColor = cancelBtn.style.color;
+
+      cancelBtn.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+
+      expect(cancelBtn.style.borderColor).not.toBe(hoverBorder);
+      expect(cancelBtn.style.color).not.toBe(hoverColor);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Mac shortcut hint via navigator.userAgentData
+  // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
   // Meta+Enter (Mac shortcut) submits the form
   // -------------------------------------------------------------------------
 
@@ -542,5 +750,101 @@ describe("Popup", () => {
       const result = await promise;
       expect(result).toEqual({ type: "bug", message: "Mac shortcut test" });
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Destroy without prior show should not throw
+  // -------------------------------------------------------------------------
+
+  describe("destroy without show", () => {
+    it("destroy works even when no keydown trap is installed", () => {
+      // Construct, destroy without ever calling show — exercises the
+      // hideElement path elsewhere too. Specifically we assert that
+      // the locally-constructed popup is removed without throwing.
+      const localPopup = new Popup(colors, t);
+      const dialogsBefore = document.querySelectorAll<HTMLElement>('[role="dialog"]').length;
+      localPopup.destroy();
+      const dialogsAfter = document.querySelectorAll<HTMLElement>('[role="dialog"]').length;
+
+      expect(dialogsAfter).toBe(dialogsBefore - 1);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Platform detection (Mac vs other) for the keyboard hint
+// ---------------------------------------------------------------------------
+
+describe("Popup platform detection", () => {
+  let originalUaData: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalUaData = Object.getOwnPropertyDescriptor(navigator, "userAgentData");
+  });
+
+  afterEach(() => {
+    if (originalUaData) {
+      Object.defineProperty(navigator, "userAgentData", originalUaData);
+    } else {
+      Reflect.deleteProperty(navigator as unknown as Record<string, unknown>, "userAgentData");
+    }
+  });
+
+  it("uses macOS hint when navigator.userAgentData reports macOS", () => {
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      value: { platform: "macOS" },
+    });
+
+    const localPopup = new Popup(colors, t);
+    const hint = document.body.lastElementChild?.querySelectorAll("div") ?? [];
+    const hintText = Array.from(hint)
+      .map((el) => el.textContent ?? "")
+      .join("\n");
+    expect(hintText).toContain(t("popup.submitHintMac"));
+
+    localPopup.destroy();
+  });
+
+  it("uses non-macOS hint when navigator.userAgentData reports Windows", () => {
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      value: { platform: "Windows" },
+    });
+
+    const localPopup = new Popup(colors, t);
+    const hint = document.body.lastElementChild?.querySelectorAll("div") ?? [];
+    const hintText = Array.from(hint)
+      .map((el) => el.textContent ?? "")
+      .join("\n");
+    expect(hintText).toContain(t("popup.submitHintOther"));
+
+    localPopup.destroy();
+  });
+
+  it("falls back to userAgent regex when both userAgentData and platform are missing", () => {
+    // Remove both userAgentData and platform so the chain falls all the way
+    // through to the regex test against navigator.userAgent
+    Reflect.deleteProperty(navigator as unknown as Record<string, unknown>, "userAgentData");
+    const originalPlatform = Object.getOwnPropertyDescriptor(navigator, "platform");
+    const originalUserAgent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+    Object.defineProperty(navigator, "platform", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    });
+
+    try {
+      const localPopup = new Popup(colors, t);
+      const hint = document.body.lastElementChild?.querySelectorAll("div") ?? [];
+      const hintText = Array.from(hint)
+        .map((el) => el.textContent ?? "")
+        .join("\n");
+      expect(hintText).toContain(t("popup.submitHintMac"));
+      localPopup.destroy();
+    } finally {
+      if (originalPlatform) Object.defineProperty(navigator, "platform", originalPlatform);
+      if (originalUserAgent) Object.defineProperty(navigator, "userAgent", originalUserAgent);
+    }
   });
 });

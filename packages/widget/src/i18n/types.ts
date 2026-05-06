@@ -30,10 +30,14 @@ export interface Translations {
   "panel.statusResolved": string;
 
   // Feedback type labels (UI display only)
+  "type.label": string;
   "type.question": string;
   "type.change": string;
   "type.bug": string;
   "type.other": string;
+
+  // Status segmented control label
+  "status.label": string;
 
   // FAB menu
   "fab.aria": string;

@@ -185,6 +185,31 @@ describe("scoreFingerprint", () => {
       // childCount: 0, sibIdx: 0.4, attrHash: 0.4
       expect(score).toBeCloseTo(0.8);
     });
+
+    it("diff 3 (in (2, 5] range) yields 0.03 contribution", () => {
+      const parent = document.createElement("div");
+      const el = document.createElement("span");
+      parent.appendChild(el);
+      for (let i = 0; i < 3; i++) el.appendChild(document.createElement("i"));
+
+      // Stored says 0 children, actual is 3, diff = 3 → falls into (childDiff <= 5) branch
+      const fp = "0:0:0";
+      const score = scoreFingerprint(el, fp);
+      // childCount: 0.03, sibIdx: 0.4, attrHash: 0.4 = 0.83
+      expect(score).toBeCloseTo(0.83);
+    });
+
+    it("diff 5 (boundary of (2, 5] range) yields 0.03 contribution", () => {
+      const parent = document.createElement("div");
+      const el = document.createElement("span");
+      parent.appendChild(el);
+      for (let i = 0; i < 5; i++) el.appendChild(document.createElement("i"));
+
+      // diff = 5 → exactly on the upper boundary
+      const fp = "0:0:0";
+      const score = scoreFingerprint(el, fp);
+      expect(score).toBeCloseTo(0.83);
+    });
   });
 
   // --- sibling index tolerance ---
@@ -226,6 +251,34 @@ describe("scoreFingerprint", () => {
       const score = scoreFingerprint(el, fp);
       // childCount: 0.2, sibIdx: 0, attr: 0.4
       expect(score).toBeCloseTo(0.6);
+    });
+
+    it("diff 2 (in (1, 3] range) yields 0.08 contribution", () => {
+      const parent = document.createElement("div");
+      parent.appendChild(document.createElement("span"));
+      parent.appendChild(document.createElement("span"));
+      const el = document.createElement("span");
+      parent.appendChild(el);
+
+      // el is at sibIdx=2, stored says sibIdx=0 => diff=2 → falls into (sibDiff <= 3) branch
+      const fp = "0:0:0";
+      const score = scoreFingerprint(el, fp);
+      // childCount: 0.2, sibIdx: 0.08, attr: 0.4
+      expect(score).toBeCloseTo(0.68);
+    });
+
+    it("diff 3 (boundary of (1, 3] range) yields 0.08 contribution", () => {
+      const parent = document.createElement("div");
+      for (let i = 0; i < 3; i++) {
+        parent.appendChild(document.createElement("span"));
+      }
+      const el = document.createElement("span");
+      parent.appendChild(el);
+
+      // el is at sibIdx=3, stored says sibIdx=0 => diff=3 → on the upper boundary
+      const fp = "0:0:0";
+      const score = scoreFingerprint(el, fp);
+      expect(score).toBeCloseTo(0.68);
     });
   });
 

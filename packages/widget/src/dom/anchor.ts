@@ -48,21 +48,21 @@ export function generateAnchor(element: Element): AnchorData {
 }
 
 /**
- * Find the deepest DOM element that fully contains the drawn rectangle.
- * Walks from the center of the rect down through overlapping elements.
+ * Find the smallest DOM element whose bounding box fully contains the drawn rectangle.
+ *
+ * Walks up from the element at the rect's center until an ancestor contains the
+ * full rectangle. Falls back to `document.body` when no ancestor matches — without
+ * this fallback, callers compute percentages against a too-small anchor and produce
+ * out-of-range values (negative / > 1).
  */
 export function findAnchorElement(rect: DOMRect, root: Element = document.documentElement): Element {
   const centerX = rect.x + rect.width / 2;
   const centerY = rect.y + rect.height / 2;
 
-  // Get the element at the center point
   const elementAtCenter = document.elementFromPoint(centerX, centerY);
   if (!elementAtCenter || elementAtCenter === root) return document.body;
 
-  // Walk up to find the smallest element whose bounding box contains the full rect
-  let candidate: Element = elementAtCenter;
   let current: Element | null = elementAtCenter;
-
   while (current && current !== document.body) {
     const bounds = current.getBoundingClientRect();
     if (
@@ -71,13 +71,12 @@ export function findAnchorElement(rect: DOMRect, root: Element = document.docume
       bounds.right >= rect.x + rect.width &&
       bounds.bottom >= rect.y + rect.height
     ) {
-      candidate = current;
-      break;
+      return current;
     }
     current = current.parentElement;
   }
 
-  return candidate;
+  return document.body;
 }
 
 /**

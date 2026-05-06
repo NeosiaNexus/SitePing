@@ -261,6 +261,8 @@ export function buildStyles(colors: ThemeColors): string {
       background: var(--sp-glass-bg-heavy);
       backdrop-filter: blur(var(--sp-blur));
       -webkit-backdrop-filter: blur(var(--sp-blur));
+      position: relative;
+      z-index: 2;
     }
 
     .sp-panel-title {
@@ -354,49 +356,314 @@ export function buildStyles(colors: ThemeColors): string {
       color: var(--sp-accent);
     }
 
-    .sp-chips {
+    /* ============================
+       Filter bar (type dropdown + status segmented)
+       ============================ */
+
+    .sp-filter-bar {
       display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
       margin-bottom: 8px;
+      flex-wrap: wrap;
     }
 
-    .sp-chips:last-child {
-      margin-bottom: 0;
+    /* ============================
+       Type filter dropdown
+       ============================ */
+
+    .sp-filter-dropdown {
+      position: relative;
+      flex: 1 1 auto;
+      min-width: 0;
     }
 
-    .sp-chip {
-      padding: 5px 14px;
+    .sp-filter-dropdown-btn {
+      --sp-chip-color: var(--sp-text-secondary);
+      --sp-chip-bg: var(--sp-glass-bg-heavy);
+
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      height: 32px;
+      padding: 0 8px 0 10px;
       border-radius: var(--sp-radius-full);
       border: 1px solid var(--sp-border);
       background: var(--sp-glass-bg-heavy);
+      color: var(--sp-text);
+      font-family: var(--sp-font);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .sp-filter-dropdown-btn:hover {
+      border-color: var(--sp-chip-color);
+      background: var(--sp-chip-bg);
+    }
+
+    .sp-filter-dropdown-btn[aria-expanded="true"] {
+      border-color: var(--sp-chip-color);
+      background: var(--sp-chip-bg);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--sp-chip-color) 14%, transparent);
+    }
+
+    .sp-filter-dropdown-btn--filtered {
+      border-color: var(--sp-chip-color);
+      background: var(--sp-chip-bg);
+    }
+
+    .sp-filter-dropdown-btn__icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      color: var(--sp-chip-color);
+    }
+
+    .sp-filter-dropdown-btn__icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .sp-filter-dropdown-btn__label {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .sp-filter-dropdown-btn__prefix {
+      color: var(--sp-text-tertiary);
+      font-weight: 500;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .sp-filter-dropdown-btn__value {
+      color: var(--sp-chip-color);
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sp-filter-dropdown-btn__chevron {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      color: var(--sp-text-tertiary);
+      transition: transform 0.18s ease, color 0.18s ease;
+    }
+
+    .sp-filter-dropdown-btn__chevron svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .sp-filter-dropdown-btn[aria-expanded="true"] .sp-filter-dropdown-btn__chevron {
+      transform: rotate(180deg);
+      color: var(--sp-chip-color);
+    }
+
+    .sp-filter-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      min-width: 180px;
+      padding: 4px;
+      border-radius: var(--sp-radius);
+      background: var(--sp-glass-bg-heavy);
+      backdrop-filter: blur(var(--sp-blur-heavy));
+      -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
+      border: 1px solid var(--sp-glass-border);
+      box-shadow: var(--sp-shadow-md);
+      z-index: 10;
+      animation: sp-filter-menu-in 0.15s ease-out both;
+    }
+
+    @keyframes sp-filter-menu-in {
+      from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .sp-filter-dropdown-option {
+      --sp-chip-color: var(--sp-text-secondary);
+      --sp-chip-bg: transparent;
+
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 8px 10px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--sp-text);
+      font-family: var(--sp-font);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+
+    .sp-filter-dropdown-option__icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+      border-radius: 6px;
+      background: var(--sp-chip-bg);
+      color: var(--sp-chip-color);
+    }
+
+    .sp-filter-dropdown-option__icon svg {
+      width: 13px;
+      height: 13px;
+    }
+
+    .sp-filter-dropdown-option__label {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .sp-filter-dropdown-option__check {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      color: var(--sp-chip-color);
+    }
+
+    .sp-filter-dropdown-option__check svg {
+      width: 13px;
+      height: 13px;
+    }
+
+    .sp-filter-dropdown-option:hover {
+      background: var(--sp-bg-hover);
+    }
+
+    .sp-filter-dropdown-option--active {
+      color: var(--sp-chip-color);
+      font-weight: 600;
+    }
+
+    .sp-filter-dropdown-option--active:hover {
+      background: var(--sp-chip-bg);
+    }
+
+    /* ============================
+       Status segmented control
+       ============================ */
+
+    .sp-segmented {
+      display: inline-flex;
+      align-items: stretch;
+      padding: 2px;
+      border-radius: var(--sp-radius-full);
+      border: 1px solid var(--sp-border);
+      background: var(--sp-glass-bg-heavy);
+      flex-shrink: 0;
+    }
+
+    .sp-segmented__btn {
+      --sp-chip-color: var(--sp-text-tertiary);
+      --sp-chip-bg: transparent;
+
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 26px;
+      padding: 0 10px;
+      border: none;
+      border-radius: var(--sp-radius-full);
+      background: transparent;
       color: var(--sp-text-secondary);
       font-family: var(--sp-font);
       font-size: 12px;
       font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s ease;
       white-space: nowrap;
-      letter-spacing: 0.01em;
+      transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
     }
 
-    .sp-chip:hover {
-      border-color: var(--sp-accent);
-      color: var(--sp-accent);
-      background: var(--sp-accent-light);
+    .sp-segmented__icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 13px;
+      height: 13px;
+      flex-shrink: 0;
+      color: var(--sp-chip-color);
+      transition: color 0.18s ease, transform 0.18s ease;
     }
 
-    .sp-chip--active {
-      background: var(--sp-accent-gradient);
-      border-color: transparent;
-      color: #fff;
-      box-shadow: 0 2px 8px var(--sp-accent-glow);
+    .sp-segmented__icon svg {
+      width: 13px;
+      height: 13px;
     }
 
-    .sp-chip--active:hover {
-      background: var(--sp-accent-gradient);
-      border-color: transparent;
-      color: #fff;
+    .sp-segmented__btn:hover {
+      color: var(--sp-chip-color);
+    }
+
+    .sp-segmented__btn:hover .sp-segmented__icon {
+      color: var(--sp-chip-color);
+    }
+
+    .sp-segmented__btn--active {
+      background: var(--sp-chip-bg);
+      color: var(--sp-chip-color);
+      font-weight: 600;
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--sp-chip-color) 35%, transparent),
+        0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    .sp-segmented__btn--active .sp-segmented__icon {
+      color: var(--sp-chip-color);
+    }
+
+    .sp-segmented__btn--open.sp-segmented__btn--active .sp-segmented__icon {
+      animation: sp-segmented-pulse 2.4s ease-in-out infinite;
+    }
+
+    @keyframes sp-segmented-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(0.85); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sp-filter-dropdown-btn,
+      .sp-filter-dropdown-btn__chevron,
+      .sp-filter-dropdown-option,
+      .sp-segmented__btn,
+      .sp-segmented__icon {
+        transition: none;
+      }
+      .sp-filter-dropdown-menu {
+        animation: none;
+      }
+      .sp-segmented__btn--open.sp-segmented__btn--active .sp-segmented__icon {
+        animation: none;
+      }
     }
 
     /* ============================
@@ -854,7 +1121,9 @@ export function buildStyles(colors: ThemeColors): string {
     @media (forced-colors: active) {
       .sp-fab,
       .sp-radial-item,
-      .sp-chip,
+      .sp-filter-dropdown-btn,
+      .sp-segmented,
+      .sp-segmented__btn,
       .sp-card,
       .sp-panel-close,
       .sp-search,
@@ -872,9 +1141,26 @@ export function buildStyles(colors: ThemeColors): string {
         color: ButtonText !important;
       }
 
+      .sp-segmented__btn--active {
+        background: Highlight !important;
+        color: HighlightText !important;
+      }
+
+      .sp-filter-dropdown-menu {
+        border: 2px solid ButtonText !important;
+        background: Canvas !important;
+      }
+
+      .sp-filter-dropdown-option--active {
+        background: Highlight !important;
+        color: HighlightText !important;
+      }
+
       .sp-fab:focus-visible,
       .sp-radial-item:focus-visible,
-      .sp-chip:focus-visible,
+      .sp-filter-dropdown-btn:focus-visible,
+      .sp-segmented__btn:focus-visible,
+      .sp-filter-dropdown-option:focus-visible,
       .sp-panel-close:focus-visible,
       .sp-btn-resolve:focus-visible,
       .sp-btn-delete:focus-visible,

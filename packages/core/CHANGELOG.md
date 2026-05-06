@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/NeosiaNexus/SitePing/compare/core-v0.7.0...core-v0.7.1) (2026-05-02)
+
+
+### Miscellaneous
+
+* harmonize locale rollout — types, docs, coverage thresholds ([40f7166](https://github.com/NeosiaNexus/SitePing/commit/40f71663d78156b5d46a9b1f7d7e938788a96e08))
+
 ## [0.7.0](https://github.com/NeosiaNexus/SitePing/compare/core-v0.6.0...core-v0.7.0) (2026-04-05)
 
 

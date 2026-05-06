@@ -100,6 +100,13 @@ describe("fuzzyIncludes", () => {
     expect(score).toBe(0);
   });
 
+  it("handles needle longer than haystack with a high similarity score", () => {
+    // Hits the `score >= minScore` true branch when needle.length > haystack.length.
+    // similarity("hell", "hello") = 1 - 1/5 = 0.8 ≥ 0.6 default minScore → returns 0.8
+    const score = fuzzyIncludes("hell", "hello");
+    expect(score).toBeCloseTo(0.8, 5);
+  });
+
   it("returns 0 for empty needle", () => {
     expect(fuzzyIncludes("hello", "")).toBe(0);
   });
@@ -125,5 +132,36 @@ describe("fuzzyIncludes", () => {
     // Verify the same fuzzy match DOES work when within the first 500 chars
     const shortHaystack = "secrat";
     expect(fuzzyIncludes(shortHaystack, "secret")).toBeGreaterThan(0);
+  });
+
+  it("breaks early when window similarity reaches 0.95+", () => {
+    // Construct a haystack with a near-perfect (but not exact) window match.
+    // Needle is 20 chars; window with 1 char swap → similarity 19/20 = 0.95 → break.
+    // haystack.includes(needle) must be false so we enter the loop.
+    const needle = "abcdefghijklmnopqrst";
+    const haystack = "zzz" + "abcdefghijklmnopqrsX" + "more text after";
+    const score = fuzzyIncludes(haystack, needle);
+    // The near-perfect window triggers the early break and returns its score.
+    expect(score).toBeGreaterThanOrEqual(0.95);
+    expect(score).toBeLessThan(1);
+  });
+
+  it("editDistance is symmetric across many string pairs", () => {
+    // Hits both branches of the i/j loops over a variety of inputs
+    const pairs: Array<[string, string]> = [
+      ["a", "b"],
+      ["abc", "abd"],
+      ["flaw", "lawn"],
+      ["intention", "execution"],
+      ["aaaa", "aaab"],
+    ];
+    for (const [x, y] of pairs) {
+      expect(editDistance(x, y)).toBe(editDistance(y, x));
+    }
+  });
+
+  it("similarity returns ratio when only one character differs", () => {
+    // Hits the non-zero, non-one path of similarity
+    expect(similarity("hello", "hellp")).toBeCloseTo(0.8, 5);
   });
 });

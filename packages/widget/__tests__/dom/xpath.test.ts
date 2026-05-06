@@ -84,4 +84,53 @@ describe("generateXPath", () => {
 
     expect(generateXPath(p)).toBe("/html/body/p[1]");
   });
+
+  it("uses concat() escaping when an ancestor (not the leaf) has a single-quoted ID", () => {
+    const wrapper = document.createElement("div");
+    wrapper.id = "user's-list"; // ancestor with quote in ID
+    const ul = document.createElement("ul");
+    const li = document.createElement("li");
+    wrapper.appendChild(ul);
+    ul.appendChild(li);
+    document.body.appendChild(wrapper);
+
+    // The ancestor branch in the loop must hit the `concat(...)` path (line 24-26)
+    expect(generateXPath(li)).toBe(`//div[@id=concat('user',"'",'s-list')]/ul[1]/li[1]`);
+  });
+
+  it("handles an element detached from the document (no parent)", () => {
+    // Orphan element: current.parentElement === null inside the loop,
+    // exercising the `if (parent)` false branch (line 33) for position calc.
+    const orphan = document.createElement("article");
+    expect(generateXPath(orphan)).toBe("/html/body/article[1]");
+  });
+
+  it("handles an orphan element with an ID via the early-return id path", () => {
+    // The element-with-id early return (line 11) — never enters the loop
+    const orphan = document.createElement("article");
+    orphan.id = "lonely";
+    expect(generateXPath(orphan)).toBe("//article[@id='lonely']");
+  });
+
+  it("handles an orphan element with a quoted ID via the early-return path", () => {
+    // The element-with-id early return when id contains a single quote
+    const orphan = document.createElement("article");
+    orphan.id = "qu'ote";
+    expect(generateXPath(orphan)).toBe(`//article[@id=concat('qu',"'",'ote')]`);
+  });
+
+  it("ignores siblings with a different tag when computing the position index", () => {
+    // container has [<p>, <h1>, <span> target] — the for loop walks <p> and <h1>
+    // (different tags), exercising the `sibling.localName === tag` FALSE branch
+    // (line 36) before hitting the target.
+    const container = document.createElement("div");
+    container.appendChild(document.createElement("p"));
+    container.appendChild(document.createElement("h1"));
+    const target = document.createElement("span");
+    container.appendChild(target);
+    document.body.appendChild(container);
+
+    // Only one preceding <span> sibling (zero), so position = 1
+    expect(generateXPath(target)).toBe("/html/body/div[1]/span[1]");
+  });
 });

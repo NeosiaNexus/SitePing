@@ -209,4 +209,79 @@ model User {
       process.chdir(originalCwd);
     }
   });
+
+  it("logs only field-level changes when both models already exist (no model creation)", () => {
+    // Schema where both Siteping models are present but each has a single
+    // field — exercises the `addedModels.length > 0` false branch (no model
+    // additions logged) while still emitting per-field "added" success logs.
+    const schemaPath = join(tmpDir, "schema.prisma");
+    writeFileSync(
+      schemaPath,
+      `
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model SitepingFeedback {
+  id String @id @default(cuid())
+}
+
+model SitepingAnnotation {
+  id String @id @default(cuid())
+}
+`,
+    );
+
+    syncCommand({ schema: schemaPath });
+
+    // No "Models synced" line should appear (addedModels is empty).
+    const successCalls = logSuccessSpy.mock.calls.map((call) => String(call[0]));
+    expect(successCalls.some((m) => m.startsWith("Models synced"))).toBe(false);
+    // Field-level adds for the missing fields must still be logged.
+    expect(successCalls.some((m) => /\+ SitepingFeedback\..*added/.test(m))).toBe(true);
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("formats Error throwables via .message in the error logger", () => {
+    // syncPrismaModels throws Error subclasses for parse failures. The catch
+    // ternary's truthy branch (`error instanceof Error`) reads `.message`.
+    const schemaPath = join(tmpDir, "broken.prisma");
+    writeFileSync(schemaPath, "model {{{ not valid prisma");
+
+    syncCommand({ schema: schemaPath });
+
+    expect(logErrorSpy).toHaveBeenCalledWith(expect.stringContaining("Error:"));
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("falls back to String(error) when a non-Error value is thrown", async () => {
+    // Mock syncPrismaModels to throw a plain string. The catch-block ternary
+    // chooses `String(error)` because `error instanceof Error` is false —
+    // covering the falsy branch of the conditional in sync.ts. Patch the
+    // exported function on the prisma module — since this is the same
+    // namespace object resolved by sync.ts's static import, replacing the
+    // member intercepts the call.
+    const prismaModule = await import("../../src/generators/prisma.js");
+    const original = prismaModule.syncPrismaModels;
+    const stub = vi.spyOn(prismaModule, "syncPrismaModels").mockImplementation(() => {
+      throw "raw string failure"; // plain string, not an Error
+    });
+
+    const schemaPath = join(tmpDir, "schema.prisma");
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+
+    syncCommand({ schema: schemaPath });
+
+    expect(logErrorSpy).toHaveBeenCalledWith(expect.stringContaining("raw string failure"));
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    stub.mockRestore();
+    // Sanity: original function reference is restored.
+    expect(prismaModule.syncPrismaModels).toBe(original);
+  });
 });

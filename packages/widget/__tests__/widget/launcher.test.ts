@@ -22,8 +22,13 @@ Object.defineProperty(window, "matchMedia", {
 // Mock modules before importing launcher
 // ---------------------------------------------------------------------------
 
-// Mock the ApiClient to avoid real HTTP requests
-vi.mock("../../src/api-client.js", () => ({
+// Mock the ApiClient to avoid real HTTP requests.
+// Hoist `flushRetryQueueMock` so it is a stable reference across the factory and tests.
+const { flushRetryQueueMock } = vi.hoisted(() => ({
+  flushRetryQueueMock: vi.fn(),
+}));
+flushRetryQueueMock.mockResolvedValue(undefined);
+vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
   ApiClient: vi.fn().mockImplementation(() => ({
     sendFeedback: vi.fn().mockResolvedValue({}),
     getFeedbacks: vi.fn().mockResolvedValue({ feedbacks: [], total: 0 }),
@@ -31,7 +36,7 @@ vi.mock("../../src/api-client.js", () => ({
     deleteFeedback: vi.fn(),
     deleteAllFeedbacks: vi.fn(),
   })),
-  flushRetryQueue: vi.fn().mockResolvedValue(undefined),
+  flushRetryQueue: flushRetryQueueMock,
 }));
 
 // Mock heavy dependencies to keep tests fast and focused on launcher logic
@@ -477,6 +482,249 @@ describe("launch", () => {
       expect(onAnnotationEnd).toHaveBeenCalled();
 
       instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Skipped instance API surface (no-op methods + on/off)
+  // -------------------------------------------------------------------------
+
+  describe("skipped instance API", () => {
+    it("on() of skipped instance returns a no-op function", () => {
+      const origEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+
+      try {
+        const instance = launch({ endpoint: "/api", projectName: "test" });
+
+        const listener = () => {};
+        const unsub = instance.on("panel:open", listener);
+        expect(unsub).toBeTypeOf("function");
+
+        // Calling unsub or off should not throw (it's a no-op)
+        expect(() => unsub()).not.toThrow();
+        expect(() => instance.off("panel:open", listener)).not.toThrow();
+      } finally {
+        process.env.NODE_ENV = origEnv;
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Debug logging
+  // -------------------------------------------------------------------------
+
+  describe("debug logging", () => {
+    it("logs initialization details to console.debug when config.debug = true", () => {
+      const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+      try {
+        const instance = launch(defaultConfig({ debug: true }));
+
+        // The launcher logs "Initializing widget", "Panel opened/closed", etc.
+        // The first init log is fired synchronously
+        expect(debugSpy).toHaveBeenCalled();
+        const initialCalls = debugSpy.mock.calls.filter(
+          (c: unknown[]) => typeof c[0] === "string" && c[0].includes("[siteping]"),
+        );
+        expect(initialCalls.length).toBeGreaterThan(0);
+
+        instance.destroy();
+        // destroy also logs
+        const destroyCalls = debugSpy.mock.calls.filter(
+          (c: unknown[]) => typeof c[1] === "string" && c[1].includes("Destroying"),
+        );
+        expect(destroyCalls.length).toBeGreaterThan(0);
+      } finally {
+        debugSpy.mockRestore();
+      }
+    });
+
+    it("does not log when config.debug is false/undefined", () => {
+      const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+      try {
+        const instance = launch(defaultConfig());
+
+        // No "[siteping]" debug messages should be emitted
+        const sitepingCalls = debugSpy.mock.calls.filter(
+          (c: unknown[]) => typeof c[0] === "string" && c[0].includes("[siteping]"),
+        );
+        expect(sitepingCalls.length).toBe(0);
+
+        instance.destroy();
+      } finally {
+        debugSpy.mockRestore();
+      }
+    });
+
+    it("debug log on duplicate launch() returns existing instance", () => {
+      const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+      try {
+        const first = launch(defaultConfig({ debug: true }));
+        const second = launch(defaultConfig({ debug: true }));
+        expect(first).toBe(second);
+
+        // The second call should have triggered a debug log about "called more than once"
+        const dupCalls = debugSpy.mock.calls.filter(
+          (c: unknown[]) => typeof c[1] === "string" && c[1].includes("more than once"),
+        );
+        expect(dupCalls.length).toBeGreaterThan(0);
+
+        first.destroy();
+      } finally {
+        debugSpy.mockRestore();
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // process.env undefined branch (line 58)
+  // -------------------------------------------------------------------------
+
+  describe("production guard with process undefined", () => {
+    it("does not skip when process is undefined (browser context)", () => {
+      const origProcess = (globalThis as unknown as { process?: unknown }).process;
+      // Simulate browser environment with no process global
+      delete (globalThis as unknown as { process?: unknown }).process;
+
+      try {
+        const instance = launch({ endpoint: "/api", projectName: "test" });
+
+        // Without process.env, the production guard's typeof check returns "undefined"
+        // and the guard short-circuits — widget should mount
+        const widget = document.querySelector("siteping-widget");
+        expect(widget).not.toBeNull();
+
+        instance.destroy();
+      } finally {
+        if (origProcess) {
+          (globalThis as unknown as { process: unknown }).process = origProcess;
+        }
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // store config path (line 99)
+  // -------------------------------------------------------------------------
+
+  describe("store config path", () => {
+    it("uses StoreClient when config.store is provided (no endpoint)", () => {
+      const fakeStore = {
+        createFeedback: vi.fn().mockResolvedValue({}),
+        getFeedbacks: vi.fn().mockResolvedValue({ feedbacks: [], total: 0 }),
+        getFeedback: vi.fn(),
+        updateFeedback: vi.fn(),
+        deleteFeedback: vi.fn(),
+        deleteAllFeedbacks: vi.fn(),
+      };
+      const instance = launch({
+        store: fakeStore as unknown as SitepingConfig["store"],
+        projectName: "test",
+        forceShow: true,
+      });
+
+      // Widget should be mounted (no endpoint required)
+      const widget = document.querySelector("siteping-widget");
+      expect(widget).not.toBeNull();
+      // store.getFeedbacks should be called for initial markers load
+      expect(fakeStore.getFeedbacks).toHaveBeenCalled();
+      // The "if (config.endpoint)" branch (line 251) should NOT call flushRetryQueue
+      // (we can't directly check that from this side without exposing the mock)
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // flushRetryQueue rejection (line 254)
+  // -------------------------------------------------------------------------
+
+  describe("flushRetryQueue rejection", () => {
+    it("does not throw when flushRetryQueue rejects on initial load", async () => {
+      flushRetryQueueMock.mockRejectedValueOnce(new Error("Network failure"));
+
+      const instance = launch(defaultConfig());
+      // Wait for the .catch(() => {}) handler to run on the rejection
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Widget should still mount even if flushRetryQueue rejects
+      const widget = document.querySelector("siteping-widget");
+      expect(widget).not.toBeNull();
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // feedback:deleted bridge (line 113 — anonymous_7)
+  // -------------------------------------------------------------------------
+
+  describe("feedback:deleted public bridge", () => {
+    it("emits feedback:deleted on the public bus when internal bus emits it", () => {
+      const instance = launch(defaultConfig());
+      const listener = vi.fn();
+      instance.on("feedback:deleted", listener);
+
+      expect(annotatorCapture.bus).not.toBeNull();
+      annotatorCapture.bus!.emit("feedback:deleted", "feedback-id-123");
+
+      expect(listener).toHaveBeenCalledWith("feedback-id-123");
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // adoptedStyleSheets branch (modern browsers)
+  // -------------------------------------------------------------------------
+
+  describe("style injection", () => {
+    it("uses adoptedStyleSheets when supported", () => {
+      // jsdom does not support adoptedStyleSheets — temporarily polyfill
+      const proto = ShadowRoot.prototype as unknown as { adoptedStyleSheets?: CSSStyleSheet[] };
+      const hadProp = Object.hasOwn(proto, "adoptedStyleSheets");
+
+      // Provide a writable adoptedStyleSheets so the "in ShadowRoot.prototype" check passes
+      Object.defineProperty(ShadowRoot.prototype, "adoptedStyleSheets", {
+        value: [],
+        writable: true,
+        configurable: true,
+      });
+
+      // Polyfill CSSStyleSheet — jsdom's may not allow construction with replaceSync
+      const origCSSStyleSheet = (globalThis as unknown as { CSSStyleSheet?: typeof CSSStyleSheet }).CSSStyleSheet;
+      class FakeCSSStyleSheet {
+        replaceSync = vi.fn();
+      }
+      (globalThis as unknown as { CSSStyleSheet: typeof CSSStyleSheet }).CSSStyleSheet =
+        FakeCSSStyleSheet as unknown as typeof CSSStyleSheet;
+
+      try {
+        const instance = launch(defaultConfig());
+
+        const widget = document.querySelector("siteping-widget")!;
+        expect(widget).not.toBeNull();
+        // Shadow root should have been mutated with the constructed sheet
+        const shadow = widget.shadowRoot as ShadowRoot & { adoptedStyleSheets: CSSStyleSheet[] };
+        expect(shadow.adoptedStyleSheets.length).toBe(1);
+
+        instance.destroy();
+      } finally {
+        if (origCSSStyleSheet) {
+          (globalThis as unknown as { CSSStyleSheet: typeof CSSStyleSheet }).CSSStyleSheet = origCSSStyleSheet;
+        } else {
+          delete (globalThis as unknown as { CSSStyleSheet?: typeof CSSStyleSheet }).CSSStyleSheet;
+        }
+        if (hadProp) {
+          Object.defineProperty(ShadowRoot.prototype, "adoptedStyleSheets", {
+            value: [],
+            writable: true,
+            configurable: true,
+          });
+        } else {
+          delete (proto as { adoptedStyleSheets?: CSSStyleSheet[] }).adoptedStyleSheets;
+        }
+      }
     });
   });
 });

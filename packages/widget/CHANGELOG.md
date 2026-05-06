@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.9.6](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.5...widget-v0.9.6) (2026-05-02)
+
+
+### Features
+
+* **widget:** add Brazilian Portuguese (pt) locale ([#41](https://github.com/NeosiaNexus/SitePing/issues/41)) ([ebee6d7](https://github.com/NeosiaNexus/SitePing/commit/ebee6d70d715b23624d4732c65c096002f463a75))
+* **widget:** add German (de) locale ([#43](https://github.com/NeosiaNexus/SitePing/issues/43)) ([f028235](https://github.com/NeosiaNexus/SitePing/commit/f028235ce8dd40a42c4cd108ddc333b4fa646175))
+* **widget:** add Italian (it) locale ([#42](https://github.com/NeosiaNexus/SitePing/issues/42)) ([d67fe88](https://github.com/NeosiaNexus/SitePing/commit/d67fe88e9edeb9f604b973fc47d049d55ced3481))
+* **widget:** add panel enhancements — stats, sort, bulk, export, detail, shortcuts ([f3e8833](https://github.com/NeosiaNexus/SitePing/commit/f3e88333babf88d5426bc32b087a7b1210c17ef3))
+* **widget:** add Russian (ru) locale ([#30](https://github.com/NeosiaNexus/SitePing/issues/30)) ([ce7c17b](https://github.com/NeosiaNexus/SitePing/commit/ce7c17be67900d8a0903f8d272383efd1ce49c0a))
+* **widget:** add Spanish (es) locale ([#44](https://github.com/NeosiaNexus/SitePing/issues/44)) ([8fb4fd3](https://github.com/NeosiaNexus/SitePing/commit/8fb4fd332d642d0e6c05557d07a635c7696ceb53))
+* **widget:** replace 8 filter chips with type dropdown + status segmented control ([0564010](https://github.com/NeosiaNexus/SitePing/commit/056401009b485609fa8a705218b144d7cabf60d5))
+
+
+### Bug Fixes
+
+* **widget,adapter-prisma:** harden retry queue, panel UX, and PATCH ownership ([26301d3](https://github.com/NeosiaNexus/SitePing/commit/26301d34f23c62a7e623741ca6f815841088ca4f))
+* **widget:** fall back to body when no ancestor contains the drawn rect ([5a994f2](https://github.com/NeosiaNexus/SitePing/commit/5a994f21cb94ffd4ecda462a242ad78da5f521c8))
+* **widget:** lift panel header above sticky filters so export dropdown overlays correctly ([d4ea6b8](https://github.com/NeosiaNexus/SitePing/commit/d4ea6b83d84dcb6760c6e53125de3585110f4410))
+
+
+### Tests
+
+* **widget:** add coverage for panel-bulk ([#38](https://github.com/NeosiaNexus/SitePing/issues/38)) ([52e126c](https://github.com/NeosiaNexus/SitePing/commit/52e126c00d4f699a0ddcf9ac333929dfe263b306))
+* **widget:** add coverage for panel-sort ([#39](https://github.com/NeosiaNexus/SitePing/issues/39)) ([9dbd2c5](https://github.com/NeosiaNexus/SitePing/commit/9dbd2c5053d266df181b024b5b534cfb2508d31b))
+* **widget:** add export utils coverage ([#40](https://github.com/NeosiaNexus/SitePing/issues/40)) ([a82d74e](https://github.com/NeosiaNexus/SitePing/commit/a82d74e1cafc4cacb9852be08a1157e6ca012c18))
+
+
+### Miscellaneous
+
+* harmonize locale rollout — types, docs, coverage thresholds ([40f7166](https://github.com/NeosiaNexus/SitePing/commit/40f71663d78156b5d46a9b1f7d7e938788a96e08))
+
 ## [0.9.5](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.4...widget-v0.9.5) (2026-04-05)
 
 

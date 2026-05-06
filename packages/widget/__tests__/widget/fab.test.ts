@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { SitepingConfig } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { Fab } from "../../src/fab.js";
@@ -397,6 +398,134 @@ describe("Fab", () => {
 
       expect(removeListenerSpy).toHaveBeenCalledWith("click", expect.any(Function));
       removeListenerSpy.mockRestore();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Outside click behavior
+  // -------------------------------------------------------------------------
+
+  describe("document outside click", () => {
+    it("does not call close when menu is already closed (line 97 false branch)", () => {
+      // Menu starts closed; click outside on document.body
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      expect(fabBtn.getAttribute("aria-expanded")).toBe("false");
+
+      // Dispatch click on body — composed path does not include the shadow host
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+
+      // Still closed, no error thrown
+      expect(fabBtn.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("closes the menu when an outside click occurs while open", () => {
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      fabBtn.click(); // open
+      expect(fabBtn.getAttribute("aria-expanded")).toBe("true");
+
+      // Click on document.body — outside the shadow host
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+
+      expect(fabBtn.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("does not close when clicking on a child element of the host (composed path includes host)", () => {
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      fabBtn.click(); // open
+      expect(fabBtn.getAttribute("aria-expanded")).toBe("true");
+
+      // Click directly on the FAB button — composed path includes the host
+      fabBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+
+      // The click on FAB toggles, so the menu closes via toggle path (not via outside-click handler)
+      // We just verify no double-close error.
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Default position fallback (line 37 binary-expr)
+  // -------------------------------------------------------------------------
+
+  describe("default position fallback", () => {
+    it("falls back to 'bottom-right' position when config.position is omitted", () => {
+      fab.destroy();
+      shadow.host.remove();
+
+      shadow = createShadowRoot();
+      const config: SitepingConfig = { endpoint: "/api/siteping", projectName: "test-project" };
+      fab = new Fab(shadow, config, bus, createT("fr"));
+
+      const btn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      expect(btn.classList.contains("sp-fab--bottom-right")).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Keyboard navigation defensive branches
+  // -------------------------------------------------------------------------
+
+  describe("keyboard navigation defensive branches", () => {
+    it("ArrowDown is ignored when the menu is closed (early return — items+!isOpen guard)", () => {
+      // Menu starts closed
+      const radial = shadow.querySelector<HTMLElement>('[role="menu"]')!;
+      const items = getRadialItems(shadow);
+
+      // Pre-focus an item (still possible while closed); then trigger ArrowDown
+      items[0].focus();
+      radial.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+
+      // Should still be focused on items[0] — handler bailed out early
+      expect(shadow.activeElement).toBe(items[0]);
+    });
+
+    it("falls back to document.activeElement when shadowRoot.activeElement is null", () => {
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      fabBtn.click(); // open
+
+      const radial = shadow.querySelector<HTMLElement>('[role="menu"]')!;
+
+      // Stub shadow.activeElement to null so the ?? falls back to document.activeElement
+      Object.defineProperty(shadow, "activeElement", {
+        configurable: true,
+        get: () => null,
+      });
+
+      // The handler will use document.activeElement; since it's not in the radial items,
+      // currentIndex = -1, so ArrowDown moves to items[0] (per logic: -1 < length-1 → 0).
+      // The key assertion: handler executes without throwing — the ?? branch was hit.
+      expect(() => {
+        radial.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      }).not.toThrow();
+
+      // Cleanup — remove the stub property so other tests aren't affected
+      delete (shadow as unknown as { activeElement?: unknown }).activeElement;
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Toggle-annotations icon swap (line 230 — true branch ICON_EYE)
+  // -------------------------------------------------------------------------
+
+  describe("toggle-annotations icon swap", () => {
+    it("two consecutive toggles swap the icon back to ICON_EYE (true branch of cond-expr)", () => {
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      const toggleBtnSelector = '[data-item-id="toggle-annotations"]';
+
+      // First toggle: visible -> hidden, icon becomes EYE_OFF
+      fabBtn.click();
+      let toggleBtn = shadow.querySelector<HTMLButtonElement>(toggleBtnSelector)!;
+      toggleBtn.click();
+
+      // Second toggle: hidden -> visible, icon becomes EYE again
+      fabBtn.click();
+      toggleBtn = shadow.querySelector<HTMLButtonElement>(toggleBtnSelector)!;
+
+      const listener = vi.fn();
+      bus.on("annotations:toggle", listener);
+      toggleBtn.click();
+
+      // The bus should now emit annotations:toggle with true (back to visible)
+      expect(listener).toHaveBeenCalledWith(true);
     });
   });
 });

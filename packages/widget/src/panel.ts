@@ -5,7 +5,20 @@ import { el, formatRelativeDate, parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { EXPORT_I18N_FR, ExportButton } from "./export-utils.js";
 import { getTypeLabel, type TFunction } from "./i18n/index.js";
-import { ICON_CHECK, ICON_CLOSE, ICON_SEARCH, ICON_TRASH, ICON_UNDO } from "./icons.js";
+import {
+  ICON_BUG,
+  ICON_CHANGE,
+  ICON_CHECK,
+  ICON_CHEVRON_DOWN,
+  ICON_CLOSE,
+  ICON_DOT_OPEN,
+  ICON_LAYERS,
+  ICON_OTHER,
+  ICON_QUESTION,
+  ICON_SEARCH,
+  ICON_TRASH,
+  ICON_UNDO,
+} from "./icons.js";
 import type { MarkerManager } from "./markers.js";
 import { BULK_I18N_EN, BULK_I18N_FR, BulkActions } from "./panel-bulk.js";
 import { DetailView } from "./panel-detail.js";
@@ -36,6 +49,19 @@ export class Panel {
   private deleteAllBtn: HTMLButtonElement;
   private activeFilters = new Set<string>(["all"]);
   private activeStatusFilter: "all" | FeedbackStatus = "all";
+  private typeDropdownBtn!: HTMLButtonElement;
+  private typeDropdownContainer!: HTMLElement;
+  private typeDropdownMenu: HTMLElement | null = null;
+  private typeDropdownOutsideHandler: ((e: MouseEvent) => void) | null = null;
+  private statusSegmented!: HTMLElement;
+  private typeOptions!: ReadonlyArray<{ value: string; label: string; icon: string; color: string; bg: string }>;
+  private statusOptions!: ReadonlyArray<{
+    value: "all" | FeedbackStatus;
+    label: string;
+    icon: string;
+    color: string;
+    bg: string;
+  }>;
   private feedbacks: FeedbackResponse[] = [];
   private currentPage = 1;
   private totalFeedbacks = 0;
@@ -130,56 +156,16 @@ export class Panel {
     searchWrap.appendChild(searchIcon);
     searchWrap.appendChild(this.searchInput);
 
-    // Type chips
-    const chips = el("div", { class: "sp-chips" });
-    const chipOptions = [
-      { value: "all", label: this.t("panel.filterAll") },
-      { value: "question", label: this.t("type.question") },
-      { value: "change", label: this.t("type.change") },
-      { value: "bug", label: this.t("type.bug") },
-      { value: "other", label: this.t("type.other") },
-    ];
-
-    for (const option of chipOptions) {
-      const chip = document.createElement("button");
-      chip.className = `sp-chip ${option.value === "all" ? "sp-chip--active" : ""}`;
-      if (option.value !== "all") {
-        chip.style.borderColor = getTypeColor(option.value, this.colors);
-      }
-      setText(chip, option.label);
-      chip.dataset.filter = option.value;
-      chip.setAttribute("aria-pressed", option.value === "all" ? "true" : "false");
-      chip.addEventListener("click", () => this.toggleFilter(option.value, chips));
-      chips.appendChild(chip);
-    }
-
-    // Status chips
-    const statusChips = el("div", { class: "sp-chips" });
-    const statusChipOptions: { value: "all" | FeedbackStatus; label: string; color?: string }[] = [
-      { value: "all", label: this.t("panel.statusAll") },
-      { value: "open", label: this.t("panel.statusOpen"), color: "#22c55e" },
-      { value: "resolved", label: this.t("panel.statusResolved"), color: "#9ca3af" },
-    ];
-
-    for (const option of statusChipOptions) {
-      const chip = document.createElement("button");
-      chip.className = `sp-chip ${option.value === "all" ? "sp-chip--active" : ""}`;
-      if (option.color) {
-        chip.style.borderColor = option.color;
-      }
-      setText(chip, option.label);
-      chip.dataset.statusFilter = option.value;
-      chip.setAttribute("aria-pressed", option.value === "all" ? "true" : "false");
-      chip.addEventListener("click", () => this.toggleStatusFilter(option.value, statusChips));
-      statusChips.appendChild(chip);
-    }
+    // Filter bar (type dropdown + status segmented control)
+    const filterBar = el("div", { class: "sp-filter-bar" });
+    filterBar.appendChild(this.buildTypeDropdown());
+    filterBar.appendChild(this.buildStatusSegmented());
 
     // Sort controls
     this.sortControls = new PanelSortControls(colors, () => this.renderList(), locale);
 
     filters.appendChild(searchWrap);
-    filters.appendChild(chips);
-    filters.appendChild(statusChips);
+    filters.appendChild(filterBar);
     filters.appendChild(this.sortControls.element);
 
     // --- List ---
@@ -892,33 +878,266 @@ export class Panel {
     }
   }
 
-  private toggleFilter(value: string, container: HTMLElement): void {
-    // Single-select: only one filter active at a time
-    this.activeFilters.clear();
-    this.activeFilters.add(value);
+  private buildTypeDropdown(): HTMLElement {
+    this.typeOptions = [
+      {
+        value: "all",
+        label: this.t("panel.filterAll"),
+        icon: ICON_LAYERS,
+        color: this.colors.accent,
+        bg: this.colors.accentLight,
+      },
+      {
+        value: "question",
+        label: this.t("type.question"),
+        icon: ICON_QUESTION,
+        color: this.colors.typeQuestion,
+        bg: this.colors.typeQuestionBg,
+      },
+      {
+        value: "change",
+        label: this.t("type.change"),
+        icon: ICON_CHANGE,
+        color: this.colors.typeChange,
+        bg: this.colors.typeChangeBg,
+      },
+      {
+        value: "bug",
+        label: this.t("type.bug"),
+        icon: ICON_BUG,
+        color: this.colors.typeBug,
+        bg: this.colors.typeBugBg,
+      },
+      {
+        value: "other",
+        label: this.t("type.other"),
+        icon: ICON_OTHER,
+        color: this.colors.typeOther,
+        bg: this.colors.typeOtherBg,
+      },
+    ];
 
-    // Update chip styles
-    const chips = container.querySelectorAll<HTMLButtonElement>(".sp-chip");
-    for (const chip of chips) {
-      const isActive = this.activeFilters.has(chip.dataset.filter ?? "");
-      chip.classList.toggle("sp-chip--active", isActive);
-      chip.setAttribute("aria-pressed", String(isActive));
+    this.typeDropdownContainer = el("div", { class: "sp-filter-dropdown" });
+
+    this.typeDropdownBtn = document.createElement("button");
+    this.typeDropdownBtn.type = "button";
+    this.typeDropdownBtn.className = "sp-filter-dropdown-btn";
+    this.typeDropdownBtn.setAttribute("aria-haspopup", "listbox");
+    this.typeDropdownBtn.setAttribute("aria-expanded", "false");
+    this.renderTypeDropdownTrigger();
+
+    this.typeDropdownBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this.typeDropdownMenu) this.closeTypeDropdown();
+      else this.openTypeDropdown();
+    });
+
+    this.typeDropdownContainer.appendChild(this.typeDropdownBtn);
+    return this.typeDropdownContainer;
+  }
+
+  private renderTypeDropdownTrigger(): void {
+    const active = this.typeOptions.find((o) => this.activeFilters.has(o.value)) ?? this.typeOptions[0];
+    if (!active) return;
+
+    this.typeDropdownBtn.replaceChildren();
+    this.typeDropdownBtn.style.setProperty("--sp-chip-color", active.color);
+    this.typeDropdownBtn.style.setProperty("--sp-chip-bg", active.bg);
+    this.typeDropdownBtn.dataset.filter = active.value;
+    this.typeDropdownBtn.classList.toggle("sp-filter-dropdown-btn--filtered", active.value !== "all");
+    this.typeDropdownBtn.setAttribute("aria-label", `${this.t("type.label")}: ${active.label}`);
+
+    const iconWrap = el("span", { class: "sp-filter-dropdown-btn__icon" });
+    iconWrap.appendChild(parseSvg(active.icon));
+    this.typeDropdownBtn.appendChild(iconWrap);
+
+    const labelWrap = el("span", { class: "sp-filter-dropdown-btn__label" });
+    const prefix = el("span", { class: "sp-filter-dropdown-btn__prefix" });
+    setText(prefix, this.t("type.label"));
+    const value = el("span", { class: "sp-filter-dropdown-btn__value" });
+    setText(value, active.label);
+    labelWrap.appendChild(prefix);
+    labelWrap.appendChild(value);
+    this.typeDropdownBtn.appendChild(labelWrap);
+
+    const chevron = el("span", { class: "sp-filter-dropdown-btn__chevron" });
+    chevron.appendChild(parseSvg(ICON_CHEVRON_DOWN));
+    this.typeDropdownBtn.appendChild(chevron);
+  }
+
+  private openTypeDropdown(): void {
+    this.typeDropdownMenu = el("div", { class: "sp-filter-dropdown-menu" });
+    this.typeDropdownMenu.setAttribute("role", "listbox");
+    this.typeDropdownMenu.setAttribute("aria-label", this.t("type.label"));
+    this.typeDropdownBtn.setAttribute("aria-expanded", "true");
+
+    for (const option of this.typeOptions) {
+      const item = document.createElement("button");
+      item.type = "button";
+      const isActive = this.activeFilters.has(option.value);
+      item.className = `sp-filter-dropdown-option${isActive ? " sp-filter-dropdown-option--active" : ""}`;
+      item.style.setProperty("--sp-chip-color", option.color);
+      item.style.setProperty("--sp-chip-bg", option.bg);
+      item.dataset.filter = option.value;
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", String(isActive));
+
+      const iconWrap = el("span", { class: "sp-filter-dropdown-option__icon" });
+      iconWrap.appendChild(parseSvg(option.icon));
+      item.appendChild(iconWrap);
+
+      const labelEl = el("span", { class: "sp-filter-dropdown-option__label" });
+      setText(labelEl, option.label);
+      item.appendChild(labelEl);
+
+      if (isActive) {
+        const checkWrap = el("span", { class: "sp-filter-dropdown-option__check" });
+        checkWrap.appendChild(parseSvg(ICON_CHECK));
+        item.appendChild(checkWrap);
+      }
+
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.selectTypeFilter(option.value);
+      });
+
+      this.typeDropdownMenu.appendChild(item);
     }
 
+    this.typeDropdownContainer.appendChild(this.typeDropdownMenu);
+
+    requestAnimationFrame(() => {
+      this.typeDropdownOutsideHandler = (e: MouseEvent) => {
+        if (this.typeDropdownMenu && !this.typeDropdownContainer.contains(e.target as Node)) {
+          this.closeTypeDropdown();
+        }
+      };
+      document.addEventListener("click", this.typeDropdownOutsideHandler, true);
+    });
+
+    this.typeDropdownMenu.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        this.closeTypeDropdown();
+        this.typeDropdownBtn.focus();
+      }
+    });
+  }
+
+  private closeTypeDropdown(): void {
+    if (this.typeDropdownMenu) {
+      this.typeDropdownMenu.remove();
+      this.typeDropdownMenu = null;
+    }
+    this.typeDropdownBtn.setAttribute("aria-expanded", "false");
+    if (this.typeDropdownOutsideHandler) {
+      document.removeEventListener("click", this.typeDropdownOutsideHandler, true);
+      this.typeDropdownOutsideHandler = null;
+    }
+  }
+
+  private selectTypeFilter(value: string): void {
+    this.activeFilters.clear();
+    this.activeFilters.add(value);
+    this.renderTypeDropdownTrigger();
+    this.closeTypeDropdown();
     this.loadFeedbacks().catch(() => {});
   }
 
-  private toggleStatusFilter(value: "all" | FeedbackStatus, container: HTMLElement): void {
-    this.activeStatusFilter = value;
+  private buildStatusSegmented(): HTMLElement {
+    this.statusOptions = [
+      {
+        value: "all",
+        label: this.t("panel.statusAll"),
+        icon: ICON_LAYERS,
+        color: this.colors.accent,
+        bg: this.colors.accentLight,
+      },
+      {
+        value: "open",
+        label: this.t("panel.statusOpen"),
+        icon: ICON_DOT_OPEN,
+        color: this.colors.statusOpen,
+        bg: this.colors.statusOpenBg,
+      },
+      {
+        value: "resolved",
+        label: this.t("panel.statusResolved"),
+        icon: ICON_CHECK,
+        color: this.colors.statusResolved,
+        bg: this.colors.statusResolvedBg,
+      },
+    ];
 
-    // Update chip styles
-    const chips = container.querySelectorAll<HTMLButtonElement>(".sp-chip");
-    for (const chip of chips) {
-      const isActive = chip.dataset.statusFilter === value;
-      chip.classList.toggle("sp-chip--active", isActive);
-      chip.setAttribute("aria-pressed", String(isActive));
+    this.statusSegmented = el("div", { class: "sp-segmented", role: "radiogroup" });
+    this.statusSegmented.setAttribute("aria-label", this.t("status.label"));
+
+    for (const option of this.statusOptions) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `sp-segmented__btn sp-segmented__btn--${option.value}`;
+      btn.dataset.statusFilter = option.value;
+      btn.setAttribute("role", "radio");
+      const isActive = this.activeStatusFilter === option.value;
+      btn.setAttribute("aria-checked", String(isActive));
+      btn.tabIndex = isActive ? 0 : -1;
+      if (isActive) btn.classList.add("sp-segmented__btn--active");
+      btn.style.setProperty("--sp-chip-color", option.color);
+      btn.style.setProperty("--sp-chip-bg", option.bg);
+
+      const iconWrap = el("span", { class: "sp-segmented__icon" });
+      iconWrap.appendChild(parseSvg(option.icon));
+      btn.appendChild(iconWrap);
+
+      const labelEl = el("span", { class: "sp-segmented__label" });
+      setText(labelEl, option.label);
+      btn.appendChild(labelEl);
+
+      btn.addEventListener("click", () => this.selectStatusFilter(option.value));
+      btn.addEventListener("keydown", (e) => this.handleSegmentedKey(e, option.value));
+
+      this.statusSegmented.appendChild(btn);
     }
 
+    return this.statusSegmented;
+  }
+
+  private handleSegmentedKey(e: KeyboardEvent, current: "all" | FeedbackStatus): void {
+    const values = this.statusOptions.map((o) => o.value);
+    const idx = values.indexOf(current);
+    let nextIdx: number;
+    switch (e.key) {
+      case "ArrowLeft":
+        nextIdx = (idx - 1 + values.length) % values.length;
+        break;
+      case "ArrowRight":
+        nextIdx = (idx + 1) % values.length;
+        break;
+      case "Home":
+        nextIdx = 0;
+        break;
+      case "End":
+        nextIdx = values.length - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    const next = values[nextIdx];
+    if (!next) return;
+    this.selectStatusFilter(next);
+    const btn = this.statusSegmented.querySelector<HTMLButtonElement>(`[data-status-filter="${next}"]`);
+    btn?.focus();
+  }
+
+  private selectStatusFilter(value: "all" | FeedbackStatus): void {
+    this.activeStatusFilter = value;
+    const buttons = this.statusSegmented.querySelectorAll<HTMLButtonElement>(".sp-segmented__btn");
+    for (const btn of buttons) {
+      const isActive = btn.dataset.statusFilter === value;
+      btn.classList.toggle("sp-segmented__btn--active", isActive);
+      btn.setAttribute("aria-checked", String(isActive));
+      btn.tabIndex = isActive ? 0 : -1;
+    }
     this.loadFeedbacks().catch(() => {});
   }
 
@@ -962,6 +1181,7 @@ export class Panel {
     this.listContainer.removeEventListener("mouseover", this.onListMouseover);
     this.listContainer.removeEventListener("mouseout", this.onListMouseout);
     document.removeEventListener("sp-marker-click", this.onMarkerClick);
+    this.closeTypeDropdown();
     this.sortControls.destroy();
     this.bulk.destroy();
     this.exportBtn.destroy();

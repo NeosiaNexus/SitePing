@@ -73,6 +73,161 @@ describe("ApiClient", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("throws on getFeedbacks non-ok response", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("Server error", { status: 500 }));
+
+    // Use 4xx path to skip retry delays
+    vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 422 }));
+
+    await expect(client.getFeedbacks("test-project")).rejects.toThrow("Failed to fetch feedbacks: 422");
+  });
+
+  it("throws on resolveFeedback non-ok response", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 404 }));
+
+    await expect(client.resolveFeedback("fb-x", true)).rejects.toThrow("Failed to update feedback: 404");
+  });
+
+  it("returns the last 5xx response after exhausting all retries (sendFeedback throws)", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("Server error", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const retryClient = new ApiClient(endpoint);
+    const promise = retryClient
+      .sendFeedback({
+        projectName: "test",
+        type: "bug",
+        message: "x",
+        url: "https://x.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId: "u",
+      })
+      .catch((err: Error) => err);
+
+    // 3 backoffs: 1s + 2s + 4s (+/- 500ms)
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(4500);
+
+    const error = (await promise) as Error;
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toContain("Failed to send feedback: 500");
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    vi.useRealTimers();
+  });
+
+  it("aborts the request when the underlying fetch exceeds TIMEOUT_MS", async () => {
+    vi.useFakeTimers();
+
+    let abortFromController: unknown = null;
+    const fetchMock = vi.fn().mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => {
+            abortFromController = (init.signal as AbortSignal).reason ?? new Error("aborted");
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const retryClient = new ApiClient(endpoint);
+    const promise = retryClient
+      .sendFeedback({
+        projectName: "test",
+        type: "bug",
+        message: "x",
+        url: "https://x.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId: "u",
+      })
+      .catch((err: Error) => err);
+
+    // Advance past TIMEOUT_MS (10s) for each retry, plus backoff (1s/2s/4s)
+    await vi.advanceTimersByTimeAsync(11_000);
+    await vi.advanceTimersByTimeAsync(1_500);
+    await vi.advanceTimersByTimeAsync(11_000);
+    await vi.advanceTimersByTimeAsync(2_500);
+    await vi.advanceTimersByTimeAsync(11_000);
+    await vi.advanceTimersByTimeAsync(4_500);
+    await vi.advanceTimersByTimeAsync(11_000);
+
+    const error = (await promise) as Error;
+    expect(error).toBeInstanceOf(Error);
+    expect(abortFromController).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    vi.useRealTimers();
+  });
+
+  it("falls back to 'Unknown error' when the response.text() reader throws", async () => {
+    const failingResponse = new Response("", { status: 500 });
+    Object.defineProperty(failingResponse, "ok", { value: false, configurable: true });
+    Object.defineProperty(failingResponse, "status", { value: 422, configurable: true });
+    failingResponse.text = vi.fn().mockRejectedValue(new Error("body unreadable"));
+
+    vi.mocked(fetch).mockResolvedValue(failingResponse);
+
+    const localClient = new ApiClient(endpoint);
+    await expect(
+      localClient.sendFeedback({
+        projectName: "test",
+        type: "bug",
+        message: "x",
+        url: "https://x.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId: "u",
+      }),
+    ).rejects.toThrow(/Unknown error/);
+  });
+
+  it("rethrows network errors after exhausting retries", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const retryClient = new ApiClient(endpoint);
+    const promise = retryClient
+      .sendFeedback({
+        projectName: "test",
+        type: "bug",
+        message: "x",
+        url: "https://x.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId: "u",
+      })
+      .catch((err: Error) => err);
+
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(4500);
+
+    const error = (await promise) as Error;
+    expect(error).toBeInstanceOf(TypeError);
+    expect((error as Error).message).toContain("network down");
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    vi.useRealTimers();
+  });
+
   it("retries on 5xx errors with backoff", async () => {
     vi.useFakeTimers();
 
@@ -119,6 +274,34 @@ describe("ApiClient", () => {
     expect(calledUrl).toContain("projectName=test-project");
     expect(calledUrl).toContain("type=bug");
     expect(calledUrl).toContain("limit=10");
+  });
+
+  it("sends GET with the full set of optional query params (page/status/search)", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
+
+    await client.getFeedbacks("test-project", {
+      page: 2,
+      limit: 25,
+      type: "bug",
+      status: "resolved",
+      search: "broken",
+    });
+
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("page=2");
+    expect(calledUrl).toContain("limit=25");
+    expect(calledUrl).toContain("type=bug");
+    expect(calledUrl).toContain("status=resolved");
+    expect(calledUrl).toContain("search=broken");
+  });
+
+  it("resolveFeedback sends status='open' when resolved=false", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ id: "fb-2", status: "open" })));
+
+    await client.resolveFeedback("fb-2", false);
+
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(body.status).toBe("open");
   });
 
   it("sends PATCH for resolve", async () => {
@@ -307,6 +490,13 @@ describe("flushRetryQueue", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("treats non-array stored value as empty queue (flushRetryQueue)", async () => {
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify({ not: "an array" }));
+
+    await expect(flushRetryQueue(endpoint)).resolves.toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("handles fetch throwing (network error) for queued items", async () => {
     const payload = {
       projectName: "test",
@@ -382,6 +572,33 @@ describe("queueForRetry (via sendFeedback)", () => {
     expect(localStorage.setItem).toHaveBeenCalledWith("siteping_retry_queue", expect.stringContaining("queued"));
   });
 
+  it("treats non-array stored value as empty queue (queueForRetry via sendFeedback)", async () => {
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify({ not: "an array" }));
+    vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 400 }));
+
+    const client = new ApiClient(endpoint);
+    await expect(
+      client.sendFeedback({
+        projectName: "test",
+        type: "bug",
+        message: "from-corrupt-store",
+        url: "https://example.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId: "c1",
+      }),
+    ).rejects.toThrow();
+
+    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0][1];
+    const parsed = JSON.parse(savedValue);
+    // Despite the corrupt non-array starting state, queue is rebuilt as a new array.
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].payload.message).toBe("from-corrupt-store");
+  });
+
   it("appends to existing queue without overwriting", async () => {
     const existing = [
       {
@@ -425,5 +642,146 @@ describe("queueForRetry (via sendFeedback)", () => {
     expect(parsed).toHaveLength(2);
     expect(parsed[0].payload.message).toBe("existing");
     expect(parsed[1].payload.message).toBe("new");
+  });
+
+  it("drops the oldest entry when the queue exceeds MAX_QUEUE_SIZE (20)", async () => {
+    // Pre-fill queue with MAX_QUEUE_SIZE entries
+    const existing = Array.from({ length: 20 }, (_, i) => ({
+      endpoint,
+      payload: {
+        projectName: "test",
+        type: "bug",
+        message: `old-${i}`,
+        url: "https://example.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId: `q-${i}`,
+      },
+    }));
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify(existing));
+    vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+
+    const client = new ApiClient(endpoint);
+    await expect(
+      client.sendFeedback({
+        projectName: "test",
+        type: "bug",
+        message: "newest",
+        url: "https://example.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId: "newest",
+      }),
+    ).rejects.toThrow();
+
+    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0][1];
+    const parsed = JSON.parse(savedValue);
+    // Oldest dropped, newest appended -> still 20 entries
+    expect(parsed).toHaveLength(20);
+    expect(parsed[0].payload.message).toBe("old-1");
+    expect(parsed[19].payload.message).toBe("newest");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// withRetryLock — exercise navigator.locks code path
+// ---------------------------------------------------------------------------
+
+describe("withRetryLock with navigator.locks present", () => {
+  const endpoint = "http://localhost/api/siteping";
+  let originalNavigator: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 201 }));
+
+    const store: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn((key: string) => store[key] ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        store[key] = value;
+      }),
+      removeItem: vi.fn((key: string) => {
+        delete store[key];
+      }),
+      clear: vi.fn(() => {
+        for (const key of Object.keys(store)) delete store[key];
+      }),
+    });
+
+    // Stub a navigator with a `locks` API. Use defineProperty so we can restore.
+    originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    const fakeLocks = {
+      request: vi.fn(<T>(_name: string, cb: () => T | Promise<T>) => Promise.resolve(cb())),
+    };
+    Object.defineProperty(globalThis, "navigator", {
+      value: { locks: fakeLocks },
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (originalNavigator) {
+      Object.defineProperty(globalThis, "navigator", originalNavigator);
+    } else {
+      Reflect.deleteProperty(globalThis, "navigator");
+    }
+  });
+
+  it("uses navigator.locks.request when available (flushRetryQueue)", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "with-locks",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "lock-1",
+    };
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify([{ endpoint, payload }]));
+
+    await flushRetryQueue(endpoint);
+
+    expect(
+      (navigator as unknown as { locks: { request: ReturnType<typeof vi.fn> } }).locks.request,
+    ).toHaveBeenCalledWith("siteping_retry_queue", expect.any(Function));
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses navigator.locks.request when available (queueForRetry via sendFeedback failure)", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 400 }));
+
+    const client = new ApiClient(endpoint);
+    await expect(
+      client.sendFeedback({
+        projectName: "test",
+        type: "bug",
+        message: "lock-queued",
+        url: "https://example.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId: "lock-2",
+      }),
+    ).rejects.toThrow();
+
+    // Wait microtasks so queueForRetry's deferred callback runs
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(
+      (navigator as unknown as { locks: { request: ReturnType<typeof vi.fn> } }).locks.request,
+    ).toHaveBeenCalledWith("siteping_retry_queue", expect.any(Function));
   });
 });

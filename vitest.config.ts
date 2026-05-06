@@ -12,6 +12,8 @@ export default defineConfig({
       include: ["packages/*/src/**/*.ts"],
       exclude: ["**/*.test.ts", "**/index.ts", "**/icons.ts", "**/styles/**"],
       thresholds: {
+        // Fork reality — our extra files (screenshot.ts, anchor extensions) are
+        // covered separately in PR #1. Upstream baseline is 95/95/95/95.
         lines: 80,
         functions: 70,
         branches: 65,

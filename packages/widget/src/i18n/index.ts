@@ -2,13 +2,17 @@ import type { TFunction, Translations } from "./types.js";
 
 export type { TFunction, Translations } from "./types.js";
 
-// Static imports — bundler (tsup) will include both.
+// Static imports — bundler (tsup) will include them all.
 // For tree-shaking in consumer apps, use dynamic import() with a bundler plugin.
+import { de } from "./de.js";
 import { en } from "./en.js";
+import { es } from "./es.js";
 import { fr } from "./fr.js";
+import { it } from "./it.js";
+import { pt } from "./pt.js";
 import { ru } from "./ru.js";
 
-const LOCALES: Record<string, Translations> = { fr, en, ru };
+const LOCALES: Record<string, Translations> = { de, en, es, fr, it, pt, ru };
 
 /** Register a custom locale at runtime. */
 export function registerLocale(code: string, translations: Translations): void {

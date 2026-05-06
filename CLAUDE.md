@@ -27,4 +27,4 @@
 ## Code Style
 - TypeScript strict mode with exactOptionalPropertyTypes
 - Conventional Commits: `type(scope): description`
-- i18n: English (default) and French locales — target audience is French freelance clients
+- i18n: built-in locales = en (default), fr, de, es, it, pt (Brazilian), ru. Primary audience is French freelance clients; other locales are community contributions. See CONTRIBUTING.md "Adding a Locale" before adding more.

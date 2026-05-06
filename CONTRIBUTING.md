@@ -217,8 +217,45 @@ export { StoreNotFoundError, StoreDuplicateError } from '@siteping/core'
 - **TypeScript strict mode** with `exactOptionalPropertyTypes` enabled.
 - **Conventional Commits** for all commit messages: `type(scope): description`.
   - Examples: `feat(widget): add color picker`, `fix(cli): handle missing config`.
-- **i18n** — English (default) and French locales. Target audience is French-speaking freelance clients.
+- **i18n** — Built-in locales: English (default), French, German, Spanish, Italian, Brazilian Portuguese, Russian. See [Adding a Locale](#adding-a-locale) below.
 - Keep functions small and focused. Prefer composition over inheritance.
+
+## Adding a Locale
+
+The widget ships with a small set of built-in locales (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`). Unknown locales fall back to English. Adding a new built-in locale takes three small steps:
+
+### 1. Create the translation file
+
+Copy `packages/widget/src/i18n/en.ts` to `packages/widget/src/i18n/<code>.ts` (use a 2-letter ISO code) and translate every value. Keep the keys and `{placeholders}` exactly the same — values may be reordered for readability but the set must match `en.ts`.
+
+```ts
+// packages/widget/src/i18n/de.ts
+import type { Translations } from "./types.js";
+
+export const de: Translations = {
+  "panel.title": "Feedbacks",
+  "panel.close": "Panel schließen",
+  // ... every key from en.ts
+};
+```
+
+### 2. Register it in the locale map
+
+In `packages/widget/src/i18n/index.ts`, add the import and the entry to `LOCALES` (alphabetical order):
+
+```ts
+import { de } from "./de.js";
+
+const LOCALES: Record<string, Translations> = { de, en, /* ... */ };
+```
+
+This is enough — full locale tags like `de-DE` are resolved automatically via the language prefix.
+
+### 3. Add tests in `packages/widget/__tests__/i18n/i18n.test.ts`
+
+Add three tests next to the existing locales: a `createT` lookup test, a key-parity test (`en.ts and <code>.ts have the same set of keys`), and a non-empty values test. The existing `ru` / `de` / `es` blocks are good templates.
+
+Type union is in `packages/core/src/types.ts` (`SitepingConfig.locale`) and the README locale list is in `packages/widget/README.md` — please update both so users get autocomplete and documentation.
 
 ## Testing
 

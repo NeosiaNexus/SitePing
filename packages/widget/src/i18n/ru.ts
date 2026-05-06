@@ -31,13 +31,17 @@ export const ru: Translations = {
   "panel.statusResolved": "Решённые",
 
   // Feedback type labels
+  "type.label": "Тип",
   "type.question": "Вопрос",
   "type.change": "Улучшение",
   "type.bug": "Баг",
   "type.other": "Другое",
 
+  // Status segmented control label
+  "status.label": "Статус",
+
   // FAB menu
-  "fab.aria": "Siteping \u2014 Меню обратной связи",
+  "fab.aria": "Siteping — Меню обратной связи",
   "fab.messages": "Сообщения",
   "fab.annotate": "Аннотация",
   "fab.annotations": "Аннотации",
@@ -50,7 +54,7 @@ export const ru: Translations = {
   "popup.ariaLabel": "Форма обратной связи",
   "popup.placeholder": "Опишите проблему или предложение...",
   "popup.textareaAria": "Сообщение",
-  "popup.submitHintMac": "\u2318+Enter — отправить",
+  "popup.submitHintMac": "⌘+Enter — отправить",
   "popup.submitHintOther": "Ctrl+Enter — отправить",
   "popup.cancel": "Отмена",
   "popup.submit": "Отправить",

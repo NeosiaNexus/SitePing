@@ -294,6 +294,372 @@ describe("launcher — annotation:complete integration", () => {
   });
 
   // -------------------------------------------------------------------------
+  // Identity modal interactions (cover promptIdentity flows)
+  // -------------------------------------------------------------------------
+
+  describe("identity modal interactions", () => {
+    /**
+     * Wait for the identity modal to appear in shadow root and return its parts.
+     */
+    async function getIdentityModal(): Promise<{
+      backdrop: HTMLElement;
+      modal: HTMLElement;
+      nameInput: HTMLInputElement;
+      emailInput: HTMLInputElement;
+      cancelBtn: HTMLButtonElement;
+      submitBtn: HTMLButtonElement;
+    }> {
+      const widget = document.querySelector("siteping-widget");
+      if (!widget) throw new Error("widget not found");
+      const shadow = widget.shadowRoot;
+      if (!shadow) throw new Error("shadow root not found");
+
+      // The identity modal has aria-labelledby starting with "sp-identity-title-"
+      let modal: HTMLElement | null = null;
+      await vi.waitFor(() => {
+        const candidates = shadow.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]');
+        for (const c of candidates) {
+          const labelled = c.getAttribute("aria-labelledby") ?? "";
+          if (labelled.startsWith("sp-identity-title-")) {
+            modal = c;
+            break;
+          }
+        }
+        expect(modal).not.toBeNull();
+      });
+      const m = modal as unknown as HTMLElement;
+      const backdrop = m.parentElement as HTMLElement;
+      const nameInput = m.querySelector<HTMLInputElement>('input[type="text"]')!;
+      const emailInput = m.querySelector<HTMLInputElement>('input[type="email"]')!;
+      const buttons = m.querySelectorAll<HTMLButtonElement>("button");
+      const cancelBtn = buttons[0]!;
+      const submitBtn = buttons[1]!;
+      return { backdrop, modal: m, nameInput, emailInput, cancelBtn, submitBtn };
+    }
+
+    it("submits valid identity when user fills inputs and clicks Submit", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const response = makeFeedbackResponse({ id: "fb-modal-submit" });
+      mockSendFeedback.mockResolvedValue(response);
+
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { nameInput, emailInput, submitBtn } = await getIdentityModal();
+      nameInput.value = "Alice";
+      emailInput.value = "alice@example.com";
+
+      submitBtn.click();
+
+      // Wait for submission — sendFeedback should be called after the modal closes
+      await vi.waitFor(
+        () => {
+          expect(mockSendFeedback).toHaveBeenCalledOnce();
+        },
+        { timeout: 1500 },
+      );
+
+      const payload = mockSendFeedback.mock.calls[0][0];
+      expect(payload.authorName).toBe("Alice");
+      expect(payload.authorEmail).toBe("alice@example.com");
+
+      instance.destroy();
+    });
+
+    it("returns early on Submit when name is empty (no closeModal)", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { nameInput, emailInput, submitBtn, modal } = await getIdentityModal();
+      nameInput.value = "";
+      emailInput.value = "alice@example.com";
+
+      submitBtn.click();
+
+      // sendFeedback should NOT be called — modal still open
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockSendFeedback).not.toHaveBeenCalled();
+      // Modal still in DOM (not removed)
+      expect(modal.isConnected).toBe(true);
+
+      instance.destroy();
+    });
+
+    it("returns early on Submit when email is empty", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { nameInput, emailInput, submitBtn, modal } = await getIdentityModal();
+      nameInput.value = "Alice";
+      emailInput.value = "";
+
+      submitBtn.click();
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockSendFeedback).not.toHaveBeenCalled();
+      expect(modal.isConnected).toBe(true);
+
+      instance.destroy();
+    });
+
+    it("marks email border red on Submit with invalid email format", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { nameInput, emailInput, submitBtn, modal } = await getIdentityModal();
+      nameInput.value = "Alice";
+      emailInput.value = "not-an-email";
+
+      submitBtn.click();
+
+      // Border style should change, modal should still be open
+      await new Promise((r) => setTimeout(r, 50));
+      expect(emailInput.style.borderColor).toBeTruthy();
+      expect(emailInput.style.borderColor).not.toBe("");
+      expect(mockSendFeedback).not.toHaveBeenCalled();
+      expect(modal.isConnected).toBe(true);
+
+      instance.destroy();
+    });
+
+    it("Cancel button click closes modal and aborts feedback submission", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { cancelBtn } = await getIdentityModal();
+      cancelBtn.click();
+
+      // Wait for closeModal setTimeout (~250ms) — sendFeedback should never fire
+      await new Promise((r) => setTimeout(r, 350));
+      expect(mockSendFeedback).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("Escape key closes modal and aborts submission", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop } = await getIdentityModal();
+      backdrop.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+      await new Promise((r) => setTimeout(r, 350));
+      expect(mockSendFeedback).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("Tab key on the last focusable element wraps focus to the first", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal, nameInput, submitBtn } = await getIdentityModal();
+      // Manually set the last button as the active element
+      submitBtn.focus();
+
+      // Spy on focus to confirm cycling — directly check that preventDefault was called
+      const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+      const preventSpy = vi.spyOn(ev, "preventDefault");
+      backdrop.dispatchEvent(ev);
+
+      // The handler should prevent default and refocus the first element (nameInput)
+      // In jsdom, modal.contains(activeElement) checks the shadow root's activeElement
+      // — the launcher uses shadowRoot.activeElement, so we just confirm the handler ran
+      // by checking that preventDefault was called when the active element matches the last
+      expect(preventSpy).toHaveBeenCalled();
+      // nameInput should still be a known element (no error thrown)
+      expect(nameInput).toBeDefined();
+      expect(modal.contains(submitBtn)).toBe(true);
+
+      instance.destroy();
+    });
+
+    it("Shift+Tab on the first focusable element wraps focus to the last", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal, nameInput, submitBtn } = await getIdentityModal();
+      nameInput.focus();
+
+      const ev = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true });
+      const preventSpy = vi.spyOn(ev, "preventDefault");
+      backdrop.dispatchEvent(ev);
+
+      expect(preventSpy).toHaveBeenCalled();
+      expect(modal.contains(nameInput)).toBe(true);
+      expect(submitBtn).toBeDefined();
+
+      instance.destroy();
+    });
+
+    it("Tab key when no focus inside modal still triggers focus trap (refocus first)", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal } = await getIdentityModal();
+      // Move focus outside the modal
+      const outside = document.createElement("button");
+      document.body.appendChild(outside);
+      outside.focus();
+
+      const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+      const preventSpy = vi.spyOn(ev, "preventDefault");
+      backdrop.dispatchEvent(ev);
+
+      // !modal.contains(active) branch → preventDefault + refocus first
+      expect(preventSpy).toHaveBeenCalled();
+      expect(modal.isConnected).toBe(true);
+
+      outside.remove();
+      instance.destroy();
+    });
+
+    it("non-Tab/Escape keys don't close the modal", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal } = await getIdentityModal();
+
+      backdrop.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+      backdrop.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+      // Modal still open, no submission
+      await new Promise((r) => setTimeout(r, 50));
+      expect(modal.isConnected).toBe(true);
+      expect(mockSendFeedback).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("clicking the backdrop (outside modal) closes the modal", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop } = await getIdentityModal();
+      // Synthesize a click whose target is the backdrop itself (not bubbled from modal)
+      const ev = new MouseEvent("click", { bubbles: true });
+      Object.defineProperty(ev, "target", { value: backdrop });
+      backdrop.dispatchEvent(ev);
+
+      await new Promise((r) => setTimeout(r, 350));
+      expect(mockSendFeedback).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("clicking the modal (not backdrop) does not close it", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal } = await getIdentityModal();
+      // Click event with target === modal (not backdrop) — guard does nothing
+      const ev = new MouseEvent("click", { bubbles: true });
+      Object.defineProperty(ev, "target", { value: modal });
+      backdrop.dispatchEvent(ev);
+
+      await new Promise((r) => setTimeout(r, 50));
+      // Modal still attached
+      expect(modal.isConnected).toBe(true);
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // crypto.randomUUID failure fallback (line 207-208)
+  // -------------------------------------------------------------------------
+
+  describe("clientId fallback", () => {
+    it("falls back to Date.now()-based id when crypto.randomUUID throws", async () => {
+      const origRandomUUID = (globalThis.crypto as Crypto & { randomUUID: () => string }).randomUUID;
+      Object.defineProperty(globalThis.crypto, "randomUUID", {
+        value: () => {
+          throw new Error("Insecure context");
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      try {
+        const response = makeFeedbackResponse();
+        mockSendFeedback.mockResolvedValue(response);
+
+        const instance = launch(defaultConfig());
+        capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+        await vi.waitFor(() => {
+          expect(mockSendFeedback).toHaveBeenCalledOnce();
+        });
+
+        const payload = mockSendFeedback.mock.calls[0][0];
+        // Fallback format: "<timestamp>-<random>"
+        expect(payload.clientId).toMatch(/^\d+-[a-z0-9]+$/);
+
+        instance.destroy();
+      } finally {
+        Object.defineProperty(globalThis.crypto, "randomUUID", {
+          value: origRandomUUID,
+          writable: true,
+          configurable: true,
+        });
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Initial markers load failure (line 247)
+  // -------------------------------------------------------------------------
+
+  describe("initial markers load failure", () => {
+    it("logs error when getFeedbacks rejects on initial load (debug mode)", async () => {
+      const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+      mockGetFeedbacks.mockRejectedValueOnce(new Error("Network down"));
+
+      try {
+        const instance = launch(defaultConfig({ debug: true }));
+
+        // Wait for the rejection handler to fire
+        await vi.waitFor(() => {
+          const errCalls = debugSpy.mock.calls.filter(
+            (c: unknown[]) => typeof c[1] === "string" && c[1].includes("Failed to load initial markers"),
+          );
+          expect(errCalls.length).toBeGreaterThan(0);
+        });
+
+        instance.destroy();
+      } finally {
+        debugSpy.mockRestore();
+        mockGetFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+      }
+    });
+
+    it("does not throw when getFeedbacks rejects in non-debug mode", async () => {
+      mockGetFeedbacks.mockRejectedValueOnce(new Error("Network down"));
+
+      try {
+        const instance = launch(defaultConfig());
+        // Just give the rejection a chance to settle
+        await new Promise((r) => setTimeout(r, 20));
+        // No assertion needed — if anything threw, the test would fail
+        instance.destroy();
+      } finally {
+        mockGetFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Concurrency guard
   // -------------------------------------------------------------------------
 
@@ -419,6 +785,147 @@ describe("launcher — annotation:complete integration", () => {
       await vi.waitFor(() => {
         expect(onError).toHaveBeenCalledWith(error);
       });
+
+      instance.destroy();
+    });
+
+    it("non-Error rejections from sendFeedback are wrapped into Error instances", async () => {
+      // Reject with a string (non-Error) — launcher must wrap it
+      mockSendFeedback.mockRejectedValue("string error");
+
+      const onError = vi.fn();
+      const instance = launch(defaultConfig({ onError }));
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        expect(onError).toHaveBeenCalled();
+      });
+
+      const arg = onError.mock.calls[0][0];
+      expect(arg).toBeInstanceOf(Error);
+      expect((arg as Error).message).toContain("string error");
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Focus trap edge cases — covers branches at lines 411, 414, 417, 422
+  // -------------------------------------------------------------------------
+
+  describe("identity modal focus trap edge cases", () => {
+    async function getModal(): Promise<{
+      backdrop: HTMLElement;
+      modal: HTMLElement;
+      nameInput: HTMLInputElement;
+      submitBtn: HTMLButtonElement;
+    }> {
+      const widget = document.querySelector("siteping-widget");
+      if (!widget) throw new Error("widget not found");
+      const shadow = widget.shadowRoot;
+      if (!shadow) throw new Error("shadow root not found");
+
+      let modal: HTMLElement | null = null;
+      await vi.waitFor(() => {
+        const candidates = shadow.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]');
+        for (const c of candidates) {
+          const labelled = c.getAttribute("aria-labelledby") ?? "";
+          if (labelled.startsWith("sp-identity-title-")) {
+            modal = c;
+            break;
+          }
+        }
+        expect(modal).not.toBeNull();
+      });
+      const m = modal as unknown as HTMLElement;
+      const backdrop = m.parentElement as HTMLElement;
+      const nameInput = m.querySelector<HTMLInputElement>('input[type="text"]')!;
+      const buttons = m.querySelectorAll<HTMLButtonElement>("button");
+      return { backdrop, modal: m, nameInput, submitBtn: buttons[1]! };
+    }
+
+    it("Tab when active is the last element wraps to first", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal, submitBtn } = await getModal();
+
+      // Patch shadowRoot.activeElement to return the submitBtn (jsdom focus on
+      // shadow elements can be flaky in shadow root mode "open")
+      const shadow = modal.getRootNode() as ShadowRoot;
+      Object.defineProperty(shadow, "activeElement", { value: submitBtn, configurable: true });
+
+      const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+      const preventSpy = vi.spyOn(ev, "preventDefault");
+      backdrop.dispatchEvent(ev);
+
+      // active === last branch hit → preventDefault called and first focused
+      expect(preventSpy).toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("Tab when active is in the middle (not last) does not preventDefault", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal, nameInput } = await getModal();
+
+      // Patch shadow.activeElement to the nameInput (which is inside modal but not last)
+      const shadow = modal.getRootNode() as ShadowRoot;
+      Object.defineProperty(shadow, "activeElement", { value: nameInput, configurable: true });
+
+      const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+      const preventSpy = vi.spyOn(ev, "preventDefault");
+      backdrop.dispatchEvent(ev);
+
+      // The active element is in modal but not last → preventDefault should NOT be called
+      expect(preventSpy).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("Shift+Tab when active is in the middle (not first) does not preventDefault", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal, submitBtn } = await getModal();
+
+      // Set active to submitBtn (last) — for Shift+Tab, this is "in middle" (not first)
+      // → no preventDefault
+      const shadow = modal.getRootNode() as ShadowRoot;
+      Object.defineProperty(shadow, "activeElement", { value: submitBtn, configurable: true });
+
+      const ev = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true });
+      const preventSpy = vi.spyOn(ev, "preventDefault");
+      backdrop.dispatchEvent(ev);
+
+      // active is last (not first) and inside modal → no preventDefault for Shift+Tab
+      expect(preventSpy).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("Tab key with no focusable elements in modal returns without preventDefault", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal } = await getModal();
+
+      // Strip every focusable child so the focus trap finds an empty list
+      const focusables = modal.querySelectorAll<HTMLElement>('input, button, [tabindex]:not([tabindex="-1"])');
+      for (const el of focusables) el.remove();
+
+      const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+      const preventSpy = vi.spyOn(ev, "preventDefault");
+      backdrop.dispatchEvent(ev);
+
+      // length === 0 → handler returns early; preventDefault not called
+      expect(preventSpy).not.toHaveBeenCalled();
 
       instance.destroy();
     });

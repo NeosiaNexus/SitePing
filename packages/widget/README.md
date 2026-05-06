@@ -72,7 +72,7 @@ All configuration options for `initSiteping()`:
 | `position` | `'bottom-right' \| 'bottom-left'` | `'bottom-right'` | Widget FAB position |
 | `accentColor` | `string` | `'#0066ff'` | Widget accent color — hex color (`#RGB`, `#RRGGBB`, `#RRGGBBAA`) |
 | `theme` | `'light' \| 'dark' \| 'auto'` | `'light'` | Widget color theme |
-| `locale` | `'fr' \| 'en'` | `'en'` | Widget UI language |
+| `locale` | `'en' \| 'fr' \| 'de' \| 'es' \| 'it' \| 'pt' \| 'ru'` | `'en'` | Widget UI language. Unknown locales fall back to English |
 | `forceShow` | `boolean` | `false` | Show the widget in production (hidden by default) |
 | `debug` | `boolean` | `false` | Enable debug logging to console |
 

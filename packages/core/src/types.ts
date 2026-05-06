@@ -20,8 +20,8 @@ export interface SitepingConfig {
   debug?: boolean;
   /** Color theme — defaults to 'light' */
   theme?: "light" | "dark" | "auto";
-  /** UI locale — defaults to 'en' */
-  locale?: "fr" | "en" | "ru" | (string & {}) | undefined;
+  /** UI locale — defaults to 'en'. Built-in: en, fr, de, es, it, pt (Brazilian), ru. Any other string falls back to English. */
+  locale?: "en" | "fr" | "de" | "es" | "it" | "pt" | "ru" | (string & {}) | undefined;
   /** Called when the widget is skipped (production mode, mobile viewport) */
   onSkip?: (reason: "production" | "mobile") => void;
 

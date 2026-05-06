@@ -27,6 +27,11 @@ export interface ThemeColors {
   typeChangeBg: string;
   typeBugBg: string;
   typeOtherBg: string;
+  // Status filter colors
+  statusOpen: string;
+  statusOpenBg: string;
+  statusResolved: string;
+  statusResolvedBg: string;
 }
 
 const DEFAULT_ACCENT = "#0066ff";
@@ -113,6 +118,11 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
       typeChangeBg: "rgba(245, 158, 11, 0.15)",
       typeBugBg: "rgba(239, 68, 68, 0.15)",
       typeOtherBg: "rgba(100, 116, 139, 0.15)",
+      // Status colors — vivid green / cool gray on dark
+      statusOpen: "#4ade80",
+      statusOpenBg: "rgba(74, 222, 128, 0.15)",
+      statusResolved: "#94a3b8",
+      statusResolvedBg: "rgba(148, 163, 184, 0.15)",
     };
   }
 
@@ -144,6 +154,11 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
     typeChangeBg: "#fffbeb",
     typeBugBg: "#fef2f2",
     typeOtherBg: "#f8fafc",
+    // Status colors — saturated green / cool gray on light
+    statusOpen: "#16a34a",
+    statusOpenBg: "#f0fdf4",
+    statusResolved: "#64748b",
+    statusResolvedBg: "#f1f5f9",
   };
 }
 

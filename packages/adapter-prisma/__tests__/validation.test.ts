@@ -195,4 +195,35 @@ describe("formatValidationErrors", () => {
       expect(errors[0]).toHaveProperty("message");
     }
   });
+
+  it("joins multi-segment paths with dots and surfaces messages verbatim", () => {
+    // Annotation rect violation produces a multi-segment path
+    // (`annotations.0.rect.wPct`). The mapper must dot-join the segments
+    // to produce a stable field name and pass the message through unchanged.
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      annotations: [
+        {
+          ...validAnnotation,
+          rect: { xPct: 0.1, yPct: 0.2, wPct: -0.5, hPct: 0.3 },
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const errors = formatValidationErrors(result.error);
+      const wPctError = errors.find((e) => e.field.includes("wPct"));
+      expect(wPctError?.field).toBe("annotations.0.rect.wPct");
+      expect(typeof wPctError?.message).toBe("string");
+      expect(wPctError?.message.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("returns an empty array when the ZodError has no issues", () => {
+    // Construct a minimal ZodError-like object — formatValidationErrors only
+    // reads .issues and maps over them. An empty .issues array exercises the
+    // map-over-empty branch without any side effects.
+    const result = formatValidationErrors({ issues: [] } as unknown as Parameters<typeof formatValidationErrors>[0]);
+    expect(result).toEqual([]);
+  });
 });

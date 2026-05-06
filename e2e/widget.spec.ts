@@ -152,13 +152,14 @@ test.describe("Panel", () => {
     expect(text).toContain("No feedback yet");
   });
 
-  test("has 8 filter chips (5 type + 3 status)", async ({ page }) => {
+  test("renders type dropdown and 3-segment status filter", async ({ page }) => {
     const s = shadow(page);
     await s.click(".sp-fab");
     await s.waitFor('[data-item-id="chat"]');
     await s.click('[data-item-id="chat"]');
-    await s.waitFor(".sp-chip");
-    expect(await s.count(".sp-chip")).toBe(8);
+    await s.waitFor(".sp-filter-dropdown-btn");
+    expect(await s.count(".sp-filter-dropdown-btn")).toBe(1);
+    expect(await s.count(".sp-segmented__btn")).toBe(3);
   });
 
   test("closes via close button", async ({ page }) => {

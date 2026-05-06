@@ -31,10 +31,14 @@ export const fr: Translations = {
   "panel.statusResolved": "Résolu",
 
   // Feedback type labels
+  "type.label": "Type",
   "type.question": "Question",
   "type.change": "Changement",
   "type.bug": "Bug",
   "type.other": "Autre",
+
+  // Status segmented control label
+  "status.label": "Statut",
 
   // FAB menu
   "fab.aria": "Siteping \u2014 Menu feedback",

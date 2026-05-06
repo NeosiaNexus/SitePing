@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { findAnchorElement, rectToPercentages } from "../../src/dom/anchor";
+import { findAnchorElement, generateAnchor, rectToPercentages } from "../../src/dom/anchor";
+
+// jsdom polyfill — @medv/finder uses CSS.escape internally
+if (typeof CSS === "undefined") {
+  (globalThis as Record<string, unknown>).CSS = { escape: (s: string) => s };
+} else if (!CSS.escape) {
+  CSS.escape = (s: string) => s;
+}
 
 // ---------------------------------------------------------------------------
 // Helper — create a DOMRect-like object (jsdom's DOMRect is not constructible)
@@ -247,7 +254,7 @@ describe("findAnchorElement", () => {
     expect(result).toBe(outer);
   });
 
-  it("returns the element itself when walk reaches body without match", () => {
+  it("falls back to document.body when no ancestor contains the rect", () => {
     const child = document.createElement("span");
     document.body.appendChild(child);
 
@@ -258,8 +265,10 @@ describe("findAnchorElement", () => {
 
     const rect = makeDOMRect(50, 50, 100, 100);
     const result = findAnchorElement(rect);
-    // candidate never updated because no element (before body) contained rect
-    expect(result).toBe(child);
+    // Returning a too-small anchor would produce out-of-range percentages
+    // (xPct < 0 / wPct > 1) and be rejected by the API schema. Body is the
+    // safe fallback because it contains every drawable rect.
+    expect(result).toBe(document.body);
   });
 
   it("uses custom root parameter for comparison", () => {
@@ -272,5 +281,72 @@ describe("findAnchorElement", () => {
     const rect = makeDOMRect(50, 50, 100, 100);
     const result = findAnchorElement(rect, customRoot);
     expect(result).toBe(document.body);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generateAnchor — focused branch coverage on className filter
+// ---------------------------------------------------------------------------
+describe("generateAnchor className filter", () => {
+  afterEach(() => {
+    while (document.body.firstChild) {
+      document.body.removeChild(document.body.firstChild);
+    }
+  });
+
+  it("filters out CSS-in-JS hashed class names (css- prefix)", () => {
+    const wrapper = document.createElement("section");
+    const el = document.createElement("div");
+    // Both classes match the first regex (css-/sc-/emotion-/styled- prefix);
+    // finder must reject them via the filter callback.
+    el.className = "css-abc1d2 sc-xY3z9 emotion-1ab2c3 styled-foo123";
+    wrapper.appendChild(el);
+    document.body.appendChild(wrapper);
+
+    const anchor = generateAnchor(el);
+    // The css selector must not contain any rejected class names
+    expect(anchor.cssSelector).not.toContain("css-");
+    expect(anchor.cssSelector).not.toContain("sc-");
+    expect(anchor.cssSelector).not.toContain("emotion-");
+    expect(anchor.cssSelector).not.toContain("styled-");
+  });
+
+  it("filters out emotion-style hash class names (camelCase pattern)", () => {
+    const wrapper = document.createElement("section");
+    const el = document.createElement("div");
+    // Matches the second regex: 1-3 lowercase letters + 4-8 mixed alphanumerics
+    // e.g. "aBc12345", "abXy9k", "a1B2C3d4"
+    el.className = "aBc12345 ab1Xy9kQ";
+    wrapper.appendChild(el);
+    document.body.appendChild(wrapper);
+
+    const anchor = generateAnchor(el);
+    expect(anchor.cssSelector).not.toContain("aBc12345");
+    expect(anchor.cssSelector).not.toContain("ab1Xy9kQ");
+  });
+
+  it("preserves human-readable class names", () => {
+    const wrapper = document.createElement("section");
+    const el = document.createElement("div");
+    // Human-readable class — should pass the filter and may appear in selector
+    el.className = "user-card-primary";
+    wrapper.appendChild(el);
+    document.body.appendChild(wrapper);
+
+    const anchor = generateAnchor(el);
+    // The className filter callback returns true for this name
+    // (i.e. allows it through). Selector is non-empty.
+    expect(anchor.cssSelector.length).toBeGreaterThan(0);
+  });
+
+  it("filters out radix- and :r0: framework IDs", () => {
+    const el = document.createElement("div");
+    el.id = "radix-xyz";
+    document.body.appendChild(el);
+
+    const anchor = generateAnchor(el);
+    // The idName filter should reject "radix-*" → finder falls back to a non-id selector
+    // Note: anchor.elementId still reflects the raw id; we check the cssSelector instead.
+    expect(anchor.cssSelector).not.toContain("#radix-xyz");
   });
 });
