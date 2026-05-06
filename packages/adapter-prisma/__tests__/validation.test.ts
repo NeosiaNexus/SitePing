@@ -64,6 +64,14 @@ describe("feedbackCreateSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects whitespace-only url (trimmed to empty)", () => {
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      url: "   ",
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("accepts pathname url (default getPageScope output)", () => {
     const result = feedbackCreateSchema.safeParse({
       ...validPayload,

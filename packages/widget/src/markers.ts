@@ -113,13 +113,16 @@ export class MarkerManager {
     window.addEventListener("scroll", this.scrollHandler, { passive: true, capture: true });
 
     // Re-resolve after DOM changes (SPA, lazy-load).
-    // Filter out widget-owned mutations and skip batches with only irrelevant changes.
-    // Fast-path: large batches (>20 mutations) skip per-record filtering.
+    // Filter out widget-owned mutations and skip batches with only irrelevant
+    // changes. Filtering short-circuits at the first non-widget mutation, so
+    // even large batches stop after one DOM walk.
+    //
+    // The filter is applied unconditionally — earlier versions had a >20-batch
+    // fast-path that skipped filtering, but that lets reposition self-trigger
+    // when `repositionAll` re-renders the pinned highlight (showHighlight
+    // appends N elements to `this.container`); a host page churning lots of
+    // DOM (infinite scroll) would then loop at the 200ms debounce interval.
     this.mutationObserver = new MutationObserver((mutations) => {
-      if (mutations.length > 20) {
-        this.scheduleReposition();
-        return;
-      }
       let hasRelevantMutation = false;
       for (const m of mutations) {
         if (this.container.contains(m.target) || this.tooltip.contains(m.target)) continue;

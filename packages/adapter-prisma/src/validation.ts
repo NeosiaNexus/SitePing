@@ -48,10 +48,10 @@ export const feedbackCreateSchema = z.object({
   // Page-scope identifier the widget uses to group feedbacks. Defaults to
   // `window.location.pathname` ("/orders/42"), but hosts can override
   // `getPageScope()` to return a full URL, an opaque slug, anything they
-  // want. We bound length and require non-empty; the value is opaque to
-  // the server and only used as a literal Prisma equality filter, so the
-  // loose shape is safe.
-  url: z.string().min(1).max(2000),
+  // want. We trim + require non-empty so whitespace-only payloads don't
+  // leak into the DB; otherwise the value is opaque to the server and only
+  // used as a literal Prisma equality filter, so the loose shape is safe.
+  url: z.string().trim().min(1).max(2000),
   // Optional parameterized URL template (e.g. "/orders/:orderId") provided
   // by the host via `getPageScope()`. Null when host omits it.
   urlPattern: z.string().max(2000).nullable().optional(),
