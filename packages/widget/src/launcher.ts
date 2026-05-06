@@ -221,15 +221,6 @@ export function launch(config: SitepingConfig): SitepingInstance {
         saveIdentity(identity);
       }
 
-      // Sanitize URL — strip sensitive query params before sending
-      const rawUrl = new URL(window.location.href);
-      for (const key of [...rawUrl.searchParams.keys()]) {
-        if (/token|key|secret|auth|session|password|code/i.test(key)) {
-          rawUrl.searchParams.delete(key);
-        }
-      }
-      const sanitizedUrl = rawUrl.toString();
-
       // crypto.randomUUID() throws in non-secure contexts (plain HTTP)
       const clientId = (() => {
         try {
@@ -239,12 +230,20 @@ export function launch(config: SitepingConfig): SitepingInstance {
         }
       })();
 
+      // Use scope.url as the single source of truth — same identifier the
+      // panel filter and marker filter use, otherwise the freshly created
+      // feedback wouldn't match its own filter and would vanish from the UI
+      // immediately after submission.
+      // Default scope.url is `window.location.pathname` (no query string,
+      // so token/key/secret query params are not leaked). Hosts that need
+      // origin or query for their identifier can include them in
+      // `getPageScope()`.
       const scope = getScope();
       const payload: FeedbackPayload = {
         projectName: config.projectName,
         type,
         message,
-        url: sanitizedUrl,
+        url: scope.url,
         urlPattern: scope.urlPattern,
         viewport: `${window.innerWidth}x${window.innerHeight}`,
         userAgent: navigator.userAgent,
@@ -259,8 +258,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
         const response = await client.sendFeedback(payload);
         bus.emit("feedback:sent", response);
         // Only show the marker for the current scope; out-of-scope feedbacks
-        // are still saved but don't render a marker on this page.
-        if (!scopeAnnotationsByUrl || response.url === sanitizedUrl) {
+        // are still saved but don't render a marker on this page. Compare
+        // against the scope captured before the submit (route may have
+        // changed during the await — re-reading scope here would race).
+        if (!scopeAnnotationsByUrl || response.url === scope.url) {
           markers.addFeedback(response, markers.count + 1);
         }
         liveRegion.textContent = t("feedback.sent.confirmation");
