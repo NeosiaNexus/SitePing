@@ -31,15 +31,14 @@ let warnedAboutMissingDep = false;
 async function loadHtml2Canvas(): Promise<Html2CanvasFn | null> {
   if (cachedHtml2Canvas !== undefined) return cachedHtml2Canvas;
   try {
-    // html2canvas is an *optional* peer dependency — keep the specifier
-    // off the bundler's static graph so missing-package errors are caught
-    // at runtime (returning null) instead of failing the host's build.
-    // The `/* @vite-ignore */` and indirected specifier together opt every
-    // common bundler (Vite, webpack, esbuild) out of static resolution.
-    const specifier = "html2canvas";
-    const mod = (await import(/* @vite-ignore */ /* webpackIgnore: true */ specifier)) as {
-      default?: Html2CanvasFn;
-    } & Html2CanvasFn;
+    // Static dynamic import — bundlers (Vite, webpack, esbuild) resolve this
+    // at build time and emit a separate chunk loaded on first capture. If the
+    // host hasn't installed `html2canvas`, the BUILD fails with a clear
+    // missing-module error — that's the contract we want for an opt-in
+    // feature that requires a peer dep. (Earlier "magic comment" attempts to
+    // dodge static resolution silently broke production: bare specifiers
+    // can't be resolved at runtime in browsers without import maps.)
+    const mod = (await import("html2canvas")) as { default?: Html2CanvasFn } & Html2CanvasFn;
     cachedHtml2Canvas = (mod.default ?? mod) as Html2CanvasFn;
     return cachedHtml2Canvas;
   } catch {
@@ -47,7 +46,7 @@ async function loadHtml2Canvas(): Promise<Html2CanvasFn | null> {
     if (!warnedAboutMissingDep) {
       warnedAboutMissingDep = true;
       console.warn(
-        "[siteping] enableScreenshot is on but html2canvas is not installed. Run `npm install html2canvas` (or your equivalent) to enable capture, or remove `enableScreenshot` from the config to silence this warning.",
+        "[siteping] enableScreenshot is on but html2canvas could not be loaded. Run `npm install html2canvas` (or your equivalent) and rebuild to enable capture, or remove `enableScreenshot` from the config to silence this warning.",
       );
     }
     return null;

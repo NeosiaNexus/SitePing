@@ -660,6 +660,26 @@ function extractPathname(url: string): string {
   }
 }
 
+/**
+ * Whitelist URL schemes that are safe to use as `<img src>`. Defends against
+ * a buggy or compromised `ScreenshotStorage` (or DB) writing a `javascript:`,
+ * `data:text/html`, or `data:image/svg+xml` URL — the latter can host
+ * external `<image href>` references that exfiltrate IP/UA/Referer when the
+ * panel renders. Browsers refuse to execute scripts via `<img>`, but the
+ * fetch itself still happens for arbitrary URLs.
+ */
+function isSafeImageUrl(url: string): boolean {
+  // data:image/(jpeg|png|webp) is what the widget produces; SVG is excluded
+  // because it can contain external references and is rarely a useful
+  // screenshot format.
+  if (/^data:image\/(jpeg|png|webp);/i.test(url)) return true;
+  // Remote URLs over https are accepted (S3, R2, etc.). http: is rejected
+  // because the panel typically runs over https and mixed-content is blocked
+  // anyway — surfacing the issue here is clearer than a silent network error.
+  if (/^https:\/\//i.test(url)) return true;
+  return false;
+}
+
 /** Truncate a string to a max length with ellipsis. */
 function truncate(str: string, max: number): string {
   if (str.length <= max) return str;
@@ -774,7 +794,7 @@ export class DetailView {
     this.content.appendChild(messageSection);
 
     // Section 2b: Screenshot (when captured)
-    if (feedback.screenshotUrl) {
+    if (feedback.screenshotUrl && isSafeImageUrl(feedback.screenshotUrl)) {
       const screenshotSection = this.buildSection(sectionIndex++);
       const screenshotSectionTitle = el("div", { class: "sp-detail-section-title" });
       setText(screenshotSectionTitle, this.i18n["detail.screenshot"]);
@@ -785,6 +805,10 @@ export class DetailView {
       img.src = feedback.screenshotUrl;
       img.alt = this.i18n["detail.screenshotAlt"];
       img.loading = "lazy";
+      // Avoid leaking the panel viewer's referrer to the storage host —
+      // a malicious or compromised storage URL could otherwise track which
+      // operators view which feedbacks.
+      img.referrerPolicy = "no-referrer";
       screenshotSection.appendChild(img);
       this.content.appendChild(screenshotSection);
     }

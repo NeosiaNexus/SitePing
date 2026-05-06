@@ -105,18 +105,21 @@ describe("PrismaStore — screenshot storage", () => {
       expect(created.data.screenshotUrl).toBeNull();
     });
 
-    it("falls back to inline data URL when upload throws", async () => {
+    it("persists null when upload throws — does NOT silently bloat the DB with inline base64", async () => {
       const storage: ScreenshotStorage = {
         upload: vi.fn().mockRejectedValue(new Error("S3 down")),
       };
       const store = new PrismaStore(prisma, { screenshotStorage: storage });
 
-      await store.createFeedback(createInput({ screenshotDataUrl: SAMPLE_DATA_URL, clientId: "c1" }));
+      const result = await store.createFeedback(createInput({ screenshotDataUrl: SAMPLE_DATA_URL, clientId: "c1" }));
 
-      const created = prisma.sitepingFeedback.create.mock.calls[0]?.[0] as { data: { screenshotUrl: string } };
-      // Failed uploads should not drop the screenshot — fall back to inline so
-      // the user still sees something (the warn surfaces the underlying issue).
-      expect(created.data.screenshotUrl).toBe(SAMPLE_DATA_URL);
+      const created = prisma.sitepingFeedback.create.mock.calls[0]?.[0] as { data: { screenshotUrl: string | null } };
+      // The feedback message is preserved; only the screenshot is dropped.
+      // An inline fallback would silently grow Postgres during a storage
+      // outage — operators discover it only when DB-size alarms fire.
+      expect(created.data.screenshotUrl).toBeNull();
+      // The created feedback record should reflect the dropped screenshot.
+      expect(result.screenshotUrl).toBeNull();
       const failureWarnings = warnSpy.mock.calls.filter((c) => /screenshotStorage\.upload failed/.test(String(c[0])));
       expect(failureWarnings.length).toBe(1);
     });

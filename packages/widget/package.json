@@ -55,7 +55,8 @@
   },
   "devDependencies": {
     "@medv/finder": "^3.2.0",
-    "@siteping/core": "workspace:*"
+    "@siteping/core": "workspace:*",
+    "html2canvas": "^1.4.1"
   },
   "peerDependencies": {
     "html2canvas": "^1.4.1"
