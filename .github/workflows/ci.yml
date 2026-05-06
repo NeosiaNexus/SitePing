@@ -43,30 +43,9 @@ jobs:
           name: coverage-report
           path: coverage/
 
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.11"
-
-      - run: bun install --frozen-lockfile
-
-      - name: Build
-        run: bun run build
-
-      - name: Install Playwright (chromium only)
-        run: npx playwright install --with-deps chromium
-
-      - name: Run e2e tests (chromium only)
-        run: bun run test:e2e -- --project=chromium
-
-      - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 7
+  # E2E job intentionally removed from per-PR CI:
+  # - Run time is ~16 min vs ~1.5 min for the rest of CI
+  # - Tests are upstream-authored and don't cover our fork patches
+  # - Failures historically did not block merges (no required check)
+  # Manual local run still works via `bun run test:e2e`.
+  # Re-introduce as a scheduled job if regressions appear.
