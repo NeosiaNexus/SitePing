@@ -177,6 +177,22 @@ export function testSitepingStore(factory: () => SitepingStore): void {
         expect(record.annotations[0]?.anchorKey).toBeNull();
       });
 
+      it("persists screenshotUrl as null when no data URL is provided", async () => {
+        freshStore();
+        const record = await store.createFeedback(createInput());
+        expect(record.screenshotUrl).toBeNull();
+      });
+
+      it("persists the screenshot data URL inline when no external storage is configured", async () => {
+        // Stores without external storage (memory, localStorage) keep the
+        // data URL as-is. Adapter-prisma with a `screenshotStorage` replaces
+        // it with the remote URL — that path is covered by adapter-prisma tests.
+        freshStore();
+        const dataUrl = "data:image/jpeg;base64,/9j/4AAQ"; // truncated but valid prefix
+        const record = await store.createFeedback(createInput({ screenshotDataUrl: dataUrl }));
+        expect(record.screenshotUrl).toBe(dataUrl);
+      });
+
       it("deduplicates by clientId (idempotent)", async () => {
         freshStore();
         const input = createInput({ clientId: "same-id" });

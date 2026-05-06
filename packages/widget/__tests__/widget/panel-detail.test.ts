@@ -305,6 +305,37 @@ describe("DetailView", () => {
       expect(message!.textContent).toBe("Multi\nline\nmessage");
     });
 
+    it("does NOT render the screenshot section when feedback.screenshotUrl is null", () => {
+      setup.view.show(makeFeedback({ screenshotUrl: null }), 1);
+      const img = setup.view.element.querySelector<HTMLImageElement>(".sp-detail-screenshot");
+      expect(img).toBeNull();
+    });
+
+    it("renders the screenshot when screenshotUrl is a safe data:image URL", () => {
+      setup.view.show(makeFeedback({ screenshotUrl: "data:image/jpeg;base64,FAKE" }), 1);
+      const img = setup.view.element.querySelector<HTMLImageElement>(".sp-detail-screenshot");
+      expect(img).not.toBeNull();
+      expect(img!.src).toBe("data:image/jpeg;base64,FAKE");
+      expect(img!.referrerPolicy).toBe("no-referrer");
+      expect(img!.loading).toBe("lazy");
+    });
+
+    it("renders the screenshot when screenshotUrl is an https URL", () => {
+      setup.view.show(makeFeedback({ screenshotUrl: "https://cdn.example.com/fb-1.jpg" }), 1);
+      const img = setup.view.element.querySelector<HTMLImageElement>(".sp-detail-screenshot");
+      expect(img).not.toBeNull();
+      expect(img!.src).toBe("https://cdn.example.com/fb-1.jpg");
+    });
+
+    it("does NOT render the screenshot for unsafe schemes (javascript:, data:text/html, http:)", () => {
+      const unsafe = ["javascript:alert(1)", "data:text/html,<script>", "http://insecure.example/x.jpg"];
+      for (const url of unsafe) {
+        setup.view.show(makeFeedback({ screenshotUrl: url }), 1);
+        const img = setup.view.element.querySelector<HTMLImageElement>(".sp-detail-screenshot");
+        expect(img, `should reject ${url}`).toBeNull();
+      }
+    });
+
     it("renders metadata rows: page (truncated), author, date, viewport, browser", () => {
       const longUrl = "http://example.com/" + "a/".repeat(60);
       const fb = makeFeedback({

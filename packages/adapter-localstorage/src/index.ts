@@ -60,11 +60,14 @@ export class LocalStorageStore implements SitepingStore {
     }
   }
 
-  private save(feedbacks: FeedbackRecord[]): void {
+  private save(feedbacks: FeedbackRecord[]): boolean {
     try {
       localStorage.setItem(this.key, JSON.stringify(feedbacks));
+      return true;
     } catch {
-      // localStorage full — silently drop (best-effort persistence)
+      // localStorage full — caller decides how to recover (e.g. drop the
+      // newest screenshot and retry).
+      return false;
     }
   }
 
@@ -132,10 +135,23 @@ export class LocalStorageStore implements SitepingStore {
       createdAt: now,
       updatedAt: now,
       annotations,
+      // localStorage has its own ~5 MB hard cap; storing data URLs inline is
+      // OK for prototyping and demos but will hit the cap quickly with many
+      // screenshots. Production users should use adapter-prisma with a
+      // configured ScreenshotStorage.
+      screenshotUrl: data.screenshotDataUrl ?? null,
     };
 
     feedbacks.unshift(record);
-    this.save(feedbacks);
+    if (!this.save(feedbacks) && record.screenshotUrl) {
+      // Quota exceeded — usually the inline screenshot pushed us past the
+      // ~5 MB cap. Retry without the screenshot so the user's text feedback
+      // is preserved (the screenshot is by far the heaviest field). If even
+      // that fails, fall through to legacy silent-fail behaviour: the
+      // record stays in memory for this call but isn't persisted.
+      record.screenshotUrl = null;
+      this.save(feedbacks);
+    }
     return record;
   }
 

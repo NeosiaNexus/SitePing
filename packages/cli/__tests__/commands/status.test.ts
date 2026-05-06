@@ -21,22 +21,23 @@ generator client {
 }
 
 model SitepingFeedback {
-  id           String              @id @default(cuid())
-  projectName  String
-  type         String
-  message      String              @db.Text
-  status       String              @default("open")
-  url          String
-  urlPattern   String?
-  viewport     String
-  userAgent    String
-  authorName   String
-  authorEmail  String
-  clientId     String              @unique
-  resolvedAt   DateTime?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  annotations  SitepingAnnotation[]
+  id            String              @id @default(cuid())
+  projectName   String
+  type          String
+  message       String              @db.Text
+  status        String              @default("open")
+  url           String
+  urlPattern    String?
+  screenshotUrl String?             @db.Text
+  viewport      String
+  userAgent     String
+  authorName    String
+  authorEmail   String
+  clientId      String              @unique
+  resolvedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  annotations   SitepingAnnotation[]
 
   @@index([projectName])
   @@index([projectName, status, createdAt])
@@ -171,21 +172,22 @@ generator client {
 }
 
 model SitepingFeedback {
-  id           String              @id @default(cuid())
-  projectName  String
-  type         String
-  message      String              @db.Text
-  status       String              @default("open")
-  url          String
-  urlPattern   String?
-  viewport     String
-  userAgent    String
-  authorName   String
-  authorEmail  String
-  clientId     String              @unique
-  resolvedAt   DateTime?
-  createdAt    DateTime            @default(now())
-  annotations  SitepingAnnotation[]
+  id            String              @id @default(cuid())
+  projectName   String
+  type          String
+  message       String              @db.Text
+  status        String              @default("open")
+  url           String
+  urlPattern    String?
+  screenshotUrl String?             @db.Text
+  viewport      String
+  userAgent     String
+  authorName    String
+  authorEmail   String
+  clientId      String              @unique
+  resolvedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  annotations   SitepingAnnotation[]
 }
 
 model SitepingAnnotation {

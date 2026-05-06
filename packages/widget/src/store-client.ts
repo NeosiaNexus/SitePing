@@ -36,6 +36,7 @@ export class StoreClient implements WidgetClient {
       authorEmail: payload.authorEmail,
       clientId: payload.clientId,
       annotations: payload.annotations.map(flattenAnnotation),
+      screenshotDataUrl: payload.screenshotDataUrl ?? null,
     });
 
     return toResponse(record);
@@ -97,6 +98,7 @@ function toResponse(record: FeedbackRecord): FeedbackResponse {
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     annotations: record.annotations.map(toAnnotationResponse),
+    screenshotUrl: record.screenshotUrl ?? null,
   };
 }
 

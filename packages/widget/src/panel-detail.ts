@@ -48,6 +48,8 @@ export const DETAIL_I18N_EN = {
   "detail.title": "Feedback #{number}",
   "detail.status": "Status",
   "detail.message": "Message",
+  "detail.screenshot": "Screenshot",
+  "detail.screenshotAlt": "Screenshot of the annotated area",
   "detail.metadata": "Details",
   "detail.annotation": "Annotation",
   "detail.page": "Page",
@@ -70,6 +72,8 @@ export const DETAIL_I18N_FR = {
   "detail.title": "Feedback n\u00b0{number}",
   "detail.status": "Statut",
   "detail.message": "Message",
+  "detail.screenshot": "Capture d'\u00e9cran",
+  "detail.screenshotAlt": "Capture d'\u00e9cran de la zone annot\u00e9e",
   "detail.metadata": "D\u00e9tails",
   "detail.annotation": "Annotation",
   "detail.page": "Page",
@@ -383,6 +387,19 @@ export const DETAIL_CSS = /* css */ `
     word-break: break-word;
   }
 
+  /* ---- Screenshot Section ---- */
+
+  .sp-detail-screenshot {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
+    border-radius: var(--sp-radius);
+    border: 1px solid var(--sp-glass-border);
+    background: var(--sp-glass-bg-heavy);
+  }
+
   /* ---- Metadata Section ---- */
 
   .sp-detail-meta {
@@ -643,6 +660,26 @@ function extractPathname(url: string): string {
   }
 }
 
+/**
+ * Whitelist URL schemes that are safe to use as `<img src>`. Defends against
+ * a buggy or compromised `ScreenshotStorage` (or DB) writing a `javascript:`,
+ * `data:text/html`, or `data:image/svg+xml` URL — the latter can host
+ * external `<image href>` references that exfiltrate IP/UA/Referer when the
+ * panel renders. Browsers refuse to execute scripts via `<img>`, but the
+ * fetch itself still happens for arbitrary URLs.
+ */
+function isSafeImageUrl(url: string): boolean {
+  // data:image/(jpeg|png|webp) is what the widget produces; SVG is excluded
+  // because it can contain external references and is rarely a useful
+  // screenshot format.
+  if (/^data:image\/(jpeg|png|webp);/i.test(url)) return true;
+  // Remote URLs over https are accepted (S3, R2, etc.). http: is rejected
+  // because the panel typically runs over https and mixed-content is blocked
+  // anyway — surfacing the issue here is clearer than a silent network error.
+  if (/^https:\/\//i.test(url)) return true;
+  return false;
+}
+
 /** Truncate a string to a max length with ellipsis. */
 function truncate(str: string, max: number): string {
   if (str.length <= max) return str;
@@ -755,6 +792,26 @@ export class DetailView {
     setText(messageBlock, feedback.message);
     messageSection.appendChild(messageBlock);
     this.content.appendChild(messageSection);
+
+    // Section 2b: Screenshot (when captured)
+    if (feedback.screenshotUrl && isSafeImageUrl(feedback.screenshotUrl)) {
+      const screenshotSection = this.buildSection(sectionIndex++);
+      const screenshotSectionTitle = el("div", { class: "sp-detail-section-title" });
+      setText(screenshotSectionTitle, this.i18n["detail.screenshot"]);
+      screenshotSection.appendChild(screenshotSectionTitle);
+
+      const img = document.createElement("img");
+      img.className = "sp-detail-screenshot";
+      img.src = feedback.screenshotUrl;
+      img.alt = this.i18n["detail.screenshotAlt"];
+      img.loading = "lazy";
+      // Avoid leaking the panel viewer's referrer to the storage host —
+      // a malicious or compromised storage URL could otherwise track which
+      // operators view which feedbacks.
+      img.referrerPolicy = "no-referrer";
+      screenshotSection.appendChild(img);
+      this.content.appendChild(screenshotSection);
+    }
 
     // Section 3: Metadata
     const metaSection = this.buildSection(sectionIndex++);

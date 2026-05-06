@@ -51,6 +51,7 @@ const _SITEPING_MODELS = {
       status: { type: "String", default: '"open"' },
       url: { type: "String" },
       urlPattern: { type: "String", optional: true },
+      screenshotUrl: { type: "String", optional: true, nativeType: "Text" },
       viewport: { type: "String" },
       userAgent: { type: "String" },
       authorName: { type: "String" },

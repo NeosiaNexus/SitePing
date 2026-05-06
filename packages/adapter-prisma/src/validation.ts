@@ -61,6 +61,16 @@ export const feedbackCreateSchema = z.object({
   authorEmail: z.string().email().max(200),
   annotations: z.array(annotationSchema).max(50),
   clientId: z.string().min(1).max(200),
+  // Optional base64 JPEG data URL captured by the widget when
+  // `enableScreenshot: true`. ~1.5 MB cap = roughly a 1.1 MB JPEG, well
+  // above typical sizes (the widget downscales to 1200px). Rejects abuse
+  // without truncating legitimate captures.
+  screenshotDataUrl: z
+    .string()
+    .max(1_500_000)
+    .regex(/^data:image\/(jpeg|png|webp);base64,/, "screenshotDataUrl must be a data:image/* base64 URL")
+    .nullable()
+    .optional(),
 });
 
 export const feedbackPatchSchema = z.object({
@@ -133,6 +143,7 @@ export interface FeedbackCreateInput {
   authorEmail: string;
   annotations: AnnotationInput[];
   clientId: string;
+  screenshotDataUrl?: string | null | undefined;
 }
 
 export interface FeedbackPatchInput {

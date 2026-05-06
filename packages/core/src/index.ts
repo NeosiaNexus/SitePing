@@ -1,6 +1,7 @@
 export type { FieldDef, IndexDef, ModelDef } from "./schema.js";
 
 export { SITEPING_MODELS } from "./schema.js";
+export type { ScreenshotStorage } from "./screenshot-storage.js";
 export type {
   AnchorData,
   AnnotationCreateInput,

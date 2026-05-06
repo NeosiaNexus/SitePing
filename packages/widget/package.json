@@ -53,6 +53,9 @@
   "engines": {
     "node": ">=18"
   },
+  "dependencies": {
+    "html2canvas": "^1.4.1"
+  },
   "devDependencies": {
     "@medv/finder": "^3.2.0",
     "@siteping/core": "workspace:*"
