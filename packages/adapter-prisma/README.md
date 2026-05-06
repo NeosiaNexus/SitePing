@@ -90,9 +90,26 @@ npx @siteping/cli init
 npx prisma db push
 ```
 
+### Upgrading on a large existing table
+
+When upgrading to a version that adds an index (e.g. `@@index([projectName, url])` for the page-scope feature), `prisma db push` issues `CREATE INDEX` *without* `CONCURRENTLY` — that takes a SHARE lock on the table for the duration, blocking writes. On a multi-million-row Postgres `SitepingFeedback` table this can mean minutes of write timeouts.
+
+**Recommended for large prod tables:** run the index creation manually with `CONCURRENTLY` *before* `prisma db push`:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "SitepingFeedback_projectName_url_idx"
+  ON "SitepingFeedback" ("projectName", "url");
+```
+
+Then `prisma db push` sees the index already exists and skips it.
+
 ## Screenshot Storage
 
 When the widget is configured with `enableScreenshot: true`, every feedback POST may include a base64 JPEG `screenshotDataUrl`. By default the adapter persists the data URL **inline** on `Feedback.screenshotUrl`, which is convenient for dev but quickly blows up your DB in production (a 1200px JPEG is ~50–150 KB per row).
+
+> ⚠️ **Privacy** — screenshots embed page content, including anything sensitive currently on screen (password fields, credit-card forms, API tokens, etc.). Mark sensitive elements with `data-siteping-ignore="true"` BEFORE turning on screenshots in production. The capture predicate skips matching elements *and their descendants*.
+
+> ⚠️ **Abuse surface** — screenshot uploads arrive over the public POST endpoint (the widget runs unauthenticated in the browser). Without rate limiting an attacker can flood your storage / DB with 1.5 MB images. Configure rate limiting at your reverse proxy / framework middleware before enabling screenshots in production.
 
 For production, plug a `ScreenshotStorage` (S3, R2, B2, Cloudflare Images, local FS, …) into the handler:
 
@@ -127,7 +144,9 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 ```
 
-When the upload fails (transient S3 outage etc.), the adapter falls back to inline persistence so the screenshot is not lost — a warn surfaces the underlying error.
+When the upload fails (transient S3 outage etc.), the adapter persists `screenshotUrl: null` and emits a warn — the feedback message itself is preserved, only the screenshot is dropped. An inline fallback would silently bloat Postgres unnoticed during a multi-minute outage; operators who prefer that trade-off can wrap their `upload` to catch internally and return an inline data URL on failure.
+
+`ctx.feedbackId` passed to `upload()` is the client-supplied UUID — sanitize it before mapping to a filesystem path. Object stores like S3 treat it as a key prefix and are safe by default.
 
 ## Authentication
 

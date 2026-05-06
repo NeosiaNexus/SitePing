@@ -49,6 +49,13 @@ export interface SitepingConfig {
    * - it adds bundle weight (~40 KB gzip dynamic chunk),
    * - it embeds page content in the feedback (privacy/GDPR consideration —
    *   inform end users in your widget host UI when enabling).
+   *
+   * **Masking sensitive elements:** add `data-siteping-ignore="true"` to any
+   * element you do NOT want captured (password fields, credit-card forms,
+   * API tokens shown in the UI, etc.). The capture predicate skips matching
+   * elements *and their descendants*. Do this BEFORE turning on screenshots
+   * in production — once a feedback is saved, the screenshot is in your DB
+   * (or object storage) regardless of what was on the page.
    */
   enableScreenshot?: boolean | undefined;
   /** Called when the widget is skipped (production mode, mobile viewport) */

@@ -126,10 +126,17 @@ export class PrismaStore implements SitepingStore {
    * Resolve the value to persist on `Feedback.screenshotUrl`.
    *
    * - No data URL → null
-   * - Storage configured → upload, return remote URL. Upload failures fall
-   *   back to inline so a transient S3 outage doesn't drop the screenshot.
+   * - Storage configured → upload, return remote URL. Upload failures
+   *   persist `null` (drop the screenshot) rather than silently inlining
+   *   the data URL — an inline fallback would bloat Postgres unnoticed
+   *   during a multi-minute storage outage. The feedback message itself is
+   *   preserved; only the screenshot is missing, and the warn surfaces it.
    * - No storage → inline base64, with a one-time warn so prod operators
    *   notice the footgun.
+   *
+   * Operators who prefer the legacy inline-on-failure behaviour can wrap
+   * their `ScreenshotStorage.upload` with their own catch + return the
+   * data URL — the adapter treats whatever the storage returns as final.
    */
   private async persistScreenshot(dataUrl: string | null | undefined, clientId: string): Promise<string | null> {
     if (!dataUrl) return null;
@@ -138,14 +145,19 @@ export class PrismaStore implements SitepingStore {
       try {
         // Use clientId as the upload-time identifier — the feedback row's
         // own id isn't created yet and clientId is unique + stable.
+        // NOTE: clientId is client-supplied; storage implementations that
+        // map it to a filesystem path MUST sanitize against path traversal.
         const { url } = await this.screenshotStorage.upload(dataUrl, {
           feedbackId: clientId,
           mimeType: "image/jpeg",
         });
         return url;
       } catch (err) {
-        console.warn("[siteping] screenshotStorage.upload failed, falling back to inline:", err);
-        return dataUrl;
+        console.warn(
+          "[siteping] screenshotStorage.upload failed — feedback will be saved without a screenshot. Wrap your storage's upload to handle this differently:",
+          err,
+        );
+        return null;
       }
     }
 
