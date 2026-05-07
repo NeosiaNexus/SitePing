@@ -327,12 +327,27 @@ describe("DetailView", () => {
       expect(img!.src).toBe("https://cdn.example.com/fb-1.jpg");
     });
 
-    it("does NOT render the screenshot for unsafe schemes (javascript:, data:text/html, http:)", () => {
+    it("does NOT render the screenshot for unsafe schemes (javascript:, data:text/html, http: non-loopback)", () => {
       const unsafe = ["javascript:alert(1)", "data:text/html,<script>", "http://insecure.example/x.jpg"];
       for (const url of unsafe) {
         setup.view.show(makeFeedback({ screenshotUrl: url }), 1);
         const img = setup.view.element.querySelector<HTMLImageElement>(".sp-detail-screenshot");
         expect(img, `should reject ${url}`).toBeNull();
+      }
+    });
+
+    it("renders the screenshot for http://localhost / 127.0.0.1 (dev loopback exception)", () => {
+      // Dev stacks running on plain http (Vite/CRA + MinIO on localhost:9000)
+      // need this so the panel renders presigned URLs the backend produced.
+      const allowed = [
+        "http://localhost:9000/feedback-screenshots/abc.jpg?X-Amz-Signature=xyz",
+        "http://127.0.0.1:9000/bucket/key.png",
+      ];
+      for (const url of allowed) {
+        setup.view.show(makeFeedback({ screenshotUrl: url }), 1);
+        const img = setup.view.element.querySelector<HTMLImageElement>(".sp-detail-screenshot");
+        expect(img, `should accept ${url}`).not.toBeNull();
+        expect(img!.referrerPolicy).toBe("no-referrer");
       }
     });
 

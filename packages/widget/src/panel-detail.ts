@@ -677,6 +677,13 @@ function isSafeImageUrl(url: string): boolean {
   // because the panel typically runs over https and mixed-content is blocked
   // anyway — surfacing the issue here is clearer than a silent network error.
   if (/^https:\/\//i.test(url)) return true;
+  // Dev-only loopback exception: hosts running their dev stack over plain
+  // http (Vite/CRA on `localhost:5173`, MinIO on `localhost:9000`) hit
+  // neither rule above. Mixed-content isn't a concern when the panel
+  // itself runs over http, and loopback addresses can't be reached by an
+  // attacker — there's no IP/UA/Referer leak vector. Production keeps the
+  // https requirement.
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?\//i.test(url)) return true;
   return false;
 }
 
