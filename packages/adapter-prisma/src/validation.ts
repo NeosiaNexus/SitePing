@@ -60,7 +60,16 @@ export const feedbackCreateSchema = z.object({
   authorName: z.string().min(1).max(200),
   authorEmail: z.string().email().max(200),
   annotations: z.array(annotationSchema).max(50),
-  clientId: z.string().min(1).max(200),
+  // Restrict to URL-safe identifiers. The widget generates UUIDs (or a
+  // Date+Math.random fallback), both of which match. Anything outside this
+  // alphabet — `..`, `/`, NUL, etc. — would be a path-traversal vector once
+  // the adapter forwards clientId to `screenshotStorage.upload({ feedbackId })`
+  // (e.g. an S3 key prefix or a local FS path).
+  clientId: z
+    .string()
+    .min(1)
+    .max(200)
+    .regex(/^[a-zA-Z0-9_-]+$/, "clientId must be alphanumeric (a-z, A-Z, 0-9, _, -)"),
   // Optional base64 JPEG data URL captured by the widget when
   // `enableScreenshot: true`. ~1.5 MB cap = roughly a 1.1 MB JPEG, well
   // above typical sizes (the widget downscales to 1200px). Rejects abuse
