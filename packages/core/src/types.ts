@@ -70,6 +70,17 @@ export interface SitepingConfig {
   /** Called when the feedback panel is closed. */
   onClose?: () => void;
   onFeedbackSent?: (feedback: FeedbackResponse) => void;
+  /**
+   * Called when a feedback API call fails.
+   *
+   * The widget always emits a `SitepingError` (or a subclass:
+   * `SitepingNetworkError`, `SitepingValidationError`, `SitepingAuthError`)
+   * for HTTP-mode failures — host apps can `instanceof` to drive retry
+   * logic, or read `error.code` (`"NETWORK" | "VALIDATION" | "AUTH" |
+   * "SERVER"`) and `error.retryable`. The type is widened to `Error` so
+   * direct-store callers can still surface raw errors without breaking the
+   * contract.
+   */
   onError?: (error: Error) => void;
   /** Called when the user starts drawing an annotation. */
   onAnnotationStart?: () => void;

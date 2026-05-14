@@ -1,3 +1,4 @@
+export { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
 export type { FieldDef, IndexDef, ModelDef } from "./schema.js";
 
 export { SITEPING_MODELS } from "./schema.js";
