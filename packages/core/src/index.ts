@@ -1,3 +1,4 @@
+export { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
 export type { FilterResult } from "./filters.js";
 export { applyFeedbackFilters } from "./filters.js";
 export type { FieldDef, IndexDef, ModelDef } from "./schema.js";

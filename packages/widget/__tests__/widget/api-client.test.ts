@@ -1,3 +1,4 @@
+import { SitepingAuthError, type SitepingError, SitepingNetworkError, SitepingValidationError } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
 
@@ -71,6 +72,49 @@ describe("ApiClient", () => {
 
     // Should NOT retry on 4xx
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Typed error mapping — surface SitepingError subclasses by status code
+  // so host apps can `instanceof`-check instead of grepping messages.
+  // -------------------------------------------------------------------------
+
+  it("maps 401 to SitepingAuthError (not retryable)", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("Nope", { status: 401 }));
+    const err = (await client.getFeedbacks("test").catch((e: SitepingError) => e)) as SitepingError;
+    expect(err).toBeInstanceOf(SitepingAuthError);
+    expect(err.code).toBe("AUTH");
+    expect(err.retryable).toBe(false);
+  });
+
+  it("maps 403 to SitepingAuthError", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("Forbidden", { status: 403 }));
+    const err = (await client.getFeedbacks("test").catch((e: SitepingError) => e)) as SitepingError;
+    expect(err).toBeInstanceOf(SitepingAuthError);
+  });
+
+  it("maps other 4xx to SitepingValidationError (not retryable)", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 400 }));
+    const err = (await client.getFeedbacks("test").catch((e: SitepingError) => e)) as SitepingError;
+    expect(err).toBeInstanceOf(SitepingValidationError);
+    expect(err.code).toBe("VALIDATION");
+    expect(err.retryable).toBe(false);
+  });
+
+  it("maps a thrown network exception to SitepingNetworkError (retryable)", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("offline"));
+    vi.stubGlobal("fetch", fetchMock);
+    const promise = client.getFeedbacks("test").catch((e: SitepingError) => e);
+    // 1s + 2s + 4s of backoff before throwing
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(4500);
+    const err = (await promise) as SitepingError;
+    expect(err).toBeInstanceOf(SitepingNetworkError);
+    expect(err.code).toBe("NETWORK");
+    expect(err.retryable).toBe(true);
+    vi.useRealTimers();
   });
 
   it("throws on getFeedbacks non-ok response", async () => {
@@ -221,7 +265,10 @@ describe("ApiClient", () => {
     await vi.advanceTimersByTimeAsync(4500);
 
     const error = (await promise) as Error;
-    expect(error).toBeInstanceOf(TypeError);
+    // Network failures are now wrapped in SitepingNetworkError (retryable=true)
+    // so host apps get a typed signal — the original cause is preserved in
+    // the message so existing log scraping still works.
+    expect(error.name).toBe("SitepingNetworkError");
     expect((error as Error).message).toContain("network down");
     expect(fetchMock).toHaveBeenCalledTimes(4);
 

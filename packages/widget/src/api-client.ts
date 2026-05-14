@@ -1,4 +1,50 @@
-import type { FeedbackPayload, FeedbackResponse, FeedbackStatus, FeedbackType } from "@siteping/core";
+import {
+  type FeedbackPayload,
+  type FeedbackResponse,
+  type FeedbackStatus,
+  type FeedbackType,
+  SitepingAuthError,
+  SitepingError,
+  SitepingNetworkError,
+  SitepingValidationError,
+} from "@siteping/core";
+
+/**
+ * Map a non-OK Response to the appropriate typed error.
+ *   - 401 / 403 → `SitepingAuthError`
+ *   - 4xx       → `SitepingValidationError`
+ *   - 5xx (or anything else) → generic `SitepingError`
+ *
+ * We consume the response body via `.text()` so the caller can keep the
+ * server-supplied message in the thrown error. `text()` is awaited inside
+ * a try/catch because some upstreams return `Content-Length: 0` with a
+ * non-text type and `.text()` rejects.
+ */
+async function errorFromResponse(response: Response, label: string): Promise<SitepingError> {
+  // Match the legacy fallback string ("Unknown error") so host apps that
+  // already grep error messages don't break on the migration.
+  const text = await response.text().catch(() => "Unknown error");
+  const detail = text ? `${response.status} ${text}` : `${response.status}`;
+  const message = `${label}: ${detail}`;
+  if (response.status === 401 || response.status === 403) return new SitepingAuthError(message);
+  if (response.status >= 400 && response.status < 500) return new SitepingValidationError(message);
+  return new SitepingError(message, "SERVER", false);
+}
+
+/**
+ * Normalise an exception thrown by `fetch` (or our timeout AbortController)
+ * into a `SitepingNetworkError`. We treat AbortErrors as network failures
+ * because in our code path they always come from the internal timeout, not
+ * a user-driven cancellation.
+ */
+function networkErrorFromException(error: unknown, label: string): SitepingNetworkError {
+  if (error instanceof SitepingError) {
+    // Already typed — only used when callers pass our own errors through.
+    if (error instanceof SitepingNetworkError) return error;
+  }
+  const detail = error instanceof Error ? error.message : String(error);
+  return new SitepingNetworkError(`${label}: ${detail}`);
+}
 
 /**
  * Abstract client interface used by the widget internals.
@@ -164,16 +210,23 @@ export class ApiClient {
   ) {}
 
   async sendFeedback(payload: FeedbackPayload): Promise<FeedbackResponse> {
+    // Match the legacy contract: every failure path (network or HTTP) queues
+    // for retry. Tests + host apps already rely on this — narrowing to
+    // network-only would be a silent behaviour change.
     try {
-      const response = await resilientFetch(this.endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      let response: Response;
+      try {
+        response = await resilientFetch(this.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (error) {
+        throw networkErrorFromException(error, "Failed to send feedback");
+      }
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "Unknown error");
-        throw new Error(`Failed to send feedback: ${response.status} ${text}`);
+        throw await errorFromResponse(response, "Failed to send feedback");
       }
 
       return (await response.json()) as FeedbackResponse; // Server validates via Zod
@@ -196,53 +249,73 @@ export class ApiClient {
     if (options?.url) params.set("url", options.url);
     if (options?.urlPattern) params.set("urlPattern", options.urlPattern);
 
-    const response = await resilientFetch(`${this.endpoint}?${params.toString()}`, {
-      method: "GET",
-      cache: "no-store",
-    });
+    let response: Response;
+    try {
+      response = await resilientFetch(`${this.endpoint}?${params.toString()}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+    } catch (error) {
+      throw networkErrorFromException(error, "Failed to fetch feedbacks");
+    }
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch feedbacks: ${response.status}`);
+      throw await errorFromResponse(response, "Failed to fetch feedbacks");
     }
 
     return (await response.json()) as { feedbacks: FeedbackResponse[]; total: number }; // Server validates via Zod
   }
 
   async resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse> {
-    const response = await resilientFetch(this.endpoint, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, projectName: this.projectName, status: resolved ? "resolved" : "open" }),
-    });
+    let response: Response;
+    try {
+      response = await resilientFetch(this.endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, projectName: this.projectName, status: resolved ? "resolved" : "open" }),
+      });
+    } catch (error) {
+      throw networkErrorFromException(error, "Failed to update feedback");
+    }
 
     if (!response.ok) {
-      throw new Error(`Failed to update feedback: ${response.status}`);
+      throw await errorFromResponse(response, "Failed to update feedback");
     }
 
     return (await response.json()) as FeedbackResponse; // Server validates via Zod
   }
 
   async deleteFeedback(id: string): Promise<void> {
-    const response = await resilientFetch(this.endpoint, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, projectName: this.projectName }),
-    });
+    let response: Response;
+    try {
+      response = await resilientFetch(this.endpoint, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, projectName: this.projectName }),
+      });
+    } catch (error) {
+      throw networkErrorFromException(error, "Failed to delete feedback");
+    }
 
     if (!response.ok) {
-      throw new Error(`Failed to delete feedback: ${response.status}`);
+      throw await errorFromResponse(response, "Failed to delete feedback");
     }
   }
 
   async deleteAllFeedbacks(projectName: string): Promise<void> {
-    const response = await resilientFetch(this.endpoint, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectName, deleteAll: true }),
-    });
+    let response: Response;
+    try {
+      response = await resilientFetch(this.endpoint, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectName, deleteAll: true }),
+      });
+    } catch (error) {
+      throw networkErrorFromException(error, "Failed to delete all feedbacks");
+    }
 
     if (!response.ok) {
-      throw new Error(`Failed to delete all feedbacks: ${response.status}`);
+      throw await errorFromResponse(response, "Failed to delete all feedbacks");
     }
   }
 }
