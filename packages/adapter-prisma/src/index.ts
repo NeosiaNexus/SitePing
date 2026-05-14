@@ -17,6 +17,7 @@ import {
   formatValidationErrors,
   getQuerySchema,
 } from "./validation.js";
+import { dispatchWebhooks, type WebhookConfig } from "./webhooks.js";
 
 export type { ScreenshotStorage, SitepingStore } from "@siteping/core";
 export { flattenAnnotation, StoreDuplicateError, StoreNotFoundError } from "@siteping/core";
@@ -26,6 +27,8 @@ export type {
   FeedbackPatchInput,
   GetQueryInput,
 } from "./validation.js";
+export type { WebhookConfig } from "./webhooks.js";
+export { dispatchWebhook, dispatchWebhooks } from "./webhooks.js";
 
 // ---------------------------------------------------------------------------
 // Minimal PrismaClient shape expected by this adapter
@@ -378,6 +381,16 @@ export interface HandlerOptions {
    * auth middleware (session, OAuth, etc.) and want SitePing to stay open.
    */
   requireAuthForDestructive?: boolean;
+  /**
+   * Outgoing webhooks fired after a feedback is successfully persisted.
+   *
+   * Pass a single config or an array — every entry receives a POST with a
+   * type-specific payload (Slack, Discord, or generic JSON). Dispatch is
+   * fire-and-forget: the HTTP response is returned to the widget before
+   * webhook delivery completes, so a slow receiver never blocks the client.
+   * Provide `onError` on each config to observe failures.
+   */
+  webhooks?: WebhookConfig | WebhookConfig[];
 }
 
 /**
@@ -479,6 +492,7 @@ export function createSitepingHandler({
   allowedOrigins,
   caseInsensitiveSearch,
   requireAuthForDestructive = true,
+  webhooks,
 }: HandlerOptions): SitepingHandler {
   if (!providedStore && !prisma) {
     throw new Error("[siteping] createSitepingHandler requires either `store` or `prisma`.");
@@ -503,6 +517,10 @@ export function createSitepingHandler({
     });
 
   const publicMethods = publicEndpoints ? new Set(publicEndpoints) : null;
+
+  // Normalise the webhook config to an array once so every POST avoids the
+  // allocation. Empty array short-circuits `dispatchWebhooks` cheaply.
+  const webhookList: WebhookConfig[] = webhooks ? (Array.isArray(webhooks) ? webhooks : [webhooks]) : [];
 
   /** Verify Bearer token when apiKey is configured. Skips methods listed in `publicEndpoints`. */
   function authenticate(request: Request, method: string): Response | null {
@@ -570,6 +588,13 @@ export function createSitepingHandler({
           annotations: data.annotations.map(flattenAnnotation),
           screenshotDataUrl: data.screenshotDataUrl ?? null,
         });
+
+        // Fire-and-forget: drop the promise so the widget isn't held back
+        // on slow Slack/Discord/generic receivers. `dispatchWebhooks` traps
+        // its own errors and reports them through `WebhookConfig.onError`.
+        if (webhookList.length > 0) {
+          void dispatchWebhooks(webhookList, feedback);
+        }
 
         return withCors(Response.json(feedback, { status: 201 }), corsHeaders);
       } catch (error) {
