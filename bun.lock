@@ -61,7 +61,7 @@
         "@siteping/core": "workspace:*",
       },
       "peerDependencies": {
-        "@prisma/client": "^5.0.0 || ^6.0.0",
+        "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0",
       },
     },
     "packages/cli": {
@@ -85,10 +85,10 @@
       "name": "@siteping/widget",
       "version": "0.9.7",
       "dependencies": {
+        "@medv/finder": "^3.2.0",
         "html2canvas": "^1.4.1",
       },
       "devDependencies": {
-        "@medv/finder": "^3.2.0",
         "@siteping/core": "workspace:*",
         "@size-limit/preset-small-lib": "^12.1.0",
         "@testing-library/react": "^16.3.2",

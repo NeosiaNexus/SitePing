@@ -9,6 +9,9 @@
     "check": "tsc --noEmit",
     "clean": "rm -rf .next"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@siteping/adapter-memory": "workspace:*",
     "@siteping/adapter-prisma": "workspace:*",

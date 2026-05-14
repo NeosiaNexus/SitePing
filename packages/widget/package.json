@@ -56,13 +56,13 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
+    "@medv/finder": "^3.2.0",
     "html2canvas": "^1.4.1"
   },
   "devDependencies": {
-    "@medv/finder": "^3.2.0",
     "@siteping/core": "workspace:*",
     "@size-limit/preset-small-lib": "^12.1.0",
     "@testing-library/react": "^16.3.2",
