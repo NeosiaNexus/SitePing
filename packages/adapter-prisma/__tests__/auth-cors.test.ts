@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSitepingHandler } from "../src/index.js";
 import { validPayloadNoAnnotations } from "./fixtures.js";
 
@@ -186,29 +186,74 @@ describe("Authentication", () => {
     });
   });
 
-  describe("without apiKey configured", () => {
-    it("POST succeeds without any Authorization header", async () => {
+  describe("without apiKey configured (dev mode)", () => {
+    it("POST succeeds without any Authorization header (public by default)", async () => {
       const handler = createSitepingHandler({ prisma });
       const res = await handler.POST(postRequest(validPayloadNoAnnotations));
       expect(res.status).toBe(201);
     });
 
-    it("GET succeeds without any Authorization header", async () => {
+    it("GET succeeds without any Authorization header (public by default)", async () => {
       const handler = createSitepingHandler({ prisma });
       const res = await handler.GET(getRequest("projectName=test"));
       expect(res.status).toBe(200);
     });
 
-    it("PATCH succeeds without any Authorization header", async () => {
+    it("PATCH without apiKey returns 401 (destructive ops require auth by default)", async () => {
       const handler = createSitepingHandler({ prisma });
+      const res = await handler.PATCH(patchRequest({ id: "fb-1", projectName: "test", status: "resolved" }));
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.error).toContain("apiKey required");
+    });
+
+    it("DELETE without apiKey returns 401 (destructive ops require auth by default)", async () => {
+      const handler = createSitepingHandler({ prisma });
+      const res = await handler.DELETE(deleteRequest({ id: "fb-1", projectName: "test" }));
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.error).toContain("apiKey required");
+    });
+
+    it("DELETE { deleteAll: true } without apiKey returns 401 (closes the wipe-everything hole)", async () => {
+      const handler = createSitepingHandler({ prisma });
+      const res = await handler.DELETE(deleteRequest({ projectName: "test", deleteAll: true }));
+      expect(res.status).toBe(401);
+    });
+
+    it("PATCH succeeds when requireAuthForDestructive=false (explicit escape hatch)", async () => {
+      const handler = createSitepingHandler({ prisma, requireAuthForDestructive: false });
       const res = await handler.PATCH(patchRequest({ id: "fb-1", projectName: "test", status: "resolved" }));
       expect(res.status).toBe(200);
     });
 
-    it("DELETE succeeds without any Authorization header", async () => {
-      const handler = createSitepingHandler({ prisma });
+    it("DELETE succeeds when requireAuthForDestructive=false (explicit escape hatch)", async () => {
+      const handler = createSitepingHandler({ prisma, requireAuthForDestructive: false });
       const res = await handler.DELETE(deleteRequest({ id: "fb-1", projectName: "test" }));
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe("startup guard in production", () => {
+    const originalEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalEnv;
+    });
+
+    it("throws when NODE_ENV=production and apiKey is missing", () => {
+      process.env.NODE_ENV = "production";
+      expect(() => createSitepingHandler({ prisma })).toThrow(/apiKey is required in production/);
+    });
+
+    it("does not throw when apiKey is provided in production", () => {
+      process.env.NODE_ENV = "production";
+      expect(() => createSitepingHandler({ prisma, apiKey: API_KEY })).not.toThrow();
+    });
+
+    it("does not throw in production when requireAuthForDestructive=false (delegated auth)", () => {
+      process.env.NODE_ENV = "production";
+      expect(() => createSitepingHandler({ prisma, requireAuthForDestructive: false })).not.toThrow();
     });
   });
 });
@@ -324,6 +369,7 @@ describe("CORS", () => {
       const handler = createSitepingHandler({
         prisma,
         allowedOrigins: [ALLOWED_ORIGIN],
+        requireAuthForDestructive: false,
       });
       const res = await handler.PATCH(
         patchRequest({ id: "fb-1", projectName: "test", status: "resolved" }, { Origin: ALLOWED_ORIGIN }),
@@ -337,6 +383,7 @@ describe("CORS", () => {
       const handler = createSitepingHandler({
         prisma,
         allowedOrigins: [ALLOWED_ORIGIN],
+        requireAuthForDestructive: false,
       });
       const res = await handler.DELETE(deleteRequest({ id: "fb-1", projectName: "test" }, { Origin: ALLOWED_ORIGIN }));
 

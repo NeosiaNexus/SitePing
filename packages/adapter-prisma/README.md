@@ -177,7 +177,11 @@ When the upload fails (transient S3 outage etc.), the adapter persists `screensh
 
 ## Authentication
 
-By default, all endpoints are publicly accessible. To protect read/update/delete operations, pass an `apiKey`:
+GET and POST are publicly accessible by default (read + widget-side submit). DELETE and PATCH are gated:
+
+- **No `apiKey` in production (`NODE_ENV === "production"`)** — `createSitepingHandler` throws at startup. This is intentional: without it, anyone could `DELETE { deleteAll: true }` against your endpoint.
+- **No `apiKey` in dev** — DELETE and PATCH return `401 { error: "apiKey required for destructive operations" }`. GET/POST stay open so the widget keeps working locally.
+- **`apiKey` set** — DELETE/PATCH require `Authorization: Bearer <apiKey>`; GET/POST stay public unless you override `publicEndpoints`.
 
 ```ts
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
@@ -191,6 +195,15 @@ When `apiKey` is set:
 
 - **POST** and **OPTIONS** remain public (the browser widget needs to submit feedback and perform CORS preflight without authentication).
 - **GET**, **PATCH**, and **DELETE** require a `Bearer <apiKey>` token in the `Authorization` header.
+
+### Escape hatch: `requireAuthForDestructive: false`
+
+If SitePing sits behind your own session-based / OAuth middleware and you want destructive ops to inherit that auth, pass `requireAuthForDestructive: false`. This disables the startup guard and the dev-mode 401s:
+
+```ts
+// Only safe when an upstream middleware authenticates DELETE/PATCH.
+createSitepingHandler({ prisma, requireAuthForDestructive: false })
+```
 
 ## Framework Compatibility
 
