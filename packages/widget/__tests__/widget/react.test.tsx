@@ -170,9 +170,7 @@ describe("useSiteping", () => {
 
   it("ignores destroyed widget events (cleanup unsubscribes)", () => {
     const onOpen = vi.fn();
-    const { unmount } = render(
-      <Probe config={{ endpoint: "/api/x", projectName: "p", onOpen }} />,
-    );
+    const { unmount } = render(<Probe config={{ endpoint: "/api/x", projectName: "p", onOpen }} />);
     const inst = mockInstances[0]!;
     unmount();
     // Even if a stray event fires after unmount, the user callback never runs.
