@@ -1,7 +1,7 @@
 import type { FeedbackResponse, FeedbackStatus, FeedbackType, PageScope } from "@siteping/core";
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
-import { PAGE_SIZE } from "./constants.js";
 import { SegmentedControl } from "./components/segmented-control.js";
+import { PAGE_SIZE } from "./constants.js";
 import { el, formatRelativeDate, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { EXPORT_I18N_FR, ExportButton } from "./export-utils.js";
