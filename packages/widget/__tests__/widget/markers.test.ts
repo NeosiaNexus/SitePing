@@ -469,6 +469,44 @@ describe("MarkerManager", () => {
       expect(markerEl.style.transform).toBe("scale(1)");
     });
 
+    // WCAG 1.4.13 — keyboard users must get the same tooltip a mouse user
+    // gets. Without focus parity, the tooltip is unreachable without a mouse.
+    it("focus event shows tooltip (WCAG 1.4.13 keyboard parity)", () => {
+      const fb = makeFeedback({ id: "fb-focus" });
+      markers.render([fb]);
+
+      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-focus"]')!;
+      markerEl.dispatchEvent(new FocusEvent("focus"));
+
+      expect(tooltip.show).toHaveBeenCalled();
+    });
+
+    it("blur event schedules tooltip hide", () => {
+      const fb = makeFeedback({ id: "fb-blur" });
+      markers.render([fb]);
+
+      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-blur"]')!;
+      markerEl.dispatchEvent(new FocusEvent("focus"));
+      markerEl.dispatchEvent(new FocusEvent("blur"));
+
+      expect(tooltip.scheduleHide).toHaveBeenCalled();
+    });
+
+    it("render announces marker count via liveRegion when provided", () => {
+      const liveRegion = document.createElement("div");
+      liveRegion.setAttribute("role", "status");
+      document.body.appendChild(liveRegion);
+      const localMarkers = new MarkerManager(colors, tooltip, bus, t, liveRegion);
+
+      try {
+        localMarkers.render([makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-b" })]);
+        expect(liveRegion.textContent).toContain("2");
+      } finally {
+        localMarkers.destroy();
+        liveRegion.remove();
+      }
+    });
+
     it("click on marker emits panel:toggle and dispatches sp-marker-click", () => {
       const fb = makeFeedback({ id: "fb-click" });
       markers.render([fb]);

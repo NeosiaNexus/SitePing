@@ -202,7 +202,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // Components outside Shadow DOM
   const tooltip = new Tooltip(colors, locale);
-  const markers = new MarkerManager(colors, tooltip, bus, t);
+  const markers = new MarkerManager(colors, tooltip, bus, t, liveRegion);
 
   // Components inside Shadow DOM
   const fab = new Fab(shadow, config, bus, t);
