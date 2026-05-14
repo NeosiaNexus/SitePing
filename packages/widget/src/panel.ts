@@ -1,7 +1,8 @@
 import type { FeedbackResponse, FeedbackStatus, FeedbackType, PageScope } from "@siteping/core";
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
+import { SegmentedControl } from "./components/segmented-control.js";
 import { PAGE_SIZE } from "./constants.js";
-import { el, formatRelativeDate, parseSvg, setText } from "./dom-utils.js";
+import { el, formatRelativeDate, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { EXPORT_I18N_FR, ExportButton } from "./export-utils.js";
 import { getTypeLabel, type TFunction } from "./i18n/index.js";
@@ -48,20 +49,12 @@ export class Panel {
   private closeBtn: HTMLButtonElement;
   private deleteAllBtn: HTMLButtonElement;
   private activeFilters = new Set<string>(["all"]);
-  private activeStatusFilter: "all" | FeedbackStatus = "all";
   private typeDropdownBtn!: HTMLButtonElement;
   private typeDropdownContainer!: HTMLElement;
   private typeDropdownMenu: HTMLElement | null = null;
   private typeDropdownOutsideHandler: ((e: MouseEvent) => void) | null = null;
-  private statusSegmented!: HTMLElement;
+  private statusSegmented!: SegmentedControl<"all" | FeedbackStatus>;
   private typeOptions!: ReadonlyArray<{ value: string; label: string; icon: string; color: string; bg: string }>;
-  private statusOptions!: ReadonlyArray<{
-    value: "all" | FeedbackStatus;
-    label: string;
-    icon: string;
-    color: string;
-    bg: string;
-  }>;
   private feedbacks: FeedbackResponse[] = [];
   private currentPage = 1;
   private totalFeedbacks = 0;
@@ -89,9 +82,9 @@ export class Panel {
   private readonly getScope: () => PageScope;
   private readonly scopeAnnotationsByUrl: boolean;
   /** "this" = current url, "template" = url pattern, "all" = no scope filter */
-  private activeScopeFilter: "this" | "template" | "all" = "this";
-  private scopeSegmented!: HTMLElement;
-  private scopeOptions!: ReadonlyArray<{ value: "this" | "template" | "all"; label: string }>;
+  private scopeSegmented!: SegmentedControl<"this" | "template" | "all">;
+  /** Cached initial scope value — applied after construction in `buildScopeSegmented`. */
+  private readonly initialScopeFilter: "this" | "template" | "all" = "this";
 
   constructor(
     shadowRoot: ShadowRoot,
@@ -494,11 +487,13 @@ export class Panel {
 
     const search = this.searchInput.value.trim() || undefined;
     const typeFilter = this.activeFilters.has("all") ? undefined : (Array.from(this.activeFilters)[0] as FeedbackType);
-    const statusFilter = this.activeStatusFilter === "all" ? undefined : this.activeStatusFilter;
+    const currentStatus = this.statusSegmented.value;
+    const statusFilter = currentStatus === "all" ? undefined : currentStatus;
 
     const scope = this.getScope();
     // Refresh scope-filter button visibility based on current scope (SPA nav).
     this.syncScopeAvailability();
+    const currentScope = this.scopeSegmented.value;
     const options: GetFeedbacksOptions & { page: number; limit: number } = {
       page: 1,
       limit: PAGE_SIZE,
@@ -506,9 +501,9 @@ export class Panel {
     if (typeFilter) options.type = typeFilter;
     if (statusFilter) options.status = statusFilter;
     if (search) options.search = search;
-    if (this.activeScopeFilter === "this") {
+    if (currentScope === "this") {
       options.url = scope.url;
-    } else if (this.activeScopeFilter === "template" && scope.urlPattern) {
+    } else if (currentScope === "template" && scope.urlPattern) {
       options.urlPattern = scope.urlPattern;
     }
 
@@ -547,9 +542,11 @@ export class Panel {
     const nextPage = this.currentPage + 1;
     const search = this.searchInput.value.trim() || undefined;
     const typeFilter = this.activeFilters.has("all") ? undefined : (Array.from(this.activeFilters)[0] as FeedbackType);
-    const statusFilter = this.activeStatusFilter === "all" ? undefined : this.activeStatusFilter;
+    const currentStatus = this.statusSegmented.value;
+    const statusFilter = currentStatus === "all" ? undefined : currentStatus;
 
     const scope = this.getScope();
+    const currentScope = this.scopeSegmented.value;
     const options: GetFeedbacksOptions & { page: number; limit: number } = {
       page: nextPage,
       limit: PAGE_SIZE,
@@ -557,16 +554,16 @@ export class Panel {
     if (typeFilter) options.type = typeFilter;
     if (statusFilter) options.status = statusFilter;
     if (search) options.search = search;
-    if (this.activeScopeFilter === "this") {
+    if (currentScope === "this") {
       options.url = scope.url;
-    } else if (this.activeScopeFilter === "template" && scope.urlPattern) {
+    } else if (currentScope === "template" && scope.urlPattern) {
       options.urlPattern = scope.urlPattern;
     }
 
     // Show spinner on the "Load more" button
     const loadMoreBtn = this.listContainer.querySelector<HTMLButtonElement>(".sp-btn-load-more");
     let restoreBtn: (() => void) | undefined;
-    if (loadMoreBtn) restoreBtn = this.setButtonLoading(loadMoreBtn);
+    if (loadMoreBtn) restoreBtn = setButtonLoading(loadMoreBtn);
 
     try {
       const { feedbacks, total } = await this.client.getFeedbacks(this.projectName, options);
@@ -891,19 +888,9 @@ export class Panel {
     });
   }
 
-  private setButtonLoading(btn: HTMLButtonElement): () => void {
-    const snapshot = Array.from(btn.childNodes).map((n) => n.cloneNode(true));
-    btn.disabled = true;
-    btn.replaceChildren(el("div", { class: "sp-spinner sp-spinner--sm" }));
-    return () => {
-      btn.replaceChildren(...snapshot);
-      btn.disabled = false;
-    };
-  }
-
   private async deleteFeedback(feedback: FeedbackResponse, btn: HTMLButtonElement): Promise<void> {
     this.pendingMutations.add(feedback.id);
-    const restore = this.setButtonLoading(btn);
+    const restore = setButtonLoading(btn);
     try {
       await this.client.deleteFeedback(feedback.id);
       this.bus.emit("feedback:deleted", feedback.id);
@@ -918,7 +905,7 @@ export class Panel {
 
   private async toggleResolve(feedback: FeedbackResponse, btn: HTMLButtonElement): Promise<void> {
     this.pendingMutations.add(feedback.id);
-    const restore = this.setButtonLoading(btn);
+    const restore = setButtonLoading(btn);
     try {
       const newResolved = feedback.status !== "resolved";
       await this.client.resolveFeedback(feedback.id, newResolved);
@@ -1097,101 +1084,40 @@ export class Panel {
   }
 
   private buildStatusSegmented(): HTMLElement {
-    this.statusOptions = [
-      {
-        value: "all",
-        label: this.t("panel.statusAll"),
-        icon: ICON_LAYERS,
-        color: this.colors.accent,
-        bg: this.colors.accentLight,
+    this.statusSegmented = new SegmentedControl<"all" | FeedbackStatus>({
+      options: [
+        {
+          value: "all",
+          label: this.t("panel.statusAll"),
+          icon: ICON_LAYERS,
+          color: this.colors.accent,
+          bg: this.colors.accentLight,
+        },
+        {
+          value: "open",
+          label: this.t("panel.statusOpen"),
+          icon: ICON_DOT_OPEN,
+          color: this.colors.statusOpen,
+          bg: this.colors.statusOpenBg,
+        },
+        {
+          value: "resolved",
+          label: this.t("panel.statusResolved"),
+          icon: ICON_CHECK,
+          color: this.colors.statusResolved,
+          bg: this.colors.statusResolvedBg,
+        },
+      ],
+      value: "all",
+      onChange: () => {
+        this.loadFeedbacks().catch(() => {});
       },
-      {
-        value: "open",
-        label: this.t("panel.statusOpen"),
-        icon: ICON_DOT_OPEN,
-        color: this.colors.statusOpen,
-        bg: this.colors.statusOpenBg,
-      },
-      {
-        value: "resolved",
-        label: this.t("panel.statusResolved"),
-        icon: ICON_CHECK,
-        color: this.colors.statusResolved,
-        bg: this.colors.statusResolvedBg,
-      },
-    ];
+      ariaLabel: this.t("status.label"),
+      datasetKey: "statusFilter",
+      modifierPrefix: "sp-segmented__btn--",
+    });
 
-    this.statusSegmented = el("div", { class: "sp-segmented", role: "radiogroup" });
-    this.statusSegmented.setAttribute("aria-label", this.t("status.label"));
-
-    for (const option of this.statusOptions) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = `sp-segmented__btn sp-segmented__btn--${option.value}`;
-      btn.dataset.statusFilter = option.value;
-      btn.setAttribute("role", "radio");
-      const isActive = this.activeStatusFilter === option.value;
-      btn.setAttribute("aria-checked", String(isActive));
-      btn.tabIndex = isActive ? 0 : -1;
-      if (isActive) btn.classList.add("sp-segmented__btn--active");
-      btn.style.setProperty("--sp-chip-color", option.color);
-      btn.style.setProperty("--sp-chip-bg", option.bg);
-
-      const iconWrap = el("span", { class: "sp-segmented__icon" });
-      iconWrap.appendChild(parseSvg(option.icon));
-      btn.appendChild(iconWrap);
-
-      const labelEl = el("span", { class: "sp-segmented__label" });
-      setText(labelEl, option.label);
-      btn.appendChild(labelEl);
-
-      btn.addEventListener("click", () => this.selectStatusFilter(option.value));
-      btn.addEventListener("keydown", (e) => this.handleSegmentedKey(e, option.value));
-
-      this.statusSegmented.appendChild(btn);
-    }
-
-    return this.statusSegmented;
-  }
-
-  private handleSegmentedKey(e: KeyboardEvent, current: "all" | FeedbackStatus): void {
-    const values = this.statusOptions.map((o) => o.value);
-    const idx = values.indexOf(current);
-    let nextIdx: number;
-    switch (e.key) {
-      case "ArrowLeft":
-        nextIdx = (idx - 1 + values.length) % values.length;
-        break;
-      case "ArrowRight":
-        nextIdx = (idx + 1) % values.length;
-        break;
-      case "Home":
-        nextIdx = 0;
-        break;
-      case "End":
-        nextIdx = values.length - 1;
-        break;
-      default:
-        return;
-    }
-    e.preventDefault();
-    const next = values[nextIdx];
-    if (!next) return;
-    this.selectStatusFilter(next);
-    const btn = this.statusSegmented.querySelector<HTMLButtonElement>(`[data-status-filter="${next}"]`);
-    btn?.focus();
-  }
-
-  private selectStatusFilter(value: "all" | FeedbackStatus): void {
-    this.activeStatusFilter = value;
-    const buttons = this.statusSegmented.querySelectorAll<HTMLButtonElement>(".sp-segmented__btn");
-    for (const btn of buttons) {
-      const isActive = btn.dataset.statusFilter === value;
-      btn.classList.toggle("sp-segmented__btn--active", isActive);
-      btn.setAttribute("aria-checked", String(isActive));
-      btn.tabIndex = isActive ? 0 : -1;
-    }
-    this.loadFeedbacks().catch(() => {});
+    return this.statusSegmented.element;
   }
 
   /**
@@ -1201,85 +1127,25 @@ export class Panel {
    * every `loadFeedbacks` so SPA navigation stays consistent.
    */
   private buildScopeSegmented(): HTMLElement {
-    this.scopeOptions = [
-      { value: "this", label: this.t("scope.thisPage") },
-      { value: "template", label: this.t("scope.thisType") },
-      { value: "all", label: this.t("scope.all") },
-    ];
-
-    this.scopeSegmented = el("div", { class: "sp-segmented sp-segmented--scope", role: "radiogroup" });
-    this.scopeSegmented.setAttribute("aria-label", this.t("scope.label"));
-
-    for (const option of this.scopeOptions) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = `sp-segmented__btn sp-segmented__btn--scope-${option.value}`;
-      btn.dataset.scopeFilter = option.value;
-      btn.setAttribute("role", "radio");
-      const isActive = this.activeScopeFilter === option.value;
-      btn.setAttribute("aria-checked", String(isActive));
-      btn.tabIndex = isActive ? 0 : -1;
-      if (isActive) btn.classList.add("sp-segmented__btn--active");
-
-      const labelEl = el("span", { class: "sp-segmented__label" });
-      setText(labelEl, option.label);
-      btn.appendChild(labelEl);
-
-      btn.addEventListener("click", () => this.selectScopeFilter(option.value));
-      btn.addEventListener("keydown", (e) => this.handleScopeKey(e, option.value));
-
-      this.scopeSegmented.appendChild(btn);
-    }
+    this.scopeSegmented = new SegmentedControl<"this" | "template" | "all">({
+      options: [
+        { value: "this", label: this.t("scope.thisPage") },
+        { value: "template", label: this.t("scope.thisType") },
+        { value: "all", label: this.t("scope.all") },
+      ],
+      value: this.initialScopeFilter,
+      onChange: () => {
+        this.loadFeedbacks().catch(() => {});
+      },
+      ariaLabel: this.t("scope.label"),
+      datasetKey: "scopeFilter",
+      modifierPrefix: "sp-segmented__btn--scope-",
+      extraClass: "sp-segmented--scope",
+    });
 
     // Initial visibility — "this type" only meaningful when scope has urlPattern
     this.syncScopeAvailability();
-    return this.scopeSegmented;
-  }
-
-  private handleScopeKey(e: KeyboardEvent, current: "this" | "template" | "all"): void {
-    const visibleValues = this.scopeOptions
-      .map((o) => o.value)
-      .filter((v) => {
-        const btn = this.scopeSegmented.querySelector<HTMLButtonElement>(`[data-scope-filter="${v}"]`);
-        return btn && btn.style.display !== "none";
-      });
-    const idx = visibleValues.indexOf(current);
-    if (idx < 0) return;
-    let nextIdx: number;
-    switch (e.key) {
-      case "ArrowLeft":
-        nextIdx = (idx - 1 + visibleValues.length) % visibleValues.length;
-        break;
-      case "ArrowRight":
-        nextIdx = (idx + 1) % visibleValues.length;
-        break;
-      case "Home":
-        nextIdx = 0;
-        break;
-      case "End":
-        nextIdx = visibleValues.length - 1;
-        break;
-      default:
-        return;
-    }
-    e.preventDefault();
-    const next = visibleValues[nextIdx];
-    if (!next) return;
-    this.selectScopeFilter(next);
-    const btn = this.scopeSegmented.querySelector<HTMLButtonElement>(`[data-scope-filter="${next}"]`);
-    btn?.focus();
-  }
-
-  private selectScopeFilter(value: "this" | "template" | "all"): void {
-    this.activeScopeFilter = value;
-    const buttons = this.scopeSegmented.querySelectorAll<HTMLButtonElement>(".sp-segmented__btn");
-    for (const btn of buttons) {
-      const isActive = btn.dataset.scopeFilter === value;
-      btn.classList.toggle("sp-segmented__btn--active", isActive);
-      btn.setAttribute("aria-checked", String(isActive));
-      btn.tabIndex = isActive ? 0 : -1;
-    }
-    this.loadFeedbacks().catch(() => {});
+    return this.scopeSegmented.element;
   }
 
   /**
@@ -1290,13 +1156,10 @@ export class Panel {
   private syncScopeAvailability(): void {
     if (!this.scopeSegmented) return;
     const scope = this.getScope();
-    const templateBtn = this.scopeSegmented.querySelector<HTMLButtonElement>(`[data-scope-filter="template"]`);
-    if (!templateBtn) return;
     const showTemplate = !!scope.urlPattern;
-    templateBtn.style.display = showTemplate ? "" : "none";
-    if (!showTemplate && this.activeScopeFilter === "template") {
-      this.activeScopeFilter = "this";
-      this.selectScopeFilter("this");
+    this.scopeSegmented.setOptionVisible("template", showTemplate);
+    if (!showTemplate && this.scopeSegmented.value === "template") {
+      this.scopeSegmented.select("this");
     }
   }
 

@@ -6,7 +6,7 @@
  * spring animations and smooth transitions.
  */
 
-import { el, parseSvg, setText } from "./dom-utils.js";
+import { el, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -629,22 +629,12 @@ export class BulkActions {
     }
   }
 
-  private setButtonLoading(btn: HTMLButtonElement): () => void {
-    const snapshot = Array.from(btn.childNodes).map((n) => n.cloneNode(true));
-    btn.disabled = true;
-    btn.replaceChildren(el("div", { class: "sp-spinner sp-spinner--sm" }));
-    return () => {
-      btn.replaceChildren(...snapshot);
-      btn.disabled = false;
-    };
-  }
-
   private async handleResolve(): Promise<void> {
     if (this.isProcessing || this.selected.size === 0) return;
     this.isProcessing = true;
 
     const ids = [...this.selected];
-    const restoreResolve = this.setButtonLoading(this.resolveBtn);
+    const restoreResolve = setButtonLoading(this.resolveBtn);
     this.deleteBtn.disabled = true;
 
     try {
@@ -663,7 +653,7 @@ export class BulkActions {
     this.isProcessing = true;
 
     const ids = [...this.selected];
-    const restoreDelete = this.setButtonLoading(this.deleteBtn);
+    const restoreDelete = setButtonLoading(this.deleteBtn);
     this.resolveBtn.disabled = true;
 
     try {
