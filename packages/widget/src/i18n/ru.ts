@@ -77,6 +77,7 @@ export const ru: Translations = {
   // Markers
   "marker.approximate": "Приблизительная позиция (точность: {confidence}%)",
   "marker.aria": "Отзыв #{number}: {type} — {message}",
+  "marker.count": "Отображено маркеров отзывов: {count}",
 
   // FAB badge
   "fab.badge": "Нерешённых отзывов: {count}",

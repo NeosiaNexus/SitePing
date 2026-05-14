@@ -77,6 +77,7 @@ export interface Translations {
   // Markers
   "marker.approximate": string;
   "marker.aria": string;
+  "marker.count": string;
 
   // FAB badge
   "fab.badge": string;

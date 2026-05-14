@@ -360,9 +360,26 @@ export class Panel {
         return;
       }
       if (ke.key === "Tab" && this.isOpen) {
-        const focusable = this.root.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        );
+        // Filter out non-tabbable elements: those hidden via `display: none`
+        // (either on themselves or any ancestor up to this.root) and elements
+        // explicitly disabled. Without this filter, the trap can jump to a
+        // button inside a closed detail view and effectively swallow the Tab
+        // key. We use a walk of style.display rather than `offsetParent`
+        // because the latter is unreliable in jsdom (always null without
+        // layout) and breaks unit tests.
+        const isVisible = (el: HTMLElement): boolean => {
+          let cur: HTMLElement | null = el;
+          while (cur && cur !== this.root) {
+            if (cur.style.display === "none") return false;
+            cur = cur.parentElement;
+          }
+          return true;
+        };
+        const focusable = Array.from(
+          this.root.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => isVisible(el) && !el.hasAttribute("disabled"));
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];

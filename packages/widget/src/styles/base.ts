@@ -54,6 +54,9 @@ export function buildStyles(colors: ThemeColors): string {
     :focus-visible {
       outline: 2px solid var(--sp-accent);
       outline-offset: 2px;
+      /* Double-ring against any background colour: the bg-coloured halo
+         separates the accent ring from busy host-page surfaces. */
+      box-shadow: 0 0 0 4px var(--sp-bg);
     }
 
     /* ============================

@@ -78,6 +78,7 @@ export const pt: Translations = {
   // Markers
   "marker.approximate": "Posição aproximada (confiança: {confidence}%)",
   "marker.aria": "Feedback #{number}: {type} — {message}",
+  "marker.count": "{count} marcadores de feedback exibidos",
 
   // FAB badge
   "fab.badge": "{count} feedbacks não resolvidos",

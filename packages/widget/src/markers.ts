@@ -95,6 +95,7 @@ export class MarkerManager {
     private readonly tooltip: Tooltip,
     private readonly bus: EventBus<WidgetEvents>,
     private readonly t: TFunction,
+    private readonly liveRegion: HTMLElement | null = null,
   ) {
     this.container = el("div", {
       style: `position:absolute;top:0;left:0;pointer-events:none;z-index:${Z_INDEX_MAX - 1};`,
@@ -249,6 +250,13 @@ export class MarkerManager {
       this.entries.push(entry);
     });
     this.buildClusters();
+    // Announce the number of visible markers to assistive tech (WCAG 4.1.3).
+    // Skip the announcement when the host page has not provided a live
+    // region (tests, embedded use cases) and when no marker is visible to
+    // avoid noisy "0 markers" updates on every navigation.
+    if (this.liveRegion && this.entries.length > 0) {
+      this.liveRegion.textContent = this.t("marker.count").replace("{count}", String(this.entries.length));
+    }
   }
 
   addFeedback(feedback: FeedbackResponse, index: number): void {
@@ -486,6 +494,19 @@ export class MarkerManager {
       marker.style.boxShadow = isResolved
         ? "0 2px 8px rgba(0,0,0,0.06)"
         : `0 2px 12px ${typeColor}25, 0 2px 6px rgba(0,0,0,0.06)`;
+      this.tooltip.scheduleHide();
+      if (!this.pinnedFeedback) this.clearHighlight();
+    });
+
+    // WCAG 1.4.13 — tooltip must be reachable via keyboard (focus), not only
+    // hover. Mirror mouseenter/mouseleave behaviour for focus/blur so a sighted
+    // keyboard user gets the same affordance as a mouse user.
+    marker.addEventListener("focus", () => {
+      this.tooltip.show(feedback, marker.getBoundingClientRect());
+      if (!this.pinnedFeedback) this.showHighlight(feedback);
+    });
+
+    marker.addEventListener("blur", () => {
       this.tooltip.scheduleHide();
       if (!this.pinnedFeedback) this.clearHighlight();
     });

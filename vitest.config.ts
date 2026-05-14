@@ -30,7 +30,9 @@ export default defineConfig({
       thresholds: {
         lines: 95,
         functions: 95,
-        // Temporarily relaxed during cleanup wave. Restore to 95 once coverage gaps land.
+        // Temporarily relaxed during the cleanup wave. resolver.ts has
+        // four uncovered branches (124, 156, 176, 188) tracked for a
+        // dedicated coverage-gap PR. Restore to 95 once those land.
         branches: 94,
         statements: 95,
       },
