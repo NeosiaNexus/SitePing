@@ -51,7 +51,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "zod": "^3.24.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@siteping/core": "workspace:*"
