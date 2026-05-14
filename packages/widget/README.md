@@ -58,7 +58,7 @@ Feedback persists in `localStorage` — no server, no database. Perfect for demo
 
 > **Framework-agnostic** — Works with any frontend framework (React, Vue, Svelte, Astro) or plain HTML. No framework dependency required.
 
-> **~23KB gzipped** — zero framework dependencies.
+> **~49 KB gzipped** today; after the upcoming bundle split (in progress), target is ~30 KB gzipped on first paint. Zero framework dependencies.
 
 ## Configuration
 
