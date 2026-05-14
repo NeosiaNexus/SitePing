@@ -1,11 +1,16 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  esbuild: {
+    // Use the automatic JSX runtime so `*.test.tsx` files don't need a `React`
+    // import in scope. Matches Next.js / modern React defaults.
+    jsx: "automatic",
+  },
   resolve: {
     conditions: ["import", "module", "default"],
   },
   test: {
-    include: ["packages/**/__tests__/**/*.test.ts"],
+    include: ["packages/**/__tests__/**/*.test.{ts,tsx}"],
     coverage: {
       provider: "istanbul",
       reporter: ["text", "lcov", "json-summary"],

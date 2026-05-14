@@ -58,7 +58,7 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **CLI scaffold** — `npx @siteping/cli init` sets up Prisma schema + API route
 - **Monorepo** — Split into independent packages (`widget`, `adapter-prisma`, `adapter-memory`, `adapter-localstorage`, `cli`)
 - **Dev-only by default** — Widget auto-hides in production unless `forceShow: true`
-- **Lightweight** — ~23KB gzipped
+- **Lightweight** — ~49 KB gzipped today; after the upcoming bundle split (in progress), target is ~30 KB gzipped on first paint
 
 ---
 
@@ -90,25 +90,35 @@ npx prisma db push
 
 ### 3. Add the widget
 
-```tsx
-// app/layout.tsx (or any client component)
-'use client'
+#### React (recommended)
 
-import { initSiteping } from '@siteping/widget'
-import { useEffect } from 'react'
+```tsx
+"use client"
+
+import { useSiteping } from "@siteping/widget/react"
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    const { destroy } = initSiteping({
-      endpoint: '/api/siteping',
-      projectName: 'my-project',
-    })
-    return destroy
-  }, [])
-
-  return <html><body>{children}</body></html>
+  useSiteping({
+    endpoint: "/api/siteping",
+    projectName: "my-app",
+  })
+  return <>{children}</>
 }
 ```
+
+The `useSiteping` hook handles StrictMode double-mounts safely and tears the widget down on unmount. It returns the live instance so you can drive it programmatically from anywhere:
+
+```tsx
+"use client"
+import { useSiteping } from "@siteping/widget/react"
+
+export function HelpButton() {
+  const widget = useSiteping({ endpoint: "/api/siteping", projectName: "my-app" })
+  return <button onClick={() => widget?.open()}>Need help?</button>
+}
+```
+
+React is declared as an optional peer dep — installing `@siteping/widget` alone won't pull React in, and the `/react` entry only resolves when you actually import it.
 
 #### Vanilla JS / Any framework
 
@@ -376,8 +386,8 @@ bun run check
 
 | Suite | Tests | What it covers |
 |-------|-------|----------------|
-| Unit (Vitest) | 780+ | Zod validation, API handlers, store conformance, adapter tests, EventBus, API client retry, identity persistence, theme normalization, DOM anchoring, resolver, fuzzy matching, fingerprinting, XPath, text context, i18n |
-| E2E (Playwright) | 29 | Full browser: widget injection, FAB, panel, annotation draw, popup submit, marker creation, API persistence, i18n, search, touch, event delegation, cleanup |
+| Unit (Vitest) | ~1300 | Zod validation, API handlers, store conformance, adapter tests, EventBus, API client retry, identity persistence, theme normalization, DOM anchoring, resolver, fuzzy matching, fingerprinting, XPath, text context, i18n |
+| E2E (Playwright) | 29 (×3 browsers) | Full browser: widget injection, FAB, panel, annotation draw, popup submit, marker creation, API persistence, i18n, search, touch, event delegation, cleanup |
 
 ---
 
@@ -418,18 +428,7 @@ The widget renders inside a **closed Shadow DOM**, so host page styles cannot le
 
 ## Upgrading
 
-### Upgrading to v1.0.0
-
-After updating the packages, run:
-
-```bash
-npx siteping sync
-npx prisma db push
-```
-
-This adds the `updatedAt` column to your feedback table. Existing rows will get the current timestamp. The `@updatedAt` attribute means Prisma automatically sets this field on every update -- no application code changes needed.
-
-This migration is safe for all supported databases (PostgreSQL, MySQL, SQLite): Prisma adds the column with a `DEFAULT CURRENT_TIMESTAMP`, so existing rows are backfilled automatically.
+See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
 ---
 
