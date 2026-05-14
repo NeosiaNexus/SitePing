@@ -61,7 +61,7 @@
     "html2canvas": "^1.4.1"
   },
   "devDependencies": {
-    "@medv/finder": "^3.2.0",
+    "@medv/finder": "^4.0.2",
     "@siteping/core": "workspace:*",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.14",
