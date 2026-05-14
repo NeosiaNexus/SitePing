@@ -7,6 +7,7 @@
  */
 
 import { el, parseSvg, setText } from "./dom-utils.js";
+import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -16,26 +17,6 @@ import type { ThemeColors } from "./styles/theme.js";
 export const ICON_CHECKBOX = `<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="1" y="1" width="16" height="16" rx="4" stroke="currentColor" stroke-width="2"/></svg>`;
 
 export const ICON_CHECKBOX_CHECKED = `<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="1" y="1" width="16" height="16" rx="4" fill="url(#sp-cb-grad)" stroke="none"/><polyline points="5 9 8 12 13 6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="sp-cb-grad" x1="0" y1="0" x2="18" y2="18" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--sp-accent)"/><stop offset="100%" stop-color="var(--sp-accent-dark)"/></linearGradient></defs></svg>`;
-
-// ---------------------------------------------------------------------------
-// I18N
-// ---------------------------------------------------------------------------
-
-export const BULK_I18N_EN = {
-  "bulk.selectAll": "Select all",
-  "bulk.selected": "{count} selected",
-  "bulk.resolve": "Resolve",
-  "bulk.delete": "Delete",
-  "bulk.deselect": "Deselect",
-};
-
-export const BULK_I18N_FR = {
-  "bulk.selectAll": "Tout sélectionner",
-  "bulk.selected": "{count} sélectionné(s)",
-  "bulk.resolve": "Résoudre",
-  "bulk.delete": "Supprimer",
-  "bulk.deselect": "Désélectionner",
-};
 
 // ---------------------------------------------------------------------------
 // CSS
@@ -366,14 +347,14 @@ export class BulkActions {
   private selectAllCheckbox: HTMLElement | null = null;
   private listContainer: HTMLElement | null = null;
   private isProcessing = false;
-  private readonly i18n: typeof BULK_I18N_EN;
+  private readonly t: TFunction;
 
   constructor(
     _colors: ThemeColors,
     private readonly callbacks: BulkActionCallbacks,
-    locale?: string,
+    t: TFunction,
   ) {
-    this.i18n = locale === "fr" ? BULK_I18N_FR : BULK_I18N_EN;
+    this.t = t;
     // ----- Build floating bar -----
     this.barElement = el("div", { class: "sp-bulk-bar" });
     this.barElement.setAttribute("role", "toolbar");
@@ -381,7 +362,7 @@ export class BulkActions {
 
     // Left: count label
     this.countLabel = el("span", { class: "sp-bulk-bar-count" });
-    setText(this.countLabel, this.i18n["bulk.selected"].replace("{count}", "0"));
+    setText(this.countLabel, this.t("bulk.selected").replace("{count}", "0"));
 
     // Right: action buttons
     const actions = el("div", { class: "sp-bulk-bar-actions" });
@@ -399,7 +380,7 @@ export class BulkActions {
     const deselectBtn = document.createElement("button");
     deselectBtn.className = "sp-bulk-btn-deselect";
     deselectBtn.type = "button";
-    deselectBtn.setAttribute("aria-label", this.i18n["bulk.deselect"]);
+    deselectBtn.setAttribute("aria-label", this.t("bulk.deselect"));
     deselectBtn.appendChild(
       parseSvg(
         `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
@@ -571,23 +552,25 @@ export class BulkActions {
     const visible = count > 0;
 
     this.barElement.classList.toggle("sp-bulk-bar--visible", visible);
-    setText(this.countLabel, this.i18n["bulk.selected"].replace("{count}", String(count)));
+    setText(this.countLabel, this.t("bulk.selected").replace("{count}", String(count)));
     this.updateButtonLabels();
   }
 
   private updateButtonLabels(): void {
     const count = this.selected.size;
+    const resolve = this.t("bulk.resolve");
+    const del = this.t("bulk.delete");
 
     // Resolve button
     this.resolveBtn.replaceChildren();
     const resolveLabel = document.createElement("span");
-    setText(resolveLabel, count > 0 ? `${this.i18n["bulk.resolve"]} ${count}` : this.i18n["bulk.resolve"]);
+    setText(resolveLabel, count > 0 ? `${resolve} ${count}` : resolve);
     this.resolveBtn.appendChild(resolveLabel);
 
     // Delete button
     this.deleteBtn.replaceChildren();
     const deleteLabel = document.createElement("span");
-    setText(deleteLabel, count > 0 ? `${this.i18n["bulk.delete"]} ${count}` : this.i18n["bulk.delete"]);
+    setText(deleteLabel, count > 0 ? `${del} ${count}` : del);
     this.deleteBtn.appendChild(deleteLabel);
   }
 

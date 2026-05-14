@@ -2,6 +2,7 @@
 
 import type { FeedbackResponse } from "@siteping/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createT } from "../../src/i18n/index.js";
 import { createPageGroupHeader, groupFeedbacksByPage, PanelSortControls, sortFeedbacks } from "../../src/panel-sort.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
@@ -105,7 +106,7 @@ describe("PanelSortControls", () => {
 
   it("renders English controls, chooses a sort mode, and notifies once", () => {
     const onChange = vi.fn();
-    const controls = new PanelSortControls(buildThemeColors(), onChange);
+    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("en"));
     document.body.appendChild(controls.element);
 
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
@@ -124,7 +125,7 @@ describe("PanelSortControls", () => {
 
   it("toggles group-by-page state and renders French labels", () => {
     const onChange = vi.fn();
-    const controls = new PanelSortControls(buildThemeColors(), onChange, "fr");
+    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("fr"));
     document.body.appendChild(controls.element);
 
     const groupToggle = controls.element.querySelector<HTMLButtonElement>(".sp-group-toggle")!;
@@ -139,7 +140,7 @@ describe("PanelSortControls", () => {
   });
 
   it("destroy without an open menu is a no-op (closeMenu handles null menuEl)", () => {
-    const controls = new PanelSortControls(buildThemeColors(), vi.fn());
+    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
     document.body.appendChild(controls.element);
 
     // No menu has been opened — destroy should still set aria-expanded=false safely
@@ -154,7 +155,7 @@ describe("PanelSortControls", () => {
       cb(0);
       return 0;
     });
-    const controls = new PanelSortControls(buildThemeColors(), vi.fn());
+    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
     document.body.appendChild(controls.element);
 
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
@@ -172,7 +173,7 @@ describe("PanelSortControls", () => {
       return 0;
     });
     const onChange = vi.fn();
-    const controls = new PanelSortControls(buildThemeColors(), onChange);
+    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("en"));
     document.body.appendChild(controls.element);
 
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
@@ -192,7 +193,7 @@ describe("PanelSortControls", () => {
       return 0;
     });
     const onChange = vi.fn();
-    const controls = new PanelSortControls(buildThemeColors(), onChange);
+    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("en"));
     document.body.appendChild(controls.element);
 
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
@@ -214,7 +215,7 @@ describe("PanelSortControls", () => {
       cb(0);
       return 0;
     });
-    const controls = new PanelSortControls(buildThemeColors(), vi.fn());
+    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
     document.body.appendChild(controls.element);
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
 

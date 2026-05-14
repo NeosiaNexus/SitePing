@@ -2,6 +2,7 @@
 
 import type { AnnotationResponse, FeedbackResponse } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createT } from "../../src/i18n/index.js";
 import { type DetailCallbacks, DetailView } from "../../src/panel-detail.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
@@ -87,7 +88,7 @@ function createView(locale = "en"): {
   host: HTMLElement;
 } {
   const callbacks = createCallbacks();
-  const view = new DetailView(buildThemeColors(), callbacks, locale);
+  const view = new DetailView(buildThemeColors(), callbacks, createT(locale), locale);
   const host = document.createElement("div");
   host.style.position = "relative";
   host.appendChild(view.element);

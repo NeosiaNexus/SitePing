@@ -89,4 +89,65 @@ export const pt: Translations = {
 
   // Badge
   "badge.count": "{count} feedbacks não resolvidos",
+
+  // Bulk actions toolbar
+  "bulk.selectAll": "Selecionar tudo",
+  "bulk.selected": "{count} selecionados",
+  "bulk.resolve": "Resolver",
+  "bulk.delete": "Excluir",
+  "bulk.deselect": "Desmarcar",
+
+  // Sort and group controls
+  "sort.newest": "Mais recentes",
+  "sort.oldest": "Mais antigos",
+  "sort.byType": "Por tipo",
+  "sort.openFirst": "Abertos primeiro",
+  "sort.label": "Ordenar",
+  "group.byPage": "Por página",
+  "group.feedbacks": "{count} feedbacks",
+
+  // Stats bar
+  "stats.open": "Abertos",
+  "stats.resolved": "Resolvidos",
+  "stats.bugs": "Bugs",
+  "stats.progress": "{percent}% resolvidos",
+
+  // Detail view
+  "detail.back": "Voltar",
+  "detail.title": "Feedback #{number}",
+  "detail.status": "Status",
+  "detail.message": "Mensagem",
+  "detail.screenshot": "Captura",
+  "detail.screenshotAlt": "Captura da área anotada",
+  "detail.metadata": "Detalhes",
+  "detail.annotation": "Anotação",
+  "detail.page": "Página",
+  "detail.author": "Autor",
+  "detail.date": "Criado",
+  "detail.viewport": "Viewport",
+  "detail.browser": "Navegador",
+  "detail.resolvedAt": "Resolvido em",
+  "detail.goToAnnotation": "Ir para anotação",
+  "detail.element": "Elemento",
+  "detail.selector": "Seletor",
+  "detail.position": "Posição",
+  "detail.resolve": "Resolver",
+  "detail.reopen": "Reabrir",
+  "detail.delete": "Excluir",
+
+  // Keyboard shortcuts overlay
+  "shortcuts.title": "Atalhos de teclado",
+  "shortcuts.navigate": "Navegar feedbacks",
+  "shortcuts.resolve": "Resolver / Reabrir",
+  "shortcuts.delete": "Excluir",
+  "shortcuts.search": "Buscar",
+  "shortcuts.select": "Alternar seleção",
+  "shortcuts.help": "Mostrar atalhos",
+  "shortcuts.close": "Fechar",
+  "shortcuts.hint": "Atalhos de teclado",
+
+  // Export controls
+  "export.label": "Exportar",
+  "export.csv": "Exportar CSV",
+  "export.json": "Exportar JSON",
 };

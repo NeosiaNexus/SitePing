@@ -2,7 +2,8 @@
 
 import type { FeedbackResponse } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { downloadFile, EXPORT_I18N_FR, ExportButton, feedbacksToCsv, feedbacksToJson } from "../../src/export-utils.js";
+import { downloadFile, ExportButton, feedbacksToCsv, feedbacksToJson } from "../../src/export-utils.js";
+import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
 function installObjectUrlMocks(): void {
@@ -148,26 +149,22 @@ describe("ExportButton", () => {
     vi.setSystemTime(new Date("2026-04-30T15:45:00.000Z"));
   });
 
-  it("renders, toggles, translates labels, and closes on outside click", () => {
-    const button = new ExportButton(buildThemeColors(), () => [makeFeedback()]);
+  it("renders English labels by default, toggles, and closes on outside click", () => {
+    const button = new ExportButton(buildThemeColors(), () => [makeFeedback()], createT("en"));
     document.body.appendChild(button.element);
 
     const trigger = button.element.querySelector<HTMLButtonElement>(".sp-export-btn")!;
     expect(trigger.textContent).toContain("Export");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect([...button.element.querySelectorAll(".sp-export-option-label")].map((node) => node.textContent)).toEqual([
+      "Export CSV",
+      "Export JSON",
+    ]);
 
     trigger.click();
 
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(button.element.querySelector(".sp-export-menu")?.classList.contains("sp-export-menu--open")).toBe(true);
-
-    button.setLabels(EXPORT_I18N_FR);
-
-    expect(trigger.textContent).toContain("Exporter");
-    expect([...button.element.querySelectorAll(".sp-export-option-label")].map((node) => node.textContent)).toEqual([
-      "Exporter CSV",
-      "Exporter JSON",
-    ]);
 
     document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
@@ -178,8 +175,24 @@ describe("ExportButton", () => {
     expect(document.body.contains(button.element)).toBe(false);
   });
 
+  it("renders French labels when locale='fr'", () => {
+    const button = new ExportButton(buildThemeColors(), () => [makeFeedback()], createT("fr"));
+    document.body.appendChild(button.element);
+
+    const trigger = button.element.querySelector<HTMLButtonElement>(".sp-export-btn")!;
+    expect(trigger.textContent).toContain("Exporter");
+    expect([...button.element.querySelectorAll(".sp-export-option-label")].map((node) => node.textContent)).toEqual([
+      "Exporter CSV",
+      "Exporter JSON",
+    ]);
+  });
+
   it("downloads CSV and JSON with a sanitized project name", () => {
-    const button = new ExportButton(buildThemeColors(), () => [makeFeedback({ projectName: "Client Portal / QA" })]);
+    const button = new ExportButton(
+      buildThemeColors(),
+      () => [makeFeedback({ projectName: "Client Portal / QA" })],
+      createT("en"),
+    );
     document.body.appendChild(button.element);
     const trigger = button.element.querySelector<HTMLButtonElement>(".sp-export-btn")!;
 
@@ -202,7 +215,7 @@ describe("ExportButton", () => {
   });
 
   it("does not download when there are no feedbacks", () => {
-    const button = new ExportButton(buildThemeColors(), () => []);
+    const button = new ExportButton(buildThemeColors(), () => [], createT("en"));
     document.body.appendChild(button.element);
 
     button.element.querySelector<HTMLButtonElement>(".sp-export-btn")!.click();
@@ -217,7 +230,7 @@ describe("ExportButton", () => {
     const fb = makeFeedback();
     delete (fb as Partial<FeedbackResponse>).projectName;
 
-    const button = new ExportButton(buildThemeColors(), () => [fb]);
+    const button = new ExportButton(buildThemeColors(), () => [fb], createT("en"));
     document.body.appendChild(button.element);
 
     const trigger = button.element.querySelector<HTMLButtonElement>(".sp-export-btn")!;
@@ -227,40 +240,5 @@ describe("ExportButton", () => {
     // Verify createObjectURL was called (download flow ran with fallback name)
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1);
-  });
-
-  it("setLabels is a no-op when the export button element is missing from the DOM tree", () => {
-    const button = new ExportButton(buildThemeColors(), () => [makeFeedback()]);
-    document.body.appendChild(button.element);
-
-    // Remove the trigger button
-    const triggerBtn = button.element.querySelector<HTMLButtonElement>(".sp-export-btn");
-    triggerBtn?.remove();
-
-    // Should not throw — both branches (btn missing, options[0]/options[1] still present) handled
-    expect(() => button.setLabels(EXPORT_I18N_FR)).not.toThrow();
-  });
-
-  it("setLabels handles the case where the trigger button has no span child", () => {
-    const button = new ExportButton(buildThemeColors(), () => [makeFeedback()]);
-    document.body.appendChild(button.element);
-
-    // Remove only the span inside the trigger button
-    const triggerBtn = button.element.querySelector<HTMLButtonElement>(".sp-export-btn");
-    triggerBtn?.querySelector("span")?.remove();
-
-    expect(() => button.setLabels(EXPORT_I18N_FR)).not.toThrow();
-  });
-
-  it("setLabels handles the case where option labels are missing", () => {
-    const button = new ExportButton(buildThemeColors(), () => [makeFeedback()]);
-    document.body.appendChild(button.element);
-
-    // Remove the option labels
-    for (const node of button.element.querySelectorAll(".sp-export-option-label")) {
-      node.remove();
-    }
-
-    expect(() => button.setLabels(EXPORT_I18N_FR)).not.toThrow();
   });
 });

@@ -1,24 +1,7 @@
 import type { FeedbackResponse } from "@siteping/core";
 import { el, setText } from "./dom-utils.js";
+import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
-
-// ---------------------------------------------------------------------------
-// i18n — standalone constants, wired into the locale files at integration time
-// ---------------------------------------------------------------------------
-
-export const STATS_I18N_EN = {
-  "stats.open": "Open",
-  "stats.resolved": "Resolved",
-  "stats.bugs": "Bugs",
-  "stats.progress": "{percent}% resolved",
-};
-
-export const STATS_I18N_FR = {
-  "stats.open": "Ouverts",
-  "stats.resolved": "Résolus",
-  "stats.bugs": "Bugs",
-  "stats.progress": "{percent}% résolus",
-};
 
 // ---------------------------------------------------------------------------
 // CSS
@@ -117,8 +100,6 @@ export const STATS_CSS = /* css */ `
  * Compact statistics bar displayed between filters and the feedback list.
  * Shows open/resolved/bug counts and a resolved-percentage progress bar.
  */
-type StatsI18n = typeof STATS_I18N_EN;
-
 export class PanelStats {
   readonly element: HTMLElement;
 
@@ -127,13 +108,13 @@ export class PanelStats {
   private readonly valueBugs: HTMLElement;
   private readonly progressFill: HTMLElement;
   private readonly progressLabel: HTMLElement;
-  private readonly i18n: StatsI18n;
+  private readonly t: TFunction;
 
   constructor(
     private readonly colors: ThemeColors,
-    locale?: string,
+    t: TFunction,
   ) {
-    this.i18n = locale === "fr" ? STATS_I18N_FR : STATS_I18N_EN;
+    this.t = t;
     // Container
     this.element = el("div", { class: "sp-stats-bar" });
     this.element.setAttribute("aria-label", "Feedback statistics");
@@ -149,7 +130,7 @@ export class PanelStats {
     this.valueOpen = el("span", { class: "sp-stats-value" });
     setText(this.valueOpen, "0");
     const labelOpen = el("span", { class: "sp-stats-label" });
-    setText(labelOpen, this.i18n["stats.open"]);
+    setText(labelOpen, this.t("stats.open"));
     itemOpen.appendChild(dotOpen);
     itemOpen.appendChild(this.valueOpen);
     itemOpen.appendChild(labelOpen);
@@ -161,7 +142,7 @@ export class PanelStats {
     this.valueResolved = el("span", { class: "sp-stats-value" });
     setText(this.valueResolved, "0");
     const labelResolved = el("span", { class: "sp-stats-label" });
-    setText(labelResolved, this.i18n["stats.resolved"]);
+    setText(labelResolved, this.t("stats.resolved"));
     itemResolved.appendChild(dotResolved);
     itemResolved.appendChild(this.valueResolved);
     itemResolved.appendChild(labelResolved);
@@ -173,7 +154,7 @@ export class PanelStats {
     this.valueBugs = el("span", { class: "sp-stats-value" });
     setText(this.valueBugs, "0");
     const labelBugs = el("span", { class: "sp-stats-label" });
-    setText(labelBugs, this.i18n["stats.bugs"]);
+    setText(labelBugs, this.t("stats.bugs"));
     itemBugs.appendChild(dotBugs);
     itemBugs.appendChild(this.valueBugs);
     itemBugs.appendChild(labelBugs);
@@ -228,7 +209,7 @@ export class PanelStats {
       this.progressFill.style.width = `${pct}%`;
     });
 
-    const progressText = this.i18n["stats.progress"].replace("{percent}", String(pct));
+    const progressText = this.t("stats.progress").replace("{percent}", String(pct));
     setText(this.progressLabel, progressText);
   }
 }
