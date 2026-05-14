@@ -58,7 +58,7 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **CLI scaffold** — `npx @siteping/cli init` sets up Prisma schema + API route
 - **Monorepo** — Split into independent packages (`widget`, `adapter-prisma`, `adapter-memory`, `adapter-localstorage`, `cli`)
 - **Dev-only by default** — Widget auto-hides in production unless `forceShow: true`
-- **Lightweight** — ~23KB gzipped
+- **Lightweight** — ~49 KB gzipped today; after the upcoming bundle split (in progress), target is ~30 KB gzipped on first paint
 
 ---
 
@@ -386,8 +386,8 @@ bun run check
 
 | Suite | Tests | What it covers |
 |-------|-------|----------------|
-| Unit (Vitest) | 780+ | Zod validation, API handlers, store conformance, adapter tests, EventBus, API client retry, identity persistence, theme normalization, DOM anchoring, resolver, fuzzy matching, fingerprinting, XPath, text context, i18n |
-| E2E (Playwright) | 29 | Full browser: widget injection, FAB, panel, annotation draw, popup submit, marker creation, API persistence, i18n, search, touch, event delegation, cleanup |
+| Unit (Vitest) | ~1300 | Zod validation, API handlers, store conformance, adapter tests, EventBus, API client retry, identity persistence, theme normalization, DOM anchoring, resolver, fuzzy matching, fingerprinting, XPath, text context, i18n |
+| E2E (Playwright) | 29 (×3 browsers) | Full browser: widget injection, FAB, panel, annotation draw, popup submit, marker creation, API persistence, i18n, search, touch, event delegation, cleanup |
 
 ---
 
@@ -428,18 +428,7 @@ The widget renders inside a **closed Shadow DOM**, so host page styles cannot le
 
 ## Upgrading
 
-### Upgrading to v1.0.0
-
-After updating the packages, run:
-
-```bash
-npx siteping sync
-npx prisma db push
-```
-
-This adds the `updatedAt` column to your feedback table. Existing rows will get the current timestamp. The `@updatedAt` attribute means Prisma automatically sets this field on every update -- no application code changes needed.
-
-This migration is safe for all supported databases (PostgreSQL, MySQL, SQLite): Prisma adds the column with a `DEFAULT CURRENT_TIMESTAMP`, so existing rows are backfilled automatically.
+See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
 ---
 
