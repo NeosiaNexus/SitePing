@@ -1,4 +1,4 @@
-import { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "@siteping/core";
+import { SitepingAuthError, type SitepingError, SitepingNetworkError, SitepingValidationError } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
 
@@ -81,9 +81,7 @@ describe("ApiClient", () => {
 
   it("maps 401 to SitepingAuthError (not retryable)", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("Nope", { status: 401 }));
-    const err = (await client
-      .getFeedbacks("test")
-      .catch((e: SitepingError) => e)) as SitepingError;
+    const err = (await client.getFeedbacks("test").catch((e: SitepingError) => e)) as SitepingError;
     expect(err).toBeInstanceOf(SitepingAuthError);
     expect(err.code).toBe("AUTH");
     expect(err.retryable).toBe(false);
@@ -91,17 +89,13 @@ describe("ApiClient", () => {
 
   it("maps 403 to SitepingAuthError", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("Forbidden", { status: 403 }));
-    const err = (await client
-      .getFeedbacks("test")
-      .catch((e: SitepingError) => e)) as SitepingError;
+    const err = (await client.getFeedbacks("test").catch((e: SitepingError) => e)) as SitepingError;
     expect(err).toBeInstanceOf(SitepingAuthError);
   });
 
   it("maps other 4xx to SitepingValidationError (not retryable)", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 400 }));
-    const err = (await client
-      .getFeedbacks("test")
-      .catch((e: SitepingError) => e)) as SitepingError;
+    const err = (await client.getFeedbacks("test").catch((e: SitepingError) => e)) as SitepingError;
     expect(err).toBeInstanceOf(SitepingValidationError);
     expect(err.code).toBe("VALIDATION");
     expect(err.retryable).toBe(false);
