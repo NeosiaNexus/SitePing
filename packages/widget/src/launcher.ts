@@ -229,6 +229,20 @@ export function launch(config: SitepingConfig): SitepingInstance {
     return panelPromise;
   }
 
+  // Prefetch Panel in idle time so the first FAB click doesn't pay the
+  // network/parse cost of the dynamic import. The chunk still ships lazily
+  // (saves first-paint gzip), but it's already warming up by the time the
+  // user is likely to click. Falls back to setTimeout in browsers without
+  // requestIdleCallback (Safari before 17).
+  if (typeof window !== "undefined") {
+    const prefetch = () => {
+      if (!destroyed) void loadPanel();
+    };
+    const ric = (window as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback;
+    if (typeof ric === "function") ric(prefetch);
+    else setTimeout(prefetch, 200);
+  }
+
   // The FAB emits `panel:toggle` on chat click — we intercept here so the
   // launcher (which holds the lazy loader) can drive the Panel lifecycle.
   // Panel itself also subscribes to `panel:toggle` once loaded; once the
