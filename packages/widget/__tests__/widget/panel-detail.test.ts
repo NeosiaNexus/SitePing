@@ -1049,7 +1049,9 @@ describe("DetailView", () => {
       expect(lists).toHaveLength(2);
       const consoleItems = lists[0]!.querySelectorAll("li");
       expect(consoleItems).toHaveLength(2);
-      expect(consoleItems[1]?.querySelector(".sp-detail-diag-level")?.classList.contains("sp-detail-diag-level--error")).toBe(true);
+      expect(
+        consoleItems[1]?.querySelector(".sp-detail-diag-level")?.classList.contains("sp-detail-diag-level--error"),
+      ).toBe(true);
       const netItems = lists[1]!.querySelectorAll("li");
       expect(netItems).toHaveLength(1);
       expect(netItems[0]?.querySelector(".sp-detail-diag-net-status")?.textContent).toBe("500");
@@ -1084,9 +1086,7 @@ describe("DetailView", () => {
       const fb = makeFeedback({
         diagnostics: {
           console: [],
-          network: [
-            { url: "/api/down", method: "POST", status: 0, durationMs: 50, timestamp: "2026-05-14T10:00:00Z" },
-          ],
+          network: [{ url: "/api/down", method: "POST", status: 0, durationMs: 50, timestamp: "2026-05-14T10:00:00Z" }],
         } as unknown as never,
       } as Partial<FeedbackResponse>);
       setup.view.show(fb, 1);

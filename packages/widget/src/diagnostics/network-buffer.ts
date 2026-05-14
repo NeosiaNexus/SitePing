@@ -83,9 +83,8 @@ export class NetworkBuffer {
     if (typeof globalThis.fetch !== "function") return;
     const original = globalThis.fetch;
     this.originalFetch = original;
-    const buffer = this;
 
-    const wrapped: typeof fetch = async function (input, init) {
+    const wrapped: typeof fetch = async (input, init) => {
       const startedAt = new Date();
       const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
       const url = truncateUrl(urlString(input));
@@ -95,7 +94,7 @@ export class NetworkBuffer {
         const response = await original(input, init);
         if (!response.ok) {
           const t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
-          buffer.push({
+          this.push({
             url,
             method,
             status: response.status,
@@ -106,7 +105,7 @@ export class NetworkBuffer {
         return response;
       } catch (err) {
         const t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
-        buffer.push({
+        this.push({
           url,
           method,
           status: 0,
