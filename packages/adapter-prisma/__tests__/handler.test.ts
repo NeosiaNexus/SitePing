@@ -31,7 +31,9 @@ describe("createSitepingHandler", () => {
 
   beforeEach(() => {
     prisma = mockPrisma();
-    handler = createSitepingHandler({ prisma });
+    // These tests focus on validation/persistence/error paths; the destructive-op
+    // auth gate is exercised in auth-cors.test.ts.
+    handler = createSitepingHandler({ prisma, requireAuthForDestructive: false });
   });
 
   describe("POST", () => {

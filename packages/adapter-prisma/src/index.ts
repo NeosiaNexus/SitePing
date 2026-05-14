@@ -368,6 +368,20 @@ export interface HandlerOptions {
    */
   caseInsensitiveSearch?: boolean;
   /**
+   * Whether destructive endpoints (DELETE, PATCH) require `apiKey`.
+   *
+   * Defaults to `true` and intentionally cannot be disabled in production:
+   * - `NODE_ENV === "production"` without `apiKey` throws at startup. The
+   *   factory refuses to return an unauthenticated destructive surface.
+   * - `NODE_ENV !== "production"` without `apiKey` keeps the handler running
+   *   for local dev/tests, but DELETE/PATCH return 401 until you set
+   *   `apiKey` or explicitly opt out with `requireAuthForDestructive: false`.
+   *
+   * Set to `false` only when you wrap `createSitepingHandler` in your own
+   * auth middleware (session, OAuth, etc.) and want SitePing to stay open.
+   */
+  requireAuthForDestructive?: boolean;
+  /**
    * Outgoing webhooks fired after a feedback is successfully persisted.
    *
    * Pass a single config or an array — every entry receives a POST with a
@@ -477,10 +491,21 @@ export function createSitepingHandler({
   publicEndpoints = apiKey ? ["POST", "OPTIONS"] : undefined,
   allowedOrigins,
   caseInsensitiveSearch,
+  requireAuthForDestructive = true,
   webhooks,
 }: HandlerOptions): SitepingHandler {
   if (!providedStore && !prisma) {
     throw new Error("[siteping] createSitepingHandler requires either `store` or `prisma`.");
+  }
+
+  // Refuse to expose destructive endpoints publicly in production. Without
+  // this guard, anyone could `DELETE { deleteAll: true }` against the API.
+  if (!apiKey && requireAuthForDestructive && process.env.NODE_ENV === "production") {
+    throw new Error(
+      "[siteping] adapter-prisma: apiKey is required in production. " +
+        "Set `apiKey` to enable destructive endpoints, or pass " +
+        "`requireAuthForDestructive: false` if SitePing sits behind your own auth middleware.",
+    );
   }
 
   // Safe: the throw above guarantees at least one is defined
@@ -499,7 +524,14 @@ export function createSitepingHandler({
 
   /** Verify Bearer token when apiKey is configured. Skips methods listed in `publicEndpoints`. */
   function authenticate(request: Request, method: string): Response | null {
-    if (!apiKey) return null;
+    if (!apiKey) {
+      // No apiKey + destructive method + guard enabled → reject. GET/POST/OPTIONS
+      // stay open by default so the widget keeps working in dev without config.
+      if (requireAuthForDestructive && (method === "DELETE" || method === "PATCH")) {
+        return Response.json({ error: "apiKey required for destructive operations" }, { status: 401 });
+      }
+      return null;
+    }
     if (publicMethods?.has(method as "GET" | "POST" | "PATCH" | "DELETE" | "OPTIONS")) return null;
     const header = request.headers.get("Authorization");
     if (!header || !safeCompare(header, `Bearer ${apiKey}`)) {
