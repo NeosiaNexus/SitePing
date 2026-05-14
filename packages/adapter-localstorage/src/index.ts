@@ -1,6 +1,7 @@
 import {
   type AnnotationCreateInput,
   type AnnotationRecord,
+  applyFeedbackFilters,
   type FeedbackCreateInput,
   type FeedbackQuery,
   type FeedbackRecord,
@@ -156,23 +157,7 @@ export class LocalStorageStore implements SitepingStore {
   }
 
   async getFeedbacks(query: FeedbackQuery): Promise<{ feedbacks: FeedbackRecord[]; total: number }> {
-    let results = this.load().filter((f) => f.projectName === query.projectName);
-
-    if (query.type) results = results.filter((f) => f.type === query.type);
-    if (query.status) results = results.filter((f) => f.status === query.status);
-    if (query.url) results = results.filter((f) => f.url === query.url);
-    if (query.urlPattern) results = results.filter((f) => f.urlPattern === query.urlPattern);
-    if (query.search) {
-      const s = query.search.toLowerCase();
-      results = results.filter((f) => f.message.toLowerCase().includes(s));
-    }
-
-    const total = results.length;
-    const page = query.page ?? 1;
-    const limit = Math.min(query.limit ?? 50, 100);
-    const start = (page - 1) * limit;
-
-    return { feedbacks: results.slice(start, start + limit), total };
+    return applyFeedbackFilters(this.load(), query);
   }
 
   async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
