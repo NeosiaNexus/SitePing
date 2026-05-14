@@ -12,7 +12,7 @@
 
 ## Architecture
 - **Monorepo** with bun workspaces — 6 packages in `packages/`:
-  - `@siteping/core` — shared types, schema, store errors + helpers (internal, not published)
+  - `@siteping/core` — shared types, schema, store errors + helpers (internal, not published, no release-please entry, no npm publish job)
   - `@siteping/widget` — browser feedback widget (Shadow DOM, closed mode). Accepts `store` option for client-side mode (no server needed)
   - `@siteping/adapter-prisma` — server-side Prisma request handlers
   - `@siteping/adapter-memory` — in-memory adapter (testing, demos, serverless)
