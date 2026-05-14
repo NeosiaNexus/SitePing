@@ -1,5 +1,4 @@
 {
-  "packages/core": "0.7.2",
   "packages/widget": "0.9.7",
   "packages/adapter-prisma": "0.4.5",
   "packages/adapter-memory": "0.4.4",
