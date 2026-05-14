@@ -23,7 +23,8 @@
   "scripts": {
     "build": "tsup && node ../../scripts/fix-dts.mjs dist",
     "check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "size": "NODE_PATH=./node_modules size-limit"
   },
   "keywords": [
     "feedback",
@@ -63,11 +64,13 @@
   },
   "devDependencies": {
     "@siteping/core": "workspace:*",
+    "@size-limit/preset-small-lib": "^12.1.0",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "size-limit": "^12.1.0"
   },
   "peerDependencies": {
     "react": ">=18"

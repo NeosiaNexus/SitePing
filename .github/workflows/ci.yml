@@ -19,6 +19,14 @@ jobs:
         with:
           bun-version: "1.3.11"
 
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
       - run: bun install --frozen-lockfile
 
       - name: Build
@@ -32,6 +40,9 @@ jobs:
 
       - name: Test
         run: bun run test:run -- --coverage
+
+      - name: Bundle size gate
+        run: bun --cwd packages/widget run size
 
       - name: Upload coverage
         if: always()
@@ -49,13 +60,39 @@ jobs:
         with:
           bun-version: "1.3.11"
 
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
       - run: bun install --frozen-lockfile
+
+      - name: Resolve Playwright version
+        id: playwright
+        run: |
+          version=$(node -p "require('./node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       - name: Build
         run: bun run build
 
-      - name: Install Playwright
-        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: bun x playwright install --with-deps chromium firefox webkit
+
+      - name: Install Playwright OS deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: bun x playwright install-deps chromium firefox webkit
 
       - name: Run e2e tests
         run: bun run test:e2e
