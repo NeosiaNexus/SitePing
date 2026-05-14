@@ -90,25 +90,35 @@ npx prisma db push
 
 ### 3. Add the widget
 
-```tsx
-// app/layout.tsx (or any client component)
-'use client'
+#### React (recommended)
 
-import { initSiteping } from '@siteping/widget'
-import { useEffect } from 'react'
+```tsx
+"use client"
+
+import { useSiteping } from "@siteping/widget/react"
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    const { destroy } = initSiteping({
-      endpoint: '/api/siteping',
-      projectName: 'my-project',
-    })
-    return destroy
-  }, [])
-
-  return <html><body>{children}</body></html>
+  useSiteping({
+    endpoint: "/api/siteping",
+    projectName: "my-app",
+  })
+  return <>{children}</>
 }
 ```
+
+The `useSiteping` hook handles StrictMode double-mounts safely and tears the widget down on unmount. It returns the live instance so you can drive it programmatically from anywhere:
+
+```tsx
+"use client"
+import { useSiteping } from "@siteping/widget/react"
+
+export function HelpButton() {
+  const widget = useSiteping({ endpoint: "/api/siteping", projectName: "my-app" })
+  return <button onClick={() => widget?.open()}>Need help?</button>
+}
+```
+
+React is declared as an optional peer dep — installing `@siteping/widget` alone won't pull React in, and the `/react` entry only resolves when you actually import it.
 
 #### Vanilla JS / Any framework
 
