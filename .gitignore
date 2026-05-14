@@ -10,3 +10,4 @@ coverage/
 .env
 .env.local
 .claude/worktrees/
+coverage-report/
