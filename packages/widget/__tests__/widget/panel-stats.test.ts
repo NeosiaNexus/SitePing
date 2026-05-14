@@ -2,9 +2,9 @@
 
 import type { FeedbackResponse } from "@siteping/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createT } from "../../src/i18n/index.js";
 import { en as STATS_I18N_EN } from "../../src/i18n/en.js";
 import { fr as STATS_I18N_FR } from "../../src/i18n/fr.js";
+import { createT } from "../../src/i18n/index.js";
 import { PanelStats, STATS_CSS } from "../../src/panel-stats.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
