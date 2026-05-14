@@ -196,6 +196,59 @@ widget.off('feedback:sent', handler)
 
 ---
 
+## Notifications
+
+Fire a Slack, Discord, or generic HTTP webhook every time a feedback is created — useful for surfacing client feedback in the team channel without leaving the chat.
+
+```ts
+// app/api/siteping/route.ts
+import { createSitepingHandler } from '@siteping/adapter-prisma'
+import { prisma } from '@/lib/prisma'
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  prisma,
+  webhooks: [
+    {
+      url: process.env.SLACK_WEBHOOK_URL!,
+      type: 'slack',
+    },
+    {
+      url: process.env.DISCORD_WEBHOOK_URL!,
+      type: 'discord',
+    },
+  ],
+})
+```
+
+You can pass a single config or an array. Each entry accepts:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `url` | `string` | **Required.** Endpoint to POST to (Slack/Discord incoming webhook, or your own). |
+| `type` | `'slack' \| 'discord' \| 'generic'` | Payload format. Defaults to `'generic'` (raw `FeedbackRecord` JSON). |
+| `headers` | `Record<string, string>` | Extra headers merged on top of `Content-Type: application/json` (sign payloads, add bearer tokens, …). |
+| `timeoutMs` | `number` | Abort after this many ms. Defaults to `5000`. |
+| `onError` | `(err, feedbackId) => void` | Observe delivery failures (network error, non-2xx, timeout). Without it, errors land in `console.warn`. |
+
+**Behaviour**
+
+- **Fire-and-forget.** The widget gets its `201` response before any webhook is awaited — a slow Slack response never blocks the user.
+- **Per-webhook isolation.** One failing receiver does not stop the others.
+- **Generic payload.** When `type` is omitted, the body is the full feedback record — wire your own formatter (Microsoft Teams, Mattermost, custom dashboard, …).
+
+```ts
+// Generic receiver — verify signatures, persist to your own queue, etc.
+webhooks: [
+  {
+    url: 'https://my-server.example.com/notify',
+    headers: { 'X-Signature': process.env.WEBHOOK_SECRET! },
+    onError: (err, id) => logger.warn({ err, feedbackId: id }, 'webhook failed'),
+  },
+]
+```
+
+---
+
 ## API Reference
 
 ### Server adapter
@@ -440,13 +493,13 @@ See [CHANGELOG.md](./CHANGELOG.md) for version history.
 - ✅ Client-side store mode (no server needed)
 - ✅ In-memory + localStorage adapters
 - ✅ Adapter conformance test suite (22 tests, shared across adapters)
+- ✅ Webhook notifications (Slack, Discord, generic HTTP) — see [Notifications](#notifications)
 
 **Up next**
 
 - 🚧 Drizzle adapter — [help wanted](https://github.com/NeosiaNexus/SitePing/labels/help%20wanted)
 - 🚧 Framework example apps (Astro, SvelteKit, Nuxt) — [good first issues](https://github.com/NeosiaNexus/SitePing/labels/good%20first%20issue)
 - 🚧 MutationObserver for SPA re-anchoring
-- 🚧 Webhook notifications (Discord, Slack)
 
 **Planned**
 
