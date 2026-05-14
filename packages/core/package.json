@@ -21,7 +21,7 @@
     "clean": "rm -rf dist"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "homepage": "https://siteping.dev",
   "bugs": {

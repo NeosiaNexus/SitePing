@@ -39,21 +39,21 @@
     },
     "packages/adapter-localstorage": {
       "name": "@siteping/adapter-localstorage",
-      "version": "0.4.3",
+      "version": "0.4.4",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
     },
     "packages/adapter-memory": {
       "name": "@siteping/adapter-memory",
-      "version": "0.4.3",
+      "version": "0.4.4",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
     },
     "packages/adapter-prisma": {
       "name": "@siteping/adapter-prisma",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "dependencies": {
         "zod": "^3.24.0",
       },
@@ -61,12 +61,12 @@
         "@siteping/core": "workspace:*",
       },
       "peerDependencies": {
-        "@prisma/client": "^5.0.0 || ^6.0.0",
+        "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0",
       },
     },
     "packages/cli": {
       "name": "@siteping/cli",
-      "version": "0.4.3",
+      "version": "0.4.4",
       "bin": {
         "siteping": "./dist/index.js",
       },
@@ -79,16 +79,16 @@
     },
     "packages/core": {
       "name": "@siteping/core",
-      "version": "0.7.1",
+      "version": "0.7.2",
     },
     "packages/widget": {
       "name": "@siteping/widget",
-      "version": "0.9.6",
+      "version": "0.9.7",
       "dependencies": {
+        "@medv/finder": "^3.2.0",
         "html2canvas": "^1.4.1",
       },
       "devDependencies": {
-        "@medv/finder": "^3.2.0",
         "@siteping/core": "workspace:*",
       },
     },

@@ -48,7 +48,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "zod": "^3.24.0"
@@ -57,6 +57,6 @@
     "@siteping/core": "workspace:*"
   },
   "peerDependencies": {
-    "@prisma/client": "^5.0.0 || ^6.0.0"
+    "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0"
   }
 }
