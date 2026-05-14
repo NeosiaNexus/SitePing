@@ -1,0 +1,16 @@
+[
+  {
+    "name": "ESM entry (dist/index.js, gzip)",
+    "path": "dist/index.js",
+    "limit": "54 KB",
+    "gzip": true,
+    "disablePlugins": ["@size-limit/esbuild"]
+  },
+  {
+    "name": "IIFE script bundle (dist/index.global.js, gzip)",
+    "path": "dist/index.global.js",
+    "limit": "110 KB",
+    "gzip": true,
+    "disablePlugins": ["@size-limit/esbuild"]
+  }
+]
