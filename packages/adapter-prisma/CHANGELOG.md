@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.5...adapter-prisma-v0.4.6) (2026-05-06)
+
+
+### Bug Fixes
+
+* **adapter-prisma:** make ?search filter work on SQLite ([#46](https://github.com/NeosiaNexus/SitePing/issues/46)) ([d555e6c](https://github.com/NeosiaNexus/SitePing/commit/d555e6c678e290ae2f531685a1ee2197b30b3edc))
+
 ## [0.4.5](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.4...adapter-prisma-v0.4.5) (2026-05-06)
 
 
