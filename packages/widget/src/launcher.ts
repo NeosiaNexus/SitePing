@@ -11,10 +11,10 @@ import { ApiClient, flushRetryQueue, type WidgetClient } from "./api-client.js";
 import { MOBILE_BREAKPOINT, PAGE_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { EventBus, type PublicWidgetEvents, type WidgetEvents } from "./events.js";
 import { Fab } from "./fab.js";
-import { createT, type TFunction } from "./i18n/index.js";
+import { createT, loadLocale, type TFunction } from "./i18n/index.js";
 import { getIdentity, type Identity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
-import { Panel } from "./panel.js";
+import type { Panel as PanelType } from "./panel.js";
 import { StoreClient } from "./store-client.js";
 import { buildStyles } from "./styles/base.js";
 import { buildThemeColors } from "./styles/theme.js";
@@ -94,6 +94,14 @@ export function launch(config: SitepingConfig): SitepingInstance {
   }
 
   const locale = config.locale ?? "en";
+  // Kick off the locale fetch immediately so the panel can render in the
+  // resolved language as soon as it mounts. English is bundled synchronously
+  // and used as the fallback while the chunk is in flight.
+  if (locale !== "en") {
+    loadLocale(locale).catch(() => {
+      /* fallback to English — already handled by createT */
+    });
+  }
   const t = createT(locale);
 
   // Page scope — concrete URL + optional template, used to keep annotations
@@ -198,10 +206,64 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // Components inside Shadow DOM
   const fab = new Fab(shadow, config, bus, t);
-  const panel = new Panel(shadow, colors, bus, client, config.projectName, markers, t, locale, {
-    getScope,
-    scopeAnnotationsByUrl,
+
+  // Lazy-load Panel on first use (FAB click, instance.open, etc.) to keep the
+  // initial bundle small. Panel + sub-modules are ~14 KB gzip on their own.
+  // Memoize the import promise so subsequent calls reuse the same instance.
+  let panelInstance: PanelType | null = null;
+  let panelPromise: Promise<PanelType> | null = null;
+  let destroyed = false;
+  async function loadPanel(): Promise<PanelType | null> {
+    if (destroyed) return null;
+    if (panelInstance) return panelInstance;
+    if (!panelPromise) {
+      panelPromise = import("./panel.js").then((mod) => {
+        if (destroyed) return null as unknown as PanelType;
+        panelInstance = new mod.Panel(shadow, colors, bus, client, config.projectName, markers, t, locale, {
+          getScope,
+          scopeAnnotationsByUrl,
+        });
+        return panelInstance;
+      });
+    }
+    return panelPromise;
+  }
+
+  // Prefetch Panel in idle time so the first FAB click doesn't pay the
+  // network/parse cost of the dynamic import. The chunk still ships lazily
+  // (saves first-paint gzip), but it's already warming up by the time the
+  // user is likely to click. Falls back to setTimeout in browsers without
+  // requestIdleCallback (Safari before 17).
+  if (typeof window !== "undefined") {
+    const prefetch = () => {
+      if (!destroyed) void loadPanel();
+    };
+    const ric = (window as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback;
+    if (typeof ric === "function") ric(prefetch);
+    else setTimeout(prefetch, 200);
+  }
+
+  // The FAB emits `panel:toggle` on chat click — we intercept here so the
+  // launcher (which holds the lazy loader) can drive the Panel lifecycle.
+  // Panel itself also subscribes to `panel:toggle` once loaded; once the
+  // dynamic import resolves we manually call `p.open()` because the missed
+  // initial emit can't be replayed.
+  let pendingOpen = false;
+  const unsubToggle = bus.on("panel:toggle", (open) => {
+    if (panelInstance) return; // Real Panel already handles subsequent toggles
+    if (open) {
+      pendingOpen = true;
+      loadPanel()
+        .then((p) => {
+          if (p && pendingOpen) p.open();
+          pendingOpen = false;
+        })
+        .catch((err) => log("Failed to lazy-load panel:", err));
+    } else {
+      pendingOpen = false;
+    }
   });
+
   const annotator = new Annotator(colors, bus, t, config.enableScreenshot ?? false);
 
   // Handle annotation completion via event bus (not DOM events)
@@ -263,7 +325,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
           markers.addFeedback(response, markers.count + 1);
         }
         liveRegion.textContent = t("feedback.sent.confirmation");
-        await panel.refresh();
+        // Only refresh the panel if it has been loaded — `refresh()` is a
+        // no-op when the panel is closed, so skipping the dynamic import here
+        // avoids loading 14 KB of code that would otherwise do nothing.
+        if (panelInstance) await panelInstance.refresh();
       } catch (error) {
         bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
         liveRegion.textContent = t("feedback.error.message");
@@ -300,9 +365,12 @@ export function launch(config: SitepingConfig): SitepingInstance {
   instance = {
     destroy: () => {
       log("Destroying widget");
+      destroyed = true;
+      pendingOpen = false;
       unsubAnnotation();
+      unsubToggle();
       fab.destroy();
-      panel.destroy();
+      panelInstance?.destroy();
       annotator.destroy();
       markers.destroy();
       tooltip.destroy();
@@ -313,10 +381,18 @@ export function launch(config: SitepingConfig): SitepingInstance {
       instance = null;
     },
     open: () => {
-      panel.open();
+      // Emit synchronously so consumers wired through `onOpen` / `panel:open`
+      // see the open event immediately, even before the Panel module has
+      // finished loading on the first call.
+      bus.emit("panel:toggle", true);
     },
     close: () => {
-      panel.close();
+      if (panelInstance) {
+        panelInstance.close();
+      } else {
+        // Cancel a pending open before the panel has loaded.
+        pendingOpen = false;
+      }
     },
     refresh: () => {
       // When the panel is open, its `refresh()` already runs `loadFeedbacks()`
@@ -325,8 +401,8 @@ export function launch(config: SitepingConfig): SitepingInstance {
       // So: when the panel is open, delegate. When it's closed, fetch markers
       // ourselves (the panel won't, but SPA hosts still need the new page's
       // markers after a route change).
-      if (panel.isCurrentlyOpen) {
-        panel.refresh();
+      if (panelInstance?.isCurrentlyOpen) {
+        panelInstance.refresh();
         return;
       }
 

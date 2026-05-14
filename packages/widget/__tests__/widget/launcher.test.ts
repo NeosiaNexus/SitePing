@@ -348,23 +348,31 @@ describe("launch", () => {
   // -------------------------------------------------------------------------
 
   describe("config callbacks", () => {
-    it("wires onOpen callback to bus 'open' event", () => {
+    it("wires onOpen callback to bus 'open' event", async () => {
       const onOpen = vi.fn();
       const instance = launch(defaultConfig({ onOpen }));
 
       instance.open();
 
-      // onOpen is called via event bus when panel opens
-      expect(onOpen).toHaveBeenCalled();
+      // Panel is lazy-loaded — the "open" event fires once the dynamic
+      // import resolves and Panel.open() executes.
+      await vi.waitFor(() => {
+        expect(onOpen).toHaveBeenCalled();
+      });
 
       instance.destroy();
     });
 
-    it("wires onClose callback to bus 'close' event", () => {
+    it("wires onClose callback to bus 'close' event", async () => {
       const onClose = vi.fn();
       const instance = launch(defaultConfig({ onClose }));
 
       instance.open();
+      // Wait for the lazy-loaded Panel to actually open before closing it —
+      // otherwise close() short-circuits while the import is still in flight.
+      await vi.waitFor(() => {
+        expect(document.querySelector("siteping-widget")?.shadowRoot?.querySelector(".sp-panel--open")).not.toBeNull();
+      });
       instance.close();
 
       expect(onClose).toHaveBeenCalled();
@@ -390,13 +398,19 @@ describe("launch", () => {
       instance.destroy();
     });
 
-    it("supports English locale", () => {
+    it("supports English locale", async () => {
       const instance = launch(defaultConfig({ locale: "en" }));
+      instance.open();
 
+      // Panel is lazy-loaded — wait for it to mount into the shadow root.
       const widget = document.querySelector("siteping-widget")!;
       const shadow = widget.shadowRoot!;
-      const panel = shadow.querySelector<HTMLElement>('[role="complementary"]')!;
-      expect(panel.getAttribute("aria-label")).toBe("Siteping feedback panel");
+      let panel: HTMLElement | null = null;
+      await vi.waitFor(() => {
+        panel = shadow.querySelector<HTMLElement>('[role="complementary"]');
+        expect(panel).not.toBeNull();
+      });
+      expect(panel!.getAttribute("aria-label")).toBe("Siteping feedback panel");
 
       instance.destroy();
     });

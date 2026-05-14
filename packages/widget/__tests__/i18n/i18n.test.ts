@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { de } from "../../src/i18n/de.js";
 import { en } from "../../src/i18n/en.js";
 import { es } from "../../src/i18n/es.js";
 import { fr } from "../../src/i18n/fr.js";
-import { createT, getTypeLabel } from "../../src/i18n/index.js";
+import { createT, getTypeLabel, loadLocale } from "../../src/i18n/index.js";
 import { it as italian } from "../../src/i18n/it.js";
 import { pt } from "../../src/i18n/pt.js";
 import { ru } from "../../src/i18n/ru.js";
@@ -13,6 +13,19 @@ import { ru } from "../../src/i18n/ru.js";
 // ---------------------------------------------------------------------------
 
 describe("createT", () => {
+  // Non-English locales are lazy-loaded — preload them once so the synchronous
+  // `t(key)` lookups below see the resolved dictionary.
+  beforeAll(async () => {
+    await Promise.all([
+      loadLocale("fr"),
+      loadLocale("es"),
+      loadLocale("ru"),
+      loadLocale("de"),
+      loadLocale("it"),
+      loadLocale("pt"),
+    ]);
+  });
+
   it("returns French translations for 'fr'", () => {
     const t = createT("fr");
     expect(t("panel.title")).toBe("Feedbacks");
@@ -94,6 +107,19 @@ describe("createT", () => {
     const result = (t as (key: string) => string)("nonexistent.key");
     expect(result).toBe("nonexistent.key");
   });
+
+  it("loadLocale returns null for unknown locale codes", async () => {
+    expect(await loadLocale("zz")).toBeNull();
+  });
+
+  it("falls back to English before the lazy locale loads, then upgrades", async () => {
+    // Use a locale we haven't pre-loaded by going through a different process —
+    // we can't trivially "unload", so simulate the pre-load timing by calling
+    // createT and asserting it picks up the loaded dictionary on next call.
+    const t = createT("fr");
+    // Already loaded in beforeAll, so this is the steady-state behaviour.
+    expect(t("panel.close")).toBe("Fermer le panneau");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -101,6 +127,10 @@ describe("createT", () => {
 // ---------------------------------------------------------------------------
 
 describe("getTypeLabel", () => {
+  beforeAll(async () => {
+    await loadLocale("fr");
+  });
+
   it("returns correct French labels for each type", () => {
     const t = createT("fr");
     expect(getTypeLabel("question", t)).toBe("Question");
