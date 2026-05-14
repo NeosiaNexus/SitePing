@@ -52,6 +52,25 @@ export function setText(element: HTMLElement | SVGElement, text: string): void {
   element.textContent = text;
 }
 
+/**
+ * Replace a button's children with a small spinner and disable it.
+ * Returns a `restore` callback that swaps the original content back and
+ * re-enables the button. Used by every async button (delete, resolve, …)
+ * to surface in-flight state without owning per-button state itself.
+ *
+ * Lives in dom-utils rather than panel-internal because both Panel and
+ * BulkActions need identical behaviour.
+ */
+export function setButtonLoading(btn: HTMLButtonElement): () => void {
+  const snapshot = Array.from(btn.childNodes).map((n) => n.cloneNode(true));
+  btn.disabled = true;
+  btn.replaceChildren(el("div", { class: "sp-spinner sp-spinner--sm" }));
+  return () => {
+    btn.replaceChildren(...snapshot);
+    btn.disabled = false;
+  };
+}
+
 /** Format a relative date string using Intl.RelativeTimeFormat for locale support */
 export function formatRelativeDate(isoString: string, locale = "en"): string {
   const diff = Date.now() - new Date(isoString).getTime();
