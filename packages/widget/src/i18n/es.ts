@@ -90,4 +90,71 @@ export const es: Translations = {
 
   // Badge
   "badge.count": "{count} comentarios sin resolver",
+
+  // Bulk actions toolbar
+  "bulk.selectAll": "Seleccionar todo",
+  "bulk.selected": "{count} seleccionados",
+  "bulk.resolve": "Resolver",
+  "bulk.delete": "Eliminar",
+  "bulk.deselect": "Deseleccionar",
+
+  // Sort and group controls
+  "sort.newest": "Más recientes",
+  "sort.oldest": "Más antiguos",
+  "sort.byType": "Por tipo",
+  "sort.openFirst": "Abiertos primero",
+  "sort.label": "Ordenar",
+  "group.byPage": "Por página",
+  "group.feedbacks": "{count} comentarios",
+
+  // Stats bar
+  "stats.open": "Abiertos",
+  "stats.resolved": "Resueltos",
+  "stats.bugs": "Errores",
+  "stats.progress": "{percent}% resueltos",
+
+  // Detail view
+  "detail.back": "Atrás",
+  "detail.title": "Comentario #{number}",
+  "detail.status": "Estado",
+  "detail.message": "Mensaje",
+  "detail.screenshot": "Captura",
+  "detail.screenshotAlt": "Captura del área anotada",
+  "detail.metadata": "Detalles",
+  "detail.annotation": "Anotación",
+  "detail.page": "Página",
+  "detail.author": "Autor",
+  "detail.date": "Creado",
+  "detail.viewport": "Viewport",
+  "detail.browser": "Navegador",
+  "detail.resolvedAt": "Resuelto el",
+  "detail.goToAnnotation": "Ir a la anotación",
+  "detail.element": "Elemento",
+  "detail.selector": "Selector",
+  "detail.position": "Posición",
+  "detail.resolve": "Resolver",
+  "detail.reopen": "Reabrir",
+  "detail.delete": "Eliminar",
+  "detail.diagnostics": "Diagnóstico",
+  "detail.diagnostics.console": "Consola",
+  "detail.diagnostics.network": "Red fallida",
+  "detail.diagnostics.expand": "Mostrar diagnóstico",
+  "detail.diagnostics.collapse": "Ocultar diagnóstico",
+  "detail.diagnostics.noEntries": "Sin entradas",
+
+  // Keyboard shortcuts overlay
+  "shortcuts.title": "Atajos de teclado",
+  "shortcuts.navigate": "Navegar comentarios",
+  "shortcuts.resolve": "Resolver / Reabrir",
+  "shortcuts.delete": "Eliminar",
+  "shortcuts.search": "Buscar",
+  "shortcuts.select": "Alternar selección",
+  "shortcuts.help": "Mostrar atajos",
+  "shortcuts.close": "Cerrar",
+  "shortcuts.hint": "Atajos de teclado",
+
+  // Export controls
+  "export.label": "Exportar",
+  "export.csv": "Exportar CSV",
+  "export.json": "Exportar JSON",
 };

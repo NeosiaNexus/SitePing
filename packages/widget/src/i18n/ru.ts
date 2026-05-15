@@ -89,4 +89,71 @@ export const ru: Translations = {
 
   // Badge
   "badge.count": "Нерешённых отзывов: {count}",
+
+  // Bulk actions toolbar
+  "bulk.selectAll": "Выбрать все",
+  "bulk.selected": "Выбрано: {count}",
+  "bulk.resolve": "Решить",
+  "bulk.delete": "Удалить",
+  "bulk.deselect": "Снять выбор",
+
+  // Sort and group controls
+  "sort.newest": "Сначала новые",
+  "sort.oldest": "Сначала старые",
+  "sort.byType": "По типу",
+  "sort.openFirst": "Сначала открытые",
+  "sort.label": "Сортировка",
+  "group.byPage": "По странице",
+  "group.feedbacks": "Отзывов: {count}",
+
+  // Stats bar
+  "stats.open": "Открытые",
+  "stats.resolved": "Решённые",
+  "stats.bugs": "Баги",
+  "stats.progress": "Решено: {percent}%",
+
+  // Detail view
+  "detail.back": "Назад",
+  "detail.title": "Отзыв #{number}",
+  "detail.status": "Статус",
+  "detail.message": "Сообщение",
+  "detail.screenshot": "Скриншот",
+  "detail.screenshotAlt": "Скриншот выделенной области",
+  "detail.metadata": "Детали",
+  "detail.annotation": "Аннотация",
+  "detail.page": "Страница",
+  "detail.author": "Автор",
+  "detail.date": "Создан",
+  "detail.viewport": "Viewport",
+  "detail.browser": "Браузер",
+  "detail.resolvedAt": "Решён",
+  "detail.goToAnnotation": "Перейти к аннотации",
+  "detail.element": "Элемент",
+  "detail.selector": "Селектор",
+  "detail.position": "Позиция",
+  "detail.resolve": "Решить",
+  "detail.reopen": "Открыть заново",
+  "detail.delete": "Удалить",
+  "detail.diagnostics": "Диагностика",
+  "detail.diagnostics.console": "Консоль",
+  "detail.diagnostics.network": "Сетевые ошибки",
+  "detail.diagnostics.expand": "Показать диагностику",
+  "detail.diagnostics.collapse": "Скрыть диагностику",
+  "detail.diagnostics.noEntries": "Нет записей",
+
+  // Keyboard shortcuts overlay
+  "shortcuts.title": "Горячие клавиши",
+  "shortcuts.navigate": "Навигация по отзывам",
+  "shortcuts.resolve": "Решить / Переоткрыть",
+  "shortcuts.delete": "Удалить",
+  "shortcuts.search": "Поиск",
+  "shortcuts.select": "Переключить выбор",
+  "shortcuts.help": "Показать клавиши",
+  "shortcuts.close": "Закрыть",
+  "shortcuts.hint": "Горячие клавиши",
+
+  // Export controls
+  "export.label": "Экспорт",
+  "export.csv": "Экспорт в CSV",
+  "export.json": "Экспорт в JSON",
 };

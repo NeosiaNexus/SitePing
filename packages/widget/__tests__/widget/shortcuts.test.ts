@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { en as SHORTCUTS_I18N_EN } from "../../src/i18n/en.js";
+import { fr as SHORTCUTS_I18N_FR } from "../../src/i18n/fr.js";
+import { createT } from "../../src/i18n/index.js";
 import {
   focusCardByIndex,
   getFocusedCardIndex,
   ICON_KEYBOARD,
   KeyboardShortcuts,
   SHORTCUTS_CSS,
-  SHORTCUTS_I18N_EN,
-  SHORTCUTS_I18N_FR,
   type ShortcutCallbacks,
 } from "../../src/shortcuts.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
@@ -179,7 +180,7 @@ describe("KeyboardShortcuts", () => {
 
   beforeEach(() => {
     callbacks = createCallbacks();
-    shortcuts = new KeyboardShortcuts(colors, callbacks);
+    shortcuts = new KeyboardShortcuts(colors, callbacks, createT("en"));
     shadow = createShadowRoot();
   });
 
@@ -243,7 +244,7 @@ describe("KeyboardShortcuts", () => {
     });
 
     it("uses the FR i18n bundle when provided", () => {
-      const sc = new KeyboardShortcuts(colors, callbacks, SHORTCUTS_I18N_FR);
+      const sc = new KeyboardShortcuts(colors, callbacks, createT("fr"));
       expect(sc.helpOverlay.getAttribute("aria-label")).toBe(SHORTCUTS_I18N_FR["shortcuts.title"]);
       expect(sc.hintButton.getAttribute("aria-label")).toBe(SHORTCUTS_I18N_FR["shortcuts.hint"]);
       sc.destroy();

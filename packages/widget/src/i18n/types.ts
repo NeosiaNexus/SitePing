@@ -89,6 +89,73 @@ export interface Translations {
 
   // Badge
   "badge.count": string;
+
+  // Bulk actions toolbar
+  "bulk.selectAll": string;
+  "bulk.selected": string;
+  "bulk.resolve": string;
+  "bulk.delete": string;
+  "bulk.deselect": string;
+
+  // Sort and group controls
+  "sort.newest": string;
+  "sort.oldest": string;
+  "sort.byType": string;
+  "sort.openFirst": string;
+  "sort.label": string;
+  "group.byPage": string;
+  "group.feedbacks": string;
+
+  // Stats bar
+  "stats.open": string;
+  "stats.resolved": string;
+  "stats.bugs": string;
+  "stats.progress": string;
+
+  // Detail view
+  "detail.back": string;
+  "detail.title": string;
+  "detail.status": string;
+  "detail.message": string;
+  "detail.screenshot": string;
+  "detail.screenshotAlt": string;
+  "detail.metadata": string;
+  "detail.annotation": string;
+  "detail.page": string;
+  "detail.author": string;
+  "detail.date": string;
+  "detail.viewport": string;
+  "detail.browser": string;
+  "detail.resolvedAt": string;
+  "detail.goToAnnotation": string;
+  "detail.element": string;
+  "detail.selector": string;
+  "detail.position": string;
+  "detail.resolve": string;
+  "detail.reopen": string;
+  "detail.delete": string;
+  "detail.diagnostics": string;
+  "detail.diagnostics.console": string;
+  "detail.diagnostics.network": string;
+  "detail.diagnostics.expand": string;
+  "detail.diagnostics.collapse": string;
+  "detail.diagnostics.noEntries": string;
+
+  // Keyboard shortcuts overlay
+  "shortcuts.title": string;
+  "shortcuts.navigate": string;
+  "shortcuts.resolve": string;
+  "shortcuts.delete": string;
+  "shortcuts.search": string;
+  "shortcuts.select": string;
+  "shortcuts.help": string;
+  "shortcuts.close": string;
+  "shortcuts.hint": string;
+
+  // Export controls
+  "export.label": string;
+  "export.csv": string;
+  "export.json": string;
 }
 
 /** A translate function that returns the string for a given key. */

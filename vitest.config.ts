@@ -11,6 +11,7 @@ export default defineConfig({
   },
   test: {
     include: ["packages/**/__tests__/**/*.test.{ts,tsx}"],
+    setupFiles: ["packages/widget/__tests__/setup-i18n.ts"],
     coverage: {
       provider: "istanbul",
       reporter: ["text", "lcov", "json-summary"],

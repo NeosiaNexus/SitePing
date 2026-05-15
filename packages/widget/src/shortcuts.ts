@@ -10,6 +10,7 @@
  */
 
 import { el, parseSvg, setText } from "./dom-utils.js";
+import type { TFunction, Translations } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -18,36 +19,8 @@ import type { ThemeColors } from "./styles/theme.js";
 
 export const ICON_KEYBOARD = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M6 12h.01"/><path d="M18 12h.01"/><path d="M8 16h8"/></svg>`;
 
-// ---------------------------------------------------------------------------
-// i18n
-// ---------------------------------------------------------------------------
-
-export const SHORTCUTS_I18N_EN = {
-  "shortcuts.title": "Keyboard shortcuts",
-  "shortcuts.navigate": "Navigate feedbacks",
-  "shortcuts.resolve": "Resolve / Reopen",
-  "shortcuts.delete": "Delete",
-  "shortcuts.search": "Focus search",
-  "shortcuts.select": "Toggle selection",
-  "shortcuts.help": "Show shortcuts",
-  "shortcuts.close": "Close",
-  "shortcuts.hint": "Keyboard shortcuts",
-} as const;
-
-export const SHORTCUTS_I18N_FR = {
-  "shortcuts.title": "Raccourcis clavier",
-  "shortcuts.navigate": "Naviguer les feedbacks",
-  "shortcuts.resolve": "Résoudre / Rouvrir",
-  "shortcuts.delete": "Supprimer",
-  "shortcuts.search": "Rechercher",
-  "shortcuts.select": "Sélectionner",
-  "shortcuts.help": "Raccourcis",
-  "shortcuts.close": "Fermer",
-  "shortcuts.hint": "Raccourcis clavier",
-} as const;
-
-export type ShortcutsI18n = typeof SHORTCUTS_I18N_EN;
-type I18nKey = keyof ShortcutsI18n;
+// All translation keys are sourced from the central i18n dict via t().
+type ShortcutsI18nKey = Extract<keyof Translations, `shortcuts.${string}`>;
 
 // ---------------------------------------------------------------------------
 // Callbacks
@@ -98,7 +71,7 @@ export function focusCardByIndex(listContainer: HTMLElement, index: number): voi
 
 interface ShortcutDef {
   keys: string[];
-  label: I18nKey;
+  label: ShortcutsI18nKey;
 }
 
 const SHORTCUT_DEFS: ShortcutDef[] = [
@@ -370,7 +343,7 @@ export class KeyboardShortcuts {
   constructor(
     _colors: ThemeColors,
     callbacks: ShortcutCallbacks,
-    private readonly i18n: ShortcutsI18n = SHORTCUTS_I18N_EN,
+    private readonly t: TFunction,
   ) {
     // Build key map (O(1) dispatch)
     this.keyMap = new Map<string, () => void>([
@@ -496,7 +469,7 @@ export class KeyboardShortcuts {
     const overlay = el("div", { class: "sp-shortcuts-overlay" });
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
-    overlay.setAttribute("aria-label", this.i18n["shortcuts.title"]);
+    overlay.setAttribute("aria-label", this.t("shortcuts.title"));
 
     // Click backdrop to close
     overlay.addEventListener("click", (e) => {
@@ -509,14 +482,14 @@ export class KeyboardShortcuts {
     const title = el("div", { class: "sp-shortcuts-title" });
     title.appendChild(parseSvg(ICON_KEYBOARD));
     const titleText = el("span");
-    setText(titleText, this.i18n["shortcuts.title"]);
+    setText(titleText, this.t("shortcuts.title"));
     title.appendChild(titleText);
     card.appendChild(title);
 
     // Close button
     const closeBtn = document.createElement("button");
     closeBtn.className = "sp-shortcuts-close";
-    closeBtn.setAttribute("aria-label", this.i18n["shortcuts.close"]);
+    closeBtn.setAttribute("aria-label", this.t("shortcuts.close"));
     closeBtn.appendChild(parseSvg(ICON_CLOSE_SM));
     closeBtn.addEventListener("click", () => this.hideHelp());
     card.appendChild(closeBtn);
@@ -540,7 +513,7 @@ export class KeyboardShortcuts {
       });
 
       const desc = el("span", { class: "sp-shortcuts-desc" });
-      setText(desc, this.i18n[def.label]);
+      setText(desc, this.t(def.label));
 
       row.appendChild(keysWrap);
       row.appendChild(desc);
@@ -556,7 +529,7 @@ export class KeyboardShortcuts {
   private buildHintButton(): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.className = "sp-shortcuts-hint";
-    btn.setAttribute("aria-label", this.i18n["shortcuts.hint"]);
+    btn.setAttribute("aria-label", this.t("shortcuts.hint"));
     setText(btn, "?");
     btn.addEventListener("click", (e) => {
       e.stopPropagation();

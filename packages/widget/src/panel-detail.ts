@@ -11,6 +11,7 @@
 
 import type { FeedbackResponse } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
+import type { TFunction } from "./i18n/index.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -41,73 +42,6 @@ const ICON_CROSSHAIR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 
 const ICON_CHEVRON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>`;
 const ICON_TERMINAL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
-
-// ---------------------------------------------------------------------------
-// I18n
-// ---------------------------------------------------------------------------
-
-export const DETAIL_I18N_EN = {
-  "detail.back": "Back",
-  "detail.title": "Feedback #{number}",
-  "detail.status": "Status",
-  "detail.message": "Message",
-  "detail.screenshot": "Screenshot",
-  "detail.screenshotAlt": "Screenshot of the annotated area",
-  "detail.metadata": "Details",
-  "detail.annotation": "Annotation",
-  "detail.page": "Page",
-  "detail.author": "Author",
-  "detail.date": "Created",
-  "detail.viewport": "Viewport",
-  "detail.browser": "Browser",
-  "detail.resolvedAt": "Resolved at",
-  "detail.goToAnnotation": "Go to annotation",
-  "detail.element": "Element",
-  "detail.selector": "Selector",
-  "detail.position": "Position",
-  "detail.resolve": "Resolve",
-  "detail.reopen": "Reopen",
-  "detail.delete": "Delete",
-  "detail.diagnostics": "Diagnostics",
-  "detail.diagnostics.console": "Console",
-  "detail.diagnostics.network": "Failed network",
-  "detail.diagnostics.expand": "Show diagnostics",
-  "detail.diagnostics.collapse": "Hide diagnostics",
-  "detail.diagnostics.noEntries": "No entries",
-};
-
-export const DETAIL_I18N_FR = {
-  "detail.back": "Retour",
-  "detail.title": "Feedback n\u00b0{number}",
-  "detail.status": "Statut",
-  "detail.message": "Message",
-  "detail.screenshot": "Capture d'\u00e9cran",
-  "detail.screenshotAlt": "Capture d'\u00e9cran de la zone annot\u00e9e",
-  "detail.metadata": "D\u00e9tails",
-  "detail.annotation": "Annotation",
-  "detail.page": "Page",
-  "detail.author": "Auteur",
-  "detail.date": "Cr\u00e9\u00e9 le",
-  "detail.viewport": "Viewport",
-  "detail.browser": "Navigateur",
-  "detail.resolvedAt": "R\u00e9solu le",
-  "detail.goToAnnotation": "Aller \u00e0 l'annotation",
-  "detail.element": "\u00c9l\u00e9ment",
-  "detail.selector": "S\u00e9lecteur",
-  "detail.position": "Position",
-  "detail.resolve": "R\u00e9soudre",
-  "detail.reopen": "Rouvrir",
-  "detail.delete": "Supprimer",
-  "detail.diagnostics": "Diagnostics",
-  "detail.diagnostics.console": "Console",
-  "detail.diagnostics.network": "R\u00e9seau en \u00e9chec",
-  "detail.diagnostics.expand": "Afficher les diagnostics",
-  "detail.diagnostics.collapse": "Masquer les diagnostics",
-  "detail.diagnostics.noEntries": "Aucune entr\u00e9e",
-};
-
-type DetailI18nKey = keyof typeof DETAIL_I18N_EN;
-type DetailI18n = Record<DetailI18nKey, string>;
 
 // ---------------------------------------------------------------------------
 // CSS
@@ -915,7 +849,8 @@ export class DetailView {
   private _isVisible = false;
   private currentFeedback: FeedbackResponse | null = null;
   private readonly content: HTMLElement;
-  private readonly i18n: DetailI18n;
+  private readonly t: TFunction;
+  private readonly locale: string;
   private resolveBtn: HTMLButtonElement | null = null;
   private deleteBtn: HTMLButtonElement | null = null;
   private isProcessing = false;
@@ -923,9 +858,11 @@ export class DetailView {
   constructor(
     private readonly colors: ThemeColors,
     private readonly callbacks: DetailCallbacks,
+    t: TFunction,
     locale: string,
   ) {
-    this.i18n = locale.startsWith("fr") ? DETAIL_I18N_FR : DETAIL_I18N_EN;
+    this.t = t;
+    this.locale = locale;
 
     // Root container
     this.element = el("div", { class: "sp-detail" });
@@ -939,7 +876,7 @@ export class DetailView {
     const backBtn = document.createElement("button");
     backBtn.type = "button";
     backBtn.className = "sp-detail-back";
-    backBtn.setAttribute("aria-label", this.i18n["detail.back"]);
+    backBtn.setAttribute("aria-label", this.t("detail.back"));
     backBtn.appendChild(parseSvg(ICON_ARROW_LEFT));
     backBtn.addEventListener("click", () => {
       this.hide();
@@ -970,7 +907,7 @@ export class DetailView {
     header.replaceChildren(backBtn);
 
     const title = el("span", { class: "sp-detail-title" });
-    setText(title, this.i18n["detail.title"].replace("{number}", String(number)));
+    setText(title, this.t("detail.title").replace("{number}", String(number)));
     header.appendChild(title);
 
     const badge = el("span", { class: "sp-badge" });
@@ -992,7 +929,7 @@ export class DetailView {
     // Section 2: Message
     const messageSection = this.buildSection(sectionIndex++);
     const messageSectionTitle = el("div", { class: "sp-detail-section-title" });
-    setText(messageSectionTitle, this.i18n["detail.message"]);
+    setText(messageSectionTitle, this.t("detail.message"));
     messageSection.appendChild(messageSectionTitle);
 
     const messageBlock = el("div", { class: "sp-detail-message" });
@@ -1005,13 +942,13 @@ export class DetailView {
     if (feedback.screenshotUrl && isSafeImageUrl(feedback.screenshotUrl)) {
       const screenshotSection = this.buildSection(sectionIndex++);
       const screenshotSectionTitle = el("div", { class: "sp-detail-section-title" });
-      setText(screenshotSectionTitle, this.i18n["detail.screenshot"]);
+      setText(screenshotSectionTitle, this.t("detail.screenshot"));
       screenshotSection.appendChild(screenshotSectionTitle);
 
       const img = document.createElement("img");
       img.className = "sp-detail-screenshot";
       img.src = feedback.screenshotUrl;
-      img.alt = this.i18n["detail.screenshotAlt"];
+      img.alt = this.t("detail.screenshotAlt");
       img.loading = "lazy";
       // Avoid leaking the panel viewer's referrer to the storage host —
       // a malicious or compromised storage URL could otherwise track which
@@ -1024,7 +961,7 @@ export class DetailView {
     // Section 3: Metadata
     const metaSection = this.buildSection(sectionIndex++);
     const metaSectionTitle = el("div", { class: "sp-detail-section-title" });
-    setText(metaSectionTitle, this.i18n["detail.metadata"]);
+    setText(metaSectionTitle, this.t("detail.metadata"));
     metaSection.appendChild(metaSectionTitle);
     this.buildMetadata(metaSection, feedback);
     this.content.appendChild(metaSection);
@@ -1035,7 +972,7 @@ export class DetailView {
       const annSectionTitle = el("div", { class: "sp-detail-section-title" });
       annSectionTitle.appendChild(parseSvg(ICON_MAP_PIN));
       const annTitleText = el("span");
-      setText(annTitleText, this.i18n["detail.annotation"]);
+      setText(annTitleText, this.t("detail.annotation"));
       annSectionTitle.appendChild(annTitleText);
       annSection.appendChild(annSectionTitle);
       this.buildAnnotation(annSection, feedback);
@@ -1050,7 +987,7 @@ export class DetailView {
       const diagSectionTitle = el("div", { class: "sp-detail-section-title" });
       diagSectionTitle.appendChild(parseSvg(ICON_TERMINAL));
       const diagTitleText = el("span");
-      setText(diagTitleText, this.i18n["detail.diagnostics"]);
+      setText(diagTitleText, this.t("detail.diagnostics"));
       diagSectionTitle.appendChild(diagTitleText);
       diagSection.appendChild(diagSectionTitle);
       this.buildDiagnostics(diagSection, feedback);
@@ -1110,7 +1047,7 @@ export class DetailView {
 
     // Section title
     const sectionTitle = el("div", { class: "sp-detail-section-title" });
-    setText(sectionTitle, this.i18n["detail.status"]);
+    setText(sectionTitle, this.t("detail.status"));
     container.appendChild(sectionTitle);
 
     // Status pill
@@ -1122,7 +1059,7 @@ export class DetailView {
     dot.style.background = isResolved ? "#9ca3af" : "#22c55e";
     pill.appendChild(dot);
     const pillLabel = el("span");
-    setText(pillLabel, isResolved ? this.i18n["detail.reopen"] : this.i18n["detail.resolve"]);
+    setText(pillLabel, isResolved ? this.t("detail.reopen") : this.t("detail.resolve"));
     // Actually label the pill with Open/Resolved
     setText(pillLabel, isResolved ? "Resolved" : "Open");
     pill.appendChild(pillLabel);
@@ -1139,13 +1076,13 @@ export class DetailView {
       this.resolveBtn.className = "sp-detail-btn-reopen";
       this.resolveBtn.appendChild(parseSvg(ICON_UNDO));
       const span = document.createElement("span");
-      setText(span, this.i18n["detail.reopen"]);
+      setText(span, this.t("detail.reopen"));
       this.resolveBtn.appendChild(span);
     } else {
       this.resolveBtn.className = "sp-detail-btn-resolve";
       this.resolveBtn.appendChild(parseSvg(ICON_CHECK));
       const span = document.createElement("span");
-      setText(span, this.i18n["detail.resolve"]);
+      setText(span, this.t("detail.resolve"));
       this.resolveBtn.appendChild(span);
     }
     this.resolveBtn.addEventListener("click", () => this.handleResolve());
@@ -1156,7 +1093,7 @@ export class DetailView {
     this.deleteBtn.className = "sp-detail-btn-delete";
     this.deleteBtn.appendChild(parseSvg(ICON_TRASH));
     const deleteSpan = document.createElement("span");
-    setText(deleteSpan, this.i18n["detail.delete"]);
+    setText(deleteSpan, this.t("detail.delete"));
     this.deleteBtn.appendChild(deleteSpan);
     this.deleteBtn.addEventListener("click", () => this.handleDelete());
 
@@ -1170,7 +1107,7 @@ export class DetailView {
     const meta = el("div", { class: "sp-detail-meta" });
 
     // Page
-    this.addMetaRow(meta, ICON_LINK, this.i18n["detail.page"], () => {
+    this.addMetaRow(meta, ICON_LINK, this.t("detail.page"), () => {
       const value = el("div", { class: "sp-detail-meta-value" });
       const pathname = extractPathname(feedback.url);
       setText(value, truncate(pathname, 60));
@@ -1179,7 +1116,7 @@ export class DetailView {
     });
 
     // Author
-    this.addMetaRow(meta, ICON_USER, this.i18n["detail.author"], () => {
+    this.addMetaRow(meta, ICON_USER, this.t("detail.author"), () => {
       const value = el("div", { class: "sp-detail-meta-value" });
       const name = feedback.authorName || "Anonymous";
       const email = feedback.authorEmail;
@@ -1188,14 +1125,14 @@ export class DetailView {
     });
 
     // Date
-    this.addMetaRow(meta, ICON_CALENDAR, this.i18n["detail.date"], () => {
+    this.addMetaRow(meta, ICON_CALENDAR, this.t("detail.date"), () => {
       const value = el("div", { class: "sp-detail-meta-value" });
-      setText(value, formatFullDate(feedback.createdAt, this.i18n === DETAIL_I18N_FR ? "fr" : "en"));
+      setText(value, formatFullDate(feedback.createdAt, this.locale.startsWith("fr") ? "fr" : "en"));
       return value;
     });
 
     // Viewport
-    this.addMetaRow(meta, ICON_MONITOR, this.i18n["detail.viewport"], () => {
+    this.addMetaRow(meta, ICON_MONITOR, this.t("detail.viewport"), () => {
       const value = el("div", { class: "sp-detail-meta-value sp-detail-meta-value--mono" });
       setText(value, feedback.viewport || "Unknown");
       return value;
@@ -1205,7 +1142,7 @@ export class DetailView {
     this.addMetaRow(
       meta,
       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
-      this.i18n["detail.browser"],
+      this.t("detail.browser"),
       () => {
         const value = el("div", { class: "sp-detail-meta-value" });
         setText(value, parseBrowser(feedback.userAgent));
@@ -1216,9 +1153,9 @@ export class DetailView {
     // Resolved at (only if resolved)
     if (feedback.resolvedAt) {
       const resolvedDate = feedback.resolvedAt;
-      this.addMetaRow(meta, ICON_CHECK, this.i18n["detail.resolvedAt"], () => {
+      this.addMetaRow(meta, ICON_CHECK, this.t("detail.resolvedAt"), () => {
         const value = el("div", { class: "sp-detail-meta-value sp-detail-meta-value--secondary" });
-        setText(value, formatFullDate(resolvedDate, this.i18n === DETAIL_I18N_FR ? "fr" : "en"));
+        setText(value, formatFullDate(resolvedDate, this.locale.startsWith("fr") ? "fr" : "en"));
         return value;
       });
     }
@@ -1252,7 +1189,7 @@ export class DetailView {
     const info = el("div", { class: "sp-detail-annotation-info" });
 
     // Element tag
-    this.addAnnotationRow(info, ICON_CODE, this.i18n["detail.element"], () => {
+    this.addAnnotationRow(info, ICON_CODE, this.t("detail.element"), () => {
       const value = el("span", { class: "sp-detail-annotation-value sp-detail-annotation-value--mono" });
       const tagDisplay = ann.elementId ? `<${ann.elementTag}#${ann.elementId}>` : `<${ann.elementTag}>`;
       setText(value, tagDisplay);
@@ -1260,7 +1197,7 @@ export class DetailView {
     });
 
     // CSS selector
-    this.addAnnotationRow(info, ICON_CROSSHAIR, this.i18n["detail.selector"], () => {
+    this.addAnnotationRow(info, ICON_CROSSHAIR, this.t("detail.selector"), () => {
       const value = el("span", { class: "sp-detail-annotation-value sp-detail-annotation-value--mono" });
       setText(value, truncate(ann.cssSelector, 60));
       value.title = ann.cssSelector;
@@ -1268,7 +1205,7 @@ export class DetailView {
     });
 
     // Position
-    this.addAnnotationRow(info, ICON_MAP_PIN, this.i18n["detail.position"], () => {
+    this.addAnnotationRow(info, ICON_MAP_PIN, this.t("detail.position"), () => {
       const value = el("span", { class: "sp-detail-annotation-value" });
       setText(
         value,
@@ -1286,7 +1223,7 @@ export class DetailView {
     gotoBtn.className = "sp-detail-btn-goto";
     gotoBtn.appendChild(parseSvg(ICON_MAP_PIN));
     const gotoLabel = document.createElement("span");
-    setText(gotoLabel, this.i18n["detail.goToAnnotation"]);
+    setText(gotoLabel, this.t("detail.goToAnnotation"));
     gotoBtn.appendChild(gotoLabel);
     gotoBtn.addEventListener("click", () => {
       if (this.currentFeedback) {
@@ -1319,14 +1256,14 @@ export class DetailView {
     toggle.type = "button";
     toggle.className = "sp-detail-diag-toggle";
     toggle.setAttribute("aria-expanded", "false");
-    toggle.setAttribute("aria-label", this.i18n["detail.diagnostics.expand"]);
+    toggle.setAttribute("aria-label", this.t("detail.diagnostics.expand"));
     const toggleLabel = document.createElement("span");
     const leftRow = document.createElement("span");
     leftRow.style.display = "inline-flex";
     leftRow.style.alignItems = "center";
     leftRow.style.gap = "8px";
     leftRow.appendChild(parseSvg(ICON_CHEVRON));
-    setText(toggleLabel, this.i18n["detail.diagnostics"]);
+    setText(toggleLabel, this.t("detail.diagnostics"));
     leftRow.appendChild(toggleLabel);
     toggle.appendChild(leftRow);
 
@@ -1349,7 +1286,7 @@ export class DetailView {
     if (consoleEntries.length > 0) {
       const group = document.createElement("div");
       const title = el("div", { class: "sp-detail-diag-group-title" });
-      setText(title, this.i18n["detail.diagnostics.console"]);
+      setText(title, this.t("detail.diagnostics.console"));
       group.appendChild(title);
 
       const list = document.createElement("ul");
@@ -1376,7 +1313,7 @@ export class DetailView {
     if (networkEntries.length > 0) {
       const group = document.createElement("div");
       const title = el("div", { class: "sp-detail-diag-group-title" });
-      setText(title, this.i18n["detail.diagnostics.network"]);
+      setText(title, this.t("detail.diagnostics.network"));
       group.appendChild(title);
 
       const list = document.createElement("ul");
@@ -1406,7 +1343,7 @@ export class DetailView {
       toggle.setAttribute("aria-expanded", String(next));
       toggle.setAttribute(
         "aria-label",
-        next ? this.i18n["detail.diagnostics.collapse"] : this.i18n["detail.diagnostics.expand"],
+        next ? this.t("detail.diagnostics.collapse") : this.t("detail.diagnostics.expand"),
       );
       body.classList.toggle("sp-detail-diag-body--open", next);
     });
@@ -1488,7 +1425,7 @@ export class DetailView {
     const isResolved = feedback.status === "resolved";
     this.resolveBtn.appendChild(parseSvg(isResolved ? ICON_UNDO : ICON_CHECK));
     const span = document.createElement("span");
-    setText(span, isResolved ? this.i18n["detail.reopen"] : this.i18n["detail.resolve"]);
+    setText(span, isResolved ? this.t("detail.reopen") : this.t("detail.resolve"));
     this.resolveBtn.appendChild(span);
   }
 
@@ -1498,7 +1435,7 @@ export class DetailView {
     this.deleteBtn.replaceChildren();
     this.deleteBtn.appendChild(parseSvg(ICON_TRASH));
     const span = document.createElement("span");
-    setText(span, this.i18n["detail.delete"]);
+    setText(span, this.t("detail.delete"));
     this.deleteBtn.appendChild(span);
   }
 }

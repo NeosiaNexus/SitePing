@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createT } from "../../src/i18n/index.js";
 import { BulkActions } from "../../src/panel-bulk.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
@@ -11,10 +12,10 @@ if (typeof globalThis.CSS === "undefined") {
   CSS.escape = (s: string) => s;
 }
 
-function createBulkActions() {
+function createBulkActions(locale = "en") {
   const onResolve = vi.fn().mockResolvedValue(undefined);
   const onDelete = vi.fn().mockResolvedValue(undefined);
-  const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete });
+  const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete }, createT(locale));
   const list = document.createElement("div");
   list.className = "sp-list";
   for (const id of ["fb-1", "fb-2", "fb-3"]) {
@@ -102,7 +103,7 @@ describe("BulkActions", () => {
   it("restores delete button state and keeps selection when delete fails", async () => {
     const onResolve = vi.fn().mockResolvedValue(undefined);
     const onDelete = vi.fn().mockRejectedValue(new Error("boom"));
-    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete });
+    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete }, createT("en"));
     const list = document.createElement("div");
     const card = document.createElement("article");
     card.dataset.feedbackId = "fb-1";
@@ -124,7 +125,7 @@ describe("BulkActions", () => {
   it("supports keyboard toggles and French labels", () => {
     const onResolve = vi.fn().mockResolvedValue(undefined);
     const onDelete = vi.fn().mockResolvedValue(undefined);
-    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete }, "fr");
+    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete }, createT("fr"));
     const list = document.createElement("div");
     const card = document.createElement("article");
     card.dataset.feedbackId = "fb-1";
@@ -147,7 +148,7 @@ describe("BulkActions", () => {
   it("restores resolve button state and keeps selection when resolve fails", async () => {
     const onResolve = vi.fn().mockRejectedValue(new Error("boom"));
     const onDelete = vi.fn().mockResolvedValue(undefined);
-    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete });
+    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete }, createT("en"));
     const checkbox = bulk.createCheckbox("fb-1");
     document.body.append(checkbox, bulk.barElement);
     bulk.selectAll(["fb-1"]);
@@ -194,7 +195,7 @@ describe("BulkActions", () => {
           resolveOnDelete = resolve;
         }),
     );
-    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete });
+    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete }, createT("en"));
     const list = document.createElement("div");
     const card = document.createElement("article");
     card.dataset.feedbackId = "fb-1";
@@ -254,7 +255,7 @@ describe("BulkActions", () => {
   it("toggling an id without a card in the list still updates selection state", () => {
     const onResolve = vi.fn().mockResolvedValue(undefined);
     const onDelete = vi.fn().mockResolvedValue(undefined);
-    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete });
+    const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete }, createT("en"));
     const list = document.createElement("div");
     bulk.setListContainer(list);
     document.body.append(list, bulk.barElement);

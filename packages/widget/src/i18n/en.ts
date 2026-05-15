@@ -89,4 +89,71 @@ export const en: Translations = {
 
   // Badge
   "badge.count": "{count} unresolved feedbacks",
+
+  // Bulk actions toolbar
+  "bulk.selectAll": "Select all",
+  "bulk.selected": "{count} selected",
+  "bulk.resolve": "Resolve",
+  "bulk.delete": "Delete",
+  "bulk.deselect": "Deselect",
+
+  // Sort and group controls
+  "sort.newest": "Newest first",
+  "sort.oldest": "Oldest first",
+  "sort.byType": "By type",
+  "sort.openFirst": "Open first",
+  "sort.label": "Sort",
+  "group.byPage": "By page",
+  "group.feedbacks": "{count} feedbacks",
+
+  // Stats bar
+  "stats.open": "Open",
+  "stats.resolved": "Resolved",
+  "stats.bugs": "Bugs",
+  "stats.progress": "{percent}% resolved",
+
+  // Detail view
+  "detail.back": "Back",
+  "detail.title": "Feedback #{number}",
+  "detail.status": "Status",
+  "detail.message": "Message",
+  "detail.screenshot": "Screenshot",
+  "detail.screenshotAlt": "Screenshot of the annotated area",
+  "detail.metadata": "Details",
+  "detail.annotation": "Annotation",
+  "detail.page": "Page",
+  "detail.author": "Author",
+  "detail.date": "Created",
+  "detail.viewport": "Viewport",
+  "detail.browser": "Browser",
+  "detail.resolvedAt": "Resolved at",
+  "detail.goToAnnotation": "Go to annotation",
+  "detail.element": "Element",
+  "detail.selector": "Selector",
+  "detail.position": "Position",
+  "detail.resolve": "Resolve",
+  "detail.reopen": "Reopen",
+  "detail.delete": "Delete",
+  "detail.diagnostics": "Diagnostics",
+  "detail.diagnostics.console": "Console",
+  "detail.diagnostics.network": "Failed network",
+  "detail.diagnostics.expand": "Show diagnostics",
+  "detail.diagnostics.collapse": "Hide diagnostics",
+  "detail.diagnostics.noEntries": "No entries",
+
+  // Keyboard shortcuts overlay
+  "shortcuts.title": "Keyboard shortcuts",
+  "shortcuts.navigate": "Navigate feedbacks",
+  "shortcuts.resolve": "Resolve / Reopen",
+  "shortcuts.delete": "Delete",
+  "shortcuts.search": "Focus search",
+  "shortcuts.select": "Toggle selection",
+  "shortcuts.help": "Show shortcuts",
+  "shortcuts.close": "Close",
+  "shortcuts.hint": "Keyboard shortcuts",
+
+  // Export controls
+  "export.label": "Export",
+  "export.csv": "Export CSV",
+  "export.json": "Export JSON",
 };

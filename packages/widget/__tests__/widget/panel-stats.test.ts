@@ -2,7 +2,10 @@
 
 import type { FeedbackResponse } from "@siteping/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PanelStats, STATS_CSS, STATS_I18N_EN, STATS_I18N_FR } from "../../src/panel-stats.js";
+import { en as STATS_I18N_EN } from "../../src/i18n/en.js";
+import { fr as STATS_I18N_FR } from "../../src/i18n/fr.js";
+import { createT } from "../../src/i18n/index.js";
+import { PanelStats, STATS_CSS } from "../../src/panel-stats.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
 function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackResponse {
@@ -47,7 +50,7 @@ describe("PanelStats", () => {
   });
 
   it("creates a hidden stats element by default with English labels", () => {
-    const stats = new PanelStats(buildThemeColors());
+    const stats = new PanelStats(buildThemeColors(), createT("en"));
     document.body.appendChild(stats.element);
 
     expect(stats.element.classList.contains("sp-stats-bar")).toBe(true);
@@ -64,7 +67,7 @@ describe("PanelStats", () => {
   });
 
   it("renders French labels when locale='fr'", () => {
-    const stats = new PanelStats(buildThemeColors(), "fr");
+    const stats = new PanelStats(buildThemeColors(), createT("fr"));
     document.body.appendChild(stats.element);
 
     const labels = stats.element.querySelectorAll<HTMLElement>(".sp-stats-label");
@@ -76,8 +79,8 @@ describe("PanelStats", () => {
     ]);
   });
 
-  it("falls back to English when locale is undefined or another", () => {
-    const stats = new PanelStats(buildThemeColors(), "de");
+  it("falls back to English when locale is unknown", () => {
+    const stats = new PanelStats(buildThemeColors(), createT("zz"));
     document.body.appendChild(stats.element);
 
     const labels = stats.element.querySelectorAll<HTMLElement>(".sp-stats-label");
@@ -85,7 +88,7 @@ describe("PanelStats", () => {
   });
 
   it("hides the bar when total === 0", () => {
-    const stats = new PanelStats(buildThemeColors());
+    const stats = new PanelStats(buildThemeColors(), createT("en"));
     document.body.appendChild(stats.element);
 
     // Force-show first, then call with total=0 to verify hiding
@@ -96,7 +99,7 @@ describe("PanelStats", () => {
   });
 
   it("shows the bar and updates open/resolved/bug counts", () => {
-    const stats = new PanelStats(buildThemeColors());
+    const stats = new PanelStats(buildThemeColors(), createT("en"));
     document.body.appendChild(stats.element);
 
     stats.update(
@@ -119,7 +122,7 @@ describe("PanelStats", () => {
   });
 
   it("computes the percentage resolved relative to visible feedbacks", () => {
-    const stats = new PanelStats(buildThemeColors());
+    const stats = new PanelStats(buildThemeColors(), createT("en"));
     document.body.appendChild(stats.element);
 
     stats.update(
@@ -141,7 +144,7 @@ describe("PanelStats", () => {
   });
 
   it("renders 0% when feedbacks is empty but total > 0 (filtered out)", () => {
-    const stats = new PanelStats(buildThemeColors());
+    const stats = new PanelStats(buildThemeColors(), createT("en"));
     document.body.appendChild(stats.element);
 
     stats.update([], 5);
@@ -159,7 +162,7 @@ describe("PanelStats", () => {
   });
 
   it("uses the French progress text when locale='fr'", () => {
-    const stats = new PanelStats(buildThemeColors(), "fr");
+    const stats = new PanelStats(buildThemeColors(), createT("fr"));
     document.body.appendChild(stats.element);
 
     stats.update([makeFeedback({ status: "resolved" })], 1);
@@ -170,7 +173,7 @@ describe("PanelStats", () => {
   });
 
   it("rounds percentages (e.g., 1/3 -> 33%)", () => {
-    const stats = new PanelStats(buildThemeColors());
+    const stats = new PanelStats(buildThemeColors(), createT("en"));
     document.body.appendChild(stats.element);
 
     stats.update(

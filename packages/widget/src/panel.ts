@@ -4,7 +4,7 @@ import { SegmentedControl } from "./components/segmented-control.js";
 import { PAGE_SIZE } from "./constants.js";
 import { el, formatRelativeDate, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
-import { EXPORT_I18N_FR, ExportButton } from "./export-utils.js";
+import { ExportButton } from "./export-utils.js";
 import { getTypeLabel, type TFunction } from "./i18n/index.js";
 import {
   ICON_BUG,
@@ -21,17 +21,11 @@ import {
   ICON_UNDO,
 } from "./icons.js";
 import type { MarkerManager } from "./markers.js";
-import { BULK_I18N_EN, BULK_I18N_FR, BulkActions } from "./panel-bulk.js";
+import { BulkActions } from "./panel-bulk.js";
 import { DetailView } from "./panel-detail.js";
 import { createPageGroupHeader, groupFeedbacksByPage, PanelSortControls, sortFeedbacks } from "./panel-sort.js";
 import { PanelStats } from "./panel-stats.js";
-import {
-  focusCardByIndex,
-  getFocusedCardIndex,
-  KeyboardShortcuts,
-  SHORTCUTS_I18N_EN,
-  SHORTCUTS_I18N_FR,
-} from "./shortcuts.js";
+import { focusCardByIndex, getFocusedCardIndex, KeyboardShortcuts } from "./shortcuts.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 /**
@@ -74,8 +68,7 @@ export class Panel {
   private readonly detail: DetailView;
   private readonly shadowRoot: ShadowRoot;
 
-  // i18n helpers
-  private readonly bulkI18n: typeof BULK_I18N_EN;
+  // i18n: t is shared with all submodules.
 
   // Page scope — supplied by launcher so the panel can scope its results to
   // the current page (or template) and filter markers accordingly.
@@ -98,7 +91,6 @@ export class Panel {
     pageScopeOptions?: { getScope: () => PageScope; scopeAnnotationsByUrl: boolean },
   ) {
     this.shadowRoot = shadowRoot;
-    this.bulkI18n = locale === "fr" ? BULK_I18N_FR : BULK_I18N_EN;
     this.getScope = pageScopeOptions?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
     this.scopeAnnotationsByUrl = pageScopeOptions?.scopeAnnotationsByUrl ?? true;
 
@@ -128,8 +120,7 @@ export class Panel {
     this.deleteAllBtn.addEventListener("click", () => this.confirmDeleteAll());
 
     // Export button
-    this.exportBtn = new ExportButton(colors, () => this.feedbacks);
-    if (locale === "fr") this.exportBtn.setLabels(EXPORT_I18N_FR);
+    this.exportBtn = new ExportButton(colors, () => this.feedbacks, this.t);
 
     const headerRight = el("div", { class: "sp-panel-header-right" });
     headerRight.appendChild(this.exportBtn.element);
@@ -140,7 +131,7 @@ export class Panel {
     header.appendChild(headerRight);
 
     // --- Stats ---
-    this.stats = new PanelStats(colors, locale);
+    this.stats = new PanelStats(colors, this.t);
 
     // --- Filters ---
     const filters = el("div", { class: "sp-filters" });
@@ -170,7 +161,7 @@ export class Panel {
     filterBar.appendChild(this.buildScopeSegmented());
 
     // Sort controls
-    this.sortControls = new PanelSortControls(colors, () => this.renderList(), locale);
+    this.sortControls = new PanelSortControls(colors, () => this.renderList(), this.t);
 
     filters.appendChild(searchWrap);
     filters.appendChild(filterBar);
@@ -188,7 +179,7 @@ export class Panel {
         onResolve: (ids) => this.bulkResolve(ids),
         onDelete: (ids) => this.bulkDelete(ids),
       },
-      locale,
+      this.t,
     );
     this.bulk.setListContainer(this.listContainer);
 
@@ -218,11 +209,11 @@ export class Panel {
           }
         },
       },
+      this.t,
       locale,
     );
 
     // --- Keyboard Shortcuts ---
-    const shortcutsI18n = (locale === "fr" ? SHORTCUTS_I18N_FR : SHORTCUTS_I18N_EN) as typeof SHORTCUTS_I18N_EN;
     this.shortcuts = new KeyboardShortcuts(
       colors,
       {
@@ -252,7 +243,7 @@ export class Panel {
           if (fb) this.bulk.toggle(fb.id);
         },
       },
-      shortcutsI18n,
+      this.t,
     );
 
     // --- Assemble DOM ---
@@ -604,7 +595,7 @@ export class Panel {
 
     // Select all bar
     const feedbackIds = sorted.map((f) => f.id);
-    const selectAllBar = this.bulk.createSelectAllBar(feedbackIds, this.bulkI18n["bulk.selectAll"]);
+    const selectAllBar = this.bulk.createSelectAllBar(feedbackIds, this.t("bulk.selectAll"));
     this.listContainer.appendChild(selectAllBar);
 
     if (this.sortControls.groupByPage) {

@@ -12,6 +12,7 @@
 
 import type { FeedbackResponse, FeedbackType } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
+import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -29,33 +30,6 @@ export const ICON_SORT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 export const ICON_PAGE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`;
 
 export const ICON_CHEVRON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>`;
-
-// ---------------------------------------------------------------------------
-// I18n
-// ---------------------------------------------------------------------------
-
-export const SORT_I18N_EN = {
-  "sort.newest": "Newest first",
-  "sort.oldest": "Oldest first",
-  "sort.byType": "By type",
-  "sort.openFirst": "Open first",
-  "sort.label": "Sort",
-  "group.byPage": "By page",
-  "group.feedbacks": "{count} feedbacks",
-} as const;
-
-export const SORT_I18N_FR = {
-  "sort.newest": "Plus récents",
-  "sort.oldest": "Plus anciens",
-  "sort.byType": "Par type",
-  "sort.openFirst": "Ouverts d'abord",
-  "sort.label": "Trier",
-  "group.byPage": "Par page",
-  "group.feedbacks": "{count} feedbacks",
-} as const;
-
-export type SortI18nKey = keyof typeof SORT_I18N_EN;
-export type SortI18n = Record<SortI18nKey, string>;
 
 // ---------------------------------------------------------------------------
 // Sort utilities
@@ -231,15 +205,15 @@ export class PanelSortControls {
   private menuEl: HTMLElement | null = null;
   private sortBtn: HTMLButtonElement;
   private groupToggle: HTMLButtonElement;
-  private readonly i18n: SortI18n;
+  private readonly t: TFunction;
   private readonly colors: ThemeColors;
   private readonly onChange: () => void;
   private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
 
-  constructor(colors: ThemeColors, onChange: () => void, locale?: string) {
+  constructor(colors: ThemeColors, onChange: () => void, t: TFunction) {
     this.colors = colors;
     this.onChange = onChange;
-    this.i18n = locale === "fr" ? SORT_I18N_FR : SORT_I18N_EN;
+    this.t = t;
 
     this.element = el("div", { class: "sp-sort-controls" });
 
@@ -248,13 +222,13 @@ export class PanelSortControls {
     this.sortBtn.className = "sp-sort-btn";
     this.sortBtn.setAttribute("aria-haspopup", "listbox");
     this.sortBtn.setAttribute("aria-expanded", "false");
-    this.sortBtn.setAttribute("aria-label", this.i18n["sort.label"]);
+    this.sortBtn.setAttribute("aria-label", this.t("sort.label"));
 
     const sortIcon = parseSvg(ICON_SORT);
     this.sortBtn.appendChild(sortIcon);
 
     const sortLabel = el("span", { class: "sp-sort-btn-label" });
-    setText(sortLabel, this.i18n["sort.newest"]);
+    setText(sortLabel, this.t("sort.newest"));
     this.sortBtn.appendChild(sortLabel);
 
     this.sortBtn.addEventListener("click", (e) => {
@@ -271,7 +245,7 @@ export class PanelSortControls {
     this.groupToggle.appendChild(groupIcon);
 
     const groupLabel = el("span", { class: "sp-group-toggle-label" });
-    setText(groupLabel, this.i18n["group.byPage"]);
+    setText(groupLabel, this.t("group.byPage"));
     this.groupToggle.appendChild(groupLabel);
 
     this.groupToggle.addEventListener("click", () => {
@@ -304,14 +278,14 @@ export class PanelSortControls {
   private openMenu(): void {
     this.menuEl = el("div", { class: "sp-sort-menu" });
     this.menuEl.setAttribute("role", "listbox");
-    this.menuEl.setAttribute("aria-label", this.i18n["sort.label"]);
+    this.menuEl.setAttribute("aria-label", this.t("sort.label"));
     this.sortBtn.setAttribute("aria-expanded", "true");
 
     const options: { mode: SortMode; label: string }[] = [
-      { mode: "newest", label: this.i18n["sort.newest"] },
-      { mode: "oldest", label: this.i18n["sort.oldest"] },
-      { mode: "by-type", label: this.i18n["sort.byType"] },
-      { mode: "open-first", label: this.i18n["sort.openFirst"] },
+      { mode: "newest", label: this.t("sort.newest") },
+      { mode: "oldest", label: this.t("sort.oldest") },
+      { mode: "by-type", label: this.t("sort.byType") },
+      { mode: "open-first", label: this.t("sort.openFirst") },
     ];
 
     for (const opt of options) {
@@ -374,10 +348,10 @@ export class PanelSortControls {
 
   private updateSortLabel(): void {
     const labelMap: Record<SortMode, string> = {
-      newest: this.i18n["sort.newest"],
-      oldest: this.i18n["sort.oldest"],
-      "by-type": this.i18n["sort.byType"],
-      "open-first": this.i18n["sort.openFirst"],
+      newest: this.t("sort.newest"),
+      oldest: this.t("sort.oldest"),
+      "by-type": this.t("sort.byType"),
+      "open-first": this.t("sort.openFirst"),
     };
     const label = this.sortBtn.querySelector(".sp-sort-btn-label");
     if (label) setText(label as HTMLElement, labelMap[this._sortMode]);

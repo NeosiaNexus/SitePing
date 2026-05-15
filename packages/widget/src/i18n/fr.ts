@@ -89,4 +89,71 @@ export const fr: Translations = {
 
   // Badge
   "badge.count": "{count} feedbacks non résolus",
+
+  // Bulk actions toolbar
+  "bulk.selectAll": "Tout sélectionner",
+  "bulk.selected": "{count} sélectionné(s)",
+  "bulk.resolve": "Résoudre",
+  "bulk.delete": "Supprimer",
+  "bulk.deselect": "Désélectionner",
+
+  // Sort and group controls
+  "sort.newest": "Plus récents",
+  "sort.oldest": "Plus anciens",
+  "sort.byType": "Par type",
+  "sort.openFirst": "Ouverts d'abord",
+  "sort.label": "Trier",
+  "group.byPage": "Par page",
+  "group.feedbacks": "{count} feedbacks",
+
+  // Stats bar
+  "stats.open": "Ouverts",
+  "stats.resolved": "Résolus",
+  "stats.bugs": "Bugs",
+  "stats.progress": "{percent}% résolus",
+
+  // Detail view
+  "detail.back": "Retour",
+  "detail.title": "Feedback n°{number}",
+  "detail.status": "Statut",
+  "detail.message": "Message",
+  "detail.screenshot": "Capture d'écran",
+  "detail.screenshotAlt": "Capture d'écran de la zone annotée",
+  "detail.metadata": "Détails",
+  "detail.annotation": "Annotation",
+  "detail.page": "Page",
+  "detail.author": "Auteur",
+  "detail.date": "Créé le",
+  "detail.viewport": "Viewport",
+  "detail.browser": "Navigateur",
+  "detail.resolvedAt": "Résolu le",
+  "detail.goToAnnotation": "Aller à l'annotation",
+  "detail.element": "Élément",
+  "detail.selector": "Sélecteur",
+  "detail.position": "Position",
+  "detail.resolve": "Résoudre",
+  "detail.reopen": "Rouvrir",
+  "detail.delete": "Supprimer",
+  "detail.diagnostics": "Diagnostics",
+  "detail.diagnostics.console": "Console",
+  "detail.diagnostics.network": "Réseau en échec",
+  "detail.diagnostics.expand": "Afficher les diagnostics",
+  "detail.diagnostics.collapse": "Masquer les diagnostics",
+  "detail.diagnostics.noEntries": "Aucune entrée",
+
+  // Keyboard shortcuts overlay
+  "shortcuts.title": "Raccourcis clavier",
+  "shortcuts.navigate": "Naviguer les feedbacks",
+  "shortcuts.resolve": "Résoudre / Rouvrir",
+  "shortcuts.delete": "Supprimer",
+  "shortcuts.search": "Rechercher",
+  "shortcuts.select": "Sélectionner",
+  "shortcuts.help": "Raccourcis",
+  "shortcuts.close": "Fermer",
+  "shortcuts.hint": "Raccourcis clavier",
+
+  // Export controls
+  "export.label": "Exporter",
+  "export.csv": "Exporter CSV",
+  "export.json": "Exporter JSON",
 };

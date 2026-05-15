@@ -1,5 +1,6 @@
 import type { FeedbackResponse } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
+import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -11,22 +12,6 @@ export const ICON_EXPORT = `<svg viewBox="0 0 24 24" fill="none" stroke="current
 const ICON_CSV = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>`;
 
 const ICON_JSON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H6a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2"/><path d="M16 3h2a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2"/></svg>`;
-
-// ---------------------------------------------------------------------------
-// i18n
-// ---------------------------------------------------------------------------
-
-export const EXPORT_I18N_EN = {
-  "export.label": "Export",
-  "export.csv": "Export CSV",
-  "export.json": "Export JSON",
-};
-
-export const EXPORT_I18N_FR = {
-  "export.label": "Exporter",
-  "export.csv": "Exporter CSV",
-  "export.json": "Exporter JSON",
-};
 
 // ---------------------------------------------------------------------------
 // CSS
@@ -229,6 +214,7 @@ export class ExportButton {
   constructor(
     _colors: ThemeColors,
     private readonly getFeedbacks: () => FeedbackResponse[],
+    t: TFunction,
   ) {
     // Wrapper for relative positioning of the menu
     this.element = el("div", { style: "position: relative; display: inline-flex;" });
@@ -240,7 +226,7 @@ export class ExportButton {
     btn.setAttribute("aria-expanded", "false");
     btn.appendChild(parseSvg(ICON_EXPORT));
     const label = document.createElement("span");
-    setText(label, EXPORT_I18N_EN["export.label"]);
+    setText(label, t("export.label"));
     btn.appendChild(label);
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -252,12 +238,12 @@ export class ExportButton {
     this.menu.setAttribute("role", "menu");
 
     // CSV option
-    const csvOption = this.createOption(ICON_CSV, EXPORT_I18N_EN["export.csv"], () => {
+    const csvOption = this.createOption(ICON_CSV, t("export.csv"), () => {
       this.exportAs("csv");
     });
 
     // JSON option
-    const jsonOption = this.createOption(ICON_JSON, EXPORT_I18N_EN["export.json"], () => {
+    const jsonOption = this.createOption(ICON_JSON, t("export.json"), () => {
       this.exportAs("json");
     });
 
@@ -274,19 +260,6 @@ export class ExportButton {
       }
     };
     document.addEventListener("click", this.onDocumentClick, true);
-  }
-
-  /** Update the button label (used for i18n switching) */
-  setLabels(labels: typeof EXPORT_I18N_EN): void {
-    const btn = this.element.querySelector<HTMLElement>(".sp-export-btn");
-    if (btn) {
-      const span = btn.querySelector("span");
-      if (span) setText(span, labels["export.label"]);
-    }
-
-    const options = this.menu.querySelectorAll<HTMLElement>(".sp-export-option-label");
-    if (options[0]) setText(options[0], labels["export.csv"]);
-    if (options[1]) setText(options[1], labels["export.json"]);
   }
 
   private createOption(iconSvg: string, labelText: string, onClick: () => void): HTMLButtonElement {
