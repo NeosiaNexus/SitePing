@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.9](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.8...widget-v0.9.9) (2026-05-19)
+
+
+### Features
+
+* **widget:** allow host apps to pre-fill identity via config ([#82](https://github.com/NeosiaNexus/SitePing/issues/82)) ([d1d4363](https://github.com/NeosiaNexus/SitePing/commit/d1d4363e2ae74a8bccb91125b24e2575b1f352a1))
+
 ## [0.9.8](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.7...widget-v0.9.8) (2026-05-18)
 
 
