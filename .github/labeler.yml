@@ -10,30 +10,30 @@ labels:
   - label: "documentation"
     matcher:
       title: "^docs(\\(.+\\))?!?:.*"
-  - label: "performance"
+  - label: "type:performance"
     matcher:
       title: "^perf(\\(.+\\))?!?:.*"
-  - label: "refactor"
+  - label: "type:refactor"
     matcher:
       title: "^refactor(\\(.+\\))?!?:.*"
-  - label: "test"
+  - label: "type:test"
     matcher:
       title: "^test(\\(.+\\))?!?:.*"
-  - label: "ci"
+  - label: "type:ci"
     matcher:
       title: "^ci(\\(.+\\))?!?:.*"
-  - label: "build"
+  - label: "type:build"
     matcher:
       title: "^build(\\(.+\\))?!?:.*"
   - label: "dependencies"
     matcher:
       title: "^(chore\\(deps\\)|deps)(\\(.+\\))?!?:.*"
-  - label: "chore"
+  - label: "type:chore"
     matcher:
       title: "^chore(?!\\(deps\\))(\\(.+\\))?!?:.*"
-  - label: "i18n"
+  - label: "type:i18n"
     matcher:
       title: "(?i).*(i18n|locale|translation|translate).*"
-  - label: "breaking-change"
+  - label: "type:breaking"
     matcher:
       title: "^[a-z]+(\\(.+\\))?!:.*"

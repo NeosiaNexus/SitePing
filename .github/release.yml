@@ -13,36 +13,35 @@ changelog:
   categories:
     - title: "🚀 Features"
       labels:
-        - feature
         - enhancement
-        - feat
     - title: "🐛 Bug Fixes"
       labels:
         - bug
-        - fix
     - title: "⚡ Performance"
       labels:
-        - performance
-        - perf
+        - type:performance
     - title: "♻️ Refactoring"
       labels:
-        - refactor
+        - type:refactor
     - title: "🧪 Tests"
       labels:
-        - test
-        - tests
+        - type:test
     - title: "📚 Documentation"
       labels:
         - documentation
-        - docs
     - title: "🌍 Locales & i18n"
       labels:
-        - i18n
-        - locale
-        - translation
+        - type:i18n
+    - title: "💥 Breaking Changes"
+      labels:
+        - type:breaking
     - title: "📦 Dependencies"
       labels:
         - dependencies
+    - title: "🛠️ Build & CI"
+      labels:
+        - type:build
+        - type:ci
     - title: "🧰 Other Changes"
       labels:
         - "*"
