@@ -459,7 +459,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // Flush retry queue on load (HTTP mode only — store mode has no retry queue)
   if (config.endpoint) {
-    flushRetryQueue(config.endpoint)
+    flushRetryQueue(config.endpoint, config.identity ?? getIdentity())
       .then(() => log("Retry queue flushed"))
       .catch(() => {});
   }

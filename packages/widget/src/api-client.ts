@@ -9,6 +9,7 @@ import {
   SitepingNetworkError,
   SitepingValidationError,
 } from "@siteping/core";
+import type { Identity } from "./identity.js";
 
 /**
  * Map a non-OK Response to the appropriate typed error.
@@ -160,14 +161,53 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
   });
 }
 
-export async function flushRetryQueue(endpoint: string): Promise<void> {
+function normalizeName(value: string): string {
+  return value.trim();
+}
+
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/**
+ * Flush queued feedbacks for `endpoint`. When `currentIdentity` is provided,
+ * entries whose stored author doesn't match it are dropped rather than replayed.
+ * This prevents user A's offline feedback from being POSTed under user B's
+ * identity after a session change. When omitted, all entries are replayed to
+ * preserve the legacy behavior for callers that don't track identity.
+ */
+export async function flushRetryQueue(endpoint: string, currentIdentity?: Identity | null): Promise<void> {
   await withRetryLock(async () => {
     try {
       const queue = readQueue();
       if (queue.length === 0) return;
 
-      const toRetry = queue.filter((e) => e.endpoint === endpoint);
-      if (toRetry.length === 0) return;
+      const toRetry: RetryEntry[] = [];
+      const unrelated: RetryEntry[] = [];
+      let dropped = 0;
+
+      for (const entry of queue) {
+        if (entry.endpoint !== endpoint) {
+          unrelated.push(entry);
+          continue;
+        }
+
+        if (
+          !currentIdentity ||
+          (normalizeName(entry.payload.authorName) === normalizeName(currentIdentity.name) &&
+            normalizeEmail(entry.payload.authorEmail) === normalizeEmail(currentIdentity.email))
+        ) {
+          toRetry.push(entry);
+        } else {
+          dropped += 1;
+        }
+      }
+
+      if (toRetry.length === 0 && dropped === 0) return;
+
+      if (dropped > 0) {
+        console.debug("[siteping] flushRetryQueue: dropped", dropped, "stale entries (identity changed)");
+      }
 
       // Process items sequentially to avoid overwhelming the server
       const failed: RetryEntry[] = [];
@@ -187,7 +227,7 @@ export async function flushRetryQueue(endpoint: string): Promise<void> {
       }
 
       // Rebuild queue: keep unrelated entries + failed retries
-      const remaining = queue.filter((e) => e.endpoint !== endpoint).concat(failed);
+      const remaining = unrelated.concat(failed);
       if (remaining.length > 0) {
         localStorage.setItem(RETRY_QUEUE_KEY, JSON.stringify(remaining));
       } else {
