@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.10](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.9...widget-v0.9.10) (2026-05-19)
+
+
+### Features
+
+* **widget:** deep-link to annotations via URL query + focusFeedback API ([#91](https://github.com/NeosiaNexus/SitePing/issues/91)) ([b821e43](https://github.com/NeosiaNexus/SitePing/commit/b821e436ec4291314e4b58666a1d9aad51d2a8d2))
+
+
+### Bug Fixes
+
+* **widget:** opaque backdrop-filter fallback for .sp-detail ([#92](https://github.com/NeosiaNexus/SitePing/issues/92)) ([41bee72](https://github.com/NeosiaNexus/SitePing/commit/41bee726ef24bf9456ba5a2481ea24150ba574a8))
+
 ## [0.9.9](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.8...widget-v0.9.9) (2026-05-19)
 
 
