@@ -472,6 +472,83 @@ describe("flushRetryQueue", () => {
     expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
   });
 
+  it("drops stale queued feedback when the current identity differs", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "from alice",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "Alice",
+      authorEmail: "alice@example.com",
+      annotations: [],
+      clientId: "stale-1",
+    };
+
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify([{ endpoint, payload }]));
+
+    await flushRetryQueue(endpoint, { name: "Bob", email: "bob@example.com" });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+  });
+
+  it("retries queued feedback when the current identity matches", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "from alice",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "Alice",
+      authorEmail: "alice@example.com",
+      annotations: [],
+      clientId: "match-1",
+    };
+
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify([{ endpoint, payload }]));
+    vi.mocked(fetch).mockResolvedValue(new Response("", { status: 201 }));
+
+    await flushRetryQueue(endpoint, { name: "Alice", email: "alice@example.com" });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+  });
+
+  it("preserves unrelated endpoint entries when dropping stale feedback", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "from alice",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "Alice",
+      authorEmail: "alice@example.com",
+      annotations: [],
+      clientId: "stale-2",
+    };
+    const otherEndpoint = "http://localhost/api/other";
+    const otherPayload = { ...payload, message: "other", clientId: "other-1" };
+
+    vi.mocked(localStorage.getItem).mockReturnValue(
+      JSON.stringify([
+        { endpoint, payload },
+        { endpoint: otherEndpoint, payload: otherPayload },
+      ]),
+    );
+
+    await flushRetryQueue(endpoint, { name: "Bob", email: "bob@example.com" });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      "siteping_retry_queue",
+      JSON.stringify([{ endpoint: otherEndpoint, payload: otherPayload }]),
+    );
+  });
+
   it("keeps failed items in queue after partial failure", async () => {
     const payload1 = {
       projectName: "test",

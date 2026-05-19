@@ -122,6 +122,7 @@ async function resilientFetch(url: string, init: RequestInit, retries = MAX_RETR
 // ---------------------------------------------------------------------------
 
 type RetryEntry = { endpoint: string; payload: FeedbackPayload };
+type RetryIdentity = { name: string; email: string };
 
 const LOCK_NAME = "siteping_retry_queue";
 
@@ -157,7 +158,12 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
   });
 }
 
-export async function flushRetryQueue(endpoint: string): Promise<void> {
+function matchesRetryIdentity(entry: RetryEntry, currentIdentity: RetryIdentity | null | undefined): boolean {
+  if (!currentIdentity) return true;
+  return entry.payload.authorName === currentIdentity.name && entry.payload.authorEmail === currentIdentity.email;
+}
+
+export async function flushRetryQueue(endpoint: string, currentIdentity?: RetryIdentity | null): Promise<void> {
   await withRetryLock(async () => {
     try {
       const raw = localStorage.getItem(RETRY_QUEUE_KEY);
@@ -166,8 +172,9 @@ export async function flushRetryQueue(endpoint: string): Promise<void> {
       const parsed: unknown = JSON.parse(raw);
       const queue: RetryEntry[] = Array.isArray(parsed) ? (parsed as RetryEntry[]) : [];
 
-      const toRetry = queue.filter((e) => e.endpoint === endpoint);
-      if (toRetry.length === 0) return;
+      const matchingEndpoint = queue.filter((e) => e.endpoint === endpoint);
+      if (matchingEndpoint.length === 0) return;
+      const toRetry = matchingEndpoint.filter((e) => matchesRetryIdentity(e, currentIdentity));
 
       // Process items sequentially to avoid overwhelming the server
       const failed: RetryEntry[] = [];
