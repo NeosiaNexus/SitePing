@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.4.5...cli-v0.4.6) (2026-05-19)
+
+
+### Refactoring
+
+* **types:** tighten type safety across all packages ([1b212ba](https://github.com/NeosiaNexus/SitePing/commit/1b212bae29177e71abc15a88d0133b73cde346e5))
+
 ## [0.4.5](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.4.4...cli-v0.4.5) (2026-05-18)
 
 
