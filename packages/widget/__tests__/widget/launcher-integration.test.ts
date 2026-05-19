@@ -52,6 +52,7 @@ vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
 // instance that launch() created. Reset by `vi.clearAllMocks` in afterEach.
 const mockMarkersAddFeedback = vi.fn();
 const mockMarkersRender = vi.fn();
+const mockMarkersFocusFeedback = vi.fn().mockReturnValue(false);
 
 vi.mock(new URL("../../src/markers.js", import.meta.url).pathname, () => ({
   MarkerManager: vi.fn().mockImplementation(() => ({
@@ -59,6 +60,7 @@ vi.mock(new URL("../../src/markers.js", import.meta.url).pathname, () => ({
     highlight: vi.fn(),
     pinHighlight: vi.fn(),
     addFeedback: mockMarkersAddFeedback,
+    focusFeedback: mockMarkersFocusFeedback,
     destroy: vi.fn(),
     count: 0,
   })),
@@ -163,6 +165,11 @@ describe("launcher — annotation:complete integration", () => {
     capturedBus = null;
     vi.clearAllMocks();
     mockGetIdentity.mockReturnValue({ name: "Test User", email: "test@example.com" });
+    mockMarkersFocusFeedback.mockReturnValue(false);
+    // Reset any test-set URL — jsdom keeps it across cases otherwise.
+    if (window.location.search) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -389,6 +396,131 @@ describe("launcher — annotation:complete integration", () => {
       const payload = mockSendFeedback.mock.calls[0][0];
       expect(payload.authorName).toBe("LocalStorage User");
       expect(payload.authorEmail).toBe("ls@example.com");
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // deepLink option — auto-focus annotation when ?siteping=<id> is set
+  // -------------------------------------------------------------------------
+
+  describe("deepLink option", () => {
+    it("does not read the URL when deepLink is omitted (default off)", async () => {
+      mockGetFeedbacks.mockResolvedValueOnce({
+        feedbacks: [makeFeedbackResponse({ id: "fb-deep-1" })],
+        total: 1,
+      });
+      window.history.replaceState(null, "", "/?siteping=fb-deep-1");
+
+      const instance = launch(defaultConfig());
+
+      // Initial getFeedbacks resolves and renders markers — wait for that.
+      await vi.waitFor(() => {
+        expect(mockMarkersRender).toHaveBeenCalled();
+      });
+
+      expect(mockMarkersFocusFeedback).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("calls focusFeedback with the id from ?siteping=<id> when deepLink is true", async () => {
+      mockGetFeedbacks.mockResolvedValueOnce({
+        feedbacks: [makeFeedbackResponse({ id: "fb-deep-1" })],
+        total: 1,
+      });
+      mockMarkersFocusFeedback.mockReturnValueOnce(true);
+      window.history.replaceState(null, "", "/?siteping=fb-deep-1");
+
+      const instance = launch(defaultConfig({ deepLink: true }));
+
+      await vi.waitFor(() => {
+        expect(mockMarkersFocusFeedback).toHaveBeenCalledWith("fb-deep-1");
+      });
+
+      instance.destroy();
+    });
+
+    it("uses the custom param name when deepLink: { param: 'fb' }", async () => {
+      mockGetFeedbacks.mockResolvedValueOnce({
+        feedbacks: [makeFeedbackResponse({ id: "fb-deep-2" })],
+        total: 1,
+      });
+      mockMarkersFocusFeedback.mockReturnValueOnce(true);
+      window.history.replaceState(null, "", "/?fb=fb-deep-2&siteping=ignored");
+
+      const instance = launch(defaultConfig({ deepLink: { param: "fb" } }));
+
+      await vi.waitFor(() => {
+        expect(mockMarkersFocusFeedback).toHaveBeenCalledWith("fb-deep-2");
+      });
+      // The default "siteping" key must not leak in when a custom param is configured.
+      expect(mockMarkersFocusFeedback).not.toHaveBeenCalledWith("ignored");
+
+      instance.destroy();
+    });
+
+    it("does not call focusFeedback when the configured param is absent", async () => {
+      mockGetFeedbacks.mockResolvedValueOnce({
+        feedbacks: [makeFeedbackResponse({ id: "fb-deep-3" })],
+        total: 1,
+      });
+      // URL carries some other key but not `siteping`.
+      window.history.replaceState(null, "", "/?other=value");
+
+      const instance = launch(defaultConfig({ deepLink: true }));
+
+      await vi.waitFor(() => {
+        expect(mockMarkersRender).toHaveBeenCalled();
+      });
+
+      expect(mockMarkersFocusFeedback).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("calls focusFeedback even when the id does not match (false return is OK)", async () => {
+      mockGetFeedbacks.mockResolvedValueOnce({
+        feedbacks: [makeFeedbackResponse({ id: "fb-deep-4" })],
+        total: 1,
+      });
+      mockMarkersFocusFeedback.mockReturnValueOnce(false);
+      window.history.replaceState(null, "", "/?siteping=does-not-exist");
+
+      const instance = launch(defaultConfig({ deepLink: true }));
+
+      // Still calls focusFeedback — the manager decides whether the id resolves.
+      await vi.waitFor(() => {
+        expect(mockMarkersFocusFeedback).toHaveBeenCalledWith("does-not-exist");
+      });
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // instance.focusFeedback — imperative entry point
+  // -------------------------------------------------------------------------
+
+  describe("instance.focusFeedback", () => {
+    it("delegates to the MarkerManager and returns its result", () => {
+      mockMarkersFocusFeedback.mockReturnValueOnce(true);
+      const instance = launch(defaultConfig());
+
+      const result = instance.focusFeedback("fb-imperative-1");
+
+      expect(mockMarkersFocusFeedback).toHaveBeenCalledWith("fb-imperative-1");
+      expect(result).toBe(true);
+
+      instance.destroy();
+    });
+
+    it("returns false when the MarkerManager has no matching entry", () => {
+      mockMarkersFocusFeedback.mockReturnValueOnce(false);
+      const instance = launch(defaultConfig());
+
+      expect(instance.focusFeedback("unknown-id")).toBe(false);
 
       instance.destroy();
     });

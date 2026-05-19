@@ -75,6 +75,8 @@ All configuration options for `initSiteping()`:
 | `locale` | `'en' \| 'fr' \| 'de' \| 'es' \| 'it' \| 'pt' \| 'ru'` | `'en'` | Widget UI language. Unknown locales fall back to English |
 | `forceShow` | `boolean` | `false` | Show the widget in production (hidden by default) |
 | `debug` | `boolean` | `false` | Enable debug logging to console |
+| `identity` | `{ name: string; email: string }` | — | Pre-fill author identity from the host (SSO). When set, the widget skips the identity modal |
+| `deepLink` | `boolean \| { param?: string }` | `false` | On initial load, focus the annotation referenced by `?siteping=<id>` (or a custom query key). SPA navigations are ignored — use `focusFeedback()` for route-change focus |
 
 > **Custom translations** — Use `registerLocale(code, translations)` to add your own locale at runtime.
 
@@ -121,6 +123,14 @@ widget.open()       // Open the feedback panel
 widget.close()      // Close the feedback panel
 widget.refresh()    // Refresh feedbacks from the server
 widget.destroy()    // Remove the widget and clean up all DOM elements + listeners
+
+// Scroll a specific annotation into view, pin its highlight, and pulse the
+// marker. Counterpart to the `deepLink` config option for hosts that drive
+// focus from JS (e.g. a notification click handler) instead of a URL query.
+// Returns `false` when no visible marker matches the given ID (unknown ID,
+// filtered by `scopeAnnotationsByUrl`, or markers not yet loaded — initial
+// fetch is async).
+widget.focusFeedback('feedback-id') // => boolean
 ```
 
 ## Event system

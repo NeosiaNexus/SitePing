@@ -65,9 +65,29 @@ function skippedInstance(): SitepingInstance {
     open: noop,
     close: noop,
     refresh: noop,
+    focusFeedback: () => false,
     on: () => noop,
     off: noop,
   };
+}
+
+interface NormalisedDeepLink {
+  enabled: boolean;
+  param: string;
+}
+
+/**
+ * Resolve `SitepingConfig.deepLink` into a normalised shape.
+ *
+ * - `undefined` / `false` → disabled, no URL parsing.
+ * - `true` → enabled with default param name `siteping`.
+ * - object → enabled with optional custom param name. A bare empty object
+ *   `{}` falls back to the default param so callers never need to repeat it.
+ */
+function normaliseDeepLinkOptions(value: SitepingConfig["deepLink"]): NormalisedDeepLink {
+  if (value === undefined || value === false) return { enabled: false, param: "siteping" };
+  if (value === true) return { enabled: true, param: "siteping" };
+  return { enabled: true, param: value.param ?? "siteping" };
 }
 
 /**
@@ -401,12 +421,29 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // on another (when CSS selectors happen to match unrelated elements).
   const initialScope = getScope();
   const initialOptions = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: initialScope.url } : { limit: PAGE_SIZE };
+  const deepLinkOpts = normaliseDeepLinkOptions(config.deepLink);
   client
     .getFeedbacks(config.projectName, initialOptions)
     .then(({ feedbacks }: { feedbacks: FeedbackResponse[] }) => {
       // Defensive client-side filter — backend may not yet support the `url` query.
       const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === initialScope.url) : feedbacks;
       markers.render(visible);
+      // Apply deeplink focus once markers exist. Failures here are
+      // non-fatal — a malformed URL or an unknown ID just leaves the page
+      // as the user found it, so log and move on.
+      if (deepLinkOpts.enabled) {
+        try {
+          const focusId = new URLSearchParams(window.location.search).get(deepLinkOpts.param);
+          if (focusId) {
+            const matched = markers.focusFeedback(focusId);
+            log(
+              `deepLink ?${deepLinkOpts.param}=${focusId} ${matched ? "focused" : "did not match a visible feedback"}`,
+            );
+          }
+        } catch (e) {
+          log("deepLink parsing failed:", e);
+        }
+      }
     })
     .catch((err) => {
       log("Failed to load initial markers:", err);
@@ -454,6 +491,14 @@ export function launch(config: SitepingConfig): SitepingInstance {
         // Cancel a pending open before the panel has loaded.
         pendingOpen = false;
       }
+    },
+    focusFeedback: (feedbackId: string) => {
+      // Returns false when no entry matches — unknown ID, feedback filtered
+      // out by `scopeAnnotationsByUrl`, or markers not yet loaded (the
+      // initial getFeedbacks is async, and the widget exposes no public
+      // "markers ready" event today). Hosts that race against initial load
+      // can retry, or trigger focus from a user gesture instead.
+      return markers.focusFeedback(feedbackId);
     },
     refresh: () => {
       // When the panel is open, its `refresh()` already runs `loadFeedbacks()`

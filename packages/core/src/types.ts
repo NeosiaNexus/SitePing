@@ -90,6 +90,30 @@ export interface SitepingConfig {
   /** Called when the widget is skipped (production mode, mobile viewport) */
   onSkip?: (reason: "production" | "mobile") => void;
   /**
+   * Auto-focus a specific annotation when its ID appears in the URL query
+   * string. Lets hosts deeplink directly into a feedback from external
+   * systems (Zammad tickets, Slack notifications, dashboard rows).
+   *
+   * When enabled, the widget reads the configured query parameter from
+   * `window.location.search` right after the initial markers load. If the
+   * value matches a visible feedback ID, the widget scrolls the annotation
+   * into view, pins its highlight, and pulses the marker — the same visual
+   * affordance a marker click produces.
+   *
+   * - `false` / `undefined` (default): no URL parsing. Existing behavior
+   *   unchanged, no host URL inspection.
+   * - `true`: enabled with default query parameter name `siteping`.
+   * - object: enabled with a custom parameter name. Use this to avoid
+   *   clashes with host-app query keys.
+   *
+   * Only the initial load triggers focus. Subsequent URL changes (SPA
+   * navigation, `history.pushState`, hash updates) are ignored —
+   * deliberate, to avoid surprising re-scrolls during normal browsing.
+   * Hosts that need re-focus on route change can call
+   * `instance.focusFeedback(id)` explicitly.
+   */
+  deepLink?: boolean | { param?: string } | undefined;
+  /**
    * Pre-fill author identity from the host application — typically the
    * currently signed-in user. When set, the widget uses these values
    * directly and never shows the identity modal, even on first feedback.
@@ -144,6 +168,17 @@ export interface SitepingInstance {
   close: () => void;
   /** Reload feedbacks from server */
   refresh: () => void;
+  /**
+   * Scroll the matching annotation into view, pin its highlight, and
+   * pulse its marker. Returns `true` when a visible feedback matched the
+   * given ID, `false` otherwise (unknown ID, feedback on another URL when
+   * `scopeAnnotationsByUrl` filtered it out, or markers not yet loaded).
+   *
+   * Counterpart to the `deepLink` config option for hosts that prefer to
+   * drive focus from JS (e.g., a notification click handler) instead of a
+   * URL query parameter.
+   */
+  focusFeedback: (feedbackId: string) => boolean;
   /** Subscribe to a public widget event */
   on: <K extends keyof SitepingPublicEvents>(
     event: K,
