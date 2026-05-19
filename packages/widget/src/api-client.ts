@@ -1,6 +1,7 @@
 import {
   type FeedbackPayload,
   type FeedbackResponse,
+  type FeedbackResponseList,
   type FeedbackStatus,
   type FeedbackType,
   SitepingAuthError,
@@ -39,10 +40,7 @@ async function errorFromResponse(response: Response, label: string): Promise<Sit
  * a user-driven cancellation.
  */
 function networkErrorFromException(error: unknown, label: string): SitepingNetworkError {
-  if (error instanceof SitepingError) {
-    // Already typed — only used when callers pass our own errors through.
-    if (error instanceof SitepingNetworkError) return error;
-  }
+  if (error instanceof SitepingNetworkError) return error;
   const detail = error instanceof Error ? error.message : String(error);
   return new SitepingNetworkError(`${label}: ${detail}`);
 }
@@ -55,10 +53,7 @@ function networkErrorFromException(error: unknown, label: string): SitepingNetwo
  */
 export interface WidgetClient {
   sendFeedback(payload: FeedbackPayload): Promise<FeedbackResponse>;
-  getFeedbacks(
-    projectName: string,
-    options?: GetFeedbacksOptions,
-  ): Promise<{ feedbacks: FeedbackResponse[]; total: number }>;
+  getFeedbacks(projectName: string, options?: GetFeedbacksOptions): Promise<FeedbackResponseList>;
   resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse>;
   deleteFeedback(id: string): Promise<void>;
   deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -122,7 +117,10 @@ async function resilientFetch(url: string, init: RequestInit, retries = MAX_RETR
 // Retry queue — persist failed feedbacks for retry on next page load
 // ---------------------------------------------------------------------------
 
-type RetryEntry = { endpoint: string; payload: FeedbackPayload };
+interface RetryEntry {
+  endpoint: string;
+  payload: FeedbackPayload;
+}
 
 const LOCK_NAME = "siteping_retry_queue";
 
@@ -137,13 +135,18 @@ async function withRetryLock<T>(callback: () => T | Promise<T>): Promise<T> {
   return callback();
 }
 
+function readQueue(): RetryEntry[] {
+  const raw = localStorage.getItem(RETRY_QUEUE_KEY);
+  if (!raw) return [];
+  const parsed: unknown = JSON.parse(raw);
+  return Array.isArray(parsed) ? (parsed as RetryEntry[]) : [];
+}
+
 function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
   // Fire-and-forget — we don't want to block the caller on the lock
   void withRetryLock(() => {
     try {
-      const raw = localStorage.getItem(RETRY_QUEUE_KEY);
-      const parsed: unknown = raw ? JSON.parse(raw) : [];
-      const queue: RetryEntry[] = Array.isArray(parsed) ? (parsed as RetryEntry[]) : [];
+      const queue = readQueue();
 
       // Cap queue size to prevent unbounded localStorage growth
       if (queue.length >= MAX_QUEUE_SIZE) {
@@ -176,11 +179,8 @@ function normalizeEmail(value: string): string {
 export async function flushRetryQueue(endpoint: string, currentIdentity?: Identity | null): Promise<void> {
   await withRetryLock(async () => {
     try {
-      const raw = localStorage.getItem(RETRY_QUEUE_KEY);
-      if (!raw) return;
-
-      const parsed: unknown = JSON.parse(raw);
-      const queue: RetryEntry[] = Array.isArray(parsed) ? (parsed as RetryEntry[]) : [];
+      const queue = readQueue();
+      if (queue.length === 0) return;
 
       const toRetry: RetryEntry[] = [];
       const unrelated: RetryEntry[] = [];
@@ -243,7 +243,12 @@ export async function flushRetryQueue(endpoint: string, currentIdentity?: Identi
 // API client
 // ---------------------------------------------------------------------------
 
-export class ApiClient {
+/** Parse a JSON body and assert its TypeScript shape — server-side Zod is the source of truth. */
+async function parseJsonAs<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+export class ApiClient implements WidgetClient {
   constructor(
     private readonly endpoint: string,
     private readonly projectName: string,
@@ -269,17 +274,14 @@ export class ApiClient {
         throw await errorFromResponse(response, "Failed to send feedback");
       }
 
-      return (await response.json()) as FeedbackResponse; // Server validates via Zod
+      return parseJsonAs<FeedbackResponse>(response);
     } catch (error) {
       queueForRetry(this.endpoint, payload);
       throw error;
     }
   }
 
-  async getFeedbacks(
-    projectName: string,
-    options?: GetFeedbacksOptions,
-  ): Promise<{ feedbacks: FeedbackResponse[]; total: number }> {
+  async getFeedbacks(projectName: string, options?: GetFeedbacksOptions): Promise<FeedbackResponseList> {
     const params = new URLSearchParams({ projectName });
     if (options?.page) params.set("page", String(options.page));
     if (options?.limit) params.set("limit", String(options.limit));
@@ -303,7 +305,7 @@ export class ApiClient {
       throw await errorFromResponse(response, "Failed to fetch feedbacks");
     }
 
-    return (await response.json()) as { feedbacks: FeedbackResponse[]; total: number }; // Server validates via Zod
+    return parseJsonAs<FeedbackResponseList>(response);
   }
 
   async resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse> {
@@ -322,7 +324,7 @@ export class ApiClient {
       throw await errorFromResponse(response, "Failed to update feedback");
     }
 
-    return (await response.json()) as FeedbackResponse; // Server validates via Zod
+    return parseJsonAs<FeedbackResponse>(response);
   }
 
   async deleteFeedback(id: string): Promise<void> {

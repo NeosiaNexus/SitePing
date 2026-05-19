@@ -158,5 +158,8 @@ export interface Translations {
   "export.json": string;
 }
 
+/** Every valid key of `Translations` as a string-literal union. */
+export type TranslationKey = keyof Translations;
+
 /** A translate function that returns the string for a given key. */
-export type TFunction = (key: keyof Translations) => string;
+export type TFunction = (key: TranslationKey) => string;

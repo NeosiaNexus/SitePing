@@ -1,10 +1,10 @@
 import type {
   DiagnosticsSnapshot,
   FeedbackPayload,
-  FeedbackResponse,
   PageScope,
   SitepingConfig,
   SitepingInstance,
+  SitepingPublicEventListener,
   SitepingPublicEvents,
 } from "@siteping/core";
 import { Annotator } from "./annotator.js";
@@ -193,10 +193,18 @@ export function launch(config: SitepingConfig): SitepingInstance {
   const bus = new EventBus<WidgetEvents>();
   const publicBus = new EventBus<PublicWidgetEvents>();
 
-  // Client-side mode (store) vs HTTP mode (endpoint)
-  const client: WidgetClient = config.store
-    ? new StoreClient(config.store, config.projectName)
-    : new ApiClient(config.endpoint as string, config.projectName);
+  // Client-side mode (store) vs HTTP mode (endpoint).
+  // The earlier guard guarantees one of `store` / `endpoint` is set; we
+  // capture the chosen branch in a typed local so TypeScript narrows on
+  // each side without resorting to a non-null assertion.
+  const client: WidgetClient = (() => {
+    if (config.store) return new StoreClient(config.store, config.projectName);
+    const endpoint = config.endpoint;
+    if (typeof endpoint !== "string" || endpoint.length === 0) {
+      throw new Error("[siteping] internal invariant: endpoint must be a non-empty string in HTTP mode");
+    }
+    return new ApiClient(endpoint, config.projectName);
+  })();
 
   // Wire config callbacks to event bus
   if (config.onOpen) bus.on("open", config.onOpen);
@@ -424,7 +432,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   const deepLinkOpts = normaliseDeepLinkOptions(config.deepLink);
   client
     .getFeedbacks(config.projectName, initialOptions)
-    .then(({ feedbacks }: { feedbacks: FeedbackResponse[] }) => {
+    .then(({ feedbacks }) => {
       // Defensive client-side filter — backend may not yet support the `url` query.
       const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === initialScope.url) : feedbacks;
       markers.render(visible);
@@ -516,21 +524,18 @@ export function launch(config: SitepingConfig): SitepingInstance {
       const opts = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: scope.url } : { limit: PAGE_SIZE };
       client
         .getFeedbacks(config.projectName, opts)
-        .then(({ feedbacks }: { feedbacks: FeedbackResponse[] }) => {
+        .then(({ feedbacks }) => {
           const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === scope.url) : feedbacks;
           markers.render(visible);
         })
         .catch(() => {});
     },
-    on: <K extends keyof SitepingPublicEvents>(event: K, listener: (...args: SitepingPublicEvents[K]) => void) => {
-      // Safe cast: SitepingPublicEvents and PublicWidgetEvents have identical keys and value types
-      type TargetKey = K & keyof PublicWidgetEvents;
-      return publicBus.on(event as TargetKey, listener as unknown as (...args: PublicWidgetEvents[TargetKey]) => void);
-    },
-    off: <K extends keyof SitepingPublicEvents>(event: K, listener: (...args: SitepingPublicEvents[K]) => void) => {
-      // Safe cast: SitepingPublicEvents and PublicWidgetEvents have identical keys and value types
-      type TargetKey = K & keyof PublicWidgetEvents;
-      publicBus.off(event as TargetKey, listener as unknown as (...args: PublicWidgetEvents[TargetKey]) => void);
+    // `PublicWidgetEvents` is a structural alias of `SitepingPublicEvents`, so
+    // these on/off forwarders compose without any runtime cast.
+    on: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) =>
+      publicBus.on(event, listener),
+    off: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) => {
+      publicBus.off(event, listener);
     },
   };
 

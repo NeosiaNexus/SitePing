@@ -1,4 +1,4 @@
-import type { FeedbackStatus, FeedbackType } from "@siteping/core";
+import type { ConsoleDiagnosticLevel, FeedbackStatus, FeedbackType, Prettify } from "@siteping/core";
 import { FEEDBACK_STATUSES, FEEDBACK_TYPES } from "@siteping/core";
 import * as zod from "zod";
 
@@ -44,8 +44,10 @@ const annotationSchema = z.object({
 // Diagnostics caps mirror the widget defaults — the widget never sends more
 // than these, but the schema enforces it server-side too so a tampered
 // client can't blow up the JSON column with megabytes of garbage.
+const CONSOLE_LEVELS = ["log", "info", "warn", "error"] as const satisfies readonly ConsoleDiagnosticLevel[];
+
 const consoleEntrySchema = z.object({
-  level: z.enum(["log", "info", "warn", "error"]),
+  level: z.enum(CONSOLE_LEVELS),
   timestamp: z.string().max(50),
   message: z.string().max(600),
 });
@@ -167,7 +169,7 @@ export interface AnnotationInput {
 }
 
 export interface ConsoleDiagnosticInput {
-  level: "log" | "info" | "warn" | "error";
+  level: ConsoleDiagnosticLevel;
   timestamp: string;
   message: string;
 }
@@ -234,17 +236,21 @@ export interface GetQueryInput {
 
 // ---------------------------------------------------------------------------
 // Type-level assertions: manual interfaces stay in sync with schemas.
-// If a field is added/removed/changed in the schema but not the interface
-// (or vice versa), these lines produce a compile error.
+//
+// We use a bidirectional `extends` check (the `_…Reverse` lines) to assert
+// structural equivalence between the inferred Zod type and the manually
+// authored interface — drift in either direction surfaces as a compile error.
+// `Prettify<>` smooths the inferred shape so the assertion compares clean
+// object types rather than intersection chains.
 // ---------------------------------------------------------------------------
 
-type _AssertCreate = zod.z.infer<typeof feedbackCreateSchema> extends FeedbackCreateInput ? true : never;
+type _AssertCreate = Prettify<zod.z.infer<typeof feedbackCreateSchema>> extends FeedbackCreateInput ? true : never;
 type _AssertCreateReverse = FeedbackCreateInput extends zod.z.infer<typeof feedbackCreateSchema> ? true : never;
-type _AssertPatch = zod.z.infer<typeof feedbackPatchSchema> extends FeedbackPatchInput ? true : never;
+type _AssertPatch = Prettify<zod.z.infer<typeof feedbackPatchSchema>> extends FeedbackPatchInput ? true : never;
 type _AssertPatchReverse = FeedbackPatchInput extends zod.z.infer<typeof feedbackPatchSchema> ? true : never;
 type _AssertDelete = zod.z.infer<typeof feedbackDeleteSchema> extends FeedbackDeleteInput ? true : never;
 type _AssertDeleteReverse = FeedbackDeleteInput extends zod.z.infer<typeof feedbackDeleteSchema> ? true : never;
-type _AssertQuery = zod.z.infer<typeof getQuerySchema> extends GetQueryInput ? true : never;
+type _AssertQuery = Prettify<zod.z.infer<typeof getQuerySchema>> extends GetQueryInput ? true : never;
 type _AssertQueryReverse = GetQueryInput extends zod.z.infer<typeof getQuerySchema> ? true : never;
 
 // Suppress unused-variable warnings — assertions are compile-time only
@@ -257,11 +263,17 @@ void (0 as unknown as _AssertDeleteReverse);
 void (0 as unknown as _AssertQuery);
 void (0 as unknown as _AssertQueryReverse);
 
+/** Single validation issue extracted from a `ZodError`. */
+export interface ValidationIssue {
+  field: string;
+  message: string;
+}
+
 /**
- * Map Zod errors to a flat array of { field, message } objects.
+ * Map Zod errors to a flat array of `{ field, message }` objects.
  * Safe: does not leak input values or schema structure.
  */
-export function formatValidationErrors(error: zod.z.ZodError): Array<{ field: string; message: string }> {
+export function formatValidationErrors(error: zod.z.ZodError): ValidationIssue[] {
   return error.issues.map((issue: { path: Array<string | number>; message: string }) => ({
     field: issue.path.join("."),
     message: issue.message,

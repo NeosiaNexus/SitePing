@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import * as p from "@clack/prompts";
 import type { Field, Model } from "@mrleebo/prisma-ast";
 import { getSchema } from "@mrleebo/prisma-ast";
-import { SITEPING_MODELS } from "@siteping/core";
+import { hasOwn, SITEPING_MODELS } from "@siteping/core";
 import { findPrismaSchema } from "../utils/find-schema.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -16,21 +16,38 @@ function findApiRoute(cwd: string): string | null {
   return candidates.find((c) => existsSync(c)) ?? null;
 }
 
-function readPackageJson(cwd: string): Record<string, unknown> | null {
+/**
+ * Minimal shape of a `package.json` the status command cares about.
+ *
+ * Kept loose — every other field is irrelevant here, so the type narrows on
+ * the way out via {@link readPackageJson} and avoids polluting hover info.
+ */
+interface PackageJsonSnapshot {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+function readPackageJson(cwd: string): PackageJsonSnapshot | null {
   const pkgPath = join(cwd, "package.json");
   if (!existsSync(pkgPath)) return null;
   try {
-    return JSON.parse(readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    if (!hasOwn(parsed, "dependencies") && !hasOwn(parsed, "devDependencies")) return {};
+    return parsed as PackageJsonSnapshot;
   } catch {
     return null;
   }
 }
 
+function dependencyVersion(pkg: PackageJsonSnapshot, name: string): string | undefined {
+  return pkg.dependencies?.[name] ?? pkg.devDependencies?.[name];
+}
+
 /** Recursively search source directories for widget usage. */
 function findWidgetUsage(cwd: string): string | null {
   const searchDirs = [join(cwd, "src"), join(cwd, "app"), join(cwd, "pages")];
-  const extensions = [".ts", ".tsx", ".js", ".jsx"];
-  const patterns = ["initSiteping", "@siteping/widget"];
+  const extensions = [".ts", ".tsx", ".js", ".jsx"] as const;
+  const patterns = ["initSiteping", "@siteping/widget"] as const;
 
   for (const dir of searchDirs) {
     if (!existsSync(dir)) continue;
@@ -40,7 +57,7 @@ function findWidgetUsage(cwd: string): string | null {
   return null;
 }
 
-function searchInDir(dir: string, extensions: string[], patterns: string[]): string | null {
+function searchInDir(dir: string, extensions: ReadonlyArray<string>, patterns: ReadonlyArray<string>): string | null {
   let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -146,7 +163,13 @@ function pad(label: string, width: number): string {
 
 // ── Command ────────────────────────────────────────────────────────────
 
-export function statusCommand(options: { schema?: string }): void {
+/** Options accepted by the `siteping status` subcommand. */
+export interface StatusCommandOptions {
+  /** Optional explicit path to the host project's `schema.prisma`. */
+  schema?: string;
+}
+
+export function statusCommand(options: StatusCommandOptions): void {
   const cwd = process.cwd();
 
   p.intro("siteping — Status");
@@ -187,19 +210,14 @@ export function statusCommand(options: { schema?: string }): void {
 
   // 3. Package in dependencies
   const pkg = readPackageJson(cwd);
+  const widgetVersion = pkg ? dependencyVersion(pkg, "@siteping/widget") : undefined;
 
-  if (pkg) {
-    const deps = (pkg.dependencies ?? {}) as Record<string, string>;
-    const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
-    const version = deps["@siteping/widget"] ?? devDeps["@siteping/widget"];
-
-    if (version) {
-      p.log.success(`${pad("Package", 25)}@siteping/widget@${version}`);
-    } else {
-      p.log.error(`${pad("Package", 25)}@siteping/widget not found in package.json`);
-    }
-  } else {
+  if (!pkg) {
     p.log.error(`${pad("Package", 25)}package.json not found`);
+  } else if (widgetVersion) {
+    p.log.success(`${pad("Package", 25)}@siteping/widget@${widgetVersion}`);
+  } else {
+    p.log.error(`${pad("Package", 25)}@siteping/widget not found in package.json`);
   }
 
   // 4. Widget integration
@@ -212,15 +230,7 @@ export function statusCommand(options: { schema?: string }): void {
   }
 
   // Outro
-  const hasError =
-    !schemaResult.found ||
-    !routePath ||
-    !pkg ||
-    (pkg &&
-      !(
-        (pkg.dependencies as Record<string, string> | undefined)?.["@siteping/widget"] ??
-        (pkg.devDependencies as Record<string, string> | undefined)?.["@siteping/widget"]
-      ));
+  const hasError = !schemaResult.found || !routePath || !pkg || !widgetVersion;
   const hasWarning =
     schemaResult.missingModels.length > 0 ||
     schemaResult.missingFields.length > 0 ||

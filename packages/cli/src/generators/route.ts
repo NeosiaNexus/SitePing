@@ -12,13 +12,21 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 `;
 
+/** Result of a route-generation attempt. */
+export interface RouteGenerationResult {
+  /** `true` when the file was just created, `false` when it already existed. */
+  created: boolean;
+  /** Absolute path of the target route file. */
+  path: string;
+}
+
 /**
  * Generate the Next.js App Router API route file.
  *
  * Creates `app/api/siteping/route.ts` with the handler setup.
  * Skips if the file already exists.
  */
-export function generateRoute(basePath: string = process.cwd()): { created: boolean; path: string } {
+export function generateRoute(basePath: string = process.cwd()): RouteGenerationResult {
   // Detect app directory
   const appDir = existsSync(join(basePath, "src", "app")) ? join(basePath, "src", "app") : join(basePath, "app");
 

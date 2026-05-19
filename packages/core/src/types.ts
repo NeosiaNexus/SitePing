@@ -1,6 +1,48 @@
+import { hasOwn, type Prettify } from "./type-utils.js";
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
+
+/** FAB anchor — bottom-corner placement supported by the widget. */
+export type SitepingPosition = "bottom-right" | "bottom-left";
+
+/** Visual theme — `auto` resolves to `light` or `dark` via system preference. */
+export type SitepingTheme = "light" | "dark" | "auto";
+
+/** Built-in UI locales shipped with the widget. */
+export const BUILTIN_LOCALES = ["en", "fr", "de", "es", "it", "pt", "ru"] as const;
+export type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
+
+/**
+ * Locale identifier accepted by the widget. Built-in locales are kept as
+ * literal strings so editors auto-complete them, but arbitrary BCP-47 tags
+ * are also accepted (custom dictionaries registered via `registerLocale`).
+ */
+export type SitepingLocale = BuiltinLocale | (string & {});
+
+/** Reasons reported through `SitepingConfig.onSkip`. */
+export type SitepingSkipReason = "production" | "mobile";
+
+/** Per-channel + per-buffer-size diagnostics configuration. */
+export interface DiagnosticsCaptureOptions {
+  console?: boolean;
+  network?: boolean;
+  maxConsoleEntries?: number;
+  maxNetworkEntries?: number;
+}
+
+/** Identity payload supplied by the host application — bypasses the modal. */
+export interface SitepingIdentity {
+  name: string;
+  email: string;
+}
+
+/** Deep-link configuration — controls how a feedback id is read from the URL. */
+export interface SitepingDeepLinkOptions {
+  /** Query parameter name carrying the feedback id. Defaults to `"siteping"`. */
+  param?: string;
+}
 
 /** Configuration options for the Siteping widget. */
 export interface SitepingConfig {
@@ -11,7 +53,7 @@ export interface SitepingConfig {
   /** Direct store for client-side mode. When set, bypasses HTTP and uses the store directly in the browser. */
   store?: SitepingStore | undefined;
   /** FAB position — defaults to 'bottom-right' */
-  position?: "bottom-right" | "bottom-left";
+  position?: SitepingPosition;
   /** Accent color for the widget UI — defaults to '#0066ff' */
   accentColor?: string;
   /** Show the widget even in production — defaults to false */
@@ -19,9 +61,9 @@ export interface SitepingConfig {
   /** Enable debug logging of lifecycle events — defaults to false */
   debug?: boolean;
   /** Color theme — defaults to 'light' */
-  theme?: "light" | "dark" | "auto";
+  theme?: SitepingTheme;
   /** UI locale — defaults to 'en'. Built-in: en, fr, de, es, it, pt (Brazilian), ru. Any other string falls back to English. */
-  locale?: "en" | "fr" | "de" | "es" | "it" | "pt" | "ru" | (string & {}) | undefined;
+  locale?: SitepingLocale | undefined;
   /**
    * Returns the current page scope for annotations and panel filtering.
    * Called on initial markers load and on `instance.refresh()`.
@@ -78,17 +120,9 @@ export interface SitepingConfig {
    * URL (with query string) but never the response body. Inform end users
    * before enabling in environments where they might log sensitive values.
    */
-  captureDiagnostics?:
-    | boolean
-    | {
-        console?: boolean;
-        network?: boolean;
-        maxConsoleEntries?: number;
-        maxNetworkEntries?: number;
-      }
-    | undefined;
+  captureDiagnostics?: boolean | DiagnosticsCaptureOptions | undefined;
   /** Called when the widget is skipped (production mode, mobile viewport) */
-  onSkip?: (reason: "production" | "mobile") => void;
+  onSkip?: (reason: SitepingSkipReason) => void;
   /**
    * Auto-focus a specific annotation when its ID appears in the URL query
    * string. Lets hosts deeplink directly into a feedback from external
@@ -112,7 +146,7 @@ export interface SitepingConfig {
    * Hosts that need re-focus on route change can call
    * `instance.focusFeedback(id)` explicitly.
    */
-  deepLink?: boolean | { param?: string } | undefined;
+  deepLink?: boolean | SitepingDeepLinkOptions | undefined;
   /**
    * Pre-fill author identity from the host application — typically the
    * currently signed-in user. When set, the widget uses these values
@@ -132,7 +166,7 @@ export interface SitepingConfig {
    * https://github.com/NeosiaNexus/SitePing/issues/85 for tracking a
    * future enhancement that propagates identity updates without a remount.
    */
-  identity?: { name: string; email: string } | undefined;
+  identity?: SitepingIdentity | undefined;
 
   // Events
   /** Called when the feedback panel is opened. */
@@ -180,18 +214,23 @@ export interface SitepingInstance {
    */
   focusFeedback: (feedbackId: string) => boolean;
   /** Subscribe to a public widget event */
-  on: <K extends keyof SitepingPublicEvents>(
-    event: K,
-    listener: (...args: SitepingPublicEvents[K]) => void,
-  ) => () => void;
+  on: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) => SitepingUnsubscribe;
   /** Unsubscribe from a public widget event */
-  off: <K extends keyof SitepingPublicEvents>(event: K, listener: (...args: SitepingPublicEvents[K]) => void) => void;
+  off: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) => void;
 }
+
+/** Listener signature for a single `SitepingPublicEvents` key. */
+export type SitepingPublicEventListener<K extends keyof SitepingPublicEvents> = (
+  ...args: SitepingPublicEvents[K]
+) => void;
+
+/** Disposer returned by `SitepingInstance.on` — call once to detach the listener. */
+export type SitepingUnsubscribe = () => void;
 
 /** Events exposed to consumers via SitepingInstance.on / .off */
 export interface SitepingPublicEvents {
   "feedback:sent": [FeedbackResponse];
-  "feedback:deleted": [string];
+  "feedback:deleted": [FeedbackResponse["id"]];
   "panel:open": [];
   "panel:close": [];
 }
@@ -416,18 +455,25 @@ export class StoreDuplicateError extends Error {
   }
 }
 
+/** Shape of any ORM error that carries a Prisma-style `code` field. */
+type CodedError<C extends string = string> = { code: C };
+
+function hasErrorCode<C extends string>(error: unknown, code: C): error is CodedError<C> {
+  return hasOwn(error, "code") && (error as { code: unknown }).code === code;
+}
+
 /** Type guard — works for `StoreNotFoundError` and ORM-specific equivalents (e.g. Prisma P2025). */
-export function isStoreNotFound(error: unknown): boolean {
+export function isStoreNotFound(error: unknown): error is StoreNotFoundError | CodedError<"P2025"> {
   if (error instanceof StoreNotFoundError) return true;
   // Backwards compat: Prisma's P2025
-  return typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2025";
+  return hasErrorCode(error, "P2025");
 }
 
 /** Type guard — works for `StoreDuplicateError` and ORM-specific equivalents (e.g. Prisma P2002). */
-export function isStoreDuplicate(error: unknown): boolean {
+export function isStoreDuplicate(error: unknown): error is StoreDuplicateError | CodedError<"P2002"> {
   if (error instanceof StoreDuplicateError) return true;
   // Backwards compat: Prisma's P2002
-  return typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2002";
+  return hasErrorCode(error, "P2002");
 }
 
 // ---------------------------------------------------------------------------
@@ -435,7 +481,7 @@ export function isStoreDuplicate(error: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 /** Flatten a widget `AnnotationPayload` (nested anchor + rect) into a flat `AnnotationCreateInput`. */
-export function flattenAnnotation(ann: AnnotationPayload): AnnotationCreateInput {
+export function flattenAnnotation(ann: AnnotationPayload): Prettify<AnnotationCreateInput> {
   return {
     cssSelector: ann.anchor.cssSelector,
     xpath: ann.anchor.xpath,
@@ -463,6 +509,12 @@ export function flattenAnnotation(ann: AnnotationPayload): AnnotationCreateInput
 // Abstract Store — adapter pattern
 // ---------------------------------------------------------------------------
 
+/** Paginated result returned by `SitepingStore.getFeedbacks`. */
+export interface FeedbackPage {
+  feedbacks: FeedbackRecord[];
+  total: number;
+}
+
 /**
  * Abstract storage interface for Siteping.
  *
@@ -483,7 +535,7 @@ export interface SitepingStore {
   /** Create a feedback with its annotations. Idempotent on `clientId` — return existing record on duplicate, or throw `StoreDuplicateError`. */
   createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
   /** Paginated query with optional filters. Returns empty array (not error) when no results. */
-  getFeedbacks(query: FeedbackQuery): Promise<{ feedbacks: FeedbackRecord[]; total: number }>;
+  getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage>;
   /** Lookup by client-generated UUID. Returns `null` (not error) when not found. */
   findByClientId(clientId: string): Promise<FeedbackRecord | null>;
   /** Update status/resolvedAt. Throws `StoreNotFoundError` if `id` does not exist. */
@@ -525,9 +577,12 @@ export interface FeedbackPayload {
   diagnostics?: DiagnosticsSnapshot | null | undefined;
 }
 
+/** Severity levels persisted in `ConsoleDiagnosticEntry`. */
+export type ConsoleDiagnosticLevel = "log" | "info" | "warn" | "error";
+
 /** A single console entry captured by `ConsoleBuffer`. */
 export interface ConsoleDiagnosticEntry {
-  level: "log" | "info" | "warn" | "error";
+  level: ConsoleDiagnosticLevel;
   /** ISO 8601 timestamp captured at log time. */
   timestamp: string;
   /** Best-effort string representation of the original console args. */
@@ -667,4 +722,10 @@ export interface AnnotationResponse {
   viewportH: number;
   devicePixelRatio: number;
   createdAt: string;
+}
+
+/** Paginated `FeedbackResponse` shape returned by the API. */
+export interface FeedbackResponseList {
+  feedbacks: FeedbackResponse[];
+  total: number;
 }

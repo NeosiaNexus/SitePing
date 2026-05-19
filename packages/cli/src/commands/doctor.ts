@@ -1,6 +1,19 @@
 import { p } from "../prompts.js";
 
-export async function doctorCommand(options: { url?: string; endpoint?: string }): Promise<void> {
+/** Options accepted by the `siteping doctor` subcommand. */
+export interface DoctorCommandOptions {
+  /** Override the development server origin (defaults to prompt / `http://localhost:3000`). */
+  url?: string;
+  /** Override the API endpoint path (defaults to prompt / `/api/siteping`). */
+  endpoint?: string;
+}
+
+/** Shape of the `GET /api/siteping?projectName=…` health-check response. */
+interface SitepingHealthResponse {
+  total?: number;
+}
+
+export async function doctorCommand(options: DoctorCommandOptions): Promise<void> {
   p.intro("siteping — Network diagnostics");
 
   const url =
@@ -46,9 +59,9 @@ export async function doctorCommand(options: { url?: string; endpoint?: string }
     const elapsed = Math.round(performance.now() - start);
 
     if (response.ok) {
-      let data: Record<string, unknown> | null;
+      let data: SitepingHealthResponse | null;
       try {
-        data = await response.json();
+        data = (await response.json()) as SitepingHealthResponse;
       } catch {
         data = null;
       }

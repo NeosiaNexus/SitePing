@@ -4,6 +4,7 @@ import {
   type FeedbackPayload,
   type FeedbackRecord,
   type FeedbackResponse,
+  type FeedbackResponseList,
   flattenAnnotation,
   type SitepingStore,
 } from "@siteping/core";
@@ -42,10 +43,7 @@ export class StoreClient implements WidgetClient {
     return toResponse(record);
   }
 
-  async getFeedbacks(
-    projectName: string,
-    options?: GetFeedbacksOptions,
-  ): Promise<{ feedbacks: FeedbackResponse[]; total: number }> {
+  async getFeedbacks(projectName: string, options?: GetFeedbacksOptions): Promise<FeedbackResponseList> {
     const { feedbacks, total } = await this.store.getFeedbacks({
       projectName,
       page: options?.page,

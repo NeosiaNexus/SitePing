@@ -3,7 +3,13 @@ import * as p from "@clack/prompts";
 import { syncPrismaModels } from "../generators/prisma.js";
 import { findPrismaSchema } from "../utils/find-schema.js";
 
-export function syncCommand(options: { schema?: string }): void {
+/** Options accepted by the `siteping sync` subcommand. */
+export interface SyncCommandOptions {
+  /** Optional explicit path to the host project's `schema.prisma`. */
+  schema?: string;
+}
+
+export function syncCommand(options: SyncCommandOptions): void {
   const cwd = process.cwd();
   const schemaPath = options.schema ?? findPrismaSchema(cwd);
 

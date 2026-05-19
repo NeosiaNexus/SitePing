@@ -17,11 +17,18 @@
  * network failures via its built-in retry queue.
  */
 
-export class SitepingError extends Error {
-  readonly code: string;
+/**
+ * Discriminant string carried by every `SitepingError`. Subclasses pin a
+ * literal value; the base class accepts a wider string so userland can
+ * extend the hierarchy without colliding with built-ins.
+ */
+export type SitepingErrorCode = "NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | (string & {});
+
+export class SitepingError<TCode extends SitepingErrorCode = SitepingErrorCode> extends Error {
+  readonly code: TCode;
   readonly retryable: boolean;
 
-  constructor(message: string, code: string, retryable: boolean) {
+  constructor(message: string, code: TCode, retryable: boolean) {
     super(message);
     this.code = code;
     this.retryable = retryable;
@@ -30,7 +37,7 @@ export class SitepingError extends Error {
 }
 
 /** Network-level failure: connection refused, DNS, CORS, timeout, abort. Retryable. */
-export class SitepingNetworkError extends SitepingError {
+export class SitepingNetworkError extends SitepingError<"NETWORK"> {
   constructor(message: string) {
     super(message, "NETWORK", true);
     this.name = "SitepingNetworkError";
@@ -38,7 +45,7 @@ export class SitepingNetworkError extends SitepingError {
 }
 
 /** Server rejected the request (4xx, not auth). Validation problem on the client side. */
-export class SitepingValidationError extends SitepingError {
+export class SitepingValidationError extends SitepingError<"VALIDATION"> {
   constructor(message: string) {
     super(message, "VALIDATION", false);
     this.name = "SitepingValidationError";
@@ -46,7 +53,7 @@ export class SitepingValidationError extends SitepingError {
 }
 
 /** Server rejected auth (401 or 403). Not retryable without fresh credentials. */
-export class SitepingAuthError extends SitepingError {
+export class SitepingAuthError extends SitepingError<"AUTH"> {
   constructor(message: string) {
     super(message, "AUTH", false);
     this.name = "SitepingAuthError";

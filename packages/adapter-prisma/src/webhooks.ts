@@ -15,7 +15,10 @@
  *   surfaced without crashing the request.
  */
 
-import type { FeedbackRecord } from "@siteping/core";
+import type { FeedbackRecord, FeedbackType } from "@siteping/core";
+
+/** Supported webhook integrations — drives the JSON body shape. */
+export type WebhookType = "slack" | "discord" | "generic";
 
 /**
  * Outgoing webhook configuration.
@@ -31,13 +34,68 @@ import type { FeedbackRecord } from "@siteping/core";
  */
 export interface WebhookConfig {
   url: string;
-  type?: "slack" | "discord" | "generic";
+  type?: WebhookType;
   headers?: Record<string, string>;
   timeoutMs?: number;
   onError?: (err: Error, feedbackId: string) => void;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
+
+/** Decimal RGB colour table used by Discord embeds — keyed by feedback type. */
+const DISCORD_COLORS: Readonly<Record<FeedbackType, number>> = {
+  bug: 0xef4444,
+  question: 0x3b82f6,
+  change: 0xf59e0b,
+  other: 0x6b7280,
+};
+
+const DEFAULT_DISCORD_COLOR = 0x6b7280;
+
+// ---------------------------------------------------------------------------
+// Payload shapes — narrow types let TypeScript catch malformed bodies at
+// compile time rather than only at the receiving end.
+// ---------------------------------------------------------------------------
+
+/** Block Kit envelope used by Slack incoming webhooks. */
+export interface SlackWebhookPayload {
+  text: string;
+  blocks: ReadonlyArray<SlackHeaderBlock | SlackSectionBlock | SlackContextBlock>;
+}
+
+interface SlackHeaderBlock {
+  type: "header";
+  text: { type: "plain_text"; text: string; emoji: true };
+}
+
+interface SlackSectionBlock {
+  type: "section";
+  text: { type: "mrkdwn"; text: string };
+}
+
+interface SlackContextBlock {
+  type: "context";
+  elements: ReadonlyArray<{ type: "mrkdwn"; text: string }>;
+}
+
+/** Embed envelope used by Discord incoming webhooks. */
+export interface DiscordWebhookPayload {
+  content: string;
+  embeds: ReadonlyArray<{
+    title: string;
+    description: string;
+    color: number;
+    fields: ReadonlyArray<{ name: string; value: string; inline: boolean }>;
+    timestamp: string;
+  }>;
+}
+
+/** Mapping from webhook type to its concrete body shape. */
+export interface WebhookPayloadMap {
+  slack: SlackWebhookPayload;
+  discord: DiscordWebhookPayload;
+  generic: FeedbackRecord;
+}
 
 /** Truncate a message for chat-platform previews (Slack/Discord look bad with walls of text). */
 function truncate(text: string, max = 300): string {
@@ -46,7 +104,7 @@ function truncate(text: string, max = 300): string {
 }
 
 /** Slack message: text fallback + Block Kit blocks for rich rendering. */
-function buildSlackPayload(feedback: FeedbackRecord): unknown {
+function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
   const preview = truncate(feedback.message);
   const headline = `New ${feedback.type} feedback from ${feedback.authorName}`;
   return {
@@ -74,23 +132,15 @@ function buildSlackPayload(feedback: FeedbackRecord): unknown {
 }
 
 /** Discord message: content fallback + embed for rich rendering. */
-function buildDiscordPayload(feedback: FeedbackRecord): unknown {
+function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
   const preview = truncate(feedback.message);
-  // Discord embed colors are decimal RGB. Map feedback types to a fixed palette
-  // so receivers can colour-code at a glance.
-  const COLOR: Record<string, number> = {
-    bug: 0xef4444,
-    question: 0x3b82f6,
-    change: 0xf59e0b,
-    other: 0x6b7280,
-  };
   return {
     content: `New **${feedback.type}** feedback from **${feedback.authorName}**`,
     embeds: [
       {
         title: `${feedback.type} — ${feedback.projectName}`,
         description: preview,
-        color: COLOR[feedback.type] ?? 0x6b7280,
+        color: DISCORD_COLORS[feedback.type] ?? DEFAULT_DISCORD_COLOR,
         fields: [
           { name: "URL", value: feedback.url, inline: false },
           { name: "Author", value: `${feedback.authorName} (${feedback.authorEmail})`, inline: true },
@@ -108,14 +158,17 @@ function buildDiscordPayload(feedback: FeedbackRecord): unknown {
  *
  * @internal
  */
-export function buildWebhookPayload(type: WebhookConfig["type"], feedback: FeedbackRecord): unknown {
+export function buildWebhookPayload<T extends WebhookType | undefined>(
+  type: T,
+  feedback: FeedbackRecord,
+): T extends "slack" ? SlackWebhookPayload : T extends "discord" ? DiscordWebhookPayload : FeedbackRecord {
   switch (type) {
     case "slack":
-      return buildSlackPayload(feedback);
+      return buildSlackPayload(feedback) as never;
     case "discord":
-      return buildDiscordPayload(feedback);
+      return buildDiscordPayload(feedback) as never;
     default:
-      return feedback;
+      return feedback as never;
   }
 }
 

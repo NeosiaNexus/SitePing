@@ -1,10 +1,14 @@
 import { timingSafeEqual } from "node:crypto";
 import {
   type FeedbackCreateInput,
+  type FeedbackPage,
   type FeedbackQuery,
   type FeedbackRecord,
+  type FeedbackStatus,
+  type FeedbackType,
   type FeedbackUpdateInput,
   flattenAnnotation,
+  hasOwn,
   isStoreDuplicate,
   isStoreNotFound,
   type ScreenshotStorage,
@@ -27,12 +31,35 @@ export type {
   FeedbackPatchInput,
   GetQueryInput,
 } from "./validation.js";
-export type { WebhookConfig } from "./webhooks.js";
+export type {
+  DiscordWebhookPayload,
+  SlackWebhookPayload,
+  WebhookConfig,
+  WebhookPayloadMap,
+  WebhookType,
+} from "./webhooks.js";
 export { dispatchWebhook, dispatchWebhooks } from "./webhooks.js";
 
 // ---------------------------------------------------------------------------
 // Minimal PrismaClient shape expected by this adapter
 // ---------------------------------------------------------------------------
+
+/**
+ * Structural type for a Prisma model delegate (`prisma.sitepingFeedback`).
+ *
+ * Arguments are kept `unknown` so any Prisma version's generated client
+ * satisfies the constraint; the adapter assembles type-safe payloads
+ * internally before forwarding them.
+ */
+export interface PrismaModelDelegate {
+  create: (args: unknown) => Promise<unknown>;
+  findMany: (args: unknown) => Promise<unknown[]>;
+  findUnique: (args: unknown) => Promise<unknown>;
+  update: (args: unknown) => Promise<unknown>;
+  delete: (args: unknown) => Promise<unknown>;
+  deleteMany: (args: unknown) => Promise<unknown>;
+  count: (args: unknown) => Promise<number>;
+}
 
 /**
  * Minimal Prisma client shape expected by this adapter.
@@ -41,22 +68,14 @@ export { dispatchWebhook, dispatchWebhooks } from "./webhooks.js";
  * referenced in handler option types without importing `@prisma/client`.
  */
 export interface SitepingPrismaClient {
-  sitepingFeedback: {
-    create: (args: unknown) => Promise<unknown>;
-    findMany: (args: unknown) => Promise<unknown[]>;
-    findUnique: (args: unknown) => Promise<unknown | null>;
-    update: (args: unknown) => Promise<unknown>;
-    delete: (args: unknown) => Promise<unknown>;
-    deleteMany: (args: unknown) => Promise<unknown>;
-    count: (args: unknown) => Promise<number>;
-  };
+  sitepingFeedback: PrismaModelDelegate;
 }
 
 // ---------------------------------------------------------------------------
 // PrismaStore — SitepingStore implementation backed by Prisma
 // ---------------------------------------------------------------------------
 
-const INCLUDE_ANNOTATIONS = { annotations: true };
+const INCLUDE_ANNOTATIONS = { annotations: true } as const;
 
 /**
  * Prisma datasource providers whose generated client exposes `mode?: QueryMode`
@@ -68,7 +87,19 @@ const INCLUDE_ANNOTATIONS = { annotations: true };
  * `postgres` is kept as a defensive alias in case `_activeProvider` ever
  * surfaces the legacy spelling.
  */
-const PROVIDERS_SUPPORTING_INSENSITIVE_MODE = new Set(["postgresql", "postgres", "mongodb", "cockroachdb"]);
+const PROVIDERS_SUPPORTING_INSENSITIVE_MODE: ReadonlySet<string> = new Set([
+  "postgresql",
+  "postgres",
+  "mongodb",
+  "cockroachdb",
+]);
+
+/** Internal shape used to probe `PrismaClient` for the active provider. */
+interface PrismaClientProbe {
+  _activeProvider?: unknown;
+  _engineConfig?: { activeProvider?: unknown };
+  _engine?: { config?: { activeProvider?: unknown } };
+}
 
 /**
  * Best-effort detection of the active Prisma provider for a runtime client.
@@ -80,14 +111,7 @@ const PROVIDERS_SUPPORTING_INSENSITIVE_MODE = new Set(["postgresql", "postgres",
  */
 function detectActiveProvider(prisma: unknown): string | null {
   try {
-    const candidate = prisma as
-      | {
-          _activeProvider?: unknown;
-          _engineConfig?: { activeProvider?: unknown };
-          _engine?: { config?: { activeProvider?: unknown } };
-        }
-      | null
-      | undefined;
+    const candidate = prisma as PrismaClientProbe | null | undefined;
     const fromActive = candidate?._activeProvider;
     if (typeof fromActive === "string") return fromActive;
     const fromEngineConfig = candidate?._engineConfig?.activeProvider;
@@ -127,6 +151,16 @@ export interface PrismaStoreOptions {
    * persisted inline on `Feedback.screenshotUrl` with a one-time warn.
    */
   screenshotStorage?: ScreenshotStorage | undefined;
+}
+
+/** `where` filter shape passed to `findMany` / `count`. Each field maps to a typed Prisma filter. */
+interface FeedbackWhereInput {
+  projectName: string;
+  type?: FeedbackType;
+  status?: FeedbackStatus;
+  url?: string;
+  urlPattern?: string;
+  message?: { contains: string; mode?: "insensitive" };
 }
 
 /**
@@ -269,18 +303,16 @@ export class PrismaStore implements SitepingStore {
     })) as FeedbackRecord | null;
   }
 
-  async getFeedbacks(query: FeedbackQuery): Promise<{ feedbacks: FeedbackRecord[]; total: number }> {
+  async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
     const { projectName, type, status, search, url, urlPattern, page = 1, limit = 50 } = query;
 
-    const where: Record<string, unknown> = { projectName };
+    const where: FeedbackWhereInput = { projectName };
     if (type) where.type = type;
     if (status) where.status = status;
     if (url) where.url = url;
     if (urlPattern) where.urlPattern = urlPattern;
     if (search) {
-      where.message = this.caseInsensitiveSearch
-        ? { contains: search, mode: "insensitive" as const }
-        : { contains: search };
+      where.message = this.caseInsensitiveSearch ? { contains: search, mode: "insensitive" } : { contains: search };
     }
 
     const [feedbacks, total] = await Promise.all([
@@ -333,6 +365,9 @@ export class PrismaStore implements SitepingStore {
 // Handler options — backwards compatible
 // ---------------------------------------------------------------------------
 
+/** HTTP methods that may be listed in `HandlerOptions.publicEndpoints`. */
+export type SitepingHttpMethod = "GET" | "POST" | "PATCH" | "DELETE" | "OPTIONS";
+
 export interface HandlerOptions {
   /** Prisma client — used when `store` is not provided. Wrapped in a `PrismaStore` internally. */
   prisma?: SitepingPrismaClient;
@@ -361,9 +396,9 @@ export interface HandlerOptions {
    * Defaults to `['POST', 'OPTIONS']` when `apiKey` is set — POST must stay open
    * because the browser widget submits feedback from unauthenticated contexts.
    */
-  publicEndpoints?: Array<"GET" | "POST" | "PATCH" | "DELETE" | "OPTIONS">;
+  publicEndpoints?: ReadonlyArray<SitepingHttpMethod>;
   /** Allowed CORS origins — when set, validates the Origin header */
-  allowedOrigins?: string[] | undefined;
+  allowedOrigins?: ReadonlyArray<string> | undefined;
   /**
    * Override case-insensitive search behaviour for the built-in `PrismaStore`.
    *
@@ -395,7 +430,7 @@ export interface HandlerOptions {
    * webhook delivery completes, so a slow receiver never blocks the client.
    * Provide `onError` on each config to observe failures.
    */
-  webhooks?: WebhookConfig | WebhookConfig[];
+  webhooks?: WebhookConfig | ReadonlyArray<WebhookConfig>;
 }
 
 /**
@@ -413,12 +448,14 @@ export interface SitepingHandler {
 // CORS helpers
 // ---------------------------------------------------------------------------
 
+type CorsHeaders = Readonly<Record<string, string>>;
+
 /**
  * Build CORS headers for a given request.
  * When `allowedOrigins` is set, only matching origins get reflected.
  * When unset, no CORS headers are added (no permissive wildcard by default).
  */
-function buildCorsHeaders(request: Request, allowedOrigins: string[] | undefined): Record<string, string> {
+function buildCorsHeaders(request: Request, allowedOrigins: ReadonlyArray<string> | undefined): CorsHeaders {
   if (!allowedOrigins) return {};
 
   const origin = request.headers.get("Origin");
@@ -439,7 +476,7 @@ function buildCorsHeaders(request: Request, allowedOrigins: string[] | undefined
 /**
  * Attach CORS headers to an existing Response.
  */
-function withCors(response: Response, corsHeaders: Record<string, string>): Response {
+function withCors(response: Response, corsHeaders: CorsHeaders): Response {
   for (const [key, value] of Object.entries(corsHeaders)) {
     response.headers.set(key, value);
   }
@@ -521,14 +558,18 @@ export function createSitepingHandler({
       ...(typeof caseInsensitiveSearch === "boolean" ? { caseInsensitiveSearch } : {}),
     });
 
-  const publicMethods = publicEndpoints ? new Set(publicEndpoints) : null;
+  const publicMethods: ReadonlySet<SitepingHttpMethod> | null = publicEndpoints ? new Set(publicEndpoints) : null;
 
   // Normalise the webhook config to an array once so every POST avoids the
   // allocation. Empty array short-circuits `dispatchWebhooks` cheaply.
-  const webhookList: WebhookConfig[] = webhooks ? (Array.isArray(webhooks) ? webhooks : [webhooks]) : [];
+  const webhookList: ReadonlyArray<WebhookConfig> = webhooks
+    ? Array.isArray(webhooks)
+      ? (webhooks as ReadonlyArray<WebhookConfig>)
+      : [webhooks as WebhookConfig]
+    : [];
 
   /** Verify Bearer token when apiKey is configured. Skips methods listed in `publicEndpoints`. */
-  function authenticate(request: Request, method: string): Response | null {
+  function authenticate(request: Request, method: SitepingHttpMethod): Response | null {
     if (!apiKey) {
       // No apiKey + destructive method + guard enabled → reject. GET/POST/OPTIONS
       // stay open by default so the widget keeps working in dev without config.
@@ -537,7 +578,7 @@ export function createSitepingHandler({
       }
       return null;
     }
-    if (publicMethods?.has(method as "GET" | "POST" | "PATCH" | "DELETE" | "OPTIONS")) return null;
+    if (publicMethods?.has(method)) return null;
     const header = request.headers.get("Authorization");
     if (!header || !safeCompare(header, `Bearer ${apiKey}`)) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -622,8 +663,8 @@ export function createSitepingHandler({
       if (authError) return withCors(authError, corsHeaders);
 
       const url = new URL(request.url);
-      const rawQuery: Record<string, unknown> = {};
-      for (const key of ["projectName", "page", "limit", "type", "status", "search", "url", "urlPattern"]) {
+      const rawQuery: Record<string, string> = {};
+      for (const key of ["projectName", "page", "limit", "type", "status", "search", "url", "urlPattern"] as const) {
         const val = url.searchParams.get(key);
         if (val !== null) rawQuery[key] = val;
       }
@@ -732,8 +773,8 @@ export function createSitepingHandler({
   };
 }
 
-function isTableNotFoundError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2021";
+function isTableNotFoundError(error: unknown): error is { code: "P2021" } {
+  return hasOwn(error, "code") && (error as { code: unknown }).code === "P2021";
 }
 
 /**

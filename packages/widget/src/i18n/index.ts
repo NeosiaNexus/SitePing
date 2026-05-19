@@ -1,6 +1,8 @@
-import type { TFunction, Translations } from "./types.js";
+import type { BuiltinLocale, FeedbackType } from "@siteping/core";
+import { BUILTIN_LOCALES } from "@siteping/core";
+import type { TFunction, TranslationKey, Translations } from "./types.js";
 
-export type { TFunction, Translations } from "./types.js";
+export type { TFunction, TranslationKey, Translations } from "./types.js";
 
 // `en` is bundled synchronously as the immediate fallback — every other
 // locale is dynamically imported on demand to keep the initial bundle small.
@@ -11,7 +13,16 @@ import { en } from "./en.js";
 const LOCALES: Record<string, Translations> = { en };
 
 /** Built-in locales other than the synchronously-bundled English fallback. */
-const BUILTIN_LOCALES = new Set(["de", "es", "fr", "it", "pt", "ru"]);
+const BUILTIN_NON_EN: ReadonlySet<BuiltinLocale> = new Set(BUILTIN_LOCALES.filter((l) => l !== "en"));
+
+function isBuiltinNonEn(lang: string): lang is Exclude<BuiltinLocale, "en"> {
+  return (BUILTIN_NON_EN as ReadonlySet<string>).has(lang);
+}
+
+/** Normalise a BCP-47 tag down to the base language used for dictionary lookups. */
+function normaliseLang(locale: string): string {
+  return (locale.split("-")[0] ?? locale).toLowerCase();
+}
 
 /** Register a custom locale at runtime. */
 export function registerLocale(code: string, translations: Translations): void {
@@ -25,12 +36,13 @@ export function registerLocale(code: string, translations: Translations): void {
  * in the registry.
  */
 export async function loadLocale(locale: string): Promise<Translations | null> {
-  const lang = (locale.split("-")[0] ?? locale).toLowerCase();
-  if (LOCALES[lang]) return LOCALES[lang]; // already loaded (en, custom, or previously fetched)
-  if (!BUILTIN_LOCALES.has(lang)) return null;
-  // The static template means tsup/esbuild will create one chunk per locale
+  const lang = normaliseLang(locale);
+  const cached = LOCALES[lang];
+  if (cached) return cached; // already loaded (en, custom, or previously fetched)
+  if (!isBuiltinNonEn(lang)) return null;
+  // The static switch means tsup/esbuild will create one chunk per locale
   // and only the requested one is fetched at runtime.
-  let mod: { [k: string]: Translations };
+  let mod: Partial<Record<BuiltinLocale, Translations>>;
   switch (lang) {
     case "de":
       mod = await import("./de.js");
@@ -69,23 +81,26 @@ export async function loadLocale(locale: string): Promise<Translations | null> {
  * the dictionary lands, then `createT` returns the resolved dictionary.
  */
 export function createT(locale: string): TFunction {
-  const lang = (locale.split("-")[0] ?? locale).toLowerCase();
-  if (lang !== "en" && !LOCALES[lang] && !BUILTIN_LOCALES.has(lang)) {
+  const lang = normaliseLang(locale);
+  if (lang !== "en" && !LOCALES[lang] && !isBuiltinNonEn(lang)) {
     console.warn(`[siteping] Unknown locale "${locale}", falling back to "en"`);
   }
   // Read LOCALES at call time so `createT` returns up-to-date translations
   // after `loadLocale` has registered the dictionary asynchronously.
   return (key) => {
-    const dict = LOCALES[lang] ?? LOCALES.en ?? ({} as Translations);
-    return dict[key] ?? LOCALES.en?.[key] ?? key;
+    const dict = LOCALES[lang] ?? LOCALES.en;
+    return dict?.[key] ?? LOCALES.en?.[key] ?? key;
   };
 }
 
 /**
- * Returns the type label for a FeedbackType value.
- * Maps API enum values (english) to localized display labels.
+ * Returns the type label for a `FeedbackType` value.
+ *
+ * Maps API enum values (English) to localised display labels. The exhaustive
+ * `switch` is paired with a `never` check so adding a new `FeedbackType`
+ * surfaces here at compile time.
  */
-export function getTypeLabel(type: string, t: TFunction): string {
+export function getTypeLabel(type: FeedbackType | string, t: TFunction): string {
   switch (type) {
     case "question":
       return t("type.question");
@@ -98,4 +113,28 @@ export function getTypeLabel(type: string, t: TFunction): string {
     default:
       return type;
   }
+}
+
+/**
+ * Interpolate `{paramName}` placeholders in a translated string with the
+ * values from `params`. Stringifies numbers and booleans inline so callers
+ * can pass `t("marker.count")` along with `{ count: 3 }` directly.
+ *
+ * Unknown placeholders are left as-is — matches the existing behaviour of
+ * inline `.replace("{count}", ...)` calls scattered across the widget.
+ */
+export function interpolate(template: string, params: Readonly<Record<string, string | number | boolean>>): string {
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => {
+    const value = params[name];
+    return value === undefined ? match : String(value);
+  });
+}
+
+/** Shorthand for `interpolate(t(key), params)`. Typed against `TranslationKey`. */
+export function tWithParams(
+  t: TFunction,
+  key: TranslationKey,
+  params: Readonly<Record<string, string | number | boolean>>,
+): string {
+  return interpolate(t(key), params);
 }
