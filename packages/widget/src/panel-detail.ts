@@ -71,6 +71,39 @@ export const DETAIL_CSS = /* css */ `
     transform: translateX(0);
   }
 
+  /* Fallback for browsers that cannot deliver a readable "frosted glass":
+     drop the translucent background to a solid one so the underlying list
+     does not bleed through. Two disjoint cohorts:
+
+       1. No backdrop-filter at all (Firefox <=102, legacy Edge / IE,
+          older Chromium on Linux).
+       2. Safari / iOS Safari where backdrop-filter is detectable only
+          via the -webkit- prefix. Empirically this still includes recent
+          Safari (observed on macOS Safari 18.6 in 2026, where
+          CSS.supports('backdrop-filter', 'blur(...)') returns false even
+          though the unprefixed property has shipped). On these builds the
+          long-standing nested-backdrop + transform compositing bug
+          silently no-ops the blur on .sp-detail (which is transformed and
+          lives inside another backdrop-filter ancestor, .sp-panel), so
+          the translucent default is unreadable. Detection is a pure
+          feature query: prefixed supported AND unprefixed not. No
+          user-agent sniffing.
+
+     Browsers where the glass effect renders correctly (most Chromium,
+     modern Firefox, any engine that advertises both property names via
+     CSS.supports) are unaffected. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .sp-detail {
+      background: var(--sp-bg);
+    }
+  }
+
+  @supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) {
+    .sp-detail {
+      background: var(--sp-bg);
+    }
+  }
+
   /* ---- Header ---- */
 
   .sp-detail-header {

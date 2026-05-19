@@ -3,7 +3,7 @@
 import type { AnnotationResponse, FeedbackResponse } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
-import { type DetailCallbacks, DetailView } from "../../src/panel-detail.js";
+import { DETAIL_CSS, type DetailCallbacks, DetailView } from "../../src/panel-detail.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -1093,6 +1093,39 @@ describe("DetailView", () => {
       setup.view.show(fb, 1);
       const status = setup.view.element.querySelector(".sp-detail-diag-net-status");
       expect(status?.textContent).toBe("ERR");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // CSS — backdrop-filter fallback (regression guard for the Safari 18.6
+  // compositing bug + Firefox <=102 / legacy engines). Asserts both
+  // disjoint @supports blocks remain in DETAIL_CSS so the translucent
+  // default doesn't sneak back in during a refactor.
+  // ---------------------------------------------------------------------------
+
+  describe("DETAIL_CSS — backdrop-filter fallback", () => {
+    it("emits an @supports block for engines with no backdrop-filter at all", () => {
+      expect(DETAIL_CSS).toMatch(
+        /@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\)/,
+      );
+    });
+
+    it("emits an @supports block for engines that only advertise the -webkit- prefix", () => {
+      expect(DETAIL_CSS).toMatch(
+        /@supports \(-webkit-backdrop-filter: blur\(1px\)\) and \(not \(backdrop-filter: blur\(1px\)\)\)/,
+      );
+    });
+
+    it("both fallback blocks override .sp-detail to an opaque var(--sp-bg)", () => {
+      // Strip whitespace before matching so cosmetic formatting can change
+      // without breaking the test.
+      const compact = DETAIL_CSS.replace(/\s+/g, " ");
+      expect(compact).toContain(
+        "@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .sp-detail { background: var(--sp-bg); } }",
+      );
+      expect(compact).toContain(
+        "@supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) { .sp-detail { background: var(--sp-bg); } }",
+      );
     });
   });
 });
