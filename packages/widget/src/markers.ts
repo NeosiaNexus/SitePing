@@ -534,6 +534,31 @@ export class MarkerManager {
     return marker;
   }
 
+  /**
+   * Scroll the annotation into view, pin its highlight, and pulse its marker.
+   *
+   * Powers the `deepLink` config option and the public
+   * `instance.focusFeedback(id)` method. Returns `false` when no entry
+   * matches — caller logs that case, the manager stays silent.
+   *
+   * Scrolling uses the marker element's current document position via
+   * `scrollIntoView`, not the original `scrollX/scrollY` captured at
+   * annotation time. That keeps the focus correct after layout changes
+   * (responsive breakpoints, lazy-loaded content) because the marker has
+   * already been re-positioned to track the live anchor.
+   */
+  focusFeedback(feedbackId: string): boolean {
+    const entry = this.entries.find((e) => e.feedback.id === feedbackId);
+    if (!entry) return false;
+    const markerEl = entry.elements[0];
+    if (markerEl) {
+      markerEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    this.pinHighlight(entry.feedback);
+    this.highlight(feedbackId);
+    return true;
+  }
+
   highlight(feedbackId: string): void {
     for (const entry of this.entries) {
       if (entry.feedback.id === feedbackId) {

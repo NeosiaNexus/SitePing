@@ -218,6 +218,44 @@ When `identity` is unset (default), the widget falls back to the existing behavi
 
 ---
 
+## Deep-linking to annotations
+
+When a feedback is created, downstream tools (Zammad tickets, Slack notifications, email digests, internal dashboards) usually want to link back to the exact pixel — not just the page. Set `deepLink: true` and the widget will pick up a `?siteping=<feedbackId>` query parameter on initial load, scroll the matching annotation into view, pin its highlight, and pulse the marker.
+
+```ts
+initSiteping({
+  endpoint: '/api/siteping',
+  projectName: 'my-app',
+  deepLink: true,
+})
+```
+
+```ts
+// On the receiving side (Zammad webhook, Slack handler, …), build the link:
+const url = `${feedback.url}?siteping=${feedback.id}`
+```
+
+When the recipient clicks the link, the widget opens on the original page with the annotation already in focus. Use a custom query key if `siteping` clashes with a host-app parameter:
+
+```ts
+deepLink: { param: 'fb' }   // → ?fb=<feedbackId>
+```
+
+**Only the initial page load triggers focus.** SPA navigations and `history.pushState` updates are ignored on purpose — re-scrolling during normal browsing would be surprising. Hosts that need to drive focus after a route change can call the imperative counterpart instead:
+
+```ts
+const widget = initSiteping({ endpoint: '/api/siteping', projectName: 'my-app' })
+
+// Inside a notification handler, after navigating to feedback.url:
+const matched = widget.focusFeedback(feedback.id)
+// Returns false when no visible marker matches (unknown ID, filtered by
+// scopeAnnotationsByUrl, or markers not yet loaded — initial fetch is async).
+```
+
+Both entry points share the same focus implementation — only the trigger differs.
+
+---
+
 ## Diagnostics capture
 
 Turn on `captureDiagnostics` and every feedback ships with the last few `console.*` messages and failed network requests (HTTP ≥ 400 or network error). Closes the loop on the dreaded *"this page just doesn't work"* report.

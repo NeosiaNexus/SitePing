@@ -337,6 +337,44 @@ describe("MarkerManager", () => {
   });
 
   // -------------------------------------------------------------------------
+  // focusFeedback — deep-link entry point
+  // -------------------------------------------------------------------------
+
+  describe("focusFeedback", () => {
+    it("returns false when no feedback matches the given id", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      expect(markers.focusFeedback("does-not-exist")).toBe(false);
+    });
+
+    it("returns true and scrolls the marker into view when the id matches", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+      // jsdom does not implement scrollIntoView — install a spy before calling.
+      const scrollSpy = vi.fn();
+      marker.scrollIntoView = scrollSpy;
+
+      expect(markers.focusFeedback("fb-1")).toBe(true);
+
+      expect(scrollSpy).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+    });
+
+    it("pins the highlight overlay and pulses the marker on match", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+      marker.scrollIntoView = vi.fn();
+
+      markers.focusFeedback("fb-1");
+
+      // pinHighlight renders one highlight div per annotation inside the
+      // markers container. pulse animation is set on the marker element.
+      const container = document.getElementById("siteping-markers")!;
+      const highlights = container.querySelectorAll<HTMLElement>(":scope > div:not([data-feedback-id])");
+      expect(highlights.length).toBeGreaterThan(0);
+      expect(marker.style.animation).toContain("sp-pulse-ring");
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Annotations toggle via event bus
   // -------------------------------------------------------------------------
 
