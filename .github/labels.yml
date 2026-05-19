@@ -1,3 +1,14 @@
+# Label definitions for SitePing.
+#
+# We keep the default GitHub labels (bug, enhancement, documentation,
+# dependencies, good first issue, help wanted) un-prefixed because they are
+# the standard names that Dependabot, badges and the GitHub search syntax
+# expect.
+#
+# All other "type of change" labels live under the `type:` namespace so they
+# group naturally next to the existing `type:performance`, `type:refactor`,
+# `type:breaking`, `type:dx` labels.
+
 - name: enhancement
   color: a2eeef
   description: New feature or request
@@ -10,41 +21,9 @@
   color: 0075ca
   description: Improvements or additions to documentation
 
-- name: performance
-  color: 5319e7
-  description: Performance improvement
-
-- name: refactor
-  color: ffb86c
-  description: Code refactor that doesn't change behavior
-
-- name: test
-  color: 32a852
-  description: Adding or improving tests
-
-- name: ci
-  color: c5def5
-  description: CI / CD configuration changes
-
-- name: build
-  color: c2e0c6
-  description: Build system or bundling changes
-
-- name: chore
-  color: cccccc
-  description: Routine maintenance task
-
 - name: dependencies
   color: 0366d6
   description: Updates to a dependency file
-
-- name: i18n
-  color: ff7eb6
-  description: Internationalization, locales, translations
-
-- name: breaking-change
-  color: b60205
-  description: Introduces a breaking API or behaviour change
 
 - name: good first issue
   color: 7057ff
@@ -53,6 +32,26 @@
 - name: help wanted
   color: 008672
   description: Extra attention is needed
+
+- name: type:test
+  color: 32a852
+  description: Adding or improving tests
+
+- name: type:ci
+  color: c5def5
+  description: CI / CD configuration changes
+
+- name: type:build
+  color: c2e0c6
+  description: Build system or bundling changes
+
+- name: type:chore
+  color: cccccc
+  description: Routine maintenance task
+
+- name: type:i18n
+  color: ff7eb6
+  description: Internationalization, locales, translations
 
 - name: ignore-for-release
   color: e4e669
