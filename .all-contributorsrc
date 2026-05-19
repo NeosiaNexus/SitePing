@@ -71,6 +71,17 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "sjh9714",
+      "name": "JinHyuk Sung",
+      "avatar_url": "https://avatars.githubusercontent.com/u/163989462?v=4",
+      "profile": "https://github.com/sjh9714",
+      "contributions": [
+        "code",
+        "test",
+        "bug"
+      ]
     }
   ],
   "commitType": "docs"
