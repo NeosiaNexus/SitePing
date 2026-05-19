@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.11](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.10...widget-v0.9.11) (2026-05-19)
+
+
+### Bug Fixes
+
+* **widget:** avoid stale identity retry replay ([#95](https://github.com/NeosiaNexus/SitePing/issues/95)) ([7177e58](https://github.com/NeosiaNexus/SitePing/commit/7177e58cdb4cc7cfbda1e6ff36a9cbee46ba8e5f))
+
+
+### Refactoring
+
+* **types:** tighten type safety across all packages ([1b212ba](https://github.com/NeosiaNexus/SitePing/commit/1b212bae29177e71abc15a88d0133b73cde346e5))
+
 ## [0.9.10](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.9...widget-v0.9.10) (2026-05-19)
 
 

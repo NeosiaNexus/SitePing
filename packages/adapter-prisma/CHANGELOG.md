@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.8](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.7...adapter-prisma-v0.4.8) (2026-05-19)
+
+
+### Refactoring
+
+* **types:** tighten type safety across all packages ([1b212ba](https://github.com/NeosiaNexus/SitePing/commit/1b212bae29177e71abc15a88d0133b73cde346e5))
+
 ## [0.4.7](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.6...adapter-prisma-v0.4.7) (2026-05-18)
 
 
