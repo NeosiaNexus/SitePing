@@ -3,7 +3,9 @@
   "projectOwner": "NeosiaNexus",
   "repoType": "github",
   "repoHost": "https://github.com",
-  "files": ["README.md"],
+  "files": [
+    "README.md"
+  ],
   "imageSize": 100,
   "commit": false,
   "commitConvention": "angular",
@@ -33,14 +35,34 @@
       "name": "Alce",
       "avatar_url": "https://avatars.githubusercontent.com/u/278831803?v=4",
       "profile": "https://github.com/alceops",
-      "contributions": ["code", "translation", "test"]
+      "contributions": [
+        "code",
+        "translation",
+        "test"
+      ]
     },
     {
       "login": "reikjarloekl",
       "name": "Jörn Bungartz",
       "avatar_url": "https://avatars.githubusercontent.com/u/839540?v=4",
       "profile": "https://github.com/reikjarloekl",
-      "contributions": ["bug", "code"]
+      "contributions": [
+        "bug",
+        "code"
+      ]
+    },
+    {
+      "login": "andinger",
+      "name": "Andi Keßler",
+      "avatar_url": "https://avatars.githubusercontent.com/u/915773?v=4",
+      "profile": "http://innovation-agents.de",
+      "contributions": [
+        "code",
+        "test",
+        "doc",
+        "ideas"
+      ]
     }
-  ]
+  ],
+  "commitType": "docs"
 }
