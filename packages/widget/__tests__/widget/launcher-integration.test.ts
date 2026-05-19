@@ -80,10 +80,11 @@ vi.mock(new URL("../../src/styles/base.js", import.meta.url).pathname, () => ({
 
 // Mock identity — simulate stored identity by default
 const mockGetIdentity = vi.fn().mockReturnValue({ name: "Test User", email: "test@example.com" });
+const mockSaveIdentity = vi.fn();
 
 vi.mock(new URL("../../src/identity.js", import.meta.url).pathname, () => ({
   getIdentity: (...args: unknown[]) => mockGetIdentity(...args),
-  saveIdentity: vi.fn(),
+  saveIdentity: (...args: unknown[]) => mockSaveIdentity(...args),
 }));
 
 import { launch } from "../../src/launcher.js";
@@ -293,6 +294,101 @@ describe("launcher — annotation:complete integration", () => {
           expect(modal).not.toBeNull();
         }
       });
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // config.identity option — host-provided identity short-circuits modal/LS
+  // -------------------------------------------------------------------------
+
+  describe("config.identity option", () => {
+    it("uses config.identity without showing the modal when localStorage is empty", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const response = makeFeedbackResponse({ authorName: "Host User", authorEmail: "host@example.com" });
+      mockSendFeedback.mockResolvedValue(response);
+
+      const instance = launch(defaultConfig({ identity: { name: "Host User", email: "host@example.com" } }));
+      expect(capturedBus).not.toBeNull();
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        expect(mockSendFeedback).toHaveBeenCalledOnce();
+      });
+
+      const payload = mockSendFeedback.mock.calls[0][0];
+      expect(payload.authorName).toBe("Host User");
+      expect(payload.authorEmail).toBe("host@example.com");
+
+      // No identity modal should appear — config short-circuits the prompt
+      const widget = document.querySelector("siteping-widget");
+      const shadow = widget?.shadowRoot;
+      const modal = shadow?.querySelector('[role="dialog"]:not(.sp-detail):not(.sp-shortcuts-overlay)') ?? null;
+      expect(modal).toBeNull();
+
+      instance.destroy();
+    });
+
+    it("config.identity wins over a stored localStorage identity", async () => {
+      mockGetIdentity.mockReturnValue({ name: "LocalStorage User", email: "ls@example.com" });
+      const response = makeFeedbackResponse();
+      mockSendFeedback.mockResolvedValue(response);
+
+      const instance = launch(defaultConfig({ identity: { name: "Host User", email: "host@example.com" } }));
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        expect(mockSendFeedback).toHaveBeenCalledOnce();
+      });
+
+      const payload = mockSendFeedback.mock.calls[0][0];
+      expect(payload.authorName).toBe("Host User");
+      expect(payload.authorEmail).toBe("host@example.com");
+
+      instance.destroy();
+    });
+
+    it("does not write config.identity to localStorage", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const response = makeFeedbackResponse();
+      mockSendFeedback.mockResolvedValue(response);
+
+      const instance = launch(defaultConfig({ identity: { name: "Host User", email: "host@example.com" } }));
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        expect(mockSendFeedback).toHaveBeenCalledOnce();
+      });
+
+      // Host stays the source of truth — no persistence side-effect.
+      expect(mockSaveIdentity).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("falls back to stored identity when config.identity is unset", async () => {
+      mockGetIdentity.mockReturnValue({ name: "LocalStorage User", email: "ls@example.com" });
+      const response = makeFeedbackResponse({
+        authorName: "LocalStorage User",
+        authorEmail: "ls@example.com",
+      });
+      mockSendFeedback.mockResolvedValue(response);
+
+      const instance = launch(defaultConfig());
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        expect(mockSendFeedback).toHaveBeenCalledOnce();
+      });
+
+      const payload = mockSendFeedback.mock.calls[0][0];
+      expect(payload.authorName).toBe("LocalStorage User");
+      expect(payload.authorEmail).toBe("ls@example.com");
 
       instance.destroy();
     });

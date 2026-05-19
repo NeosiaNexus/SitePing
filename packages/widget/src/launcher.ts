@@ -318,8 +318,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
     try {
       const { annotation, type, message, screenshotDataUrl } = data;
 
-      // Ensure identity
-      let identity = getIdentity();
+      // Ensure identity — config wins (host-provided), then localStorage,
+      // then prompt the user as a last resort. Host-provided identity is
+      // not persisted: the host stays the source of truth on every render.
+      let identity = config.identity ?? getIdentity();
       if (!identity) {
         identity = await promptIdentity(shadow, t);
         if (!identity) return; // User cancelled

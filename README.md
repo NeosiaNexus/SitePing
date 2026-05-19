@@ -160,6 +160,10 @@ initSiteping({
   locale: 'en',                   // 'en' | 'fr' (default: 'en')
   forceShow: false,               // Show in production? Default: false
   debug: false,                   // Enable debug logging
+  identity: {                     // Pre-fill author from the host (SSO apps).
+    name: 'Alice',                // When set, skips localStorage + modal.
+    email: 'alice@example.com',
+  },
 
   // Events
   onOpen: () => {},
@@ -193,6 +197,24 @@ widget.off('feedback:sent', handler)
 // 'panel:open'       — fired when the feedback panel opens
 // 'panel:close'      — fired when the feedback panel closes
 ```
+
+---
+
+## Host-provided identity
+
+Apps with their own authentication (SSO, NextAuth, Symfony Security, …) can pre-fill the feedback author directly:
+
+```ts
+initSiteping({
+  endpoint: '/api/siteping',
+  projectName: 'my-app',
+  identity: { name: currentUser.fullName, email: currentUser.email },
+})
+```
+
+When `identity` is set, the widget skips both the localStorage lookup and the identity modal — useful when the host already knows who the user is. The value is **not persisted**: pass the current user on every render so the widget always reflects the live signed-in state.
+
+When `identity` is unset (default), the widget falls back to the existing behavior — localStorage first, modal as a last resort.
 
 ---
 
