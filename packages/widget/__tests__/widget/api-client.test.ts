@@ -418,6 +418,7 @@ describe("flushRetryQueue", () => {
 
   beforeEach(() => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 201 }));
+    vi.spyOn(console, "debug").mockImplementation(() => {});
     // Mock localStorage with a real-ish store
     const store: Record<string, string> = {};
     vi.stubGlobal("localStorage", {
@@ -472,6 +473,40 @@ describe("flushRetryQueue", () => {
     expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
   });
 
+  it("preserves legacy replay behavior when current identity is omitted", async () => {
+    const payload1 = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "from alice",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "Alice",
+      authorEmail: "alice@example.com",
+      annotations: [],
+      clientId: "legacy-1",
+    };
+    const payload2 = {
+      ...payload1,
+      message: "from bob",
+      authorName: "Bob",
+      authorEmail: "bob@example.com",
+      clientId: "legacy-2",
+    };
+
+    vi.mocked(localStorage.getItem).mockReturnValue(
+      JSON.stringify([
+        { endpoint, payload: payload1 },
+        { endpoint, payload: payload2 },
+      ]),
+    );
+
+    await flushRetryQueue(endpoint);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+  });
+
   it("drops stale queued feedback when the current identity differs", async () => {
     const payload = {
       projectName: "test",
@@ -492,6 +527,11 @@ describe("flushRetryQueue", () => {
 
     expect(fetch).not.toHaveBeenCalled();
     expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+    expect(console.debug).toHaveBeenCalledWith(
+      "[siteping] flushRetryQueue: dropped",
+      1,
+      "stale entries (identity changed)",
+    );
   });
 
   it("retries queued feedback when the current identity matches", async () => {
@@ -515,6 +555,76 @@ describe("flushRetryQueue", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+  });
+
+  it("retries queued feedback when email casing differs only by case", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "from alice",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: " Alice ",
+      authorEmail: "Alice@Example.COM ",
+      annotations: [],
+      clientId: "case-1",
+    };
+
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify([{ endpoint, payload }]));
+    vi.mocked(fetch).mockResolvedValue(new Response("", { status: 201 }));
+
+    await flushRetryQueue(endpoint, { name: "Alice", email: "alice@example.com" });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+  });
+
+  it("drops only stale same-endpoint entries while retrying matching ones", async () => {
+    const matchingPayload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "matching alice",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "Alice",
+      authorEmail: "alice@example.com",
+      annotations: [],
+      clientId: "mixed-1",
+    };
+    const stalePayload = {
+      ...matchingPayload,
+      message: "stale bob",
+      authorName: "Bob",
+      authorEmail: "bob@example.com",
+      clientId: "mixed-2",
+    };
+    const otherEndpoint = "http://localhost/api/other";
+    const otherPayload = { ...matchingPayload, message: "other", clientId: "mixed-other" };
+
+    vi.mocked(localStorage.getItem).mockReturnValue(
+      JSON.stringify([
+        { endpoint, payload: matchingPayload },
+        { endpoint, payload: stalePayload },
+        { endpoint: otherEndpoint, payload: otherPayload },
+      ]),
+    );
+    vi.mocked(fetch).mockResolvedValue(new Response("", { status: 201 }));
+
+    await flushRetryQueue(endpoint, { name: "Alice", email: "alice@example.com" });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).clientId).toBe("mixed-1");
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      "siteping_retry_queue",
+      JSON.stringify([{ endpoint: otherEndpoint, payload: otherPayload }]),
+    );
+    expect(console.debug).toHaveBeenCalledWith(
+      "[siteping] flushRetryQueue: dropped",
+      1,
+      "stale entries (identity changed)",
+    );
   });
 
   it("preserves unrelated endpoint entries when dropping stale feedback", async () => {
