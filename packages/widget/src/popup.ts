@@ -33,7 +33,6 @@ interface PopupResult {
 
 interface TypeOption {
   type: FeedbackType;
-  label: string;
   icon: string;
 }
 
@@ -82,14 +81,14 @@ export class Popup {
 
     this.root.setAttribute("role", "dialog");
     this.root.setAttribute("aria-modal", "true");
-    this.root.setAttribute("aria-label", this.t("popup.ariaLabel"));
 
-    // Type selector grid (2x2)
+    // Type selector grid (2x2). Labels are bound later by `applyLabels()` —
+    // the constructor only builds the structure (icon + empty label span).
     const typeOptions: TypeOption[] = [
-      { type: "question", label: this.t("type.question"), icon: ICON_QUESTION },
-      { type: "change", label: this.t("type.change"), icon: ICON_CHANGE },
-      { type: "bug", label: this.t("type.bug"), icon: ICON_BUG },
-      { type: "other", label: this.t("type.other"), icon: ICON_OTHER },
+      { type: "question", icon: ICON_QUESTION },
+      { type: "change", icon: ICON_CHANGE },
+      { type: "bug", icon: ICON_BUG },
+      { type: "other", icon: ICON_OTHER },
     ];
     const typeRow = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;" });
     for (const option of typeOptions) {
@@ -107,9 +106,7 @@ export class Popup {
       const icon = parseSvg(option.icon);
       icon.setAttribute("style", "width:13px;height:13px;flex-shrink:0;");
       btn.appendChild(icon);
-      const labelSpan = document.createElement("span");
-      setText(labelSpan, option.label);
-      btn.appendChild(labelSpan);
+      btn.appendChild(document.createElement("span"));
       btn.dataset.type = option.type;
       btn.setAttribute("aria-pressed", "false");
 
@@ -147,9 +144,7 @@ export class Popup {
       outline:none;transition:all 0.2s ease;
       box-sizing:border-box;
     `;
-    this.textarea.placeholder = this.t("popup.placeholder");
     this.textarea.maxLength = 5000;
-    this.textarea.setAttribute("aria-label", this.t("popup.textareaAria"));
 
     // Keyboard shortcut hint
     this.hint = el("div", {
@@ -160,7 +155,6 @@ export class Popup {
         letter-spacing:0.01em;
       `,
     });
-    setText(this.hint, isMacPlatform() ? this.t("popup.submitHintMac") : this.t("popup.submitHintOther"));
 
     this.textarea.addEventListener("focus", () => {
       this.textarea.style.borderColor = this.colors.accent;
@@ -197,7 +191,6 @@ export class Popup {
       font-size:13px;font-weight:500;cursor:pointer;
       transition:all 0.2s ease;
     `;
-    setText(this.cancelBtn, this.t("popup.cancel"));
     this.cancelBtn.addEventListener("click", () => this.cancel());
     this.cancelBtn.addEventListener("mouseenter", () => {
       this.cancelBtn.style.borderColor = this.colors.accent;
@@ -218,7 +211,6 @@ export class Popup {
       transition:all 0.2s ease;
       box-shadow:0 2px 8px ${this.colors.accentGlow};
     `;
-    setText(this.submitBtn, this.t("popup.submit"));
     this.submitBtn.addEventListener("click", () => this.submit());
 
     btnRow.appendChild(this.cancelBtn);
@@ -229,6 +221,10 @@ export class Popup {
     this.root.appendChild(this.hint);
     this.root.appendChild(btnRow);
     document.body.appendChild(this.root);
+
+    // Bind every `t()`-derived string into the freshly-built DOM. Kept as a
+    // single pass so the constructor and `refreshLabels()` never drift.
+    this.applyLabels();
   }
 
   /**
@@ -238,6 +234,18 @@ export class Popup {
    * fallback to the configured language.
    */
   refreshLabels(): void {
+    this.applyLabels();
+  }
+
+  /**
+   * Walk the already-built DOM and bind every translation-derived string —
+   * the dialog `aria-label`, the four type-button labels, the textarea
+   * `placeholder` + `aria-label`, the `⌘+Enter` / `Ctrl+Enter` hint, and the
+   * cancel/submit `textContent`. The single source of truth for which node
+   * gets which `t()` string, shared by the constructor and `refreshLabels()`
+   * so the two can never drift.
+   */
+  private applyLabels(): void {
     this.root.setAttribute("aria-label", this.t("popup.ariaLabel"));
 
     const typeButtons = this.root.querySelectorAll<HTMLButtonElement>("button[data-type]");
