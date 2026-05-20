@@ -94,6 +94,7 @@ vi.mock(new URL("../../src/identity.js", import.meta.url).pathname, () => ({
   saveIdentity: (...args: unknown[]) => mockSaveIdentity(...args),
 }));
 
+import * as i18n from "../../src/i18n/index.js";
 import { launch } from "../../src/launcher.js";
 
 // ---------------------------------------------------------------------------
@@ -1333,6 +1334,73 @@ describe("launcher — annotation:complete integration", () => {
       expect(mockAnnotatorRefreshLabels).not.toHaveBeenCalled();
 
       instance.destroy();
+    });
+
+    it("still renders markers when loadLocale rejects (the .catch is load-bearing)", async () => {
+      // The launcher does `loadLocale(locale).catch(() => {})` and then
+      // `Promise.all([getFeedbacks, localeReady])`. Without that `.catch`, a
+      // failed locale chunk would reject the `Promise.all` and markers would
+      // silently stop rendering for every non-English locale. Mock the loader
+      // to reject and assert markers STILL render, no error escapes, and the
+      // refresh that follows is a harmless no-op (mocked Annotator).
+      const loadLocaleSpy = vi.spyOn(i18n, "loadLocale").mockRejectedValue(new Error("Failed to fetch locale chunk"));
+      mockGetFeedbacks.mockResolvedValueOnce({
+        feedbacks: [makeFeedbackResponse({ id: "fb-locale-fail" })],
+        total: 1,
+      });
+
+      try {
+        const instance = launch(defaultConfig({ locale: "de" }));
+
+        // Markers render despite the rejected locale chunk — the `.catch`
+        // kept `localeReady` resolved so `Promise.all` settled.
+        await vi.waitFor(() => {
+          expect(mockMarkersRender).toHaveBeenCalled();
+        });
+        expect(loadLocaleSpy).toHaveBeenCalledWith("de");
+
+        // `refreshLabels()` running after a failed load is a no-op — `t` just
+        // keeps returning the English fallback. It must not throw.
+        await vi.waitFor(() => {
+          expect(mockAnnotatorRefreshLabels).toHaveBeenCalled();
+        });
+
+        instance.destroy();
+      } finally {
+        loadLocaleSpy.mockRestore();
+      }
+    });
+
+    it("does not refresh labels when destroy() runs before the locale chunk resolves", async () => {
+      // The `localeReady.then(...)` block is guarded by `destroyed`. If the
+      // widget is torn down while the chunk is still in flight, neither
+      // `fab.refreshLabels()` nor `annotator.refreshLabels()` should run.
+      let resolveLocale!: () => void;
+      const loadLocaleSpy = vi.spyOn(i18n, "loadLocale").mockReturnValue(
+        new Promise((resolve) => {
+          resolveLocale = () => resolve(null);
+        }),
+      );
+
+      try {
+        const instance = launch(defaultConfig({ locale: "de" }));
+
+        // Destroy before the locale promise settles.
+        instance.destroy();
+
+        // Now let the locale chunk resolve — the `destroyed` guard must abort
+        // the refresh block.
+        resolveLocale();
+        await vi.waitFor(() => {
+          expect(loadLocaleSpy).toHaveBeenCalledWith("de");
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(mockAnnotatorRefreshLabels).not.toHaveBeenCalled();
+      } finally {
+        loadLocaleSpy.mockRestore();
+      }
     });
   });
 });
