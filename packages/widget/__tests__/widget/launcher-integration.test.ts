@@ -29,6 +29,10 @@ vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
 // The Annotator receives the bus in its constructor — we intercept it.
 let capturedBus: { emit: (event: string, ...args: unknown[]) => void } | null = null;
 
+// Spy on annotator.refreshLabels so the i18n test can assert it gets called
+// once the locale dictionary lands.
+const mockAnnotatorRefreshLabels = vi.fn();
+
 vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
   Annotator: vi.fn().mockImplementation(
     (
@@ -43,6 +47,7 @@ vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
       bus.on("annotation:start", () => {});
       return {
         destroy: vi.fn(),
+        refreshLabels: mockAnnotatorRefreshLabels,
       };
     },
   ),
@@ -1285,6 +1290,47 @@ describe("launcher — annotation:complete integration", () => {
 
       // length === 0 → handler returns early; preventDefault not called
       expect(preventSpy).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Locale dictionary swap — guards against a regression where non-English
+  // labels never reached the FAB and popup because `loadLocale()` resolved
+  // after the synchronous constructor had already baked the English fallback.
+  // -------------------------------------------------------------------------
+
+  describe("locale dictionary loading", () => {
+    it("re-localizes the FAB once the German chunk lands", async () => {
+      const instance = launch(defaultConfig({ locale: "de" }));
+
+      const widget = document.querySelector("siteping-widget")!;
+      const shadow = widget.shadowRoot!;
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+
+      // Wait for the German chunk to resolve and refreshLabels to run.
+      await vi.waitFor(() => {
+        expect(fabBtn.getAttribute("aria-label")).toBe("Siteping — Feedback-Menü");
+        expect(mockAnnotatorRefreshLabels).toHaveBeenCalled();
+      });
+
+      // Radial item labels are German too
+      const chatItem = shadow.querySelector<HTMLButtonElement>('[data-item-id="chat"]')!;
+      expect(chatItem.getAttribute("aria-label")).toBe("Nachrichten");
+      expect(chatItem.querySelector(".sp-radial-label")?.textContent).toBe("Nachrichten");
+
+      instance.destroy();
+    });
+
+    it("does not call refreshLabels when locale is English (no chunk to wait for)", async () => {
+      const instance = launch(defaultConfig({ locale: "en" }));
+
+      // Microtask + an extra tick to let any accidental scheduling run.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockAnnotatorRefreshLabels).not.toHaveBeenCalled();
 
       instance.destroy();
     });

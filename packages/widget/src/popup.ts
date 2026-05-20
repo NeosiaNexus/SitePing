@@ -1,9 +1,30 @@
 import type { FeedbackType } from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
-import type { TFunction } from "./i18n/index.js";
+import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
+
+// Map each feedback type to its translation key, so `refreshLabels()` can
+// re-localize the existing type buttons without re-rendering the popup.
+const TYPE_LABEL_KEYS: Record<FeedbackType, keyof Translations> = {
+  question: "type.question",
+  change: "type.change",
+  bug: "type.bug",
+  other: "type.other",
+};
+
+/**
+ * Detect whether the host platform uses ⌘+Enter (macOS) vs Ctrl+Enter.
+ * Resolved at call time so we can recompute the popup hint when the locale
+ * dictionary lands.
+ */
+function isMacPlatform(): boolean {
+  const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
+  return uaData
+    ? uaData.platform === "macOS"
+    : (navigator.platform?.includes("Mac") ?? /Macintosh|Mac OS X/i.test(navigator.userAgent));
+}
 
 interface PopupResult {
   type: FeedbackType;
@@ -28,6 +49,8 @@ export class Popup {
   private selectedType: FeedbackType | null = null;
   private textarea: HTMLTextAreaElement;
   private submitBtn: HTMLButtonElement;
+  private cancelBtn: HTMLButtonElement;
+  private hint: HTMLElement;
   private resolve: ((result: PopupResult | null) => void) | null = null;
   private previouslyFocused: HTMLElement | null = null;
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
@@ -129,7 +152,7 @@ export class Popup {
     this.textarea.setAttribute("aria-label", this.t("popup.textareaAria"));
 
     // Keyboard shortcut hint
-    const hint = el("div", {
+    this.hint = el("div", {
       style: `
         font-size:11px;color:${this.colors.textTertiary};
         text-align:right;margin-top:4px;
@@ -137,13 +160,7 @@ export class Popup {
         letter-spacing:0.01em;
       `,
     });
-    // navigator.userAgentData is preferred; navigator.platform is deprecated
-    // but still needed as fallback. If both are unavailable, fall back to user agent string parsing.
-    const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
-    const isMac = uaData
-      ? uaData.platform === "macOS"
-      : (navigator.platform?.includes("Mac") ?? /Macintosh|Mac OS X/i.test(navigator.userAgent));
-    setText(hint, isMac ? this.t("popup.submitHintMac") : this.t("popup.submitHintOther"));
+    setText(this.hint, isMacPlatform() ? this.t("popup.submitHintMac") : this.t("popup.submitHintOther"));
 
     this.textarea.addEventListener("focus", () => {
       this.textarea.style.borderColor = this.colors.accent;
@@ -171,8 +188,8 @@ export class Popup {
     // Button row
     const btnRow = el("div", { style: "display:flex;justify-content:flex-end;gap:8px;margin-top:12px;" });
 
-    const cancelBtn = document.createElement("button");
-    cancelBtn.style.cssText = `
+    this.cancelBtn = document.createElement("button");
+    this.cancelBtn.style.cssText = `
       height:34px;padding:0 16px;border-radius:9999px;
       border:1px solid ${this.colors.border};
       background:${this.colors.glassBg};
@@ -180,15 +197,15 @@ export class Popup {
       font-size:13px;font-weight:500;cursor:pointer;
       transition:all 0.2s ease;
     `;
-    setText(cancelBtn, this.t("popup.cancel"));
-    cancelBtn.addEventListener("click", () => this.cancel());
-    cancelBtn.addEventListener("mouseenter", () => {
-      cancelBtn.style.borderColor = this.colors.accent;
-      cancelBtn.style.color = this.colors.accent;
+    setText(this.cancelBtn, this.t("popup.cancel"));
+    this.cancelBtn.addEventListener("click", () => this.cancel());
+    this.cancelBtn.addEventListener("mouseenter", () => {
+      this.cancelBtn.style.borderColor = this.colors.accent;
+      this.cancelBtn.style.color = this.colors.accent;
     });
-    cancelBtn.addEventListener("mouseleave", () => {
-      cancelBtn.style.borderColor = this.colors.border;
-      cancelBtn.style.color = this.colors.textTertiary;
+    this.cancelBtn.addEventListener("mouseleave", () => {
+      this.cancelBtn.style.borderColor = this.colors.border;
+      this.cancelBtn.style.color = this.colors.textTertiary;
     });
 
     this.submitBtn = document.createElement("button");
@@ -204,14 +221,41 @@ export class Popup {
     setText(this.submitBtn, this.t("popup.submit"));
     this.submitBtn.addEventListener("click", () => this.submit());
 
-    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(this.cancelBtn);
     btnRow.appendChild(this.submitBtn);
 
     this.root.appendChild(typeRow);
     this.root.appendChild(this.textarea);
-    this.root.appendChild(hint);
+    this.root.appendChild(this.hint);
     this.root.appendChild(btnRow);
     document.body.appendChild(this.root);
+  }
+
+  /**
+   * Re-read every `t(...)`-derived label, placeholder, and aria-label from
+   * the active translation function. Idempotent — call after the locale
+   * dictionary has finished loading so the popup swaps from the English
+   * fallback to the configured language.
+   */
+  refreshLabels(): void {
+    this.root.setAttribute("aria-label", this.t("popup.ariaLabel"));
+
+    const typeButtons = this.root.querySelectorAll<HTMLButtonElement>("button[data-type]");
+    for (const btn of typeButtons) {
+      const type = btn.dataset.type as FeedbackType | undefined;
+      if (!type) continue;
+      const key = TYPE_LABEL_KEYS[type];
+      if (!key) continue;
+      const labelSpan = btn.querySelector<HTMLSpanElement>("span");
+      if (labelSpan) setText(labelSpan, this.t(key));
+    }
+
+    this.textarea.placeholder = this.t("popup.placeholder");
+    this.textarea.setAttribute("aria-label", this.t("popup.textareaAria"));
+
+    setText(this.hint, isMacPlatform() ? this.t("popup.submitHintMac") : this.t("popup.submitHintOther"));
+    setText(this.cancelBtn, this.t("popup.cancel"));
+    setText(this.submitBtn, this.t("popup.submit"));
   }
 
   /**

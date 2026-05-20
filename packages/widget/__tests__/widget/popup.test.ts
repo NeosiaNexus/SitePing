@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createT } from "../../src/i18n/index.js";
+import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
 import { Popup } from "../../src/popup.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
@@ -456,6 +456,72 @@ describe("Popup", () => {
 
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
       expect(dialog).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // refreshLabels — re-localizes the popup after the locale dictionary lands
+  // -------------------------------------------------------------------------
+
+  describe("refreshLabels", () => {
+    // Tests use a mutable mock `t` (rather than the real i18n loader) so the
+    // LOCALES module state of other test files can't bleed into these
+    // assertions. `refreshLabels()` is a pure DOM re-binding pass over
+    // `this.t`, so the only contract worth testing is "calls t at refresh
+    // time and writes the result into the DOM".
+    function makeMutableT(prefix: { value: string }): TFunction {
+      return ((key: keyof Translations): string => `${prefix.value}:${key}`) as TFunction;
+    }
+
+    it("re-reads `t` at refresh time for dialog, type buttons, textarea, hint, and CTAs", () => {
+      const prefix = { value: "INIT" };
+      const mutableT = makeMutableT(prefix);
+
+      popup.destroy();
+      popup = new Popup(colors, mutableT);
+
+      // Initial state — labels reflect the first prefix.
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      expect(dialog.getAttribute("aria-label")).toBe("INIT:popup.ariaLabel");
+
+      // Swap the closure's return value, then refresh — DOM should track it.
+      prefix.value = "SWAPPED";
+      popup.refreshLabels();
+
+      expect(dialog.getAttribute("aria-label")).toBe("SWAPPED:popup.ariaLabel");
+
+      const questionBtn = document.querySelector<HTMLButtonElement>('[data-type="question"]')!;
+      const changeBtn = document.querySelector<HTMLButtonElement>('[data-type="change"]')!;
+      const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      const otherBtn = document.querySelector<HTMLButtonElement>('[data-type="other"]')!;
+      expect(questionBtn.querySelector("span")?.textContent).toBe("SWAPPED:type.question");
+      expect(changeBtn.querySelector("span")?.textContent).toBe("SWAPPED:type.change");
+      expect(bugBtn.querySelector("span")?.textContent).toBe("SWAPPED:type.bug");
+      expect(otherBtn.querySelector("span")?.textContent).toBe("SWAPPED:type.other");
+
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      expect(textarea.placeholder).toBe("SWAPPED:popup.placeholder");
+      expect(textarea.getAttribute("aria-label")).toBe("SWAPPED:popup.textareaAria");
+
+      // Cancel + submit buttons — find by their data attributes, not text
+      const allButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
+      const submitBtn = allButtons.find((b) => b.textContent === "SWAPPED:popup.submit");
+      const cancelBtn = allButtons.find((b) => b.textContent === "SWAPPED:popup.cancel");
+      expect(submitBtn).toBeDefined();
+      expect(cancelBtn).toBeDefined();
+    });
+
+    it("is idempotent — calling twice with the same `t` is a no-op on values", () => {
+      popup.destroy();
+      popup = new Popup(colors, createT("en"));
+
+      popup.refreshLabels();
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      const first = dialog.getAttribute("aria-label");
+      popup.refreshLabels();
+      const second = dialog.getAttribute("aria-label");
+
+      expect(second).toBe(first);
     });
   });
 

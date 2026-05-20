@@ -55,7 +55,7 @@ vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
     ) => {
       annotatorCapture.bus = bus;
       bus.on("annotation:start", () => {});
-      return { destroy: vi.fn() };
+      return { destroy: vi.fn(), refreshLabels: vi.fn() };
     },
   ),
 }));

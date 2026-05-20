@@ -1,7 +1,7 @@
 import type { SitepingConfig } from "@siteping/core";
 import { parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
-import type { TFunction } from "./i18n/index.js";
+import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_ANNOTATE, ICON_CHAT, ICON_CLOSE, ICON_EYE, ICON_EYE_OFF, ICON_SITEPING } from "./icons.js";
 
 interface RadialItem {
@@ -12,6 +12,14 @@ interface RadialItem {
 }
 
 const ITEM_GAP = 54;
+
+// Stable mapping between radial item ids and their translation keys, so
+// `refreshLabels()` can re-localize the existing DOM without re-rendering it.
+const ITEM_LABEL_KEYS: Record<string, keyof Translations> = {
+  chat: "fab.messages",
+  annotate: "fab.annotate",
+  "toggle-annotations": "fab.annotations",
+};
 
 /**
  * Floating Action Button with radial menu and notification badge.
@@ -144,6 +152,33 @@ export class Fab {
   }
 
   private onDocumentClick: (e: MouseEvent) => void;
+
+  /**
+   * Re-read every `t(...)`-derived label and aria-label from the active
+   * translation function. Idempotent — call after the locale dictionary has
+   * finished loading so the FAB labels swap from the English fallback to the
+   * configured language.
+   */
+  refreshLabels(): void {
+    this.fab.setAttribute("aria-label", this.t("fab.aria"));
+
+    for (const item of this.items) {
+      const key = ITEM_LABEL_KEYS[item.id];
+      if (key) item.label = this.t(key);
+    }
+
+    const buttons = this.radialContainer.querySelectorAll<HTMLButtonElement>(".sp-radial-item");
+    for (const btn of buttons) {
+      const id = btn.dataset.itemId;
+      if (!id) continue;
+      const key = ITEM_LABEL_KEYS[id];
+      if (!key) continue;
+      const label = this.t(key);
+      btn.setAttribute("aria-label", label);
+      const labelSpan = btn.querySelector<HTMLSpanElement>(".sp-radial-label");
+      if (labelSpan) setText(labelSpan, label);
+    }
+  }
 
   /** Update the badge count. Pass 0 to hide. */
   updateBadge(count: number): void {

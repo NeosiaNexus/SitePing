@@ -53,6 +53,15 @@ export class Annotator {
   }
 
   /**
+   * Re-read every `t(...)`-derived label inside the popup. The annotator's
+   * own toolbar text is created fresh on every `activate()` call, so only
+   * the long-lived popup needs explicit re-localization here.
+   */
+  refreshLabels(): void {
+    this.popup.refreshLabels();
+  }
+
+  /**
    * Capture a screenshot of the drawn rect when `enableScreenshot` is on.
    * Returns null on disable / capture failure / missing peer dep — the
    * feedback is always submitted regardless.
