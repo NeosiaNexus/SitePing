@@ -90,6 +90,14 @@ export class MarkerManager {
     return this.entries.length;
   }
 
+  get openCount(): number {
+    let count = 0;
+    for (const entry of this.entries) {
+      if (entry.feedback.status === "open") count++;
+    }
+    return count;
+  }
+
   constructor(
     private readonly colors: ThemeColors,
     private readonly tooltip: Tooltip,
@@ -257,6 +265,7 @@ export class MarkerManager {
     if (this.liveRegion && this.entries.length > 0) {
       this.liveRegion.textContent = this.t("marker.count").replace("{count}", String(this.entries.length));
     }
+    this.bus.emit("markers:changed", this.openCount);
   }
 
   addFeedback(feedback: FeedbackResponse, index: number): void {
@@ -266,6 +275,7 @@ export class MarkerManager {
     }
     this.entries.push(entry);
     this.buildClusters();
+    this.bus.emit("markers:changed", this.openCount);
   }
 
   private buildEntry(feedback: FeedbackResponse, index: number): MarkerEntry {
