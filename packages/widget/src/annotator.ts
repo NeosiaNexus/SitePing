@@ -61,6 +61,15 @@ export class Annotator {
   }
 
   /**
+   * Re-read every `t(...)`-derived label inside the popup. The annotator's
+   * own toolbar text is created fresh on every `activate()` call, so only
+   * the long-lived popup needs explicit re-localization here.
+   */
+  refreshLabels(): void {
+    this.popup.refreshLabels();
+  }
+
+  /**
    * True while a submission is in flight (popup open, `runSubmission`
    * pending). Drawing a second rectangle in this window would orphan the
    * first `popup.show()` promise and start a second, concurrent

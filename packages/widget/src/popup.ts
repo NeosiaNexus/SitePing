@@ -1,9 +1,30 @@
 import type { FeedbackType } from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
-import type { TFunction } from "./i18n/index.js";
+import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
+
+// Map each feedback type to its translation key, so `refreshLabels()` can
+// re-localize the existing type buttons without re-rendering the popup.
+const TYPE_LABEL_KEYS: Record<FeedbackType, keyof Translations> = {
+  question: "type.question",
+  change: "type.change",
+  bug: "type.bug",
+  other: "type.other",
+};
+
+/**
+ * Detect whether the host platform uses ⌘+Enter (macOS) vs Ctrl+Enter.
+ * Resolved at call time so we can recompute the popup hint when the locale
+ * dictionary lands.
+ */
+function isMacPlatform(): boolean {
+  const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
+  return uaData
+    ? uaData.platform === "macOS"
+    : (navigator.platform?.includes("Mac") ?? /Macintosh|Mac OS X/i.test(navigator.userAgent));
+}
 
 interface PopupResult {
   type: FeedbackType;
@@ -12,7 +33,6 @@ interface PopupResult {
 
 interface TypeOption {
   type: FeedbackType;
-  label: string;
   icon: string;
 }
 
@@ -40,6 +60,7 @@ export class Popup {
   private cancelBtn: HTMLButtonElement;
   private typeRow: HTMLElement;
   private submitLabel: HTMLSpanElement;
+  private hint: HTMLElement;
   private resolve: ((result: PopupResult | null) => void) | null = null;
   private previouslyFocused: HTMLElement | null = null;
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
@@ -75,18 +96,20 @@ export class Popup {
 
     this.root.setAttribute("role", "dialog");
     this.root.setAttribute("aria-modal", "true");
-    this.root.setAttribute("aria-label", this.t("popup.ariaLabel"));
     // Screenshot capture now runs while the popup is still visible (so the
     // spinner can show during the upload). Without this attribute the popup
     // would appear baked into the captured JPEG.
     this.root.setAttribute("data-siteping-ignore", "true");
+    // The dialog `aria-label` is bound by `applyLabels()` at the end of the
+    // constructor, alongside every other `t()`-derived string.
 
-    // Type selector grid (2x2)
+    // Type selector grid (2x2). Labels are bound later by `applyLabels()` —
+    // the constructor only builds the structure (icon + empty label span).
     const typeOptions: TypeOption[] = [
-      { type: "question", label: this.t("type.question"), icon: ICON_QUESTION },
-      { type: "change", label: this.t("type.change"), icon: ICON_CHANGE },
-      { type: "bug", label: this.t("type.bug"), icon: ICON_BUG },
-      { type: "other", label: this.t("type.other"), icon: ICON_OTHER },
+      { type: "question", icon: ICON_QUESTION },
+      { type: "change", icon: ICON_CHANGE },
+      { type: "bug", icon: ICON_BUG },
+      { type: "other", icon: ICON_OTHER },
     ];
     this.typeRow = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;" });
     for (const option of typeOptions) {
@@ -104,9 +127,7 @@ export class Popup {
       const icon = parseSvg(option.icon);
       icon.setAttribute("style", "width:13px;height:13px;flex-shrink:0;");
       btn.appendChild(icon);
-      const labelSpan = document.createElement("span");
-      setText(labelSpan, option.label);
-      btn.appendChild(labelSpan);
+      btn.appendChild(document.createElement("span"));
       btn.dataset.type = option.type;
       btn.setAttribute("aria-pressed", "false");
 
@@ -147,12 +168,10 @@ export class Popup {
       outline:none;transition:all 0.2s ease;
       box-sizing:border-box;
     `;
-    this.textarea.placeholder = this.t("popup.placeholder");
     this.textarea.maxLength = 5000;
-    this.textarea.setAttribute("aria-label", this.t("popup.textareaAria"));
 
     // Keyboard shortcut hint
-    const hint = el("div", {
+    this.hint = el("div", {
       style: `
         font-size:11px;color:${this.colors.textTertiary};
         text-align:right;margin-top:4px;
@@ -160,13 +179,6 @@ export class Popup {
         letter-spacing:0.01em;
       `,
     });
-    // navigator.userAgentData is preferred; navigator.platform is deprecated
-    // but still needed as fallback. If both are unavailable, fall back to user agent string parsing.
-    const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
-    const isMac = uaData
-      ? uaData.platform === "macOS"
-      : (navigator.platform?.includes("Mac") ?? /Macintosh|Mac OS X/i.test(navigator.userAgent));
-    setText(hint, isMac ? this.t("popup.submitHintMac") : this.t("popup.submitHintOther"));
 
     this.textarea.addEventListener("focus", () => {
       if (this.submittingState) return;
@@ -206,7 +218,6 @@ export class Popup {
       font-size:13px;font-weight:500;cursor:pointer;
       transition:all 0.2s ease;
     `;
-    setText(this.cancelBtn, this.t("popup.cancel"));
     this.cancelBtn.addEventListener("click", () => this.cancel());
     this.cancelBtn.addEventListener("mouseenter", () => {
       if (this.submittingState) return;
@@ -230,8 +241,10 @@ export class Popup {
       box-shadow:0 2px 8px ${this.colors.accentGlow};
       display:inline-flex;align-items:center;justify-content:center;min-width:64px;
     `;
+    // The submit label lives in its own <span> so the submitting-state spinner
+    // can be appended/removed without disturbing it. `applyLabels()` binds its
+    // text — never `setText` the button itself or it would wipe the spinner.
     this.submitLabel = document.createElement("span");
-    setText(this.submitLabel, this.t("popup.submit"));
     this.submitBtn.appendChild(this.submitLabel);
     this.submitBtn.addEventListener("click", () => this.submit());
 
@@ -240,9 +253,54 @@ export class Popup {
 
     this.root.appendChild(this.typeRow);
     this.root.appendChild(this.textarea);
-    this.root.appendChild(hint);
+    this.root.appendChild(this.hint);
     this.root.appendChild(btnRow);
     document.body.appendChild(this.root);
+
+    // Bind every `t()`-derived string into the freshly-built DOM. Kept as a
+    // single pass so the constructor and `refreshLabels()` never drift.
+    this.applyLabels();
+  }
+
+  /**
+   * Re-read every `t(...)`-derived label, placeholder, and aria-label from
+   * the active translation function. Idempotent — call after the locale
+   * dictionary has finished loading so the popup swaps from the English
+   * fallback to the configured language.
+   */
+  refreshLabels(): void {
+    this.applyLabels();
+  }
+
+  /**
+   * Walk the already-built DOM and bind every translation-derived string —
+   * the dialog `aria-label`, the four type-button labels, the textarea
+   * `placeholder` + `aria-label`, the `⌘+Enter` / `Ctrl+Enter` hint, and the
+   * cancel/submit `textContent`. The single source of truth for which node
+   * gets which `t()` string, shared by the constructor and `refreshLabels()`
+   * so the two can never drift.
+   */
+  private applyLabels(): void {
+    this.root.setAttribute("aria-label", this.t("popup.ariaLabel"));
+
+    const typeButtons = this.root.querySelectorAll<HTMLButtonElement>("button[data-type]");
+    for (const btn of typeButtons) {
+      const type = btn.dataset.type as FeedbackType | undefined;
+      if (!type) continue;
+      const key = TYPE_LABEL_KEYS[type];
+      if (!key) continue;
+      const labelSpan = btn.querySelector<HTMLSpanElement>("span");
+      if (labelSpan) setText(labelSpan, this.t(key));
+    }
+
+    this.textarea.placeholder = this.t("popup.placeholder");
+    this.textarea.setAttribute("aria-label", this.t("popup.textareaAria"));
+
+    setText(this.hint, isMacPlatform() ? this.t("popup.submitHintMac") : this.t("popup.submitHintOther"));
+    setText(this.cancelBtn, this.t("popup.cancel"));
+    // Target the label <span>, not the button — the button also hosts the
+    // submitting-state spinner, which `setText` on the button would erase.
+    setText(this.submitLabel, this.t("popup.submit"));
   }
 
   /**

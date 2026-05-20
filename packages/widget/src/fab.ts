@@ -1,17 +1,28 @@
 import type { SitepingConfig } from "@siteping/core";
 import { parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
-import type { TFunction } from "./i18n/index.js";
+import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_ANNOTATE, ICON_CHAT, ICON_CLOSE, ICON_EYE, ICON_EYE_OFF, ICON_SITEPING } from "./icons.js";
 
+/** Closed set of radial menu item ids — keeps the label lookup exhaustive. */
+type RadialItemId = "chat" | "annotate" | "toggle-annotations";
+
 interface RadialItem {
-  id: string;
+  id: RadialItemId;
   icon: string;
   iconAlt?: string;
-  label: string;
 }
 
 const ITEM_GAP = 54;
+
+// Stable mapping between radial item ids and their translation keys. The
+// label is fully derived from this map via `t()`, so the constructor and
+// `applyLabels()` share one source of truth for which node gets which string.
+const ITEM_LABEL_KEYS: Record<RadialItemId, keyof Translations> = {
+  chat: "fab.messages",
+  annotate: "fab.annotate",
+  "toggle-annotations": "fab.annotations",
+};
 
 /**
  * Floating Action Button with radial menu and notification badge.
@@ -39,9 +50,9 @@ export class Fab {
 
     // Vertical stack above the FAB
     this.items = [
-      { id: "chat", icon: ICON_CHAT, label: t("fab.messages") },
-      { id: "annotate", icon: ICON_ANNOTATE, label: t("fab.annotate") },
-      { id: "toggle-annotations", icon: ICON_EYE, iconAlt: ICON_EYE_OFF, label: t("fab.annotations") },
+      { id: "chat", icon: ICON_CHAT },
+      { id: "annotate", icon: ICON_ANNOTATE },
+      { id: "toggle-annotations", icon: ICON_EYE, iconAlt: ICON_EYE_OFF },
     ];
 
     // FAB button — needs position:relative for badge positioning
@@ -49,7 +60,6 @@ export class Fab {
     this.fab.className = `sp-fab sp-fab--${position} sp-anim-fab-in`;
     this.fab.style.position = "fixed"; // ensure fixed even with relative children
     this.fab.appendChild(parseSvg(ICON_SITEPING));
-    this.fab.setAttribute("aria-label", t("fab.aria"));
     this.fab.setAttribute("aria-expanded", "false");
     this.fab.addEventListener("click", () => this.toggle());
 
@@ -66,7 +76,6 @@ export class Fab {
       btn.style.setProperty("--sp-i", String(i));
       btn.appendChild(parseSvg(item.icon));
       btn.setAttribute("role", "menuitem");
-      btn.setAttribute("aria-label", item.label);
       btn.dataset.itemId = item.id;
 
       btn.addEventListener("click", (e) => {
@@ -76,7 +85,6 @@ export class Fab {
 
       const label = document.createElement("span");
       label.className = "sp-radial-label";
-      label.textContent = item.label;
       label.style.cssText = isRight
         ? "position:absolute; right:54px; top:50%; transform:translateY(-50%); white-space:nowrap;"
         : "position:absolute; left:54px; top:50%; transform:translateY(-50%); white-space:nowrap;";
@@ -89,6 +97,10 @@ export class Fab {
     this.root.appendChild(this.radialContainer);
     this.root.appendChild(this.fab);
     shadowRoot.appendChild(this.root);
+
+    // Bind every `t()`-derived string into the freshly-built DOM. Kept as a
+    // single pass so the constructor and `refreshLabels()` never drift.
+    this.applyLabels();
 
     // Close radial menu on click outside.
     const host = shadowRoot.host;
@@ -144,6 +156,39 @@ export class Fab {
   }
 
   private onDocumentClick: (e: MouseEvent) => void;
+
+  /**
+   * Re-read every `t(...)`-derived label and aria-label from the active
+   * translation function. Idempotent — call after the locale dictionary has
+   * finished loading so the FAB labels swap from the English fallback to the
+   * configured language.
+   */
+  refreshLabels(): void {
+    this.applyLabels();
+  }
+
+  /**
+   * Walk the already-built DOM and bind every translation-derived string —
+   * the FAB `aria-label`, each radial item's `aria-label`, and each
+   * `.sp-radial-label` `textContent`. The single source of truth for which
+   * node gets which `t()` string, shared by the constructor and
+   * `refreshLabels()` so the two can never drift.
+   */
+  private applyLabels(): void {
+    this.fab.setAttribute("aria-label", this.t("fab.aria"));
+
+    const buttons = this.radialContainer.querySelectorAll<HTMLButtonElement>(".sp-radial-item");
+    for (const btn of buttons) {
+      const id = btn.dataset.itemId as RadialItemId | undefined;
+      if (!id) continue;
+      const key = ITEM_LABEL_KEYS[id];
+      if (!key) continue;
+      const label = this.t(key);
+      btn.setAttribute("aria-label", label);
+      const labelSpan = btn.querySelector<HTMLSpanElement>(".sp-radial-label");
+      if (labelSpan) setText(labelSpan, label);
+    }
+  }
 
   /** Update the badge count. Pass 0 to hide. */
   updateBadge(count: number): void {
@@ -212,7 +257,7 @@ export class Fab {
     if (badge) this.fab.appendChild(badge);
   }
 
-  private handleItemClick(id: string): void {
+  private handleItemClick(id: RadialItemId): void {
     this.close();
 
     switch (id) {

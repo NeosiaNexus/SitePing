@@ -148,14 +148,18 @@ export function launch(config: SitepingConfig): SitepingInstance {
   }
 
   const locale = config.locale ?? "en";
-  // Kick off the locale fetch immediately so the panel can render in the
-  // resolved language as soon as it mounts. English is bundled synchronously
-  // and used as the fallback while the chunk is in flight.
-  if (locale !== "en") {
-    loadLocale(locale).catch(() => {
-      /* fallback to English — already handled by createT */
-    });
-  }
+  // Kick off the locale fetch immediately. English is bundled synchronously
+  // and used as the fallback while the chunk is in flight. The launcher
+  // awaits `localeReady` before rendering markers and re-localizes the FAB
+  // and popup once the dictionary lands — both are mounted synchronously so
+  // the widget is interactive immediately, but their labels start in the
+  // English fallback until the chunk arrives.
+  const localeReady: Promise<unknown> =
+    locale === "en"
+      ? Promise.resolve()
+      : loadLocale(locale).catch(() => {
+          /* fallback to English — already handled by createT */
+        });
   const t = createT(locale);
 
   // Page scope — concrete URL + optional template, used to keep annotations
@@ -343,6 +347,18 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   const annotator = new Annotator(colors, bus, t, config.enableScreenshot ?? false);
 
+  // Once the locale dictionary lands, swap the FAB + popup labels from the
+  // English fallback to the configured language. `t` already resolves to the
+  // loaded dictionary at call time, so the markers list rendered below (which
+  // calls `t` lazily) only needs to wait on `localeReady` once.
+  if (locale !== "en") {
+    localeReady.then(() => {
+      if (destroyed) return;
+      fab.refreshLabels();
+      annotator.refreshLabels();
+    });
+  }
+
   // Handle annotation completion via event bus (not DOM events).
   // Concurrency guard: a second `annotation:complete` while one is still in
   // flight must not start a duplicate submission. The Annotator already
@@ -452,9 +468,13 @@ export function launch(config: SitepingConfig): SitepingInstance {
   const initialScope = getScope();
   const initialOptions = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: initialScope.url } : { limit: PAGE_SIZE };
   const deepLinkOpts = normaliseDeepLinkOptions(config.deepLink);
-  client
-    .getFeedbacks(config.projectName, initialOptions)
-    .then(({ feedbacks }) => {
+  // Render markers only once both the feedbacks and the locale dictionary are
+  // ready. Marker aria-labels are built via `t(...)` at render time — without
+  // this `Promise.all`, a fast HTTP response could outrun a slow locale chunk
+  // and freeze marker labels in the English fallback for non-English locales.
+  Promise.all([client.getFeedbacks(config.projectName, initialOptions), localeReady])
+    .then(([{ feedbacks }]) => {
+      if (destroyed) return;
       // Defensive client-side filter — backend may not yet support the `url` query.
       const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === initialScope.url) : feedbacks;
       markers.render(visible);

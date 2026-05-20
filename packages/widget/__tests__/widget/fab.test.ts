@@ -4,7 +4,7 @@ import type { SitepingConfig } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { Fab } from "../../src/fab.js";
-import { createT } from "../../src/i18n/index.js";
+import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -505,6 +505,68 @@ describe("Fab", () => {
   // -------------------------------------------------------------------------
   // Toggle-annotations icon swap (line 230 — true branch ICON_EYE)
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // refreshLabels — re-localizes the FAB after the locale dictionary lands
+  // -------------------------------------------------------------------------
+
+  describe("refreshLabels", () => {
+    // Tests use a mutable mock `t` (rather than the real i18n loader) so the
+    // LOCALES module state of other test files can't bleed into these
+    // assertions. `refreshLabels()` is a pure DOM re-binding pass over
+    // `this.t`, so the only contract worth testing is "calls t at refresh
+    // time and writes the result into the DOM".
+    function makeMutableT(prefix: { value: string }): TFunction {
+      return ((key: keyof Translations): string => `${prefix.value}:${key}`) as TFunction;
+    }
+
+    it("re-reads `t` at refresh time and writes aria-labels + label spans", () => {
+      const prefix = { value: "INIT" };
+      const mutableT = makeMutableT(prefix);
+
+      fab.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      fab = new Fab(shadow, defaultConfig(), bus, mutableT);
+
+      // Initial state: labels reflect the first prefix.
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      expect(fabBtn.getAttribute("aria-label")).toBe("INIT:fab.aria");
+
+      // Swap the closure's return value, then refresh — DOM should track it.
+      prefix.value = "SWAPPED";
+      fab.refreshLabels();
+
+      expect(fabBtn.getAttribute("aria-label")).toBe("SWAPPED:fab.aria");
+
+      const items = getRadialItems(shadow);
+      const chatItem = items.find((b) => b.dataset.itemId === "chat")!;
+      const annotateItem = items.find((b) => b.dataset.itemId === "annotate")!;
+      const toggleItem = items.find((b) => b.dataset.itemId === "toggle-annotations")!;
+
+      expect(chatItem.getAttribute("aria-label")).toBe("SWAPPED:fab.messages");
+      expect(annotateItem.getAttribute("aria-label")).toBe("SWAPPED:fab.annotate");
+      expect(toggleItem.getAttribute("aria-label")).toBe("SWAPPED:fab.annotations");
+
+      expect(chatItem.querySelector(".sp-radial-label")?.textContent).toBe("SWAPPED:fab.messages");
+      expect(annotateItem.querySelector(".sp-radial-label")?.textContent).toBe("SWAPPED:fab.annotate");
+      expect(toggleItem.querySelector(".sp-radial-label")?.textContent).toBe("SWAPPED:fab.annotations");
+    });
+
+    it("is idempotent — calling twice with the same `t` is a no-op on values", () => {
+      fab.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      fab = new Fab(shadow, defaultConfig(), bus, createT("en"));
+
+      fab.refreshLabels();
+      const first = shadow.querySelector<HTMLButtonElement>(".sp-fab")!.getAttribute("aria-label");
+      fab.refreshLabels();
+      const second = shadow.querySelector<HTMLButtonElement>(".sp-fab")!.getAttribute("aria-label");
+
+      expect(second).toBe(first);
+    });
+  });
 
   describe("toggle-annotations icon swap", () => {
     it("two consecutive toggles swap the icon back to ICON_EYE (true branch of cond-expr)", () => {
