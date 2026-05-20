@@ -65,6 +65,8 @@ export interface WidgetEvents {
   "feedback:deleted": [FeedbackResponse["id"]];
   "feedback:all-deleted": [];
   "feedback:error": [Error];
+  /** Emitted whenever the marker set changes — payload is the open (unresolved) count for the current page. */
+  "markers:changed": [number];
   "annotation:start": [];
   "annotation:end": [];
   "annotation:complete": [AnnotationComplete];

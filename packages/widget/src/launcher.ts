@@ -278,6 +278,12 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // Components inside Shadow DOM
   const fab = new Fab(shadow, config, bus, t);
 
+  // Keep the FAB unread-count badge in sync with the visible markers. Marker
+  // mutations (initial render, addFeedback after submit, panel-driven resolve /
+  // delete / bulk-delete via re-render) all emit `markers:changed`, so a single
+  // listener covers every path that can change the open count.
+  bus.on("markers:changed", (openCount) => fab.updateBadge(openCount));
+
   // Lazy-load Panel on first use (FAB click, instance.open, etc.) to keep the
   // initial bundle small. Panel + sub-modules are ~14 KB gzip on their own.
   // Memoize the import promise so subsequent calls reuse the same instance.

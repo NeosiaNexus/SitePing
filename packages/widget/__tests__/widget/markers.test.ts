@@ -859,6 +859,54 @@ describe("MarkerManager", () => {
   });
 
   // -------------------------------------------------------------------------
+  // openCount + markers:changed event
+  // -------------------------------------------------------------------------
+
+  describe("openCount + markers:changed", () => {
+    it("openCount counts only feedbacks with status === 'open'", () => {
+      markers.render([
+        makeFeedback({ id: "fb-1", status: "open" }),
+        makeFeedback({ id: "fb-2", status: "resolved" }),
+        makeFeedback({ id: "fb-3", status: "open" }),
+      ]);
+
+      expect(markers.count).toBe(3);
+      expect(markers.openCount).toBe(2);
+    });
+
+    it("emits markers:changed with openCount on render()", () => {
+      const handler = vi.fn();
+      bus.on("markers:changed", handler);
+
+      markers.render([makeFeedback({ id: "fb-1", status: "open" }), makeFeedback({ id: "fb-2", status: "resolved" })]);
+
+      expect(handler).toHaveBeenCalledWith(1);
+    });
+
+    it("emits markers:changed with openCount on addFeedback()", () => {
+      markers.render([makeFeedback({ id: "fb-1", status: "open" })]);
+
+      const handler = vi.fn();
+      bus.on("markers:changed", handler);
+
+      markers.addFeedback(makeFeedback({ id: "fb-2", status: "open" }), 2);
+
+      expect(handler).toHaveBeenCalledWith(2);
+    });
+
+    it("emits 0 when render([]) clears the list", () => {
+      markers.render([makeFeedback({ id: "fb-1", status: "open" })]);
+
+      const handler = vi.fn();
+      bus.on("markers:changed", handler);
+
+      markers.render([]);
+
+      expect(handler).toHaveBeenCalledWith(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // MutationObserver
   // -------------------------------------------------------------------------
 

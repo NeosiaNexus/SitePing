@@ -946,6 +946,53 @@ describe("launcher — annotation:complete integration", () => {
   });
 
   // -------------------------------------------------------------------------
+  // FAB unread-feedback badge wire-up
+  // -------------------------------------------------------------------------
+
+  describe("FAB unread badge", () => {
+    function getBadge(): HTMLElement | null {
+      const widget = document.querySelector("siteping-widget");
+      return widget!.shadowRoot!.querySelector<HTMLElement>(".sp-fab-badge");
+    }
+
+    it("renders the badge with the open count emitted via markers:changed", () => {
+      const instance = launch(defaultConfig());
+      expect(capturedBus).not.toBeNull();
+      expect(getBadge()).toBeNull();
+
+      capturedBus!.emit("markers:changed", 3);
+
+      const badge = getBadge();
+      expect(badge).not.toBeNull();
+      expect(badge!.textContent).toBe("3");
+
+      instance.destroy();
+    });
+
+    it("removes the badge when the open count drops to 0", () => {
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("markers:changed", 2);
+      expect(getBadge()).not.toBeNull();
+
+      capturedBus!.emit("markers:changed", 0);
+
+      expect(getBadge()).toBeNull();
+
+      instance.destroy();
+    });
+
+    it("formats counts above 99 as '99+'", () => {
+      const instance = launch(defaultConfig());
+
+      capturedBus!.emit("markers:changed", 150);
+
+      expect(getBadge()!.textContent).toBe("99+");
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // URL sanitization
   // -------------------------------------------------------------------------
 
