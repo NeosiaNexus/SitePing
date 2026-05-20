@@ -261,7 +261,7 @@ Both entry points share the same focus implementation — only the trigger diffe
 
 ## Screenshot capture
 
-Turn on `enableScreenshot` and every submitted feedback ships with a JPEG of the annotated rectangle, embedded inline as a `data:` URL on the feedback record. The reviewer panel renders it on the detail view next to the message.
+Turn on `enableScreenshot` and every submitted feedback ships with a JPEG of the annotated rectangle, embedded inline as a `data:` URL on the feedback record. The reviewer panel shows a dedicated **Screenshot** section on each feedback that has one.
 
 ```ts
 initSiteping({
