@@ -85,9 +85,19 @@ export class MarkerManager {
   private anchorCache = new Map<string, WeakRef<Element>>();
   private clusters: Cluster[] = [];
   private onDocumentClickForClusters: ((e: MouseEvent) => void) | null = null;
+  /** Last `openCount` broadcast via `markers:changed` (-1 = never emitted). */
+  private lastOpenCount = -1;
 
   get count(): number {
     return this.entries.length;
+  }
+
+  get openCount(): number {
+    let count = 0;
+    for (const entry of this.entries) {
+      if (entry.feedback.status === "open") count++;
+    }
+    return count;
   }
 
   constructor(
@@ -243,6 +253,22 @@ export class MarkerManager {
     }
   }
 
+  /**
+   * Emit `markers:changed` only when the open count actually moved.
+   *
+   * Mutations that re-render the same set (panel search keystrokes, filter
+   * toggles, "load more") all call `render()` without changing the page's
+   * open count — emitting unconditionally would rebuild the FAB badge DOM on
+   * every keystroke. The `-1` sentinel guarantees the first render still
+   * emits, even when the page has zero open feedbacks.
+   */
+  private emitMarkersChanged(): void {
+    const openCount = this.openCount;
+    if (openCount === this.lastOpenCount) return;
+    this.lastOpenCount = openCount;
+    this.bus.emit("markers:changed", openCount);
+  }
+
   render(feedbacks: FeedbackResponse[]): void {
     this.clear();
     feedbacks.forEach((feedback, i) => {
@@ -257,6 +283,7 @@ export class MarkerManager {
     if (this.liveRegion && this.entries.length > 0) {
       this.liveRegion.textContent = this.t("marker.count").replace("{count}", String(this.entries.length));
     }
+    this.emitMarkersChanged();
   }
 
   addFeedback(feedback: FeedbackResponse, index: number): void {
@@ -266,6 +293,7 @@ export class MarkerManager {
     }
     this.entries.push(entry);
     this.buildClusters();
+    this.emitMarkersChanged();
   }
 
   private buildEntry(feedback: FeedbackResponse, index: number): MarkerEntry {

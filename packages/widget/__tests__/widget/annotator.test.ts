@@ -22,13 +22,47 @@ const popupMocks = vi.hoisted(() => {
       type: "bug" | "improvement" | "praise" | "question";
       message: string;
     } | null,
+    /**
+     * The promise returned by the last `onSubmit` (= `runSubmission`) call,
+     * so tests can await its settlement (e.g. on destroy mid-submit).
+     */
+    lastSubmitPromise: null as Promise<void> | null,
+    /**
+     * When true the mock's `show()` stays pending (mirroring the real popup,
+     * which only resolves once `runSubmission` settles). Tests that exercise
+     * the still-open-popup window (serialization, destroy-mid-submit) set this.
+     */
+    keepShowPending: false,
+    /** `destroy()` call count on the live popup mock. */
+    destroyCount: 0,
   };
 });
 
 vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
   Popup: vi.fn().mockImplementation(() => ({
-    show: vi.fn().mockImplementation(() => Promise.resolve(popupMocks.nextResult)),
-    destroy: vi.fn(),
+    show: vi
+      .fn()
+      .mockImplementation((_rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
+        // The real popup awaits its `onSubmit` callback before resolving so
+        // the spinner stays visible until feedback:sent or feedback:error
+        // arrives. Tests don't run a launcher, so we fire-and-forget the
+        // callback (its settlement is captured on `lastSubmitPromise` so
+        // tests can await it) and resolve show() with the same result the
+        // real popup would have produced on success.
+        if (popupMocks.nextResult && onSubmit) {
+          const submit = onSubmit(popupMocks.nextResult);
+          popupMocks.lastSubmitPromise = submit;
+          void submit.catch(() => {});
+        }
+        // `keepShowPending` mirrors the real popup keeping `show()` unresolved
+        // while `runSubmission` is in flight — the overlay therefore stays up,
+        // which is exactly the window the serialization guard must cover.
+        if (popupMocks.keepShowPending) return new Promise(() => {});
+        return Promise.resolve(popupMocks.nextResult);
+      }),
+    destroy: vi.fn().mockImplementation(() => {
+      popupMocks.destroyCount += 1;
+    }),
   })),
 }));
 
@@ -87,6 +121,9 @@ describe("Annotator", () => {
 
   beforeEach(() => {
     popupMocks.nextResult = { type: "bug", message: "Test message" };
+    popupMocks.lastSubmitPromise = null;
+    popupMocks.keepShowPending = false;
+    popupMocks.destroyCount = 0;
     ({ annotator, bus } = createAnnotator());
   });
 
@@ -860,6 +897,117 @@ describe("Annotator", () => {
       }).not.toThrow();
 
       window.requestAnimationFrame = origRAF;
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Submission lifecycle — serialization (Blocker A) + destroy mid-submit (B)
+  // -------------------------------------------------------------------------
+
+  describe("submission lifecycle", () => {
+    it("does not start a second annotation while a submission is in flight", async () => {
+      // The popup stays open (show() pending) while runSubmission awaits its
+      // terminal event — exactly the window a second rectangle would orphan.
+      popupMocks.keepShowPending = true;
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      // First annotation — opens the popup, runSubmission emits annotation:complete #1.
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      // The first rectangle intentionally stays visible while the popup is
+      // open — capture the current count so we can prove no SECOND one is born.
+      const rectsAfterFirst = overlay.querySelectorAll("div").length;
+
+      // Second drag while the first submission is still pending — must be a
+      // no-op: no new drawing rect, no second annotation:complete.
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 60, clientY: 60, bubbles: true }));
+      expect(overlay.querySelectorAll("div").length).toBe(rectsAfterFirst);
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 260, clientY: 260, bubbles: true }));
+
+      await new Promise((r) => setTimeout(r, 30));
+      expect(completeListener).toHaveBeenCalledOnce();
+    });
+
+    it("ignores keyboard Enter annotation while a submission is in flight", async () => {
+      popupMocks.keepShowPending = true;
+
+      const target = document.createElement("button");
+      document.body.appendChild(target);
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 40));
+      target.focus();
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      // First Enter annotation — opens the popup, emits annotation:complete #1.
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      // Second Enter while the submission is pending — no-op.
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await new Promise((r) => setTimeout(r, 30));
+      expect(completeListener).toHaveBeenCalledOnce();
+
+      target.remove();
+    });
+
+    it("destroy() while a submission is pending settles the runSubmission promise (no hang)", async () => {
+      popupMocks.keepShowPending = true;
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+
+      // runSubmission is now pending — waiting on a terminal bus event.
+      await vi.waitFor(() => {
+        expect(popupMocks.lastSubmitPromise).not.toBeNull();
+      });
+      const submitPromise = popupMocks.lastSubmitPromise!;
+
+      // Tear down mid-submit. The promise must settle (reject) rather than
+      // outlive teardown and leak the closure that retains the screenshot.
+      annotator.destroy();
+
+      await expect(submitPromise).rejects.toThrow(/destroyed during submission/);
+      // Popup was also torn down.
+      expect(popupMocks.destroyCount).toBe(1);
+    });
+
+    it("a terminal event arriving after destroy() does not double-settle or throw", async () => {
+      popupMocks.keepShowPending = true;
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+
+      await vi.waitFor(() => {
+        expect(popupMocks.lastSubmitPromise).not.toBeNull();
+      });
+
+      annotator.destroy();
+      await expect(popupMocks.lastSubmitPromise!).rejects.toThrow();
+
+      // The terminal-event listeners were unsubscribed on destroy — a late
+      // terminal event must be inert (no second settle, no throw).
+      expect(() => bus.emit("submission:cancelled")).not.toThrow();
     });
   });
 });

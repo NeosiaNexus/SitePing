@@ -65,9 +65,18 @@ export interface WidgetEvents {
   "feedback:deleted": [FeedbackResponse["id"]];
   "feedback:all-deleted": [];
   "feedback:error": [Error];
+  /** Emitted whenever the marker set changes — payload is the open (unresolved) count for the current page. */
+  "markers:changed": [number];
   "annotation:start": [];
   "annotation:end": [];
   "annotation:complete": [AnnotationComplete];
+  /**
+   * Internal-only: a feedback submission was aborted by a benign user action
+   * (e.g. cancelling the identity prompt). Distinct from `feedback:error` so a
+   * cancellation does not surface through the host's `onError` callback. Not
+   * part of `PublicWidgetEvents` — never exposed to consumers.
+   */
+  "submission:cancelled": [];
   "annotations:toggle": [boolean];
   "panel:toggle": [boolean];
 }
