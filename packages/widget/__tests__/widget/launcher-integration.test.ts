@@ -673,6 +673,34 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
 
+    it("emits feedback:error so the popup spinner unblocks when identity is cancelled", async () => {
+      // Without this emit, the popup's onSubmit callback (which waits for
+      // feedback:sent or feedback:error) would hang forever and the user
+      // would be stuck with a spinning Send button.
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+
+      const errorListener = vi.fn();
+      capturedBus!.on("feedback:error", errorListener);
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+      const { cancelBtn } = await getIdentityModal();
+      cancelBtn.click();
+
+      await vi.waitFor(
+        () => {
+          expect(errorListener).toHaveBeenCalledOnce();
+        },
+        { timeout: 1000 },
+      );
+      const err = errorListener.mock.calls[0][0] as Error & { code?: string };
+      expect(err).toBeInstanceOf(Error);
+      expect(err.code).toBe("identity-cancelled");
+      expect(mockSendFeedback).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
     it("Escape key closes modal and aborts submission", async () => {
       mockGetIdentity.mockReturnValue(null);
       const instance = launch(defaultConfig());

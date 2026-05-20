@@ -780,6 +780,213 @@ describe("Popup", () => {
       expect(dialogsAfter).toBe(dialogsBefore - 1);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Submitting state (onSubmit callback — spinner, disabled controls, retry)
+  // -------------------------------------------------------------------------
+
+  describe("submitting state", () => {
+    function fillForm(): void {
+      const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      bugBtn.click();
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      textarea.value = "Found a bug";
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    function getSubmitButton(): HTMLButtonElement {
+      const buttons = document.querySelectorAll<HTMLButtonElement>("button");
+      // The submit button is the only one with `aria-busy` once submitting OR
+      // contains the submit label otherwise. Match by initial label.
+      return Array.from(buttons).find((btn) => btn.querySelector("span")?.textContent === t("popup.submit"))!;
+    }
+
+    function getCancelButton(): HTMLButtonElement {
+      const buttons = document.querySelectorAll<HTMLButtonElement>("button");
+      return Array.from(buttons).find((btn) => btn.textContent === t("popup.cancel"))!;
+    }
+
+    it("invokes the onSubmit callback with the form result when submit is clicked", async () => {
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+      popup.show(makeBounds(), onSubmit);
+      fillForm();
+
+      getSubmitButton().click();
+
+      await vi.waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledOnce();
+      });
+      expect(onSubmit).toHaveBeenCalledWith({ type: "bug", message: "Found a bug" });
+    });
+
+    it("swaps the submit label for a spinner while onSubmit is pending", async () => {
+      let resolveSubmit!: () => void;
+      const onSubmit = vi.fn().mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+      );
+
+      popup.show(makeBounds(), onSubmit);
+      fillForm();
+
+      const submitBtn = getSubmitButton();
+      submitBtn.click();
+
+      await vi.waitFor(() => {
+        expect(submitBtn.getAttribute("aria-busy")).toBe("true");
+        expect(submitBtn.querySelector('[data-role="sp-popup-spinner"]')).not.toBeNull();
+      });
+
+      resolveSubmit();
+    });
+
+    it("disables submit, cancel, textarea, and type buttons while onSubmit is pending", async () => {
+      let resolveSubmit!: () => void;
+      const onSubmit = vi.fn().mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+      );
+
+      popup.show(makeBounds(), onSubmit);
+      fillForm();
+
+      const submitBtn = getSubmitButton();
+      const cancelBtn = getCancelButton();
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      const typeButtons = document.querySelectorAll<HTMLButtonElement>("[data-type]");
+
+      submitBtn.click();
+
+      await vi.waitFor(() => {
+        expect(submitBtn.disabled).toBe(true);
+        expect(cancelBtn.disabled).toBe(true);
+        expect(textarea.disabled).toBe(true);
+        for (const btn of typeButtons) expect(btn.disabled).toBe(true);
+      });
+
+      resolveSubmit();
+    });
+
+    it("closes the popup and resolves with the result on successful onSubmit", async () => {
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+      const promise = popup.show(makeBounds(), onSubmit);
+      fillForm();
+
+      getSubmitButton().click();
+
+      const result = await promise;
+      expect(result).toEqual({ type: "bug", message: "Found a bug" });
+    });
+
+    it("restores the form for retry when onSubmit rejects", async () => {
+      const onSubmit = vi.fn().mockRejectedValueOnce(new Error("network down"));
+
+      popup.show(makeBounds(), onSubmit);
+      fillForm();
+
+      const submitBtn = getSubmitButton();
+      const cancelBtn = getCancelButton();
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
+
+      submitBtn.click();
+
+      // Wait for the rejection to propagate
+      await vi.waitFor(() => {
+        expect(onSubmit).toHaveBeenCalled();
+      });
+      // One extra tick for the .catch() handler
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Submitting state is gone: buttons re-enabled, spinner removed, form
+      // contents preserved so the user can retry with one click.
+      expect(submitBtn.disabled).toBe(false);
+      expect(submitBtn.getAttribute("aria-busy")).toBeNull();
+      expect(submitBtn.querySelector('[data-role="sp-popup-spinner"]')).toBeNull();
+      expect(cancelBtn.disabled).toBe(false);
+      expect(textarea.disabled).toBe(false);
+      expect(textarea.value).toBe("Found a bug");
+    });
+
+    it("re-runs onSubmit on retry after rejection", async () => {
+      const onSubmit = vi.fn().mockRejectedValueOnce(new Error("network down")).mockResolvedValueOnce(undefined);
+
+      const promise = popup.show(makeBounds(), onSubmit);
+      fillForm();
+
+      const submitBtn = getSubmitButton();
+
+      // First click — rejects
+      submitBtn.click();
+      await vi.waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+      // Allow the .catch() handler to restore the form
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Second click — resolves
+      submitBtn.click();
+
+      const result = await promise;
+      expect(result).toEqual({ type: "bug", message: "Found a bug" });
+      expect(onSubmit).toHaveBeenCalledTimes(2);
+    });
+
+    it("ignores Escape, cancel click, and Ctrl+Enter while onSubmit is pending", async () => {
+      let resolveSubmit!: () => void;
+      const onSubmit = vi.fn().mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+      );
+
+      const promise = popup.show(makeBounds(), onSubmit);
+      let settled = false;
+      void promise.then(() => {
+        settled = true;
+      });
+
+      fillForm();
+      getSubmitButton().click();
+
+      // Wait for submitting state to engage
+      await vi.waitFor(() => {
+        expect(getSubmitButton().getAttribute("aria-busy")).toBe("true");
+      });
+
+      // Try every dismissal channel
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
+      getCancelButton().click();
+
+      // None of these should have settled the show() promise
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      // Releasing the submit promise should let everything close normally
+      resolveSubmit();
+      await promise;
+    });
+
+    it("falls back to legacy fire-and-forget behaviour when no onSubmit is provided", async () => {
+      // Without onSubmit the show() promise resolves immediately on submit
+      // and the popup hides — same as the original synchronous API.
+      const promise = popup.show(makeBounds());
+      fillForm();
+
+      getSubmitButton().click();
+
+      const result = await promise;
+      expect(result).toEqual({ type: "bug", message: "Found a bug" });
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -352,7 +352,17 @@ export function launch(config: SitepingConfig): SitepingInstance {
       let identity = config.identity ?? getIdentity();
       if (!identity) {
         identity = await promptIdentity(shadow, t);
-        if (!identity) return; // User cancelled
+        if (!identity) {
+          // User cancelled the identity prompt — emit `feedback:error` so any
+          // pending annotation-submit listener (the popup spinner) unblocks.
+          // Without this the popup would wait forever on the second-stage
+          // outcome events, and the rectangle would stay drawn on screen.
+          bus.emit(
+            "feedback:error",
+            Object.assign(new Error("Identity required to submit feedback"), { code: "identity-cancelled" }),
+          );
+          return;
+        }
         saveIdentity(identity);
       }
 

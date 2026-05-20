@@ -27,7 +27,19 @@ const popupMocks = vi.hoisted(() => {
 
 vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
   Popup: vi.fn().mockImplementation(() => ({
-    show: vi.fn().mockImplementation(() => Promise.resolve(popupMocks.nextResult)),
+    show: vi
+      .fn()
+      .mockImplementation((_rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
+        // The real popup awaits its `onSubmit` callback before resolving so
+        // the spinner stays visible until feedback:sent or feedback:error
+        // arrives. Tests don't run a launcher, so we fire-and-forget the
+        // callback (any rejection is swallowed) and resolve show() with the
+        // same result the real popup would have produced on success.
+        if (popupMocks.nextResult && onSubmit) {
+          void onSubmit(popupMocks.nextResult).catch(() => {});
+        }
+        return Promise.resolve(popupMocks.nextResult);
+      }),
     destroy: vi.fn(),
   })),
 }));

@@ -17,6 +17,15 @@ interface TypeOption {
 }
 
 /**
+ * Optional async hook called when the user clicks "Send". While the returned
+ * promise is pending the popup stays visible in a submitting state (spinner
+ * on the submit button, every other control disabled). On resolution the
+ * popup closes and `show()` resolves with the submitted result; on rejection
+ * the popup restores so the user can retry without re-entering the form.
+ */
+type PopupSubmitHandler = (result: PopupResult) => Promise<void>;
+
+/**
  * Popup form shown after drawing an annotation rectangle.
  *
  * Glassmorphism design: frosted glass background, soft shadows,
@@ -28,9 +37,14 @@ export class Popup {
   private selectedType: FeedbackType | null = null;
   private textarea: HTMLTextAreaElement;
   private submitBtn: HTMLButtonElement;
+  private cancelBtn: HTMLButtonElement;
+  private typeRow: HTMLElement;
+  private submitLabel: HTMLSpanElement;
   private resolve: ((result: PopupResult | null) => void) | null = null;
   private previouslyFocused: HTMLElement | null = null;
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
+  private onSubmit: PopupSubmitHandler | null = null;
+  private submittingState = false;
 
   constructor(
     private readonly colors: ThemeColors,
@@ -60,6 +74,10 @@ export class Popup {
     this.root.setAttribute("role", "dialog");
     this.root.setAttribute("aria-modal", "true");
     this.root.setAttribute("aria-label", this.t("popup.ariaLabel"));
+    // Screenshot capture now runs while the popup is still visible (so the
+    // spinner can show during the upload). Without this attribute the popup
+    // would appear baked into the captured JPEG.
+    this.root.setAttribute("data-siteping-ignore", "true");
 
     // Type selector grid (2x2)
     const typeOptions: TypeOption[] = [
@@ -68,7 +86,7 @@ export class Popup {
       { type: "bug", label: this.t("type.bug"), icon: ICON_BUG },
       { type: "other", label: this.t("type.other"), icon: ICON_OTHER },
     ];
-    const typeRow = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;" });
+    this.typeRow = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;" });
     for (const option of typeOptions) {
       const btn = document.createElement("button");
       btn.style.cssText = `
@@ -91,10 +109,12 @@ export class Popup {
       btn.setAttribute("aria-pressed", "false");
 
       btn.addEventListener("click", () => {
-        this.selectType(option.type, typeRow);
+        if (this.submittingState) return;
+        this.selectType(option.type, this.typeRow);
       });
 
       btn.addEventListener("mouseenter", () => {
+        if (this.submittingState) return;
         if (btn.dataset.type !== this.selectedType) {
           const bgColor = getTypeBgColor(btn.dataset.type ?? "", this.colors);
           btn.style.background = bgColor;
@@ -103,13 +123,14 @@ export class Popup {
       });
 
       btn.addEventListener("mouseleave", () => {
+        if (this.submittingState) return;
         if (btn.dataset.type !== this.selectedType) {
           btn.style.background = this.colors.glassBg;
           btn.style.borderColor = this.colors.border;
         }
       });
 
-      typeRow.appendChild(btn);
+      this.typeRow.appendChild(btn);
     }
 
     // Textarea
@@ -146,11 +167,13 @@ export class Popup {
     setText(hint, isMac ? this.t("popup.submitHintMac") : this.t("popup.submitHintOther"));
 
     this.textarea.addEventListener("focus", () => {
+      if (this.submittingState) return;
       this.textarea.style.borderColor = this.colors.accent;
       this.textarea.style.boxShadow = `0 0 0 3px ${this.colors.accent}14`;
       this.textarea.style.background = this.colors.bg;
     });
     this.textarea.addEventListener("blur", () => {
+      if (this.submittingState) return;
       this.textarea.style.borderColor = this.colors.border;
       this.textarea.style.boxShadow = "none";
       this.textarea.style.background = this.colors.glassBgHeavy;
@@ -159,6 +182,7 @@ export class Popup {
       this.updateSubmitState();
     });
     this.textarea.addEventListener("keydown", (e) => {
+      if (this.submittingState) return;
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         this.submit();
@@ -171,8 +195,8 @@ export class Popup {
     // Button row
     const btnRow = el("div", { style: "display:flex;justify-content:flex-end;gap:8px;margin-top:12px;" });
 
-    const cancelBtn = document.createElement("button");
-    cancelBtn.style.cssText = `
+    this.cancelBtn = document.createElement("button");
+    this.cancelBtn.style.cssText = `
       height:34px;padding:0 16px;border-radius:9999px;
       border:1px solid ${this.colors.border};
       background:${this.colors.glassBg};
@@ -180,15 +204,17 @@ export class Popup {
       font-size:13px;font-weight:500;cursor:pointer;
       transition:all 0.2s ease;
     `;
-    setText(cancelBtn, this.t("popup.cancel"));
-    cancelBtn.addEventListener("click", () => this.cancel());
-    cancelBtn.addEventListener("mouseenter", () => {
-      cancelBtn.style.borderColor = this.colors.accent;
-      cancelBtn.style.color = this.colors.accent;
+    setText(this.cancelBtn, this.t("popup.cancel"));
+    this.cancelBtn.addEventListener("click", () => this.cancel());
+    this.cancelBtn.addEventListener("mouseenter", () => {
+      if (this.submittingState) return;
+      this.cancelBtn.style.borderColor = this.colors.accent;
+      this.cancelBtn.style.color = this.colors.accent;
     });
-    cancelBtn.addEventListener("mouseleave", () => {
-      cancelBtn.style.borderColor = this.colors.border;
-      cancelBtn.style.color = this.colors.textTertiary;
+    this.cancelBtn.addEventListener("mouseleave", () => {
+      if (this.submittingState) return;
+      this.cancelBtn.style.borderColor = this.colors.border;
+      this.cancelBtn.style.color = this.colors.textTertiary;
     });
 
     this.submitBtn = document.createElement("button");
@@ -200,14 +226,17 @@ export class Popup {
       opacity:0.35;pointer-events:none;
       transition:all 0.2s ease;
       box-shadow:0 2px 8px ${this.colors.accentGlow};
+      display:inline-flex;align-items:center;justify-content:center;min-width:64px;
     `;
-    setText(this.submitBtn, this.t("popup.submit"));
+    this.submitLabel = document.createElement("span");
+    setText(this.submitLabel, this.t("popup.submit"));
+    this.submitBtn.appendChild(this.submitLabel);
     this.submitBtn.addEventListener("click", () => this.submit());
 
-    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(this.cancelBtn);
     btnRow.appendChild(this.submitBtn);
 
-    this.root.appendChild(typeRow);
+    this.root.appendChild(this.typeRow);
     this.root.appendChild(this.textarea);
     this.root.appendChild(hint);
     this.root.appendChild(btnRow);
@@ -217,12 +246,19 @@ export class Popup {
   /**
    * Show the popup near a drawn rectangle and return the user's input.
    * Returns null if cancelled.
+   *
+   * When `onSubmit` is provided the popup stays visible while the handler
+   * runs — the submit button shows a spinner, every other control is
+   * disabled. On success the popup closes; on rejection it restores so the
+   * user can retry without re-entering the form.
    */
-  show(rectBounds: DOMRect): Promise<PopupResult | null> {
+  show(rectBounds: DOMRect, onSubmit?: PopupSubmitHandler): Promise<PopupResult | null> {
     return new Promise((resolve) => {
       this.resolve = resolve;
+      this.onSubmit = onSubmit ?? null;
       this.selectedType = null;
       this.textarea.value = "";
+      this.submittingState = false;
       this.updateSubmitState();
       this.resetTypeButtons();
 
@@ -262,7 +298,7 @@ export class Popup {
         if (e.key === "Tab") {
           const focusableEls = Array.from(
             this.root.querySelectorAll<HTMLElement>(
-              'button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])',
+              'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
             ),
           );
           if (focusableEls.length === 0) return;
@@ -318,14 +354,17 @@ export class Popup {
     const buttons = this.root.querySelectorAll<HTMLButtonElement>("button[data-type]");
     for (const btn of buttons) {
       btn.setAttribute("aria-pressed", "false");
+      btn.disabled = false;
       btn.style.background = this.colors.glassBg;
       btn.style.borderColor = this.colors.border;
       btn.style.color = this.colors.textTertiary;
       btn.style.fontWeight = "500";
+      btn.style.cursor = "pointer";
     }
   }
 
   private updateSubmitState(): void {
+    if (this.submittingState) return;
     const enabled = this.selectedType !== null && this.textarea.value.trim().length > 0;
     this.submitBtn.disabled = !enabled;
     this.submitBtn.style.opacity = enabled ? "1" : "0.35";
@@ -333,16 +372,137 @@ export class Popup {
   }
 
   private submit(): void {
+    if (this.submittingState) return;
     if (!this.selectedType || !this.textarea.value.trim()) return;
-    this.resolve?.({ type: this.selectedType, message: this.textarea.value.trim() });
+
+    const result: PopupResult = { type: this.selectedType, message: this.textarea.value.trim() };
+
+    if (!this.onSubmit) {
+      // Legacy fire-and-forget path: resolve immediately and hide.
+      this.resolve?.(result);
+      this.resolve = null;
+      this.hideElement();
+      return;
+    }
+
+    this.enterSubmittingState();
+    const submitter = this.onSubmit;
+    submitter(result)
+      .then(() => {
+        this.resolve?.(result);
+        this.resolve = null;
+        this.hideElement();
+      })
+      .catch(() => {
+        // Restore the form so the user can edit and retry. The caller is
+        // responsible for surfacing the error (live region / toast) — we
+        // intentionally do not show inline error text in the popup.
+        this.exitSubmittingState();
+      });
+  }
+
+  private cancel(): void {
+    if (this.submittingState) return;
+    this.resolve?.(null);
     this.resolve = null;
     this.hideElement();
   }
 
-  private cancel(): void {
-    this.resolve?.(null);
-    this.resolve = null;
-    this.hideElement();
+  /**
+   * Swap the submit button's text for a spinner and freeze every other
+   * control. Mirrors the panel's resolve/delete buttons (`sp-spinner--sm`)
+   * but renders inline because the popup lives outside the Shadow DOM
+   * and therefore can't reach the panel's CSS classes.
+   */
+  private enterSubmittingState(): void {
+    this.submittingState = true;
+
+    // Submit: spinner instead of text, keep button width stable
+    this.submitLabel.style.display = "none";
+    this.submitBtn.disabled = true;
+    this.submitBtn.style.cursor = "wait";
+    this.submitBtn.style.opacity = "0.85";
+    this.submitBtn.setAttribute("aria-busy", "true");
+    this.submitBtn.appendChild(this.buildSpinner());
+
+    // Cancel: dimmed and non-interactive — abandoning mid-upload would leak a
+    // half-sent feedback on the server, so we hold the user until we know.
+    this.cancelBtn.disabled = true;
+    this.cancelBtn.style.opacity = "0.5";
+    this.cancelBtn.style.cursor = "not-allowed";
+    this.cancelBtn.style.pointerEvents = "none";
+
+    // Textarea + type buttons: read-only
+    this.textarea.disabled = true;
+    this.textarea.style.opacity = "0.6";
+    const typeButtons = this.typeRow.querySelectorAll<HTMLButtonElement>("button");
+    for (const btn of typeButtons) {
+      btn.disabled = true;
+      btn.style.cursor = "not-allowed";
+      btn.style.opacity = "0.6";
+    }
+  }
+
+  private exitSubmittingState(): void {
+    this.submittingState = false;
+
+    // Submit
+    const spinner = this.submitBtn.querySelector<HTMLDivElement>('[data-role="sp-popup-spinner"]');
+    spinner?.remove();
+    this.submitLabel.style.display = "";
+    this.submitBtn.removeAttribute("aria-busy");
+    this.submitBtn.style.cursor = "pointer";
+
+    // Cancel
+    this.cancelBtn.disabled = false;
+    this.cancelBtn.style.opacity = "1";
+    this.cancelBtn.style.cursor = "pointer";
+    this.cancelBtn.style.pointerEvents = "auto";
+
+    // Textarea + type buttons
+    this.textarea.disabled = false;
+    this.textarea.style.opacity = "1";
+    const typeButtons = this.typeRow.querySelectorAll<HTMLButtonElement>("button");
+    for (const btn of typeButtons) {
+      btn.disabled = false;
+      btn.style.cursor = "pointer";
+      btn.style.opacity = "1";
+    }
+
+    // Recompute submit enabled state from the (preserved) form fields
+    this.updateSubmitState();
+  }
+
+  /**
+   * Build a spinner element styled inline. Web Animations API drives the
+   * rotation so we don't have to inject `@keyframes` into the host document.
+   * Respects `prefers-reduced-motion`: omits the animation and falls back to
+   * a static dotted state.
+   */
+  private buildSpinner(): HTMLDivElement {
+    const spinner = document.createElement("div");
+    spinner.dataset.role = "sp-popup-spinner";
+    spinner.style.cssText = `
+      width:14px;height:14px;
+      border:2px solid rgba(255,255,255,0.35);
+      border-top-color:#fff;
+      border-radius:50%;
+      box-sizing:border-box;
+    `;
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Web Animations API is available in every browser we target; the guard
+    // is defensive for jsdom in tests, where `animate` may be undefined.
+    if (!reduceMotion && typeof spinner.animate === "function") {
+      spinner.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }], {
+        duration: 600,
+        iterations: Infinity,
+        easing: "linear",
+      });
+    }
+    return spinner;
   }
 
   private hideElement(): void {
@@ -351,6 +511,9 @@ export class Popup {
       this.root.removeEventListener("keydown", this.onKeydownTrap);
       this.onKeydownTrap = null;
     }
+    // Make sure the submitting decoration doesn't leak into the next show()
+    if (this.submittingState) this.exitSubmittingState();
+    this.onSubmit = null;
     this.root.style.opacity = "0";
     this.root.style.transform = "translateY(8px) scale(0.98)";
     // Restore focus to the previously focused element

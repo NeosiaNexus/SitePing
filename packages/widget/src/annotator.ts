@@ -218,9 +218,6 @@ export class Annotator {
 
     const rectBounds = new DOMRect(bounds.x, bounds.y, bounds.width, bounds.height);
 
-    const result = await this.popup.show(rectBounds);
-    if (!result) return;
-
     const anchor = generateAnchor(target);
     const annotation: AnnotationPayload = {
       anchor,
@@ -232,18 +229,14 @@ export class Annotator {
       devicePixelRatio: window.devicePixelRatio,
     };
 
-    // Capture before deactivate — overlay is intentionally ignored by the
-    // capture predicate but the rect must still be on the page.
-    const screenshotDataUrl = await this.maybeCapture(rectBounds);
+    // Submission stays inside the popup so the user gets a visible spinner
+    // until the server confirms — see finishDrawing for the rationale.
+    const screenshotCache: { value?: string | null } = {};
+    const result = await this.popup.show(rectBounds, (formResult) =>
+      this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
+    );
 
-    this.deactivate();
-
-    this.bus.emit("annotation:complete", {
-      annotation,
-      type: result.type,
-      message: result.message,
-      screenshotDataUrl,
-    });
+    if (result) this.deactivate();
   };
 
   private onMouseDown = (e: MouseEvent): void => {
@@ -335,35 +328,65 @@ export class Annotator {
 
     const rectBounds = new DOMRect(x, y, w, h);
 
-    // Show popup for type + message
-    const result = await this.popup.show(rectBounds);
-
-    if (!result) {
-      this.drawingRect?.remove();
-      this.drawingRect = null;
-      return;
-    }
-
-    // Build annotation payload BEFORE deactivating (needs overlay for elementFromPoint)
+    // Build annotation payload BEFORE the popup opens — the overlay is still
+    // up so `findAnchorElement` can briefly disable pointer events on it.
     const annotation = this.buildAnnotation(rectBounds);
+
+    // Keep the drawn rectangle visible while the popup is open so the user
+    // can see what they're sending feedback about — including while the
+    // submit-spinner is running. We only remove it after the popup closes.
+    const screenshotCache: { value?: string | null } = {};
+    const result = await this.popup.show(rectBounds, (formResult) =>
+      this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
+    );
+
     this.drawingRect?.remove();
     this.drawingRect = null;
-
-    // Capture before deactivate — html2canvas walks the live DOM, and the
-    // capture predicate skips siteping-widget elements so the overlay being
-    // present on screen doesn't matter.
-    const screenshotDataUrl = await this.maybeCapture(rectBounds);
-
-    this.deactivate();
-
-    // Emit via event bus (not DOM — overlay is already null after deactivate)
-    this.bus.emit("annotation:complete", {
-      annotation,
-      type: result.type,
-      message: result.message,
-      screenshotDataUrl,
-    });
+    if (result) this.deactivate();
   };
+
+  /**
+   * Submit handler passed into `popup.show()`. Captures the screenshot once
+   * (cached across retries) and emits `annotation:complete` on the bus, then
+   * waits for either `feedback:sent` (resolve) or `feedback:error` (reject —
+   * popup restores so the user can retry without re-entering the form).
+   */
+  private async runSubmission(
+    annotation: AnnotationPayload,
+    formResult: { type: FeedbackType; message: string },
+    rectBounds: DOMRect,
+    screenshotCache: { value?: string | null },
+  ): Promise<void> {
+    // Screenshot capture is the slow part. Capture once and reuse the
+    // cached data URL on every retry — re-running html2canvas after each
+    // failed submit would punish the user for a network blip.
+    if (screenshotCache.value === undefined) {
+      screenshotCache.value = await this.maybeCapture(rectBounds);
+    }
+    const screenshotDataUrl = screenshotCache.value;
+
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        unsubSent();
+        unsubError();
+      };
+      const unsubSent = this.bus.on("feedback:sent", () => {
+        cleanup();
+        resolve();
+      });
+      const unsubError = this.bus.on("feedback:error", (err) => {
+        cleanup();
+        reject(err);
+      });
+
+      this.bus.emit("annotation:complete", {
+        annotation,
+        type: formResult.type,
+        message: formResult.message,
+        screenshotDataUrl,
+      });
+    });
+  }
 
   /**
    * Build an AnnotationPayload from a drawn rectangle.
