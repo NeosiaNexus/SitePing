@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.12](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.11...widget-v0.9.12) (2026-05-20)
+
+
+### Bug Fixes
+
+* **widget:** keep popup visible with spinner during feedback submission ([#114](https://github.com/NeosiaNexus/SitePing/issues/114)) ([1ec5c27](https://github.com/NeosiaNexus/SitePing/commit/1ec5c2791850b42b96a26fcb2a0f8ee81793abab))
+* **widget:** re-localize FAB + popup after locale chunk loads ([#107](https://github.com/NeosiaNexus/SitePing/issues/107)) ([0e501c2](https://github.com/NeosiaNexus/SitePing/commit/0e501c2a6cfe805dd397c5f7174ffadc755aa1e2))
+* **widget:** wire FAB unread badge to marker mutations ([#112](https://github.com/NeosiaNexus/SitePing/issues/112)) ([7a6aa1d](https://github.com/NeosiaNexus/SitePing/commit/7a6aa1de9ce1cb34b1c48ec55d01c5e4e10effee))
+
 ## [0.9.11](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.10...widget-v0.9.11) (2026-05-19)
 
 
