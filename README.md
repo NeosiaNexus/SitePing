@@ -160,6 +160,9 @@ initSiteping({
   locale: 'en',                   // 'en' | 'fr' (default: 'en')
   forceShow: false,               // Show in production? Default: false
   debug: false,                   // Enable debug logging
+  enableScreenshot: false,        // Capture a JPEG of the annotated area on
+                                  // submit. Off by default — see "Screenshot
+                                  // capture" below for the masking story.
   identity: {                     // Pre-fill author from the host (SSO apps).
     name: 'Alice',                // When set, skips localStorage + modal.
     email: 'alice@example.com',
@@ -253,6 +256,39 @@ const matched = widget.focusFeedback(feedback.id)
 ```
 
 Both entry points share the same focus implementation — only the trigger differs.
+
+---
+
+## Screenshot capture
+
+Turn on `enableScreenshot` and every submitted feedback ships with a JPEG of the annotated rectangle, embedded inline as a `data:` URL on the feedback record. The reviewer panel shows a dedicated **Screenshot** section on each feedback that has one.
+
+```ts
+initSiteping({
+  endpoint: '/api/siteping',
+  projectName: 'my-project',
+  enableScreenshot: true,
+})
+```
+
+`html2canvas` ships as a regular dependency of `@siteping/widget` — no separate install. The widget dynamic-imports it on the first capture (≈ 40 KB gzip), so installs that leave the option off pay only disk space.
+
+**Masking sensitive elements.** Add `data-siteping-ignore="true"` to any element you do **not** want captured. The capture predicate skips matching elements *and their descendants*, so a single attribute on a wrapper is enough:
+
+```html
+<input type="password" data-siteping-ignore="true">
+<section data-siteping-ignore="true">
+  <!-- credit-card form, API tokens, PII … -->
+</section>
+```
+
+Set masks **before** turning the option on in production — once a feedback is saved, the screenshot is in your database (or object storage) regardless of what was on the page when it was captured.
+
+**Privacy.** Screenshots embed page content. Inform end users in your widget host UI when enabling, and treat the feature as an opt-in for environments where casual page content might be confidential.
+
+**Output.** The widget produces JPEG at quality 0.85, downscaled to a max width of 1200 CSS pixels (≈ 50–150 KB for a typical annotated area). Both numbers are currently fixed; if a use case appears that needs different settings, the option could grow into `enableScreenshot: true | { quality?, maxWidth? }` — file an issue if you'd find that useful.
+
+**Failure handling.** If `html2canvas` fails to load or the capture throws (CORS-tainted canvas, missing 2D context, …), the widget returns `null` and the feedback still submits without the screenshot — the option never blocks a submission.
 
 ---
 
@@ -495,7 +531,7 @@ All adapters implement the `SitepingStore` interface — swap adapters without c
 ## Data & Privacy
 
 - **What the widget collects:** author name, email, feedback message, page URL, viewport dimensions, user agent, and DOM anchoring data (CSS selector, XPath, text snippet, element coordinates).
-- **No screenshots or full DOM snapshots** are captured — only the minimal data needed to re-anchor annotations.
+- **No screenshots or full DOM snapshots are captured by default** — only the minimal data needed to re-anchor annotations. Hosts can opt in to per-annotation screenshot capture via `enableScreenshot: true`; see [Screenshot capture](#screenshot-capture) for the masking story and the privacy caveat.
 - **Self-hosted** — all data is stored in your own database. Nothing is sent to third-party servers.
 - **Sensitive URL parameters are automatically stripped** before submission to prevent accidental data leakage.
 
