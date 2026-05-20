@@ -986,6 +986,30 @@ describe("Popup", () => {
       const result = await promise;
       expect(result).toEqual({ type: "bug", message: "Found a bug" });
     });
+
+    it("destroy() while a submission is pending settles the show() promise and tears down", async () => {
+      // onSubmit never resolves — the popup is stuck in the submitting state.
+      const onSubmit = vi.fn().mockReturnValue(new Promise<void>(() => {}));
+
+      const promise = popup.show(makeBounds(), onSubmit);
+      fillForm();
+
+      const submitBtn = getSubmitButton();
+      submitBtn.click();
+
+      // Confirm the popup actually entered the submitting state.
+      await vi.waitFor(() => {
+        expect(submitBtn.getAttribute("aria-busy")).toBe("true");
+      });
+
+      // destroy() must settle the pending show() promise (no hang) — it
+      // resolves null, matching a cancellation — and remove the popup.
+      popup.destroy();
+
+      const result = await promise;
+      expect(result).toBeNull();
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+    });
   });
 });
 

@@ -27,7 +27,10 @@ vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
 
 // Capture the EventBus instance that launch() creates so we can emit events on it.
 // The Annotator receives the bus in its constructor — we intercept it.
-let capturedBus: { emit: (event: string, ...args: unknown[]) => void } | null = null;
+let capturedBus: {
+  emit: (event: string, ...args: unknown[]) => void;
+  on: (event: string, listener: (...args: unknown[]) => void) => () => void;
+} | null = null;
 
 vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
   Annotator: vi.fn().mockImplementation(
@@ -673,15 +676,18 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
 
-    it("emits feedback:error so the popup spinner unblocks when identity is cancelled", async () => {
-      // Without this emit, the popup's onSubmit callback (which waits for
-      // feedback:sent or feedback:error) would hang forever and the user
-      // would be stuck with a spinning Send button.
+    it("emits submission:cancelled (not feedback:error) when the identity prompt is cancelled", async () => {
+      // Cancelling the identity prompt is a benign user action — it must
+      // unblock the popup's pending submit handler via `submission:cancelled`
+      // WITHOUT firing `feedback:error` (so `config.onError` is not called).
       mockGetIdentity.mockReturnValue(null);
-      const instance = launch(defaultConfig());
+      const onError = vi.fn();
+      const instance = launch(defaultConfig({ onError }));
 
       const errorListener = vi.fn();
+      const cancelledListener = vi.fn();
       capturedBus!.on("feedback:error", errorListener);
+      capturedBus!.on("submission:cancelled", cancelledListener);
 
       capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
       const { cancelBtn } = await getIdentityModal();
@@ -689,13 +695,13 @@ describe("launcher — annotation:complete integration", () => {
 
       await vi.waitFor(
         () => {
-          expect(errorListener).toHaveBeenCalledOnce();
+          expect(cancelledListener).toHaveBeenCalledOnce();
         },
         { timeout: 1000 },
       );
-      const err = errorListener.mock.calls[0][0] as Error & { code?: string };
-      expect(err).toBeInstanceOf(Error);
-      expect(err.code).toBe("identity-cancelled");
+      // The benign cancellation must NOT surface as an error.
+      expect(errorListener).not.toHaveBeenCalled();
+      expect(onError).not.toHaveBeenCalled();
       expect(mockSendFeedback).not.toHaveBeenCalled();
 
       instance.destroy();
@@ -950,6 +956,41 @@ describe("launcher — annotation:complete integration", () => {
 
       await vi.waitFor(() => {
         // Guard released — but second was already dropped
+        expect(mockSendFeedback).toHaveBeenCalledTimes(1);
+      });
+
+      instance.destroy();
+    });
+
+    it("a dropped concurrent annotation:complete emits submission:cancelled (does not silently hang a waiter)", async () => {
+      // The guard must not *silently* drop the second event: a dropped event
+      // would leave a waiting `runSubmission` listener hung forever. It emits
+      // `submission:cancelled` instead so the waiter unblocks as a benign abort.
+      let resolveFirst!: (value: FeedbackResponse) => void;
+      mockSendFeedback.mockReturnValueOnce(
+        new Promise<FeedbackResponse>((resolve) => {
+          resolveFirst = resolve;
+        }),
+      );
+
+      const instance = launch(defaultConfig());
+      expect(capturedBus).not.toBeNull();
+
+      const cancelledListener = vi.fn();
+      const errorListener = vi.fn();
+      capturedBus!.on("submission:cancelled", cancelledListener);
+      capturedBus!.on("feedback:error", errorListener);
+
+      const data = makeAnnotationCompleteData();
+      capturedBus!.emit("annotation:complete", data);
+      capturedBus!.emit("annotation:complete", { ...data, message: "Second submission" });
+
+      // The dropped second event surfaces as a benign cancellation, not an error.
+      expect(cancelledListener).toHaveBeenCalledOnce();
+      expect(errorListener).not.toHaveBeenCalled();
+
+      resolveFirst(makeFeedbackResponse());
+      await vi.waitFor(() => {
         expect(mockSendFeedback).toHaveBeenCalledTimes(1);
       });
 
