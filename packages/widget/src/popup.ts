@@ -45,6 +45,8 @@ export class Popup {
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
   private onSubmit: PopupSubmitHandler | null = null;
   private submittingState = false;
+  /** WAAPI handle for the running spinner — cancelled when submitting ends. */
+  private spinnerAnimation: Animation | null = null;
 
   constructor(
     private readonly colors: ThemeColors,
@@ -446,7 +448,11 @@ export class Popup {
   private exitSubmittingState(): void {
     this.submittingState = false;
 
-    // Submit
+    // Submit — tear down the spinner: cancel the WAAPI animation explicitly
+    // (it has `iterations: Infinity`, so it never ends on its own) before
+    // removing the element it drives.
+    this.spinnerAnimation?.cancel();
+    this.spinnerAnimation = null;
     const spinner = this.submitBtn.querySelector<HTMLDivElement>('[data-role="sp-popup-spinner"]');
     spinner?.remove();
     this.submitLabel.style.display = "";
@@ -477,7 +483,8 @@ export class Popup {
    * Build a spinner element styled inline. Web Animations API drives the
    * rotation so we don't have to inject `@keyframes` into the host document.
    * Respects `prefers-reduced-motion`: omits the animation and falls back to
-   * a static dotted state.
+   * a static ring. The returned `Animation` handle is stored on the instance
+   * so `exitSubmittingState()` can explicitly cancel it.
    */
   private buildSpinner(): HTMLDivElement {
     const spinner = document.createElement("div");
@@ -496,7 +503,7 @@ export class Popup {
     // Web Animations API is available in every browser we target; the guard
     // is defensive for jsdom in tests, where `animate` may be undefined.
     if (!reduceMotion && typeof spinner.animate === "function") {
-      spinner.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }], {
+      this.spinnerAnimation = spinner.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }], {
         duration: 600,
         iterations: Infinity,
         easing: "linear",
@@ -525,6 +532,18 @@ export class Popup {
   }
 
   destroy(): void {
+    // Settle a pending `show()` promise so it cannot outlive teardown — a
+    // `destroy()` mid-submit would otherwise leak the awaiting closure (and
+    // whatever it retains: the annotation, the base64 screenshot). Resolving
+    // with `null` reads as "cancelled", matching `cancel()`.
+    if (this.submittingState) this.exitSubmittingState();
+    this.resolve?.(null);
+    this.resolve = null;
+    this.onSubmit = null;
+    if (this.onKeydownTrap) {
+      this.root.removeEventListener("keydown", this.onKeydownTrap);
+      this.onKeydownTrap = null;
+    }
     this.root.remove();
   }
 }

@@ -40,6 +40,14 @@ export class Annotator {
   private preActiveFocusElement: Element | null = null;
   private rafId: number | null = null;
   private pendingMoveEvent: MouseEvent | Touch | null = null;
+  /**
+   * Reject handle for the in-flight `runSubmission` promise, or null when no
+   * submission is pending. Serves two purposes: a non-null value means a
+   * submission is in flight (so pointer-driven drawing is suppressed — the
+   * popup is open), and `destroy()` calls it to settle the promise rather
+   * than leaving the awaiting closure hung past teardown.
+   */
+  private rejectPendingSubmission: ((reason: Error) => void) | null = null;
 
   constructor(
     private readonly colors: ThemeColors,
@@ -50,6 +58,16 @@ export class Annotator {
     this.popup = new Popup(colors, t);
 
     this.bus.on("annotation:start", () => this.activate());
+  }
+
+  /**
+   * True while a submission is in flight (popup open, `runSubmission`
+   * pending). Drawing a second rectangle in this window would orphan the
+   * first `popup.show()` promise and start a second, concurrent
+   * `runSubmission` — so all drawing entry points are no-ops while it holds.
+   */
+  private get submissionInFlight(): boolean {
+    return this.rejectPendingSubmission !== null;
   }
 
   /**
@@ -209,6 +227,9 @@ export class Annotator {
   private onOverlayKeyDown = async (e: KeyboardEvent): Promise<void> => {
     if (e.key !== "Enter") return;
     e.preventDefault();
+    // A submission is already running with the popup open — ignore so we
+    // can't orphan the first `popup.show()` / `runSubmission` pair.
+    if (this.submissionInFlight) return;
 
     const target = this.preActiveFocusElement;
     if (!target || !(target instanceof HTMLElement)) return;
@@ -250,6 +271,13 @@ export class Annotator {
   };
 
   private startDrawing(clientX: number, clientY: number): void {
+    // Suppress pointer-driven drawing while a submission is in flight: the
+    // popup is open over the page, and starting a second rectangle would
+    // orphan the first `popup.show()` promise (and its `runSubmission`).
+    // This also closes a latent bug where drawing during the open popup
+    // already overwrote `Popup.resolve`.
+    if (this.submissionInFlight) return;
+
     this.isDrawing = true;
     this.startX = clientX;
     this.startY = clientY;
@@ -348,8 +376,17 @@ export class Annotator {
   /**
    * Submit handler passed into `popup.show()`. Captures the screenshot once
    * (cached across retries) and emits `annotation:complete` on the bus, then
-   * waits for either `feedback:sent` (resolve) or `feedback:error` (reject —
-   * popup restores so the user can retry without re-entering the form).
+   * waits for one of three terminal signals:
+   *
+   * - `feedback:sent` — resolve (popup closes).
+   * - `feedback:error` — reject with the genuine error (popup restores for
+   *   retry; the launcher surfaces the error to the host).
+   * - `submission:cancelled` — reject as a silent abort (popup restores; no
+   *   error is surfaced — e.g. the user cancelled the identity prompt).
+   *
+   * Submissions are serialized by the drawing guards (`submissionInFlight`),
+   * so exactly one `runSubmission` is ever live — the global outcome events
+   * cannot cross-wire between submissions and need no correlation id.
    */
   private async runSubmission(
     annotation: AnnotationPayload,
@@ -369,6 +406,8 @@ export class Annotator {
       const cleanup = () => {
         unsubSent();
         unsubError();
+        unsubCancelled();
+        this.rejectPendingSubmission = null;
       };
       const unsubSent = this.bus.on("feedback:sent", () => {
         cleanup();
@@ -378,6 +417,18 @@ export class Annotator {
         cleanup();
         reject(err);
       });
+      const unsubCancelled = this.bus.on("submission:cancelled", () => {
+        cleanup();
+        // Silent abort — the popup restores but no error is surfaced.
+        reject(new Error("Feedback submission cancelled"));
+      });
+
+      // Expose the reject handle so `destroy()` mid-submit can settle this
+      // promise instead of leaving the awaiting closure hung past teardown.
+      this.rejectPendingSubmission = (reason) => {
+        cleanup();
+        reject(reason);
+      };
 
       this.bus.emit("annotation:complete", {
         annotation,
@@ -414,6 +465,12 @@ export class Annotator {
   }
   destroy(): void {
     this.deactivate();
+    // Settle an in-flight submission BEFORE tearing down the popup, so the
+    // `runSubmission` promise cannot outlive teardown. The launcher's
+    // `destroy()` also calls `bus.removeAll()`, which would otherwise strip
+    // the terminal-event listeners and leave the promise — and the base64
+    // screenshot it retains — hung forever.
+    this.rejectPendingSubmission?.(new Error("Annotator destroyed during submission"));
     this.popup.destroy();
   }
 }
