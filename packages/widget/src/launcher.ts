@@ -343,11 +343,20 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   const annotator = new Annotator(colors, bus, t, config.enableScreenshot ?? false);
 
-  // Handle annotation completion via event bus (not DOM events)
-  // Concurrency guard: prevent duplicate submissions if user draws two annotations quickly
+  // Handle annotation completion via event bus (not DOM events).
+  // Concurrency guard: a second `annotation:complete` while one is still in
+  // flight must not start a duplicate submission. The Annotator already
+  // serializes its own submissions (no second annotation can be drawn while
+  // the popup is open), so this is defence-in-depth — but it must not *silently*
+  // drop the event: a dropped event would leave any waiting `runSubmission`
+  // listener hung forever. We emit `submission:cancelled` so the waiter
+  // unblocks as a benign abort (the popup restores, `onError` is not called).
   let submitting = false;
   const unsubAnnotation = bus.on("annotation:complete", async (data) => {
-    if (submitting) return;
+    if (submitting) {
+      bus.emit("submission:cancelled");
+      return;
+    }
     submitting = true;
     try {
       const { annotation, type, message, screenshotDataUrl } = data;
@@ -358,7 +367,14 @@ export function launch(config: SitepingConfig): SitepingInstance {
       let identity = config.identity ?? getIdentity();
       if (!identity) {
         identity = await promptIdentity(shadow, t);
-        if (!identity) return; // User cancelled
+        if (!identity) {
+          // User cancelled the identity prompt. Emit `submission:cancelled`
+          // (not `feedback:error`) so the popup's pending submit handler
+          // unblocks and restores the form — cancelling a prompt is a benign
+          // user action, so `config.onError` must not fire for it.
+          bus.emit("submission:cancelled");
+          return;
+        }
         saveIdentity(identity);
       }
 
