@@ -48,9 +48,9 @@ export const ru: Translations = {
 
   // FAB menu
   "fab.aria": "Siteping — Меню обратной связи",
-  "fab.messages": "Сообщения",
-  "fab.annotate": "Аннотация",
-  "fab.annotations": "Аннотации",
+  "fab.messages": "Показать панель",
+  "fab.annotate": "Создать аннотацию",
+  "fab.annotations": "Показать или скрыть метки",
 
   // Annotator
   "annotator.instruction": "Выделите область для комментария",

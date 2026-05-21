@@ -49,9 +49,9 @@ export const es: Translations = {
 
   // FAB menu
   "fab.aria": "Siteping — Menú de comentarios",
-  "fab.messages": "Mensajes",
-  "fab.annotate": "Anotar",
-  "fab.annotations": "Anotaciones",
+  "fab.messages": "Mostrar barra lateral",
+  "fab.annotate": "Crear nueva anotación",
+  "fab.annotations": "Mostrar u ocultar marcadores",
 
   // Annotator
   "annotator.instruction": "Dibuja un rectángulo sobre el área que quieres comentar",

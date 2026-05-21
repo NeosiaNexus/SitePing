@@ -49,9 +49,9 @@ export const de: Translations = {
 
   // FAB menu
   "fab.aria": "Siteping — Feedback-Menü",
-  "fab.messages": "Nachrichten",
-  "fab.annotate": "Kommentieren",
-  "fab.annotations": "Anmerkungen",
+  "fab.messages": "Seitenleiste anzeigen",
+  "fab.annotate": "Neue Anmerkung erstellen",
+  "fab.annotations": "Markierungen ein- oder ausblenden",
 
   // Annotator
   "annotator.instruction": "Zeichne ein Rechteck um den Bereich, den du kommentieren möchtest",
