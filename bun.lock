@@ -39,21 +39,21 @@
     },
     "packages/adapter-localstorage": {
       "name": "@siteping/adapter-localstorage",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
     },
     "packages/adapter-memory": {
       "name": "@siteping/adapter-memory",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
     },
     "packages/adapter-prisma": {
       "name": "@siteping/adapter-prisma",
-      "version": "0.4.6",
+      "version": "0.4.8",
       "dependencies": {
         "zod": "^3.24.0",
       },
@@ -66,7 +66,7 @@
     },
     "packages/cli": {
       "name": "@siteping/cli",
-      "version": "0.4.4",
+      "version": "0.4.6",
       "bin": {
         "siteping": "./dist/index.js",
       },
@@ -83,9 +83,9 @@
     },
     "packages/widget": {
       "name": "@siteping/widget",
-      "version": "0.9.7",
+      "version": "0.9.12",
       "dependencies": {
-        "@medv/finder": "^3.2.0",
+        "@medv/finder": "^4.0.2",
         "html2canvas": "^1.4.1",
       },
       "devDependencies": {
@@ -313,7 +313,7 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@medv/finder": ["@medv/finder@3.2.0", "", {}, "sha512-JmU7JIBwyL8RAzefvzALT4sP2M0biGk8i2invAgpQmma/QgfsaqoHIvJ7S0YC8n9hUVG8X3Leul2nGa06PvhbQ=="],
+    "@medv/finder": ["@medv/finder@4.0.2", "", {}, "sha512-RraNY9SCcx4KZV0Dh6BEW6XEW2swkqYca74pkFFRw6hHItSHiy+O/xMnpbofjYbzXj0tSpBGthUF1hHTsr3vIQ=="],
 
     "@microsoft/api-extractor": ["@microsoft/api-extractor@7.58.1", "", { "dependencies": { "@microsoft/api-extractor-model": "7.33.5", "@microsoft/tsdoc": "~0.16.0", "@microsoft/tsdoc-config": "~0.18.1", "@rushstack/node-core-library": "5.21.0", "@rushstack/rig-package": "0.7.2", "@rushstack/terminal": "0.22.4", "@rushstack/ts-command-line": "5.3.4", "diff": "~8.0.2", "lodash": "~4.18.1", "minimatch": "10.2.3", "resolve": "~1.22.1", "semver": "~7.5.4", "source-map": "~0.6.1", "typescript": "5.9.3" }, "bin": { "api-extractor": "bin/api-extractor" } }, "sha512-kF3GFME4lN22O5zbnXk2RP4y/4PDQdps0xKiYTipMYprkwCmmpsWLZt/N2Fkbil540cSLfJX0BW7LkHzgMVUYg=="],
 
