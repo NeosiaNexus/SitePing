@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "@siteping/core": "workspace:*",
-    "commander": "^13.0.0",
+    "commander": "^14.0.3",
     "@clack/prompts": "^1.4.0",
     "@mrleebo/prisma-ast": "^0.16.0"
   }
