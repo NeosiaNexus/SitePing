@@ -100,7 +100,13 @@ export class Annotator {
     this.savedOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Overlay — subtle blue tint for depth
+    // Overlay — subtle blue tint for depth.
+    //
+    // Overlay, toolbar and the drawn rectangle live on document.body, outside
+    // the siteping-widget shadow host. Without the `data-siteping-ignore`
+    // marker the screenshot predicate in screenshot.ts cannot reach them —
+    // and the accent-colored selection border plus the page tint end up
+    // baked into the captured JPEG. See issue #124.
     this.overlay = el("div", {
       style: `
         position:fixed;inset:0;
@@ -110,6 +116,7 @@ export class Annotator {
       `,
     });
     this.overlay.setAttribute("aria-hidden", "true");
+    this.overlay.setAttribute("data-siteping-ignore", "true");
 
     // Toolbar — glassmorphism bar
     this.toolbar = el("div", {
@@ -128,6 +135,7 @@ export class Annotator {
         -webkit-font-smoothing:antialiased;
       `,
     });
+    this.toolbar.setAttribute("data-siteping-ignore", "true");
 
     const dot = el("span", {
       style: `
@@ -303,6 +311,8 @@ export class Annotator {
         transition:box-shadow 0.15s ease;
       `,
     });
+    // Excluded from screenshot capture (see overlay creation in activate()).
+    this.drawingRect.setAttribute("data-siteping-ignore", "true");
     this.overlay?.appendChild(this.drawingRect);
   }
 
