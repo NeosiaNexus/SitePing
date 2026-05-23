@@ -21,8 +21,8 @@ jobs:
       - name: Greet first-time contributors
         uses: actions/first-interaction@v3
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          issue-message: |
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          issue_message: |
             👋 Welcome to **SitePing**, and thanks for opening your first issue!
 
             A few quick things that help us help you faster:
@@ -32,7 +32,7 @@ jobs:
             - If it's a feature, describe the **use case** before the implementation — it helps us pick the right shape for the API.
 
             We try to triage within a few days. In the meantime, browse [`good first issue`](https://github.com/NeosiaNexus/SitePing/labels/good%20first%20issue) if you'd like to ship a fix yourself. 🚀
-          pr-message: |
+          pr_message: |
             🎉 **Welcome, new contributor!** Thanks for your first pull request to SitePing — this is genuinely exciting.
 
             A few things to know:
