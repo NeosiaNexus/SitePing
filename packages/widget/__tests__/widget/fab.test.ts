@@ -104,6 +104,82 @@ describe("Fab", () => {
   });
 
   // -------------------------------------------------------------------------
+  // showAnnotationsToggle — opt-out for the marker-visibility radial item
+  // -------------------------------------------------------------------------
+
+  describe("config.showAnnotationsToggle", () => {
+    it("defaults to true — toggle-annotations item is present when the option is omitted", () => {
+      // The shared `beforeEach` builds the FAB with defaultConfig() (no
+      // showAnnotationsToggle key) — so this asserts the default branch.
+      const items = getRadialItems(shadow);
+      const ids = items.map((btn) => btn.dataset.itemId);
+      expect(ids).toContain("toggle-annotations");
+      expect(items.length).toBe(3);
+    });
+
+    it("`true` (explicit) keeps the toggle-annotations item", () => {
+      fab.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      fab = new Fab(shadow, { ...defaultConfig(), showAnnotationsToggle: true }, bus, createT("fr"));
+
+      const ids = getRadialItems(shadow).map((btn) => btn.dataset.itemId);
+      expect(ids).toEqual(["chat", "annotate", "toggle-annotations"]);
+    });
+
+    it("`false` hides the toggle-annotations item entirely — no DOM, no click handler", () => {
+      fab.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      fab = new Fab(shadow, { ...defaultConfig(), showAnnotationsToggle: false }, bus, createT("fr"));
+
+      const ids = getRadialItems(shadow).map((btn) => btn.dataset.itemId);
+      expect(ids).toEqual(["chat", "annotate"]);
+      expect(shadow.querySelector('[data-item-id="toggle-annotations"]')).toBeNull();
+    });
+
+    it("`false` — `annotations:toggle` is never emitted from the FAB even when the menu is opened and the bottom items are clicked", () => {
+      fab.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      fab = new Fab(shadow, { ...defaultConfig(), showAnnotationsToggle: false }, bus, createT("fr"));
+
+      const listener = vi.fn();
+      bus.on("annotations:toggle", listener);
+
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      fabBtn.click(); // open
+      shadow.querySelector<HTMLButtonElement>('[data-item-id="chat"]')!.click();
+      fabBtn.click(); // reopen
+      shadow.querySelector<HTMLButtonElement>('[data-item-id="annotate"]')!.click();
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("`false` — keyboard navigation still cycles through the remaining two items", () => {
+      fab.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      fab = new Fab(shadow, { ...defaultConfig(), showAnnotationsToggle: false }, bus, createT("fr"));
+
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      fabBtn.click(); // open
+
+      const items = getRadialItems(shadow);
+      const radial = shadow.querySelector<HTMLElement>('[role="menu"]')!;
+      expect(items.length).toBe(2);
+
+      items[0]!.focus();
+      radial.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      expect(shadow.activeElement).toBe(items[1]);
+
+      // ArrowDown again wraps back to the first item (last → first)
+      radial.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      expect(shadow.activeElement).toBe(items[0]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Open / Close (radial menu toggle)
   // -------------------------------------------------------------------------
 

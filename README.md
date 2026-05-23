@@ -160,6 +160,10 @@ initSiteping({
   locale: 'en',                   // 'en' | 'fr' (default: 'en')
   forceShow: false,               // Show in production? Default: false
   debug: false,                   // Enable debug logging
+  showAnnotationsToggle: true,    // Show the "toggle markers visibility" item
+                                  // in the FAB radial menu. Default: true. Set
+                                  // to false for hosts that always want markers
+                                  // visible or find the eye icon redundant.
   enableScreenshot: false,        // Capture a JPEG of the annotated area on
                                   // submit. Off by default — see "Screenshot
                                   // capture" below for the masking story.

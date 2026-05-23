@@ -48,12 +48,17 @@ export class Fab {
     const position = config.position ?? "bottom-right";
     const isRight = position === "bottom-right";
 
-    // Vertical stack above the FAB
+    // Vertical stack above the FAB. The marker-visibility toggle is opt-out
+    // via `config.showAnnotationsToggle`: default `true` preserves historical
+    // behavior, `false` removes the item from the menu entirely (no DOM, no
+    // keyboard slot, no click handler).
     this.items = [
       { id: "chat", icon: ICON_CHAT },
       { id: "annotate", icon: ICON_ANNOTATE },
-      { id: "toggle-annotations", icon: ICON_EYE, iconAlt: ICON_EYE_OFF },
     ];
+    if (config.showAnnotationsToggle !== false) {
+      this.items.push({ id: "toggle-annotations", icon: ICON_EYE, iconAlt: ICON_EYE_OFF });
+    }
 
     // FAB button — needs position:relative for badge positioning
     this.fab = document.createElement("button");
