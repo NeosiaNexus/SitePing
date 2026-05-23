@@ -59,7 +59,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@medv/finder": "^3.2.0",
+    "@medv/finder": "^4.0.2",
     "html2canvas": "^1.4.1"
   },
   "devDependencies": {
