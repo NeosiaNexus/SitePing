@@ -39,21 +39,21 @@
     },
     "packages/adapter-localstorage": {
       "name": "@siteping/adapter-localstorage",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
     },
     "packages/adapter-memory": {
       "name": "@siteping/adapter-memory",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
     },
     "packages/adapter-prisma": {
       "name": "@siteping/adapter-prisma",
-      "version": "0.4.6",
+      "version": "0.4.8",
       "dependencies": {
         "zod": "^3.24.0",
       },
@@ -66,7 +66,7 @@
     },
     "packages/cli": {
       "name": "@siteping/cli",
-      "version": "0.4.4",
+      "version": "0.4.6",
       "bin": {
         "siteping": "./dist/index.js",
       },
@@ -74,7 +74,7 @@
         "@clack/prompts": "^0.9.0",
         "@mrleebo/prisma-ast": "^0.12.0",
         "@siteping/core": "workspace:*",
-        "commander": "^13.0.0",
+        "commander": "^14.0.3",
       },
     },
     "packages/core": {
@@ -83,7 +83,7 @@
     },
     "packages/widget": {
       "name": "@siteping/widget",
-      "version": "0.9.7",
+      "version": "0.9.12",
       "dependencies": {
         "@medv/finder": "^3.2.0",
         "html2canvas": "^1.4.1",
@@ -563,7 +563,7 @@
 
     "color-name": ["color-name@1.1.4", "", {}, "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="],
 
-    "commander": ["commander@13.1.0", "", {}, "sha512-/rFeCpNJQbhSZjGVwO9RFV3xPqbnERS8MmIQzCtD/zl6gpJuV/bMLuN92oG3F7d8oDEHHRrujSXNUr8fpjntKw=="],
+    "commander": ["commander@14.0.3", "", {}, "sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw=="],
 
     "confbox": ["confbox@0.1.8", "", {}, "sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w=="],
 
