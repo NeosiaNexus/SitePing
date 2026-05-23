@@ -86,6 +86,17 @@ export async function captureScreenshot(rect: DOMRect, options?: CaptureOptions)
       allowTaint: true,
       logging: false,
       ignoreElements: (element: Element) => {
+        // Matched elements (and their descendants) are removed from the
+        // render pass — the page underneath shows through. Two layers of
+        // exclusion:
+        //
+        // 1. The widget's own shadow host (`<siteping-widget>`).
+        // 2. Anything carrying `data-siteping-ignore="true"` — the
+        //    documented host-facing masking attribute AND how widget
+        //    chrome that lives OUTSIDE the shadow host (annotator overlay
+        //    + toolbar + drawing rect, popup) opts itself out of capture.
+        //    Without (2) the accent-colored selection border ends up
+        //    baked into the JPEG.
         return (
           element.tagName === "SITEPING-WIDGET" ||
           element.closest?.("siteping-widget") !== null ||

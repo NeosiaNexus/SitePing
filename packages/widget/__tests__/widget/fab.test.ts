@@ -665,5 +665,54 @@ describe("Fab", () => {
       // The bus should now emit annotations:toggle with true (back to visible)
       expect(listener).toHaveBeenCalledWith(true);
     });
+
+    // Regression: clicking the toggle used `replaceChildren(parseSvg(...))`,
+    // which dropped the `<span class="sp-radial-label">` alongside the old
+    // SVG — killing the hover label tooltip until a page reload. The fix
+    // swaps the SVG node in place and leaves the label span untouched.
+    it("preserves the hover label span across consecutive toggles", () => {
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      const toggleBtnSelector = '[data-item-id="toggle-annotations"]';
+      const t = createT("fr");
+      const expectedLabel = t("fab.annotations");
+
+      fabBtn.click();
+      const toggleBtn = shadow.querySelector<HTMLButtonElement>(toggleBtnSelector)!;
+
+      // Sanity: label span exists with the translated text before any click.
+      const labelBefore = toggleBtn.querySelector<HTMLSpanElement>(".sp-radial-label");
+      expect(labelBefore).not.toBeNull();
+      expect(labelBefore!.textContent).toBe(expectedLabel);
+
+      // First click — was the regression trigger.
+      toggleBtn.click();
+
+      const labelAfterFirst = toggleBtn.querySelector<HTMLSpanElement>(".sp-radial-label");
+      expect(labelAfterFirst).not.toBeNull();
+      expect(labelAfterFirst!.textContent).toBe(expectedLabel);
+
+      // Re-open and toggle again — span must still survive the second swap.
+      fabBtn.click();
+      const toggleAgain = shadow.querySelector<HTMLButtonElement>(toggleBtnSelector)!;
+      toggleAgain.click();
+
+      const labelAfterSecond = toggleAgain.querySelector<HTMLSpanElement>(".sp-radial-label");
+      expect(labelAfterSecond).not.toBeNull();
+      expect(labelAfterSecond!.textContent).toBe(expectedLabel);
+    });
+
+    it("replaces only the SVG icon — button has exactly one <svg> and one .sp-radial-label after each toggle", () => {
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      const toggleBtnSelector = '[data-item-id="toggle-annotations"]';
+
+      fabBtn.click();
+      const toggleBtn = shadow.querySelector<HTMLButtonElement>(toggleBtnSelector)!;
+
+      for (let i = 0; i < 3; i++) {
+        toggleBtn.click();
+        expect(toggleBtn.querySelectorAll("svg").length).toBe(1);
+        expect(toggleBtn.querySelectorAll(".sp-radial-label").length).toBe(1);
+      }
+    });
   });
 });
