@@ -188,6 +188,41 @@ describe("Annotator", () => {
 
       expect(countOverlays()).toBe(1);
     });
+
+    // Regression: issue #124 — the annotator's chrome lives on document.body
+    // (outside the siteping-widget shadow host), so the screenshot predicate
+    // can't reach it via the shadow-host check. Each piece must carry
+    // `data-siteping-ignore="true"` or it gets baked into the JPEG.
+    it("overlay carries data-siteping-ignore so it is excluded from screenshots", () => {
+      bus.emit("annotation:start");
+
+      const overlay = findOverlay()!;
+      expect(overlay.getAttribute("data-siteping-ignore")).toBe("true");
+    });
+
+    it("toolbar carries data-siteping-ignore so it is excluded from screenshots", () => {
+      bus.emit("annotation:start");
+
+      // The toolbar is the sibling of the overlay — pick the one that hosts
+      // the cancel button (the toolbar) rather than the overlay itself.
+      const cancelBtn = Array.from(document.body.querySelectorAll("button")).find(
+        (btn) => btn.textContent === t("annotator.cancel"),
+      )!;
+      const toolbar = cancelBtn.closest("div[data-siteping-ignore]");
+      expect(toolbar).not.toBeNull();
+      expect(toolbar!.getAttribute("data-siteping-ignore")).toBe("true");
+    });
+
+    it("drawing rect carries data-siteping-ignore so the selection border is excluded from screenshots", () => {
+      bus.emit("annotation:start");
+
+      const overlay = findOverlay()!;
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+
+      const drawingRect = overlay.querySelector<HTMLElement>("div")!;
+      expect(drawingRect).not.toBeNull();
+      expect(drawingRect.getAttribute("data-siteping-ignore")).toBe("true");
+    });
   });
 
   describe("deactivate", () => {
