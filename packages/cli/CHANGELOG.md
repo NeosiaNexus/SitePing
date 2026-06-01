@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.7](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.4.6...cli-v0.4.7) (2026-06-01)
+
+
+### Miscellaneous
+
+* **deps-dev:** bump @clack/prompts from 0.9.1 to 1.4.0 ([#147](https://github.com/NeosiaNexus/SitePing/issues/147)) ([1d86fd2](https://github.com/NeosiaNexus/SitePing/commit/1d86fd2a323d14619c86def19acd1bbf0cf36d2b))
+* **deps-dev:** bump commander from 13.1.0 to 14.0.3 ([#148](https://github.com/NeosiaNexus/SitePing/issues/148)) ([560c4f3](https://github.com/NeosiaNexus/SitePing/commit/560c4f3a1ca31d687f0243f98129e444b1de07d3))
+* **deps-dev:** bump the dev-dependencies group with 2 updates ([#133](https://github.com/NeosiaNexus/SitePing/issues/133)) ([5a95afa](https://github.com/NeosiaNexus/SitePing/commit/5a95afa762350e3abd6cd9654fc9457427792ab4))
+
 ## [0.4.6](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.4.5...cli-v0.4.6) (2026-05-19)
 
 
