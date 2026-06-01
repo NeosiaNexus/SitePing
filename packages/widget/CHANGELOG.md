@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.9.13](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.12...widget-v0.9.13) (2026-06-01)
+
+
+### Features
+
+* **widget:** add showAnnotationsToggle config to hide the FAB marker-visibility item ([#130](https://github.com/NeosiaNexus/SitePing/issues/130)) ([6ecdf86](https://github.com/NeosiaNexus/SitePing/commit/6ecdf867c8ce360cdb4fc004c6f48a0e98542b62))
+* **widget:** clarify FAB radial-item labels and icons ([#128](https://github.com/NeosiaNexus/SitePing/issues/128)) ([9168e98](https://github.com/NeosiaNexus/SitePing/commit/9168e98a538db072d3212ae92c723ee5a4616ba0))
+
+
+### Bug Fixes
+
+* **widget:** exclude annotator overlay from captured screenshots ([#125](https://github.com/NeosiaNexus/SitePing/issues/125)) ([af04013](https://github.com/NeosiaNexus/SitePing/commit/af040131606eb67c2ec2160e75a5fe033879ed18))
+* **widget:** preserve FAB toggle hover label across icon swaps ([#129](https://github.com/NeosiaNexus/SitePing/issues/129)) ([4e25241](https://github.com/NeosiaNexus/SitePing/commit/4e252411c0606bdc0cdc4d8f44d6c89c2c5e788c))
+* **widget:** raise identity prompt above the in-flight feedback popup ([#127](https://github.com/NeosiaNexus/SitePing/issues/127)) ([f19e36c](https://github.com/NeosiaNexus/SitePing/commit/f19e36cea470a1423595874e8858f51e122ab3ff))
+* **widget:** theme-aware focus & hover backgrounds in dark mode ([#158](https://github.com/NeosiaNexus/SitePing/issues/158)) ([106b557](https://github.com/NeosiaNexus/SitePing/commit/106b557cd8133fb8428485cec5be50fc4f7d65b6)), closes [#157](https://github.com/NeosiaNexus/SitePing/issues/157)
+
+
+### Miscellaneous
+
+* **deps:** bump @medv/finder from 3.2.0 to 4.0.2 ([#152](https://github.com/NeosiaNexus/SitePing/issues/152)) ([84e72ab](https://github.com/NeosiaNexus/SitePing/commit/84e72ab90f5270846aa940a6c03cfe46fdec160d))
+* **deps:** bump the production-dependencies group across 1 directory with 3 updates ([#145](https://github.com/NeosiaNexus/SitePing/issues/145)) ([b529a27](https://github.com/NeosiaNexus/SitePing/commit/b529a276c98ca929376d3e00b82abcf495f16905))
+
 ## [0.9.12](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.11...widget-v0.9.12) (2026-05-20)
 
 
