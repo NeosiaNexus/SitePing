@@ -83,6 +83,16 @@
         "test",
         "bug"
       ]
+    },
+    {
+      "login": "marians",
+      "name": "Marian Steinbach",
+      "avatar_url": "https://avatars.githubusercontent.com/u/273727?v=4",
+      "profile": "https://www.sendung.de/",
+      "contributions": [
+        "bug",
+        "ideas"
+      ]
     }
   ],
   "commitType": "docs"
