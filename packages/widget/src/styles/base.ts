@@ -32,6 +32,8 @@ export function buildStyles(colors: ThemeColors): string {
       font-size: 14px;
       line-height: 1.5;
       color: var(--sp-text);
+      /* Match native sub-controls (autofill, scrollbars, etc.) to the resolved theme */
+      color-scheme: ${colors.bg === "#ffffff" ? "light" : "dark"};
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       ${cssVariables(colors)}
@@ -340,7 +342,7 @@ export function buildStyles(colors: ThemeColors): string {
     .sp-search:focus {
       border-color: var(--sp-accent);
       box-shadow: 0 0 0 3px var(--sp-accent-light);
-      background: #fff;
+      background: var(--sp-bg);
     }
 
     .sp-search-icon {
@@ -709,7 +711,7 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-card:hover {
-      background: #fff;
+      background: var(--sp-bg);
       border-color: var(--sp-border);
       box-shadow: var(--sp-shadow-md);
       transform: translateY(-2px);
@@ -1015,7 +1017,7 @@ export function buildStyles(colors: ThemeColors): string {
     .sp-input:focus {
       border-color: var(--sp-accent);
       box-shadow: 0 0 0 3px var(--sp-accent-light);
-      background: #fff;
+      background: var(--sp-bg);
     }
 
     .sp-input-label {
