@@ -1478,9 +1478,7 @@ describe("launcher — annotation:complete integration", () => {
       // Radial item labels are German too
       const chatItem = shadow.querySelector<HTMLButtonElement>('[data-item-id="chat"]')!;
       expect(chatItem.getAttribute("aria-label")).toBe("Seitenleiste anzeigen");
-      expect(chatItem.querySelector(".sp-radial-label")?.textContent).toBe(
-        "Seitenleiste anzeigen",
-      );
+      expect(chatItem.querySelector(".sp-radial-label")?.textContent).toBe("Seitenleiste anzeigen");
 
       instance.destroy();
     });
