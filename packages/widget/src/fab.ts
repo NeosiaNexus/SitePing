@@ -52,11 +52,16 @@ export class Fab {
     // - list  → opens the feedback sidebar (panel of feedbacks).
     // - edit  → creates a new annotation (the action).
     // - eye   → toggles marker visibility on the page (state).
+    // The marker-visibility toggle is opt-out via `config.showAnnotationsToggle`:
+    // default `true` preserves historical behavior, `false` removes the item from
+    // the menu entirely (no DOM, no keyboard slot, no click handler).
     this.items = [
       { id: "chat", icon: ICON_LIST },
       { id: "annotate", icon: ICON_EDIT },
-      { id: "toggle-annotations", icon: ICON_EYE, iconAlt: ICON_EYE_OFF },
     ];
+    if (config.showAnnotationsToggle !== false) {
+      this.items.push({ id: "toggle-annotations", icon: ICON_EYE, iconAlt: ICON_EYE_OFF });
+    }
 
     // FAB button — needs position:relative for badge positioning
     this.fab = document.createElement("button");
@@ -273,9 +278,14 @@ export class Fab {
       case "toggle-annotations": {
         this.annotationsVisible = !this.annotationsVisible;
         this.bus.emit("annotations:toggle", this.annotationsVisible);
+        // Replace ONLY the icon SVG, not every child. The button also carries
+        // the `<span class="sp-radial-label">` hover label — `replaceChildren`
+        // wiped it on the first click, killing the tooltip until reload.
         const btn = this.radialContainer.querySelector('[data-item-id="toggle-annotations"]');
-        if (btn) {
-          btn.replaceChildren(parseSvg(this.annotationsVisible ? ICON_EYE : ICON_EYE_OFF));
+        const oldSvg = btn?.querySelector("svg");
+        if (oldSvg) {
+          const newSvg = parseSvg(this.annotationsVisible ? ICON_EYE : ICON_EYE_OFF);
+          oldSvg.replaceWith(newSvg);
         }
         break;
       }

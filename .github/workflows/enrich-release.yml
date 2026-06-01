@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Append contributors section to release notes
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
           INPUT_FORCE: ${{ inputs.force }}

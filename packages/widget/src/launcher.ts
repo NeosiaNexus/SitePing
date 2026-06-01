@@ -594,6 +594,17 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
     // Save the currently focused element to restore on close
     const previouslyFocused = (shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null;
 
+    // Move the shadow host to the end of <body> so the identity prompt wins
+    // the source-order tiebreak against the feedback popup. Both elements
+    // already sit at `Z_INDEX_MAX` (max int32 — no \"higher\"), and since #114
+    // the popup stays visible during submission, so it can be on screen at
+    // the moment `promptIdentity` runs. The popup is appended to `document.body`
+    // later than the host during init, which made it win when z-indices tied.
+    // Re-appending an existing node just moves it; no remount, no listener
+    // loss, no visual jitter when the popup isn't open. See issue #126.
+    const host = shadowRoot.host;
+    if (host.parentNode) host.parentNode.appendChild(host);
+
     const backdrop = document.createElement("div");
     backdrop.style.cssText = `
       position:fixed;inset:0;

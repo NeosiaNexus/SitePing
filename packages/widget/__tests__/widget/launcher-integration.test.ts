@@ -313,6 +313,49 @@ describe("launcher — annotation:complete integration", () => {
 
       instance.destroy();
     });
+
+    // Regression: issue #126. The popup stays visible during submission since
+    // #114, and both the popup and the shadow host sit at Z_INDEX_MAX on
+    // document.body. Equal z-index resolves by source order, so without the
+    // re-append the popup (mounted after the host during init) would render
+    // above the identity prompt that lives inside the shadow root.
+    it("moves the shadow host to the end of <body> so identity prompt wins z-index over the popup", async () => {
+      mockGetIdentity.mockReturnValue(null);
+
+      const instance = launch(defaultConfig());
+      expect(capturedBus).not.toBeNull();
+
+      // Simulate a popup-like sibling already on document.body, mounted after
+      // the host (this is exactly the layout the real Popup creates — see
+      // popup.ts:258). Z_INDEX_MAX matches the host's z-index.
+      const fakePopup = document.createElement("div");
+      fakePopup.setAttribute("data-test-id", "fake-popup");
+      fakePopup.style.cssText = "position:fixed;z-index:2147483647;";
+      document.body.appendChild(fakePopup);
+
+      const hostBefore = document.querySelector("siteping-widget")!;
+      const hostIndexBefore = Array.from(document.body.children).indexOf(hostBefore);
+      const popupIndexBefore = Array.from(document.body.children).indexOf(fakePopup);
+      expect(popupIndexBefore).toBeGreaterThan(hostIndexBefore);
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        const widget = document.querySelector("siteping-widget")!;
+        const shadow = widget.shadowRoot;
+        expect(shadow?.querySelector('[role="dialog"]')).not.toBeNull();
+      });
+
+      // After promptIdentity runs, the host must be the LAST sibling so the
+      // identity prompt inside its stacking context renders above the popup.
+      const hostAfter = document.querySelector("siteping-widget")!;
+      const hostIndexAfter = Array.from(document.body.children).indexOf(hostAfter);
+      const popupIndexAfter = Array.from(document.body.children).indexOf(fakePopup);
+      expect(hostIndexAfter).toBeGreaterThan(popupIndexAfter);
+
+      fakePopup.remove();
+      instance.destroy();
+    });
   });
 
   // -------------------------------------------------------------------------
