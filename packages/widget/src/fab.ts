@@ -2,7 +2,7 @@ import type { SitepingConfig } from "@siteping/core";
 import { parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import type { TFunction, Translations } from "./i18n/index.js";
-import { ICON_ANNOTATE, ICON_CHAT, ICON_CLOSE, ICON_EYE, ICON_EYE_OFF, ICON_SITEPING } from "./icons.js";
+import { ICON_CLOSE, ICON_EDIT, ICON_EYE, ICON_EYE_OFF, ICON_LIST, ICON_SITEPING } from "./icons.js";
 
 /** Closed set of radial menu item ids — keeps the label lookup exhaustive. */
 type RadialItemId = "chat" | "annotate" | "toggle-annotations";
@@ -48,13 +48,16 @@ export class Fab {
     const position = config.position ?? "bottom-right";
     const isRight = position === "bottom-right";
 
-    // Vertical stack above the FAB. The marker-visibility toggle is opt-out
-    // via `config.showAnnotationsToggle`: default `true` preserves historical
-    // behavior, `false` removes the item from the menu entirely (no DOM, no
-    // keyboard slot, no click handler).
+    // Vertical stack above the FAB. Icons:
+    // - list  → opens the feedback sidebar (panel of feedbacks).
+    // - edit  → creates a new annotation (the action).
+    // - eye   → toggles marker visibility on the page (state).
+    // The marker-visibility toggle is opt-out via `config.showAnnotationsToggle`:
+    // default `true` preserves historical behavior, `false` removes the item from
+    // the menu entirely (no DOM, no keyboard slot, no click handler).
     this.items = [
-      { id: "chat", icon: ICON_CHAT },
-      { id: "annotate", icon: ICON_ANNOTATE },
+      { id: "chat", icon: ICON_LIST },
+      { id: "annotate", icon: ICON_EDIT },
     ];
     if (config.showAnnotationsToggle !== false) {
       this.items.push({ id: "toggle-annotations", icon: ICON_EYE, iconAlt: ICON_EYE_OFF });

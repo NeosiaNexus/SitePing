@@ -85,6 +85,24 @@ describe("Fab", () => {
       expect(ids).toEqual(["chat", "annotate", "toggle-annotations"]);
     });
 
+    it("renders the documented icon family — list for chat, pencil for annotate, eye for toggle", () => {
+      // Locks the icon swap in #128: list-icon for the sidebar action, pencil
+      // for the create-annotation action, eye for the visibility toggle. Tied
+      // to the visible labels, so any future relabel that drops these icons
+      // forces a test update.
+      const items = getRadialItems(shadow);
+      const chatSvg = items.find((b) => b.dataset.itemId === "chat")?.querySelector("svg");
+      const annotateSvg = items.find((b) => b.dataset.itemId === "annotate")?.querySelector("svg");
+      const toggleSvg = items.find((b) => b.dataset.itemId === "toggle-annotations")?.querySelector("svg");
+
+      // The list icon has 6 <line> children (3 bullets + 3 rows); the chat
+      // bubble it replaced had a single <path>. The pencil has 2 <path>s.
+      // The eye has 1 <path> + 1 <circle>. These shapes are stable signatures.
+      expect(chatSvg?.querySelectorAll("line").length).toBe(6);
+      expect(annotateSvg?.querySelectorAll("path").length).toBe(2);
+      expect(toggleSvg?.querySelector("circle")).not.toBeNull();
+    });
+
     it("applies position class based on config", () => {
       const btn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
       expect(btn.classList.contains("sp-fab--bottom-right")).toBe(true);

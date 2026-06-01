@@ -48,9 +48,9 @@ export const fr: Translations = {
 
   // FAB menu
   "fab.aria": "Siteping \u2014 Menu feedback",
-  "fab.messages": "Messages",
-  "fab.annotate": "Annoter",
-  "fab.annotations": "Annotations",
+  "fab.messages": "Afficher la barre latérale",
+  "fab.annotate": "Créer une nouvelle annotation",
+  "fab.annotations": "Afficher ou masquer les marqueurs",
 
   // Annotator
   "annotator.instruction": "Tracez un rectangle sur la zone \u00e0 commenter",

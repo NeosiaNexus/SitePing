@@ -591,9 +591,9 @@ test.describe("Default locale is English", () => {
     const annotateLabel = await s.attr('[data-item-id="annotate"]', "aria-label");
     const toggleLabel = await s.attr('[data-item-id="toggle-annotations"]', "aria-label");
 
-    expect(chatLabel).toBe("Messages");
-    expect(annotateLabel).toBe("Annotate");
-    expect(toggleLabel).toBe("Annotations");
+    expect(chatLabel).toBe("Show sidebar");
+    expect(annotateLabel).toBe("Create new annotation");
+    expect(toggleLabel).toBe("Show or hide markers");
   });
 
   test("panel header and empty state use English text", async ({ page }) => {

@@ -50,9 +50,9 @@ export const it: Translations = {
 
   // FAB menu
   "fab.aria": "Siteping — Menu feedback",
-  "fab.messages": "Messaggi",
-  "fab.annotate": "Annota",
-  "fab.annotations": "Annotazioni",
+  "fab.messages": "Mostra barra laterale",
+  "fab.annotate": "Crea nuova annotazione",
+  "fab.annotations": "Mostra o nascondi i marcatori",
 
   // Annotator
   "annotator.instruction": "Disegna un rettangolo sull'area da commentare",
