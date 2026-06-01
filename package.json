@@ -31,7 +31,7 @@
     "@prisma/client": "^7.8.0",
     "@types/node": "^25.9.1",
     "@vitest/coverage-istanbul": "^3.0.0",
-    "jsdom": "^29.1.1",
+    "jsdom": "29.1.1",
     "tsup": "^8.5.0",
     "turbo": "^2.9.14",
     "typescript": "^5.7.0",
