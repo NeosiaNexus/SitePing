@@ -490,8 +490,8 @@ export class StoreDuplicateError extends Error {
  */
 export class StorePersistenceError extends Error {
   readonly code = "STORE_PERSISTENCE" as const;
-  constructor(message = "Failed to persist store mutation") {
-    super(message);
+  constructor(message = "Failed to persist store mutation", options?: ErrorOptions) {
+    super(message, options);
     this.name = "StorePersistenceError";
   }
 }

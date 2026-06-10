@@ -40,6 +40,23 @@ describe("LocalStorageStore specific", () => {
     annotations: [],
   };
 
+  /**
+   * Run `fn` with `Storage.prototype.setItem` stubbed to throw a spec-shaped
+   * QuotaExceededError (the name goes in the SECOND constructor slot), and
+   * restore the original even when an assertion inside `fn` fails.
+   */
+  async function withQuotaExceeded<T>(fn: () => Promise<T>): Promise<T> {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = () => {
+      throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+    };
+    try {
+      return await fn();
+    } finally {
+      Storage.prototype.setItem = original;
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Persistence
   // -----------------------------------------------------------------------
@@ -120,41 +137,71 @@ describe("LocalStorageStore specific", () => {
       expect(feedbacks).toHaveLength(0);
     });
 
-    it("handles localStorage full on save (silent fail)", async () => {
+    it("createFeedback throws StorePersistenceError when the write fails and there is no screenshot to drop", async () => {
+      await withQuotaExceeded(async () => {
+        await expect(store.createFeedback(input)).rejects.toBeInstanceOf(StorePersistenceError);
+      });
+    });
+
+    it("createFeedback drops the screenshot and retries when the first write fails (quota)", async () => {
       const original = Storage.prototype.setItem;
-      Storage.prototype.setItem = () => {
-        throw new DOMException("QuotaExceededError");
+      let calls = 0;
+      Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+        calls += 1;
+        if (calls === 1) throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+        original.call(this, key, value);
       };
-      await expect(store.createFeedback(input)).resolves.toBeDefined();
-      Storage.prototype.setItem = original;
+      try {
+        const record = await store.createFeedback({ ...input, screenshotDataUrl: "data:image/jpeg;base64,xxxx" });
+        expect(record.screenshotUrl).toBeNull();
+        const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(feedbacks).toHaveLength(1);
+      } finally {
+        Storage.prototype.setItem = original;
+      }
+    });
+
+    it("createFeedback throws StorePersistenceError when even the screenshot-less retry fails", async () => {
+      await withQuotaExceeded(async () => {
+        await expect(
+          store.createFeedback({ ...input, screenshotDataUrl: "data:image/jpeg;base64,xxxx" }),
+        ).rejects.toBeInstanceOf(StorePersistenceError);
+      });
     });
 
     it("updateFeedback throws StorePersistenceError when the write fails (quota)", async () => {
       const fb = await store.createFeedback(input);
-      const original = Storage.prototype.setItem;
-      Storage.prototype.setItem = () => {
-        throw new DOMException("QuotaExceededError");
-      };
-      try {
+      await withQuotaExceeded(async () => {
         await expect(
           store.updateFeedback(fb.id, { status: "resolved", resolvedAt: new Date() }),
         ).rejects.toBeInstanceOf(StorePersistenceError);
-      } finally {
-        Storage.prototype.setItem = original;
-      }
+      });
     });
 
     it("deleteFeedback throws StorePersistenceError when the write fails (quota)", async () => {
       const fb = await store.createFeedback(input);
-      const original = Storage.prototype.setItem;
-      Storage.prototype.setItem = () => {
-        throw new DOMException("QuotaExceededError");
-      };
-      try {
+      await withQuotaExceeded(async () => {
         await expect(store.deleteFeedback(fb.id)).rejects.toBeInstanceOf(StorePersistenceError);
-      } finally {
-        Storage.prototype.setItem = original;
-      }
+      });
+    });
+
+    it("deleteAllFeedbacks throws StorePersistenceError when the write fails (quota)", async () => {
+      await store.createFeedback(input);
+      await withQuotaExceeded(async () => {
+        await expect(store.deleteAllFeedbacks("test-project")).rejects.toBeInstanceOf(StorePersistenceError);
+      });
+    });
+
+    it("preserves the underlying exception as the StorePersistenceError cause", async () => {
+      const fb = await store.createFeedback(input);
+      const error = await withQuotaExceeded(() =>
+        store.deleteFeedback(fb.id).then(
+          () => null,
+          (e: unknown) => e,
+        ),
+      );
+      expect(error).toBeInstanceOf(StorePersistenceError);
+      expect((error as StorePersistenceError).cause).toBeInstanceOf(DOMException);
     });
 
     it("clear() removes all data for this store key", async () => {

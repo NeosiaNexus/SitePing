@@ -62,14 +62,17 @@ export class LocalStorageStore implements SitepingStore {
     }
   }
 
-  private save(feedbacks: FeedbackRecord[]): boolean {
+  /**
+   * Persist the full feedback array, or throw `StorePersistenceError` (with
+   * the underlying exception as `cause` — quota, storage disabled, …) when the
+   * write fails. Centralized here so no mutating method can accidentally
+   * report a phantom success on a lost write.
+   */
+  private persist(feedbacks: FeedbackRecord[]): void {
     try {
       localStorage.setItem(this.key, JSON.stringify(feedbacks));
-      return true;
-    } catch {
-      // localStorage full — caller decides how to recover (e.g. drop the
-      // newest screenshot and retry).
-      return false;
+    } catch (cause) {
+      throw new StorePersistenceError(undefined, { cause });
     }
   }
 
@@ -146,14 +149,17 @@ export class LocalStorageStore implements SitepingStore {
     };
 
     feedbacks.unshift(record);
-    if (!this.save(feedbacks) && record.screenshotUrl) {
+    try {
+      this.persist(feedbacks);
+    } catch (err) {
       // Quota exceeded — usually the inline screenshot pushed us past the
       // ~5 MB cap. Retry without the screenshot so the user's text feedback
       // is preserved (the screenshot is by far the heaviest field). If even
-      // that fails, fall through to legacy silent-fail behaviour: the
-      // record stays in memory for this call but isn't persisted.
+      // that fails, let the error propagate — returning the record would
+      // claim a success that was never persisted.
+      if (!record.screenshotUrl) throw err;
       record.screenshotUrl = null;
-      this.save(feedbacks);
+      this.persist(feedbacks);
     }
     return record;
   }
@@ -174,10 +180,7 @@ export class LocalStorageStore implements SitepingStore {
     fb.status = data.status;
     fb.resolvedAt = data.resolvedAt;
     fb.updatedAt = new Date();
-    // save() returns false when localStorage is full. Surface it instead of
-    // returning a record that claims success — otherwise the mutation is
-    // silently lost (the in-memory `fb` is returned but never persisted).
-    if (!this.save(feedbacks)) throw new StorePersistenceError();
+    this.persist(feedbacks);
     return fb;
   }
 
@@ -187,13 +190,12 @@ export class LocalStorageStore implements SitepingStore {
     if (idx === -1) throw new StoreNotFoundError();
 
     feedbacks.splice(idx, 1);
-    // Surface persistence failure rather than reporting a phantom delete.
-    if (!this.save(feedbacks)) throw new StorePersistenceError();
+    this.persist(feedbacks);
   }
 
   async deleteAllFeedbacks(projectName: string): Promise<void> {
     const feedbacks = this.load().filter((f) => f.projectName !== projectName);
-    this.save(feedbacks);
+    this.persist(feedbacks);
   }
 
   /** Remove all data from localStorage for this store key. */
