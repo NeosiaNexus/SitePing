@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.4.5...adapter-localstorage-v0.4.6) (2026-06-10)
+
+
+### Features
+
+* tech-lead review quick wins — a11y keyboard flow, store persistence contract, CSV formula guard ([#165](https://github.com/NeosiaNexus/SitePing/issues/165)) ([56f17a9](https://github.com/NeosiaNexus/SitePing/commit/56f17a99f159dc12707bcc0ec2f7c906bddf2a3f))
+
 ## [0.4.5](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.4.4...adapter-localstorage-v0.4.5) (2026-05-18)
 
 
