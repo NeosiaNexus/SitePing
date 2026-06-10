@@ -35,6 +35,20 @@ export function createShadowRoot(): ShadowRoot {
 }
 
 /**
+ * Run `fn` with `window.innerWidth` stubbed to `width`, restoring the original
+ * value afterwards — even when an assertion inside `fn` throws.
+ */
+export function withViewportWidth<T>(width: number, fn: () => T): T {
+  const original = window.innerWidth;
+  Object.defineProperty(window, "innerWidth", { value: width, writable: true, configurable: true });
+  try {
+    return fn();
+  } finally {
+    Object.defineProperty(window, "innerWidth", { value: original, writable: true, configurable: true });
+  }
+}
+
+/**
  * Stub window.matchMedia — jsdom does not implement it.
  * Duplicated in: launcher.test.ts, popup.test.ts
  */

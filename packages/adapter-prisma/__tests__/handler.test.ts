@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSitepingHandler } from "../src/index.js";
 import { validAnnotation, validPayloadNoAnnotations } from "./fixtures.js";
 
+// NOTE: the type-level regression guard for #99 (delegate bivariance) lives in
+// src/index.ts next to PrismaModelDelegate — `tsc --noEmit` only sees src/, so
+// a test-file assertion can never fail the check task.
+
 function mockPrisma() {
   return {
     sitepingFeedback: {

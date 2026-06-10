@@ -2,6 +2,7 @@
 
 import type { SitepingConfig } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { withViewportWidth } from "../helpers.js";
 
 // jsdom does not implement window.matchMedia — provide a stub
 Object.defineProperty(window, "matchMedia", {
@@ -182,51 +183,97 @@ describe("launch", () => {
   // -------------------------------------------------------------------------
 
   describe("mobile guard", () => {
+    // defaultConfig() sets forceShow:true, which now (intentionally, #103)
+    // bypasses the mobile guard too — so every test that exercises the
+    // threshold opts out of it. destroy() runs in finally so a failing
+    // assertion can't leak the launcher's module-level singleton.
     it("returns a no-op instance when viewport is narrow (< 768px)", () => {
-      const origWidth = window.innerWidth;
-      Object.defineProperty(window, "innerWidth", { value: 600, writable: true, configurable: true });
-
-      try {
-        const instance = launch(defaultConfig());
-
-        const widget = document.querySelector("siteping-widget");
-        expect(widget).toBeNull();
-
-        // Shouldn't throw
-        instance.destroy();
-      } finally {
-        Object.defineProperty(window, "innerWidth", { value: origWidth, writable: true, configurable: true });
-      }
+      withViewportWidth(600, () => {
+        const instance = launch(defaultConfig({ forceShow: false }));
+        try {
+          expect(document.querySelector("siteping-widget")).toBeNull();
+        } finally {
+          instance.destroy();
+        }
+      });
     });
 
     it("calls onSkip with 'mobile' reason on narrow viewport", () => {
-      const origWidth = window.innerWidth;
-      Object.defineProperty(window, "innerWidth", { value: 500, writable: true, configurable: true });
-
-      try {
+      withViewportWidth(500, () => {
         const onSkip = vi.fn();
-        launch(defaultConfig({ onSkip }));
-
-        expect(onSkip).toHaveBeenCalledWith("mobile");
-      } finally {
-        Object.defineProperty(window, "innerWidth", { value: origWidth, writable: true, configurable: true });
-      }
+        const instance = launch(defaultConfig({ forceShow: false, onSkip }));
+        try {
+          expect(onSkip).toHaveBeenCalledWith("mobile");
+        } finally {
+          instance.destroy();
+        }
+      });
     });
 
     it("initializes normally when viewport is >= 768px", () => {
-      const origWidth = window.innerWidth;
-      Object.defineProperty(window, "innerWidth", { value: 1024, writable: true, configurable: true });
+      withViewportWidth(1024, () => {
+        // forceShow:false so this actually exercises the default threshold —
+        // with the bypass active the test would pass at any width.
+        const instance = launch(defaultConfig({ forceShow: false }));
+        try {
+          expect(document.querySelector("siteping-widget")).not.toBeNull();
+        } finally {
+          instance.destroy();
+        }
+      });
+    });
 
-      try {
-        const instance = launch(defaultConfig());
+    it("forceShow bypasses the mobile guard (#103)", () => {
+      withViewportWidth(600, () => {
+        const onSkip = vi.fn();
+        const instance = launch(defaultConfig({ forceShow: true, onSkip }));
+        try {
+          expect(document.querySelector("siteping-widget")).not.toBeNull();
+          expect(onSkip).not.toHaveBeenCalled();
+        } finally {
+          instance.destroy();
+        }
+      });
+    });
 
-        const widget = document.querySelector("siteping-widget");
-        expect(widget).not.toBeNull();
+    it("minViewportWidth lowers the threshold so a narrow viewport renders (#103)", () => {
+      withViewportWidth(600, () => {
+        const instance = launch(defaultConfig({ forceShow: false, minViewportWidth: 0 }));
+        try {
+          expect(document.querySelector("siteping-widget")).not.toBeNull();
+        } finally {
+          instance.destroy();
+        }
+      });
+    });
 
-        instance.destroy();
-      } finally {
-        Object.defineProperty(window, "innerWidth", { value: origWidth, writable: true, configurable: true });
-      }
+    it("minViewportWidth can raise the threshold (skips a mid-width viewport)", () => {
+      withViewportWidth(1000, () => {
+        const onSkip = vi.fn();
+        const instance = launch(defaultConfig({ forceShow: false, minViewportWidth: 1200, onSkip }));
+        try {
+          expect(document.querySelector("siteping-widget")).toBeNull();
+          expect(onSkip).toHaveBeenCalledWith("mobile");
+        } finally {
+          instance.destroy();
+        }
+      });
+    });
+
+    it("falls back to the 768px default when minViewportWidth is not a finite number", () => {
+      withViewportWidth(600, () => {
+        // NaN (e.g. Number('768px') from an untyped script-tag consumer) is not
+        // nullish, and `innerWidth < NaN` is always false — without validation
+        // it would silently disable the guard.
+        const onSkip = vi.fn();
+        const instance = launch(defaultConfig({ forceShow: false, minViewportWidth: Number.NaN, onSkip }));
+        try {
+          expect(document.querySelector("siteping-widget")).toBeNull();
+          expect(onSkip).toHaveBeenCalledWith("mobile");
+        } finally {
+          instance.destroy();
+        }
+      });
     });
   });
 

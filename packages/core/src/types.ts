@@ -70,8 +70,21 @@ export interface SitepingConfig {
   showAnnotationsToggle?: boolean | undefined;
   /** Accent color for the widget UI — defaults to '#0066ff' */
   accentColor?: string;
-  /** Show the widget even in production — defaults to false */
+  /**
+   * Render the widget even when it would normally be skipped — this bypasses
+   * BOTH the production-environment guard AND the mobile-viewport guard.
+   * Defaults to false. Use it for dedicated review tools, staging environments,
+   * or responsive testing where you always want the widget present.
+   */
   forceShow?: boolean;
+  /**
+   * Minimum viewport width (px) at or above which the widget renders. Below it,
+   * the widget is skipped and `onSkip("mobile")` fires. Defaults to `768`.
+   *
+   * Set lower (e.g. `0`) to allow narrow/mobile viewports, or use `forceShow`
+   * to bypass the viewport check entirely.
+   */
+  minViewportWidth?: number | undefined;
   /** Enable debug logging of lifecycle events — defaults to false */
   debug?: boolean;
   /** Color theme — defaults to 'light' */
@@ -469,6 +482,20 @@ export class StoreDuplicateError extends Error {
   }
 }
 
+/**
+ * Thrown when a store accepts a mutation but cannot persist it — e.g.
+ * `localStorage` is full (QuotaExceededError). Adapters MUST throw this rather
+ * than swallow the failure, so callers learn the write was lost instead of
+ * seeing a phantom success.
+ */
+export class StorePersistenceError extends Error {
+  readonly code = "STORE_PERSISTENCE" as const;
+  constructor(message = "Failed to persist store mutation", options?: ErrorOptions) {
+    super(message, options);
+    this.name = "StorePersistenceError";
+  }
+}
+
 /** Shape of any ORM error that carries a Prisma-style `code` field. */
 type CodedError<C extends string = string> = { code: C };
 
@@ -488,6 +515,17 @@ export function isStoreDuplicate(error: unknown): error is StoreDuplicateError |
   if (error instanceof StoreDuplicateError) return true;
   // Backwards compat: Prisma's P2002
   return hasErrorCode(error, "P2002");
+}
+
+/**
+ * Type guard for `StorePersistenceError`. Matches on the stable `code` field
+ * in addition to `instanceof`: every consumer package bundles its own copy of
+ * core (tsup `noExternal`), so an instance thrown by one package fails an
+ * `instanceof` check against another package's class identity.
+ */
+export function isStorePersistence(error: unknown): error is StorePersistenceError | CodedError<"STORE_PERSISTENCE"> {
+  if (error instanceof StorePersistenceError) return true;
+  return hasErrorCode(error, "STORE_PERSISTENCE");
 }
 
 // ---------------------------------------------------------------------------
@@ -543,20 +581,23 @@ export interface FeedbackPage {
  * - **`createFeedback`**: either return the existing record on duplicate
  *   `clientId` (idempotent) or throw `StoreDuplicateError`. The handler
  *   handles both patterns.
+ * - **All mutations**: when a write is accepted but cannot be persisted
+ *   (e.g. storage quota), throw `StorePersistenceError` instead of reporting
+ *   a phantom success. Detect it with `isStorePersistence`.
  * - Other methods should not throw on empty results — return empty arrays or `null`.
  */
 export interface SitepingStore {
-  /** Create a feedback with its annotations. Idempotent on `clientId` — return existing record on duplicate, or throw `StoreDuplicateError`. */
+  /** Create a feedback with its annotations. Idempotent on `clientId` — return existing record on duplicate, or throw `StoreDuplicateError`. Throws `StorePersistenceError` when the write cannot be persisted. */
   createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
   /** Paginated query with optional filters. Returns empty array (not error) when no results. */
   getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage>;
   /** Lookup by client-generated UUID. Returns `null` (not error) when not found. */
   findByClientId(clientId: string): Promise<FeedbackRecord | null>;
-  /** Update status/resolvedAt. Throws `StoreNotFoundError` if `id` does not exist. */
+  /** Update status/resolvedAt. Throws `StoreNotFoundError` if `id` does not exist, `StorePersistenceError` when the write cannot be persisted. */
   updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord>;
-  /** Delete a single record. Throws `StoreNotFoundError` if `id` does not exist. */
+  /** Delete a single record. Throws `StoreNotFoundError` if `id` does not exist, `StorePersistenceError` when the write cannot be persisted. */
   deleteFeedback(id: string): Promise<void>;
-  /** Bulk delete all feedbacks for a project. No-op (not error) if none exist. */
+  /** Bulk delete all feedbacks for a project. No-op (not error) if none exist. Throws `StorePersistenceError` when the write cannot be persisted. */
   deleteAllFeedbacks(projectName: string): Promise<void>;
 }
 

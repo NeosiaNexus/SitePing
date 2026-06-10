@@ -12,6 +12,13 @@ export default defineConfig({
   test: {
     include: ["packages/**/__tests__/**/*.test.{ts,tsx}"],
     setupFiles: ["packages/widget/__tests__/setup-i18n.ts"],
+    // Cap forks so a local run leaves CPU headroom for the editor — on WSL2
+    // vscode-server shares the VM and a full-core run freezes it. Don't go
+    // lower: jsdom DOMs are retained in the heap, and a fork reused across
+    // more files balloons to ~15 GB at maxForks=2. No-op in CI (≤4 cores).
+    poolOptions: {
+      forks: { maxForks: 4 },
+    },
     coverage: {
       provider: "istanbul",
       reporter: ["text", "lcov", "json-summary"],

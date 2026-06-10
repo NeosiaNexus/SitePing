@@ -272,9 +272,17 @@ export class Fab {
       case "chat":
         this.bus.emit("panel:toggle", true);
         break;
-      case "annotate":
+      case "annotate": {
+        // close() above re-focused the FAB, so the annotator can only capture
+        // the shadow host as its pre-activation element — restoring focus is
+        // on us: put keyboard users back on the FAB when the session ends.
+        const unsubscribe = this.bus.on("annotation:end", () => {
+          unsubscribe();
+          this.fab.focus();
+        });
         this.bus.emit("annotation:start");
         break;
+      }
       case "toggle-annotations": {
         this.annotationsVisible = !this.annotationsVisible;
         this.bus.emit("annotations:toggle", this.annotationsVisible);

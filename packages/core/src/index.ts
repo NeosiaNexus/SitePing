@@ -72,6 +72,8 @@ export {
   flattenAnnotation,
   isStoreDuplicate,
   isStoreNotFound,
+  isStorePersistence,
   StoreDuplicateError,
   StoreNotFoundError,
+  StorePersistenceError,
 } from "./types.js";

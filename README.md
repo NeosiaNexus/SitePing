@@ -158,7 +158,12 @@ initSiteping({
   accentColor: '#0066ff',         // Widget accent color
   theme: 'light',                 // 'light' | 'dark' | 'auto'
   locale: 'en',                   // 'en' | 'fr' (default: 'en')
-  forceShow: false,               // Show in production? Default: false
+  forceShow: false,               // Always render — bypasses BOTH the
+                                  // production guard and the mobile-viewport
+                                  // guard. Default: false
+  minViewportWidth: 768,          // Minimum viewport width (px) to render;
+                                  // below it onSkip('mobile') fires. Set 0 to
+                                  // allow mobile viewports. Default: 768
   debug: false,                   // Enable debug logging
   showAnnotationsToggle: true,    // Show the "toggle markers visibility" item
                                   // in the FAB radial menu. Default: true. Set
@@ -589,8 +594,8 @@ bun run check
 
 The widget is **dev-only by default**. It auto-hides when `NODE_ENV=production` or `import.meta.env.MODE === 'production'`.
 
-- **Fix:** Pass `forceShow: true` in the config to show it in production.
-- The widget also hides on viewports narrower than **768px** (mobile). This is by design — annotation drawing requires a pointer device.
+- **Fix:** Pass `forceShow: true` in the config to show it in production. Note that `forceShow` also bypasses the mobile-viewport guard below.
+- The widget also hides on viewports narrower than **768px** (mobile). This is by design — annotation drawing works best with a pointer device. Tune the threshold with `minViewportWidth` (set `0` to allow mobile viewports), or bypass it entirely with `forceShow: true`.
 
 ### Prisma errors after setup
 

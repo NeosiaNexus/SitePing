@@ -24,7 +24,13 @@ import {
 import { dispatchWebhooks, type WebhookConfig } from "./webhooks.js";
 
 export type { ScreenshotStorage, SitepingStore } from "@siteping/core";
-export { flattenAnnotation, StoreDuplicateError, StoreNotFoundError } from "@siteping/core";
+export {
+  flattenAnnotation,
+  isStorePersistence,
+  StoreDuplicateError,
+  StoreNotFoundError,
+  StorePersistenceError,
+} from "@siteping/core";
 export type {
   FeedbackCreateInput as FeedbackCreateSchemaInput,
   FeedbackDeleteInput,
@@ -50,16 +56,47 @@ export { dispatchWebhook, dispatchWebhooks } from "./webhooks.js";
  * Arguments are kept `unknown` so any Prisma version's generated client
  * satisfies the constraint; the adapter assembles type-safe payloads
  * internally before forwarding them.
+ *
+ * Members use **method syntax** (`create(args)`) rather than function-property
+ * syntax (`create: (args) => ...`) on purpose: under `strictFunctionTypes`,
+ * function-property parameters are checked *contravariantly*, so a real
+ * generated delegate — whose `create(args: SpecificArgs)` takes a type narrower
+ * than `unknown` — would fail to assign to `PrismaModelDelegate`. Method
+ * signatures are checked *bivariantly* on parameters, which is exactly what we
+ * want for structurally matching a third-party generated client (#99).
  */
 export interface PrismaModelDelegate {
-  create: (args: unknown) => Promise<unknown>;
-  findMany: (args: unknown) => Promise<unknown[]>;
-  findUnique: (args: unknown) => Promise<unknown>;
-  update: (args: unknown) => Promise<unknown>;
-  delete: (args: unknown) => Promise<unknown>;
-  deleteMany: (args: unknown) => Promise<unknown>;
-  count: (args: unknown) => Promise<number>;
+  create(args: unknown): Promise<unknown>;
+  findMany(args: unknown): Promise<unknown[]>;
+  findUnique(args: unknown): Promise<unknown>;
+  update(args: unknown): Promise<unknown>;
+  delete(args: unknown): Promise<unknown>;
+  deleteMany(args: unknown): Promise<unknown>;
+  count(args: unknown): Promise<number>;
 }
+
+/**
+ * Compile-time regression guard for #99 — intentionally in `src/` because the
+ * package's `check` script (`tsc --noEmit`) only type-checks `src/`, and
+ * vitest transpiles tests without type-checking.
+ *
+ * `GeneratedDelegateProbe` mirrors a real generated client: every method
+ * declares args NARROWER than `unknown`. With method syntax the conditional
+ * below resolves to `true`; if `PrismaModelDelegate` ever regresses to
+ * function-property syntax (contravariant under `strictFunctionTypes`), it
+ * resolves to `false` and the `AssertTrue` constraint fails the build.
+ */
+type AssertTrue<T extends true> = T;
+interface GeneratedDelegateProbe {
+  create(args: { data: unknown; include?: unknown }): Promise<{ id: string }>;
+  findMany(args: { where?: unknown; include?: unknown }): Promise<{ id: string }[]>;
+  findUnique(args: { where: unknown }): Promise<{ id: string } | null>;
+  update(args: { where: unknown; data: unknown }): Promise<{ id: string }>;
+  delete(args: { where: unknown }): Promise<{ id: string }>;
+  deleteMany(args: { where?: unknown }): Promise<{ count: number }>;
+  count(args: { where?: unknown }): Promise<number>;
+}
+type _AssertDelegateBivariance = AssertTrue<GeneratedDelegateProbe extends PrismaModelDelegate ? true : false>;
 
 /**
  * Minimal Prisma client shape expected by this adapter.
