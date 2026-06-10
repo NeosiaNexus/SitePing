@@ -131,7 +131,7 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
   }
 
   if (addedModels.length > 0 || changes.length > 0) {
-    const output = printSchema(schema);
+    const output = printSchema(schema).replace(/^\n+/, "");
     try {
       writeFileSync(schemaPath, output, "utf-8");
     } catch (error) {
