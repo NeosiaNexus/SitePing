@@ -189,16 +189,29 @@ export class Panel {
       {
         onBack: () => this.detail.hide(),
         onResolve: async (fb) => {
-          const newResolved = fb.status !== "resolved";
-          await this.client.resolveFeedback(fb.id, newResolved);
-          await this.loadFeedbacks();
-          this.detail.hide();
+          try {
+            const newResolved = fb.status !== "resolved";
+            await this.client.resolveFeedback(fb.id, newResolved);
+            await this.loadFeedbacks();
+            this.detail.hide();
+          } catch (error) {
+            // Surface the failure to the host (config.onError) like the list
+            // and bulk paths do, then rethrow so DetailView restores its
+            // buttons and stays open.
+            this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
+            throw error;
+          }
         },
         onDelete: async (fb) => {
-          await this.client.deleteFeedback(fb.id);
-          this.bus.emit("feedback:deleted", fb.id);
-          await this.loadFeedbacks();
-          this.detail.hide();
+          try {
+            await this.client.deleteFeedback(fb.id);
+            this.bus.emit("feedback:deleted", fb.id);
+            await this.loadFeedbacks();
+            this.detail.hide();
+          } catch (error) {
+            this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
+            throw error;
+          }
         },
         onGoToAnnotation: (fb) => {
           if (fb.annotations.length > 0) {

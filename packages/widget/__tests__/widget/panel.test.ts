@@ -1202,6 +1202,43 @@ describe("Panel", () => {
       });
     });
 
+    it("detail onResolve emits feedback:error and keeps the detail view open on failure", async () => {
+      const fb = makeFeedback({ id: "fb-1", status: "open", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.resolveFeedback.mockRejectedValue(new Error("persist failed"));
+
+      const errorListener = vi.fn();
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+      shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-resolve")!.click();
+
+      await vi.waitFor(() => {
+        expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
+      });
+      // The list path notified the host; the detail view stays open for retry.
+      const detail = shadow.querySelector<HTMLElement>(".sp-detail")!;
+      expect(detail.classList.contains("sp-detail--visible")).toBe(true);
+    });
+
+    it("detail onDelete emits feedback:error on failure", async () => {
+      const fb = makeFeedback({ id: "fb-1", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.deleteFeedback.mockRejectedValue(new Error("persist failed"));
+
+      const errorListener = vi.fn();
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+      shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-delete")!.click();
+
+      await vi.waitFor(() => {
+        expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
+      });
+    });
+
     it("detail onGoToAnnotation scrolls and pins the highlight", async () => {
       const fb = makeFeedback({ id: "fb-1", annotations: [annotation] });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
