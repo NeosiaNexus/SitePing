@@ -99,16 +99,17 @@ function createAnnotator() {
 }
 
 /**
- * Find the annotator overlay — the div appended to body with aria-hidden="true"
- * and tabindex="0" (the overlay, not an SVG or other element).
+ * Find the annotator overlay — the focusable (tabindex="0") screenshot-ignored
+ * div appended to body (the toolbar carries data-siteping-ignore too, but no
+ * tabindex).
  */
 function findOverlay(): HTMLElement | null {
-  return document.body.querySelector<HTMLElement>('div[aria-hidden="true"][tabindex="0"]');
+  return document.body.querySelector<HTMLElement>('div[data-siteping-ignore][tabindex="0"]');
 }
 
 /** Count how many annotator overlays exist */
 function countOverlays(): number {
-  return document.body.querySelectorAll('div[aria-hidden="true"][tabindex="0"]').length;
+  return document.body.querySelectorAll('div[data-siteping-ignore][tabindex="0"]').length;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +132,7 @@ describe("Annotator", () => {
     annotator.destroy();
     // Remove any leftover overlay/toolbar DOM from async handlers that may not
     // have completed before the test ended (e.g. finishDrawing's await)
-    for (const el of document.body.querySelectorAll('div[aria-hidden="true"]')) {
+    for (const el of document.body.querySelectorAll('div[data-siteping-ignore][tabindex="0"]')) {
       el.remove();
     }
     for (const btn of document.body.querySelectorAll("button")) {
@@ -146,12 +147,17 @@ describe("Annotator", () => {
   // -------------------------------------------------------------------------
 
   describe("activate", () => {
-    it("creates an overlay on annotation:start", () => {
+    it("creates an overlay exposed to assistive tech on annotation:start", () => {
       bus.emit("annotation:start");
 
       const overlay = findOverlay();
       expect(overlay).not.toBeNull();
-      expect(overlay!.getAttribute("aria-hidden")).toBe("true");
+      // The overlay receives focus, so it must NOT be aria-hidden — a focused
+      // aria-hidden element is invisible to screen readers (axe
+      // "aria-hidden-focus"). It carries a role and an accessible name instead.
+      expect(overlay!.hasAttribute("aria-hidden")).toBe(false);
+      expect(overlay!.getAttribute("role")).toBe("application");
+      expect(overlay!.getAttribute("aria-label")).toBe(t("annotator.instruction"));
     });
 
     it("focuses the overlay so the keyboard (Enter) annotation path receives keydown", () => {
@@ -163,6 +169,26 @@ describe("Annotator", () => {
       // this fix, activeElement stayed on <body> and the Enter path was dead
       // (WCAG 2.1.1 Level A). The overlay carries tabindex=0.
       expect(document.activeElement).toBe(overlay);
+    });
+
+    it("restores focus to the pre-activation element on deactivate (WCAG 2.4.3)", () => {
+      const target = document.createElement("button");
+      document.body.appendChild(target);
+      target.focus();
+
+      try {
+        bus.emit("annotation:start");
+        expect(document.activeElement).toBe(findOverlay());
+
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+        // Removing the focused overlay would strand focus on <body> without
+        // the explicit restore in deactivate().
+        expect(findOverlay()).toBeNull();
+        expect(document.activeElement).toBe(target);
+      } finally {
+        target.remove();
+      }
     });
 
     it("creates a toolbar element (button with cancel text) on activation", () => {

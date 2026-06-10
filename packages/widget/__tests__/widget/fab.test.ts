@@ -370,6 +370,39 @@ describe("Fab", () => {
       expect(listener).toHaveBeenCalledOnce();
     });
 
+    it("re-focuses the FAB when an annotation session it launched ends", () => {
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      fabBtn.click();
+      shadow.querySelector<HTMLButtonElement>('[data-item-id="annotate"]')!.click();
+
+      // Simulate the annotator stealing focus to its body-level overlay, then
+      // ending the session (Escape / cancel / submit).
+      const decoy = document.createElement("div");
+      decoy.setAttribute("tabindex", "0");
+      document.body.appendChild(decoy);
+      decoy.focus();
+      try {
+        bus.emit("annotation:end");
+        expect(shadow.activeElement).toBe(fabBtn);
+      } finally {
+        decoy.remove();
+      }
+    });
+
+    it("does not re-focus the FAB for annotation sessions it did not launch", () => {
+      const decoy = document.createElement("div");
+      decoy.setAttribute("tabindex", "0");
+      document.body.appendChild(decoy);
+      decoy.focus();
+      try {
+        bus.emit("annotation:end");
+        expect(shadow.activeElement).toBeNull();
+        expect(document.activeElement).toBe(decoy);
+      } finally {
+        decoy.remove();
+      }
+    });
+
     it("clicking 'toggle-annotations' emits annotations:toggle", () => {
       const listener = vi.fn();
       bus.on("annotations:toggle", listener);
