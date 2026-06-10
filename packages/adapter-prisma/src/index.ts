@@ -24,7 +24,13 @@ import {
 import { dispatchWebhooks, type WebhookConfig } from "./webhooks.js";
 
 export type { ScreenshotStorage, SitepingStore } from "@siteping/core";
-export { flattenAnnotation, StoreDuplicateError, StoreNotFoundError } from "@siteping/core";
+export {
+  flattenAnnotation,
+  isStorePersistence,
+  StoreDuplicateError,
+  StoreNotFoundError,
+  StorePersistenceError,
+} from "@siteping/core";
 export type {
   FeedbackCreateInput as FeedbackCreateSchemaInput,
   FeedbackDeleteInput,

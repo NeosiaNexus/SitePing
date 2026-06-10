@@ -517,6 +517,17 @@ export function isStoreDuplicate(error: unknown): error is StoreDuplicateError |
   return hasErrorCode(error, "P2002");
 }
 
+/**
+ * Type guard for `StorePersistenceError`. Matches on the stable `code` field
+ * in addition to `instanceof`: every consumer package bundles its own copy of
+ * core (tsup `noExternal`), so an instance thrown by one package fails an
+ * `instanceof` check against another package's class identity.
+ */
+export function isStorePersistence(error: unknown): error is StorePersistenceError | CodedError<"STORE_PERSISTENCE"> {
+  if (error instanceof StorePersistenceError) return true;
+  return hasErrorCode(error, "STORE_PERSISTENCE");
+}
+
 // ---------------------------------------------------------------------------
 // Store helpers — shared conversion logic for adapters
 // ---------------------------------------------------------------------------
@@ -570,20 +581,23 @@ export interface FeedbackPage {
  * - **`createFeedback`**: either return the existing record on duplicate
  *   `clientId` (idempotent) or throw `StoreDuplicateError`. The handler
  *   handles both patterns.
+ * - **All mutations**: when a write is accepted but cannot be persisted
+ *   (e.g. storage quota), throw `StorePersistenceError` instead of reporting
+ *   a phantom success. Detect it with `isStorePersistence`.
  * - Other methods should not throw on empty results — return empty arrays or `null`.
  */
 export interface SitepingStore {
-  /** Create a feedback with its annotations. Idempotent on `clientId` — return existing record on duplicate, or throw `StoreDuplicateError`. */
+  /** Create a feedback with its annotations. Idempotent on `clientId` — return existing record on duplicate, or throw `StoreDuplicateError`. Throws `StorePersistenceError` when the write cannot be persisted. */
   createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
   /** Paginated query with optional filters. Returns empty array (not error) when no results. */
   getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage>;
   /** Lookup by client-generated UUID. Returns `null` (not error) when not found. */
   findByClientId(clientId: string): Promise<FeedbackRecord | null>;
-  /** Update status/resolvedAt. Throws `StoreNotFoundError` if `id` does not exist. */
+  /** Update status/resolvedAt. Throws `StoreNotFoundError` if `id` does not exist, `StorePersistenceError` when the write cannot be persisted. */
   updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord>;
-  /** Delete a single record. Throws `StoreNotFoundError` if `id` does not exist. */
+  /** Delete a single record. Throws `StoreNotFoundError` if `id` does not exist, `StorePersistenceError` when the write cannot be persisted. */
   deleteFeedback(id: string): Promise<void>;
-  /** Bulk delete all feedbacks for a project. No-op (not error) if none exist. */
+  /** Bulk delete all feedbacks for a project. No-op (not error) if none exist. Throws `StorePersistenceError` when the write cannot be persisted. */
   deleteAllFeedbacks(projectName: string): Promise<void>;
 }
 

@@ -12,7 +12,7 @@ import {
 } from "@siteping/core";
 
 export type { SitepingStore } from "@siteping/core";
-export { StoreDuplicateError, StoreNotFoundError, StorePersistenceError } from "@siteping/core";
+export { isStorePersistence, StoreDuplicateError, StoreNotFoundError, StorePersistenceError } from "@siteping/core";
 
 const DEFAULT_KEY = "siteping_feedbacks";
 

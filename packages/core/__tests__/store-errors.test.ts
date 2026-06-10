@@ -4,8 +4,10 @@ import {
   flattenAnnotation,
   isStoreDuplicate,
   isStoreNotFound,
+  isStorePersistence,
   StoreDuplicateError,
   StoreNotFoundError,
+  StorePersistenceError,
 } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
@@ -143,6 +145,71 @@ describe("isStoreDuplicate", () => {
   it("returns false for null/undefined", () => {
     expect(isStoreDuplicate(null)).toBe(false);
     expect(isStoreDuplicate(undefined)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StorePersistenceError
+// ---------------------------------------------------------------------------
+
+describe("StorePersistenceError", () => {
+  it("has default message", () => {
+    const err = new StorePersistenceError();
+    expect(err.message).toBe("Failed to persist store mutation");
+  });
+
+  it("accepts a custom message", () => {
+    const err = new StorePersistenceError("quota exceeded");
+    expect(err.message).toBe("quota exceeded");
+  });
+
+  it("has code STORE_PERSISTENCE", () => {
+    const err = new StorePersistenceError();
+    expect(err.code).toBe("STORE_PERSISTENCE");
+  });
+
+  it("has name StorePersistenceError", () => {
+    const err = new StorePersistenceError();
+    expect(err.name).toBe("StorePersistenceError");
+  });
+
+  it("is an instance of Error", () => {
+    const err = new StorePersistenceError();
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(StorePersistenceError);
+  });
+
+  it("preserves the underlying exception as cause", () => {
+    const cause = new Error("setItem failed");
+    const err = new StorePersistenceError(undefined, { cause });
+    expect(err.cause).toBe(cause);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isStorePersistence
+// ---------------------------------------------------------------------------
+
+describe("isStorePersistence", () => {
+  it("returns true for StorePersistenceError", () => {
+    expect(isStorePersistence(new StorePersistenceError())).toBe(true);
+  });
+
+  it("returns true for a code-only match (cross-bundle copies of core)", () => {
+    expect(isStorePersistence({ code: "STORE_PERSISTENCE" })).toBe(true);
+    expect(isStorePersistence(Object.assign(new Error("full"), { code: "STORE_PERSISTENCE" }))).toBe(true);
+  });
+
+  it("returns false for the sibling store errors", () => {
+    expect(isStorePersistence(new StoreNotFoundError())).toBe(false);
+    expect(isStorePersistence(new StoreDuplicateError())).toBe(false);
+  });
+
+  it("returns false for plain Error and primitives", () => {
+    expect(isStorePersistence(new Error("oops"))).toBe(false);
+    expect(isStorePersistence(null)).toBe(false);
+    expect(isStorePersistence(undefined)).toBe(false);
+    expect(isStorePersistence("STORE_PERSISTENCE")).toBe(false);
   });
 });
 
