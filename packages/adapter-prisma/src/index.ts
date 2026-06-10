@@ -50,15 +50,23 @@ export { dispatchWebhook, dispatchWebhooks } from "./webhooks.js";
  * Arguments are kept `unknown` so any Prisma version's generated client
  * satisfies the constraint; the adapter assembles type-safe payloads
  * internally before forwarding them.
+ *
+ * Members use **method syntax** (`create(args)`) rather than function-property
+ * syntax (`create: (args) => ...`) on purpose: under `strictFunctionTypes`,
+ * function-property parameters are checked *contravariantly*, so a real
+ * generated delegate — whose `create(args: SpecificArgs)` takes a type narrower
+ * than `unknown` — would fail to assign to `PrismaModelDelegate`. Method
+ * signatures are checked *bivariantly* on parameters, which is exactly what we
+ * want for structurally matching a third-party generated client (#99).
  */
 export interface PrismaModelDelegate {
-  create: (args: unknown) => Promise<unknown>;
-  findMany: (args: unknown) => Promise<unknown[]>;
-  findUnique: (args: unknown) => Promise<unknown>;
-  update: (args: unknown) => Promise<unknown>;
-  delete: (args: unknown) => Promise<unknown>;
-  deleteMany: (args: unknown) => Promise<unknown>;
-  count: (args: unknown) => Promise<number>;
+  create(args: unknown): Promise<unknown>;
+  findMany(args: unknown): Promise<unknown[]>;
+  findUnique(args: unknown): Promise<unknown>;
+  update(args: unknown): Promise<unknown>;
+  delete(args: unknown): Promise<unknown>;
+  deleteMany(args: unknown): Promise<unknown>;
+  count(args: unknown): Promise<number>;
 }
 
 /**

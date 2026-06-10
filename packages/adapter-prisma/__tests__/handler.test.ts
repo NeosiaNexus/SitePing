@@ -1,6 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createSitepingHandler } from "../src/index.js";
+import { createSitepingHandler, type SitepingPrismaClient } from "../src/index.js";
 import { validAnnotation, validPayloadNoAnnotations } from "./fixtures.js";
+
+// ---------------------------------------------------------------------------
+// Type-level regression for #99
+// ---------------------------------------------------------------------------
+
+describe("PrismaModelDelegate structural compatibility (#99)", () => {
+  it("accepts a delegate whose methods take narrower arg types than `unknown`", () => {
+    // Mirrors a real Prisma-generated client: each method declares a SPECIFIC
+    // args type (narrower than `unknown`). With function-property syntax these
+    // would be checked contravariantly and FAIL to assign under
+    // strictFunctionTypes; method syntax is bivariant, so this compiles. If
+    // PrismaModelDelegate ever regresses to arrow-property syntax, `bun run
+    // check` fails here.
+    interface GeneratedDelegate {
+      create(args: { data: unknown; include?: unknown }): Promise<{ id: string }>;
+      findMany(args: { where?: unknown; include?: unknown }): Promise<{ id: string }[]>;
+      findUnique(args: { where: unknown }): Promise<{ id: string } | null>;
+      update(args: { where: unknown; data: unknown }): Promise<{ id: string }>;
+      delete(args: { where: unknown }): Promise<{ id: string }>;
+      deleteMany(args: { where?: unknown }): Promise<{ count: number }>;
+      count(args: { where?: unknown }): Promise<number>;
+    }
+    const delegate = {} as GeneratedDelegate;
+    const client: SitepingPrismaClient = { sitepingFeedback: delegate };
+    expect(client.sitepingFeedback).toBe(delegate);
+  });
+});
 
 function mockPrisma() {
   return {
