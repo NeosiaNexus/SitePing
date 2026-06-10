@@ -76,6 +76,29 @@ export interface PrismaModelDelegate {
 }
 
 /**
+ * Compile-time regression guard for #99 — intentionally in `src/` because the
+ * package's `check` script (`tsc --noEmit`) only type-checks `src/`, and
+ * vitest transpiles tests without type-checking.
+ *
+ * `GeneratedDelegateProbe` mirrors a real generated client: every method
+ * declares args NARROWER than `unknown`. With method syntax the conditional
+ * below resolves to `true`; if `PrismaModelDelegate` ever regresses to
+ * function-property syntax (contravariant under `strictFunctionTypes`), it
+ * resolves to `false` and the `AssertTrue` constraint fails the build.
+ */
+type AssertTrue<T extends true> = T;
+interface GeneratedDelegateProbe {
+  create(args: { data: unknown; include?: unknown }): Promise<{ id: string }>;
+  findMany(args: { where?: unknown; include?: unknown }): Promise<{ id: string }[]>;
+  findUnique(args: { where: unknown }): Promise<{ id: string } | null>;
+  update(args: { where: unknown; data: unknown }): Promise<{ id: string }>;
+  delete(args: { where: unknown }): Promise<{ id: string }>;
+  deleteMany(args: { where?: unknown }): Promise<{ count: number }>;
+  count(args: { where?: unknown }): Promise<number>;
+}
+type _AssertDelegateBivariance = AssertTrue<GeneratedDelegateProbe extends PrismaModelDelegate ? true : false>;
+
+/**
  * Minimal Prisma client shape expected by this adapter.
  * Consumers pass their own `PrismaClient` instance at runtime — this interface
  * defines the subset of methods the adapter actually uses, so it can be
