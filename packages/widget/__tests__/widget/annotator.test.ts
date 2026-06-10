@@ -154,6 +154,17 @@ describe("Annotator", () => {
       expect(overlay!.getAttribute("aria-hidden")).toBe("true");
     });
 
+    it("focuses the overlay so the keyboard (Enter) annotation path receives keydown", () => {
+      bus.emit("annotation:start");
+
+      const overlay = findOverlay();
+      expect(overlay).not.toBeNull();
+      // onOverlayKeyDown only fires when the overlay itself is focused. Before
+      // this fix, activeElement stayed on <body> and the Enter path was dead
+      // (WCAG 2.1.1 Level A). The overlay carries tabindex=0.
+      expect(document.activeElement).toBe(overlay);
+    });
+
     it("creates a toolbar element (button with cancel text) on activation", () => {
       bus.emit("annotation:start");
 

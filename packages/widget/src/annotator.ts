@@ -204,6 +204,14 @@ export class Annotator {
 
     document.body.appendChild(this.overlay);
     document.body.appendChild(this.toolbar);
+
+    // Move focus to the overlay so the keyboard-annotation path (Enter →
+    // annotate the element that was focused before activation) actually
+    // receives keydown — onOverlayKeyDown only fires when the overlay itself
+    // is focused. The overlay has tabindex=0, and preActiveFocusElement was
+    // captured above (line ~97) before the overlay existed, so focusing here
+    // doesn't clobber the keyboard target. (WCAG 2.1.1 Level A)
+    this.overlay.focus({ preventScroll: true });
   }
 
   private deactivate(): void {
