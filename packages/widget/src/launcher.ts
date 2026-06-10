@@ -129,8 +129,13 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // Guard: desktop only (viewport below the threshold = hidden). forceShow
   // bypasses this just like the production guard above; minViewportWidth lets
-  // hosts tune (or disable, with 0) the threshold. See issue #103.
-  const minViewportWidth = config.minViewportWidth ?? MOBILE_BREAKPOINT;
+  // hosts tune (or disable, with 0) the threshold. Non-finite values (NaN from
+  // an untyped script-tag consumer, Infinity) would silently break the `<`
+  // comparison — fail back to the default instead. See issue #103.
+  const minViewportWidth =
+    typeof config.minViewportWidth === "number" && Number.isFinite(config.minViewportWidth)
+      ? config.minViewportWidth
+      : MOBILE_BREAKPOINT;
   if (!config.forceShow && window.innerWidth < minViewportWidth) {
     const reason = "mobile";
     console.info(

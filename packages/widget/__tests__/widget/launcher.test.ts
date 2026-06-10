@@ -259,6 +259,22 @@ describe("launch", () => {
         }
       });
     });
+
+    it("falls back to the 768px default when minViewportWidth is not a finite number", () => {
+      withViewportWidth(600, () => {
+        // NaN (e.g. Number('768px') from an untyped script-tag consumer) is not
+        // nullish, and `innerWidth < NaN` is always false — without validation
+        // it would silently disable the guard.
+        const onSkip = vi.fn();
+        const instance = launch(defaultConfig({ forceShow: false, minViewportWidth: Number.NaN, onSkip }));
+        try {
+          expect(document.querySelector("siteping-widget")).toBeNull();
+          expect(onSkip).toHaveBeenCalledWith("mobile");
+        } finally {
+          instance.destroy();
+        }
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
