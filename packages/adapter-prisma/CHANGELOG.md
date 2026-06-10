@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.9](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.8...adapter-prisma-v0.4.9) (2026-06-10)
+
+
+### Features
+
+* tech-lead review quick wins — a11y keyboard flow, store persistence contract, CSV formula guard ([#165](https://github.com/NeosiaNexus/SitePing/issues/165)) ([56f17a9](https://github.com/NeosiaNexus/SitePing/commit/56f17a99f159dc12707bcc0ec2f7c906bddf2a3f))
+
 ## [0.4.8](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.7...adapter-prisma-v0.4.8) (2026-05-19)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.14](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.13...widget-v0.9.14) (2026-06-10)
+
+
+### Features
+
+* tech-lead review quick wins — a11y keyboard flow, store persistence contract, CSV formula guard ([#165](https://github.com/NeosiaNexus/SitePing/issues/165)) ([56f17a9](https://github.com/NeosiaNexus/SitePing/commit/56f17a99f159dc12707bcc0ec2f7c906bddf2a3f))
+
 ## [0.9.13](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.12...widget-v0.9.13) (2026-06-01)
 
 
