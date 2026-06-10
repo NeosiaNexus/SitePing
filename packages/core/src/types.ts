@@ -482,6 +482,20 @@ export class StoreDuplicateError extends Error {
   }
 }
 
+/**
+ * Thrown when a store accepts a mutation but cannot persist it — e.g.
+ * `localStorage` is full (QuotaExceededError). Adapters MUST throw this rather
+ * than swallow the failure, so callers learn the write was lost instead of
+ * seeing a phantom success.
+ */
+export class StorePersistenceError extends Error {
+  readonly code = "STORE_PERSISTENCE" as const;
+  constructor(message = "Failed to persist store mutation") {
+    super(message);
+    this.name = "StorePersistenceError";
+  }
+}
+
 /** Shape of any ORM error that carries a Prisma-style `code` field. */
 type CodedError<C extends string = string> = { code: C };
 

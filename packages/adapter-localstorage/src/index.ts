@@ -8,10 +8,11 @@ import {
   type FeedbackUpdateInput,
   type SitepingStore,
   StoreNotFoundError,
+  StorePersistenceError,
 } from "@siteping/core";
 
 export type { SitepingStore } from "@siteping/core";
-export { StoreDuplicateError, StoreNotFoundError } from "@siteping/core";
+export { StoreDuplicateError, StoreNotFoundError, StorePersistenceError } from "@siteping/core";
 
 const DEFAULT_KEY = "siteping_feedbacks";
 
@@ -173,7 +174,10 @@ export class LocalStorageStore implements SitepingStore {
     fb.status = data.status;
     fb.resolvedAt = data.resolvedAt;
     fb.updatedAt = new Date();
-    this.save(feedbacks);
+    // save() returns false when localStorage is full. Surface it instead of
+    // returning a record that claims success — otherwise the mutation is
+    // silently lost (the in-memory `fb` is returned but never persisted).
+    if (!this.save(feedbacks)) throw new StorePersistenceError();
     return fb;
   }
 
@@ -183,7 +187,8 @@ export class LocalStorageStore implements SitepingStore {
     if (idx === -1) throw new StoreNotFoundError();
 
     feedbacks.splice(idx, 1);
-    this.save(feedbacks);
+    // Surface persistence failure rather than reporting a phantom delete.
+    if (!this.save(feedbacks)) throw new StorePersistenceError();
   }
 
   async deleteAllFeedbacks(projectName: string): Promise<void> {

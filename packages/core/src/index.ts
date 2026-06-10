@@ -74,4 +74,5 @@ export {
   isStoreNotFound,
   StoreDuplicateError,
   StoreNotFoundError,
+  StorePersistenceError,
 } from "./types.js";

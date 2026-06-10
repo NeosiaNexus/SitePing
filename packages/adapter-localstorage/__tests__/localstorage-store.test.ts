@@ -2,7 +2,7 @@
 
 import { testSitepingStore } from "@siteping/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LocalStorageStore } from "../src/index.js";
+import { LocalStorageStore, StorePersistenceError } from "../src/index.js";
 
 // Run the full SitepingStore conformance suite
 testSitepingStore(() => {
@@ -127,6 +127,34 @@ describe("LocalStorageStore specific", () => {
       };
       await expect(store.createFeedback(input)).resolves.toBeDefined();
       Storage.prototype.setItem = original;
+    });
+
+    it("updateFeedback throws StorePersistenceError when the write fails (quota)", async () => {
+      const fb = await store.createFeedback(input);
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = () => {
+        throw new DOMException("QuotaExceededError");
+      };
+      try {
+        await expect(
+          store.updateFeedback(fb.id, { status: "resolved", resolvedAt: new Date() }),
+        ).rejects.toBeInstanceOf(StorePersistenceError);
+      } finally {
+        Storage.prototype.setItem = original;
+      }
+    });
+
+    it("deleteFeedback throws StorePersistenceError when the write fails (quota)", async () => {
+      const fb = await store.createFeedback(input);
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = () => {
+        throw new DOMException("QuotaExceededError");
+      };
+      try {
+        await expect(store.deleteFeedback(fb.id)).rejects.toBeInstanceOf(StorePersistenceError);
+      } finally {
+        Storage.prototype.setItem = original;
+      }
     });
 
     it("clear() removes all data for this store key", async () => {
