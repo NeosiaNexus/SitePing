@@ -154,12 +154,25 @@ const CSV_COLUMNS = [
   "viewport",
 ] as const;
 
-/** Escape a value for CSV: wrap in double-quotes if it contains commas, newlines, or quotes. */
+/**
+ * Escape a value for CSV. Two concerns, applied in order:
+ *
+ * 1. **Formula injection** — spreadsheet apps (Excel, Google Sheets,
+ *    LibreOffice) treat a cell starting with `=`, `+`, `-`, `@`, or a leading
+ *    TAB/CR as a formula. Columns like `message`, `authorName`, and `url` are
+ *    arbitrary end-user input, so a payload such as `=HYPERLINK("http://evil",
+ *    A1)` or `=cmd|'/c calc'!A1` would execute when a reviewer opens the export.
+ *    We neutralize it by prefixing a single quote (the OWASP-recommended guard),
+ *    which forces the cell to be treated as text.
+ * 2. **RFC-4180 quoting** — wrap in double-quotes (doubling inner quotes) if the
+ *    guarded value contains commas, quotes, or newlines.
+ */
 function escapeCsvField(value: string): string {
-  if (value.includes('"') || value.includes(",") || value.includes("\n") || value.includes("\r")) {
-    return `"${value.replace(/"/g, '""')}"`;
+  const guarded = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (guarded.includes('"') || guarded.includes(",") || guarded.includes("\n") || guarded.includes("\r")) {
+    return `"${guarded.replace(/"/g, '""')}"`;
   }
-  return value;
+  return guarded;
 }
 
 /** Convert feedbacks to CSV string */

@@ -67,6 +67,28 @@ describe("feedback export conversion", () => {
     expect(feedbacksToCsv([])).toBe("id,type,status,message,url,authorName,authorEmail,createdAt,resolvedAt,viewport");
   });
 
+  it("neutralizes spreadsheet formula injection in user-controlled fields", () => {
+    const csv = feedbacksToCsv([
+      makeFeedback({
+        id: "fb-inj",
+        message: '=HYPERLINK("http://evil","click")',
+        url: "@SUM(A1:A9)",
+        authorName: "+1-555-0100",
+        authorEmail: "-2+3",
+      }),
+    ]);
+    const dataRow = csv.split("\n")[1]!;
+    // Each field starting with = + - @ is prefixed with a single quote so the
+    // spreadsheet treats it as text instead of evaluating it as a formula.
+    expect(dataRow).toContain("'=HYPERLINK");
+    expect(dataRow).toContain("'@SUM(A1:A9)");
+    expect(dataRow).toContain("'+1-555-0100");
+    expect(dataRow).toContain("'-2+3");
+    // Benign values (not starting with a formula trigger) are untouched.
+    expect(dataRow).toContain("fb-inj");
+    expect(dataRow).not.toContain("'fb-inj");
+  });
+
   it("serializes formatted JSON without dropping nested annotation data", () => {
     const json = feedbacksToJson([
       makeFeedback({
