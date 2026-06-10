@@ -73,7 +73,8 @@ All configuration options for `initSiteping()`:
 | `accentColor` | `string` | `'#0066ff'` | Widget accent color — hex color (`#RGB`, `#RRGGBB`, `#RRGGBBAA`) |
 | `theme` | `'light' \| 'dark' \| 'auto'` | `'light'` | Widget color theme |
 | `locale` | `'en' \| 'fr' \| 'de' \| 'es' \| 'it' \| 'pt' \| 'ru'` | `'en'` | Widget UI language. Unknown locales fall back to English |
-| `forceShow` | `boolean` | `false` | Show the widget in production (hidden by default) |
+| `forceShow` | `boolean` | `false` | Render the widget even when it would normally be skipped — bypasses **both** the production guard and the mobile-viewport guard |
+| `minViewportWidth` | `number` | `768` | Minimum viewport width (px) for the widget to render; below it `onSkip('mobile')` fires. Set `0` to allow mobile viewports |
 | `debug` | `boolean` | `false` | Enable debug logging to console |
 | `identity` | `{ name: string; email: string }` | — | Pre-fill author identity from the host (SSO). When set, the widget skips the identity modal |
 | `deepLink` | `boolean \| { param?: string }` | `false` | On initial load, focus the annotation referenced by `?siteping=<id>` (or a custom query key). SPA navigations are ignored — use `focusFeedback()` for route-change focus |

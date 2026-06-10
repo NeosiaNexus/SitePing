@@ -51,7 +51,7 @@ Remove all data from localStorage for this store key.
 
 ## Edge Cases
 
-- **localStorage full** — writes are silently dropped (best-effort persistence)
+- **localStorage full** — `createFeedback` drops the screenshot (the heaviest field) and retries; if the write still fails — or a `updateFeedback` / `deleteFeedback` / `deleteAllFeedbacks` write fails — a `StorePersistenceError` is thrown so callers know the mutation was **not** persisted (detect it with `isStorePersistence`)
 - **Corrupted data** — returns empty array, does not throw
 - **Multiple stores** — use different `key` values for isolation
 
