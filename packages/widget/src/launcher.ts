@@ -127,10 +127,15 @@ export function launch(config: SitepingConfig): SitepingInstance {
     }
   }
 
-  // Guard: desktop only (< MOBILE_BREAKPOINT = hidden)
-  if (window.innerWidth < MOBILE_BREAKPOINT) {
+  // Guard: desktop only (viewport below the threshold = hidden). forceShow
+  // bypasses this just like the production guard above; minViewportWidth lets
+  // hosts tune (or disable, with 0) the threshold. See issue #103.
+  const minViewportWidth = config.minViewportWidth ?? MOBILE_BREAKPOINT;
+  if (!config.forceShow && window.innerWidth < minViewportWidth) {
     const reason = "mobile";
-    console.info(`[siteping] Widget not loaded: viewport width < ${MOBILE_BREAKPOINT}px (mobile not supported).`);
+    console.info(
+      `[siteping] Widget not loaded: viewport width < ${minViewportWidth}px (mobile not supported). Use forceShow: true or lower minViewportWidth to override.`,
+    );
     config.onSkip?.(reason);
     return skippedInstance();
   }

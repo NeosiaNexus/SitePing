@@ -70,8 +70,21 @@ export interface SitepingConfig {
   showAnnotationsToggle?: boolean | undefined;
   /** Accent color for the widget UI — defaults to '#0066ff' */
   accentColor?: string;
-  /** Show the widget even in production — defaults to false */
+  /**
+   * Render the widget even when it would normally be skipped — this bypasses
+   * BOTH the production-environment guard AND the mobile-viewport guard.
+   * Defaults to false. Use it for dedicated review tools, staging environments,
+   * or responsive testing where you always want the widget present.
+   */
   forceShow?: boolean;
+  /**
+   * Minimum viewport width (px) at or above which the widget renders. Below it,
+   * the widget is skipped and `onSkip("mobile")` fires. Defaults to `768`.
+   *
+   * Set lower (e.g. `0`) to allow narrow/mobile viewports, or use `forceShow`
+   * to bypass the viewport check entirely.
+   */
+  minViewportWidth?: number | undefined;
   /** Enable debug logging of lifecycle events — defaults to false */
   debug?: boolean;
   /** Color theme — defaults to 'light' */
