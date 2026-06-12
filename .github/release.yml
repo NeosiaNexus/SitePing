@@ -1,8 +1,8 @@
 changelog:
   exclude:
     labels:
-      - autorelease: pending
-      - autorelease: tagged
+      - "autorelease: pending"
+      - "autorelease: tagged"
       - ignore-for-release
     authors:
       - dependabot
