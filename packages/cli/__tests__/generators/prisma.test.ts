@@ -139,6 +139,15 @@ describe("syncPrismaModels", () => {
     expect(output).toContain("generator client");
   });
 
+  it("does not prepend a blank line to the schema", () => {
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+
+    syncPrismaModels(schemaPath);
+
+    const output = readFileSync(schemaPath, "utf-8");
+    expect(output).toMatch(/^datasource db/);
+  });
+
   // -----------------------------------------------------------------------
   // Adding models alongside existing models
   // -----------------------------------------------------------------------
