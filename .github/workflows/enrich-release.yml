@@ -76,6 +76,13 @@ jobs:
             const prefixMatch = tag.match(/^(.*?)v?\d+\.\d+\.\d+/);
             const prefix = prefixMatch ? prefixMatch[1] : '';
 
+            // release-please scopes each release to commits touching the package
+            // directory; credit must use the same scope, or the raw tag range drags
+            // in every repo commit since that package last released and mentions
+            // people whose work shipped elsewhere.
+            const component = prefix.replace(/-$/, '');
+            const packagePaths = component ? [`packages/${component}`] : [];
+
             const { data: releases } = await github.rest.repos.listReleases({
               owner, repo, per_page: 100,
             });
@@ -100,18 +107,44 @@ jobs:
               basehead: `${previousTag}...${tag}`,
             });
 
-            const authors = new Map();
-            for (const commit of compare.commits) {
-              const login = commit.author?.login;
-              if (!login || BOT_LOGINS.has(login)) continue;
-              if (!authors.has(login)) {
-                authors.set(login, {
-                  login,
-                  html_url: commit.author.html_url,
-                  count: 0,
+            // Keep only range commits that ship in this package. listCommits(path)
+            // walks newest-first from the tag, so once a whole page falls outside
+            // the range we are past it and can stop.
+            let releaseCommits = compare.commits;
+            if (packagePaths.length > 0) {
+              const rangeShas = new Set(compare.commits.map(c => c.sha));
+              const inPackage = new Set();
+              for (const path of packagePaths) {
+                const iterator = github.paginate.iterator(github.rest.repos.listCommits, {
+                  owner, repo, sha: tag, path, per_page: 100,
                 });
+                let pages = 0;
+                for await (const { data: page } of iterator) {
+                  const hits = page.filter(c => rangeShas.has(c.sha));
+                  for (const c of hits) inPackage.add(c.sha);
+                  if (hits.length === 0 || ++pages >= 10) break;
+                }
               }
-              authors.get(login).count += 1;
+              releaseCommits = compare.commits.filter(c => inPackage.has(c.sha));
+              core.info(`${releaseCommits.length}/${compare.commits.length} commits in range touch ${packagePaths.join(', ')}.`);
+            }
+
+            // Keyed by lowercased login so commit authorship and Co-authored-by
+            // trailers (arbitrary casing) collapse into a single entry.
+            const authors = new Map();
+            for (const commit of releaseCommits) {
+              const login = commit.author?.login;
+              if (login && !BOT_LOGINS.has(login)) {
+                const key = login.toLowerCase();
+                const entry = authors.get(key);
+                if (entry) {
+                  entry.count += 1;
+                  entry.login = login;
+                  entry.html_url = commit.author.html_url;
+                } else {
+                  authors.set(key, { login, html_url: commit.author.html_url, count: 1 });
+                }
+              }
 
               // Co-authored-by trailers (carries credit for pair programming, etc.)
               const coAuthorRegex = /^Co-authored-by:\s*([^<]+?)\s*<([^>]+)>/gim;
@@ -122,12 +155,11 @@ jobs:
                 if (email.includes('noreply.github.com')) {
                   const loginMatch = email.match(/^(?:\d+\+)?([^@]+)@users\.noreply\.github\.com$/);
                   const coLogin = loginMatch ? loginMatch[1] : null;
-                  if (coLogin && !BOT_LOGINS.has(coLogin) && !authors.has(coLogin)) {
-                    authors.set(coLogin, {
+                  if (coLogin && !BOT_LOGINS.has(coLogin) && !authors.has(coLogin.toLowerCase())) {
+                    authors.set(coLogin.toLowerCase(), {
                       login: coLogin,
                       html_url: `https://github.com/${coLogin}`,
-                      count: 1,
-                      coAuthor: true,
+                      count: 0,
                     });
                   }
                 }
@@ -143,7 +175,18 @@ jobs:
                 previous_tag_name: previousTag,
               });
               const match = generated.body.match(/##+\s*New Contributors[\s\S]*?(?=\n##|$)/);
-              if (match) newContribSection = match[0].trim();
+              if (match) {
+                // GitHub computes first-timers over the whole-repo range; keep only
+                // those whose work is in this package's release, or every package
+                // release re-pings the same people (plain @mentions notify).
+                const lines = match[0].trim().split('\n').filter(line => {
+                  const mention = line.match(/@([A-Za-z0-9-]+)/);
+                  return !mention || authors.has(mention[1].toLowerCase());
+                });
+                if (lines.some(line => line.includes('@'))) {
+                  newContribSection = lines.join('\n');
+                }
+              }
             } catch (err) {
               core.warning(`generateReleaseNotes failed: ${err.message}`);
             }
@@ -156,7 +199,7 @@ jobs:
               section += `Thanks to everyone whose work shipped in this release:\n\n`;
               const sorted = [...authors.values()].sort((a, b) => b.count - a.count || a.login.localeCompare(b.login));
               for (const a of sorted) {
-                const suffix = a.coAuthor ? ' _(co-author)_' : ` (${a.count} commit${a.count > 1 ? 's' : ''})`;
+                const suffix = a.count === 0 ? ' _(co-author)_' : ` (${a.count} commit${a.count > 1 ? 's' : ''})`;
                 section += `- [@${a.login}](${a.html_url})${suffix}\n`;
               }
             }
