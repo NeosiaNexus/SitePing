@@ -145,8 +145,7 @@ describe("syncPrismaModels", () => {
     syncPrismaModels(schemaPath);
 
     const output = readFileSync(schemaPath, "utf-8");
-    expect(output.startsWith("\n")).toBe(false);
-    expect(output[0]).toBe("d");
+    expect(output).toMatch(/^datasource db/);
   });
 
   // -----------------------------------------------------------------------
