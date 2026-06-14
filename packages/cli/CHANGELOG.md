@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.8](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.4.7...cli-v0.4.8) (2026-06-14)
+
+
+### Bug Fixes
+
+* **cli:** avoid leading newline in prisma sync ([98f7c2a](https://github.com/NeosiaNexus/SitePing/commit/98f7c2a0a457734f54696481e30b39bb385fe6a9))
+
 ## [0.4.7](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.4.6...cli-v0.4.7) (2026-06-01)
 
 
