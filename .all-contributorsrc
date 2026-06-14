@@ -93,6 +93,16 @@
         "bug",
         "ideas"
       ]
+    },
+    {
+      "login": "LIghtJUNction",
+      "name": "LIghtJUNction",
+      "avatar_url": "https://avatars.githubusercontent.com/u/106986785?v=4",
+      "profile": "https://humen.lmm.best/mcp/",
+      "contributions": [
+        "code",
+        "test"
+      ]
     }
   ],
   "commitType": "docs"
