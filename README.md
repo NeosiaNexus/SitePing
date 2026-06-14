@@ -712,6 +712,9 @@ This project follows the [all-contributors](https://allcontributors.org) specifi
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/sjh9714"><img src="https://avatars.githubusercontent.com/u/163989462?v=4?s=100" width="100px;" alt="JinHyuk Sung"/><br /><sub><b>JinHyuk Sung</b></sub></a><br /><a href="https://github.com/NeosiaNexus/SitePing/commits?author=sjh9714" title="Code">💻</a> <a href="https://github.com/NeosiaNexus/SitePing/commits?author=sjh9714" title="Tests">⚠️</a> <a href="https://github.com/NeosiaNexus/SitePing/issues?q=author%3Asjh9714" title="Bug reports">🐛</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://www.sendung.de/"><img src="https://avatars.githubusercontent.com/u/273727?v=4?s=100" width="100px;" alt="Marian Steinbach"/><br /><sub><b>Marian Steinbach</b></sub></a><br /><a href="https://github.com/NeosiaNexus/SitePing/issues?q=author%3Amarians" title="Bug reports">🐛</a> <a href="#ideas-marians" title="Ideas, Planning, & Feedback">🤔</a></td>
     </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://humen.lmm.best/mcp/"><img src="https://avatars.githubusercontent.com/u/106986785?v=4?s=100" width="100px;" alt="LIghtJUNction"/><br /><sub><b>LIghtJUNction</b></sub></a><br /><a href="https://github.com/NeosiaNexus/SitePing/commits?author=LIghtJUNction" title="Code">💻</a> <a href="https://github.com/NeosiaNexus/SitePing/commits?author=LIghtJUNction" title="Tests">⚠️</a></td>
+    </tr>
   </tbody>
 </table>
 
