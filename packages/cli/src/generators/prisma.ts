@@ -131,7 +131,9 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
   }
 
   if (addedModels.length > 0 || changes.length > 0) {
-    const output = printSchema(schema);
+    // prisma-ast's printSchema() unconditionally prepends a newline, and prints
+    // blank lines as os.EOL ("\r\n" on Windows) -- strip both forms (#98)
+    const output = printSchema(schema).replace(/^(\r?\n)+/, "");
     try {
       writeFileSync(schemaPath, output, "utf-8");
     } catch (error) {
