@@ -304,6 +304,13 @@ export function launch(config: SitepingConfig): SitepingInstance {
   let panelInstance: PanelType | null = null;
   let panelPromise: Promise<PanelType> | null = null;
   let destroyed = false;
+  // Monotonic token guarding the launcher's own marker renders (initial load +
+  // doRefresh). The panel guards its own renders with an AbortController; the
+  // two direct launcher paths share this counter so the *last-issued* fetch
+  // wins, never the last to resolve. Without it, an SPA nav burst (or an
+  // initial load racing the first navigation) could render a stale page's
+  // markers out of order, since markers.render() is a full clear-and-rebuild.
+  let markerGeneration = 0;
   async function loadPanel(): Promise<PanelType | null> {
     if (destroyed) return null;
     if (panelInstance) return panelInstance;
@@ -478,13 +485,17 @@ export function launch(config: SitepingConfig): SitepingInstance {
   const initialScope = getScope();
   const initialOptions = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: initialScope.url } : { limit: PAGE_SIZE };
   const deepLinkOpts = normaliseDeepLinkOptions(config.deepLink);
+  // Claim a generation for the initial load so a navigation that fires while
+  // this fetch is in flight (doRefresh bumps the counter) supersedes it — the
+  // old page's markers must never clobber the page the user navigated to.
+  const initialLoadGeneration = ++markerGeneration;
   // Render markers only once both the feedbacks and the locale dictionary are
   // ready. Marker aria-labels are built via `t(...)` at render time — without
   // this `Promise.all`, a fast HTTP response could outrun a slow locale chunk
   // and freeze marker labels in the English fallback for non-English locales.
   Promise.all([client.getFeedbacks(config.projectName, initialOptions), localeReady])
     .then(([{ feedbacks }]) => {
-      if (destroyed) return;
+      if (destroyed || markerGeneration !== initialLoadGeneration) return;
       // Defensive client-side filter — backend may not yet support the `url` query.
       const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === initialScope.url) : feedbacks;
       markers.render(visible);
@@ -516,11 +527,102 @@ export function launch(config: SitepingConfig): SitepingInstance {
       .catch(() => {});
   }
 
+  // Re-fetch feedbacks for the *current* scope and update the UI. Shared by the
+  // public `instance.refresh()` and the SPA navigation watcher below.
+  //
+  // When the panel is open, its own `refresh()` already runs `loadFeedbacks()`
+  // which re-renders markers — a second fetch here would race with it (the
+  // loser overwrites the winner's markers, off by a generation). So we delegate
+  // when open, and fetch markers ourselves when closed (the panel won't, but
+  // SPA hosts still need the new page's markers after a route change).
+  //
+  // Returns the in-flight promise (rejecting on fetch failure) so callers can
+  // react — `instance.refresh()` swallows it (the public API never rejects onto
+  // the host), the navigation watcher uses it to re-arm its dedup on failure.
+  const doRefresh = (): Promise<void> => {
+    // Bump first, before the open/closed split, so switching to panel-driven
+    // rendering also invalidates any closed-panel fetch still in flight.
+    const generation = ++markerGeneration;
+    if (panelInstance?.isCurrentlyOpen) {
+      return panelInstance.refresh();
+    }
+    const scope = getScope();
+    const opts = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: scope.url } : { limit: PAGE_SIZE };
+    return client.getFeedbacks(config.projectName, opts).then(({ feedbacks }) => {
+      // Drop the result if a newer refresh superseded us (out-of-order
+      // resolution), the widget was torn down, or the panel opened mid-flight
+      // and now owns marker rendering itself.
+      if (destroyed || generation !== markerGeneration || panelInstance?.isCurrentlyOpen) return;
+      const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === scope.url) : feedbacks;
+      markers.render(visible);
+    });
+  };
+
+  // SPA route-change watcher. The widget is normally mounted once (singleton)
+  // inside a persistent layout — e.g. a Next.js App Router `layout.tsx`, which
+  // does NOT remount on client-side navigation. Without this, init runs once and
+  // the panel list + markers stay frozen on the page where the widget first
+  // mounted. We patch the History API (SPA routers call pushState/replaceState
+  // rather than triggering popstate) and listen for popstate/hashchange, then
+  // re-fetch only when the scope key actually changes. This re-fetches data
+  // only — it deliberately does NOT re-focus/re-scroll (deep-link focus stays
+  // initial-load only; see `deepLink`). Opt out with `watchNavigation: false`.
+  let teardownNavigation: (() => void) | null = null;
+  if (config.watchNavigation !== false && typeof window !== "undefined" && typeof history !== "undefined") {
+    const scopeKey = (s: PageScope): string => `${s.url}\n${s.urlPattern ?? ""}`;
+    let lastScopeKey = scopeKey(initialScope);
+    const onLocationChange = (): void => {
+      if (destroyed) return;
+      const key = scopeKey(getScope());
+      // Same scope (e.g. query-only or hash-only nav under the default pathname
+      // scope) — nothing to re-fetch. Guards against pushState storms too.
+      if (key === lastScopeKey) return;
+      const prevKey = lastScopeKey;
+      lastScopeKey = key;
+      log("SPA navigation detected — refreshing feedbacks for new scope");
+      doRefresh().catch(() => {
+        // The refresh failed (network error). Roll the dedup key back so a
+        // later nav *back* to this same scope retries instead of being
+        // silently suppressed — unless a newer navigation already moved on.
+        if (lastScopeKey === key) lastScopeKey = prevKey;
+      });
+    };
+
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+    // Call through to the original first so `location` is already updated by the
+    // time onLocationChange() reads getScope().
+    const patchedPushState: typeof history.pushState = function (this: History, ...args) {
+      originalPushState.apply(this, args);
+      onLocationChange();
+    };
+    const patchedReplaceState: typeof history.replaceState = function (this: History, ...args) {
+      originalReplaceState.apply(this, args);
+      onLocationChange();
+    };
+    history.pushState = patchedPushState;
+    history.replaceState = patchedReplaceState;
+    window.addEventListener("popstate", onLocationChange);
+    window.addEventListener("hashchange", onLocationChange);
+
+    teardownNavigation = () => {
+      window.removeEventListener("popstate", onLocationChange);
+      window.removeEventListener("hashchange", onLocationChange);
+      // Restore only if nobody patched on top of us — otherwise we'd clobber
+      // another library's History wrapper. If a library did wrap on top, our
+      // patch stays in the chain (and keeps its closure alive), but it's inert:
+      // `destroyed` is already true above, so onLocationChange() is a no-op.
+      if (history.pushState === patchedPushState) history.pushState = originalPushState;
+      if (history.replaceState === patchedReplaceState) history.replaceState = originalReplaceState;
+    };
+  }
+
   instance = {
     destroy: () => {
       log("Destroying widget");
       destroyed = true;
       pendingOpen = false;
+      teardownNavigation?.();
       unsubAnnotation();
       unsubToggle();
       fab.destroy();
@@ -560,27 +662,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
       // can retry, or trigger focus from a user gesture instead.
       return markers.focusFeedback(feedbackId);
     },
+    // Public API must never reject onto the host — swallow the promise.
     refresh: () => {
-      // When the panel is open, its `refresh()` already runs `loadFeedbacks()`
-      // which renders markers. Doing a second fetch here would race with that
-      // one — the loser overwrites the winner's markers, off by a generation.
-      // So: when the panel is open, delegate. When it's closed, fetch markers
-      // ourselves (the panel won't, but SPA hosts still need the new page's
-      // markers after a route change).
-      if (panelInstance?.isCurrentlyOpen) {
-        panelInstance.refresh();
-        return;
-      }
-
-      const scope = getScope();
-      const opts = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: scope.url } : { limit: PAGE_SIZE };
-      client
-        .getFeedbacks(config.projectName, opts)
-        .then(({ feedbacks }) => {
-          const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === scope.url) : feedbacks;
-          markers.render(visible);
-        })
-        .catch(() => {});
+      void doRefresh().catch(() => {});
     },
     // `PublicWidgetEvents` is a structural alias of `SitepingPublicEvents`, so
     // these on/off forwarders compose without any runtime cast.
