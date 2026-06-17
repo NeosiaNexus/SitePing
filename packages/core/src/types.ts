@@ -175,6 +175,28 @@ export interface SitepingConfig {
    */
   deepLink?: boolean | SitepingDeepLinkOptions | undefined;
   /**
+   * Automatically re-fetch feedbacks when the page changes during client-side
+   * (SPA) navigation. Enabled by default.
+   *
+   * The widget is normally mounted once (singleton) inside a persistent layout
+   * — e.g. a Next.js App Router `layout.tsx`, which does NOT remount on
+   * client-side navigation. Without this, init runs a single time and both the
+   * panel list and the page markers stay frozen on the page where the widget
+   * first mounted. With it on, the widget patches the History API
+   * (`pushState`/`replaceState`, which SPA routers call instead of triggering
+   * `popstate`) and listens for `popstate`/`hashchange`, then re-fetches when
+   * the scope key (`getPageScope().url` + template) actually changes.
+   *
+   * This re-fetches data only — it deliberately does NOT re-focus or re-scroll
+   * to an annotation (deep-link focus stays initial-load only; see `deepLink`),
+   * so normal browsing is never interrupted by a surprise scroll.
+   *
+   * - `true` (default) — watch navigation and re-fetch on route change.
+   * - `false` — never touch the History API; hosts drive updates manually via
+   *   `instance.refresh()`.
+   */
+  watchNavigation?: boolean | undefined;
+  /**
    * Pre-fill author identity from the host application — typically the
    * currently signed-in user. When set, the widget uses these values
    * directly and never shows the identity modal, even on first feedback.

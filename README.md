@@ -253,7 +253,7 @@ When the recipient clicks the link, the widget opens on the original page with t
 deepLink: { param: 'fb' }   // → ?fb=<feedbackId>
 ```
 
-**Only the initial page load triggers focus.** SPA navigations and `history.pushState` updates are ignored on purpose — re-scrolling during normal browsing would be surprising. Hosts that need to drive focus after a route change can call the imperative counterpart instead:
+**Only the initial page load triggers focus.** SPA navigations and `history.pushState` updates never trigger an automatic *re-scroll* — re-scrolling during normal browsing would be surprising. (The feedback **data** does follow route changes automatically: the widget re-fetches the new page's feedbacks on SPA navigation by default — see `watchNavigation`. It's only the deep-link *focus/scroll* that stays initial-load only.) Hosts that need to drive focus after a route change can call the imperative counterpart instead:
 
 ```ts
 const widget = initSiteping({ endpoint: '/api/siteping', projectName: 'my-app' })
