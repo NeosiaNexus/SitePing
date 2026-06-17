@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.15](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.14...widget-v0.9.15) (2026-06-17)
+
+
+### Bug Fixes
+
+* **widget:** re-fetch feedbacks on SPA navigation ([#181](https://github.com/NeosiaNexus/SitePing/issues/181)) ([a8eddda](https://github.com/NeosiaNexus/SitePing/commit/a8eddda4cb4feec8c6c764713498979476ec5ade))
+
 ## [0.9.14](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.13...widget-v0.9.14) (2026-06-10)
 
 
