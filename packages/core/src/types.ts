@@ -131,6 +131,11 @@ export interface SitepingConfig {
    */
   enableScreenshot?: boolean | undefined;
   /**
+   * Enable right-click (contextmenu) to instantly open the comment popup at the cursor location.
+   * Disables the browser's default context menu when enabled. Defaults to false.
+   */
+  enableRightClick?: boolean | undefined;
+  /**
    * Capture the last few `console.*` calls and failed network requests
    * (HTTP >= 400 or network error) at the moment a feedback is submitted.
    *

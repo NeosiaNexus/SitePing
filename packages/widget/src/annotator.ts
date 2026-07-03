@@ -416,6 +416,54 @@ export class Annotator {
   };
 
   /**
+   * Instantly triggers the annotation popup at a specific location without
+   * requiring the user to draw a rectangle. Used for right-click commenting.
+   */
+  public async startInstantAnnotation(clientX: number, clientY: number): Promise<void> {
+    if (this.submissionInFlight) return;
+    
+    // Ensure annotator is active so the overlay exists for capturing the anchor
+    this.activate();
+
+    // Create a 20x20 invisible boundary centered at the cursor for the anchor search
+    // and screenshot capture.
+    const size = 20;
+    const x = Math.max(0, clientX - size / 2);
+    const y = Math.max(0, clientY - size / 2);
+    const rectBounds = new DOMRect(x, y, size, size);
+
+    // Build annotation payload
+    const annotation = this.buildAnnotation(rectBounds);
+
+    // Create a visual indicator to show where the user clicked, similar to the drawing rect
+    this.drawingRect = el("div", {
+      style: `
+        position:fixed;
+        left:${x}px;
+        top:${y}px;
+        width:${size}px;
+        height:${size}px;
+        border:2px solid ${this.colors.accent};
+        background:${this.colors.accent}12;
+        pointer-events:none;
+        border-radius:8px;
+        box-shadow:0 0 16px ${this.colors.accentGlow};
+      `,
+    });
+    this.drawingRect.setAttribute("data-siteping-ignore", "true");
+    this.overlay?.appendChild(this.drawingRect);
+
+    const screenshotCache: { value?: string | null } = {};
+    const result = await this.popup.show(rectBounds, (formResult) =>
+      this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
+    );
+
+    this.drawingRect?.remove();
+    this.drawingRect = null;
+    if (result) this.deactivate();
+  }
+
+  /**
    * Submit handler passed into `popup.show()`. Captures the screenshot once
    * (cached across retries) and emits `annotation:complete` on the bus, then
    * waits for one of three terminal signals:

@@ -364,6 +364,18 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   const annotator = new Annotator(colors, bus, t, config.enableScreenshot ?? false);
 
+  let onContextMenu: ((e: MouseEvent) => void) | null = null;
+  if (config.enableRightClick) {
+    onContextMenu = (e: MouseEvent) => {
+      // Let the browser's context menu open if the user is holding a modifier key,
+      // or if they are clicking inside an existing SitePing UI element.
+      if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+      e.preventDefault();
+      annotator.startInstantAnnotation(e.clientX, e.clientY);
+    };
+    document.addEventListener("contextmenu", onContextMenu);
+  }
+
   // Once the locale dictionary lands, swap the FAB + popup labels from the
   // English fallback to the configured language. `t` already resolves to the
   // loaded dictionary at call time, so the markers list rendered below (which
@@ -620,6 +632,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
   instance = {
     destroy: () => {
       log("Destroying widget");
+      if (onContextMenu) {
+        document.removeEventListener("contextmenu", onContextMenu);
+      }
       destroyed = true;
       pendingOpen = false;
       teardownNavigation?.();
