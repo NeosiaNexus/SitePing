@@ -26,7 +26,7 @@
     "lint:fix": "biome check --write ."
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
+    "@biomejs/biome": "2.5.3",
     "@playwright/test": "^1.61.1",
     "@prisma/client": "^7.8.0",
     "@types/node": "^25.9.5",
