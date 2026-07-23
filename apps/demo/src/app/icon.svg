@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>SitePing</title>
   <rect width="32" height="32" rx="6" fill="#173cff"/>
   <path d="M22 16a2 2 0 0 1-2 2H12l-3 3V10a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2z" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="12.5" cy="13" r="1" fill="#fff"/>
