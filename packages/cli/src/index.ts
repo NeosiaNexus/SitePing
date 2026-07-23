@@ -7,7 +7,7 @@ import { syncCommand } from "./commands/sync.js";
 const program = new Command()
   .name("siteping")
   .description("CLI to configure @siteping/* in your project")
-  .version("0.4.8"); // x-release-please-version
+  .version("0.4.9"); // x-release-please-version
 
 program
   .command("init")
