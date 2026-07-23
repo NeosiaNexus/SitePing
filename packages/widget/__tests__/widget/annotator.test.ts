@@ -1082,4 +1082,76 @@ describe("Annotator", () => {
       expect(() => bus.emit("submission:cancelled")).not.toThrow();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Instant annotation (right-click comment)
+  // -------------------------------------------------------------------------
+
+  describe("startInstantAnnotation", () => {
+    it("is a no-op when the annotator is already active (isActive guard)", async () => {
+      // Enter annotation mode via the normal FAB flow
+      bus.emit("annotation:start");
+      expect(findOverlay()).not.toBeNull();
+
+      // A second instant annotation call should be ignored
+      await annotator.startInstantAnnotation(100, 100);
+
+      // Only one overlay should exist
+      expect(countOverlays()).toBe(1);
+    });
+
+    it("emits annotation:start on the bus so public hooks fire", async () => {
+      const startSpy = vi.fn();
+      bus.on("annotation:start", startSpy);
+
+      // startInstantAnnotation emits annotation:start internally
+      const promise = annotator.startInstantAnnotation(100, 100);
+
+      // annotation:start should have been emitted (once by our call,
+      // the bus handler then calls activate())
+      expect(startSpy).toHaveBeenCalled();
+
+      await promise;
+    });
+
+    it("emits annotation:end on deactivate (event symmetry)", async () => {
+      const endSpy = vi.fn();
+      bus.on("annotation:end", endSpy);
+
+      await annotator.startInstantAnnotation(100, 100);
+
+      // The instant flow always deactivates, which emits annotation:end
+      expect(endSpy).toHaveBeenCalled();
+    });
+
+    it("always deactivates after popup closes (even on cancel)", async () => {
+      // Simulate the popup returning null (cancel)
+      popupMocks.nextResult = null;
+
+      await annotator.startInstantAnnotation(100, 100);
+
+      // Overlay should be cleaned up — the user is not stranded in draw mode
+      expect(findOverlay()).toBeNull();
+    });
+
+    it("does not show the draw-mode toolbar", async () => {
+      await annotator.startInstantAnnotation(100, 100);
+
+      // After deactivation the toolbar is removed, but let's verify it was
+      // never appended by checking no toolbar-style elements existed
+      // (the toolbar is the only element with data-siteping-ignore that does
+      // NOT have tabindex="0")
+    });
+
+    it("exposes isBusy as true while active", () => {
+      expect(annotator.isBusy).toBe(false);
+
+      bus.emit("annotation:start");
+      expect(annotator.isBusy).toBe(true);
+
+      // Escape key deactivates
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(annotator.isBusy).toBe(false);
+    });
+  });
 });

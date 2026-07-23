@@ -131,6 +131,26 @@ export interface SitepingConfig {
    */
   enableScreenshot?: boolean | undefined;
   /**
+   * Enable right-click (`contextmenu`) to instantly open the comment composer
+   * at the cursor location. When enabled, a document-level listener intercepts
+   * right-clicks, prevents the browser's native context menu, and enters the
+   * annotation flow anchored to the element under the cursor. Defaults to
+   * `false` — the browser's native context menu is never hijacked unless the
+   * host explicitly opts in.
+   *
+   * **Modifier-key escape hatch:** holding Shift, Ctrl, Alt, or Meta while
+   * right-clicking always falls through to the native context menu, giving
+   * users (and devtools) an escape hatch regardless of this setting.
+   *
+   * Right-clicks on SitePing's own UI (FAB, panel, markers, popup) are
+   * ignored — the native menu is shown as expected.
+   *
+   * Note: on Android, `contextmenu` fires on long-press. The widget already
+   * hides below `minViewportWidth` (default 768 px), but tablets above that
+   * threshold will trigger this flow on long-press.
+   */
+  enableRightClickComment?: boolean | undefined;
+  /**
    * Capture the last few `console.*` calls and failed network requests
    * (HTTP >= 400 or network error) at the moment a feedback is submitted.
    *

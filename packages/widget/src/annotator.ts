@@ -1,5 +1,5 @@
 import type { AnnotationPayload, FeedbackType } from "@siteping/core";
-import { Z_INDEX_MAX } from "./constants.js";
+import { INSTANT_ANNOTATION_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anchor.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
@@ -35,6 +35,12 @@ export class Annotator {
   private startY = 0;
   private isDrawing = false;
   private isActive = false;
+  /**
+   * True when the current annotation session was triggered by right-click
+   * (instant comment) rather than the FAB draw flow. Controls whether the
+   * toolbar is shown and whether cancel deactivates unconditionally.
+   */
+  private instantMode = false;
   private popup: Popup;
   private savedOverflow = "";
   private preActiveFocusElement: Element | null = null;
@@ -57,7 +63,17 @@ export class Annotator {
   ) {
     this.popup = new Popup(colors, t);
 
-    this.bus.on("annotation:start", () => this.activate());
+    this.bus.on("annotation:start", () => this.activate({ toolbar: !this.instantMode }));
+  }
+
+  /**
+   * True while the annotator is active (overlay/popup session in progress).
+   * The launcher checks this before calling `preventDefault()` on the
+   * `contextmenu` event so a right-click during an active session falls
+   * through to the native menu instead of being silently swallowed.
+   */
+  get isBusy(): boolean {
+    return this.isActive;
   }
 
   /**
@@ -89,9 +105,10 @@ export class Annotator {
     return captureScreenshot(rect);
   }
 
-  private activate(): void {
+  private activate(options?: { toolbar?: boolean }): void {
     if (this.isActive) return;
     this.isActive = true;
+    const showToolbar = options?.toolbar ?? true;
 
     // Capture the focused element before activation for keyboard annotation
     this.preActiveFocusElement = document.activeElement;
@@ -121,73 +138,79 @@ export class Annotator {
     // aria-hidden: focusing an aria-hidden element parks screen-reader users
     // on a node that announces nothing (axe "aria-hidden-focus", serious).
     this.overlay.setAttribute("role", "application");
-    this.overlay.setAttribute("aria-label", this.t("annotator.instruction"));
+    this.overlay.setAttribute(
+      "aria-label",
+      showToolbar ? this.t("annotator.instruction") : "Right-click comment",
+    );
     this.overlay.setAttribute("data-siteping-ignore", "true");
 
-    // Toolbar — glassmorphism bar
-    this.toolbar = el("div", {
-      style: `
-        position:fixed;top:0;left:0;right:0;
-        z-index:${Z_INDEX_MAX};
-        height:52px;
+    // Toolbar — glassmorphism bar (suppressed in instant mode: the
+    // "Draw a rectangle" copy is wrong when the composer is already open)
+    if (showToolbar) {
+      this.toolbar = el("div", {
+        style: `
+          position:fixed;top:0;left:0;right:0;
+          z-index:${Z_INDEX_MAX};
+          height:52px;
+          background:${this.colors.glassBg};
+          backdrop-filter:blur(24px);
+          -webkit-backdrop-filter:blur(24px);
+          border-bottom:1px solid ${this.colors.glassBorder};
+          display:flex;align-items:center;justify-content:center;gap:16px;
+          font-family:"Inter",system-ui,-apple-system,sans-serif;
+          font-size:14px;color:${this.colors.text};
+          box-shadow:0 4px 16px ${this.colors.shadow};
+          -webkit-font-smoothing:antialiased;
+        `,
+      });
+      this.toolbar.setAttribute("data-siteping-ignore", "true");
+
+      const dot = el("span", {
+        style: `
+          width:8px;height:8px;border-radius:50%;
+          background:${this.colors.accent};
+          box-shadow:0 0 8px ${this.colors.accentGlow};
+          animation:pulse 1.5s ease-in-out infinite;
+        `,
+      });
+
+      // Add pulse animation inline (respects prefers-reduced-motion)
+      const style = document.createElement("style");
+      style.textContent = [
+        "@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}",
+        "@media(prefers-reduced-motion:reduce){@keyframes pulse{from,to{opacity:1}}}",
+      ].join("");
+      this.toolbar.appendChild(style);
+
+      const instruction = el("span", { style: "font-weight:500;letter-spacing:-0.01em;" });
+      setText(instruction, this.t("annotator.instruction"));
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.style.cssText = `
+        height:34px;padding:0 18px;border-radius:9999px;
+        border:1px solid ${this.colors.border};
         background:${this.colors.glassBg};
-        backdrop-filter:blur(24px);
-        -webkit-backdrop-filter:blur(24px);
-        border-bottom:1px solid ${this.colors.glassBorder};
-        display:flex;align-items:center;justify-content:center;gap:16px;
-        font-family:"Inter",system-ui,-apple-system,sans-serif;
-        font-size:14px;color:${this.colors.text};
-        box-shadow:0 4px 16px ${this.colors.shadow};
-        -webkit-font-smoothing:antialiased;
-      `,
-    });
-    this.toolbar.setAttribute("data-siteping-ignore", "true");
+        color:${this.colors.textTertiary};font-family:"Inter",system-ui,-apple-system,sans-serif;
+        font-size:13px;font-weight:500;cursor:pointer;
+        transition:all 0.2s ease;
+      `;
+      setText(cancelBtn, this.t("annotator.cancel"));
+      cancelBtn.addEventListener("click", () => this.deactivate());
+      cancelBtn.addEventListener("mouseenter", () => {
+        cancelBtn.style.borderColor = this.colors.typeBug;
+        cancelBtn.style.color = this.colors.typeBug;
+        cancelBtn.style.background = this.colors.typeBugBg;
+      });
+      cancelBtn.addEventListener("mouseleave", () => {
+        cancelBtn.style.borderColor = this.colors.border;
+        cancelBtn.style.color = this.colors.textTertiary;
+        cancelBtn.style.background = this.colors.glassBg;
+      });
 
-    const dot = el("span", {
-      style: `
-        width:8px;height:8px;border-radius:50%;
-        background:${this.colors.accent};
-        box-shadow:0 0 8px ${this.colors.accentGlow};
-        animation:pulse 1.5s ease-in-out infinite;
-      `,
-    });
-
-    // Add pulse animation inline (respects prefers-reduced-motion)
-    const style = document.createElement("style");
-    style.textContent = [
-      "@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}",
-      "@media(prefers-reduced-motion:reduce){@keyframes pulse{from,to{opacity:1}}}",
-    ].join("");
-    this.toolbar.appendChild(style);
-
-    const instruction = el("span", { style: "font-weight:500;letter-spacing:-0.01em;" });
-    setText(instruction, this.t("annotator.instruction"));
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.style.cssText = `
-      height:34px;padding:0 18px;border-radius:9999px;
-      border:1px solid ${this.colors.border};
-      background:${this.colors.glassBg};
-      color:${this.colors.textTertiary};font-family:"Inter",system-ui,-apple-system,sans-serif;
-      font-size:13px;font-weight:500;cursor:pointer;
-      transition:all 0.2s ease;
-    `;
-    setText(cancelBtn, this.t("annotator.cancel"));
-    cancelBtn.addEventListener("click", () => this.deactivate());
-    cancelBtn.addEventListener("mouseenter", () => {
-      cancelBtn.style.borderColor = this.colors.typeBug;
-      cancelBtn.style.color = this.colors.typeBug;
-      cancelBtn.style.background = this.colors.typeBugBg;
-    });
-    cancelBtn.addEventListener("mouseleave", () => {
-      cancelBtn.style.borderColor = this.colors.border;
-      cancelBtn.style.color = this.colors.textTertiary;
-      cancelBtn.style.background = this.colors.glassBg;
-    });
-
-    this.toolbar.appendChild(dot);
-    this.toolbar.appendChild(instruction);
-    this.toolbar.appendChild(cancelBtn);
+      this.toolbar.appendChild(dot);
+      this.toolbar.appendChild(instruction);
+      this.toolbar.appendChild(cancelBtn);
+    }
 
     // Mouse events
     this.overlay.addEventListener("mousedown", this.onMouseDown);
@@ -209,7 +232,7 @@ export class Annotator {
     document.addEventListener("keydown", this.onKeyDown);
 
     document.body.appendChild(this.overlay);
-    document.body.appendChild(this.toolbar);
+    if (this.toolbar) document.body.appendChild(this.toolbar);
 
     // Move focus to the overlay so the keyboard-annotation path (Enter →
     // annotate the element that was focused before activation) actually
@@ -224,6 +247,7 @@ export class Annotator {
     if (!this.isActive) return;
     this.isActive = false;
     this.isDrawing = false;
+    this.instantMode = false;
     const previouslyFocused = this.preActiveFocusElement;
     this.preActiveFocusElement = null;
 
@@ -414,6 +438,99 @@ export class Annotator {
     this.drawingRect = null;
     if (result) this.deactivate();
   };
+
+  /**
+   * Instantly triggers the annotation popup at a specific location without
+   * requiring the user to draw a rectangle. Used for right-click commenting.
+   *
+   * Entry is routed through the event bus (`annotation:start`) so the public
+   * event contract (`onAnnotationStart` / `onAnnotationEnd`) is honoured —
+   * hosts that pause analytics or chat widgets on annotation hooks see a
+   * symmetric start/end pair regardless of entry path.
+   */
+  public async startInstantAnnotation(clientX: number, clientY: number): Promise<void> {
+    // Guard: no-op while the annotator is active (overlay/popup session in
+    // progress). `isActive` covers the entire window: draw mode in progress,
+    // popup open for typing, and submission in flight. Without this a second
+    // right-click (e.g. to paste in the textarea) would reset the form,
+    // orphan the pending popup.show(), and leak the old drawing rect.
+    if (this.isActive) return;
+
+    // Set instant-mode flag BEFORE emitting annotation:start so activate()
+    // (called by the bus handler) can read it and suppress the toolbar.
+    this.instantMode = true;
+    this.bus.emit("annotation:start");
+
+    // Build a small point-rect centered at the cursor for the marker/percentage
+    // math. Clamped to viewport edges on all sides.
+    const x = Math.max(0, Math.min(clientX - INSTANT_ANNOTATION_SIZE / 2, window.innerWidth - INSTANT_ANNOTATION_SIZE));
+    const y = Math.max(0, Math.min(clientY - INSTANT_ANNOTATION_SIZE / 2, window.innerHeight - INSTANT_ANNOTATION_SIZE));
+    const pointRect = new DOMRect(x, y, INSTANT_ANNOTATION_SIZE, INSTANT_ANNOTATION_SIZE);
+
+    // Resolve the anchor element and build the annotation payload.
+    // We also derive the capture rect from the anchor element's bounding box
+    // (clamped to the viewport) so enableScreenshot produces a useful image
+    // instead of a postage stamp.
+    if (this.overlay) this.overlay.style.pointerEvents = "none";
+    const anchorElement = findAnchorElement(pointRect);
+    if (this.overlay) this.overlay.style.pointerEvents = "auto";
+
+    const anchor = generateAnchor(anchorElement);
+    const anchorBounds = anchorElement.getBoundingClientRect();
+    const rect = rectToPercentages(pointRect, anchorBounds);
+
+    const annotation: AnnotationPayload = {
+      anchor,
+      rect,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      viewportW: window.innerWidth,
+      viewportH: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+    };
+
+    // Use the anchor element's bounding box (clamped to viewport) for
+    // screenshot capture so reviewers get meaningful context, not a 20×20 px
+    // postage stamp.
+    const captureRect = new DOMRect(
+      Math.max(0, anchorBounds.x),
+      Math.max(0, anchorBounds.y),
+      Math.min(anchorBounds.width, window.innerWidth - Math.max(0, anchorBounds.x)),
+      Math.min(anchorBounds.height, window.innerHeight - Math.max(0, anchorBounds.y)),
+    );
+
+    // Create a visual indicator at the click point
+    this.drawingRect?.remove();
+    this.drawingRect = el("div", {
+      style: `
+        position:fixed;
+        left:${x}px;
+        top:${y}px;
+        width:${INSTANT_ANNOTATION_SIZE}px;
+        height:${INSTANT_ANNOTATION_SIZE}px;
+        border:2px solid ${this.colors.accent};
+        background:${this.colors.accent}12;
+        pointer-events:none;
+        border-radius:8px;
+        box-shadow:0 0 16px ${this.colors.accentGlow};
+      `,
+    });
+    this.drawingRect.setAttribute("data-siteping-ignore", "true");
+    this.overlay?.appendChild(this.drawingRect);
+
+    const screenshotCache: { value?: string | null } = {};
+    const result = await this.popup.show(pointRect, (formResult) =>
+      this.runSubmission(annotation, formResult, captureRect, screenshotCache),
+    );
+
+    // Instant flow: always deactivate on popup close — unlike the draw flow
+    // where cancel keeps the session alive so the user can re-draw, there is
+    // no draw phase to return to here. Leaving the overlay, scroll-lock and
+    // toolbar up after cancel strands the user in a mode they never opted into.
+    this.drawingRect?.remove();
+    this.drawingRect = null;
+    this.deactivate();
+  }
 
   /**
    * Submit handler passed into `popup.show()`. Captures the screenshot once

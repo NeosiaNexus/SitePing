@@ -172,6 +172,9 @@ initSiteping({
   enableScreenshot: false,        // Capture a JPEG of the annotated area on
                                   // submit. Off by default — see "Screenshot
                                   // capture" below for the masking story.
+  enableRightClickComment: false, // Right-click anywhere to leave a comment.
+                                  // Shift/Ctrl/Alt/Meta + right-click still
+                                  // opens the native context menu. Default: false
   identity: {                     // Pre-fill author from the host (SSO apps).
     name: 'Alice',                // When set, skips localStorage + modal.
     email: 'alice@example.com',

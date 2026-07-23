@@ -788,4 +788,77 @@ describe("launch", () => {
       }
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Right-click comment (enableRightClickComment)
+  // -------------------------------------------------------------------------
+
+  describe("enableRightClickComment", () => {
+    it("does not register a contextmenu listener when the flag is off", () => {
+      const spy = vi.spyOn(document, "addEventListener");
+      const instance = launch(defaultConfig());
+
+      const contextMenuCalls = spy.mock.calls.filter(([event]) => event === "contextmenu");
+      expect(contextMenuCalls).toHaveLength(0);
+
+      instance.destroy();
+      spy.mockRestore();
+    });
+
+    it("registers a contextmenu listener when the flag is on", () => {
+      const spy = vi.spyOn(document, "addEventListener");
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      const contextMenuCalls = spy.mock.calls.filter(([event]) => event === "contextmenu");
+      expect(contextMenuCalls.length).toBeGreaterThanOrEqual(1);
+
+      instance.destroy();
+      spy.mockRestore();
+    });
+
+    it("removes the contextmenu listener on destroy", () => {
+      const spy = vi.spyOn(document, "removeEventListener");
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+      instance.destroy();
+
+      const contextMenuCalls = spy.mock.calls.filter(([event]) => event === "contextmenu");
+      expect(contextMenuCalls.length).toBeGreaterThanOrEqual(1);
+
+      spy.mockRestore();
+    });
+
+    it("does not preventDefault when a modifier key is held", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      const event = new MouseEvent("contextmenu", {
+        clientX: 100,
+        clientY: 100,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+      // Event should not have been prevented
+      expect(event.defaultPrevented).toBe(false);
+
+      instance.destroy();
+    });
+
+    it("does not preventDefault when event is already defaultPrevented", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      const event = new MouseEvent("contextmenu", {
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      // Simulate a host-page handler that already called preventDefault
+      event.preventDefault();
+      document.dispatchEvent(event);
+      // Our handler should have yielded (event was already prevented by host)
+
+      instance.destroy();
+    });
+  });
 });

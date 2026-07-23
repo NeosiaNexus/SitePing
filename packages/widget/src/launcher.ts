@@ -364,6 +364,38 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   const annotator = new Annotator(colors, bus, t, config.enableScreenshot ?? false);
 
+  let onContextMenu: ((e: MouseEvent) => void) | null = null;
+  if (config.enableRightClickComment) {
+    onContextMenu = (e: MouseEvent) => {
+      // Respect host pages that run their own custom context menus (grids,
+      // editors). Element-level handlers fire before this document-level
+      // listener, so if they called preventDefault() we yield.
+      if (e.defaultPrevented) return;
+      // Modifier-key escape hatch: Shift/Ctrl/Alt/Meta → native menu.
+      if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+      // Exclude SitePing's own UI — right-clicking the FAB, panel, markers,
+      // popup, or overlay must not hijack the event. composedPath() reaches
+      // into the closed shadow root so all retargeted events are caught.
+      const path = e.composedPath();
+      if (
+        path.some(
+          (n) =>
+            n === host ||
+            (n instanceof Element &&
+              (n.hasAttribute("data-siteping-ignore") || n.id === "siteping-markers")),
+        )
+      )
+        return;
+      // Don't swallow the event while the annotator is already active (e.g.
+      // the user right-clicks to paste in the popup textarea). Fall through
+      // to the native menu instead of silently consuming the event.
+      if (annotator.isBusy) return;
+      e.preventDefault();
+      void annotator.startInstantAnnotation(e.clientX, e.clientY).catch(() => {});
+    };
+    document.addEventListener("contextmenu", onContextMenu);
+  }
+
   // Once the locale dictionary lands, swap the FAB + popup labels from the
   // English fallback to the configured language. `t` already resolves to the
   // loaded dictionary at call time, so the markers list rendered below (which
@@ -620,6 +652,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
   instance = {
     destroy: () => {
       log("Destroying widget");
+      if (onContextMenu) {
+        document.removeEventListener("contextmenu", onContextMenu);
+      }
       destroyed = true;
       pendingOpen = false;
       teardownNavigation?.();
