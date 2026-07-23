@@ -26,14 +26,14 @@
     "lint:fix": "biome check --write ."
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
+    "@biomejs/biome": "2.5.5",
     "@playwright/test": "^1.61.1",
-    "@prisma/client": "^7.8.0",
+    "@prisma/client": "^7.9.0",
     "@types/node": "^25.9.5",
     "@vitest/coverage-istanbul": "^3.2.7",
     "jsdom": "29.1.1",
     "tsup": "^8.5.1",
-    "turbo": "^2.10.4",
+    "turbo": "^2.10.6",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
   }
