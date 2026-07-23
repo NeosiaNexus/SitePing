@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.9...adapter-prisma-v0.5.0) (2026-07-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **adapter-prisma:** migrate validation to zod 4 ([#199](https://github.com/NeosiaNexus/SitePing/issues/199))
+
+### Features
+
+* **adapter-prisma:** migrate validation to zod 4 ([#199](https://github.com/NeosiaNexus/SitePing/issues/199)) ([2dd9604](https://github.com/NeosiaNexus/SitePing/commit/2dd9604236750becf4039e8050924e29891ae267))
+
 ## [0.4.9](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.4.8...adapter-prisma-v0.4.9) (2026-06-10)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@siteping/adapter-prisma",
-  "version": "0.4.9",
+  "version": "0.5.0",
   "description": "Prisma adapter for Siteping — server-side request handlers",
   "type": "module",
   "sideEffects": false,
