@@ -82,7 +82,7 @@ export const feedbackCreateSchema = z.object({
   viewport: z.string().min(1).max(50),
   userAgent: z.string().min(1).max(500),
   authorName: z.string().min(1).max(200),
-  authorEmail: z.string().email().max(200),
+  authorEmail: z.email().max(200),
   annotations: z.array(annotationSchema).max(50),
   // Restrict to URL-safe identifiers. The widget generates UUIDs (or a
   // Date+Math.random fallback), both of which match. Anything outside this
@@ -274,8 +274,10 @@ export interface ValidationIssue {
  * Safe: does not leak input values or schema structure.
  */
 export function formatValidationErrors(error: zod.z.ZodError): ValidationIssue[] {
-  return error.issues.map((issue: { path: Array<string | number>; message: string }) => ({
-    field: issue.path.join("."),
+  // Zod 4 types `issue.path` as PropertyKey[] (symbols possible in theory);
+  // String() keeps the join total instead of throwing on non-string keys.
+  return error.issues.map((issue) => ({
+    field: issue.path.map(String).join("."),
     message: issue.message,
   }));
 }
