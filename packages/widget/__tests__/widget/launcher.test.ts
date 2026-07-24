@@ -185,6 +185,23 @@ describe("launch", () => {
         process.env.NODE_ENV = origEnv;
       }
     });
+
+    it("mounts without forceShow when NODE_ENV is 'development' (#104)", () => {
+      // Locks the bundler-folding regression at source level: the guard must
+      // compare the actual runtime NODE_ENV, not a build-time constant.
+      const origEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+
+      const onSkip = vi.fn();
+      const instance = launch({ endpoint: "/api", projectName: "test", onSkip });
+      try {
+        expect(document.querySelector("siteping-widget")).not.toBeNull();
+        expect(onSkip).not.toHaveBeenCalled();
+      } finally {
+        instance.destroy();
+        process.env.NODE_ENV = origEnv;
+      }
+    });
   });
 
   // -------------------------------------------------------------------------

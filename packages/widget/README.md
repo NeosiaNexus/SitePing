@@ -73,7 +73,7 @@ All configuration options for `initSiteping()`:
 | `accentColor` | `string` | `'#0066ff'` | Widget accent color — hex color (`#RGB`, `#RRGGBB`, `#RRGGBBAA`) |
 | `theme` | `'light' \| 'dark' \| 'auto'` | `'light'` | Widget color theme |
 | `locale` | `'en' \| 'fr' \| 'de' \| 'es' \| 'it' \| 'pt' \| 'ru'` | `'en'` | Widget UI language. Unknown locales fall back to English |
-| `forceShow` | `boolean` | `false` | Render the widget even when it would normally be skipped — bypasses **both** the production guard and the mobile-viewport guard |
+| `forceShow` | `boolean` | `false` | Render the widget even when it would normally be skipped — bypasses **both** the production guard and the mobile-viewport guard. Does **not** bypass the SSR guard (the widget never renders without a DOM) |
 | `minViewportWidth` | `number` | `768` | Minimum viewport width (px) for the widget to render; below it `onSkip('mobile')` fires. Set `0` to allow mobile viewports |
 | `debug` | `boolean` | `false` | Enable debug logging to console |
 | `identity` | `{ name: string; email: string }` | — | Pre-fill author identity from the host (SSO). When set, the widget skips the identity modal |
@@ -93,7 +93,7 @@ All configuration options for `initSiteping()`:
 | `onError` | `(error) => void` | Called on API or internal errors |
 | `onAnnotationStart` | `() => void` | Called when annotation drawing starts |
 | `onAnnotationEnd` | `() => void` | Called when annotation drawing ends |
-| `onSkip` | `(reason) => void` | Called when widget is skipped (production/mobile) |
+| `onSkip` | `(reason) => void` | Called when widget is skipped (production/mobile/ssr) |
 
 ```ts
 initSiteping({

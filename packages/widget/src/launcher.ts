@@ -71,6 +71,29 @@ function skippedInstance(): SitepingInstance {
   };
 }
 
+/**
+ * Read NODE_ENV at runtime without the literal member expression
+ * `process.env.NODE_ENV`.
+ *
+ * The tsup builds run esbuild with `platform: "browser"`, whose define
+ * statically replaces that exact literal expression at build time — any
+ * comparison against it gets constant-folded, so the shipped bundle would
+ * skip (or never skip) the widget regardless of the host's actual
+ * environment (issue #104). The computed key dodges the define so detection
+ * stays at runtime — which E2E also relies on: tests set
+ * `globalThis.process = { env: { NODE_ENV: 'test' } }` to get an open
+ * Shadow DOM.
+ */
+function readNodeEnv(): string | undefined {
+  try {
+    if (typeof process === "undefined") return undefined;
+    return process.env?.["NODE_" + "ENV"];
+  } catch {
+    // Restricted environments may throw on `process` access
+    return undefined;
+  }
+}
+
 interface NormalisedDeepLink {
   enabled: boolean;
   param: string;
@@ -100,6 +123,14 @@ function normaliseDeepLinkOptions(value: SitepingConfig["deepLink"]): Normalised
  * - Overlay, markers, tooltips live outside (appended to document.body)
  */
 export function launch(config: SitepingConfig): SitepingInstance {
+  // Guard: no DOM, no widget — SSR frameworks (Next.js, Remix) may run the
+  // init on the server. Deliberately NOT bypassed by forceShow: the widget
+  // cannot render without a document.
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    config.onSkip?.("ssr");
+    return skippedInstance();
+  }
+
   // Debug helper — only logs when config.debug is true
   const log: (...args: unknown[]) => void = config.debug
     ? (...args: unknown[]) => console.debug("[siteping]", ...args)
@@ -111,20 +142,15 @@ export function launch(config: SitepingConfig): SitepingInstance {
     return instance;
   }
 
-  // Guard: only show in development (forceShow bypasses)
-  if (!config.forceShow) {
-    try {
-      // Check for Node/bundler production environment — avoid import.meta
-      // which causes "Critical dependency" warnings in Next.js webpack builds
-      if (typeof process !== "undefined" && process.env?.NODE_ENV === "production") {
-        const reason = "production";
-        console.info("[siteping] Widget not loaded: production mode detected. Use forceShow: true to override.");
-        config.onSkip?.(reason);
-        return skippedInstance();
-      }
-    } catch {
-      // Silently ignore — browser or restricted environment
-    }
+  // Guard: only show in development (forceShow bypasses). Uses readNodeEnv()
+  // instead of the literal `process.env.NODE_ENV` — avoids both bundler
+  // constant-folding (#104) and "Critical dependency" import.meta warnings
+  // in Next.js webpack builds.
+  if (!config.forceShow && readNodeEnv() === "production") {
+    const reason = "production";
+    console.info("[siteping] Widget not loaded: production mode detected. Use forceShow: true to override.");
+    config.onSkip?.(reason);
+    return skippedInstance();
   }
 
   // Guard: desktop only (viewport below the threshold = hidden). forceShow
@@ -247,19 +273,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   host.style.cssText = `position:fixed;z-index:${Z_INDEX_MAX};`;
   // Use open mode only for testing — closed in production for CSS isolation.
   // Shadow DOM mode is determined by environment, never by public config.
-  let isTestEnv = false;
-  try {
-    // Dynamic key prevents bundlers (tsup/esbuild) from statically replacing
-    // process.env.NODE_ENV at build time — the widget needs runtime detection
-    // so E2E tests can set globalThis.process = { env: { NODE_ENV: 'test' } }
-    const envKey = "NODE_" + "ENV";
-    if (typeof process !== "undefined" && process.env?.[envKey] === "test") {
-      isTestEnv = true;
-    }
-  } catch {
-    // Silently ignore — browser or restricted environment
-  }
-  const shadowMode = isTestEnv ? ("open" as const) : ("closed" as const);
+  const shadowMode = readNodeEnv() === "test" ? ("open" as const) : ("closed" as const);
   const shadow = host.attachShadow({ mode: shadowMode });
 
   // Inject styles into Shadow DOM — adoptedStyleSheets with fallback for Safari < 16.4
