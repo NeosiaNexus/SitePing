@@ -1,12 +1,10 @@
 "use client";
 
 /**
- * Small floating panel for the live demo that fires off console messages and
- * failed network requests on demand. Lets visitors see the diagnostics
- * capture in action without having to open devtools.
- *
- * Renders bottom-left so it stays out of the way of the SitePing FAB
- * (bottom-right by default).
+ * Buttons that fire off console messages and failed network requests on
+ * demand. Lets visitors see the diagnostics capture in action without having
+ * to open devtools. Rendered inside the playground panel while "Capture
+ * diagnostics" is on.
  */
 export function DiagnosticsTriggers() {
   function logSequence() {
@@ -31,33 +29,28 @@ export function DiagnosticsTriggers() {
   }
 
   return (
-    <div className="pointer-events-none fixed bottom-6 left-6 z-30 flex flex-col gap-2">
-      <p className="rounded-md bg-gray-900/80 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-white/90 backdrop-blur">
-        Diagnostics demo
-      </p>
-      <div className="pointer-events-auto flex flex-col gap-1.5">
-        <button
-          type="button"
-          onClick={logSequence}
-          className="rounded-md border border-gray-300 bg-white/95 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
-        >
-          Log console messages
-        </button>
-        <button
-          type="button"
-          onClick={logError}
-          className="rounded-md border border-red-300 bg-white/95 px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition hover:bg-red-50"
-        >
-          Trigger console.error
-        </button>
-        <button
-          type="button"
-          onClick={failedFetch}
-          className="rounded-md border border-red-300 bg-white/95 px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition hover:bg-red-50"
-        >
-          Trigger failed fetch
-        </button>
-      </div>
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={logSequence}
+        className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent motion-reduce:transition-none"
+      >
+        Log console messages
+      </button>
+      <button
+        type="button"
+        onClick={logError}
+        className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent motion-reduce:transition-none"
+      >
+        Trigger console.error
+      </button>
+      <button
+        type="button"
+        onClick={failedFetch}
+        className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent motion-reduce:transition-none"
+      >
+        Trigger failed fetch
+      </button>
     </div>
   );
 }

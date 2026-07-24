@@ -13,6 +13,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@siteping/adapter-localstorage": "workspace:*",
     "@siteping/adapter-memory": "workspace:*",
     "@siteping/adapter-prisma": "workspace:*",
     "@siteping/dashboard": "workspace:*",

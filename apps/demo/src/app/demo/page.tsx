@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { DemoSite } from "@/components/demo/demo-site";
-import { DiagnosticsTriggers } from "./diagnostics-triggers";
-import { WidgetInit } from "./widget-init";
+import { Playground } from "./playground";
 
 export const metadata: Metadata = {
   title: "Live Demo",
@@ -16,9 +16,11 @@ export const metadata: Metadata = {
 export default function DemoPage() {
   return (
     <>
-      <WidgetInit />
+      {/* useSearchParams in Playground requires a Suspense boundary for static rendering */}
+      <Suspense fallback={null}>
+        <Playground />
+      </Suspense>
       <DemoSite />
-      <DiagnosticsTriggers />
     </>
   );
 }
