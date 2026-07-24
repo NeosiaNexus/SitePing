@@ -1,6 +1,7 @@
 import { type AnchorData, type FeedbackResponse, isClosedStatus, type RectData } from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
 import { resolveAnnotation } from "./dom/resolver.js";
+import { classifyVisibility } from "./dom/visibility.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { getTypeLabel, type TFunction } from "./i18n/index.js";
@@ -83,6 +84,10 @@ export class MarkerManager {
   private scrollHandler: (() => void) | null = null;
   private resizeHandler: (() => void) | null = null;
   private anchorCache = new Map<string, WeakRef<Element>>();
+  /** Whether a resize/mutation happened since the last reposition pass —
+   * the only triggers that can flip an anchor's visibility (responsive
+   * breakpoint, SPA re-render). Pure scroll ticks keep the fast path. */
+  private pendingLayoutChange = false;
   private clusters: Cluster[] = [];
   private onDocumentClickForClusters: ((e: MouseEvent) => void) | null = null;
   /** Last `openCount` broadcast via `markers:changed` (-1 = never emitted). */
@@ -118,10 +123,10 @@ export class MarkerManager {
       this.container.style.display = visible ? "block" : "none";
     });
 
-    this.resizeHandler = () => this.scheduleReposition();
+    this.resizeHandler = () => this.scheduleReposition("layout");
     window.addEventListener("resize", this.resizeHandler, { passive: true });
 
-    this.scrollHandler = () => this.scheduleReposition();
+    this.scrollHandler = () => this.scheduleReposition("scroll");
     window.addEventListener("scroll", this.scrollHandler, { passive: true, capture: true });
 
     // Re-resolve after DOM changes (SPA, lazy-load).
@@ -141,7 +146,7 @@ export class MarkerManager {
         hasRelevantMutation = true;
         break;
       }
-      if (hasRelevantMutation) this.scheduleReposition();
+      if (hasRelevantMutation) this.scheduleReposition("layout");
     });
     this.mutationObserver.observe(document.body, {
       childList: true,
@@ -157,7 +162,10 @@ export class MarkerManager {
     document.addEventListener("click", this.onDocumentClickForClusters);
   }
 
-  private scheduleReposition(): void {
+  private scheduleReposition(cause: "scroll" | "layout" = "layout"): void {
+    // Record the cause even when a tick is already pending — the pending
+    // pass must honor the strongest cause seen since it was scheduled.
+    if (cause === "layout") this.pendingLayoutChange = true;
     if (this.repositionTimer) return;
     if ("requestIdleCallback" in window) {
       this.repositionTimer = window.requestIdleCallback(
@@ -176,6 +184,14 @@ export class MarkerManager {
   }
 
   private repositionAll(): void {
+    // Only resize/mutation ticks re-check cached anchors' visibility: a
+    // responsive breakpoint flip can leave the cached element display:none
+    // while its twin became the rendered copy (#171) — but re-checking on
+    // every scroll tick would turn a legitimately-hidden anchor (collapsed
+    // accordion) into a full re-resolution per scroll event.
+    const recheckVisibility = this.pendingLayoutChange;
+    this.pendingLayoutChange = false;
+
     // Build set of valid keys to prune stale cache entries afterwards.
     const validKeys = new Set<string>();
 
@@ -194,7 +210,10 @@ export class MarkerManager {
         const cachedEl = cachedRef?.deref();
         let resolved: ReturnType<typeof resolveAnnotation>;
 
-        if (cachedEl?.isConnected) {
+        const cacheUsable =
+          cachedEl?.isConnected && !(recheckVisibility && classifyVisibility(cachedEl) === "hidden");
+
+        if (cachedEl && cacheUsable) {
           const anchorRect = cachedEl.getBoundingClientRect();
           const r = toRectData(annotation);
           resolved = {
