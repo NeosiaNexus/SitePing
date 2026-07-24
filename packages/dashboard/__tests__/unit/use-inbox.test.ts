@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { FeedbackPage, FeedbackRecord, SitepingStore } from "@siteping/core";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InboxSource } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
@@ -58,6 +58,11 @@ function demoRecords(): FeedbackRecord[] {
 const ids = (items: readonly FeedbackRecord[]): string[] => items.map((r) => r.id);
 
 afterEach(() => {
+  // Unmount every rendered hook: RTL auto-cleanup is inactive without vitest
+  // globals, and an unmounted-never component keeps its 250ms search-debounce
+  // timer armed — firing after environment teardown as an unhandled
+  // "window is not defined" (issue #206).
+  cleanup();
   vi.restoreAllMocks();
 });
 
