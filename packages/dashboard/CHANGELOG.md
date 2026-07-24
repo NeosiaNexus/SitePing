@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.0...dashboard-v0.2.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **adapter-prisma:** redact authorEmail and strip clientId from unauthenticated HTTP responses (fixes [#105](https://github.com/NeosiaNexus/SitePing/issues/105)) ([#208](https://github.com/NeosiaNexus/SitePing/issues/208)) ([2a511e7](https://github.com/NeosiaNexus/SitePing/commit/2a511e762009ac1a17d5b6e08e6ab1bf04884b0d))
+
 ## [0.2.0](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.1.0...dashboard-v0.2.0) (2026-07-24)
 
 

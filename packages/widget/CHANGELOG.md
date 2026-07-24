@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.2](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.1...widget-v0.10.2) (2026-07-24)
+
+
+### Features
+
+* **widget:** apiKey and headers config options for authenticated HTTP mode (fixes [#100](https://github.com/NeosiaNexus/SitePing/issues/100)) ([#209](https://github.com/NeosiaNexus/SitePing/issues/209)) ([9de14db](https://github.com/NeosiaNexus/SitePing/commit/9de14db90b7832d375cce19d7fd5e607c20b550f))
+
+
+### Bug Fixes
+
+* **widget:** production guard survives bundler NODE_ENV folding; add SSR guard (fixes [#104](https://github.com/NeosiaNexus/SitePing/issues/104)) ([#207](https://github.com/NeosiaNexus/SitePing/issues/207)) ([f2d2eb2](https://github.com/NeosiaNexus/SitePing/commit/f2d2eb2673d209ededabe75af7911ae3f20be771))
+* **widget:** target the last focused page element for FAB-launched keyboard annotation (fixes [#162](https://github.com/NeosiaNexus/SitePing/issues/162)) ([#210](https://github.com/NeosiaNexus/SitePing/issues/210)) ([61d94d6](https://github.com/NeosiaNexus/SitePing/commit/61d94d6e3e884ddf022bd9e6d998842bdca6d9cd))
+
 ## [0.10.1](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.0...widget-v0.10.1) (2026-07-24)
 
 
