@@ -37,6 +37,17 @@ export function normalizeText(s: string): string {
 }
 
 /**
+ * Whitespace-only collapse — the cheap subset of `normalizeText` for the scan
+ * prefilter, which runs on every same-tag candidate. NFC is a table-driven
+ * full-Unicode pass and is deliberately skipped there: the prefilter only
+ * RANKS, and mixed composition forms cost at worst a slight rank penalty on
+ * accented text (full scoring of survivors re-normalizes both sides).
+ */
+export function collapseWhitespace(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+/**
  * Levenshtein edit distance.
  * O(n*m) time, O(min(n,m)) space.
  */

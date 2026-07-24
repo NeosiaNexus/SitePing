@@ -7,6 +7,7 @@
 import type { AnchorData } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateFingerprint } from "../../src/dom/fingerprint";
+import { fuzzyIncludes, normalizeText } from "../../src/dom/fuzzy";
 import { resolveAnchor } from "../../src/dom/resolver";
 
 /** Build a minimal AnchorData with sensible defaults. */
@@ -279,7 +280,10 @@ describe("#174 — scan cost and fairness", () => {
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
       };
     };
-    const VOCAB = "the quick brown fox jumps over lazy dog submit cancel order shipping free trial account settings profile download invoice billing customer support contact about pricing features".split(" ");
+    const VOCAB =
+      "the quick brown fox jumps over lazy dog submit cancel order shipping free trial account settings profile download invoice billing customer support contact about pricing features".split(
+        " ",
+      );
     const rand = mulberry(0xfeed);
     const sentence = (words: number) =>
       Array.from({ length: words }, () => VOCAB[Math.floor(rand() * VOCAB.length)]).join(" ");
@@ -447,5 +451,110 @@ describe("#175 — cross-strategy candidate ranking", () => {
     expect(result!.element).toBe(second);
     expect(result!.strategy).toBe("id");
     expect(result!.confidence).toBe(1.0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Strongest-signal acceptance & confidence — a volatile signal must not veto
+// or dilute a stable one (adversarial-review regressions)
+// ---------------------------------------------------------------------------
+describe("strongest-signal acceptance and confidence", () => {
+  it("still resolves a borderline-fuzzy text match when structural signals drifted (v1 parity)", () => {
+    // Redesign scenario: copy lightly edited AND the DOM around it moved.
+    // The diluted blend of (borderline text + drifted fingerprint + dead
+    // neighbors) sits below any blend floor — but text alone corroborates.
+    const div = document.createElement("div");
+    div.className = "banner";
+    div.textContent = "Winter sale starts Friday at night";
+    document.body.appendChild(div);
+
+    const snippet = "Winter deal begins Monday at dawn"; // Sellers score 0.576 vs the live text
+    // Self-validating fixture: the text signal must be borderline, not strong.
+    const textScore = fuzzyIncludes(normalizeText(div.textContent ?? ""), normalizeText(snippet), 0.5);
+    expect(textScore).toBeGreaterThanOrEqual(0.5);
+    expect(textScore).toBeLessThan(0.65);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".banner",
+        xpath: "/nonexistent",
+        textSnippet: snippet,
+        fingerprint: "9:7:zzz", // captured structure long gone
+        neighborText: "Neighbors that no longer exist | at all",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(div);
+    expect(result!.strategy).toBe("css");
+  });
+
+  it("keeps full confidence for id + exact text when only the surroundings moved", () => {
+    // `<h2 id="pricing">Pricing</h2>` relocated into a new wrapper: the id
+    // matches, the text matches exactly — the drifted fingerprint and dead
+    // neighbors must not dash-flag the marker as "approximate".
+    const wrapper = document.createElement("section");
+    const heading = document.createElement("h2");
+    heading.id = "pricing";
+    heading.textContent = "Pricing";
+    wrapper.appendChild(heading);
+    document.body.appendChild(wrapper);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "pricing",
+        elementTag: "H2",
+        cssSelector: "__nomatch__",
+        textSnippet: "Pricing",
+        fingerprint: "3:2:oldhash", // pre-move structure
+        neighborText: "Features | Testimonials", // pre-move neighbors
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(heading);
+    expect(result!.strategy).toBe("id");
+    expect(result!.confidence).toBe(1.0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scan budget — batch callers cap full sweeps per pass
+// ---------------------------------------------------------------------------
+describe("scan budget", () => {
+  function degradedAnchor(): AnchorData {
+    return makeAnchor({
+      cssSelector: "__nomatch__",
+      xpath: "/nonexistent",
+      elementTag: "DIV",
+      textSnippet: "Some snippet that will not be found anywhere",
+    });
+  }
+
+  it("skips the sweep when the budget is exhausted", () => {
+    const div = document.createElement("div");
+    div.textContent = "unrelated content on the page";
+    document.body.appendChild(div);
+
+    const spy = vi.spyOn(document, "querySelectorAll");
+    const result = resolveAnchor(degradedAnchor(), { scanBudget: { remaining: 0 } });
+    expect(result).toBeNull(); // selector-only resolution found nothing
+    expect(spy.mock.calls.map((c) => c[0])).not.toContain("div");
+  });
+
+  it("decrements the budget only when a sweep actually runs", () => {
+    const div = document.createElement("div");
+    div.className = "hit";
+    div.textContent = "Exact stored snippet text here";
+    document.body.appendChild(div);
+
+    // Perfect selector match → sweep skipped → budget untouched.
+    const budget = { remaining: 1 };
+    resolveAnchor(makeAnchor({ cssSelector: ".hit", textSnippet: "Exact stored snippet text here" }), {
+      scanBudget: budget,
+    });
+    expect(budget.remaining).toBe(1);
+
+    // Degraded resolution → sweep runs → budget consumed.
+    resolveAnchor(degradedAnchor(), { scanBudget: budget });
+    expect(budget.remaining).toBe(0);
   });
 });

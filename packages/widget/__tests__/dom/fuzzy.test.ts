@@ -271,7 +271,9 @@ describe("wordPairCounts / wordPairDiceAgainst", () => {
     const pairSame = wordPairDiceAgainst(pairCounts, pairTotal, needle);
     const pairShuffled = wordPairDiceAgainst(pairCounts, pairTotal, shuffled);
 
-    // char bigrams: shuffled text still scores high (order-blind)
+    // char bigrams: identical text is perfect, but shuffled text STILL scores
+    // high (order-blind) — the blind spot word pairs exist to cover
+    expect(charSame).toBe(1);
     expect(charShuffled).toBeGreaterThan(0.8);
     // word pairs: shuffled text collapses, true order stays perfect
     expect(pairSame).toBe(1);

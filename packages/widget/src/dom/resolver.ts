@@ -3,6 +3,7 @@ import { ANCHOR_KEY_ATTR } from "./anchor.js";
 import { attrHash, scoreFingerprint } from "./fingerprint.js";
 import {
   bigramCounts,
+  collapseWhitespace,
   diceAgainst,
   fuzzyIncludes,
   normalizeText,
@@ -26,6 +27,24 @@ export interface ResolvedAnnotation {
   rect: DOMRect;
   confidence: number;
   strategy: ResolutionStrategy;
+}
+
+/**
+ * Caller-provided allowance for full tag sweeps across a BATCH of
+ * resolutions (marker init, reposition passes). A sweep is the one
+ * unbounded-ish cost left in resolution; several drifted or hidden anchors
+ * resolved back-to-back must not each pay one synchronously (the Hypothesis
+ * issue-#3919 lesson: budget per pass, not per resolution). When the budget
+ * is exhausted, resolution proceeds selector-only — the next pass gets a
+ * fresh budget and heals the remainder.
+ */
+export interface ScanBudget {
+  /** Remaining sweep allowance; decremented each time a sweep actually runs. */
+  remaining: number;
+}
+
+export interface ResolveOptions {
+  scanBudget?: ScanBudget;
 }
 
 /**
@@ -56,12 +75,19 @@ const SCAN_HARD_CAP = 10_000;
 const CANDIDATE_TEXT_CAP = 500;
 
 /**
- * Acceptance floors on the verification score, carried over from v1:
- * selector strategies were gated by the lenient text check (0.3) — the
- * selector itself is corroborating evidence; scan has no selector evidence,
- * so it keeps its stricter 0.4.
+ * Acceptance for selector strategies gates on the STRONGEST single signal,
+ * never on the diluted blend — the blend is a RANKING device. A volatile
+ * signal (fingerprints churn with every redesign) must not veto a stable
+ * one: v1 resolved `#promo` + fuzzy-passing text regardless of what the
+ * surrounding DOM did, and that must survive. Floors per signal:
+ * - text ≥ 0.5   (v1's effective bar — fuzzyIncludes' own minScore)
+ * - fingerprint ≥ 0.3 (coarse 3-component signal; 0.3 ≈ one component intact)
+ * - context/neighbor ≥ 0.5
+ * Scan has no selector evidence, so it keeps v1's 0.4 floor on the blend.
  */
-const ACCEPT_SELECTOR = 0.3;
+const TEXT_FLOOR = 0.5;
+const FP_FLOOR = 0.3;
+const CTX_FLOOR = 0.5;
 const ACCEPT_SCAN = 0.4;
 
 /**
@@ -97,10 +123,22 @@ interface AnchorSignals {
   tag: string;
 }
 
+/** Per-signal verification scores; a signal is absent when undefined. */
+interface SignalScores {
+  blend: number;
+  strongest: number;
+  text?: number;
+  fingerprint?: number;
+  context?: number;
+  neighbor?: number;
+}
+
 interface ScoredCandidate {
   element: Element;
   strategy: ResolutionStrategy;
   verification: number;
+  strongest: number;
+  signals?: SignalScores;
   final: number;
   /** No verifiable signal was stored — verification is a neutral stand-in. */
   unverified?: boolean;
@@ -152,7 +190,7 @@ function buildSignals(anchor: AnchorData): AnchorSignals {
  *
  * Returns null if no candidate verifies (annotation is orphaned).
  */
-export function resolveAnchor(anchor: AnchorData): AnchorResolution | null {
+export function resolveAnchor(anchor: AnchorData, options?: ResolveOptions): AnchorResolution | null {
   const signals = buildSignals(anchor);
   const pool = gatherSelectorCandidates(anchor);
 
@@ -169,16 +207,16 @@ export function resolveAnchor(anchor: AnchorData): AnchorResolution | null {
 
   // Scan can never produce final > SCAN prior — skip the sweep entirely when
   // a selector candidate is already unbeatable (exact-first, fuzzy-fallback).
-  if (bestFinal < STRATEGY_PRIORS.scan) {
+  const budget = options?.scanBudget;
+  if (bestFinal < STRATEGY_PRIORS.scan && (!budget || budget.remaining > 0)) {
+    if (budget) budget.remaining--;
     for (const element of sweepScanCandidates(signals, pool)) {
       const candidate = scoreOne(element, "scan", signals);
       if (candidate) scored.push(candidate);
     }
   }
 
-  const accepted = scored.filter((c) =>
-    c.strategy === "scan" ? c.verification >= ACCEPT_SCAN : c.verification >= ACCEPT_SELECTOR,
-  );
+  const accepted = scored.filter(isAcceptable);
   if (accepted.length === 0) return null;
 
   accepted.sort((a, b) => b.final - a.final);
@@ -291,14 +329,19 @@ function sweepScanCandidates(signals: AnchorSignals, pool: Map<Element, Resoluti
 
     let cheap = 0;
     if (signals.snippetBigramTotal > 0) {
-      const text = normalizeText(boundedText(el, CANDIDATE_TEXT_CAP));
+      // collapseWhitespace, not full normalizeText: NFC on every candidate is
+      // the prefilter's dominant hidden cost; survivors get re-normalized in
+      // full scoring anyway.
+      const text = collapseWhitespace(boundedText(el, CANDIDATE_TEXT_CAP));
       const charDice = diceAgainst(signals.snippetBigrams, signals.snippetBigramTotal, text);
       // Character bigrams are order-blind: on shared-vocabulary pages (card
       // grids) every candidate scores alike. Word-pair shingles restore order
       // sensitivity; when the snippet has no pairs (single word, no-space
-      // scripts) the whole weight stays on character bigrams.
+      // scripts) the whole weight stays on character bigrams. A shared word
+      // pair implies shared bigrams, so charDice 0 makes the word pass moot.
       if (signals.snippetWordPairTotal > 0) {
-        const wordDice = wordPairDiceAgainst(signals.snippetWordPairs, signals.snippetWordPairTotal, text);
+        const wordDice =
+          charDice > 0 ? wordPairDiceAgainst(signals.snippetWordPairs, signals.snippetWordPairTotal, text) : 0;
         cheap += 0.6 * (0.5 * charDice + 0.5 * wordDice);
       } else {
         cheap += 0.6 * charDice;
@@ -320,17 +363,44 @@ function sweepScanCandidates(signals: AnchorSignals, pool: Map<Element, Resoluti
 }
 
 function scoreOne(element: Element, strategy: ResolutionStrategy, signals: AnchorSignals): ScoredCandidate | null {
-  const verification = verificationScore(element, signals);
-  if (verification === null) {
+  const scores = verificationScore(element, signals);
+  if (scores === null) {
     // No verifiable signal stored: the selector match is the only evidence.
     // A scan candidate with nothing to verify against is meaningless, though.
     if (strategy === "scan") return null;
     const final = STRATEGY_PRIORS[strategy] * NEUTRAL_VERIFICATION * visibilityFactor(classifyVisibility(element));
-    return { element, strategy, verification: NEUTRAL_VERIFICATION, final, unverified: true };
+    return {
+      element,
+      strategy,
+      verification: NEUTRAL_VERIFICATION,
+      strongest: NEUTRAL_VERIFICATION,
+      final,
+      unverified: true,
+    };
   }
 
-  const final = STRATEGY_PRIORS[strategy] * verification * visibilityFactor(classifyVisibility(element));
-  return { element, strategy, verification, final };
+  const final = STRATEGY_PRIORS[strategy] * scores.blend * visibilityFactor(classifyVisibility(element));
+  return { element, strategy, verification: scores.blend, strongest: scores.strongest, signals: scores, final };
+}
+
+/**
+ * Whether a candidate has enough corroboration to be returned at all.
+ * Selector strategies accept on the strongest SINGLE signal clearing its
+ * floor — a drifted fingerprint must not veto an exact text match (or vice
+ * versa: an icon button's intact fingerprint carries it when there is no
+ * text). Scan keeps its blend floor: without selector evidence, agreement
+ * across signals is the whole case for the match.
+ */
+function isAcceptable(c: ScoredCandidate): boolean {
+  if (c.strategy === "scan") return c.verification >= ACCEPT_SCAN;
+  if (c.unverified || !c.signals) return true;
+  const s = c.signals;
+  return (
+    (s.text ?? 0) >= TEXT_FLOOR ||
+    (s.fingerprint ?? 0) >= FP_FLOOR ||
+    (s.context ?? 0) >= CTX_FLOOR ||
+    (s.neighbor ?? 0) >= CTX_FLOOR
+  );
 }
 
 /**
@@ -344,21 +414,24 @@ function scoreOne(element: Element, strategy: ResolutionStrategy, signals: Ancho
  * penalize otherwise-identical text (#173) — stored snippets are untouched
  * and stay backward compatible.
  */
-function verificationScore(candidate: Element, s: AnchorSignals): number | null {
+function verificationScore(candidate: Element, s: AnchorSignals): SignalScores | null {
   let score = 0;
   let totalWeight = 0;
+  const out: SignalScores = { blend: 0, strongest: 0 };
 
   // --- Text snippet (weight 40 — most reliable under reordering) ---
   if (s.snippet) {
     totalWeight += 40;
     const candidateText = normalizeText(boundedText(candidate, CANDIDATE_TEXT_CAP));
-    score += fuzzyIncludes(candidateText, s.snippet, 0.5) * 40;
+    out.text = fuzzyIncludes(candidateText, s.snippet, 0.5);
+    score += out.text * 40;
   }
 
   // --- Fingerprint (weight 20) ---
   if (s.fingerprint) {
     totalWeight += 20;
-    score += scoreFingerprint(candidate, s.fingerprint) * 20;
+    out.fingerprint = scoreFingerprint(candidate, s.fingerprint);
+    score += out.fingerprint * 20;
   }
 
   // --- Prefix/suffix context (weight 20) ---
@@ -380,7 +453,8 @@ function verificationScore(candidate: Element, s: AnchorSignals): number | null 
     }
 
     if (contextParts > 0) {
-      score += (contextScore / contextParts) * 20;
+      out.context = contextScore / contextParts;
+      score += out.context * 20;
     }
   }
 
@@ -388,10 +462,14 @@ function verificationScore(candidate: Element, s: AnchorSignals): number | null 
   if (s.neighbor) {
     totalWeight += 20;
     const candidateNeighbor = normalizeText(neighborText(candidate));
-    score += candidateNeighbor ? similarity(candidateNeighbor, s.neighbor) * 20 : 0;
+    out.neighbor = candidateNeighbor ? similarity(candidateNeighbor, s.neighbor) : 0;
+    score += out.neighbor * 20;
   }
 
-  return totalWeight > 0 ? score / totalWeight : null;
+  if (totalWeight === 0) return null;
+  out.blend = score / totalWeight;
+  out.strongest = Math.max(out.text ?? 0, out.fingerprint ?? 0, out.context ?? 0, out.neighbor ?? 0);
+  return out;
 }
 
 /**
@@ -424,9 +502,13 @@ function confidenceOf(c: ScoredCandidate): number {
   // Nothing was verifiable → the selector is all the evidence there is;
   // v1 semantics: trust it at full prior rather than inventing doubt.
   if (c.unverified) return STRATEGY_PRIORS[c.strategy];
-  // Full prior for strongly verified matches (v1-exact values), proportional
-  // degradation below that.
-  return STRATEGY_PRIORS[c.strategy] * Math.min(1, c.verification / STRONG_VERIFY);
+  // Confidence follows the STRONGEST corroborating signal, not the blend:
+  // `<h2 id="pricing">Pricing</h2>` moved into a new wrapper still carries an
+  // exact text match — the drifted fingerprint/neighbors around it must not
+  // dash-flag a perfectly anchored marker. Absence of a signal stays neutral;
+  // a present-but-refuted one still drags `strongest` down when it is all
+  // there is. Full prior at STRONG_VERIFY keeps v1's exact values.
+  return STRATEGY_PRIORS[c.strategy] * Math.min(1, c.strongest / STRONG_VERIFY);
 }
 
 /**
@@ -434,8 +516,12 @@ function confidenceOf(c: ScoredCandidate): number {
  * Converts stored percentage-based rect back to absolute coordinates
  * using the current bounding box of the resolved anchor element.
  */
-export function resolveAnnotation(anchor: AnchorData, rect: RectData): ResolvedAnnotation | null {
-  const resolution = resolveAnchor(anchor);
+export function resolveAnnotation(
+  anchor: AnchorData,
+  rect: RectData,
+  options?: ResolveOptions,
+): ResolvedAnnotation | null {
+  const resolution = resolveAnchor(anchor, options);
 
   if (!resolution) return null;
 

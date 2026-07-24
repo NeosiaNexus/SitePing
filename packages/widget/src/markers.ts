@@ -192,6 +192,11 @@ export class MarkerManager {
     const recheckVisibility = this.pendingLayoutChange;
     this.pendingLayoutChange = false;
 
+    // Reposition ticks recur every ~200ms on mutation-heavy pages; several
+    // drifted/hidden anchors must not each pay a full tag sweep per tick.
+    // Budget-starved annotations simply retry on the next natural tick.
+    const scanBudget = { remaining: 2 };
+
     // Build set of valid keys to prune stale cache entries afterwards.
     const validKeys = new Set<string>();
 
@@ -227,7 +232,7 @@ export class MarkerManager {
             strategy: "css",
           };
         } else {
-          resolved = resolveAnnotation(toAnchorData(annotation), toRectData(annotation));
+          resolved = resolveAnnotation(toAnchorData(annotation), toRectData(annotation), { scanBudget });
           if (resolved?.element) {
             this.anchorCache.set(cacheKey, new WeakRef(resolved.element));
           }
