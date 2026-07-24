@@ -3,6 +3,7 @@ import { INSTANT_ANNOTATION_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anchor.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
+import { isWidgetChrome } from "./focus-tracker.js";
 import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
 import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screenshot.js";
@@ -50,6 +51,13 @@ export class Annotator {
   private popup: Popup;
   private savedOverflow = "";
   private preActiveFocusElement: Element | null = null;
+  /**
+   * Target of the keyboard (Enter) annotation path — the page element focused
+   * at activation, or the focus tracker's fallback when activation came from
+   * the widget's own chrome (FAB menu). Distinct from `preActiveFocusElement`,
+   * which keeps its focus-restore role untouched. See issue #162.
+   */
+  private keyboardTarget: HTMLElement | null = null;
   private rafId: number | null = null;
   private pendingMoveEvent: MouseEvent | Touch | null = null;
   /**
@@ -66,6 +74,7 @@ export class Annotator {
     private readonly bus: EventBus<WidgetEvents>,
     private readonly t: TFunction,
     private readonly enableScreenshot: boolean = false,
+    private readonly getFallbackTarget?: () => HTMLElement | null,
   ) {
     this.popup = new Popup(colors, t);
 
@@ -119,6 +128,19 @@ export class Annotator {
 
     // Capture the focused element before activation for keyboard annotation
     this.preActiveFocusElement = document.activeElement;
+
+    // Keyboard (Enter) target. FAB-launched sessions re-focus the FAB before
+    // activation, so the active element here is only the widget's 0x0 shadow
+    // host — fall back to the last page element the focus tracker recorded
+    // instead of silently dead-ending the Enter path. See issue #162.
+    const active = document.activeElement;
+    this.keyboardTarget =
+      active instanceof HTMLElement &&
+      active !== document.body &&
+      active !== document.documentElement &&
+      !isWidgetChrome(active)
+        ? active
+        : (this.getFallbackTarget?.() ?? null);
 
     // Lock page scroll
     this.savedOverflow = document.body.style.overflow;
@@ -230,7 +252,7 @@ export class Annotator {
       this.overlay.addEventListener("touchmove", this.onTouchMove, { passive: false });
       this.overlay.addEventListener("touchend", this.onTouchEnd);
 
-      // Keyboard annotation: Enter selects the pre-activation focused element
+      // Keyboard annotation: Enter selects the captured keyboard target
       this.overlay.addEventListener("keydown", this.onOverlayKeyDown);
     }
 
@@ -244,11 +266,11 @@ export class Annotator {
     if (this.toolbar) document.body.appendChild(this.toolbar);
 
     // Move focus to the overlay so the keyboard-annotation path (Enter →
-    // annotate the element that was focused before activation) actually
-    // receives keydown — onOverlayKeyDown only fires when the overlay itself
-    // is focused. The overlay has tabindex=0, and preActiveFocusElement was
-    // captured at the top of activate(), before the overlay existed, so
-    // focusing here doesn't clobber the keyboard target. (WCAG 2.1.1 Level A)
+    // annotate the captured keyboard target) actually receives keydown —
+    // onOverlayKeyDown only fires when the overlay itself is focused. The
+    // overlay has tabindex=0, and the keyboard target was captured at the top
+    // of activate(), before the overlay existed, so focusing here doesn't
+    // clobber it. (WCAG 2.1.1 Level A)
     this.overlay.focus({ preventScroll: true });
   }
 
@@ -259,6 +281,7 @@ export class Annotator {
     this.instantMode = false;
     const previouslyFocused = this.preActiveFocusElement;
     this.preActiveFocusElement = null;
+    this.keyboardTarget = null;
 
     // Cancel any pending rAF to prevent stale callbacks
     if (this.rafId !== null) {
@@ -294,8 +317,9 @@ export class Annotator {
 
   /**
    * Keyboard annotation: pressing Enter while the overlay is active selects
-   * the element that was focused before activation and creates a full-bounds
-   * annotation covering that element (WCAG 2.1.1 Level A).
+   * the keyboard target captured at activation (the focused page element, or
+   * the focus tracker's fallback for FAB-launched sessions) and creates a
+   * full-bounds annotation covering that element (WCAG 2.1.1 Level A).
    */
   private onOverlayKeyDown = async (e: KeyboardEvent): Promise<void> => {
     if (e.key !== "Enter") return;
@@ -304,13 +328,26 @@ export class Annotator {
     // can't orphan the first `popup.show()` / `runSubmission` pair.
     if (this.submissionInFlight) return;
 
-    const target = this.preActiveFocusElement;
+    const target = this.keyboardTarget;
     if (!target || !(target instanceof HTMLElement)) return;
 
     const bounds = target.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return;
 
     const rectBounds = new DOMRect(bounds.x, bounds.y, bounds.width, bounds.height);
+
+    // Highlight the target like a pointer-drawn rectangle so keyboard users
+    // see what they're about to comment. Assigned to `drawingRect` so every
+    // existing cleanup path (deactivate, screenshot exclusion, removal once
+    // the popup closes) treats it exactly like the mouse path's rect.
+    this.drawingRect?.remove();
+    const highlight = this.createDrawingRect();
+    highlight.style.left = `${bounds.x}px`;
+    highlight.style.top = `${bounds.y}px`;
+    highlight.style.width = `${bounds.width}px`;
+    highlight.style.height = `${bounds.height}px`;
+    this.drawingRect = highlight;
+    this.overlay?.appendChild(highlight);
 
     const anchor = generateAnchor(target);
     const annotation: AnnotationPayload = {
@@ -330,6 +367,8 @@ export class Annotator {
       this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
     );
 
+    this.drawingRect?.remove();
+    this.drawingRect = null;
     if (result) this.deactivate();
   };
 
@@ -356,7 +395,17 @@ export class Annotator {
     this.startY = clientY;
 
     this.drawingRect?.remove();
-    this.drawingRect = el("div", {
+    this.drawingRect = this.createDrawingRect();
+    this.overlay?.appendChild(this.drawingRect);
+  }
+
+  /**
+   * The accent-colored selection rectangle — shared by pointer drawing and
+   * the keyboard (Enter) highlight so the two paths can't drift visually.
+   * Excluded from screenshot capture (see overlay creation in activate()).
+   */
+  private createDrawingRect(): HTMLElement {
+    const rect = el("div", {
       style: `
         position:fixed;
         border:2px solid ${this.colors.accent};
@@ -367,9 +416,8 @@ export class Annotator {
         transition:box-shadow 0.15s ease;
       `,
     });
-    // Excluded from screenshot capture (see overlay creation in activate()).
-    this.drawingRect.setAttribute("data-siteping-ignore", "true");
-    this.overlay?.appendChild(this.drawingRect);
+    rect.setAttribute("data-siteping-ignore", "true");
+    return rect;
   }
 
   private onMouseMove = (e: MouseEvent): void => {

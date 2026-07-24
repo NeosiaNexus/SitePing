@@ -55,7 +55,8 @@ export const en: Translations = {
   "fab.annotations": "Show or hide markers",
 
   // Annotator
-  "annotator.instruction": "Draw a rectangle on the area to comment",
+  "annotator.instruction":
+    "Draw a rectangle on the area to comment — or press Enter to comment on the last focused element",
   "annotator.instantInstruction": "Comment on the clicked spot",
   "annotator.cancel": "Cancel",
 

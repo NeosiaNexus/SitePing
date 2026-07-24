@@ -56,7 +56,8 @@ export const de: Translations = {
   "fab.annotations": "Markierungen ein- oder ausblenden",
 
   // Annotator
-  "annotator.instruction": "Zeichne ein Rechteck um den Bereich, den du kommentieren möchtest",
+  "annotator.instruction":
+    "Zeichne ein Rechteck um den Bereich, den du kommentieren möchtest — oder drücke die Eingabetaste, um das zuletzt fokussierte Element zu kommentieren",
   "annotator.instantInstruction": "Kommentar zur angeklickten Stelle",
   "annotator.cancel": "Abbrechen",
 

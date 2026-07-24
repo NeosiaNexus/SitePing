@@ -273,9 +273,9 @@ export class Fab {
         this.bus.emit("panel:toggle", true);
         break;
       case "annotate": {
-        // close() above re-focused the FAB, so the annotator can only capture
-        // the shadow host as its pre-activation element — restoring focus is
-        // on us: put keyboard users back on the FAB when the session ends.
+        // close() above re-focused the FAB, so the annotator resolves its
+        // keyboard target via the focus tracker's last page element — but
+        // putting keyboard users back on the FAB when the session ends is on us.
         const unsubscribe = this.bus.on("annotation:end", () => {
           unsubscribe();
           this.fab.focus();

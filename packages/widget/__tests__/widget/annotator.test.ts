@@ -110,6 +110,7 @@ vi.mock(new URL("../../src/dom/anchor.js", import.meta.url).pathname, () => ({
 }));
 
 import { Annotator } from "../../src/annotator.js";
+import { generateAnchor } from "../../src/dom/anchor.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -657,6 +658,158 @@ describe("Annotator", () => {
       expect(completeListener).not.toHaveBeenCalled();
 
       target.remove();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Keyboard annotation — FAB-launched fallback target + highlight (issue #162)
+  // -------------------------------------------------------------------------
+
+  describe("keyboard: Enter with fallback target", () => {
+    /**
+     * The chrome decoys below carry data-siteping-ignore + tabindex, which
+     * collides with findOverlay()'s selector — the overlay's unique
+     * role="application" disambiguates.
+     */
+    function findOverlayByRole(): HTMLElement | null {
+      return document.body.querySelector<HTMLElement>('div[role="application"]');
+    }
+
+    /** Annotator with a fallback getter — the shared beforeEach one has none. */
+    function createFallbackAnnotator(getFallbackTarget?: () => HTMLElement | null) {
+      const fbBus = new EventBus<WidgetEvents>();
+      const fbAnnotator = new Annotator(colors, fbBus, t, false, getFallbackTarget);
+      return { fbAnnotator, fbBus };
+    }
+
+    it("annotates the fallback target when widget chrome holds focus at activation", async () => {
+      // FAB-launched flow: focus sits on widget chrome when the annotator
+      // activates — the fallback getter supplies the real page element.
+      const chrome = document.createElement("div");
+      chrome.setAttribute("data-siteping-ignore", "true");
+      chrome.setAttribute("tabindex", "0");
+      document.body.appendChild(chrome);
+
+      const pageButton = document.createElement("button");
+      document.body.appendChild(pageButton);
+      vi.spyOn(pageButton, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 40));
+
+      const { fbAnnotator, fbBus } = createFallbackAnnotator(() => pageButton);
+      try {
+        const completeListener = vi.fn();
+        fbBus.on("annotation:complete", completeListener);
+
+        chrome.focus();
+        fbBus.emit("annotation:start");
+        const overlay = findOverlayByRole()!;
+
+        overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+        await vi.waitFor(() => {
+          expect(completeListener).toHaveBeenCalledOnce();
+        });
+
+        const data = completeListener.mock.calls[0][0];
+        expect(data.annotation.rect).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
+        expect(generateAnchor).toHaveBeenLastCalledWith(pageButton);
+      } finally {
+        fbAnnotator.destroy();
+        chrome.remove();
+        pageButton.remove();
+      }
+    });
+
+    it("Enter no-ops when widget chrome holds focus and the fallback returns null", async () => {
+      const chrome = document.createElement("div");
+      chrome.setAttribute("data-siteping-ignore", "true");
+      chrome.setAttribute("tabindex", "0");
+      document.body.appendChild(chrome);
+
+      const { fbAnnotator, fbBus } = createFallbackAnnotator(() => null);
+      try {
+        const completeListener = vi.fn();
+        fbBus.on("annotation:complete", completeListener);
+
+        chrome.focus();
+        fbBus.emit("annotation:start");
+        const overlay = findOverlayByRole()!;
+
+        overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+        await new Promise((r) => setTimeout(r, 50));
+        expect(completeListener).not.toHaveBeenCalled();
+      } finally {
+        fbAnnotator.destroy();
+        chrome.remove();
+      }
+    });
+
+    it("targets the directly focused page element without consulting the fallback", async () => {
+      const decoy = document.createElement("button");
+      document.body.appendChild(decoy);
+      const getFallback = vi.fn(() => decoy);
+
+      const pageButton = document.createElement("button");
+      document.body.appendChild(pageButton);
+      vi.spyOn(pageButton, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 40));
+
+      const { fbAnnotator, fbBus } = createFallbackAnnotator(getFallback);
+      try {
+        const completeListener = vi.fn();
+        fbBus.on("annotation:complete", completeListener);
+
+        pageButton.focus();
+        fbBus.emit("annotation:start");
+        const overlay = findOverlayByRole()!;
+
+        overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+        await vi.waitFor(() => {
+          expect(completeListener).toHaveBeenCalledOnce();
+        });
+
+        expect(getFallback).not.toHaveBeenCalled();
+        expect(generateAnchor).toHaveBeenLastCalledWith(pageButton);
+      } finally {
+        fbAnnotator.destroy();
+        decoy.remove();
+        pageButton.remove();
+      }
+    });
+
+    it("shows a fixed-position highlight over the target and removes it on deactivate", async () => {
+      // Keep show() pending so the popup stays "open" — the window in which
+      // the highlight must persist, exactly like a pointer-drawn rect.
+      popupMocks.keepShowPending = true;
+
+      const pageButton = document.createElement("button");
+      document.body.appendChild(pageButton);
+      vi.spyOn(pageButton, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 40));
+
+      const { fbAnnotator, fbBus } = createFallbackAnnotator();
+      try {
+        pageButton.focus();
+        fbBus.emit("annotation:start");
+        const overlay = findOverlayByRole()!;
+
+        overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+        // Screenshot-excluded (data-siteping-ignore) and positioned over the
+        // target's bounding box.
+        const highlight = overlay.querySelector<HTMLElement>("div[data-siteping-ignore]");
+        expect(highlight).not.toBeNull();
+        expect(highlight!.style.position).toBe("fixed");
+        expect(highlight!.style.left).toBe("10px");
+        expect(highlight!.style.top).toBe("20px");
+        expect(highlight!.style.width).toBe("100px");
+        expect(highlight!.style.height).toBe("40px");
+
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        expect(highlight!.isConnected).toBe(false);
+      } finally {
+        fbAnnotator.destroy();
+        pageButton.remove();
+      }
     });
   });
 

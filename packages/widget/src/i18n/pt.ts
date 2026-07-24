@@ -56,7 +56,8 @@ export const pt: Translations = {
   "fab.annotations": "Exibir ou ocultar marcadores",
 
   // Annotator
-  "annotator.instruction": "Desenhe um retângulo na área que deseja comentar",
+  "annotator.instruction":
+    "Desenhe um retângulo na área que deseja comentar — ou pressione Enter para comentar o último elemento em foco",
   "annotator.instantInstruction": "Comentar o ponto clicado",
   "annotator.cancel": "Cancelar",
 
