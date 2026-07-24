@@ -187,8 +187,9 @@ describe("launch", () => {
     });
 
     it("mounts without forceShow when NODE_ENV is 'development' (#104)", () => {
-      // Locks the bundler-folding regression at source level: the guard must
-      // compare the actual runtime NODE_ENV, not a build-time constant.
+      // Source-level sanity check only — vitest never applies bundler defines,
+      // so the real #104 lock is the dist-level E2E test plus
+      // scripts/verify-dist-guard.mjs at build time.
       const origEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
 

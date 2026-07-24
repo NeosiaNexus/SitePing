@@ -72,24 +72,31 @@ function skippedInstance(): SitepingInstance {
 }
 
 /**
- * Read NODE_ENV at runtime without the literal member expression
- * `process.env.NODE_ENV`.
+ * Read NODE_ENV so that BOTH detection paths keep working:
  *
- * The tsup builds run esbuild with `platform: "browser"`, whose define
- * statically replaces that exact literal expression at build time — any
- * comparison against it gets constant-folded, so the shipped bundle would
- * skip (or never skip) the widget regardless of the host's actual
- * environment (issue #104). The computed key dodges the define so detection
- * stays at runtime — which E2E also relies on: tests set
- * `globalThis.process = { env: { NODE_ENV: 'test' } }` to get an open
- * Shadow DOM.
+ * - The literal `process.env.NODE_ENV` member expression must survive into
+ *   our own dist — an identity define in tsup.config.ts stops esbuild's
+ *   browser-platform auto-define from folding it to `"production"` and
+ *   deleting the guard from the shipped bundle (issue #104).
+ * - Shipping the literal lets the CONSUMER's bundler (webpack DefinePlugin,
+ *   Vite, esbuild) inline their real environment, so "dev-only by default"
+ *   works in bundled deployments even when no `process` global exists at
+ *   runtime. Computed-key dodges (`env["NODE_" + "ENV"]`) would defeat that
+ *   inlining — do not reintroduce them.
+ * - No `typeof process` gate: it would return before a consumer-inlined
+ *   constant is reached. Plain browsers without `process` (script-tag usage)
+ *   land in the catch instead. Runtime environments with a real `process`
+ *   (Node/SSR, E2E's `globalThis.process = { env: { NODE_ENV: 'test' } }`)
+ *   read it live.
+ *
+ * `scripts/verify-dist-guard.mjs` asserts these invariants against every
+ * built bundle after each build.
  */
 function readNodeEnv(): string | undefined {
   try {
-    if (typeof process === "undefined") return undefined;
-    return process.env?.["NODE_" + "ENV"];
+    return process.env.NODE_ENV;
   } catch {
-    // Restricted environments may throw on `process` access
+    // No `process` global (plain browser) or restricted access — no signal
     return undefined;
   }
 }

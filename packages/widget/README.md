@@ -115,6 +115,20 @@ initSiteping({
 })
 ```
 
+### How production detection works
+
+The widget skips rendering when `NODE_ENV` is `production`. The shipped bundle
+keeps the literal `process.env.NODE_ENV` expression, so:
+
+- **Bundled apps** (Next.js, Vite, webpack…): your bundler inlines its
+  environment at build time — the widget auto-hides in production builds and
+  shows in dev builds.
+- **Node/SSR and test runners**: the real `process.env.NODE_ENV` is read at
+  runtime (server-side, the widget always skips with `onSkip('ssr')`).
+- **Plain `<script>` tags** with no bundler and no `process` global: there is
+  no environment signal, so the widget renders — gate the `<script>` tag
+  yourself, or use `onSkip`/`forceShow` to control visibility explicitly.
+
 ## Return value API
 
 `initSiteping()` returns a `SitepingInstance` with the following methods:

@@ -169,7 +169,15 @@ const server = createServer((req, res) => {
     // guard in the real dist bundle is exercised: NODE_ENV is 'test' (set in
     // the page above), so the widget must still mount — see #104.
     if (url.searchParams.get("noForceShow") === "1") {
-      html = html.replace("      forceShow: true,\n", "");
+      const stripped = html.replace("      forceShow: true,\n", "");
+      if (stripped === html) {
+        // The exact-string replace missed (template reformatted?) — serving
+        // the forceShow page would make the #104 regression test vacuous.
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("noForceShow=1: failed to strip forceShow from the page template");
+        return;
+      }
+      html = stripped;
     }
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end(html);
