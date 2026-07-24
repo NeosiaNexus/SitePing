@@ -58,6 +58,7 @@ export const it: Translations = {
 
   // Annotator
   "annotator.instruction": "Disegna un rettangolo sull'area da commentare",
+  "annotator.instantInstruction": "Commenta il punto selezionato",
   "annotator.cancel": "Annulla",
 
   // Popup

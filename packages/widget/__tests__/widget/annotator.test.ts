@@ -41,6 +41,13 @@ const popupMocks = vi.hoisted(() => {
     keepShowPending: false,
     /** `destroy()` call count on the live popup mock. */
     destroyCount: 0,
+    /**
+     * `show()` call count on the live popup mock. A second `show()` inside one
+     * session is the corruption vector the instant-mode guards exist to stop:
+     * it overwrites the pending `resolve`, wipes the textarea draft, and
+     * orphans the first `await`.
+     */
+    showCount: 0,
   };
 });
 
@@ -49,6 +56,7 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
     show: vi
       .fn()
       .mockImplementation((_rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
+        popupMocks.showCount += 1;
         // The real popup awaits its `onSubmit` callback before resolving so
         // the spinner stays visible until feedback:sent or feedback:error
         // arrives. Tests don't run a launcher, so we fire-and-forget the
@@ -144,6 +152,7 @@ describe("Annotator", () => {
     popupMocks.capturedOnSubmit = null;
     popupMocks.keepShowPending = false;
     popupMocks.destroyCount = 0;
+    popupMocks.showCount = 0;
     screenshotMocks.captureAnnotatedScreenshot.mockReset();
     screenshotMocks.captureAnnotatedScreenshot.mockResolvedValue(null);
     ({ annotator, bus } = createAnnotator());
@@ -1101,6 +1110,134 @@ describe("Annotator", () => {
       // The terminal-event listeners were unsubscribed on destroy — a late
       // terminal event must be inert (no second settle, no throw).
       expect(() => bus.emit("submission:cancelled")).not.toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Instant annotation (right-click comment)
+  // -------------------------------------------------------------------------
+
+  describe("startInstantAnnotation", () => {
+    it("is a no-op when the annotator is already active (isActive guard)", async () => {
+      // Enter annotation mode via the normal FAB flow
+      bus.emit("annotation:start");
+      expect(findOverlay()).not.toBeNull();
+
+      // A second instant annotation call should be ignored
+      await annotator.startInstantAnnotation(100, 100);
+
+      // Only one overlay should exist
+      expect(countOverlays()).toBe(1);
+    });
+
+    it("emits annotation:start on the bus so public hooks fire", async () => {
+      const startSpy = vi.fn();
+      bus.on("annotation:start", startSpy);
+
+      // startInstantAnnotation emits annotation:start internally
+      const promise = annotator.startInstantAnnotation(100, 100);
+
+      // annotation:start should have been emitted (once by our call,
+      // the bus handler then calls activate())
+      expect(startSpy).toHaveBeenCalled();
+
+      await promise;
+    });
+
+    it("emits annotation:end on deactivate (event symmetry)", async () => {
+      const endSpy = vi.fn();
+      bus.on("annotation:end", endSpy);
+
+      await annotator.startInstantAnnotation(100, 100);
+
+      // The instant flow always deactivates, which emits annotation:end
+      expect(endSpy).toHaveBeenCalled();
+    });
+
+    it("always deactivates after popup closes (even on cancel)", async () => {
+      // Simulate the popup returning null (cancel)
+      popupMocks.nextResult = null;
+
+      await annotator.startInstantAnnotation(100, 100);
+
+      // Overlay should be cleaned up — the user is not stranded in draw mode
+      expect(findOverlay()).toBeNull();
+    });
+
+    it("does not show the draw-mode toolbar", () => {
+      popupMocks.keepShowPending = true; // hold the session open mid-popup
+      void annotator.startInstantAnnotation(100, 100);
+
+      expect(findOverlay()).not.toBeNull(); // session is live…
+      expect(document.body.textContent).not.toContain(t("annotator.instruction")); // …with no toolbar
+    });
+
+    it("drag on the overlay while the instant composer is open must not re-enter popup.show()", async () => {
+      // In instant mode the overlay is a pure visual shield: `activate()` must
+      // not arm the draw listeners. If it does, an accidental click-drag next
+      // to the open composer runs startDrawing → finishDrawing → a SECOND
+      // popup.show(), which overwrites the pending resolve, wipes the user's
+      // draft, and orphans the first await forever.
+      //
+      // `nextResult: null` + `keepShowPending` is what models the real window:
+      // the popup is open and the user is TYPING, so no submission is in
+      // flight. That is exactly the gap `submissionInFlight` does not cover —
+      // with the harness's default auto-submit this test cannot fail.
+      popupMocks.nextResult = null;
+      popupMocks.keepShowPending = true;
+      const first = annotator.startInstantAnnotation(100, 100);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(popupMocks.showCount).toBe(1);
+
+      const overlay = findOverlay()!;
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 200, clientY: 200, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mousemove", { clientX: 260, clientY: 270, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 260, clientY: 270, bubbles: true }));
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Still exactly one session — the drag was inert.
+      expect(popupMocks.showCount).toBe(1);
+
+      annotator.destroy();
+      // Do not await 'first' because the mocked popup.show never resolves when keepShowPending is true
+      first.catch(() => {});
+    });
+
+    it("Enter on the overlay while the instant composer is open must not re-enter popup.show()", async () => {
+      // Same re-entry class through the keyboard door: `onOverlayKeyDown`
+      // (Enter → annotate the pre-focused element) must not be armed either.
+      // The target needs real bounds — jsdom reports 0×0 and the handler
+      // bails on that, which would make this test vacuous.
+      const target = document.createElement("button");
+      target.getBoundingClientRect = () => new DOMRect(10, 10, 100, 40);
+      document.body.appendChild(target);
+      target.focus();
+
+      popupMocks.nextResult = null;
+      popupMocks.keepShowPending = true;
+      const first = annotator.startInstantAnnotation(100, 100);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(popupMocks.showCount).toBe(1);
+
+      findOverlay()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(popupMocks.showCount).toBe(1);
+
+      annotator.destroy();
+      first.catch(() => {});
+      target.remove();
+    });
+
+    it("exposes isBusy as true while active", () => {
+      expect(annotator.isBusy).toBe(false);
+
+      bus.emit("annotation:start");
+      expect(annotator.isBusy).toBe(true);
+
+      // Escape key deactivates
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(annotator.isBusy).toBe(false);
     });
   });
 

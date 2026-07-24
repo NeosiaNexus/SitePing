@@ -57,6 +57,7 @@ export const es: Translations = {
 
   // Annotator
   "annotator.instruction": "Dibuja un rectángulo sobre el área que quieres comentar",
+  "annotator.instantInstruction": "Comentar el punto seleccionado",
   "annotator.cancel": "Cancelar",
 
   // Popup

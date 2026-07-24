@@ -79,6 +79,7 @@ All configuration options for `initSiteping()`:
 | `identity` | `{ name: string; email: string }` | — | Pre-fill author identity from the host (SSO). When set, the widget skips the identity modal |
 | `deepLink` | `boolean \| { param?: string }` | `false` | On initial load, focus the annotation referenced by `?siteping=<id>` (or a custom query key). SPA navigations are ignored — use `focusFeedback()` for route-change focus |
 | `watchNavigation` | `boolean` | `true` | Auto re-fetch feedbacks on client-side (SPA) navigation. The widget patches the History API + listens for `popstate`/`hashchange`, so the panel list and markers follow route changes even when the widget is mounted once in a persistent layout (e.g. Next.js App Router). Re-fetches data only — it never re-scrolls. Set `false` to opt out and drive updates via `refresh()` |
+| `enableRightClickComment` | `boolean` | `false` | Right-click anywhere on the page to instantly open the comment composer at the cursor. Modifier-key right-clicks (Shift/Ctrl/Alt/Meta) fall through to the native context menu. Right-clicks on SitePing's own UI are ignored. Note: on Android, `contextmenu` fires on long-press — relevant for ≥768 px tablets where the widget loads |
 
 > **Custom translations** — Use `registerLocale(code, translations)` to add your own locale at runtime.
 

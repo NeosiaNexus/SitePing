@@ -43,7 +43,10 @@ vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
 // Mock heavy dependencies to keep tests fast and focused on launcher logic
 // Capture the EventBus so we can emit events for callback wiring tests.
 // Use a container object to work around vi.mock hoisting
-const annotatorCapture: { bus: { emit: (event: string, ...args: unknown[]) => void } | null } = { bus: null };
+const annotatorCapture: {
+  bus: { emit: (event: string, ...args: unknown[]) => void } | null;
+  startInstantAnnotation: ReturnType<typeof vi.fn>;
+} = { bus: null, startInstantAnnotation: vi.fn().mockResolvedValue(undefined) };
 
 vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
   Annotator: vi.fn().mockImplementation(
@@ -56,7 +59,12 @@ vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
     ) => {
       annotatorCapture.bus = bus;
       bus.on("annotation:start", () => {});
-      return { destroy: vi.fn(), refreshLabels: vi.fn() };
+      return {
+        destroy: vi.fn(),
+        refreshLabels: vi.fn(),
+        startInstantAnnotation: annotatorCapture.startInstantAnnotation,
+        isBusy: false,
+      };
     },
   ),
 }));
@@ -111,6 +119,7 @@ describe("launch", () => {
       el.remove();
     }
     annotatorCapture.bus = null;
+    annotatorCapture.startInstantAnnotation.mockClear();
   });
 
   // -------------------------------------------------------------------------
@@ -786,6 +795,118 @@ describe("launch", () => {
           delete (proto as { adoptedStyleSheets?: CSSStyleSheet[] }).adoptedStyleSheets;
         }
       }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Right-click comment (enableRightClickComment)
+  // -------------------------------------------------------------------------
+
+  describe("enableRightClickComment", () => {
+    it("does not register a contextmenu listener when the flag is off", () => {
+      const spy = vi.spyOn(document, "addEventListener");
+      const instance = launch(defaultConfig());
+
+      const contextMenuCalls = spy.mock.calls.filter(([event]) => event === "contextmenu");
+      expect(contextMenuCalls).toHaveLength(0);
+
+      instance.destroy();
+      spy.mockRestore();
+    });
+
+    it("registers a contextmenu listener when the flag is on", () => {
+      const spy = vi.spyOn(document, "addEventListener");
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      const contextMenuCalls = spy.mock.calls.filter(([event]) => event === "contextmenu");
+      expect(contextMenuCalls.length).toBeGreaterThanOrEqual(1);
+
+      instance.destroy();
+      spy.mockRestore();
+    });
+
+    it("removes the contextmenu listener on destroy", () => {
+      const spy = vi.spyOn(document, "removeEventListener");
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+      instance.destroy();
+
+      const contextMenuCalls = spy.mock.calls.filter(([event]) => event === "contextmenu");
+      expect(contextMenuCalls.length).toBeGreaterThanOrEqual(1);
+
+      spy.mockRestore();
+    });
+
+    it("does not preventDefault when a modifier key is held", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      const event = new MouseEvent("contextmenu", {
+        clientX: 100,
+        clientY: 100,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+      // Event should not have been prevented
+      expect(event.defaultPrevented).toBe(false);
+
+      instance.destroy();
+    });
+
+    it("does not preventDefault when event is already defaultPrevented", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      const event = new MouseEvent("contextmenu", {
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      // Simulate a host-page handler that already called preventDefault
+      event.preventDefault();
+      document.dispatchEvent(event);
+      // Our handler should have yielded (event was already prevented by host)
+      expect(annotatorCapture.startInstantAnnotation).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("plain right-click prevents the native menu and starts the instant flow", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      const event = new MouseEvent("contextmenu", {
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(annotatorCapture.startInstantAnnotation).toHaveBeenCalledWith(100, 100);
+
+      instance.destroy();
+    });
+
+    it("right-click on SitePing's own UI is ignored", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      // Simulate a click on the SitePing widget (or something inside it)
+      const event = new MouseEvent("contextmenu", {
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+
+      const widget = document.querySelector("siteping-widget")!;
+      // Need composedPath() to include the widget, so dispatch from it or a shadow child
+      widget.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(annotatorCapture.startInstantAnnotation).not.toHaveBeenCalled();
+
+      instance.destroy();
     });
   });
 });
