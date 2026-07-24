@@ -565,7 +565,8 @@ Browser              Server         Browser
 
 - **Shadow DOM (closed)** — Widget styles are fully isolated from the host page
 - **Overlay outside Shadow DOM** — The annotation overlay and markers live in the main DOM to avoid clipping from `overflow:hidden` containers
-- **Multi-selector anchoring** — Each annotation stores a CSS selector ([`@medv/finder`](https://github.com/antonmedv/finder)), XPath, and text snippet. Re-anchoring tries all three in order, inspired by [Hypothesis](https://web.hypothes.is/blog/fuzzy-anchoring/)
+- **Multi-selector anchoring** — Each annotation stores a CSS selector ([`@medv/finder`](https://github.com/antonmedv/finder)), XPath, text snippet, structural fingerprint, and neighboring-text context. Re-anchoring gathers candidates from **every** strategy, verifies each against all stored signals, prefers visible elements over hidden responsive twins, and returns the best-scoring match — inspired by [Hypothesis](https://web.hypothes.is/blog/fuzzy-anchoring/)'s quote-verified anchoring and the [Similo](https://arxiv.org/abs/2208.00677) multi-locator line of work
+- **Known limitation: host-page shadow DOM** — Anchoring does not traverse the host page's shadow roots: annotations drawn on content inside a web component capture a host-level anchor or fail to re-resolve ([#177](https://github.com/NeosiaNexus/SitePing/issues/177) tracks open-root traversal)
 - **Percentage-relative rectangles** — Annotation positions are stored as fractions of the anchor element's bounding box, so they survive responsive layout changes
 - **Event bus with error isolation** — User callbacks (`onError`, etc.) cannot crash internal widget logic
 
