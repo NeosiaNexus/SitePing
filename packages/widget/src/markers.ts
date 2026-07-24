@@ -210,8 +210,7 @@ export class MarkerManager {
         const cachedEl = cachedRef?.deref();
         let resolved: ReturnType<typeof resolveAnnotation>;
 
-        const cacheUsable =
-          cachedEl?.isConnected && !(recheckVisibility && classifyVisibility(cachedEl) === "hidden");
+        const cacheUsable = cachedEl?.isConnected && !(recheckVisibility && classifyVisibility(cachedEl) === "hidden");
 
         if (cachedEl && cacheUsable) {
           const anchorRect = cachedEl.getBoundingClientRect();

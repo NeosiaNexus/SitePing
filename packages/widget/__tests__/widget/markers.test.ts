@@ -18,12 +18,14 @@ const { mockState } = vi.hoisted(() => {
     returnNull: false,
     rectQueue: [] as Array<{ x: number; y: number; w: number; h: number }>,
     nullSchedule: [] as boolean[], // sequential per-call nulls
+    calls: 0, // total resolveAnnotation invocations (cache-path assertions)
   };
   return { mockState: state };
 });
 
 vi.mock(new URL("../../src/dom/resolver.js", import.meta.url).pathname, () => ({
   resolveAnnotation: () => {
+    mockState.calls++;
     if (mockState.returnNull) return null;
     if (mockState.nullSchedule.length > 0) {
       const shouldReturnNull = mockState.nullSchedule.shift();
@@ -1126,6 +1128,68 @@ describe("MarkerManager", () => {
 
       const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-cached"]')!;
       expect(markerEl.style.display).toBe("flex");
+
+      vi.useRealTimers();
+    });
+
+    it("drops the cached anchor and re-resolves when it went hidden before a layout tick (#171)", () => {
+      vi.useFakeTimers();
+
+      markers.render([makeFeedback({ id: "fb-hid" })]);
+      // First reposition populates the cache.
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      // The cached element goes display:none-like (responsive breakpoint flip).
+      const cached = mockState.element as Element & { checkVisibility?: () => boolean };
+      cached.checkVisibility = () => false;
+
+      const callsBefore = mockState.calls;
+      window.dispatchEvent(new Event("resize")); // layout-changing trigger
+      vi.advanceTimersByTime(400);
+
+      // Cache was dropped → the full resolution chain ran again.
+      expect(mockState.calls).toBeGreaterThan(callsBefore);
+
+      vi.useRealTimers();
+    });
+
+    it("keeps the cached fast path on pure scroll ticks even for a hidden anchor", () => {
+      vi.useFakeTimers();
+
+      markers.render([makeFeedback({ id: "fb-scroll" })]);
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      const cached = mockState.element as Element & { checkVisibility?: () => boolean };
+      cached.checkVisibility = () => false;
+
+      const callsBefore = mockState.calls;
+      // Scroll cannot flip visibility — re-resolving per scroll tick would
+      // turn a collapsed-accordion anchor into constant full re-resolution.
+      window.dispatchEvent(new Event("scroll"));
+      vi.advanceTimersByTime(400);
+
+      expect(mockState.calls).toBe(callsBefore);
+
+      vi.useRealTimers();
+    });
+
+    it("keeps the cached fast path on layout ticks when the anchor is still visible", () => {
+      vi.useFakeTimers();
+
+      markers.render([makeFeedback({ id: "fb-vis" })]);
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      const cached = mockState.element as Element & { checkVisibility?: () => boolean };
+      cached.checkVisibility = () => true;
+
+      const callsBefore = mockState.calls;
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(mockState.calls).toBe(callsBefore);
 
       vi.useRealTimers();
     });

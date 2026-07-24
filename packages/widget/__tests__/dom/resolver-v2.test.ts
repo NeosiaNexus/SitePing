@@ -66,9 +66,7 @@ describe("#171 — visibility-aware duplicate disambiguation", () => {
 
   it("prefers the visible twin over an earlier hidden one (CSS strategy)", () => {
     const { visible } = twinSetup();
-    const result = resolveAnchor(
-      makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }),
-    );
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }));
     expect(result).not.toBeNull();
     expect(result!.element).toBe(visible);
     expect(result!.strategy).toBe("css");
@@ -103,9 +101,7 @@ describe("#171 — visibility-aware duplicate disambiguation", () => {
     const { hidden } = twinSetup();
     stubHidden(hidden.nextElementSibling as Element); // hide the twin too
 
-    const result = resolveAnchor(
-      makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }),
-    );
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }));
     expect(result).not.toBeNull();
     expect(result!.strategy).toBe("css");
     // Confidence reflects match certainty, not paint state — the best hidden
@@ -118,9 +114,7 @@ describe("#171 — visibility-aware duplicate disambiguation", () => {
     stubSoftHidden(visible); // downgrade the "visible" twin to soft-hidden
     void hidden;
 
-    const result = resolveAnchor(
-      makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }),
-    );
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }));
     expect(result).not.toBeNull();
     expect(result!.element).toBe(document.querySelectorAll(".cta")[1]);
   });
@@ -135,9 +129,7 @@ describe("#171 — visibility-aware duplicate disambiguation", () => {
     second.textContent = "Buy now with free shipping";
     document.body.append(first, second);
 
-    const result = resolveAnchor(
-      makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }),
-    );
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }));
     expect(result).not.toBeNull();
     expect(result!.element).toBe(first);
   });
@@ -367,9 +359,7 @@ describe("#175 — cross-strategy candidate ranking", () => {
     wrapper.appendChild(inner);
     document.body.appendChild(wrapper);
 
-    const result = resolveAnchor(
-      makeAnchor({ cssSelector: ".dup", textSnippet: "Read the documentation" }),
-    );
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".dup", textSnippet: "Read the documentation" }));
     expect(result).not.toBeNull();
     // v1 returned the wrapper (first match in document order).
     expect(result!.element).toBe(inner);
