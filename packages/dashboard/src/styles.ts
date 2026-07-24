@@ -209,9 +209,9 @@ export const INBOX_CSS = `
 .spd-tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 13px;
   font-size: 12px;
   font-weight: 500;
   color: var(--spd-text-2);
@@ -233,8 +233,8 @@ export const INBOX_CSS = `
 .spd-tab-glyph { display: inline-flex; }
 .spd-tab-glyph svg { width: 13px; height: 13px; }
 .spd-tab-count {
-  min-width: 17px;
-  padding: 0 4px;
+  min-width: 18px;
+  padding: 0 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--spd-text-3) 16%, transparent);
   font-size: 10.5px;
