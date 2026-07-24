@@ -59,7 +59,7 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **CLI scaffold** — `npx @siteping/cli init` sets up Prisma schema + API route
 - **Monorepo** — Split into independent packages (`widget`, `dashboard`, `adapter-prisma`, `adapter-memory`, `adapter-localstorage`, `cli`)
 - **Dev-only by default** — Widget auto-hides in production unless `forceShow: true`
-- **Lightweight** — ~49 KB gzipped today; after the upcoming bundle split (in progress), target is ~30 KB gzipped on first paint
+- **Lightweight** — ~49 kB gzipped on the wire; the panel, screenshot capture, and non-English locales load on demand on top of that
 
 ---
 
@@ -158,7 +158,8 @@ initSiteping({
   position: 'bottom-right',       // 'bottom-right' | 'bottom-left'
   accentColor: '#0066ff',         // Widget accent color
   theme: 'light',                 // 'light' | 'dark' | 'auto'
-  locale: 'en',                   // 'en' | 'fr' (default: 'en')
+  locale: 'en',                   // 'en' | 'fr' | 'de' | 'es' | 'it' | 'pt' | 'ru'
+                                  // (default: 'en')
   forceShow: false,               // Always render — bypasses BOTH the
                                   // production guard and the mobile-viewport
                                   // guard. Default: false
@@ -461,7 +462,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ pri
 |--------|-------------|--------|
 | `POST` | Create a feedback with annotations | `201` with full feedback object |
 | `GET` | List feedbacks (filterable by type, status, search) | `200` with `{ feedbacks, total }` |
-| `PATCH` | Resolve or unresolve a feedback | `200` with updated feedback |
+| `PATCH` | Update a feedback's status | `200` with updated feedback |
 | `DELETE` | Delete a feedback or all feedbacks for a project | `200` with `{ deleted: true }` |
 
 #### Query parameters (GET)
@@ -470,7 +471,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ pri
 |-------|------|-------------|
 | `projectName` | `string` | **Required.** Filter by project |
 | `type` | `string` | Filter: `question`, `change`, `bug`, `other` |
-| `status` | `string` | Filter: `open`, `resolved` |
+| `status` | `string` | Filter: `open`, `in_progress`, `resolved`, `wont_fix` |
 | `search` | `string` | Full-text search on message content |
 | `page` | `number` | Pagination (default: 1) |
 | `limit` | `number` | Items per page (default: 50, max: 100) |
@@ -604,7 +605,7 @@ import type {
   SitepingInstance,
   SitepingPublicEvents,
   FeedbackType,       // 'question' | 'change' | 'bug' | 'other'
-  FeedbackStatus,     // 'open' | 'resolved'
+  FeedbackStatus,     // 'open' | 'in_progress' | 'resolved' | 'wont_fix'
   FeedbackPayload,
   FeedbackResponse,
   AnnotationPayload,
@@ -631,7 +632,7 @@ bun run check
 
 | Suite | Tests | What it covers |
 |-------|-------|----------------|
-| Unit (Vitest) | ~1300 | Zod validation, API handlers, store conformance, adapter tests, EventBus, API client retry, identity persistence, theme normalization, DOM anchoring, resolver, fuzzy matching, fingerprinting, XPath, text context, i18n |
+| Unit (Vitest) | ~1900 | Zod validation, API handlers, store conformance, adapter tests, EventBus, API client retry, identity persistence, theme normalization, DOM anchoring, resolver, fuzzy matching, fingerprinting, XPath, text context, i18n |
 | E2E (Playwright) | 29 (×3 browsers) | Full browser: widget injection, FAB, panel, annotation draw, popup submit, marker creation, API persistence, i18n, search, touch, event delegation, cleanup |
 
 ---
@@ -686,6 +687,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for version history.
 - ✅ In-memory + localStorage adapters
 - ✅ Adapter conformance test suite (22 tests, shared across adapters)
 - ✅ Webhook notifications (Slack, Discord, generic HTTP) — see [Notifications](#notifications)
+- ✅ Triage inbox dashboard (`@siteping/dashboard`) — see [Triage inbox](#triage-inbox--sitepingdashboard)
 
 **Up next**
 
@@ -695,7 +697,6 @@ See [CHANGELOG.md](./CHANGELOG.md) for version history.
 
 **Planned**
 
-- 📋 Dashboard UI for reviewing feedbacks
 - 📋 Screenshot fallback when re-anchoring fails
 
 > Want to help ship these? Browse [`good first issue`](https://github.com/NeosiaNexus/SitePing/labels/good%20first%20issue) and [`help wanted`](https://github.com/NeosiaNexus/SitePing/labels/help%20wanted).

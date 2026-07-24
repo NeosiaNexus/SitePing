@@ -80,11 +80,11 @@ export function Hero() {
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 bg-gray-900/50 px-3 py-1 text-xs text-gray-400">
           <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-          238 tests
+          1,800+ tests
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 bg-gray-900/50 px-3 py-1 text-xs text-gray-400">
           <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
-          &lt; 20 kB gzipped
+          ~49 kB gz, panel lazy
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 bg-gray-900/50 px-3 py-1 text-xs text-gray-400">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />

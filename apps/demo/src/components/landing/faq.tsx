@@ -1,4 +1,7 @@
-const faqs = [
+import Link from "next/link";
+import type { ReactNode } from "react";
+
+const faqs: { q: string; a: ReactNode }[] = [
   {
     q: "What databases are supported?",
     a: "Any database supported by Prisma — PostgreSQL, MySQL, SQLite, MongoDB, CockroachDB, and more. A Drizzle adapter is on the roadmap.",
@@ -13,11 +16,24 @@ const faqs = [
   },
   {
     q: "Is there a dashboard to view feedback?",
-    a: "A dashboard UI is on the roadmap. Currently, feedback is accessible via the widget panel and the API. You can query, filter, and manage feedback programmatically.",
+    a: (
+      <>
+        Yes — install @siteping/dashboard and drop the {"<SitepingInbox />"} React component into your admin page. It is
+        a Linear-style triage inbox with j/k keyboard shortcuts, four statuses, and the client&apos;s annotation
+        re-drawn on the screenshot.{" "}
+        <Link
+          href="/demo/inbox"
+          className="text-accent-light underline underline-offset-2 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-light"
+        >
+          See it working in the demo inbox
+        </Link>
+        .
+      </>
+    ),
   },
   {
     q: "How big is the widget bundle?",
-    a: "The widget is under 20 kB gzipped. It loads asynchronously and never blocks your page rendering.",
+    a: "About 49 kB gzipped on the wire; the feedback panel, screenshot capture, and non-English locales load on demand on top of that. The widget loads asynchronously and never blocks your page rendering.",
   },
   {
     q: "Is it GDPR compliant?",
@@ -25,7 +41,15 @@ const faqs = [
   },
   {
     q: "Can I customize the widget appearance?",
-    a: "Yes — accent color, position (bottom-right or bottom-left), theme (light, dark, auto), and locale (English, French). Full event system for custom integrations.",
+    a: "Yes — accent color, position (bottom-right or bottom-left), theme (light, dark, auto), and 7 built-in locales (English, French, German, Spanish, Italian, Portuguese, Russian) plus registerLocale for your own. Try every option live on the demo.",
+  },
+  {
+    q: "Is it accessible?",
+    a: "Yes — the widget and the inbox are audited against WCAG 2.1 AA. The full flow works from the keyboard, including drawing an annotation: Tab to the element, press Enter. Actions are announced to screen readers.",
+  },
+  {
+    q: "How is reviewers' data handled?",
+    a: 'Feedback lives in your own database — SitePing is self-hosted. The API blanks reviewer emails on unauthenticated reads by default, and elements marked data-siteping-ignore="true" are masked out of screenshots.',
   },
   {
     q: "Do I need to create an account?",
