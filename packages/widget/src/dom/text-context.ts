@@ -40,8 +40,22 @@ export function neighborText(element: Element): string {
  * as soon as the budget is reached.
  */
 export function boundedText(element: Element, cap: number): string {
-  const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   let out = "";
+
+  // Leaf fast path — the majority of scan candidates have no element
+  // children; their text is the concatenation of their child text nodes,
+  // no tree traversal machinery needed.
+  if (element.firstElementChild === null) {
+    for (const node of element.childNodes) {
+      if (node.nodeType === 3) {
+        out += (node as Text).data;
+        if (out.length >= cap) break;
+      }
+    }
+    return out.length > cap ? out.slice(0, cap) : out;
+  }
+
+  const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   while (out.length < cap) {
     const node = walker.nextNode();
     if (!node) break;
