@@ -185,6 +185,24 @@ describe("launch", () => {
         process.env.NODE_ENV = origEnv;
       }
     });
+
+    it("mounts without forceShow when NODE_ENV is 'development' (#104)", () => {
+      // Source-level sanity check only — vitest never applies bundler defines,
+      // so the real #104 lock is the dist-level E2E test plus
+      // scripts/verify-dist-guard.mjs at build time.
+      const origEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+
+      const onSkip = vi.fn();
+      const instance = launch({ endpoint: "/api", projectName: "test", onSkip });
+      try {
+        expect(document.querySelector("siteping-widget")).not.toBeNull();
+        expect(onSkip).not.toHaveBeenCalled();
+      } finally {
+        instance.destroy();
+        process.env.NODE_ENV = origEnv;
+      }
+    });
   });
 
   // -------------------------------------------------------------------------

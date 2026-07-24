@@ -14,6 +14,15 @@ import { defineConfig } from "tsup";
 // to see in their dashboards.
 const pureCalls = ["console.debug", "console.info"] as const;
 
+// Identity define: pins `process.env.NODE_ENV` to itself so esbuild's
+// browser-platform auto-define cannot fold it to `"production"` at our build
+// (issue #104 — the fold used to delete the production guard from dist).
+// The literal survives into the shipped bundles, where the consumer's own
+// bundler (webpack DefinePlugin, Vite, esbuild) can inline THEIR environment;
+// plain browsers without `process` fall through via readNodeEnv's try/catch.
+// `scripts/verify-dist-guard.mjs` asserts this after every build.
+const keepNodeEnvLiteral = { "process.env.NODE_ENV": "process.env.NODE_ENV" } as const;
+
 export default defineConfig([
   {
     entry: ["src/index.ts"],
@@ -29,6 +38,7 @@ export default defineConfig([
     noExternal: ["@medv/finder", "@siteping/core"],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
+      o.define = { ...o.define, ...keepNodeEnvLiteral };
     },
   },
   {
@@ -46,6 +56,7 @@ export default defineConfig([
     noExternal: ["@medv/finder", "@siteping/core"],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
+      o.define = { ...o.define, ...keepNodeEnvLiteral };
     },
   },
   {
@@ -63,6 +74,7 @@ export default defineConfig([
     external: ["react"],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
+      o.define = { ...o.define, ...keepNodeEnvLiteral };
     },
   },
 ]);

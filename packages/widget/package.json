@@ -21,7 +21,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup && node ../../scripts/fix-dts.mjs dist",
+    "build": "tsup && node ../../scripts/fix-dts.mjs dist && node scripts/verify-dist-guard.mjs",
     "check": "tsc --noEmit",
     "clean": "rm -rf dist",
     "size": "NODE_PATH=./node_modules size-limit"
