@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.2...widget-v0.10.3) (2026-07-24)
+
+
+### Features
+
+* **widget:** cross-strategy scored anchor resolution — visibility-aware, structurally verified, subquadratic matching ([#216](https://github.com/NeosiaNexus/SitePing/issues/216)) ([98029b1](https://github.com/NeosiaNexus/SitePing/commit/98029b1c8f7183bbd5c820c21d8d14bcd5843731))
+
 ## [0.10.2](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.1...widget-v0.10.2) (2026-07-24)
 
 
