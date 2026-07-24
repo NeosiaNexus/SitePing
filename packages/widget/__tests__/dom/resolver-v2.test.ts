@@ -1,0 +1,925 @@
+// @vitest-environment jsdom
+
+// Scenario tests for the v2 cross-strategy scored resolver:
+// #171 hidden responsive duplicates · #172 text-less verification
+// #173 whitespace normalization · #174 scan cost/fairness · #175 inversion
+
+import type { AnchorData } from "@siteping/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { generateFingerprint } from "../../src/dom/fingerprint";
+import { fuzzyIncludes, normalizeText } from "../../src/dom/fuzzy";
+import { resolveAnchor } from "../../src/dom/resolver";
+
+/** Build a minimal AnchorData with sensible defaults. */
+function makeAnchor(overrides: Partial<AnchorData> = {}): AnchorData {
+  return {
+    cssSelector: "div",
+    xpath: "/html/body/div[1]",
+    textSnippet: "",
+    elementTag: "DIV",
+    elementId: undefined,
+    textPrefix: "",
+    textSuffix: "",
+    fingerprint: "",
+    neighborText: "",
+    ...overrides,
+  };
+}
+
+type Stubbable = Element & { checkVisibility?: (options?: object) => boolean };
+
+const stubVisible = (el: Element) => {
+  (el as Stubbable).checkVisibility = () => true;
+};
+/** display:none-like — both strict and base calls fail. */
+const stubHidden = (el: Element) => {
+  (el as Stubbable).checkVisibility = () => false;
+};
+/** visibility:hidden/opacity:0-like — strict fails, base passes. */
+const stubSoftHidden = (el: Element) => {
+  (el as Stubbable).checkVisibility = (options?: object) => !options;
+};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  while (document.body.firstChild) {
+    document.body.removeChild(document.body.firstChild);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// #171 — hidden responsive duplicates
+// ---------------------------------------------------------------------------
+describe("#171 — visibility-aware duplicate disambiguation", () => {
+  function twinSetup(): { hidden: HTMLElement; visible: HTMLElement } {
+    // Tailwind-style `hidden md:block` pattern: same component rendered twice.
+    const hidden = document.createElement("div");
+    hidden.className = "cta";
+    hidden.textContent = "Buy now with free shipping";
+    const visible = document.createElement("div");
+    visible.className = "cta";
+    visible.textContent = "Buy now with free shipping";
+    document.body.append(hidden, visible);
+    stubHidden(hidden);
+    stubVisible(visible);
+    return { hidden, visible };
+  }
+
+  it("prefers the visible twin over an earlier hidden one (CSS strategy)", () => {
+    const { visible } = twinSetup();
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }));
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(visible);
+    expect(result!.strategy).toBe("css");
+    expect(result!.confidence).toBe(0.95);
+  });
+
+  it("prefers the visible copy for duplicated anchor keys", () => {
+    const first = document.createElement("section");
+    first.setAttribute("data-feedback-anchor", "pricing");
+    first.textContent = "Pricing plans overview";
+    const second = document.createElement("section");
+    second.setAttribute("data-feedback-anchor", "pricing");
+    second.textContent = "Pricing plans overview";
+    document.body.append(first, second);
+    stubHidden(first);
+    stubVisible(second);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        anchorKey: "pricing",
+        elementTag: "SECTION",
+        cssSelector: "__nomatch__",
+        textSnippet: "Pricing plans overview",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(second);
+    expect(result!.strategy).toBe("anchorKey");
+  });
+
+  it("still resolves (never orphans) when every candidate is hidden", () => {
+    const { hidden } = twinSetup();
+    stubHidden(hidden.nextElementSibling as Element); // hide the twin too
+
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }));
+    expect(result).not.toBeNull();
+    expect(result!.strategy).toBe("css");
+    // Confidence reflects match certainty, not paint state — the best hidden
+    // candidate is still confidently the right element.
+    expect(result!.confidence).toBe(0.95);
+  });
+
+  it("ranks soft-hidden (visibility:hidden) above hidden (display:none)", () => {
+    const { hidden, visible } = twinSetup();
+    stubSoftHidden(visible); // downgrade the "visible" twin to soft-hidden
+    void hidden;
+
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }));
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(document.querySelectorAll(".cta")[1]);
+  });
+
+  it("keeps v1 document-order behavior when visibility is unknowable (layout-less env)", () => {
+    // No stubs: jsdom natively classifies everything "unknown" → factor 1.
+    const first = document.createElement("div");
+    first.className = "cta";
+    first.textContent = "Buy now with free shipping";
+    const second = document.createElement("div");
+    second.className = "cta";
+    second.textContent = "Buy now with free shipping";
+    document.body.append(first, second);
+
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".cta", textSnippet: "Buy now with free shipping" }));
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(first);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #172 — verification for elements without text
+// ---------------------------------------------------------------------------
+describe("#172 — structural verification for text-less elements", () => {
+  it("rejects a stale selector pointing at the wrong icon button and rescues via scan", () => {
+    // Session 1: capture an icon button (no text) inside a toolbar.
+    const toolbar = document.createElement("nav");
+    const menuBtn = document.createElement("button");
+    menuBtn.setAttribute("aria-label", "Menu");
+    menuBtn.setAttribute("type", "button");
+    const closeBtn = document.createElement("button");
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.setAttribute("type", "button");
+    toolbar.append(menuBtn, closeBtn);
+    document.body.appendChild(toolbar);
+    const storedFingerprint = generateFingerprint(closeBtn);
+
+    // Session 2: the page refactored — the stored selector now matches the
+    // WRONG button (different aria-label, different sibling position).
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "nav > button:first-child", // stale — hits menuBtn
+        elementTag: "BUTTON",
+        textSnippet: "", // icon button: nothing to verify by text
+        fingerprint: storedFingerprint,
+      }),
+    );
+
+    // v1 accepted menuBtn blindly at 0.95 (empty snippet → textMatches true).
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(closeBtn);
+    expect(result!.strategy).toBe("scan");
+  });
+
+  it("accepts a selector match whose structure verifies", () => {
+    const toolbar = document.createElement("nav");
+    const closeBtn = document.createElement("button");
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.setAttribute("type", "button");
+    toolbar.append(closeBtn);
+    document.body.appendChild(toolbar);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "nav > button",
+        elementTag: "BUTTON",
+        textSnippet: "",
+        fingerprint: generateFingerprint(closeBtn),
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(closeBtn);
+    expect(result!.strategy).toBe("css");
+    expect(result!.confidence).toBe(0.95);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #173 — whitespace normalization at comparison time
+// ---------------------------------------------------------------------------
+describe("#173 — SSR/CSR whitespace drift", () => {
+  it("scores re-indented nested markup as a perfect text match", () => {
+    // Snippet captured from minified SSR output…
+    const snippet = "Start your free trial today no credit card required";
+    // …DOM now rendered from prettified CSR markup: formatting whitespace
+    // lives in text nodes between the nested elements.
+    const div = document.createElement("div");
+    div.className = "hero";
+    const strong = document.createElement("strong");
+    strong.append("\n      Start your free trial\n    ");
+    const em = document.createElement("em");
+    em.append("no credit card required");
+    div.append("\n    ", strong, "\n    today\n    ", em, "\n  ");
+    document.body.appendChild(div);
+
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".hero", textSnippet: snippet }));
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(div);
+    // Exact 0.95 requires verification 1.0 — fails if normalization is removed
+    // (raw comparison leaves ~10 whitespace edits → verification ≈ 0.56).
+    expect(result!.confidence).toBe(0.95);
+  });
+
+  it("matches non-breaking-space variants", () => {
+    const div = document.createElement("div");
+    div.className = "price";
+    div.textContent = "Total : 49 € per month billed annually";
+    document.body.appendChild(div);
+
+    const result = resolveAnchor(
+      makeAnchor({ cssSelector: ".price", textSnippet: "Total : 49 € per month billed annually" }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.confidence).toBe(0.95);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #174 — principled scan bounds
+// ---------------------------------------------------------------------------
+describe("#174 — scan cost and fairness", () => {
+  it("finds the correct element beyond v1's positional 300-candidate cap", () => {
+    const list = document.createElement("ul");
+    document.body.appendChild(list);
+    let target: HTMLElement | null = null;
+    for (let i = 0; i < 400; i++) {
+      const li = document.createElement("li");
+      li.textContent = i === 350 ? "Exclusive lifetime deal for early adopters" : `Item number ${i} in the catalog`;
+      if (i === 350) target = li;
+      list.appendChild(li);
+    }
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        elementTag: "LI",
+        textSnippet: "Exclusive lifetime deal for early adopters",
+      }),
+    );
+    // v1 scanned the first 300 LIs in document order and gave up.
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(target);
+    expect(result!.strategy).toBe("scan");
+  });
+
+  it("finds the target on shared-vocabulary pages where char bigrams are order-blind", () => {
+    // Card-grid pathology: every element draws from the same small vocabulary,
+    // so character-bigram overlap is near-identical across ALL candidates and
+    // only word ORDER discriminates. Found via benchmarking — a bigram-only
+    // prefilter ranked the true (lightly drifted) target ~187th/1000, outside
+    // top-K, orphaning the annotation. The snippet is mutated the way real
+    // content drifts (a few character edits since capture) — an EXACT snippet
+    // scores high enough on char bigrams alone to mask the blind spot.
+    const mulberry = (seed: number) => {
+      let s = seed;
+      return () => {
+        s |= 0;
+        s = (s + 0x6d2b79f5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    };
+    const VOCAB =
+      "the quick brown fox jumps over lazy dog submit cancel order shipping free trial account settings profile download invoice billing customer support contact about pricing features".split(
+        " ",
+      );
+    const rand = mulberry(0xfeed);
+    const sentence = (words: number) =>
+      Array.from({ length: words }, () => VOCAB[Math.floor(rand() * VOCAB.length)]).join(" ");
+    const drift = (s: string) => {
+      // Substitutions, deletions, and insertions — how content actually moves.
+      const r = mulberry(0xf00d);
+      let out = "";
+      for (const ch of s) {
+        if (r() < 0.08) {
+          const op = r();
+          if (op < 0.34) out += String.fromCharCode(97 + Math.floor(r() * 26));
+          else if (op >= 0.67) out += `${ch}x`;
+          // middle third: deletion
+        } else out += ch;
+      }
+      return out;
+    };
+
+    const grid = document.createElement("main");
+    document.body.appendChild(grid);
+    let target: HTMLElement | null = null;
+    for (let i = 0; i < 1000; i++) {
+      const card = document.createElement("div");
+      card.textContent = sentence(70);
+      if (i === 800) target = card;
+      grid.appendChild(card);
+    }
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        elementTag: "DIV",
+        textSnippet: drift((target?.textContent ?? "").slice(0, 120)),
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(target);
+    expect(result!.strategy).toBe("scan");
+  });
+
+  it("skips the tag sweep entirely when a selector candidate is unbeatable", () => {
+    const div = document.createElement("div");
+    div.className = "target";
+    div.textContent = "Perfectly matching stored snippet";
+    document.body.appendChild(div);
+
+    const spy = vi.spyOn(document, "querySelectorAll");
+    const result = resolveAnchor(
+      makeAnchor({ cssSelector: ".target", textSnippet: "Perfectly matching stored snippet" }),
+    );
+    expect(result!.strategy).toBe("css");
+    // The sweep would query the bare tag name — it must not have run.
+    expect(spy.mock.calls.map((c) => c[0])).not.toContain("div");
+  });
+
+  it("runs the sweep when selector verification is weak", () => {
+    const div = document.createElement("div");
+    div.className = "target";
+    div.textContent = "Completely different words now shown";
+    document.body.appendChild(div);
+
+    const spy = vi.spyOn(document, "querySelectorAll");
+    resolveAnchor(makeAnchor({ cssSelector: ".target", textSnippet: "Original snippet text stored here" }));
+    expect(spy.mock.calls.map((c) => c[0])).toContain("div");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #175 — cross-strategy scoring beats first-match-wins
+// ---------------------------------------------------------------------------
+describe("#175 — cross-strategy candidate ranking", () => {
+  it("THE inversion: a well-verified scan hit beats a wrong-but-text-passing selector hit", () => {
+    // Session 1 captured `.promo` on an element with neighbors.
+    const before = document.createElement("p");
+    before.textContent = "Limited time only";
+    const original = document.createElement("div");
+    original.textContent = "Special offer today";
+    const after = document.createElement("p");
+    after.textContent = "Terms and conditions apply";
+    document.body.append(before, original, after);
+    const storedFingerprint = generateFingerprint(original);
+    const storedPrefix = "Limited time only";
+    const storedSuffix = "Terms and conditions apply";
+
+    // Session 2: `.promo` migrated to an unrelated element whose text merely
+    // RESEMBLES the snippet (passes v1's lenient 0.3 gate), in a different
+    // neighborhood. The original element lost the class but kept everything else.
+    const impostor = document.createElement("div");
+    impostor.className = "promo";
+    impostor.textContent = "Special offer today only click here to save big";
+    document.body.appendChild(impostor);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".promo",
+        xpath: "/nonexistent",
+        textSnippet: "Special offer today",
+        fingerprint: storedFingerprint,
+        textPrefix: storedPrefix,
+        textSuffix: storedSuffix,
+        neighborText: "Limited time only | Terms and conditions apply",
+      }),
+    );
+
+    // v1 stopped at the css level: impostor at confidence 0.95.
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(original);
+    expect(result!.strategy).toBe("scan");
+  });
+
+  it("degrades confidence honestly for a weakly verified selector match", () => {
+    const div = document.createElement("div");
+    div.className = "banner";
+    div.textContent = "Winter sale starts Friday at midnight";
+    document.body.appendChild(div);
+
+    const result = resolveAnchor(
+      // Same element, but the text drifted substantially since capture.
+      makeAnchor({ cssSelector: ".banner", textSnippet: "Summer sale starts Monday at noon" }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(div);
+    expect(result!.strategy).toBe("css");
+    expect(result!.confidence).toBeGreaterThan(0);
+    expect(result!.confidence).toBeLessThan(0.95);
+  });
+
+  it("prefers the innermost of nested same-score candidates (ancestor-decoy dedup)", () => {
+    // A wrapper's textContent contains its child's text — near-identical
+    // scores, but anchoring to the wrapper corrupts the %-based rect.
+    const wrapper = document.createElement("div");
+    wrapper.className = "dup";
+    const inner = document.createElement("div");
+    inner.className = "dup";
+    inner.textContent = "Read the documentation";
+    wrapper.appendChild(inner);
+    document.body.appendChild(wrapper);
+
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".dup", textSnippet: "Read the documentation" }));
+    expect(result).not.toBeNull();
+    // v1 returned the wrapper (first match in document order).
+    expect(result!.element).toBe(inner);
+  });
+
+  it("gathers ALL matches of a duplicated id instead of first-match-wins", () => {
+    const first = document.createElement("div");
+    first.id = "cta";
+    first.textContent = "Sign up for the beta program";
+    const second = document.createElement("div");
+    second.id = "cta"; // invalid HTML, common in the wild
+    second.textContent = "Sign up for the beta program";
+    document.body.append(first, second);
+    stubHidden(first);
+    stubVisible(second);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "cta",
+        cssSelector: "__nomatch__",
+        textSnippet: "Sign up for the beta program",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(second);
+    expect(result!.strategy).toBe("id");
+    expect(result!.confidence).toBe(1.0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Strongest-signal acceptance & confidence — a volatile signal must not veto
+// or dilute a stable one (adversarial-review regressions)
+// ---------------------------------------------------------------------------
+describe("strongest-signal acceptance and confidence", () => {
+  it("still resolves a borderline-fuzzy text match when structural signals drifted (v1 parity)", () => {
+    // Redesign scenario: copy lightly edited AND the DOM around it moved.
+    // The diluted blend of (borderline text + drifted fingerprint + dead
+    // neighbors) sits below any blend floor — but text alone corroborates.
+    const div = document.createElement("div");
+    div.className = "banner";
+    div.textContent = "Winter sale starts Friday at night";
+    document.body.appendChild(div);
+
+    const snippet = "Winter deal begins Monday at dawn"; // Sellers score 0.576 vs the live text
+    // Self-validating fixture: the text signal must be borderline, not strong.
+    const textScore = fuzzyIncludes(normalizeText(div.textContent ?? ""), normalizeText(snippet), 0.5);
+    expect(textScore).toBeGreaterThanOrEqual(0.5);
+    expect(textScore).toBeLessThan(0.65);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".banner",
+        xpath: "/nonexistent",
+        textSnippet: snippet,
+        fingerprint: "9:7:zzz", // captured structure long gone
+        neighborText: "Neighbors that no longer exist | at all",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(div);
+    expect(result!.strategy).toBe("css");
+  });
+
+  it("anchorKey survives the wrapper refactor it exists for, at full confidence (realistic fingerprint)", () => {
+    // The host refactored section→div and restructured its contents but kept
+    // the semantic key — the EXACT scenario anchorKey guarantees. The stored
+    // fingerprint (captured pre-refactor, always non-empty in production)
+    // collapses; the key match + intact text must still carry 1.0.
+    const refactored = document.createElement("div");
+    refactored.setAttribute("data-feedback-anchor", "hero");
+    const inner = document.createElement("p");
+    inner.textContent = "Launch your project in minutes";
+    refactored.appendChild(inner);
+    document.body.appendChild(refactored);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        anchorKey: "hero",
+        elementTag: "SECTION", // pre-refactor tag — anchorKey never enforces it
+        cssSelector: "__nomatch__",
+        textSnippet: "Launch your project in minutes",
+        fingerprint: "4:1:oldsection", // pre-refactor structure
+        neighborText: "Old sibling copy | that moved away",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(refactored);
+    expect(result!.strategy).toBe("anchorKey");
+    expect(result!.confidence).toBe(1.0);
+  });
+
+  it("keeps full confidence for id + exact text when only the surroundings moved", () => {
+    // `<h2 id="pricing">Pricing</h2>` relocated into a new wrapper: the id
+    // matches, the text matches exactly — the drifted fingerprint and dead
+    // neighbors must not dash-flag the marker as "approximate".
+    const wrapper = document.createElement("section");
+    const heading = document.createElement("h2");
+    heading.id = "pricing";
+    heading.textContent = "Pricing";
+    wrapper.appendChild(heading);
+    document.body.appendChild(wrapper);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "pricing",
+        elementTag: "H2",
+        cssSelector: "__nomatch__",
+        textSnippet: "Pricing",
+        fingerprint: "3:2:oldhash", // pre-move structure
+        neighborText: "Features | Testimonials", // pre-move neighbors
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(heading);
+    expect(result!.strategy).toBe("id");
+    expect(result!.confidence).toBe(1.0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sweep-skip boundaries — exact-first must not shadow better candidates
+// ---------------------------------------------------------------------------
+describe("sweep-skip boundaries", () => {
+  it("id + exact text + intact fingerprint skips the sweep even when context drifted", () => {
+    const heading = document.createElement("div");
+    heading.id = "kpi";
+    heading.textContent = "Monthly active users grew twelve percent";
+    document.body.appendChild(heading);
+
+    const spy = vi.spyOn(document, "querySelectorAll");
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "kpi",
+        cssSelector: "__nomatch__",
+        textSnippet: "Monthly active users grew twelve percent",
+        fingerprint: generateFingerprint(heading), // element itself unchanged
+        neighborText: "Neighbors that vanished | entirely", // context drifted
+      }),
+    );
+    expect(result!.strategy).toBe("id");
+    expect(result!.confidence).toBe(1.0);
+    // Blend is dragged to ~0.75 by the dead neighbor — below the 0.85
+    // unbeatable bound — but the identity shortcut must still skip the sweep.
+    expect(spy.mock.calls.map((c) => c[0])).not.toContain("div");
+  });
+
+  it("a wrapper that took over the id does NOT skip the sweep — the true inner element wins", () => {
+    // Redeploy hoisted id="target" onto a new wrapper; the original element
+    // (fingerprint intact) is now its child. The wrapper contains the same
+    // text but its own fingerprint is partial — the identity shortcut must
+    // not fire, and the sweep + ancestor tie-break recover the inner.
+    const wrapper = document.createElement("div");
+    wrapper.id = "target";
+    const inner = document.createElement("div");
+    inner.setAttribute("aria-label", "stats");
+    const child = document.createElement("span");
+    child.textContent = "Monthly recurring revenue trending upward";
+    inner.appendChild(child);
+    wrapper.appendChild(inner);
+    const extra = document.createElement("span");
+    wrapper.appendChild(extra);
+    document.body.appendChild(wrapper);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "target",
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        textSnippet: "Monthly recurring revenue trending upward",
+        fingerprint: generateFingerprint(inner),
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(inner);
+    expect(result!.strategy).toBe("scan");
+  });
+
+  it("skips the sweep when no verifiable signal is stored (scan candidates would all be discarded)", () => {
+    const div = document.createElement("div");
+    div.className = "bare";
+    document.body.appendChild(div);
+
+    const spy = vi.spyOn(document, "querySelectorAll");
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".bare" }));
+    expect(result).not.toBeNull(); // unverified selector match still resolves
+    expect(spy.mock.calls.map((c) => c[0])).not.toContain("div");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// XPath gathering — snapshot must surface later duplicates (#171 for xpath)
+// ---------------------------------------------------------------------------
+describe("xpath multi-match gathering", () => {
+  it("prefers the visible twin when the xpath matches both duplicates", () => {
+    const first = document.createElement("section");
+    first.className = "cta";
+    first.textContent = "Start your free trial";
+    const second = document.createElement("section");
+    second.className = "cta";
+    second.textContent = "Start your free trial";
+    document.body.append(first, second);
+    stubHidden(first);
+    stubVisible(second);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "__nomatch__",
+        xpath: "//section[@class='cta']",
+        elementTag: "SECTION",
+        textSnippet: "Start your free trial",
+      }),
+    );
+    expect(result).not.toBeNull();
+    // A FIRST_ORDERED_NODE regression would resolve the HIDDEN first match.
+    expect(result!.element).toBe(second);
+    expect(result!.strategy).toBe("xpath");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Legacy textless anchors — ranking-only acceptance (never orphan on drift)
+// ---------------------------------------------------------------------------
+describe("textless anchors survive structural drift", () => {
+  it("resolves a textless id anchor whose fingerprint and neighbors all drifted, at degraded confidence", () => {
+    // The adversarial-review repro: icon button stored by an older widget,
+    // then the host redeployed — button moved among its siblings, aria-label
+    // reworded, neighbor copy rewritten. The id still uniquely matches; v1
+    // resolved at 1.0, and rejection here would silently orphan it (the
+    // sweep cannot rescue pool members).
+    const nav = document.createElement("nav");
+    for (let i = 0; i < 3; i++) {
+      const filler = document.createElement("button");
+      filler.setAttribute("aria-label", `Other ${i}`);
+      nav.appendChild(filler);
+    }
+    const cartBtn = document.createElement("button");
+    cartBtn.id = "cart-btn";
+    cartBtn.setAttribute("aria-label", "Panier"); // reworded since capture
+    nav.insertBefore(cartBtn, nav.firstChild); // moved 4th → 1st
+    document.body.appendChild(nav);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "cart-btn",
+        elementTag: "BUTTON",
+        cssSelector: "__nomatch__",
+        textSnippet: "",
+        fingerprint: "0:3:zzzz", // captured at position 4 with old aria-label
+        neighborText: "Copy that was rewritten | since then",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(cartBtn);
+    expect(result!.strategy).toBe("id");
+    // Honest degradation instead of v1's blind 1.0 — but never orphaned.
+    expect(result!.confidence).toBeLessThan(0.7);
+    expect(result!.confidence).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Refuted text — structural agreement must be STRONG to override
+// ---------------------------------------------------------------------------
+describe("present-but-refuted text", () => {
+  it("accepts when the fingerprint strongly corroborates (i18n page swap)", () => {
+    const btn = document.createElement("button");
+    btn.className = "buy";
+    btn.setAttribute("type", "submit");
+    btn.textContent = "Ajouter au panier"; // locale switched since capture
+    document.body.appendChild(btn);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".buy",
+        elementTag: "BUTTON",
+        xpath: "/nonexistent",
+        textSnippet: "Add to your shopping basket now",
+        fingerprint: generateFingerprint(btn), // structure fully intact
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(btn);
+  });
+
+  it("rejects when only a weak fingerprint coincidence remains", () => {
+    const div = document.createElement("div");
+    div.className = "stale";
+    div.textContent = "Entirely unrelated words appear here";
+    document.body.appendChild(div);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".stale",
+        xpath: "/nonexistent",
+        textSnippet: "Original snippet stored long ago",
+        fingerprint: "7:5:xyz", // scores weakly against the candidate
+        neighborText: "Old neighbors | gone now",
+      }),
+    );
+    expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Prefilter integrity — absent signals must not fabricate evidence
+// ---------------------------------------------------------------------------
+describe("prefilter with empty fingerprint", () => {
+  it('grants no phantom child-count bonus (Number("") is 0, not NaN)', () => {
+    // An empty stored fingerprint once parsed to childCount 0, handing every
+    // CHILDLESS decoy a structural bonus the multi-child true target never
+    // got — enough to crowd it out of the scored top-K.
+    // Long enough that the true element's own Dice score (denominator grows
+    // with text length) sits BELOW decoys+phantom-bonus — shortening this
+    // text lets the target survive top-K even with the bug present.
+    const trueText =
+      "Quarterly revenue expanded across every region while operating margins improved despite persistent currency headwinds affecting the consolidated results. " +
+      "Management raised annual guidance citing robust subscription renewals, accelerating enterprise adoption, and disciplined expense control throughout the period. " +
+      "The board additionally approved an expanded repurchase authorization reflecting confidence in durable long-term cash generation capacity.";
+    const snippet = trueText.slice(0, 120);
+
+    // True element: contains the snippet verbatim, but has THREE child spans.
+    const target = document.createElement("div");
+    for (const part of [trueText.slice(0, 160), trueText.slice(160, 320), trueText.slice(320)]) {
+      const s = document.createElement("span");
+      s.textContent = part;
+      target.appendChild(s);
+    }
+    document.body.appendChild(target);
+
+    // Childless decoys with moderate bigram overlap (half the words kept).
+    for (let i = 0; i < 30; i++) {
+      const d = document.createElement("div");
+      d.textContent = snippet
+        .split(" ")
+        .map((w, j) => ((j + i) % 2 === 0 ? w : "zqxjkvwpfy".repeat(3).slice(0, Math.max(2, w.length))))
+        .join(" ");
+      document.body.appendChild(d);
+    }
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        textSnippet: snippet,
+        fingerprint: "", // hand-built / pre-fingerprint anchor
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(target);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Degenerate stored data — every branch must fail soft
+// ---------------------------------------------------------------------------
+describe("degenerate stored data", () => {
+  it("falls back to getElementById when the attribute-selector query throws", () => {
+    const div = document.createElement("div");
+    div.id = "fallback-target";
+    div.textContent = "Reachable through the fallback";
+    document.body.appendChild(div);
+
+    const original = document.querySelectorAll.bind(document);
+    vi.spyOn(document, "querySelectorAll").mockImplementation(((selector: string) => {
+      if (selector.startsWith('[id="')) throw new Error("selector engine quirk");
+      return original(selector);
+    }) as typeof document.querySelectorAll);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "fallback-target",
+        cssSelector: "__nomatch__",
+        textSnippet: "Reachable through the fallback",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(div);
+    expect(result!.strategy).toBe("id");
+  });
+
+  it("returns null instead of throwing for an elementTag that is not a valid selector", () => {
+    const div = document.createElement("div");
+    div.textContent = "Some content on the page";
+    document.body.appendChild(div);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementTag: "DIV[", // corrupted stored data — querySelectorAll would throw
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        textSnippet: "Some content on the page",
+      }),
+    );
+    expect(result).toBeNull();
+  });
+
+  it("verifies with a prefix-only context signal (no suffix stored)", () => {
+    const before = document.createElement("p");
+    before.textContent = "Introductory paragraph before";
+    const target = document.createElement("div");
+    target.className = "solo-prefix";
+    target.textContent = "Main content of the section";
+    document.body.append(before, target);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".solo-prefix",
+        textSnippet: "Main content of the section",
+        textPrefix: "Introductory paragraph before",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.confidence).toBe(0.95);
+  });
+
+  it("verifies with a suffix-only context signal (no prefix stored)", () => {
+    const target = document.createElement("div");
+    target.className = "solo-suffix";
+    target.textContent = "Main content of the section";
+    const after = document.createElement("p");
+    after.textContent = "Closing paragraph after";
+    document.body.append(target, after);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".solo-suffix",
+        textSnippet: "Main content of the section",
+        textSuffix: "Closing paragraph after",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.confidence).toBe(0.95);
+  });
+
+  it("gives near-miss child counts partial prefilter credit (±2)", () => {
+    // Stored fingerprint says 2 children; the drifted target now has 1.
+    const target = document.createElement("div");
+    const child = document.createElement("span");
+    child.textContent = "Quarterly report download available here";
+    target.appendChild(child);
+    document.body.appendChild(target);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        textSnippet: "Quarterly report download available here",
+        fingerprint: "2:0:0",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(target);
+    expect(result!.strategy).toBe("scan");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scan budget — batch callers cap full sweeps per pass
+// ---------------------------------------------------------------------------
+describe("scan budget", () => {
+  function degradedAnchor(): AnchorData {
+    return makeAnchor({
+      cssSelector: "__nomatch__",
+      xpath: "/nonexistent",
+      elementTag: "DIV",
+      textSnippet: "Some snippet that will not be found anywhere",
+    });
+  }
+
+  it("skips the sweep when the budget is exhausted", () => {
+    const div = document.createElement("div");
+    div.textContent = "unrelated content on the page";
+    document.body.appendChild(div);
+
+    const spy = vi.spyOn(document, "querySelectorAll");
+    const result = resolveAnchor(degradedAnchor(), { scanBudget: { remaining: 0 } });
+    expect(result).toBeNull(); // selector-only resolution found nothing
+    expect(spy.mock.calls.map((c) => c[0])).not.toContain("div");
+  });
+
+  it("decrements the budget only when a sweep actually runs", () => {
+    const div = document.createElement("div");
+    div.className = "hit";
+    div.textContent = "Exact stored snippet text here";
+    document.body.appendChild(div);
+
+    // Perfect selector match → sweep skipped → budget untouched.
+    const budget = { remaining: 1 };
+    resolveAnchor(makeAnchor({ cssSelector: ".hit", textSnippet: "Exact stored snippet text here" }), {
+      scanBudget: budget,
+    });
+    expect(budget.remaining).toBe(1);
+
+    // Degraded resolution → sweep runs → budget consumed.
+    resolveAnchor(degradedAnchor(), { scanBudget: budget });
+    expect(budget.remaining).toBe(0);
+  });
+});

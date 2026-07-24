@@ -9,7 +9,7 @@
   {
     "name": "IIFE script bundle (dist/index.global.js, gzip)",
     "path": "dist/index.global.js",
-    "limit": "110 KB",
+    "limit": "120 KB",
     "gzip": true,
     "disablePlugins": ["@size-limit/esbuild"]
   }

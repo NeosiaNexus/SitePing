@@ -1,6 +1,7 @@
 import { type AnchorData, type FeedbackResponse, isClosedStatus, type RectData } from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
 import { resolveAnnotation } from "./dom/resolver.js";
+import { classifyVisibility } from "./dom/visibility.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { getTypeLabel, type TFunction } from "./i18n/index.js";
@@ -62,6 +63,9 @@ function clusterMarker(cluster: Cluster, i: number): HTMLElement | undefined {
 
 const HIGHLIGHT_FADE = 300;
 const REPOSITION_DEBOUNCE = 200;
+/** Back-off between full re-resolutions of an anchor that resolved hidden or
+ * orphaned, on mutation ticks (resize bypasses it — see hiddenRecheckAt). */
+const HIDDEN_RECHECK_MS = 3000;
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
 const CLUSTER_DISTANCE = 28;
 const FAN_SPACING = 32;
@@ -83,6 +87,18 @@ export class MarkerManager {
   private scrollHandler: (() => void) | null = null;
   private resizeHandler: (() => void) | null = null;
   private anchorCache = new Map<string, WeakRef<Element>>();
+  /** Whether a resize/mutation happened since the last reposition pass —
+   * the only triggers that can flip an anchor's visibility (responsive
+   * breakpoint, SPA re-render). Pure scroll ticks keep the fast path. */
+  private pendingLayoutChange = false;
+  /** Resize specifically — the breakpoint-flip event: it bypasses the
+   * hidden-anchor re-resolution throttle below. */
+  private pendingResize = false;
+  /** Per-annotation back-off after a resolution concluded "hidden" or
+   * "orphaned": mutation ticks recur every ~200ms on busy SPAs, and
+   * re-resolving an annotation in a collapsed accordion each tick is
+   * provably-redundant sweep work. Resize clears the back-off. */
+  private hiddenRecheckAt = new Map<string, number>();
   private clusters: Cluster[] = [];
   private onDocumentClickForClusters: ((e: MouseEvent) => void) | null = null;
   /** Last `openCount` broadcast via `markers:changed` (-1 = never emitted). */
@@ -118,10 +134,10 @@ export class MarkerManager {
       this.container.style.display = visible ? "block" : "none";
     });
 
-    this.resizeHandler = () => this.scheduleReposition();
+    this.resizeHandler = () => this.scheduleReposition("resize");
     window.addEventListener("resize", this.resizeHandler, { passive: true });
 
-    this.scrollHandler = () => this.scheduleReposition();
+    this.scrollHandler = () => this.scheduleReposition("scroll");
     window.addEventListener("scroll", this.scrollHandler, { passive: true, capture: true });
 
     // Re-resolve after DOM changes (SPA, lazy-load).
@@ -141,7 +157,7 @@ export class MarkerManager {
         hasRelevantMutation = true;
         break;
       }
-      if (hasRelevantMutation) this.scheduleReposition();
+      if (hasRelevantMutation) this.scheduleReposition("mutation");
     });
     this.mutationObserver.observe(document.body, {
       childList: true,
@@ -157,7 +173,11 @@ export class MarkerManager {
     document.addEventListener("click", this.onDocumentClickForClusters);
   }
 
-  private scheduleReposition(): void {
+  private scheduleReposition(cause: "scroll" | "mutation" | "resize" = "mutation"): void {
+    // Record the cause even when a tick is already pending — the pending
+    // pass must honor the strongest cause seen since it was scheduled.
+    if (cause !== "scroll") this.pendingLayoutChange = true;
+    if (cause === "resize") this.pendingResize = true;
     if (this.repositionTimer) return;
     if ("requestIdleCallback" in window) {
       this.repositionTimer = window.requestIdleCallback(
@@ -176,6 +196,25 @@ export class MarkerManager {
   }
 
   private repositionAll(): void {
+    // Only resize/mutation ticks re-check cached anchors' visibility: a
+    // responsive breakpoint flip can leave the cached element display:none
+    // while its twin became the rendered copy (#171) — but re-checking on
+    // every scroll tick would turn a legitimately-hidden anchor (collapsed
+    // accordion) into a full re-resolution per scroll event.
+    const recheckVisibility = this.pendingLayoutChange;
+    const resizeTick = this.pendingResize;
+    this.pendingLayoutChange = false;
+    this.pendingResize = false;
+    // A resize is the responsive breakpoint flip — every hidden-anchor
+    // back-off is void, the visible twin may exist right now.
+    if (resizeTick) this.hiddenRecheckAt.clear();
+    const now = Date.now();
+
+    // Reposition ticks recur every ~200ms on mutation-heavy pages; several
+    // drifted/hidden anchors must not each pay a full tag sweep per tick.
+    // Budget-starved annotations simply retry on the next natural tick.
+    const scanBudget = { remaining: 2, starved: false };
+
     // Build set of valid keys to prune stale cache entries afterwards.
     const validKeys = new Set<string>();
 
@@ -194,7 +233,11 @@ export class MarkerManager {
         const cachedEl = cachedRef?.deref();
         let resolved: ReturnType<typeof resolveAnnotation>;
 
-        if (cachedEl?.isConnected) {
+        const backedOff = (this.hiddenRecheckAt.get(cacheKey) ?? 0) > now;
+        const cacheUsable =
+          cachedEl?.isConnected && (backedOff || !(recheckVisibility && classifyVisibility(cachedEl) === "hidden"));
+
+        if (cachedEl && cacheUsable) {
           const anchorRect = cachedEl.getBoundingClientRect();
           const r = toRectData(annotation);
           resolved = {
@@ -208,10 +251,25 @@ export class MarkerManager {
             confidence: 1,
             strategy: "css",
           };
+        } else if (backedOff) {
+          // A recent full resolution concluded hidden/orphaned and the anchor
+          // is gone from the cache — don't burn another sweep this tick.
+          resolved = null;
         } else {
-          resolved = resolveAnnotation(toAnchorData(annotation), toRectData(annotation));
-          if (resolved?.element) {
-            this.anchorCache.set(cacheKey, new WeakRef(resolved.element));
+          scanBudget.starved = false;
+          resolved = resolveAnnotation(toAnchorData(annotation), toRectData(annotation), { scanBudget });
+          if (scanBudget.starved) {
+            // Selector-only answer under an exhausted budget — may be worse
+            // than what the sweep would find; never cache it, retry next tick.
+          } else {
+            if (resolved?.element) {
+              this.anchorCache.set(cacheKey, new WeakRef(resolved.element));
+            }
+            if (!resolved || classifyVisibility(resolved.element) === "hidden") {
+              this.hiddenRecheckAt.set(cacheKey, now + HIDDEN_RECHECK_MS);
+            } else {
+              this.hiddenRecheckAt.delete(cacheKey);
+            }
           }
         }
 
@@ -231,6 +289,9 @@ export class MarkerManager {
     // Prune cache keys from deleted feedbacks to prevent memory leak.
     for (const key of this.anchorCache.keys()) {
       if (!validKeys.has(key)) this.anchorCache.delete(key);
+    }
+    for (const key of this.hiddenRecheckAt.keys()) {
+      if (!validKeys.has(key)) this.hiddenRecheckAt.delete(key);
     }
 
     this.applyClusterPositions();

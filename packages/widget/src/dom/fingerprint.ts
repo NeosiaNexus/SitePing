@@ -40,15 +40,21 @@ export function generateFingerprint(element: Element): string {
     }
   }
 
-  // Hash stable attributes
+  return `${childCount}:${siblingIdx}:${attrHash(element)}`;
+}
+
+/**
+ * Stable-attribute hash component of the fingerprint, exposed separately:
+ * unlike the sibling-index component it is O(1) per element (no walk over
+ * `parent.children`), so scan prefiltering can afford it on every candidate.
+ */
+export function attrHash(element: Element): string {
   const attrs: string[] = [];
   for (const attr of STABLE_ATTRS) {
     const val = element.getAttribute(attr);
     if (val) attrs.push(`${attr}=${val}`);
   }
-  const attrHash = attrs.length > 0 ? djb2(attrs.join(",")) : "0";
-
-  return `${childCount}:${siblingIdx}:${attrHash}`;
+  return attrs.length > 0 ? djb2(attrs.join(",")) : "0";
 }
 
 /**

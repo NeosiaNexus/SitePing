@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { editDistance, fuzzyIncludes, similarity } from "../../src/dom/fuzzy";
+import {
+  bigramCounts,
+  diceAgainst,
+  editDistance,
+  fuzzyIncludes,
+  MIN_FUZZY_NEEDLE_LENGTH,
+  normalizeText,
+  similarity,
+  wordPairCounts,
+  wordPairDiceAgainst,
+} from "../../src/dom/fuzzy";
 
 describe("editDistance", () => {
   it("returns 0 for identical strings", () => {
@@ -163,5 +173,253 @@ describe("fuzzyIncludes", () => {
   it("similarity returns ratio when only one character differs", () => {
     // Hits the non-zero, non-one path of similarity
     expect(similarity("hello", "hellp")).toBeCloseTo(0.8, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v2 additions — normalizeText, bigram Dice, Sellers approximate matching
+// ---------------------------------------------------------------------------
+
+describe("normalizeText", () => {
+  it("collapses whitespace runs to a single space and trims", () => {
+    expect(normalizeText("  Hello \n\t  world  ")).toBe("Hello world");
+  });
+
+  it("normalizes non-breaking spaces and mixed whitespace", () => {
+    expect(normalizeText("Hello  world")).toBe("Hello world");
+  });
+
+  it("applies Unicode NFC composition", () => {
+    // "é" as e + combining acute accent → single composed codepoint
+    expect(normalizeText("café")).toBe("café");
+  });
+
+  it("preserves case — case changes are a real signal", () => {
+    expect(normalizeText("Hello World")).toBe("Hello World");
+  });
+
+  it("returns empty string for whitespace-only input", () => {
+    expect(normalizeText(" \n\t ")).toBe("");
+  });
+});
+
+describe("bigramCounts / diceAgainst", () => {
+  it("counts repeated bigrams as a multiset", () => {
+    // "aaa" → bigrams ["aa", "aa"] — multiset keeps both occurrences
+    const counts = bigramCounts("aaa");
+    expect(counts.size).toBe(1);
+    expect([...counts.values()]).toEqual([2]);
+  });
+
+  it("scores identical strings at 1", () => {
+    const s = "hello world";
+    expect(diceAgainst(bigramCounts(s), s.length - 1, s)).toBe(1);
+  });
+
+  it("scores disjoint strings at 0", () => {
+    expect(diceAgainst(bigramCounts("abcd"), 3, "xyzw")).toBe(0);
+  });
+
+  it("uses multiset semantics — repeated bigrams cannot be double-counted", () => {
+    // needle "aaaa" (three "aa") vs text "aa" (one) must only match once…
+    const score = diceAgainst(bigramCounts("aaaa"), 3, "aa");
+    expect(score).toBeCloseTo((2 * 1) / (3 + 1), 5);
+    // …and the BINDING direction: text repeats a bigram MORE often than the
+    // needle holds it. Membership-only counting scores every one of the
+    // three text "aa" bigrams (2*3/(1+3) = 1.5, escaping [0,1]); consumption
+    // caps matches at the needle's single copy.
+    const binding = diceAgainst(bigramCounts("aa"), 1, "aaaa");
+    expect(binding).toBeCloseTo((2 * 1) / (1 + 3), 5);
+  });
+
+  it("word pairs use multiset semantics in the binding direction too", () => {
+    // Spam-repetition candidate: the same pair repeated 10× must not
+    // outrank a genuine partial match (membership counting inflates it 10×,
+    // reintroducing the shared-vocabulary pathology).
+    const needle = "buy now today";
+    const pairs = wordPairCounts(needle); // {"buy now":1, "now today":1}
+    const spam = Array.from({ length: 10 }, () => "buy now").join(" "); // "buy now buy now …"
+    const spamScore = wordPairDiceAgainst(pairs, 2, spam);
+    // 20 words → 19 pairs; only ONE consumable "buy now" → 2*1/(2+19)
+    expect(spamScore).toBeCloseTo(2 / 21, 5);
+    const genuine = wordPairDiceAgainst(pairs, 2, "buy now tomorrow");
+    expect(genuine).toBeGreaterThan(spamScore);
+  });
+
+  it("returns 0 for degenerate lengths (empty or single-char)", () => {
+    expect(diceAgainst(bigramCounts(""), 0, "hello")).toBe(0);
+    expect(diceAgainst(bigramCounts("hello"), 4, "x")).toBe(0);
+  });
+
+  it("correlates with similarity — closer strings score higher", () => {
+    const needle = "ajouter au panier";
+    const counts = bigramCounts(needle);
+    const total = needle.length - 1;
+    const close = diceAgainst(counts, total, "ajouter au paniers");
+    const far = diceAgainst(counts, total, "supprimer le compte");
+    expect(close).toBeGreaterThan(far);
+  });
+});
+
+describe("wordPairCounts / wordPairDiceAgainst", () => {
+  it("builds word-pair shingles as a multiset", () => {
+    const counts = wordPairCounts("the quick brown fox");
+    expect(counts.get("the quick")).toBe(1);
+    expect(counts.get("quick brown")).toBe(1);
+    expect(counts.get("brown fox")).toBe(1);
+    expect(counts.size).toBe(3);
+  });
+
+  it("returns 0 for single-word or empty needles (no-space scripts fall back)", () => {
+    expect(wordPairDiceAgainst(wordPairCounts("word"), 0, "word word")).toBe(0);
+    expect(wordPairDiceAgainst(wordPairCounts(""), 0, "anything")).toBe(0);
+  });
+
+  it("returns 0 when the TEXT has no word pairs (single-word candidate)", () => {
+    expect(wordPairDiceAgainst(wordPairCounts("a b"), 1, "solo")).toBe(0);
+  });
+
+  it("discriminates word ORDER where character bigrams cannot", () => {
+    // Same vocabulary, different order — the char-bigram blind spot.
+    const needle = "free shipping on every order over fifty";
+    const shuffled = "order shipping fifty on free every over";
+    const charCounts = bigramCounts(needle);
+    const charTotal = needle.length - 1;
+    const pairCounts = wordPairCounts(needle);
+    const pairTotal = needle.split(" ").length - 1;
+
+    const charSame = diceAgainst(charCounts, charTotal, needle);
+    const charShuffled = diceAgainst(charCounts, charTotal, shuffled);
+    const pairSame = wordPairDiceAgainst(pairCounts, pairTotal, needle);
+    const pairShuffled = wordPairDiceAgainst(pairCounts, pairTotal, shuffled);
+
+    // char bigrams: identical text is perfect, but shuffled text STILL scores
+    // high (order-blind) — the blind spot word pairs exist to cover
+    expect(charSame).toBe(1);
+    expect(charShuffled).toBeGreaterThan(0.8);
+    // word pairs: shuffled text collapses, true order stays perfect
+    expect(pairSame).toBe(1);
+    expect(pairShuffled).toBeLessThan(0.2);
+  });
+});
+
+describe("fuzzyIncludes v2 — Sellers substring matching", () => {
+  /** Reference: naive minimum edit distance over ALL substrings. */
+  function bruteMinSubstringDistance(haystack: string, needle: string): number {
+    let best = needle.length; // empty substring
+    for (let i = 0; i < haystack.length; i++) {
+      for (let j = i + 1; j <= haystack.length; j++) {
+        const d = editDistance(haystack.slice(i, j), needle);
+        if (d < best) best = d;
+      }
+    }
+    return best;
+  }
+
+  /** Reference: v1's fixed-length sliding-window best similarity. */
+  function slidingWindowScore(haystack: string, needle: string): number {
+    if (haystack.includes(needle)) return 1;
+    if (needle.length > haystack.length) return similarity(haystack, needle);
+    let best = 0;
+    for (let i = 0; i <= haystack.length - needle.length; i++) {
+      const s = similarity(haystack.slice(i, i + needle.length), needle);
+      if (s > best) best = s;
+    }
+    return best;
+  }
+
+  /** Deterministic PRNG so the corpus is reproducible. */
+  function mulberry32(seed: number): () => number {
+    let s = seed;
+    return () => {
+      s |= 0;
+      s = (s + 0x6d2b79f5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function randomWords(rand: () => number, count: number): string {
+    const WORDS = ["valider", "panier", "commande", "livraison", "profil", "submit", "cancel", "delete", "account"];
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) out.push(WORDS[Math.floor(rand() * WORDS.length)] as string);
+    return out.join(" ");
+  }
+
+  function mutate(rand: () => number, s: string, rate: number): string {
+    let out = "";
+    for (const ch of s) {
+      if (rand() < rate) {
+        const op = rand();
+        if (op < 0.34) out += String.fromCharCode(97 + Math.floor(rand() * 26));
+        else if (op < 0.67) {
+          /* deletion */
+        } else out += ch + String.fromCharCode(97 + Math.floor(rand() * 26));
+      } else out += ch;
+    }
+    return out;
+  }
+
+  it("equals the brute-force minimum substring distance (exactness, seeded corpus)", () => {
+    const rand = mulberry32(0xc0ffee);
+    for (let t = 0; t < 60; t++) {
+      const haystack = randomWords(rand, 2 + Math.floor(rand() * 3)).slice(0, 40);
+      const needle = mutate(rand, randomWords(rand, 2).slice(0, 12), rand() * 0.3);
+      if (needle.length < MIN_FUZZY_NEEDLE_LENGTH) continue;
+      const expected = 1 - bruteMinSubstringDistance(haystack, needle) / needle.length;
+      const actual = fuzzyIncludes(haystack, needle, 0);
+      expect(actual, `haystack=${JSON.stringify(haystack)} needle=${JSON.stringify(needle)}`).toBeCloseTo(
+        Math.max(expected, 0),
+        10,
+      );
+    }
+  });
+
+  it("never scores below the v1 sliding window (no new false negatives, seeded corpus)", () => {
+    const rand = mulberry32(0xbadf00d);
+    for (let t = 0; t < 120; t++) {
+      const haystack = randomWords(rand, 4 + Math.floor(rand() * 8));
+      const start = Math.floor(rand() * Math.max(1, haystack.length - 30));
+      const needle = mutate(rand, haystack.slice(start, start + 10 + Math.floor(rand() * 20)), rand() * 0.25);
+      if (needle.length < MIN_FUZZY_NEEDLE_LENGTH) continue;
+      const v1 = slidingWindowScore(haystack, needle);
+      const v2 = fuzzyIncludes(haystack, needle, 0);
+      expect(v2, `haystack=${JSON.stringify(haystack)} needle=${JSON.stringify(needle)}`).toBeGreaterThanOrEqual(
+        v1 - 1e-9,
+      );
+    }
+  });
+
+  it("finds indel-shifted matches the fixed window under-scores", () => {
+    // A deletion inside the occurrence shifts every subsequent window; the
+    // any-length substring match absorbs it as a single edit.
+    const needle = "ajouter au panier maintenant";
+    const haystack = "cliquez pour ajoutr au panier maintenant et continuer";
+    const v1 = slidingWindowScore(haystack, needle);
+    const v2 = fuzzyIncludes(haystack, needle, 0);
+    expect(v2).toBeGreaterThanOrEqual(v1);
+    expect(v2).toBeCloseTo(1 - 1 / needle.length, 10);
+  });
+
+  it("refuses approximate matching for short needles over long haystacks", () => {
+    const longHaystack = "lorem ipsum dolor sit amet ".repeat(5);
+    expect(fuzzyIncludes(longHaystack, "dolro", 0.1)).toBe(0);
+    // …but exact containment still works at any needle length
+    expect(fuzzyIncludes(longHaystack, "dolor", 0.1)).toBe(1);
+  });
+
+  it("keeps approximate matching for short needles in short haystacks", () => {
+    // Near-miss in a short label is meaningful ("panier" vs "paniers")
+    const score = fuzzyIncludes("Ajouter au paniers", "panier", 0.5);
+    expect(score).toBe(1); // exact containment
+    const fuzzy = fuzzyIncludes("Voir le paniet", "panier", 0.5);
+    expect(fuzzy).toBeCloseTo(1 - 1 / 6, 10);
+  });
+
+  it("score is bounded in [0, 1] even for unrelated strings", () => {
+    const score = fuzzyIncludes("zzzzzzzzzzzz", "abcdefghij", 0);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(1);
   });
 });
