@@ -33,6 +33,11 @@
       "component": "adapter-localstorage",
       "bump-minor-pre-major": true
     },
+    "packages/dashboard": {
+      "release-type": "node",
+      "component": "dashboard",
+      "bump-minor-pre-major": true
+    },
     "packages/cli": {
       "release-type": "node",
       "component": "cli",

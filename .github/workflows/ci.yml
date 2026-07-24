@@ -44,6 +44,9 @@ jobs:
       - name: Bundle size gate
         run: bun --cwd packages/widget run size
 
+      - name: Dashboard bundle size gate
+        run: bun --cwd packages/dashboard run size
+
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v7
