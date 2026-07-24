@@ -316,9 +316,12 @@ function sweepScanCandidates(signals: AnchorSignals, pool: Map<Element, Resoluti
     return [];
   }
 
+  // Parse only well-formed 3-part fingerprints (mirrors scoreFingerprint).
+  // `Number("")` is 0, not NaN — an empty fingerprint would otherwise grant a
+  // phantom child-count-0 bonus that biases top-K toward childless decoys.
   const storedFp = signals.fingerprint.split(":");
-  const storedChildCount = Number(storedFp[0]);
-  const storedAttrHash = storedFp[2] ?? "";
+  const storedChildCount = storedFp.length === 3 ? Number(storedFp[0]) : Number.NaN;
+  const storedAttrHash = storedFp.length === 3 ? (storedFp[2] ?? "") : "";
 
   const limit = Math.min(candidates.length, SCAN_HARD_CAP);
   const ranked: { element: Element; cheap: number }[] = [];

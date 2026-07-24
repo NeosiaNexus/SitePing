@@ -517,6 +517,51 @@ describe("strongest-signal acceptance and confidence", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Prefilter integrity — absent signals must not fabricate evidence
+// ---------------------------------------------------------------------------
+describe("prefilter with empty fingerprint", () => {
+  it("grants no phantom child-count bonus (Number(\"\") is 0, not NaN)", () => {
+    // An empty stored fingerprint once parsed to childCount 0, handing every
+    // CHILDLESS decoy a structural bonus the multi-child true target never
+    // got — enough to crowd it out of the scored top-K.
+    const trueText =
+      "Quarterly revenue expanded across every region while operating margins improved despite persistent currency headwinds affecting the consolidated results. " +
+      "Management raised annual guidance citing robust subscription renewals, accelerating enterprise adoption, and disciplined expense control throughout the period.";
+    const snippet = trueText.slice(0, 120);
+
+    // True element: contains the snippet verbatim, but has THREE child spans.
+    const target = document.createElement("div");
+    for (const part of [trueText.slice(0, 160), trueText.slice(160, 320), trueText.slice(320)]) {
+      const s = document.createElement("span");
+      s.textContent = part;
+      target.appendChild(s);
+    }
+    document.body.appendChild(target);
+
+    // Childless decoys with moderate bigram overlap (half the words kept).
+    for (let i = 0; i < 30; i++) {
+      const d = document.createElement("div");
+      d.textContent = snippet
+        .split(" ")
+        .map((w, j) => ((j + i) % 2 === 0 ? w : "zqxjkvwpfy".repeat(3).slice(0, Math.max(2, w.length))))
+        .join(" ");
+      document.body.appendChild(d);
+    }
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        textSnippet: snippet,
+        fingerprint: "", // hand-built / pre-fingerprint anchor
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(target);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Scan budget — batch callers cap full sweeps per pass
 // ---------------------------------------------------------------------------
 describe("scan budget", () => {
