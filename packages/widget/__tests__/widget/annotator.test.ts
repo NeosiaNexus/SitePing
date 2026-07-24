@@ -1134,13 +1134,30 @@ describe("Annotator", () => {
       expect(findOverlay()).toBeNull();
     });
 
-    it("does not show the draw-mode toolbar", async () => {
-      await annotator.startInstantAnnotation(100, 100);
+    it("does not show the draw-mode toolbar", () => {
+      popupMocks.keepShowPending = true; // hold the session open mid-popup
+      void annotator.startInstantAnnotation(100, 100);
 
-      // After deactivation the toolbar is removed, but let's verify it was
-      // never appended by checking no toolbar-style elements existed
-      // (the toolbar is the only element with data-siteping-ignore that does
-      // NOT have tabindex="0")
+      expect(findOverlay()).not.toBeNull(); // session is live…
+      expect(document.body.textContent).not.toContain(t("annotator.instruction")); // …with no toolbar
+    });
+
+    it("drag on overlay while instant composer is open must not reset the draft", async () => {
+      popupMocks.keepShowPending = true;
+      const first = annotator.startInstantAnnotation(100, 100);
+      await new Promise((r) => setTimeout(r, 20));
+
+      const overlay = findOverlay()!;
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 200, clientY: 200, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 260, clientY: 270, bubbles: true }));
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Only one div inside overlay should exist (the indicator from startInstantAnnotation, not a new rect)
+      expect(overlay.querySelectorAll("div").length).toBe(1);
+
+      annotator.destroy();
+      // Do not await 'first' because the mocked popup.show never resolves when keepShowPending is true
+      first.catch(() => {});
     });
 
     it("exposes isBusy as true while active", () => {

@@ -63,7 +63,7 @@ export class Annotator {
   ) {
     this.popup = new Popup(colors, t);
 
-    this.bus.on("annotation:start", () => this.activate({ toolbar: !this.instantMode }));
+    this.bus.on("annotation:start", () => this.activate());
   }
 
   /**
@@ -105,10 +105,10 @@ export class Annotator {
     return captureScreenshot(rect);
   }
 
-  private activate(options?: { toolbar?: boolean }): void {
+  private activate(): void {
     if (this.isActive) return;
     this.isActive = true;
-    const showToolbar = options?.toolbar ?? true;
+    const drawMode = !this.instantMode;
 
     // Capture the focused element before activation for keyboard annotation
     this.preActiveFocusElement = document.activeElement;
@@ -129,7 +129,7 @@ export class Annotator {
         position:fixed;inset:0;
         z-index:${Z_INDEX_MAX - 1};
         background:rgba(15, 23, 42, 0.04);
-        cursor:crosshair;
+        cursor:${drawMode ? "crosshair" : "default"};
       `,
     });
     // The overlay is an interactive surface (draw with the pointer, Enter to
@@ -140,13 +140,13 @@ export class Annotator {
     this.overlay.setAttribute("role", "application");
     this.overlay.setAttribute(
       "aria-label",
-      showToolbar ? this.t("annotator.instruction") : "Right-click comment",
+      drawMode ? this.t("annotator.instruction") : this.t("annotator.instantInstruction"),
     );
     this.overlay.setAttribute("data-siteping-ignore", "true");
 
     // Toolbar — glassmorphism bar (suppressed in instant mode: the
     // "Draw a rectangle" copy is wrong when the composer is already open)
-    if (showToolbar) {
+    if (drawMode) {
       this.toolbar = el("div", {
         style: `
           position:fixed;top:0;left:0;right:0;
@@ -212,18 +212,20 @@ export class Annotator {
       this.toolbar.appendChild(cancelBtn);
     }
 
-    // Mouse events
-    this.overlay.addEventListener("mousedown", this.onMouseDown);
-    this.overlay.addEventListener("mousemove", this.onMouseMove);
-    this.overlay.addEventListener("mouseup", this.onMouseUp);
+    if (drawMode) {
+      // Mouse events
+      this.overlay.addEventListener("mousedown", this.onMouseDown);
+      this.overlay.addEventListener("mousemove", this.onMouseMove);
+      this.overlay.addEventListener("mouseup", this.onMouseUp);
 
-    // Touch events (Surface Pro, iPad, etc.)
-    this.overlay.addEventListener("touchstart", this.onTouchStart, { passive: false });
-    this.overlay.addEventListener("touchmove", this.onTouchMove, { passive: false });
-    this.overlay.addEventListener("touchend", this.onTouchEnd);
+      // Touch events (Surface Pro, iPad, etc.)
+      this.overlay.addEventListener("touchstart", this.onTouchStart, { passive: false });
+      this.overlay.addEventListener("touchmove", this.onTouchMove, { passive: false });
+      this.overlay.addEventListener("touchend", this.onTouchEnd);
 
-    // Keyboard annotation: Enter selects the pre-activation focused element
-    this.overlay.addEventListener("keydown", this.onOverlayKeyDown);
+      // Keyboard annotation: Enter selects the pre-activation focused element
+      this.overlay.addEventListener("keydown", this.onOverlayKeyDown);
+    }
 
     // Allow tab-through so keyboard users can reach underlying elements
     this.overlay.setAttribute("tabindex", "0");
@@ -424,7 +426,7 @@ export class Annotator {
 
     // Build annotation payload BEFORE the popup opens — the overlay is still
     // up so `findAnchorElement` can briefly disable pointer events on it.
-    const annotation = this.buildAnnotation(rectBounds);
+    const { annotation } = this.buildAnnotation(rectBounds);
 
     // Keep the drawn rectangle visible while the popup is open so the user
     // can see what they're sending feedback about — including while the
@@ -464,39 +466,28 @@ export class Annotator {
     // Build a small point-rect centered at the cursor for the marker/percentage
     // math. Clamped to viewport edges on all sides.
     const x = Math.max(0, Math.min(clientX - INSTANT_ANNOTATION_SIZE / 2, window.innerWidth - INSTANT_ANNOTATION_SIZE));
-    const y = Math.max(0, Math.min(clientY - INSTANT_ANNOTATION_SIZE / 2, window.innerHeight - INSTANT_ANNOTATION_SIZE));
+    const y = Math.max(
+      0,
+      Math.min(clientY - INSTANT_ANNOTATION_SIZE / 2, window.innerHeight - INSTANT_ANNOTATION_SIZE),
+    );
     const pointRect = new DOMRect(x, y, INSTANT_ANNOTATION_SIZE, INSTANT_ANNOTATION_SIZE);
 
     // Resolve the anchor element and build the annotation payload.
     // We also derive the capture rect from the anchor element's bounding box
     // (clamped to the viewport) so enableScreenshot produces a useful image
     // instead of a postage stamp.
-    if (this.overlay) this.overlay.style.pointerEvents = "none";
-    const anchorElement = findAnchorElement(pointRect);
-    if (this.overlay) this.overlay.style.pointerEvents = "auto";
-
-    const anchor = generateAnchor(anchorElement);
-    const anchorBounds = anchorElement.getBoundingClientRect();
-    const rect = rectToPercentages(pointRect, anchorBounds);
-
-    const annotation: AnnotationPayload = {
-      anchor,
-      rect,
-      scrollX: window.scrollX,
-      scrollY: window.scrollY,
-      viewportW: window.innerWidth,
-      viewportH: window.innerHeight,
-      devicePixelRatio: window.devicePixelRatio,
-    };
+    const { annotation, anchorBounds } = this.buildAnnotation(pointRect);
 
     // Use the anchor element's bounding box (clamped to viewport) for
     // screenshot capture so reviewers get meaningful context, not a 20×20 px
     // postage stamp.
+    const left = Math.max(0, anchorBounds.left);
+    const top = Math.max(0, anchorBounds.top);
     const captureRect = new DOMRect(
-      Math.max(0, anchorBounds.x),
-      Math.max(0, anchorBounds.y),
-      Math.min(anchorBounds.width, window.innerWidth - Math.max(0, anchorBounds.x)),
-      Math.min(anchorBounds.height, window.innerHeight - Math.max(0, anchorBounds.y)),
+      left,
+      top,
+      Math.max(0, Math.min(anchorBounds.right, window.innerWidth) - left),
+      Math.max(0, Math.min(anchorBounds.bottom, window.innerHeight) - top),
     );
 
     // Create a visual indicator at the click point
@@ -519,7 +510,7 @@ export class Annotator {
     this.overlay?.appendChild(this.drawingRect);
 
     const screenshotCache: { value?: string | null } = {};
-    const result = await this.popup.show(pointRect, (formResult) =>
+    await this.popup.show(pointRect, (formResult) =>
       this.runSubmission(annotation, formResult, captureRect, screenshotCache),
     );
 
@@ -602,7 +593,7 @@ export class Annotator {
    * Build an AnnotationPayload from a drawn rectangle.
    * Temporarily hides the overlay to access the real DOM underneath.
    */
-  private buildAnnotation(rectBounds: DOMRect): AnnotationPayload {
+  private buildAnnotation(rectBounds: DOMRect): { annotation: AnnotationPayload; anchorBounds: DOMRect } {
     // Temporarily hide overlay to find the real element underneath
     if (this.overlay) this.overlay.style.pointerEvents = "none";
     const anchorElement = findAnchorElement(rectBounds);
@@ -612,7 +603,7 @@ export class Annotator {
     const anchorBounds = anchorElement.getBoundingClientRect();
     const rect = rectToPercentages(rectBounds, anchorBounds);
 
-    return {
+    const annotation = {
       anchor,
       rect,
       scrollX: window.scrollX,
@@ -621,6 +612,7 @@ export class Annotator {
       viewportH: window.innerHeight,
       devicePixelRatio: window.devicePixelRatio,
     };
+    return { annotation, anchorBounds };
   }
   destroy(): void {
     this.deactivate();

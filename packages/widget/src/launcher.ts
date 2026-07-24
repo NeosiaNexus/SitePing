@@ -381,8 +381,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
         path.some(
           (n) =>
             n === host ||
-            (n instanceof Element &&
-              (n.hasAttribute("data-siteping-ignore") || n.id === "siteping-markers")),
+            (n instanceof Element && (n.hasAttribute("data-siteping-ignore") || n.id === "siteping-markers")),
         )
       )
         return;
@@ -391,7 +390,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
       // to the native menu instead of silently consuming the event.
       if (annotator.isBusy) return;
       e.preventDefault();
-      void annotator.startInstantAnnotation(e.clientX, e.clientY).catch(() => {});
+      void annotator
+        .startInstantAnnotation(e.clientX, e.clientY)
+        .catch((err) => log("right-click annotation failed", err));
     };
     document.addEventListener("contextmenu", onContextMenu);
   }

@@ -43,7 +43,10 @@ vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
 // Mock heavy dependencies to keep tests fast and focused on launcher logic
 // Capture the EventBus so we can emit events for callback wiring tests.
 // Use a container object to work around vi.mock hoisting
-const annotatorCapture: { bus: { emit: (event: string, ...args: unknown[]) => void } | null } = { bus: null };
+const annotatorCapture: {
+  bus: { emit: (event: string, ...args: unknown[]) => void } | null;
+  startInstantAnnotation: ReturnType<typeof vi.fn>;
+} = { bus: null, startInstantAnnotation: vi.fn().mockResolvedValue(undefined) };
 
 vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
   Annotator: vi.fn().mockImplementation(
@@ -56,7 +59,12 @@ vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
     ) => {
       annotatorCapture.bus = bus;
       bus.on("annotation:start", () => {});
-      return { destroy: vi.fn(), refreshLabels: vi.fn() };
+      return {
+        destroy: vi.fn(),
+        refreshLabels: vi.fn(),
+        startInstantAnnotation: annotatorCapture.startInstantAnnotation,
+        isBusy: false,
+      };
     },
   ),
 }));
@@ -111,6 +119,7 @@ describe("launch", () => {
       el.remove();
     }
     annotatorCapture.bus = null;
+    annotatorCapture.startInstantAnnotation.mockClear();
   });
 
   // -------------------------------------------------------------------------
@@ -857,6 +866,45 @@ describe("launch", () => {
       event.preventDefault();
       document.dispatchEvent(event);
       // Our handler should have yielded (event was already prevented by host)
+      expect(annotatorCapture.startInstantAnnotation).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("plain right-click prevents the native menu and starts the instant flow", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      const event = new MouseEvent("contextmenu", {
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(annotatorCapture.startInstantAnnotation).toHaveBeenCalledWith(100, 100);
+
+      instance.destroy();
+    });
+
+    it("right-click on SitePing's own UI is ignored", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      // Simulate a click on the SitePing widget (or something inside it)
+      const event = new MouseEvent("contextmenu", {
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+
+      const widget = document.querySelector("siteping-widget")!;
+      // Need composedPath() to include the widget, so dispatch from it or a shadow child
+      widget.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(annotatorCapture.startInstantAnnotation).not.toHaveBeenCalled();
 
       instance.destroy();
     });
