@@ -203,11 +203,13 @@ Responses are redacted at the HTTP edge, based on whether the request carried a 
 
 - Responses **never** include `clientId`. It is a browser-local dedup secret — the POST dedup path returns the full existing record to whoever presents a known `clientId`, so exposing it in responses would let anyone steal records.
 - **Unauthenticated** requests get `authorEmail: ""` on every returned feedback. This applies to GET without `apiKey`, GET with `"GET"` in `publicEndpoints` and no token, and PATCH reached without a token (`requireAuthForDestructive: false` setups).
-- **Authenticated** requests (valid `Authorization: Bearer <apiKey>`) get the full `authorEmail` — a valid token on a public method still counts as authenticated. Consumers that need emails (the dashboard, scripts) must send the key; the widget will be able to send it via its upcoming `apiKey`/`headers` config ([#100](https://github.com/NeosiaNexus/SitePing/issues/100)).
+- **Authenticated** requests (valid `Authorization: Bearer <apiKey>`) get the full `authorEmail` — a valid token on a public method still counts as authenticated. Consumers that need emails must send the key: the dashboard via its `apiKey`/`headers` props, the widget via its config options of the same names ([#100](https://github.com/NeosiaNexus/SitePing/issues/100)).
 - POST responses keep `authorEmail` intact — the requester supplied it (or proved ownership via `clientId` on the dedup path).
 - Outgoing webhooks are host-configured push targets and receive the full record.
 
 Redaction applies to **any store** mounted through `createSitepingHandler` (`MemoryStore` from `@siteping/adapter-memory` included). Client-side store mode (localStorage adapter, or passing a `store` directly to the widget/dashboard) is in-process — no HTTP boundary, no redaction.
+
+If the handler sits behind your **own auth layer that also covers GET**, you can opt out of the email redaction with `redactUnauthenticatedEmails: false` — the handler cannot see your middleware, so only set it when every route to the endpoint is authenticated (or you accept exposing reviewer emails). `clientId` stays stripped regardless.
 
 ### Escape hatch: `requireAuthForDestructive: false`
 
@@ -215,6 +217,8 @@ If SitePing sits behind your own session-based / OAuth middleware and you want d
 
 ```ts
 // Only safe when an upstream middleware authenticates DELETE/PATCH.
+// Add redactUnauthenticatedEmails: false only if that middleware covers GET
+// too — otherwise responses keep authorEmail blank for tokenless requests.
 createSitepingHandler({ prisma, requireAuthForDestructive: false })
 ```
 

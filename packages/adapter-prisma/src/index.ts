@@ -471,6 +471,19 @@ export interface HandlerOptions {
    */
   requireAuthForDestructive?: boolean;
   /**
+   * Blank `authorEmail` in GET/PATCH responses to requests that do not carry
+   * a valid `Authorization: Bearer <apiKey>` header. Defaults to `true`:
+   * reviewer emails are PII and the widget needs GET to be reachable, so an
+   * unauthenticated response must not enumerate them (issue #105).
+   *
+   * Set to `false` ONLY when the handler sits behind your own auth layer
+   * that covers GET as well (e.g. `requireAuthForDestructive: false` behind
+   * session middleware) — the handler cannot see that layer, and without it
+   * every visitor who can reach the endpoint can read reviewer emails.
+   * `clientId` is stripped from responses regardless of this option.
+   */
+  redactUnauthenticatedEmails?: boolean;
+  /**
    * Outgoing webhooks fired after a feedback is successfully persisted.
    *
    * Pass a single config or an array — every entry receives a POST with a
@@ -540,10 +553,17 @@ function withCors(response: Response, corsHeaders: CorsHeaders): Response {
  * Perform a constant-time string comparison to prevent timing attacks on API key validation.
  * Returns `false` immediately when lengths differ (unavoidable length leak), but the
  * byte-level comparison itself is timing-safe.
+ *
+ * Length must be compared in BYTES: `timingSafeEqual` throws on byte-length
+ * mismatch, and multi-byte characters make equal `.length` strings differ in
+ * bytes — an attacker-controlled `Authorization` header must never turn that
+ * into a 500.
  */
 function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
 
 /**
@@ -598,6 +618,7 @@ export function createSitepingHandler({
   allowedOrigins,
   caseInsensitiveSearch,
   requireAuthForDestructive = true,
+  redactUnauthenticatedEmails = true,
   webhooks,
 }: HandlerOptions): SitepingHandler {
   if (!providedStore && !prisma) {
@@ -641,6 +662,11 @@ export function createSitepingHandler({
     if (!apiKey) return false;
     const header = request.headers.get("Authorization");
     return header !== null && safeCompare(header, `Bearer ${apiKey}`);
+  }
+
+  /** Whether this request may see `authorEmail` (see `redactUnauthenticatedEmails`). */
+  function emailPermitted(request: Request): boolean {
+    return !redactUnauthenticatedEmails || isBearerAuthenticated(request);
   }
 
   /** Verify Bearer token when apiKey is configured. Skips methods listed in `publicEndpoints`. */
@@ -764,7 +790,7 @@ export function createSitepingHandler({
       try {
         // GET can be public (no apiKey, or "GET" in publicEndpoints for widget
         // hosts) — redact author emails unless the requester sent the key.
-        const authed = isBearerAuthenticated(request);
+        const authed = emailPermitted(request);
         const result = await store.getFeedbacks(parsed.data);
         const body = { ...result, feedbacks: result.feedbacks.map((f) => toWireFeedback(f, authed)) };
         return withCors(Response.json(body, { headers: { "Cache-Control": "private, max-age=5" } }), corsHeaders);
@@ -812,7 +838,7 @@ export function createSitepingHandler({
 
         // PATCH can be made public via publicEndpoints / requireAuthForDestructive:
         // false — don't leak the author's email through the update response.
-        return withCors(Response.json(toWireFeedback(feedback, isBearerAuthenticated(request))), corsHeaders);
+        return withCors(Response.json(toWireFeedback(feedback, emailPermitted(request))), corsHeaders);
       } catch (error) {
         if (isStoreNotFound(error)) {
           return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);

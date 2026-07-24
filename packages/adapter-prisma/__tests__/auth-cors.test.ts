@@ -286,6 +286,45 @@ describe("Authentication", () => {
       const body = await res.json();
       expect(body.feedbacks[0].authorEmail).toBe("alice@example.com");
     });
+
+    it("multi-byte Authorization header of matching char length is rejected, not a 500", async () => {
+      // "é" makes char length equal to `Bearer ${API_KEY}` but byte length
+      // differ — timingSafeEqual would throw on the byte mismatch, turning an
+      // attacker-controlled header into a 500 (and an apiKey length oracle).
+      seedFindMany();
+      const wrongKey = `${API_KEY.slice(0, -1)}é`;
+      const handler = createSitepingHandler({
+        prisma,
+        apiKey: API_KEY,
+        publicEndpoints: ["POST", "OPTIONS", "GET"],
+      });
+      const res = await handler.GET(getRequest("projectName=test-project", { Authorization: `Bearer ${wrongKey}` }));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.feedbacks[0].authorEmail).toBe("");
+
+      // On a protected method the same header must yield 401, not 500
+      const protectedHandler = createSitepingHandler({ prisma, apiKey: API_KEY });
+      const res401 = await protectedHandler.GET(
+        getRequest("projectName=test-project", { Authorization: `Bearer ${wrongKey}` }),
+      );
+      expect(res401.status).toBe(401);
+    });
+
+    it("redactUnauthenticatedEmails: false keeps authorEmail for unauthenticated requests", async () => {
+      seedFindMany();
+      const handler = createSitepingHandler({
+        prisma,
+        requireAuthForDestructive: false,
+        redactUnauthenticatedEmails: false,
+      });
+      const res = await handler.GET(getRequest("projectName=test-project"));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.feedbacks[0].authorEmail).toBe("alice@example.com");
+      // clientId stays stripped regardless of the opt-out
+      expect("clientId" in body.feedbacks[0]).toBe(false);
+    });
   });
 
   describe("startup guard in production", () => {
