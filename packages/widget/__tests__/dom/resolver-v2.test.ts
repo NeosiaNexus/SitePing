@@ -545,6 +545,190 @@ describe("strongest-signal acceptance and confidence", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Sweep-skip boundaries — exact-first must not shadow better candidates
+// ---------------------------------------------------------------------------
+describe("sweep-skip boundaries", () => {
+  it("id + exact text + intact fingerprint skips the sweep even when context drifted", () => {
+    const heading = document.createElement("div");
+    heading.id = "kpi";
+    heading.textContent = "Monthly active users grew twelve percent";
+    document.body.appendChild(heading);
+
+    const spy = vi.spyOn(document, "querySelectorAll");
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "kpi",
+        cssSelector: "__nomatch__",
+        textSnippet: "Monthly active users grew twelve percent",
+        fingerprint: generateFingerprint(heading), // element itself unchanged
+        neighborText: "Neighbors that vanished | entirely", // context drifted
+      }),
+    );
+    expect(result!.strategy).toBe("id");
+    expect(result!.confidence).toBe(1.0);
+    // Blend is dragged to ~0.75 by the dead neighbor — below the 0.85
+    // unbeatable bound — but the identity shortcut must still skip the sweep.
+    expect(spy.mock.calls.map((c) => c[0])).not.toContain("div");
+  });
+
+  it("a wrapper that took over the id does NOT skip the sweep — the true inner element wins", () => {
+    // Redeploy hoisted id="target" onto a new wrapper; the original element
+    // (fingerprint intact) is now its child. The wrapper contains the same
+    // text but its own fingerprint is partial — the identity shortcut must
+    // not fire, and the sweep + ancestor tie-break recover the inner.
+    const wrapper = document.createElement("div");
+    wrapper.id = "target";
+    const inner = document.createElement("div");
+    inner.setAttribute("aria-label", "stats");
+    const child = document.createElement("span");
+    child.textContent = "Monthly recurring revenue trending upward";
+    inner.appendChild(child);
+    wrapper.appendChild(inner);
+    const extra = document.createElement("span");
+    wrapper.appendChild(extra);
+    document.body.appendChild(wrapper);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "target",
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        textSnippet: "Monthly recurring revenue trending upward",
+        fingerprint: generateFingerprint(inner),
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(inner);
+    expect(result!.strategy).toBe("scan");
+  });
+
+  it("skips the sweep when no verifiable signal is stored (scan candidates would all be discarded)", () => {
+    const div = document.createElement("div");
+    div.className = "bare";
+    document.body.appendChild(div);
+
+    const spy = vi.spyOn(document, "querySelectorAll");
+    const result = resolveAnchor(makeAnchor({ cssSelector: ".bare" }));
+    expect(result).not.toBeNull(); // unverified selector match still resolves
+    expect(spy.mock.calls.map((c) => c[0])).not.toContain("div");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// XPath gathering — snapshot must surface later duplicates (#171 for xpath)
+// ---------------------------------------------------------------------------
+describe("xpath multi-match gathering", () => {
+  it("prefers the visible twin when the xpath matches both duplicates", () => {
+    const first = document.createElement("section");
+    first.className = "cta";
+    first.textContent = "Start your free trial";
+    const second = document.createElement("section");
+    second.className = "cta";
+    second.textContent = "Start your free trial";
+    document.body.append(first, second);
+    stubHidden(first);
+    stubVisible(second);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "__nomatch__",
+        xpath: "//section[@class='cta']",
+        elementTag: "SECTION",
+        textSnippet: "Start your free trial",
+      }),
+    );
+    expect(result).not.toBeNull();
+    // A FIRST_ORDERED_NODE regression would resolve the HIDDEN first match.
+    expect(result!.element).toBe(second);
+    expect(result!.strategy).toBe("xpath");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Legacy textless anchors — ranking-only acceptance (never orphan on drift)
+// ---------------------------------------------------------------------------
+describe("textless anchors survive structural drift", () => {
+  it("resolves a textless id anchor whose fingerprint and neighbors all drifted, at degraded confidence", () => {
+    // The adversarial-review repro: icon button stored by an older widget,
+    // then the host redeployed — button moved among its siblings, aria-label
+    // reworded, neighbor copy rewritten. The id still uniquely matches; v1
+    // resolved at 1.0, and rejection here would silently orphan it (the
+    // sweep cannot rescue pool members).
+    const nav = document.createElement("nav");
+    for (let i = 0; i < 3; i++) {
+      const filler = document.createElement("button");
+      filler.setAttribute("aria-label", `Other ${i}`);
+      nav.appendChild(filler);
+    }
+    const cartBtn = document.createElement("button");
+    cartBtn.id = "cart-btn";
+    cartBtn.setAttribute("aria-label", "Panier"); // reworded since capture
+    nav.insertBefore(cartBtn, nav.firstChild); // moved 4th → 1st
+    document.body.appendChild(nav);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "cart-btn",
+        elementTag: "BUTTON",
+        cssSelector: "__nomatch__",
+        textSnippet: "",
+        fingerprint: "0:3:zzzz", // captured at position 4 with old aria-label
+        neighborText: "Copy that was rewritten | since then",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(cartBtn);
+    expect(result!.strategy).toBe("id");
+    // Honest degradation instead of v1's blind 1.0 — but never orphaned.
+    expect(result!.confidence).toBeLessThan(0.7);
+    expect(result!.confidence).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Refuted text — structural agreement must be STRONG to override
+// ---------------------------------------------------------------------------
+describe("present-but-refuted text", () => {
+  it("accepts when the fingerprint strongly corroborates (i18n page swap)", () => {
+    const btn = document.createElement("button");
+    btn.className = "buy";
+    btn.setAttribute("type", "submit");
+    btn.textContent = "Ajouter au panier"; // locale switched since capture
+    document.body.appendChild(btn);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".buy",
+        elementTag: "BUTTON",
+        xpath: "/nonexistent",
+        textSnippet: "Add to your shopping basket now",
+        fingerprint: generateFingerprint(btn), // structure fully intact
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(btn);
+  });
+
+  it("rejects when only a weak fingerprint coincidence remains", () => {
+    const div = document.createElement("div");
+    div.className = "stale";
+    div.textContent = "Entirely unrelated words appear here";
+    document.body.appendChild(div);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".stale",
+        xpath: "/nonexistent",
+        textSnippet: "Original snippet stored long ago",
+        fingerprint: "7:5:xyz", // scores weakly against the candidate
+        neighborText: "Old neighbors | gone now",
+      }),
+    );
+    expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Prefilter integrity — absent signals must not fabricate evidence
 // ---------------------------------------------------------------------------
 describe("prefilter with empty fingerprint", () => {

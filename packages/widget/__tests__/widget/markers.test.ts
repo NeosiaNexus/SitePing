@@ -19,13 +19,17 @@ const { mockState } = vi.hoisted(() => {
     rectQueue: [] as Array<{ x: number; y: number; w: number; h: number }>,
     nullSchedule: [] as boolean[], // sequential per-call nulls
     calls: 0, // total resolveAnnotation invocations (cache-path assertions)
+    starveNext: false, // simulate a budget-starved resolution (sets options.scanBudget.starved)
   };
   return { mockState: state };
 });
 
 vi.mock(new URL("../../src/dom/resolver.js", import.meta.url).pathname, () => ({
-  resolveAnnotation: () => {
+  resolveAnnotation: (_anchor?: unknown, _rect?: unknown, options?: { scanBudget?: { starved?: boolean } }) => {
     mockState.calls++;
+    if (mockState.starveNext && options?.scanBudget) {
+      options.scanBudget.starved = true;
+    }
     if (mockState.returnNull) return null;
     if (mockState.nullSchedule.length > 0) {
       const shouldReturnNull = mockState.nullSchedule.shift();
@@ -145,6 +149,7 @@ describe("MarkerManager", () => {
     mockState.returnNull = false;
     mockState.rectQueue = [];
     mockState.nullSchedule = [];
+    mockState.starveNext = false;
     markers = new MarkerManager(colors, tooltip, bus, t);
   });
 
@@ -1190,6 +1195,109 @@ describe("MarkerManager", () => {
       vi.advanceTimersByTime(400);
 
       expect(mockState.calls).toBe(callsBefore);
+
+      vi.useRealTimers();
+    });
+
+    it("backs off hidden re-resolution on mutation ticks, retries after the back-off window", () => {
+      vi.useFakeTimers();
+
+      markers.render([makeFeedback({ id: "fb-backoff" })]);
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      const cached = mockState.element as Element & { checkVisibility?: () => boolean };
+      cached.checkVisibility = () => false;
+
+      // Mutation tick 1: hidden detected → full re-resolution (+1) → back-off set
+      // (the mock returns the same still-hidden element).
+      let before = mockState.calls;
+      (markers as unknown as { scheduleReposition(c: string): void }).scheduleReposition("mutation");
+      vi.advanceTimersByTime(400);
+      expect(mockState.calls).toBe(before + 1);
+
+      // Mutation tick 2, inside the back-off window: cached fast path, no call.
+      before = mockState.calls;
+      (markers as unknown as { scheduleReposition(c: string): void }).scheduleReposition("mutation");
+      vi.advanceTimersByTime(400);
+      expect(mockState.calls).toBe(before);
+
+      // Past the back-off window: re-resolution runs again.
+      vi.advanceTimersByTime(3200);
+      before = mockState.calls;
+      (markers as unknown as { scheduleReposition(c: string): void }).scheduleReposition("mutation");
+      vi.advanceTimersByTime(400);
+      expect(mockState.calls).toBe(before + 1);
+
+      vi.useRealTimers();
+    });
+
+    it("resize bypasses the hidden back-off (breakpoint flips must recheck immediately)", () => {
+      vi.useFakeTimers();
+
+      markers.render([makeFeedback({ id: "fb-resize-bypass" })]);
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      const cached = mockState.element as Element & { checkVisibility?: () => boolean };
+      cached.checkVisibility = () => false;
+
+      // Mutation tick sets the back-off…
+      (markers as unknown as { scheduleReposition(c: string): void }).scheduleReposition("mutation");
+      vi.advanceTimersByTime(400);
+
+      // …but a resize right after must re-resolve anyway.
+      const before = mockState.calls;
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      expect(mockState.calls).toBe(before + 1);
+
+      vi.useRealTimers();
+    });
+
+    it("never caches a budget-starved resolution (a selector-only answer may be wrong)", () => {
+      vi.useFakeTimers();
+
+      markers.render([makeFeedback({ id: "fb-starved" })]);
+
+      // First reposition: resolution reports it was starved → must NOT cache.
+      mockState.starveNext = true;
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      // Second reposition: no cache entry → full resolution again.
+      mockState.starveNext = false;
+      let before = mockState.calls;
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      expect(mockState.calls).toBe(before + 1);
+
+      // Third: the un-starved result was cached → fast path.
+      before = mockState.calls;
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      expect(mockState.calls).toBe(before);
+
+      vi.useRealTimers();
+    });
+
+    it("honors a layout cause that arrives while a scroll tick is already pending (coalescing)", () => {
+      vi.useFakeTimers();
+
+      markers.render([makeFeedback({ id: "fb-coalesce" })]);
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      const cached = mockState.element as Element & { checkVisibility?: () => boolean };
+      cached.checkVisibility = () => false;
+
+      // Scroll schedules the tick first; the resize arrives while pending —
+      // the pass must still honor the layout cause and re-resolve.
+      const before = mockState.calls;
+      window.dispatchEvent(new Event("scroll"));
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      expect(mockState.calls).toBe(before + 1);
 
       vi.useRealTimers();
     });

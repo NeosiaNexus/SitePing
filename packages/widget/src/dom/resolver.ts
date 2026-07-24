@@ -41,6 +41,11 @@ export interface ResolvedAnnotation {
 export interface ScanBudget {
   /** Remaining sweep allowance; decremented each time a sweep actually runs. */
   remaining: number;
+  /** Set by the resolver when a sweep was wanted but the budget was empty —
+   * callers must NOT cache such degraded results (a selector-only answer may
+   * be worse than what the sweep would have found, and a cached wrong
+   * element is never re-examined). */
+  starved?: boolean;
 }
 
 export interface ResolveOptions {
@@ -79,16 +84,24 @@ const CANDIDATE_TEXT_CAP = 500;
  * never on the diluted blend — the blend is a RANKING device. A volatile
  * signal (fingerprints churn with every redesign) must not veto a stable
  * one: v1 resolved `#promo` + fuzzy-passing text regardless of what the
- * surrounding DOM did, and that must survive. Floors per signal:
- * - text ≥ 0.5   (v1's effective bar — fuzzyIncludes' own minScore)
- * - fingerprint ≥ 0.3 (coarse 3-component signal; 0.3 ≈ one component intact)
- * - context/neighbor ≥ 0.5
+ * surrounding DOM did, and that must survive.
+ * - text ≥ 0.5 (v1's effective bar — fuzzyIncludes' own minScore) accepts.
+ * - No stored text at all: ALWAYS acceptable — v1 accepted textless selector
+ *   hits unconditionally, and rejection here silently orphans legacy
+ *   icon/image anchors whose id still matches (the sweep cannot rescue pool
+ *   members). Ranking and confidence already penalize structural drift.
+ * - Text present but REFUTED: strong structural corroboration required —
+ *   the i18n case (text translated, fingerprint intact) passes, a weak
+ *   fingerprint coincidence does not.
  * Scan has no selector evidence, so it keeps v1's 0.4 floor on the blend.
  */
 const TEXT_FLOOR = 0.5;
-const FP_FLOOR = 0.3;
-const CTX_FLOOR = 0.5;
+const STRONG_STRUCT = 0.6;
 const ACCEPT_SCAN = 0.4;
+
+/** Hostile-stored-data guard: fields are sliced before any normalization
+ * (NFC on a multi-megabyte string is itself a freeze) and again after. */
+const RAW_FIELD_CAP = 2000;
 
 /**
  * Verification at or above this level earns the full strategy prior as
@@ -139,13 +152,22 @@ interface ScoredCandidate {
   verification: number;
   strongest: number;
   signals?: SignalScores;
+  /** Visibility factor applied to `final` (1 = visible/unknown). */
+  visibility: number;
   final: number;
   /** No verifiable signal was stored — verification is a neutral stand-in. */
   unverified?: boolean;
 }
 
+function boundedField(value: string | null | undefined, cap: number): string {
+  return normalizeText((value ?? "").slice(0, RAW_FIELD_CAP)).slice(0, cap);
+}
+
 function buildSignals(anchor: AnchorData): AnchorSignals {
-  const snippet = normalizeText(anchor.textSnippet ?? "");
+  // Capture stores ≤120-char snippets and ≤40-char context — larger values
+  // only come from hostile or corrupted storage, and uncapped they turn
+  // normalization/edit-distance into a main-thread freeze.
+  const snippet = boundedField(anchor.textSnippet, CANDIDATE_TEXT_CAP);
   const snippetWordPairs = wordPairCounts(snippet);
   let snippetWordPairTotal = 0;
   for (const count of snippetWordPairs.values()) snippetWordPairTotal += count;
@@ -155,11 +177,11 @@ function buildSignals(anchor: AnchorData): AnchorSignals {
     snippetBigramTotal: Math.max(0, snippet.length - 1),
     snippetWordPairs,
     snippetWordPairTotal,
-    prefix: normalizeText(anchor.textPrefix ?? ""),
-    suffix: normalizeText(anchor.textSuffix ?? ""),
-    neighbor: normalizeText(anchor.neighborText ?? ""),
-    fingerprint: anchor.fingerprint ?? "",
-    tag: anchor.elementTag,
+    prefix: boundedField(anchor.textPrefix, 128),
+    suffix: boundedField(anchor.textSuffix, 128),
+    neighbor: boundedField(anchor.neighborText, 128),
+    fingerprint: (anchor.fingerprint ?? "").slice(0, 64),
+    tag: typeof anchor.elementTag === "string" ? anchor.elementTag : "",
   };
 }
 
@@ -201,18 +223,44 @@ export function resolveAnchor(anchor: AnchorData, options?: ResolveOptions): Anc
   }
 
   let bestFinal = 0;
+  let strongVisibleMatch = false;
   for (const c of scored) {
     if (c.final > bestFinal) bestFinal = c.final;
+    // Identity selectors (id, anchorKey — near-unique by contract, the ones
+    // v1 trusted absolutely) with near-exact text on a visible element end
+    // the search even when CONTEXT signals (neighbors, prefix/suffix)
+    // drifted — but not when the element's own fingerprint contradicts:
+    // a wrapper that took over the id contains the same text yet scores a
+    // partial fingerprint, and only the sweep can surface the true inner
+    // element. Fragile selectors (css/xpath) get no shortcut at all: an
+    // element that merely CONTAINS the snippet verbatim plus coincidental
+    // structure is exactly the #175 impostor — they suppress the sweep
+    // solely through the unbeatable-final bound below.
+    if (
+      (c.strategy === "id" || c.strategy === "anchorKey") &&
+      c.visibility === 1 &&
+      (c.signals?.text ?? 0) >= STRONG_VERIFY &&
+      (c.signals?.fingerprint === undefined || c.signals.fingerprint >= STRONG_VERIFY)
+    ) {
+      strongVisibleMatch = true;
+    }
   }
 
-  // Scan can never produce final > SCAN prior — skip the sweep entirely when
-  // a selector candidate is already unbeatable (exact-first, fuzzy-fallback).
+  // The sweep only helps when something could beat the pool (scan's final is
+  // capped by its prior) AND there is at least one stored signal to verify
+  // scan candidates against — with none, every scan candidate is discarded
+  // and the sweep is pure cost.
+  const verifiable = !!(signals.snippet || signals.fingerprint || signals.prefix || signals.suffix || signals.neighbor);
   const budget = options?.scanBudget;
-  if (bestFinal < STRATEGY_PRIORS.scan && (!budget || budget.remaining > 0)) {
-    if (budget) budget.remaining--;
-    for (const element of sweepScanCandidates(signals, pool)) {
-      const candidate = scoreOne(element, "scan", signals);
-      if (candidate) scored.push(candidate);
+  if (verifiable && bestFinal < STRATEGY_PRIORS.scan && !strongVisibleMatch) {
+    if (budget && budget.remaining <= 0) {
+      budget.starved = true;
+    } else {
+      if (budget) budget.remaining--;
+      for (const element of sweepScanCandidates(signals, pool)) {
+        const candidate = scoreOne(element, "scan", signals);
+        if (candidate) scored.push(candidate);
+      }
     }
   }
 
@@ -309,6 +357,7 @@ function gatherSelectorCandidates(anchor: AnchorData): Map<Element, ResolutionSt
  */
 function sweepScanCandidates(signals: AnchorSignals, pool: Map<Element, ResolutionStrategy>): Element[] {
   const tag = signals.tag.toLowerCase();
+  if (!tag) return [];
   let candidates: NodeListOf<Element>;
   try {
     candidates = document.querySelectorAll(tag);
@@ -367,23 +416,31 @@ function sweepScanCandidates(signals: AnchorSignals, pool: Map<Element, Resoluti
 
 function scoreOne(element: Element, strategy: ResolutionStrategy, signals: AnchorSignals): ScoredCandidate | null {
   const scores = verificationScore(element, signals);
+  const visibility = visibilityFactor(classifyVisibility(element));
   if (scores === null) {
     // No verifiable signal stored: the selector match is the only evidence.
     // A scan candidate with nothing to verify against is meaningless, though.
     if (strategy === "scan") return null;
-    const final = STRATEGY_PRIORS[strategy] * NEUTRAL_VERIFICATION * visibilityFactor(classifyVisibility(element));
     return {
       element,
       strategy,
       verification: NEUTRAL_VERIFICATION,
       strongest: NEUTRAL_VERIFICATION,
-      final,
+      visibility,
+      final: STRATEGY_PRIORS[strategy] * NEUTRAL_VERIFICATION * visibility,
       unverified: true,
     };
   }
 
-  const final = STRATEGY_PRIORS[strategy] * scores.blend * visibilityFactor(classifyVisibility(element));
-  return { element, strategy, verification: scores.blend, strongest: scores.strongest, signals: scores, final };
+  return {
+    element,
+    strategy,
+    verification: scores.blend,
+    strongest: scores.strongest,
+    signals: scores,
+    visibility,
+    final: STRATEGY_PRIORS[strategy] * scores.blend * visibility,
+  };
 }
 
 /**
@@ -398,11 +455,13 @@ function isAcceptable(c: ScoredCandidate): boolean {
   if (c.strategy === "scan") return c.verification >= ACCEPT_SCAN;
   if (c.unverified || !c.signals) return true;
   const s = c.signals;
+  // No stored text: ranking-only (see constant doc — v1 parity for legacy
+  // textless anchors; drift shows up as low confidence, not orphaning).
+  if (s.text === undefined) return true;
+  if (s.text >= TEXT_FLOOR) return true;
+  // Text present but refuted — accept only on strong structural agreement.
   return (
-    (s.text ?? 0) >= TEXT_FLOOR ||
-    (s.fingerprint ?? 0) >= FP_FLOOR ||
-    (s.context ?? 0) >= CTX_FLOOR ||
-    (s.neighbor ?? 0) >= CTX_FLOOR
+    (s.fingerprint ?? 0) >= STRONG_STRUCT || (s.context ?? 0) >= STRONG_STRUCT || (s.neighbor ?? 0) >= STRONG_STRUCT
   );
 }
 

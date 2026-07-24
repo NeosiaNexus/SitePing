@@ -221,11 +221,29 @@ describe("bigramCounts / diceAgainst", () => {
   });
 
   it("uses multiset semantics — repeated bigrams cannot be double-counted", () => {
-    // needle "aa" has ONE "aa" bigram; text "aaaa" has three. Set semantics
-    // would score 2*1/(1+3)=0.5 anyway here, but reversed: needle "aaaa"
-    // (three "aa") vs text "aa" (one) must only match once.
+    // needle "aaaa" (three "aa") vs text "aa" (one) must only match once…
     const score = diceAgainst(bigramCounts("aaaa"), 3, "aa");
     expect(score).toBeCloseTo((2 * 1) / (3 + 1), 5);
+    // …and the BINDING direction: text repeats a bigram MORE often than the
+    // needle holds it. Membership-only counting scores every one of the
+    // three text "aa" bigrams (2*3/(1+3) = 1.5, escaping [0,1]); consumption
+    // caps matches at the needle's single copy.
+    const binding = diceAgainst(bigramCounts("aa"), 1, "aaaa");
+    expect(binding).toBeCloseTo((2 * 1) / (1 + 3), 5);
+  });
+
+  it("word pairs use multiset semantics in the binding direction too", () => {
+    // Spam-repetition candidate: the same pair repeated 10× must not
+    // outrank a genuine partial match (membership counting inflates it 10×,
+    // reintroducing the shared-vocabulary pathology).
+    const needle = "buy now today";
+    const pairs = wordPairCounts(needle); // {"buy now":1, "now today":1}
+    const spam = Array.from({ length: 10 }, () => "buy now").join(" "); // "buy now buy now …"
+    const spamScore = wordPairDiceAgainst(pairs, 2, spam);
+    // 20 words → 19 pairs; only ONE consumable "buy now" → 2*1/(2+19)
+    expect(spamScore).toBeCloseTo(2 / 21, 5);
+    const genuine = wordPairDiceAgainst(pairs, 2, "buy now tomorrow");
+    expect(genuine).toBeGreaterThan(spamScore);
   });
 
   it("returns 0 for degenerate lengths (empty or single-char)", () => {
