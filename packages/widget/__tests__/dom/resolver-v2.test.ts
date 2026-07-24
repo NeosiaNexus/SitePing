@@ -778,6 +778,110 @@ describe("prefilter with empty fingerprint", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Degenerate stored data — every branch must fail soft
+// ---------------------------------------------------------------------------
+describe("degenerate stored data", () => {
+  it("falls back to getElementById when the attribute-selector query throws", () => {
+    const div = document.createElement("div");
+    div.id = "fallback-target";
+    div.textContent = "Reachable through the fallback";
+    document.body.appendChild(div);
+
+    const original = document.querySelectorAll.bind(document);
+    vi.spyOn(document, "querySelectorAll").mockImplementation(((selector: string) => {
+      if (selector.startsWith('[id="')) throw new Error("selector engine quirk");
+      return original(selector);
+    }) as typeof document.querySelectorAll);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementId: "fallback-target",
+        cssSelector: "__nomatch__",
+        textSnippet: "Reachable through the fallback",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(div);
+    expect(result!.strategy).toBe("id");
+  });
+
+  it("returns null instead of throwing for an elementTag that is not a valid selector", () => {
+    const div = document.createElement("div");
+    div.textContent = "Some content on the page";
+    document.body.appendChild(div);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        elementTag: "DIV[", // corrupted stored data — querySelectorAll would throw
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        textSnippet: "Some content on the page",
+      }),
+    );
+    expect(result).toBeNull();
+  });
+
+  it("verifies with a prefix-only context signal (no suffix stored)", () => {
+    const before = document.createElement("p");
+    before.textContent = "Introductory paragraph before";
+    const target = document.createElement("div");
+    target.className = "solo-prefix";
+    target.textContent = "Main content of the section";
+    document.body.append(before, target);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".solo-prefix",
+        textSnippet: "Main content of the section",
+        textPrefix: "Introductory paragraph before",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.confidence).toBe(0.95);
+  });
+
+  it("verifies with a suffix-only context signal (no prefix stored)", () => {
+    const target = document.createElement("div");
+    target.className = "solo-suffix";
+    target.textContent = "Main content of the section";
+    const after = document.createElement("p");
+    after.textContent = "Closing paragraph after";
+    document.body.append(target, after);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: ".solo-suffix",
+        textSnippet: "Main content of the section",
+        textSuffix: "Closing paragraph after",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.confidence).toBe(0.95);
+  });
+
+  it("gives near-miss child counts partial prefilter credit (±2)", () => {
+    // Stored fingerprint says 2 children; the drifted target now has 1.
+    const target = document.createElement("div");
+    const child = document.createElement("span");
+    child.textContent = "Quarterly report download available here";
+    target.appendChild(child);
+    document.body.appendChild(target);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        textSnippet: "Quarterly report download available here",
+        fingerprint: "2:0:0",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(target);
+    expect(result!.strategy).toBe("scan");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Scan budget — batch callers cap full sweeps per pass
 // ---------------------------------------------------------------------------
 describe("scan budget", () => {

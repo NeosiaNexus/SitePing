@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { adjacentText, neighborText } from "../../src/dom/text-context";
+import { adjacentText, boundedText, boundedTextEnd, neighborText } from "../../src/dom/text-context";
 
 describe("adjacentText", () => {
   let parent: HTMLDivElement;
@@ -130,5 +130,45 @@ describe("neighborText", () => {
     parent.append(prev, target, next);
 
     expect(neighborText(target)).toBe(`${"X".repeat(40)} | ${"Y".repeat(40)}`);
+  });
+});
+
+describe("boundedText / boundedTextEnd", () => {
+  it("boundedText returns the leading text of a leaf element up to the cap", () => {
+    const el = document.createElement("div");
+    el.textContent = "abcdefghij";
+    expect(boundedText(el, 4)).toBe("abcd");
+    expect(boundedText(el, 100)).toBe("abcdefghij");
+  });
+
+  it("boundedText walks nested elements in tree order and stops at the cap", () => {
+    const el = document.createElement("div");
+    const b = document.createElement("b");
+    b.textContent = "Hello ";
+    const i = document.createElement("i");
+    i.textContent = "world";
+    el.append(b, i);
+    expect(boundedText(el, 8)).toBe("Hello wo");
+    expect(boundedText(el, 100)).toBe("Hello world");
+  });
+
+  it("boundedTextEnd returns the trailing text, walking nested elements in reverse", () => {
+    const el = document.createElement("div");
+    const b = document.createElement("b");
+    b.textContent = "Hello ";
+    const i = document.createElement("i");
+    i.textContent = "world";
+    el.append(b, i);
+    // Budget filled inside the nested <i> — the recursion's early-return path.
+    expect(boundedTextEnd(el, 3)).toBe("rld");
+    // Budget spans both nested elements.
+    expect(boundedTextEnd(el, 8)).toBe("lo world");
+    expect(boundedTextEnd(el, 100)).toBe("Hello world");
+  });
+
+  it("boundedTextEnd returns empty for an element with no text", () => {
+    const el = document.createElement("div");
+    el.appendChild(document.createElement("span"));
+    expect(boundedTextEnd(el, 10)).toBe("");
   });
 });

@@ -1232,6 +1232,31 @@ describe("MarkerManager", () => {
       vi.useRealTimers();
     });
 
+    it("backs off orphaned annotations too — no re-resolution while the back-off holds", () => {
+      vi.useFakeTimers();
+
+      markers.render([makeFeedback({ id: "fb-orphan-backoff" })]);
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      // The element disappears and resolution starts returning null.
+      const cached = mockState.element;
+      cached?.remove();
+      mockState.returnNull = true;
+
+      // Mutation tick 1: cache-miss → full resolution → null → back-off set.
+      (markers as unknown as { scheduleReposition(c: string): void }).scheduleReposition("mutation");
+      vi.advanceTimersByTime(400);
+
+      // Mutation tick 2, within the back-off: no resolution attempt at all.
+      const before = mockState.calls;
+      (markers as unknown as { scheduleReposition(c: string): void }).scheduleReposition("mutation");
+      vi.advanceTimersByTime(400);
+      expect(mockState.calls).toBe(before);
+
+      vi.useRealTimers();
+    });
+
     it("resize bypasses the hidden back-off (breakpoint flips must recheck immediately)", () => {
       vi.useFakeTimers();
 

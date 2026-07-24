@@ -72,16 +72,17 @@ export function editDistance(a: string, b: string): number {
   for (let j = 1; j <= bLen; j++) {
     curr[0] = j;
     for (let i = 1; i <= aLen; i++) {
-      // Indices are valid: i-1 in [0, aLen-1], j-1 in [0, bLen-1], loop bounds guarantee access
-      const prevDiag = prev[i - 1] ?? 0;
-      curr[i] = a[i - 1] === b[j - 1] ? prevDiag : 1 + Math.min(prevDiag, prev[i] ?? 0, curr[i - 1] ?? 0);
+      // Indices are provably in bounds (loop bounds; arrays sized aLen+1) —
+      // plain casts instead of ?? fallbacks that could never fire.
+      const prevDiag = prev[i - 1] as number;
+      curr[i] = a[i - 1] === b[j - 1] ? prevDiag : 1 + Math.min(prevDiag, prev[i] as number, curr[i - 1] as number);
     }
     const tmp = prev;
     prev = curr;
     curr = tmp;
   }
 
-  return prev[aLen] ?? 0; // aLen is within bounds — prev has aLen+1 entries
+  return prev[aLen] as number; // aLen is within bounds — prev has aLen+1 entries
 }
 
 /**
@@ -112,12 +113,13 @@ function sellersDistance(haystack: string, needle: string): number {
     curr[0] = 0;
     const hc = haystack.charCodeAt(j - 1);
     for (let i = 1; i <= n; i++) {
-      const sub = (prev[i - 1] ?? 0) + (needle.charCodeAt(i - 1) === hc ? 0 : 1);
-      const del = (prev[i] ?? 0) + 1;
-      const ins = (curr[i - 1] ?? 0) + 1;
+      // Indices provably in bounds — casts, not ?? arms that can never fire.
+      const sub = (prev[i - 1] as number) + (needle.charCodeAt(i - 1) === hc ? 0 : 1);
+      const del = (prev[i] as number) + 1;
+      const ins = (curr[i - 1] as number) + 1;
       curr[i] = Math.min(sub, del, ins);
     }
-    const last = curr[n] ?? n;
+    const last = curr[n] as number;
     if (last < best) best = last;
     const tmp = prev;
     prev = curr;

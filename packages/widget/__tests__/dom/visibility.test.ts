@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { classifyVisibility, visibilityFactor } from "../../src/dom/visibility";
 
 // jsdom implements neither checkVisibility nor layout (every rect is zero,
@@ -82,6 +82,19 @@ describe("classifyVisibility — fallback path (no checkVisibility)", () => {
     el.style.visibility = "hidden";
     el.getClientRects = () => rectList(1);
     expect(classifyVisibility(el)).toBe("soft-hidden");
+  });
+
+  it("fails open to 'visible' when getComputedStyle throws (detached views)", () => {
+    const el = makeDiv();
+    el.getClientRects = () => rectList(1);
+    vi.stubGlobal("getComputedStyle", () => {
+      throw new Error("no view");
+    });
+    try {
+      expect(classifyVisibility(el)).toBe("visible");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("probes the first element child for display:contents wrappers", () => {

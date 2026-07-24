@@ -275,6 +275,10 @@ describe("wordPairCounts / wordPairDiceAgainst", () => {
     expect(wordPairDiceAgainst(wordPairCounts(""), 0, "anything")).toBe(0);
   });
 
+  it("returns 0 when the TEXT has no word pairs (single-word candidate)", () => {
+    expect(wordPairDiceAgainst(wordPairCounts("a b"), 1, "solo")).toBe(0);
+  });
+
   it("discriminates word ORDER where character bigrams cannot", () => {
     // Same vocabulary, different order — the char-bigram blind spot.
     const needle = "free shipping on every order over fifty";
