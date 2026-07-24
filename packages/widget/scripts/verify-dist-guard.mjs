@@ -46,11 +46,12 @@ for (const [label, files] of Object.entries(groups)) {
     errors.push(`${label}: no files found in dist/`);
     continue;
   }
+  // Both guards read through the single readNodeEnv() helper, so the literal
+  // appears at least once per bundle (more if the minifier inlines the helper).
   const occurrences = files.reduce((n, f) => n + (sources.get(f)?.split(LITERAL).length - 1 || 0), 0);
-  // 2 uses in source: the production guard and the test-env shadow-mode check
-  if (occurrences < 2) {
+  if (occurrences < 1) {
     errors.push(
-      `${label}: found ${occurrences} occurrence(s) of \`${LITERAL}\` (expected >= 2) — ` +
+      `${label}: \`${LITERAL}\` not found — ` +
         "the build folded the guard again; check the identity define in tsup.config.ts",
     );
   }
