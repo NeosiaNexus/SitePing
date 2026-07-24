@@ -126,7 +126,10 @@ export const INBOX_CSS = `
 .spd-root a { color: inherit; text-decoration: none; }
 .spd-root svg { display: block; flex: none; }
 
-.spd-root :is(button, input, select) {
+/* :where() keeps this reset at zero specificity so every component rule
+   below wins by source order — :is(button) would weigh 0-1-1 and silently
+   defeat single-class rules like .spd-tab. */
+.spd-root :where(button, input, select) {
   font: inherit;
   color: inherit;
   background: none;
@@ -134,7 +137,7 @@ export const INBOX_CSS = `
   margin: 0;
   padding: 0;
 }
-.spd-root button { cursor: pointer; }
+.spd-root :where(button) { cursor: pointer; }
 
 .spd-root :focus-visible {
   outline: 2px solid var(--spd-accent);
