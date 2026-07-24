@@ -195,33 +195,52 @@ export const INBOX_CSS = `
 }
 
 /* tabs */
+/* Segmented control: inset track one step below the toolbar surface, the
+   active tab lifted back up as a bordered pill — each tab owns a clear zone
+   so a count never visually attaches to the next tab's glyph. */
 .spd-tabs {
   display: flex;
   align-items: center;
   gap: 2px;
   min-width: 0;
+  padding: 2px;
+  background: var(--spd-bg);
+  border: 1px solid var(--spd-border);
+  border-radius: 8px;
 }
 .spd-tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 9px;
+  height: 26px;
+  padding: 0 8px;
   font-size: 12px;
   font-weight: 500;
   color: var(--spd-text-2);
   border-radius: var(--spd-radius-sm);
   white-space: nowrap;
 }
-.spd-tab:hover { color: var(--spd-text); background: var(--spd-raised); }
-.spd-tab[aria-selected="true"] { color: var(--spd-text); background: var(--spd-raised); }
-.spd-tab-glyph svg { width: 14px; height: 14px; }
-.spd-tab-count {
-  font-size: 11px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--spd-text-3);
+.spd-tab:hover { color: var(--spd-text); background: color-mix(in srgb, var(--spd-raised) 60%, transparent); }
+.spd-tab[aria-selected="true"] {
+  color: var(--spd-text);
+  background: var(--spd-surface);
+  box-shadow: inset 0 0 0 1px var(--spd-border-strong);
 }
+.spd-tab-glyph { display: inline-flex; }
+.spd-tab-glyph svg { width: 13px; height: 13px; }
+.spd-tab-count {
+  min-width: 17px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--spd-text-3) 16%, transparent);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--spd-text-2);
+}
+.spd-tab[aria-selected="true"] .spd-tab-count { color: var(--spd-text); }
 
 .spd-toolbar-spacer { flex: 1 1 0; min-width: 0; }
 
