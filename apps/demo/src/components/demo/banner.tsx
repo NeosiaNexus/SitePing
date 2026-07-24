@@ -1,10 +1,15 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export function Banner() {
+  const onInbox = usePathname() === "/demo/inbox";
+
   return (
     <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5">
-      <div className="relative mx-auto flex max-w-7xl items-center justify-center text-sm text-amber-900">
-        <div className="flex items-center gap-2">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-6 gap-y-1 text-sm text-amber-900">
+        <div className="flex min-w-0 items-center gap-2">
           <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path
               fillRule="evenodd"
@@ -12,14 +17,29 @@ export function Banner() {
               clipRule="evenodd"
             />
           </svg>
-          <p>Live demo — data resets every 10 minutes and is not persisted to any database.</p>
+          <p>
+            {onInbox
+              ? "You're the freelancer now — feedback drawn on the demo site lands here. Data resets every 10 minutes."
+              : "Live demo — data resets every 10 minutes and is not persisted to any database."}
+          </p>
         </div>
-        <Link
-          href="/"
-          className="absolute right-0 shrink-0 font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700"
-        >
-          Back to SitePing
-        </Link>
+        <div className="flex shrink-0 items-center gap-4">
+          {onInbox ? (
+            <Link href="/demo" className="font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700">
+              Back to the demo site
+            </Link>
+          ) : (
+            <Link
+              href="/demo/inbox"
+              className="font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700"
+            >
+              Open the inbox
+            </Link>
+          )}
+          <Link href="/" className="font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700">
+            Back to SitePing
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ RUN bun install --frozen-lockfile
 # Build workspace packages then demo
 RUN bun run --filter='@siteping/core' build && \
     bun run --filter='@siteping/widget' build && \
+    bun run --filter='@siteping/dashboard' build && \
     bun run --filter='@siteping/adapter-memory' build && \
     bun run --filter='@siteping/adapter-prisma' build
 RUN cd apps/demo && bun run build
