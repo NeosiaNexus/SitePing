@@ -595,4 +595,78 @@ describe("createSitepingHandler", () => {
       consoleSpy.mockRestore();
     });
   });
+
+  // clientId is a browser-local dedup secret and authorEmail is PII — the
+  // handler strips/redacts them at the HTTP edge (#105); stores stay raw.
+  describe("response redaction", () => {
+    function feedbackRow(overrides: Record<string, unknown> = {}) {
+      return {
+        id: "fb-1",
+        ...validPayloadNoAnnotations,
+        status: "open",
+        resolvedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        annotations: [],
+        ...overrides,
+      };
+    }
+
+    it("GET without apiKey blanks authorEmail and strips clientId on every feedback", async () => {
+      prisma.sitepingFeedback.findMany.mockResolvedValue([
+        feedbackRow(),
+        feedbackRow({ id: "fb-2", clientId: "uuid-456", authorEmail: "bob@example.com" }),
+      ]);
+      prisma.sitepingFeedback.count.mockResolvedValue(2);
+      const res = await handler.GET(new Request("http://localhost/api/siteping?projectName=test-project"));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.feedbacks).toHaveLength(2);
+      for (const row of body.feedbacks) {
+        expect(row.authorEmail).toBe("");
+        expect("clientId" in row).toBe(false);
+      }
+    });
+
+    it("POST 201 strips clientId but keeps the submitter's own authorEmail", async () => {
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify(validPayloadNoAnnotations),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect("clientId" in body).toBe(false);
+      expect(body.authorEmail).toBe("alice@example.com");
+    });
+
+    it("POST dedup response strips clientId (no record-theft oracle) and keeps authorEmail", async () => {
+      prisma.sitepingFeedback.create.mockRejectedValue({ code: "P2002" });
+      prisma.sitepingFeedback.findUnique.mockResolvedValue(feedbackRow());
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify(validPayloadNoAnnotations),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect("clientId" in body).toBe(false);
+      expect(body.authorEmail).toBe("alice@example.com");
+    });
+
+    it("unauthenticated PATCH blanks authorEmail and strips clientId", async () => {
+      // handler has requireAuthForDestructive: false and no apiKey → PATCH is reachable unauthenticated
+      prisma.sitepingFeedback.findUnique.mockResolvedValue({ id: "fb-1", projectName: "test-project" });
+      prisma.sitepingFeedback.update.mockResolvedValue(feedbackRow({ status: "resolved" }));
+      const req = new Request("http://localhost/api/siteping", {
+        method: "PATCH",
+        body: JSON.stringify({ id: "fb-1", projectName: "test-project", status: "resolved" }),
+      });
+      const res = await handler.PATCH(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.authorEmail).toBe("");
+      expect("clientId" in body).toBe(false);
+    });
+  });
 });

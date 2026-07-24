@@ -75,7 +75,7 @@ All configuration options for `initSiteping()`:
 | `accentColor` | `string` | `'#0066ff'` | Widget accent color — hex color (`#RGB`, `#RRGGBB`, `#RRGGBBAA`) |
 | `theme` | `'light' \| 'dark' \| 'auto'` | `'light'` | Widget color theme |
 | `locale` | `'en' \| 'fr' \| 'de' \| 'es' \| 'it' \| 'pt' \| 'ru'` | `'en'` | Widget UI language. Unknown locales fall back to English |
-| `forceShow` | `boolean` | `false` | Render the widget even when it would normally be skipped — bypasses **both** the production guard and the mobile-viewport guard |
+| `forceShow` | `boolean` | `false` | Render the widget even when it would normally be skipped — bypasses **both** the production guard and the mobile-viewport guard. Does **not** bypass the SSR guard (the widget never renders without a DOM) |
 | `minViewportWidth` | `number` | `768` | Minimum viewport width (px) for the widget to render; below it `onSkip('mobile')` fires. Set `0` to allow mobile viewports |
 | `debug` | `boolean` | `false` | Enable debug logging to console |
 | `identity` | `{ name: string; email: string }` | — | Pre-fill author identity from the host (SSO). When set, the widget skips the identity modal |
@@ -95,7 +95,7 @@ All configuration options for `initSiteping()`:
 | `onError` | `(error) => void` | Called on API or internal errors |
 | `onAnnotationStart` | `() => void` | Called when annotation drawing starts |
 | `onAnnotationEnd` | `() => void` | Called when annotation drawing ends |
-| `onSkip` | `(reason) => void` | Called when widget is skipped (production/mobile) |
+| `onSkip` | `(reason) => void` | Called when widget is skipped (production/mobile/ssr) |
 
 ```ts
 initSiteping({
@@ -152,6 +152,20 @@ Two constraints to know:
 
 - **Values are read at init.** Changing `apiKey` or swapping the `headers` value after `initSiteping()` has run has no effect until you destroy and re-init. The `headers` **callback** is the escape hatch: it's invoked on every request, so read rotating tokens from a ref or module variable inside it rather than closing over React state.
 - **Cross-origin:** adapter-prisma's CORS preflight allows the `Content-Type` and `Authorization` headers only. Put credentials in `Authorization` (not a custom header name), or keep the endpoint same-origin.
+
+### How production detection works
+
+The widget skips rendering when `NODE_ENV` is `production`. The shipped bundle
+keeps the literal `process.env.NODE_ENV` expression, so:
+
+- **Bundled apps** (Next.js, Vite, webpack…): your bundler inlines its
+  environment at build time — the widget auto-hides in production builds and
+  shows in dev builds.
+- **Node/SSR and test runners**: the real `process.env.NODE_ENV` is read at
+  runtime (server-side, the widget always skips with `onSkip('ssr')`).
+- **Plain `<script>` tags** with no bundler and no `process` global: there is
+  no environment signal, so the widget renders — gate the `<script>` tag
+  yourself, or use `onSkip`/`forceShow` to control visibility explicitly.
 
 ## Return value API
 

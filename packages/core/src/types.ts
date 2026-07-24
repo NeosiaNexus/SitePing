@@ -21,8 +21,11 @@ export type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
  */
 export type SitepingLocale = BuiltinLocale | (string & {});
 
-/** Reasons reported through `SitepingConfig.onSkip`. */
-export type SitepingSkipReason = "production" | "mobile";
+/**
+ * Reasons reported through `SitepingConfig.onSkip` — production environment,
+ * mobile viewport, or server-side rendering (no `window`/`document`).
+ */
+export type SitepingSkipReason = "production" | "mobile" | "ssr";
 
 /** Per-channel + per-buffer-size diagnostics configuration. */
 export interface DiagnosticsCaptureOptions {
@@ -105,6 +108,8 @@ export interface SitepingConfig {
   /**
    * Render the widget even when it would normally be skipped — this bypasses
    * BOTH the production-environment guard AND the mobile-viewport guard.
+   * It does NOT bypass the SSR guard: without `window`/`document` the widget
+   * never renders and `onSkip("ssr")` fires instead.
    * Defaults to false. Use it for dedicated review tools, staging environments,
    * or responsive testing where you always want the widget present.
    */
@@ -200,7 +205,7 @@ export interface SitepingConfig {
    * before enabling in environments where they might log sensitive values.
    */
   captureDiagnostics?: boolean | DiagnosticsCaptureOptions | undefined;
-  /** Called when the widget is skipped (production mode, mobile viewport) */
+  /** Called when the widget is skipped (production mode, mobile viewport, SSR — no DOM) */
   onSkip?: (reason: SitepingSkipReason) => void;
   /**
    * Auto-focus a specific annotation when its ID appears in the URL query
@@ -873,6 +878,10 @@ export interface FeedbackResponse {
   viewport: string;
   userAgent: string;
   authorName: string;
+  /**
+   * May be an empty string — HTTP adapters redact it for unauthenticated
+   * requests. The full value requires a Bearer-authenticated request.
+   */
   authorEmail: string;
   resolvedAt: string | null;
   createdAt: string;
