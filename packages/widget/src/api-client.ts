@@ -95,8 +95,9 @@ export interface ApiClientAuth {
  * explicit `Authorization` wins.
  *
  * A function `headers` resolves once per call — retries inside
- * `resilientFetch` reuse the values (max retry window ~7s, acceptable for
- * short-lived tokens; the dashboard has the same per-request semantics). A
+ * `resilientFetch` reuse the values for the whole retry sequence — up to
+ * ~45s worst case with 4 attempts x 10s timeout plus backoff (the dashboard
+ * has the same per-request semantics, without retries). A
  * throwing/rejecting factory fails the request like a network error.
  */
 export async function buildRequestHeaders(auth: ApiClientAuth, json: boolean): Promise<Record<string, string>> {

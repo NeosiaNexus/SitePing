@@ -148,6 +148,11 @@ initSiteping({
 
 Queued offline feedbacks never store headers — auth is re-computed when the queue is flushed on the next page load.
 
+Two constraints to know:
+
+- **Values are read at init.** Changing `apiKey` or swapping the `headers` value after `initSiteping()` has run has no effect until you destroy and re-init. The `headers` **callback** is the escape hatch: it's invoked on every request, so read rotating tokens from a ref or module variable inside it rather than closing over React state.
+- **Cross-origin:** adapter-prisma's CORS preflight allows the `Content-Type` and `Authorization` headers only. Put credentials in `Authorization` (not a custom header name), or keep the endpoint same-origin.
+
 ## Return value API
 
 `initSiteping()` returns a `SitepingInstance` with the following methods:
