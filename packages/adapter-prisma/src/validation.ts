@@ -1,4 +1,4 @@
-import type { ConsoleDiagnosticLevel, FeedbackStatus, FeedbackType, Prettify } from "@siteping/core";
+import type { ConsoleDiagnosticLevel, FeedbackStatus, FeedbackType, Prettify, ScreenshotRegion } from "@siteping/core";
 import { FEEDBACK_STATUSES, FEEDBACK_TYPES } from "@siteping/core";
 import * as zod from "zod";
 
@@ -65,6 +65,17 @@ const diagnosticsSchema = z.object({
   network: z.array(networkEntrySchema).max(20),
 });
 
+// Annotation rect position within the screenshot image, as fractions [0, 1]
+// of the image dimensions (see `ScreenshotRegion` in core). Strict: this is
+// persisted verbatim into a JSON column, so unknown keys are rejected rather
+// than silently stored.
+export const screenshotRegionSchema = z.strictObject({
+  xPct: z.number().min(0).max(1),
+  yPct: z.number().min(0).max(1),
+  wPct: z.number().min(0).max(1),
+  hPct: z.number().min(0).max(1),
+});
+
 export const feedbackCreateSchema = z.object({
   projectName: z.string().min(1).max(200),
   type: z.enum(FEEDBACK_TYPES),
@@ -104,6 +115,11 @@ export const feedbackCreateSchema = z.object({
     .regex(/^data:image\/(jpeg|png|webp);base64,/, "screenshotDataUrl must be a data:image/* base64 URL")
     .nullable()
     .optional(),
+  // Optional annotation-rect position within the screenshot. Sent by widgets
+  // that capture context around the drawn rect; null + omitted are both
+  // accepted so legacy clients (and captures without a screenshot) keep
+  // working unchanged.
+  screenshotRegion: screenshotRegionSchema.nullable().optional(),
   // Optional console + failed-network snapshot. The widget only attaches
   // this when `captureDiagnostics` is enabled; null + omitted are both
   // accepted so existing clients keep working unchanged.
@@ -127,6 +143,16 @@ export const getQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   type: z.enum(FEEDBACK_TYPES).optional(),
   status: z.enum(FEEDBACK_STATUSES).optional(),
+  // Bucket status filter serialized as CSV over the wire (e.g.
+  // `statuses=open,in_progress`). Non-empty strings are split before each value
+  // is validated against the known statuses; `statuses` wins over the exact
+  // `status` filter downstream. Capped at 4 — the number of known statuses.
+  statuses: z
+    .preprocess(
+      (val) => (typeof val === "string" && val.length > 0 ? val.split(",") : val),
+      z.array(z.enum(FEEDBACK_STATUSES)).max(4),
+    )
+    .optional(),
   search: z.string().max(200).optional(),
   // Page scope filters — used by the panel's "this page / this type" controls
   url: z.string().max(2000).optional(),
@@ -200,6 +226,7 @@ export interface FeedbackCreateInput {
   annotations: AnnotationInput[];
   clientId: string;
   screenshotDataUrl?: string | null | undefined;
+  screenshotRegion?: ScreenshotRegion | null | undefined;
   diagnostics?: DiagnosticsInput | null | undefined;
 }
 
@@ -229,6 +256,7 @@ export interface GetQueryInput {
   limit: number;
   type?: FeedbackType | undefined;
   status?: FeedbackStatus | undefined;
+  statuses?: FeedbackStatus[] | undefined;
   search?: string | undefined;
   url?: string | undefined;
   urlPattern?: string | undefined;
