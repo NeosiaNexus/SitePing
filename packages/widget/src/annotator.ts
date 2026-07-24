@@ -327,6 +327,9 @@ export class Annotator {
     // A submission is already running with the popup open — ignore so we
     // can't orphan the first `popup.show()` / `runSubmission` pair.
     if (this.submissionInFlight) return;
+    // Mid-pointer-drag: the user is drawing — hijacking `drawingRect` for the
+    // keyboard highlight here would corrupt the drag's geometry updates.
+    if (this.isDrawing) return;
 
     const target = this.keyboardTarget;
     if (!target || !(target instanceof HTMLElement)) return;

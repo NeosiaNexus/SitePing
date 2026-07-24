@@ -18,6 +18,11 @@ export interface FocusTracker {
  * tooltip. Host-independent (tagName/closest checks only) so the annotator
  * can share it without holding a host reference — mirrors the screenshot
  * `ignoreElements` predicate.
+ *
+ * Host pages may put `data-siteping-ignore` on their own elements to mask
+ * them from screenshots — those are deliberately excluded from keyboard
+ * annotation targeting too: an element opted out of capture shouldn't become
+ * an annotation target through the Enter path.
  */
 export function isWidgetChrome(el: Element): boolean {
   return (

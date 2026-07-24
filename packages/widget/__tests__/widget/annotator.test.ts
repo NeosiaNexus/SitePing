@@ -659,6 +659,35 @@ describe("Annotator", () => {
 
       target.remove();
     });
+
+    it("Enter during an active pointer drag is ignored (drawingRect not hijacked)", async () => {
+      const target = document.createElement("button");
+      target.textContent = "Focus me";
+      document.body.appendChild(target);
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 40));
+      target.focus();
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+
+      // Start a pointer drag, then press Enter mid-drag: the keyboard path
+      // must not replace the in-progress drawingRect with its highlight.
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      const dragRect = overlay.querySelector("div[data-siteping-ignore]");
+      expect(dragRect).not.toBeNull();
+
+      overlay.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(completeListener).not.toHaveBeenCalled();
+      // The drag's rectangle is still the one in the overlay
+      expect(overlay.querySelector("div[data-siteping-ignore]")).toBe(dragRect);
+
+      target.remove();
+    });
   });
 
   // -------------------------------------------------------------------------
