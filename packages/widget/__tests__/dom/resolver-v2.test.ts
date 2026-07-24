@@ -520,13 +520,17 @@ describe("strongest-signal acceptance and confidence", () => {
 // Prefilter integrity — absent signals must not fabricate evidence
 // ---------------------------------------------------------------------------
 describe("prefilter with empty fingerprint", () => {
-  it("grants no phantom child-count bonus (Number(\"\") is 0, not NaN)", () => {
+  it('grants no phantom child-count bonus (Number("") is 0, not NaN)', () => {
     // An empty stored fingerprint once parsed to childCount 0, handing every
     // CHILDLESS decoy a structural bonus the multi-child true target never
     // got — enough to crowd it out of the scored top-K.
+    // Long enough that the true element's own Dice score (denominator grows
+    // with text length) sits BELOW decoys+phantom-bonus — shortening this
+    // text lets the target survive top-K even with the bug present.
     const trueText =
       "Quarterly revenue expanded across every region while operating margins improved despite persistent currency headwinds affecting the consolidated results. " +
-      "Management raised annual guidance citing robust subscription renewals, accelerating enterprise adoption, and disciplined expense control throughout the period.";
+      "Management raised annual guidance citing robust subscription renewals, accelerating enterprise adoption, and disciplined expense control throughout the period. " +
+      "The board additionally approved an expanded repurchase authorization reflecting confidence in durable long-term cash generation capacity.";
     const snippet = trueText.slice(0, 120);
 
     // True element: contains the snippet verbatim, but has THREE child spans.
