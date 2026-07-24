@@ -1190,6 +1190,10 @@ describe("Annotator", () => {
       // Escape key deactivates
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
       expect(annotator.isBusy).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Contextual screenshot capture — dataUrl + region passthrough & caching
   // -------------------------------------------------------------------------
 
