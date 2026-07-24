@@ -503,6 +503,155 @@ describe("ApiClient", () => {
 });
 
 // ---------------------------------------------------------------------------
+// auth & headers — mirrors the dashboard's createEndpointSource semantics
+// ---------------------------------------------------------------------------
+
+describe("ApiClient — auth & headers", () => {
+  const endpoint = "http://localhost/api/siteping";
+
+  const payload = {
+    projectName: "test",
+    type: "bug" as const,
+    message: "x",
+    url: "https://x.com",
+    viewport: "1x1",
+    userAgent: "t",
+    authorName: "A",
+    authorEmail: "a@b.com",
+    annotations: [],
+    clientId: "u",
+  };
+
+  beforeEach(() => {
+    // Fresh Response per call — some tests fire two requests and a Response
+    // body can only be consumed once.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function lastInit(): RequestInit {
+    return vi.mocked(fetch).mock.calls.at(-1)?.[1] as RequestInit;
+  }
+
+  function lastHeaders(): Record<string, string> {
+    return lastInit().headers as Record<string, string>;
+  }
+
+  it("adds Authorization: Bearer from apiKey on POST (alongside Content-Type)", async () => {
+    const client = new ApiClient(endpoint, "test", { apiKey: "secret-key" });
+    await client.sendFeedback(payload);
+    expect(lastHeaders()).toEqual({ "Content-Type": "application/json", Authorization: "Bearer secret-key" });
+  });
+
+  it("adds Authorization: Bearer from apiKey on GET without a Content-Type", async () => {
+    const client = new ApiClient(endpoint, "test", { apiKey: "secret-key" });
+    await client.getFeedbacks("test");
+    expect(lastHeaders()).toEqual({ Authorization: "Bearer secret-key" });
+  });
+
+  it("adds Authorization: Bearer from apiKey on PATCH and both DELETEs", async () => {
+    const client = new ApiClient(endpoint, "test", { apiKey: "secret-key" });
+
+    await client.resolveFeedback("fb-1", true);
+    expect(lastHeaders()).toEqual({ "Content-Type": "application/json", Authorization: "Bearer secret-key" });
+
+    await client.deleteFeedback("fb-1");
+    expect(lastHeaders()).toEqual({ "Content-Type": "application/json", Authorization: "Bearer secret-key" });
+
+    await client.deleteAllFeedbacks("test");
+    expect(lastHeaders()).toEqual({ "Content-Type": "application/json", Authorization: "Bearer secret-key" });
+  });
+
+  it("merges a static headers object", async () => {
+    const client = new ApiClient(endpoint, "test", { headers: { "X-Team": "acme" } });
+    await client.getFeedbacks("test");
+    expect(lastHeaders()).toEqual({ "X-Team": "acme" });
+  });
+
+  it("supports a sync headers function", async () => {
+    const client = new ApiClient(endpoint, "test", { headers: () => ({ "X-Sync": "1" }) });
+    await client.getFeedbacks("test");
+    expect(lastHeaders()["X-Sync"]).toBe("1");
+  });
+
+  it("calls an async headers function once per request (fresh token per call)", async () => {
+    const headers = vi.fn(async () => ({ Authorization: "Bearer async-token" }));
+    const client = new ApiClient(endpoint, "test", { headers });
+
+    await client.getFeedbacks("test");
+    await client.resolveFeedback("fb-1", true);
+
+    expect(headers).toHaveBeenCalledTimes(2);
+    expect(lastHeaders().Authorization).toBe("Bearer async-token");
+  });
+
+  it("lets an explicit Authorization header override apiKey", async () => {
+    const client = new ApiClient(endpoint, "test", {
+      apiKey: "from-api-key",
+      headers: { Authorization: "Bearer from-headers" },
+    });
+    await client.getFeedbacks("test");
+    expect(lastHeaders().Authorization).toBe("Bearer from-headers");
+  });
+
+  it("fails the request like a network error when the headers factory throws", async () => {
+    const client = new ApiClient(endpoint, "test", {
+      headers: () => {
+        throw new Error("token fetch failed");
+      },
+    });
+    const err = await client.getFeedbacks("test").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SitepingNetworkError);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the legacy no-headers GET wire shape when no auth is configured", async () => {
+    const client = new ApiClient(endpoint, "test");
+    await client.getFeedbacks("test");
+    expect("headers" in lastInit()).toBe(false);
+  });
+
+  it("does not attach an empty extra-headers object to GET", async () => {
+    const client = new ApiClient(endpoint, "test", { headers: {} });
+    await client.getFeedbacks("test");
+    expect("headers" in lastInit()).toBe(false);
+  });
+
+  it("never persists auth material into the localStorage retry queue", async () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    });
+    vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+
+    const client = new ApiClient(endpoint, "test", {
+      apiKey: "super-secret",
+      headers: () => ({ "X-Session": "token-material" }),
+    });
+    await expect(client.sendFeedback(payload)).rejects.toThrow();
+
+    // Let the fire-and-forget queue write (behind the Web Lock) settle.
+    await vi.waitFor(() => {
+      const raw = store.get("siteping_retry_queue");
+      expect(raw).toBeDefined();
+      const queue = JSON.parse(raw!) as Array<Record<string, unknown>>;
+      expect(queue).toEqual([{ endpoint, payload }]);
+      expect(raw).not.toContain("Authorization");
+      expect(raw).not.toContain("super-secret");
+      expect(raw).not.toContain("token-material");
+    });
+
+    vi.unstubAllGlobals();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // flushRetryQueue
 // ---------------------------------------------------------------------------
 
@@ -563,6 +712,37 @@ describe("flushRetryQueue", () => {
     await flushRetryQueue(endpoint);
 
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+  });
+
+  it("replays queued POSTs with auth headers computed at flush time", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "retry with auth",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "auth-1",
+    };
+
+    // The stored entry predates the auth config — headers come from the
+    // auth passed at flush time, not from the queue.
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify([{ endpoint, payload }]));
+    vi.mocked(fetch).mockResolvedValue(new Response("", { status: 201 }));
+
+    await flushRetryQueue(endpoint, null, { apiKey: "flush-key", headers: { "X-Flush": "1" } });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const init = vi.mocked(fetch).mock.calls[0][1] as RequestInit;
+    expect(init.headers).toEqual({
+      "Content-Type": "application/json",
+      Authorization: "Bearer flush-key",
+      "X-Flush": "1",
+    });
     expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
   });
 

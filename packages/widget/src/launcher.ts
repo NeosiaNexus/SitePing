@@ -250,7 +250,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     if (typeof endpoint !== "string" || endpoint.length === 0) {
       throw new Error("[siteping] internal invariant: endpoint must be a non-empty string in HTTP mode");
     }
-    return new ApiClient(endpoint, config.projectName);
+    return new ApiClient(endpoint, config.projectName, { apiKey: config.apiKey, headers: config.headers });
   })();
 
   // Wire config callbacks to event bus
@@ -577,7 +577,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // Flush retry queue on load (HTTP mode only — store mode has no retry queue)
   if (config.endpoint) {
-    flushRetryQueue(config.endpoint, config.identity ?? getIdentity())
+    flushRetryQueue(config.endpoint, config.identity ?? getIdentity(), {
+      apiKey: config.apiKey,
+      headers: config.headers,
+    })
       .then(() => log("Retry queue flushed"))
       .catch(() => {});
   }
