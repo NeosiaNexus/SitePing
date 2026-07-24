@@ -986,6 +986,26 @@ test.describe("Touch annotation", () => {
   });
 });
 
+test.describe("Production guard at dist level (#104)", () => {
+  // Regression test against bundler constant-folding: esbuild's browser
+  // platform statically replaces the literal `process.env.NODE_ENV` in the
+  // dist bundle, which used to fold the production guard into an
+  // unconditional skip. Without forceShow and with NODE_ENV='test'
+  // (non-production, set by the page before loading the widget), the real
+  // dist bundle must still mount the widget.
+  test("widget mounts without forceShow when NODE_ENV is not production", async ({ page, browserName }) => {
+    const project = `e2e-${browserName}-noforce`;
+    await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
+    await page.goto(`http://localhost:3999?project=${project}&noForceShow=1`);
+    await page.waitForSelector("siteping-widget", { state: "attached" });
+    await page.waitForFunction(() => {
+      const host = document.querySelector("siteping-widget");
+      return host?.shadowRoot?.querySelector(".sp-fab") !== null;
+    });
+    await expect(page.locator("siteping-widget")).toBeAttached();
+  });
+});
+
 test.describe("Cleanup", () => {
   test("destroy() removes all injected elements", async ({ page }) => {
     await expect(page.locator("siteping-widget")).toBeAttached();

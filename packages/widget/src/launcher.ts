@@ -72,6 +72,36 @@ function skippedInstance(): SitepingInstance {
   };
 }
 
+/**
+ * Read NODE_ENV so that BOTH detection paths keep working:
+ *
+ * - The literal `process.env.NODE_ENV` member expression must survive into
+ *   our own dist — an identity define in tsup.config.ts stops esbuild's
+ *   browser-platform auto-define from folding it to `"production"` and
+ *   deleting the guard from the shipped bundle (issue #104).
+ * - Shipping the literal lets the CONSUMER's bundler (webpack DefinePlugin,
+ *   Vite, esbuild) inline their real environment, so "dev-only by default"
+ *   works in bundled deployments even when no `process` global exists at
+ *   runtime. Computed-key dodges (`env["NODE_" + "ENV"]`) would defeat that
+ *   inlining — do not reintroduce them.
+ * - No `typeof process` gate: it would return before a consumer-inlined
+ *   constant is reached. Plain browsers without `process` (script-tag usage)
+ *   land in the catch instead. Runtime environments with a real `process`
+ *   (Node/SSR, E2E's `globalThis.process = { env: { NODE_ENV: 'test' } }`)
+ *   read it live.
+ *
+ * `scripts/verify-dist-guard.mjs` asserts these invariants against every
+ * built bundle after each build.
+ */
+function readNodeEnv(): string | undefined {
+  try {
+    return process.env.NODE_ENV;
+  } catch {
+    // No `process` global (plain browser) or restricted access — no signal
+    return undefined;
+  }
+}
+
 interface NormalisedDeepLink {
   enabled: boolean;
   param: string;
@@ -101,6 +131,14 @@ function normaliseDeepLinkOptions(value: SitepingConfig["deepLink"]): Normalised
  * - Overlay, markers, tooltips live outside (appended to document.body)
  */
 export function launch(config: SitepingConfig): SitepingInstance {
+  // Guard: no DOM, no widget — SSR frameworks (Next.js, Remix) may run the
+  // init on the server. Deliberately NOT bypassed by forceShow: the widget
+  // cannot render without a document.
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    config.onSkip?.("ssr");
+    return skippedInstance();
+  }
+
   // Debug helper — only logs when config.debug is true
   const log: (...args: unknown[]) => void = config.debug
     ? (...args: unknown[]) => console.debug("[siteping]", ...args)
@@ -112,20 +150,15 @@ export function launch(config: SitepingConfig): SitepingInstance {
     return instance;
   }
 
-  // Guard: only show in development (forceShow bypasses)
-  if (!config.forceShow) {
-    try {
-      // Check for Node/bundler production environment — avoid import.meta
-      // which causes "Critical dependency" warnings in Next.js webpack builds
-      if (typeof process !== "undefined" && process.env?.NODE_ENV === "production") {
-        const reason = "production";
-        console.info("[siteping] Widget not loaded: production mode detected. Use forceShow: true to override.");
-        config.onSkip?.(reason);
-        return skippedInstance();
-      }
-    } catch {
-      // Silently ignore — browser or restricted environment
-    }
+  // Guard: only show in development (forceShow bypasses). Uses readNodeEnv()
+  // instead of the literal `process.env.NODE_ENV` — avoids both bundler
+  // constant-folding (#104) and "Critical dependency" import.meta warnings
+  // in Next.js webpack builds.
+  if (!config.forceShow && readNodeEnv() === "production") {
+    const reason = "production";
+    console.info("[siteping] Widget not loaded: production mode detected. Use forceShow: true to override.");
+    config.onSkip?.(reason);
+    return skippedInstance();
   }
 
   // Guard: desktop only (viewport below the threshold = hidden). forceShow
@@ -218,7 +251,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     if (typeof endpoint !== "string" || endpoint.length === 0) {
       throw new Error("[siteping] internal invariant: endpoint must be a non-empty string in HTTP mode");
     }
-    return new ApiClient(endpoint, config.projectName);
+    return new ApiClient(endpoint, config.projectName, { apiKey: config.apiKey, headers: config.headers });
   })();
 
   // Wire config callbacks to event bus
@@ -248,19 +281,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   host.style.cssText = `position:fixed;z-index:${Z_INDEX_MAX};`;
   // Use open mode only for testing — closed in production for CSS isolation.
   // Shadow DOM mode is determined by environment, never by public config.
-  let isTestEnv = false;
-  try {
-    // Dynamic key prevents bundlers (tsup/esbuild) from statically replacing
-    // process.env.NODE_ENV at build time — the widget needs runtime detection
-    // so E2E tests can set globalThis.process = { env: { NODE_ENV: 'test' } }
-    const envKey = "NODE_" + "ENV";
-    if (typeof process !== "undefined" && process.env?.[envKey] === "test") {
-      isTestEnv = true;
-    }
-  } catch {
-    // Silently ignore — browser or restricted environment
-  }
-  const shadowMode = isTestEnv ? ("open" as const) : ("closed" as const);
+  const shadowMode = readNodeEnv() === "test" ? ("open" as const) : ("closed" as const);
   const shadow = host.attachShadow({ mode: shadowMode });
 
   // Inject styles into Shadow DOM — adoptedStyleSheets with fallback for Safari < 16.4
@@ -565,7 +586,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // Flush retry queue on load (HTTP mode only — store mode has no retry queue)
   if (config.endpoint) {
-    flushRetryQueue(config.endpoint, config.identity ?? getIdentity())
+    flushRetryQueue(config.endpoint, config.identity ?? getIdentity(), {
+      apiKey: config.apiKey,
+      headers: config.headers,
+    })
       .then(() => log("Retry queue flushed"))
       .catch(() => {});
   }

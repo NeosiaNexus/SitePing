@@ -68,12 +68,14 @@ All configuration options for `initSiteping()`:
 |--------|------|---------|-------------|
 | `endpoint` | `string` | — | Your API route (e.g. `/api/siteping`). Required unless `store` is provided |
 | `store` | `SitepingStore` | — | Direct store for client-side mode. When set, bypasses HTTP |
+| `apiKey` | `string` | — | Sent as `Authorization: Bearer <apiKey>` on every HTTP request. **Visible to every visitor** — see [Authentication](#authentication) before using it on a public site. Ignored in store mode |
+| `headers` | `Record<string, string>` or `() => headers` (sync or async) | — | Extra HTTP request headers, static or computed per request (e.g. a short-lived session token). An explicit `Authorization` entry overrides `apiKey`. Ignored in store mode |
 | `projectName` | `string` | — | **Required.** Scopes feedbacks to this project |
 | `position` | `'bottom-right' \| 'bottom-left'` | `'bottom-right'` | Widget FAB position |
 | `accentColor` | `string` | `'#0066ff'` | Widget accent color — hex color (`#RGB`, `#RRGGBB`, `#RRGGBBAA`) |
 | `theme` | `'light' \| 'dark' \| 'auto'` | `'light'` | Widget color theme |
 | `locale` | `'en' \| 'fr' \| 'de' \| 'es' \| 'it' \| 'pt' \| 'ru'` | `'en'` | Widget UI language. Unknown locales fall back to English |
-| `forceShow` | `boolean` | `false` | Render the widget even when it would normally be skipped — bypasses **both** the production guard and the mobile-viewport guard |
+| `forceShow` | `boolean` | `false` | Render the widget even when it would normally be skipped — bypasses **both** the production guard and the mobile-viewport guard. Does **not** bypass the SSR guard (the widget never renders without a DOM) |
 | `minViewportWidth` | `number` | `768` | Minimum viewport width (px) for the widget to render; below it `onSkip('mobile')` fires. Set `0` to allow mobile viewports |
 | `debug` | `boolean` | `false` | Enable debug logging to console |
 | `identity` | `{ name: string; email: string }` | — | Pre-fill author identity from the host (SSO). When set, the widget skips the identity modal |
@@ -93,7 +95,7 @@ All configuration options for `initSiteping()`:
 | `onError` | `(error) => void` | Called on API or internal errors |
 | `onAnnotationStart` | `() => void` | Called when annotation drawing starts |
 | `onAnnotationEnd` | `() => void` | Called when annotation drawing ends |
-| `onSkip` | `(reason) => void` | Called when widget is skipped (production/mobile) |
+| `onSkip` | `(reason) => void` | Called when widget is skipped (production/mobile/ssr) |
 
 ```ts
 initSiteping({
@@ -114,6 +116,56 @@ initSiteping({
   onSkip: (reason) => {},
 })
 ```
+
+### Authentication
+
+With the default [`@siteping/adapter-prisma`](https://www.npmjs.com/package/@siteping/adapter-prisma) handlers and an `apiKey` configured server-side, **POST** and **OPTIONS** stay public — anonymous visitors can keep submitting feedback with zero widget config — while **GET**, **PATCH**, and **DELETE** require `Authorization: Bearer <apiKey>`. Without auth, the widget can submit but cannot list markers, resolve, or delete. See the [adapter-prisma Authentication docs](https://www.npmjs.com/package/@siteping/adapter-prisma#authentication) for the server-side setup.
+
+For **internal tools already behind your own login**, a static key is fine:
+
+```ts
+initSiteping({
+  endpoint: '/api/siteping',
+  projectName: 'my-project',
+  apiKey: process.env.NEXT_PUBLIC_SITEPING_KEY, // shipped to the browser!
+})
+```
+
+> **⚠️ The widget runs in every visitor's browser.** Anything you put in `apiKey` (or static `headers`) is readable in your page source and grants GET/PATCH/DELETE on your feedback API. Never ship a static key on a public site.
+
+For **public sites**, use the `headers` callback to send a short-lived token minted by your backend for the signed-in reviewer. It runs once per request (sync or async), and an explicit `Authorization` entry overrides `apiKey`:
+
+```ts
+initSiteping({
+  endpoint: '/api/siteping',
+  projectName: 'my-project',
+  headers: async () => {
+    const { token } = await fetch('/api/siteping-token').then((r) => r.json())
+    return { Authorization: `Bearer ${token}` }
+  },
+})
+```
+
+Queued offline feedbacks never store headers — auth is re-computed when the queue is flushed on the next page load.
+
+Two constraints to know:
+
+- **Values are read at init.** Changing `apiKey` or swapping the `headers` value after `initSiteping()` has run has no effect until you destroy and re-init. The `headers` **callback** is the escape hatch: it's invoked on every request, so read rotating tokens from a ref or module variable inside it rather than closing over React state.
+- **Cross-origin:** adapter-prisma's CORS preflight allows the `Content-Type` and `Authorization` headers only. Put credentials in `Authorization` (not a custom header name), or keep the endpoint same-origin.
+
+### How production detection works
+
+The widget skips rendering when `NODE_ENV` is `production`. The shipped bundle
+keeps the literal `process.env.NODE_ENV` expression, so:
+
+- **Bundled apps** (Next.js, Vite, webpack…): your bundler inlines its
+  environment at build time — the widget auto-hides in production builds and
+  shows in dev builds.
+- **Node/SSR and test runners**: the real `process.env.NODE_ENV` is read at
+  runtime (server-side, the widget always skips with `onSkip('ssr')`).
+- **Plain `<script>` tags** with no bundler and no `process` global: there is
+  no environment signal, so the widget renders — gate the `<script>` tag
+  yourself, or use `onSkip`/`forceShow` to control visibility explicitly.
 
 ## Return value API
 

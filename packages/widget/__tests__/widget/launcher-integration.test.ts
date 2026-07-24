@@ -97,6 +97,7 @@ vi.mock(new URL("../../src/identity.js", import.meta.url).pathname, () => ({
   saveIdentity: (...args: unknown[]) => mockSaveIdentity(...args),
 }));
 
+import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
 import * as i18n from "../../src/i18n/index.js";
 import { launch } from "../../src/launcher.js";
 
@@ -1599,6 +1600,40 @@ describe("launcher — annotation:complete integration", () => {
       } finally {
         loadLocaleSpy.mockRestore();
       }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // auth config wiring — apiKey/headers flow into ApiClient + flushRetryQueue
+  // -------------------------------------------------------------------------
+
+  describe("auth config wiring", () => {
+    it("passes apiKey and headers from config to ApiClient and flushRetryQueue", () => {
+      const headers = { "X-Team": "acme" };
+      const instance = launch(defaultConfig({ apiKey: "widget-key", headers }));
+
+      expect(vi.mocked(ApiClient)).toHaveBeenCalledWith("/api/siteping", "test-project", {
+        apiKey: "widget-key",
+        headers,
+      });
+      expect(vi.mocked(flushRetryQueue)).toHaveBeenCalledWith(
+        "/api/siteping",
+        { name: "Test User", email: "test@example.com" },
+        { apiKey: "widget-key", headers },
+      );
+
+      instance.destroy();
+    });
+
+    it("passes an empty auth object when no auth is configured", () => {
+      const instance = launch(defaultConfig());
+
+      expect(vi.mocked(ApiClient)).toHaveBeenCalledWith("/api/siteping", "test-project", {
+        apiKey: undefined,
+        headers: undefined,
+      });
+
+      instance.destroy();
     });
   });
 });

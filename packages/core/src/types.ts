@@ -21,8 +21,11 @@ export type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
  */
 export type SitepingLocale = BuiltinLocale | (string & {});
 
-/** Reasons reported through `SitepingConfig.onSkip`. */
-export type SitepingSkipReason = "production" | "mobile";
+/**
+ * Reasons reported through `SitepingConfig.onSkip` — production environment,
+ * mobile viewport, or server-side rendering (no `window`/`document`).
+ */
+export type SitepingSkipReason = "production" | "mobile" | "ssr";
 
 /** Per-channel + per-buffer-size diagnostics configuration. */
 export interface DiagnosticsCaptureOptions {
@@ -44,10 +47,42 @@ export interface SitepingDeepLinkOptions {
   param?: string;
 }
 
+/**
+ * Extra request headers for HTTP mode — a static map, or a factory (sync or
+ * async) invoked once per request to produce fresh values (e.g. a short-lived
+ * session token).
+ */
+export type SitepingHeadersOption =
+  | Record<string, string>
+  | (() => Record<string, string> | Promise<Record<string, string>>);
+
 /** Configuration options for the Siteping widget. */
 export interface SitepingConfig {
   /** HTTP endpoint that receives feedbacks (e.g. '/api/siteping'). Required unless `store` is provided. */
   endpoint?: string | undefined;
+  /**
+   * Convenience auth for HTTP mode — sent as `Authorization: Bearer <apiKey>`
+   * on every request to `endpoint`.
+   *
+   * **WARNING: the widget runs in every visitor's browser, so a static key
+   * configured here is public** — anyone can read it from your page source
+   * and replay it against your API. Only use `apiKey` for internal tools
+   * already behind your own login. On public sites, prefer `headers` with a
+   * per-request factory returning a short-lived session token.
+   *
+   * Ignored in store mode.
+   */
+  apiKey?: string | undefined;
+  /**
+   * Extra headers for every HTTP-mode request — a static map, or a factory
+   * (sync or async) called once per request (e.g. to fetch a fresh session
+   * token). Merged over the widget's generated headers, so an explicit
+   * `Authorization` entry overrides `apiKey`. A throwing/rejecting factory
+   * fails the request like a network error.
+   *
+   * Ignored in store mode.
+   */
+  headers?: SitepingHeadersOption | undefined;
   /** Required — project identifier used to scope feedbacks */
   projectName: string;
   /** Direct store for client-side mode. When set, bypasses HTTP and uses the store directly in the browser. */
@@ -73,6 +108,8 @@ export interface SitepingConfig {
   /**
    * Render the widget even when it would normally be skipped — this bypasses
    * BOTH the production-environment guard AND the mobile-viewport guard.
+   * It does NOT bypass the SSR guard: without `window`/`document` the widget
+   * never renders and `onSkip("ssr")` fires instead.
    * Defaults to false. Use it for dedicated review tools, staging environments,
    * or responsive testing where you always want the widget present.
    */
@@ -168,7 +205,7 @@ export interface SitepingConfig {
    * before enabling in environments where they might log sensitive values.
    */
   captureDiagnostics?: boolean | DiagnosticsCaptureOptions | undefined;
-  /** Called when the widget is skipped (production mode, mobile viewport) */
+  /** Called when the widget is skipped (production mode, mobile viewport, SSR — no DOM) */
   onSkip?: (reason: SitepingSkipReason) => void;
   /**
    * Auto-focus a specific annotation when its ID appears in the URL query
@@ -841,6 +878,10 @@ export interface FeedbackResponse {
   viewport: string;
   userAgent: string;
   authorName: string;
+  /**
+   * May be an empty string — HTTP adapters redact it for unauthenticated
+   * requests. The full value requires a Bearer-authenticated request.
+   */
   authorEmail: string;
   resolvedAt: string | null;
   createdAt: string;

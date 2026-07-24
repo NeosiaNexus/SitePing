@@ -164,8 +164,23 @@ const server = createServer((req, res) => {
   // Serve HTML — accept ?project=xxx for per-browser isolation
   if (url.pathname === "/" || url.pathname === "/index.html") {
     const project = url.searchParams.get("project") || "e2e-test";
+    let html = HTML.replace("projectName: 'e2e-test'", `projectName: '${project}'`);
+    // ?noForceShow=1 omits forceShow from the init config so the production
+    // guard in the real dist bundle is exercised: NODE_ENV is 'test' (set in
+    // the page above), so the widget must still mount — see #104.
+    if (url.searchParams.get("noForceShow") === "1") {
+      const stripped = html.replace("      forceShow: true,\n", "");
+      if (stripped === html) {
+        // The exact-string replace missed (template reformatted?) — serving
+        // the forceShow page would make the #104 regression test vacuous.
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("noForceShow=1: failed to strip forceShow from the page template");
+        return;
+      }
+      html = stripped;
+    }
     res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(HTML.replace("projectName: 'e2e-test'", `projectName: '${project}'`));
+    res.end(html);
     return;
   }
 
