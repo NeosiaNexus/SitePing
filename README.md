@@ -52,11 +52,12 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **Radial menu** — Clean FAB with expandable actions (chat, annotate, toggle)
 - **Feedback panel** — Searchable, filterable history with type chips and resolve/unresolve
 - **Smart tooltips** — Hover a marker to preview, click to open the panel
+- **Triage inbox** — `<SitepingInbox />` React component (`@siteping/dashboard`): keyboard-first triage with annotated screenshots re-rendered in place
 - **Retry with backoff** — Failed submissions are queued in localStorage and retried automatically
 - **Zero config auth** — Clients identify once (name + email), persisted locally
 - **Full event system** — `onOpen`, `onClose`, `onFeedbackSent`, `onError`, `onAnnotationStart`, `onAnnotationEnd`
 - **CLI scaffold** — `npx @siteping/cli init` sets up Prisma schema + API route
-- **Monorepo** — Split into independent packages (`widget`, `adapter-prisma`, `adapter-memory`, `adapter-localstorage`, `cli`)
+- **Monorepo** — Split into independent packages (`widget`, `dashboard`, `adapter-prisma`, `adapter-memory`, `adapter-localstorage`, `cli`)
 - **Dev-only by default** — Widget auto-hides in production unless `forceShow: true`
 - **Lightweight** — ~49 KB gzipped today; after the upcoming bundle split (in progress), target is ~30 KB gzipped on first paint
 
@@ -300,6 +301,8 @@ Set masks **before** turning the option on in production — once a feedback is 
 
 **Output.** The widget produces JPEG at quality 0.85, downscaled to a max width of 1200 CSS pixels (≈ 50–150 KB for a typical annotated area). Both numbers are currently fixed; if a use case appears that needs different settings, the option could grow into `enableScreenshot: true | { quality?, maxWidth? }` — file an issue if you'd find that useful.
 
+**Context framing.** The capture includes padding around the drawn rectangle, and the rect's position within the image ships alongside as `screenshotRegion` (fractions of the image). That's what lets the [triage inbox](#triage-inbox--sitepingdashboard) re-render the client's annotation on top of the screenshot. Captures from older widget versions render fine — just without the overlay.
+
 **Failure handling.** If `html2canvas` fails to load or the capture throws (CORS-tainted canvas, missing 2D context, …), the widget returns `null` and the feedback still submits without the screenshot — the option never blocks a submission.
 
 ---
@@ -339,6 +342,47 @@ npx prisma db push
 The column is nullable so existing rows are unaffected. Hosts who don't want the migration can leave `captureDiagnostics` off — the widget never sends the field and the adapter never asks Prisma to write it.
 
 **Privacy.** Console messages may contain whatever your app logs (user emails, IDs, …). Failed network URLs include the query string but never the response body. Inform end users in environments where they might log sensitive values, or restrict capture to internal builds.
+
+---
+
+## Triage inbox — `@siteping/dashboard`
+
+The freelancer's side of the loop: a Linear-style inbox React component that triages every feedback across pages — keyboard-first, with the client's annotation re-rendered on top of the screenshot.
+
+```bash
+npm install @siteping/dashboard
+```
+
+```tsx
+"use client";
+import { SitepingInbox } from "@siteping/dashboard";
+
+export default function AdminFeedbackPage() {
+  return (
+    <SitepingInbox
+      endpoint="/api/siteping"
+      projects={["my-client-site"]}
+      apiKey={process.env.NEXT_PUBLIC_SITEPING_KEY} // if your handler sets one
+    />
+  );
+}
+```
+
+- **Annotated screenshots** — the drawn rect is re-rendered on the capture (`screenshotRegion`), with a spotlight on what the client circled
+- **Keyboard triage** — `j`/`k` navigate, `e` resolve, `p` in progress, `x` won't fix, `Enter` opens details, `?` shows all shortcuts
+- **Four statuses** — `open`, `in_progress`, `resolved`, `wont_fix` (the widget stays simple for clients: resolve/reopen)
+- **Deep links** — "Open on page" jumps to the live page with the annotation focused (`?siteping=<id>`)
+- **Store or HTTP** — same adapter pattern as the widget: pass a `store` for client-side/demo mode, or an `endpoint` (+ `apiKey`/custom `headers`)
+- **Headless option** — `useSitepingInbox()` exposes the full state machine if you want your own UI
+
+**Storage migration.** The Prisma schema gains a `screenshotRegion Json?` column (nullable — existing rows unaffected):
+
+```bash
+npx siteping sync
+npx prisma db push
+```
+
+See [`packages/dashboard`](./packages/dashboard) for the full props, theming (accent color, dark mode, density, CSS variables), and i18n docs.
 
 ---
 
@@ -529,6 +573,7 @@ Browser              Server         Browser
 | Package | Platform | Description |
 |---------|----------|-------------|
 | [`@siteping/widget`](https://www.npmjs.com/package/@siteping/widget) | Browser | Widget: `initSiteping()` |
+| [`@siteping/dashboard`](https://www.npmjs.com/package/@siteping/dashboard) | React | Triage inbox: `<SitepingInbox />` |
 | [`@siteping/adapter-prisma`](https://www.npmjs.com/package/@siteping/adapter-prisma) | Node.js | Server: `createSitepingHandler()` |
 | [`@siteping/adapter-memory`](https://www.npmjs.com/package/@siteping/adapter-memory) | Any | In-memory store (testing, demos, serverless) |
 | [`@siteping/adapter-localstorage`](https://www.npmjs.com/package/@siteping/adapter-localstorage) | Browser | Client-side localStorage store (demos, prototyping) |

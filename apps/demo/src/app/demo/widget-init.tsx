@@ -15,6 +15,11 @@ export function WidgetInit() {
         forceShow: true,
         accentColor: "#173CFF",
         locale: "en",
+        // Demo: capture the annotated area (plus context) so the inbox at
+        // /demo/inbox can re-render the annotation on the screenshot.
+        enableScreenshot: true,
+        // "Open on page" links from the inbox (?siteping=<id>) focus the annotation.
+        deepLink: true,
         // Demo: capture console + failed XHR/fetch on each feedback so
         // viewers can replay how the page got into the state they
         // annotated. Safe in this sandbox — no PII is logged.

@@ -1,0 +1,90 @@
+import type { Translations } from "./types.js";
+
+export const de: Translations = {
+  // Inbox
+  "inbox.regionLabel": "Feedback-Posteingang",
+  "inbox.listLabel": "Feedbackliste",
+  "inbox.statusFilter": "Nach Status filtern",
+  "inbox.searchPlaceholder": "Nachrichten durchsuchen…",
+  "inbox.searchAria": "Feedbacks suchen",
+  "inbox.clearSearch": "Suche leeren",
+  "inbox.resultsCount": "{count} Feedbacks",
+  "inbox.typeFilter": "Nach Typ filtern",
+  "inbox.typeAll": "Alle Typen",
+  "inbox.project": "Projekt",
+  "inbox.refresh": "Aktualisieren",
+  "inbox.loadMore": "Mehr laden ({count})",
+  "inbox.emptyTitle": "Noch kein Feedback",
+  "inbox.emptySub": "Über das Widget gesendetes Feedback landet hier.",
+  "inbox.emptyFilteredTitle": "Nichts gefunden",
+  "inbox.emptyFilteredSub": "Kein Feedback entspricht diesem Filter.",
+  "inbox.viewAll": "Alle anzeigen",
+  "inbox.inboxZeroTitle": "Alles erledigt",
+  "inbox.inboxZeroSub": "Alle offenen Feedbacks wurden bearbeitet.",
+  "inbox.loadError": "Feedbacks konnten nicht geladen werden",
+  "inbox.retry": "Erneut versuchen",
+  "inbox.cancel": "Abbrechen",
+  "inbox.undo": "Rückgängig",
+  "inbox.actionFailed": "Etwas ist schiefgelaufen. Änderung zurückgesetzt.",
+  "inbox.copied": "Kopiert",
+  "inbox.markedAs": "Markiert als {status}",
+  "inbox.deleted": "Feedback gelöscht",
+
+  // Status labels
+  "status.all": "Alle",
+  "status.open": "Offen",
+  "status.in_progress": "In Arbeit",
+  "status.resolved": "Erledigt",
+  "status.wont_fix": "Wird nicht behoben",
+
+  // Feedback type labels
+  "type.question": "Frage",
+  "type.change": "Änderung",
+  "type.bug": "Fehler",
+  "type.other": "Sonstiges",
+
+  // Drawer
+  "drawer.title": "Feedback-Details",
+  "drawer.close": "Details schließen",
+  "drawer.openOnPage": "Auf der Seite öffnen",
+  "drawer.status": "Status",
+  "drawer.author": "Autor",
+  "drawer.page": "Seite",
+  "drawer.viewport": "Viewport",
+  "drawer.submitted": "Gesendet",
+  "drawer.browser": "Browser",
+  "drawer.anchor": "Anker",
+  "drawer.diagnostics": "Diagnose",
+  "drawer.showAllDiagnostics": "Alle anzeigen ({count})",
+  "drawer.hideAnnotation": "Anmerkung ausblenden",
+  "drawer.showAnnotation": "Anmerkung anzeigen",
+  "drawer.screenshotAlt": "Screenshot des markierten Bereichs",
+  "drawer.zoomScreenshot": "Screenshot vergrößern",
+  "drawer.noScreenshot": "Kein Screenshot für dieses Feedback",
+  "drawer.delete": "Feedback löschen",
+  "drawer.deleteConfirm": "Endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+  "drawer.deleteYes": "Löschen",
+
+  // Keyboard hints
+  "hints.navigate": "navigieren",
+  "hints.open": "öffnen",
+  "hints.resolve": "erledigen",
+  "hints.inProgress": "in Arbeit",
+  "hints.wontFix": "wird nicht behoben",
+  "hints.help": "Tastenkürzel",
+
+  // Shortcuts overlay
+  "shortcuts.title": "Tastenkürzel",
+  "shortcuts.close": "Schließen",
+
+  // Relative time
+  "time.now": "gerade eben",
+  "time.minutes": "{n} Min.",
+  "time.hours": "{n} Std.",
+  "time.days": "{n} T.",
+  "time.weeks": "{n} Wo.",
+  "time.month": "{n} Mon.",
+  "time.months": "{n} Mon.",
+  "time.year": "{n} J.",
+  "time.years": "{n} J.",
+};

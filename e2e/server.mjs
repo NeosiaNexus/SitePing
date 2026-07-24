@@ -194,11 +194,18 @@ const server = createServer((req, res) => {
       const projectName = url.searchParams.get("projectName");
       const type = url.searchParams.get("type");
       const status = url.searchParams.get("status");
+      // CSV bucket filter (e.g. "open,in_progress") — wins over `status`, mirrors adapter-prisma.
+      const statuses = url.searchParams.get("statuses");
       const search = url.searchParams.get("search");
 
       let results = feedbacks.filter(f => f.projectName === projectName);
       if (type) results = results.filter(f => f.type === type);
-      if (status) results = results.filter(f => f.status === status);
+      if (statuses) {
+        const allowed = statuses.split(",");
+        results = results.filter(f => allowed.includes(f.status));
+      } else if (status) {
+        results = results.filter(f => f.status === status);
+      }
       if (search) results = results.filter(f => f.message.includes(search));
 
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -252,7 +259,8 @@ const server = createServer((req, res) => {
           const fb = feedbacks.find(f => f.id === id);
           if (!fb) { res.writeHead(404); res.end(JSON.stringify({ error: "Not found" })); return; }
           fb.status = status;
-          fb.resolvedAt = status === "resolved" ? new Date().toISOString() : null;
+          // Closure timestamp for terminal statuses — mirrors adapter-prisma's isClosedStatus derivation.
+          fb.resolvedAt = status === "resolved" || status === "wont_fix" ? new Date().toISOString() : null;
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(fb));
         } catch {

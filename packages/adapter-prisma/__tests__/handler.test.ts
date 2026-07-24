@@ -142,6 +142,42 @@ describe("createSitepingHandler", () => {
       expect(flatAnnotation.viewportH).toBe(1080);
       expect(flatAnnotation.devicePixelRatio).toBe(2);
     });
+
+    it("passes screenshotRegion into Prisma create", async () => {
+      const region = { xPct: 0.25, yPct: 0.4, wPct: 0.3, hPct: 0.1 };
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify({ ...validPayloadNoAnnotations, screenshotRegion: region }),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(201);
+      const createArg = prisma.sitepingFeedback.create.mock.calls[0][0] as { data: Record<string, unknown> };
+      expect(createArg.data.screenshotRegion).toEqual(region);
+    });
+
+    it("omits the screenshotRegion column when the payload has none (unsynced schemas)", async () => {
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify(validPayloadNoAnnotations),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(201);
+      const createArg = prisma.sitepingFeedback.create.mock.calls[0][0] as { data: Record<string, unknown> };
+      expect(createArg.data).not.toHaveProperty("screenshotRegion");
+    });
+
+    it("returns 400 for an invalid screenshotRegion", async () => {
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify({
+          ...validPayloadNoAnnotations,
+          screenshotRegion: { xPct: 1.5, yPct: 0, wPct: 0.5, hPct: 0.5 },
+        }),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(400);
+      expect(prisma.sitepingFeedback.create).not.toHaveBeenCalled();
+    });
   });
 
   describe("GET", () => {
@@ -176,6 +212,42 @@ describe("createSitepingHandler", () => {
       const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
       expect(callArgs.where.type).toBe("bug");
       expect(callArgs.where.status).toBe("open");
+    });
+
+    it.each(["in_progress", "wont_fix"] as const)("applies the %s status filter", async (status) => {
+      prisma.sitepingFeedback.findMany.mockResolvedValue([]);
+      prisma.sitepingFeedback.count.mockResolvedValue(0);
+      const req = new Request(`http://localhost/api/siteping?projectName=test&status=${status}`);
+      const res = await handler.GET(req);
+      expect(res.status).toBe(200);
+      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
+      expect(callArgs.where.status).toBe(status);
+    });
+
+    it("applies a statuses bucket as where.status.in", async () => {
+      prisma.sitepingFeedback.findMany.mockResolvedValue([]);
+      prisma.sitepingFeedback.count.mockResolvedValue(0);
+      const req = new Request("http://localhost/api/siteping?projectName=test&statuses=open,in_progress");
+      const res = await handler.GET(req);
+      expect(res.status).toBe(200);
+      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
+      expect(callArgs.where.status).toEqual({ in: ["open", "in_progress"] });
+    });
+
+    it("prefers the statuses bucket over an exact status when both are present", async () => {
+      prisma.sitepingFeedback.findMany.mockResolvedValue([]);
+      prisma.sitepingFeedback.count.mockResolvedValue(0);
+      const req = new Request("http://localhost/api/siteping?projectName=test&status=open&statuses=resolved,wont_fix");
+      const res = await handler.GET(req);
+      expect(res.status).toBe(200);
+      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
+      expect(callArgs.where.status).toEqual({ in: ["resolved", "wont_fix"] });
+    });
+
+    it("rejects a statuses bucket with an unknown value", async () => {
+      const req = new Request("http://localhost/api/siteping?projectName=test&statuses=open,bogus");
+      const res = await handler.GET(req);
+      expect(res.status).toBe(400);
     });
 
     describe("?search filter — case-insensitive mode", () => {
@@ -393,6 +465,38 @@ describe("createSitepingHandler", () => {
       await handler.PATCH(req);
       const updateArgs = prisma.sitepingFeedback.update.mock.calls[0][0] as { data: Record<string, unknown> };
       expect(updateArgs.data.resolvedAt).toBeNull();
+    });
+
+    // resolvedAt is the CLOSURE timestamp — derived at the handler edge from
+    // the status: set for terminal statuses (resolved, wont_fix), null for
+    // active ones (open, in_progress).
+    it.each([
+      ["open", null],
+      ["in_progress", null],
+      ["resolved", "date"],
+      ["wont_fix", "date"],
+    ] as const)("PATCH to %s derives resolvedAt = %s", async (status, expected) => {
+      prisma.sitepingFeedback.findUnique.mockResolvedValue({ id: "fb-1", projectName: "test-project" });
+      prisma.sitepingFeedback.update.mockResolvedValue({
+        id: "fb-1",
+        projectName: "test-project",
+        status,
+        resolvedAt: expected === "date" ? new Date().toISOString() : null,
+        annotations: [],
+      });
+      const req = new Request("http://localhost/api/siteping", {
+        method: "PATCH",
+        body: JSON.stringify({ id: "fb-1", projectName: "test-project", status }),
+      });
+      const res = await handler.PATCH(req);
+      expect(res.status).toBe(200);
+      const updateArgs = prisma.sitepingFeedback.update.mock.calls[0][0] as { data: Record<string, unknown> };
+      expect(updateArgs.data.status).toBe(status);
+      if (expected === "date") {
+        expect(updateArgs.data.resolvedAt).toBeInstanceOf(Date);
+      } else {
+        expect(updateArgs.data.resolvedAt).toBeNull();
+      }
     });
 
     it("returns 404 when feedback belongs to a different project", async () => {

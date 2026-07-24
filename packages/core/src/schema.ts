@@ -103,6 +103,7 @@ const _SITEPING_MODELS = {
       url: { type: "String" },
       urlPattern: { type: "String", optional: true },
       screenshotUrl: { type: "String", optional: true, nativeType: "Text" },
+      screenshotRegion: { type: "Json", optional: true },
       diagnostics: { type: "Json", optional: true },
       viewport: { type: "String" },
       userAgent: { type: "String" },

@@ -75,9 +75,13 @@ function makeFeedbackRecord(overrides?: Partial<FeedbackRecord>): FeedbackRecord
     authorName: "Alice",
     authorEmail: "alice@test.com",
     clientId: "uuid-123",
+    urlPattern: null,
     resolvedAt: null,
     createdAt: now,
     updatedAt: now,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     annotations: [
       {
         id: "ann-1",
@@ -185,6 +189,70 @@ describe("StoreClient", () => {
       const response = await client.sendFeedback(samplePayload);
       expect("clientId" in response).toBe(false);
     });
+
+    it("forwards screenshotRegion to store.createFeedback", async () => {
+      vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord());
+      const region = { xPct: 0.25, yPct: 0.1, wPct: 0.5, hPct: 0.4 };
+
+      await client.sendFeedback({ ...samplePayload, screenshotRegion: region });
+      const input = vi.mocked(store.createFeedback).mock.calls[0]![0] as FeedbackCreateInput;
+
+      expect(input.screenshotRegion).toEqual(region);
+    });
+
+    it("defaults screenshotRegion to null when the payload omits it", async () => {
+      vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord());
+
+      await client.sendFeedback(samplePayload);
+      const input = vi.mocked(store.createFeedback).mock.calls[0]![0] as FeedbackCreateInput;
+
+      expect(input.screenshotRegion).toBeNull();
+    });
+
+    it("forwards diagnostics to store.createFeedback (regression: previously dropped)", async () => {
+      vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord());
+      const diagnostics = {
+        console: [{ level: "error" as const, timestamp: "2025-06-01T11:59:00.000Z", message: "boom" }],
+        network: [
+          {
+            url: "https://api.test/fail",
+            method: "GET",
+            status: 500,
+            durationMs: 120,
+            timestamp: "2025-06-01T11:59:30.000Z",
+          },
+        ],
+      };
+
+      await client.sendFeedback({ ...samplePayload, diagnostics });
+      const input = vi.mocked(store.createFeedback).mock.calls[0]![0] as FeedbackCreateInput;
+
+      expect(input.diagnostics).toEqual(diagnostics);
+    });
+
+    it("defaults diagnostics to null when the payload omits it", async () => {
+      vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord());
+
+      await client.sendFeedback(samplePayload);
+      const input = vi.mocked(store.createFeedback).mock.calls[0]![0] as FeedbackCreateInput;
+
+      expect(input.diagnostics).toBeNull();
+    });
+
+    it("includes screenshotRegion in the response", async () => {
+      const region = { xPct: 0.2, yPct: 0.3, wPct: 0.4, hPct: 0.1 };
+      vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord({ screenshotRegion: region }));
+
+      const response = await client.sendFeedback(samplePayload);
+      expect(response.screenshotRegion).toEqual(region);
+    });
+
+    it("serializes screenshotRegion as null for records without one", async () => {
+      vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord());
+
+      const response = await client.sendFeedback(samplePayload);
+      expect(response.screenshotRegion).toBeNull();
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -205,6 +273,14 @@ describe("StoreClient", () => {
         status: "open",
         search: "hello",
       });
+    });
+
+    it("passes the statuses bucket through to the store", async () => {
+      vi.mocked(store.getFeedbacks).mockResolvedValue({ feedbacks: [], total: 0 });
+
+      await client.getFeedbacks("my-project", { statuses: ["open", "in_progress"] });
+
+      expect(store.getFeedbacks).toHaveBeenCalledWith(expect.objectContaining({ statuses: ["open", "in_progress"] }));
     });
 
     it("handles missing options", async () => {

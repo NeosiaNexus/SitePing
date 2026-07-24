@@ -296,7 +296,7 @@ function hasBlockIndex(model: Model, idx: IndexDef): boolean {
     if (p.type !== "attribute" || (p as BlockAttribute).name !== "index") return false;
     const attr = p as BlockAttribute;
     const firstArg = attr.args?.[0];
-    if (!firstArg || firstArg.type !== "attributeArgument") return false;
+    if (firstArg?.type !== "attributeArgument") return false;
     const val = firstArg.value;
     if (typeof val === "object" && val !== null && "type" in val && val.type === "array") {
       return (val as { type: "array"; args: string[] }).args.join(",") === key;

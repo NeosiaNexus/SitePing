@@ -1,6 +1,6 @@
 {
   "name": "@siteping/adapter-localstorage",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "description": "localStorage adapter for Siteping — client-side feedback persistence without a server",
   "type": "module",
   "sideEffects": false,

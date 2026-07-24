@@ -1,11 +1,11 @@
-import type { AnnotationPayload, FeedbackType } from "@siteping/core";
+import type { AnnotationPayload, FeedbackType, ScreenshotRegion } from "@siteping/core";
 import { INSTANT_ANNOTATION_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anchor.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
-import { captureScreenshot } from "./screenshot.js";
+import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screenshot.js";
 import type { ThemeColors } from "./styles/theme.js";
 
 export interface AnnotationComplete {
@@ -17,6 +17,12 @@ export interface AnnotationComplete {
    * is disabled / failed / the peer dep is missing.
    */
   screenshotDataUrl?: string | null | undefined;
+  /**
+   * Where the drawn rect sits within the captured screenshot, as fractions
+   * of the image dimensions — see `ScreenshotRegion`. Null whenever
+   * `screenshotDataUrl` is null.
+   */
+  screenshotRegion?: ScreenshotRegion | null | undefined;
 }
 
 /**
@@ -96,13 +102,14 @@ export class Annotator {
   }
 
   /**
-   * Capture a screenshot of the drawn rect when `enableScreenshot` is on.
-   * Returns null on disable / capture failure / missing peer dep — the
-   * feedback is always submitted regardless.
+   * Capture a contextual screenshot of the drawn rect (padded with the
+   * surrounding UI, plus the rect's region within the image) when
+   * `enableScreenshot` is on. Returns null on disable / capture failure /
+   * missing peer dep — the feedback is always submitted regardless.
    */
-  private async maybeCapture(rect: DOMRect): Promise<string | null> {
+  private async maybeCapture(rect: DOMRect): Promise<AnnotatedScreenshot | null> {
     if (!this.enableScreenshot) return null;
-    return captureScreenshot(rect);
+    return captureAnnotatedScreenshot(rect);
   }
 
   private activate(): void {
@@ -318,7 +325,7 @@ export class Annotator {
 
     // Submission stays inside the popup so the user gets a visible spinner
     // until the server confirms — see finishDrawing for the rationale.
-    const screenshotCache: { value?: string | null } = {};
+    const screenshotCache: { value?: AnnotatedScreenshot | null } = {};
     const result = await this.popup.show(rectBounds, (formResult) =>
       this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
     );
@@ -431,7 +438,7 @@ export class Annotator {
     // Keep the drawn rectangle visible while the popup is open so the user
     // can see what they're sending feedback about — including while the
     // submit-spinner is running. We only remove it after the popup closes.
-    const screenshotCache: { value?: string | null } = {};
+    const screenshotCache: { value?: AnnotatedScreenshot | null } = {};
     const result = await this.popup.show(rectBounds, (formResult) =>
       this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
     );
@@ -542,15 +549,15 @@ export class Annotator {
     annotation: AnnotationPayload,
     formResult: { type: FeedbackType; message: string },
     rectBounds: DOMRect,
-    screenshotCache: { value?: string | null },
+    screenshotCache: { value?: AnnotatedScreenshot | null },
   ): Promise<void> {
     // Screenshot capture is the slow part. Capture once and reuse the
-    // cached data URL on every retry — re-running html2canvas after each
-    // failed submit would punish the user for a network blip.
+    // cached data URL + region on every retry — re-running html2canvas after
+    // each failed submit would punish the user for a network blip.
     if (screenshotCache.value === undefined) {
       screenshotCache.value = await this.maybeCapture(rectBounds);
     }
-    const screenshotDataUrl = screenshotCache.value;
+    const capture = screenshotCache.value;
 
     await new Promise<void>((resolve, reject) => {
       const cleanup = () => {
@@ -584,7 +591,8 @@ export class Annotator {
         annotation,
         type: formResult.type,
         message: formResult.message,
-        screenshotDataUrl,
+        screenshotDataUrl: capture?.dataUrl ?? null,
+        screenshotRegion: capture?.region ?? null,
       });
     });
   }

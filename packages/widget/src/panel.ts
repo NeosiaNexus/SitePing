@@ -1,11 +1,19 @@
-import type { FeedbackResponse, FeedbackStatus, FeedbackType, PageScope } from "@siteping/core";
+import {
+  CLOSED_FEEDBACK_STATUSES,
+  FEEDBACK_STATUSES,
+  type FeedbackResponse,
+  type FeedbackStatus,
+  type FeedbackType,
+  isClosedStatus,
+  type PageScope,
+} from "@siteping/core";
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
 import { SegmentedControl } from "./components/segmented-control.js";
 import { PAGE_SIZE } from "./constants.js";
 import { el, formatRelativeDate, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
-import { getTypeLabel, type TFunction } from "./i18n/index.js";
+import { getStatusLabel, getTypeLabel, type TFunction } from "./i18n/index.js";
 import {
   ICON_BUG,
   ICON_CHANGE,
@@ -26,7 +34,10 @@ import { DetailView } from "./panel-detail.js";
 import { createPageGroupHeader, groupFeedbacksByPage, PanelSortControls, sortFeedbacks } from "./panel-sort.js";
 import { PanelStats } from "./panel-stats.js";
 import { focusCardByIndex, getFocusedCardIndex, KeyboardShortcuts } from "./shortcuts.js";
-import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
+import { getStatusBgColor, getStatusColor, getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
+
+/** Non-terminal statuses — complement of `CLOSED_FEEDBACK_STATUSES`; backs the panel's "Open" tab bucket. */
+const OPEN_FEEDBACK_STATUSES: readonly FeedbackStatus[] = FEEDBACK_STATUSES.filter((s) => !isClosedStatus(s));
 
 /**
  * Side panel (400px) with feedback history, filters, search, stats,
@@ -190,7 +201,9 @@ export class Panel {
         onBack: () => this.detail.hide(),
         onResolve: async (fb) => {
           try {
-            const newResolved = fb.status !== "resolved";
+            // Client-facing binary action: closed statuses (resolved, wont_fix)
+            // reopen, everything else (open, in_progress) resolves.
+            const newResolved = !isClosedStatus(fb.status);
             await this.client.resolveFeedback(fb.id, newResolved);
             await this.loadFeedbacks();
             this.detail.hide();
@@ -480,6 +493,17 @@ export class Panel {
     this.listContainer.appendChild(empty);
   }
 
+  /**
+   * Map a status tab value to the bucket of statuses it represents. The panel's
+   * binary tabs use bucket semantics (matching markers / FAB badge / stats):
+   * "open" covers open + in_progress, "resolved" covers resolved + wont_fix,
+   * and "all" applies no status filter. Returns `undefined` when unfiltered.
+   */
+  private statusBucket(tab: "all" | FeedbackStatus): readonly FeedbackStatus[] | undefined {
+    if (tab === "all") return undefined;
+    return isClosedStatus(tab) ? CLOSED_FEEDBACK_STATUSES : OPEN_FEEDBACK_STATUSES;
+  }
+
   private async loadFeedbacks(): Promise<void> {
     // Cancel any in-flight request to prevent stale responses from overwriting newer results
     this.loadController?.abort();
@@ -491,8 +515,7 @@ export class Panel {
 
     const search = this.searchInput.value.trim() || undefined;
     const typeFilter = this.activeFilters.has("all") ? undefined : (Array.from(this.activeFilters)[0] as FeedbackType);
-    const currentStatus = this.statusSegmented.value;
-    const statusFilter = currentStatus === "all" ? undefined : currentStatus;
+    const statuses = this.statusBucket(this.statusSegmented.value);
 
     const scope = this.getScope();
     // Refresh scope-filter button visibility based on current scope (SPA nav).
@@ -503,7 +526,7 @@ export class Panel {
       limit: PAGE_SIZE,
     };
     if (typeFilter) options.type = typeFilter;
-    if (statusFilter) options.status = statusFilter;
+    if (statuses) options.statuses = statuses;
     if (search) options.search = search;
     if (currentScope === "this") {
       options.url = scope.url;
@@ -546,8 +569,7 @@ export class Panel {
     const nextPage = this.currentPage + 1;
     const search = this.searchInput.value.trim() || undefined;
     const typeFilter = this.activeFilters.has("all") ? undefined : (Array.from(this.activeFilters)[0] as FeedbackType);
-    const currentStatus = this.statusSegmented.value;
-    const statusFilter = currentStatus === "all" ? undefined : currentStatus;
+    const statuses = this.statusBucket(this.statusSegmented.value);
 
     const scope = this.getScope();
     const currentScope = this.scopeSegmented.value;
@@ -556,7 +578,7 @@ export class Panel {
       limit: PAGE_SIZE,
     };
     if (typeFilter) options.type = typeFilter;
-    if (statusFilter) options.status = statusFilter;
+    if (statuses) options.statuses = statuses;
     if (search) options.search = search;
     if (currentScope === "this") {
       options.url = scope.url;
@@ -651,7 +673,8 @@ export class Panel {
   }
 
   private createCard(feedback: FeedbackResponse, number: number): HTMLElement {
-    const isResolved = feedback.status === "resolved";
+    // Closed = terminal (resolved, wont_fix): muted card + "Reopen" action.
+    const isResolved = isClosedStatus(feedback.status);
     const typeColor = getTypeColor(feedback.type, this.colors);
 
     const card = el("div", {
@@ -688,11 +711,20 @@ export class Panel {
     badge.style.color = typeColor;
     setText(badge, getTypeLabel(feedback.type, this.t));
 
+    // Status badge — renders the record's actual status (open, in_progress,
+    // resolved, wont_fix) even though panel actions stay binary.
+    const statusBadge = el("span", { class: "sp-badge sp-badge--status" });
+    statusBadge.dataset.status = feedback.status;
+    statusBadge.style.background = getStatusBgColor(feedback.status, this.colors);
+    statusBadge.style.color = getStatusColor(feedback.status, this.colors);
+    setText(statusBadge, getStatusLabel(feedback.status, this.t));
+
     const date = el("span", { class: "sp-card-date" });
     setText(date, formatRelativeDate(feedback.createdAt, this.locale));
 
     header.appendChild(num);
     header.appendChild(badge);
+    header.appendChild(statusBadge);
     header.appendChild(date);
 
     // Message
@@ -911,7 +943,8 @@ export class Panel {
     this.pendingMutations.add(feedback.id);
     const restore = setButtonLoading(btn);
     try {
-      const newResolved = feedback.status !== "resolved";
+      // Closed statuses (resolved, wont_fix) reopen; open/in_progress resolve.
+      const newResolved = !isClosedStatus(feedback.status);
       await this.client.resolveFeedback(feedback.id, newResolved);
       await this.loadFeedbacks();
     } catch (error) {

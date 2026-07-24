@@ -7,7 +7,7 @@
  * Filtering order matches the historical adapter behaviour:
  *   1. projectName  (always required)
  *   2. type
- *   3. status
+ *   3. status / statuses  (`statuses` bucket wins when both are set)
  *   4. url
  *   5. urlPattern
  *   6. search       (lowercase substring match on `message`)
@@ -40,7 +40,14 @@ export function applyFeedbackFilters(items: readonly FeedbackRecord[], query: Fe
   let results: FeedbackRecord[] = items.filter((f) => f.projectName === query.projectName);
 
   if (query.type) results = results.filter((f) => f.type === query.type);
-  if (query.status) results = results.filter((f) => f.status === query.status);
+  // `statuses` (bucket / any-of) wins over the exact `status` filter when both
+  // are present; an empty array is treated as absent.
+  if (query.statuses && query.statuses.length > 0) {
+    const allowed = query.statuses;
+    results = results.filter((f) => allowed.includes(f.status));
+  } else if (query.status) {
+    results = results.filter((f) => f.status === query.status);
+  }
   if (query.url) results = results.filter((f) => f.url === query.url);
   if (query.urlPattern) results = results.filter((f) => f.urlPattern === query.urlPattern);
   if (query.search) {

@@ -425,7 +425,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     }
     submitting = true;
     try {
-      const { annotation, type, message, screenshotDataUrl } = data;
+      const { annotation, type, message, screenshotDataUrl, screenshotRegion } = data;
 
       // Ensure identity — config wins (host-provided), then localStorage,
       // then prompt the user as a last resort. Host-provided identity is
@@ -485,6 +485,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
         annotations: [annotation],
         clientId,
         screenshotDataUrl: screenshotDataUrl ?? null,
+        screenshotRegion: screenshotRegion ?? null,
         diagnostics,
       };
 

@@ -120,6 +120,78 @@ describe("LocalStorageStore specific", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Status model
+  // -----------------------------------------------------------------------
+
+  describe("4-status model", () => {
+    it("persists in_progress with null resolvedAt through round-trip", async () => {
+      const fb = await store.createFeedback(input);
+      await store.updateFeedback(fb.id, { status: "in_progress", resolvedAt: null });
+
+      const store2 = new LocalStorageStore({ key: "test_feedbacks" });
+      const { feedbacks } = await store2.getFeedbacks({ projectName: "test-project" });
+      expect(feedbacks[0]!.status).toBe("in_progress");
+      expect(feedbacks[0]!.resolvedAt).toBeNull();
+    });
+
+    it("persists wont_fix with the given closure timestamp through round-trip", async () => {
+      const fb = await store.createFeedback(input);
+      await store.updateFeedback(fb.id, {
+        status: "wont_fix",
+        resolvedAt: new Date("2026-01-15T10:00:00.000Z"),
+      });
+
+      const store2 = new LocalStorageStore({ key: "test_feedbacks" });
+      const { feedbacks } = await store2.getFeedbacks({ projectName: "test-project" });
+      expect(feedbacks[0]!.status).toBe("wont_fix");
+      expect(feedbacks[0]!.resolvedAt).toBeInstanceOf(Date);
+      expect(feedbacks[0]!.resolvedAt!.toISOString()).toBe("2026-01-15T10:00:00.000Z");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Screenshot region round-trip
+  // -----------------------------------------------------------------------
+
+  describe("screenshotRegion persistence", () => {
+    const region = { xPct: 0.12, yPct: 0.34, wPct: 0.5, hPct: 0.25 };
+
+    it("persists screenshotRegion verbatim through the JSON round-trip", async () => {
+      await store.createFeedback({
+        ...input,
+        screenshotDataUrl: "data:image/jpeg;base64,xxxx",
+        screenshotRegion: region,
+      });
+
+      const store2 = new LocalStorageStore({ key: "test_feedbacks" });
+      const { feedbacks } = await store2.getFeedbacks({ projectName: "test-project" });
+      expect(feedbacks[0]!.screenshotRegion).toEqual(region);
+    });
+
+    it("defaults screenshotRegion to null when omitted", async () => {
+      const record = await store.createFeedback(input);
+      expect(record.screenshotRegion).toBeNull();
+
+      const store2 = new LocalStorageStore({ key: "test_feedbacks" });
+      const { feedbacks } = await store2.getFeedbacks({ projectName: "test-project" });
+      expect(feedbacks[0]!.screenshotRegion).toBeNull();
+    });
+
+    it("revives legacy records without the screenshotRegion key to null", async () => {
+      // Simulate a record persisted by a pre-region version of the adapter.
+      const fb = await store.createFeedback(input);
+      const raw = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<Record<string, unknown>>;
+      delete raw[0]!.screenshotRegion;
+      localStorage.setItem("test_feedbacks", JSON.stringify(raw));
+
+      const store2 = new LocalStorageStore({ key: "test_feedbacks" });
+      const { feedbacks } = await store2.getFeedbacks({ projectName: "test-project" });
+      expect(feedbacks[0]!.id).toBe(fb.id);
+      expect(feedbacks[0]!.screenshotRegion).toBeNull();
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Edge cases
   // -----------------------------------------------------------------------
 

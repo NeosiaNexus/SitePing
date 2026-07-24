@@ -1,6 +1,6 @@
 {
   "name": "@siteping/adapter-prisma",
-  "version": "0.4.9",
+  "version": "0.6.0",
   "description": "Prisma adapter for Siteping — server-side request handlers",
   "type": "module",
   "sideEffects": false,
@@ -51,7 +51,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "zod": "^3.24.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@siteping/core": "workspace:*"

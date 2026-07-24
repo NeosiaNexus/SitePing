@@ -9,9 +9,9 @@
  * animations, accent gradients, premium micro-interactions.
  */
 
-import type { FeedbackResponse } from "@siteping/core";
+import { type FeedbackResponse, type FeedbackStatus, isClosedStatus } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
-import type { TFunction } from "./i18n/index.js";
+import { getStatusLabel, type TFunction } from "./i18n/index.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -261,6 +261,18 @@ export const DETAIL_CSS = /* css */ `
     background: rgba(156, 163, 175, 0.1);
     color: #9ca3af;
     border: 1px solid rgba(156, 163, 175, 0.2);
+  }
+
+  .sp-detail-status-pill--in-progress {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+  }
+
+  .sp-detail-status-pill--wont-fix {
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.2);
   }
 
   .sp-detail-status-dot {
@@ -1076,25 +1088,34 @@ export class DetailView {
 
   /** Build Status pill + Resolve/Delete action buttons. */
   private buildStatusActions(container: HTMLElement, feedback: FeedbackResponse): void {
-    const isResolved = feedback.status === "resolved";
+    // Closed = terminal (resolved, wont_fix): actions stay binary — closed
+    // feedbacks get "Reopen", everything else gets "Resolve" — but the pill
+    // always renders the record's actual status.
+    const isClosed = isClosedStatus(feedback.status);
 
     // Section title
     const sectionTitle = el("div", { class: "sp-detail-section-title" });
     setText(sectionTitle, this.t("detail.status"));
     container.appendChild(sectionTitle);
 
-    // Status pill
+    // Status pill — one modifier class per status (open, in-progress,
+    // resolved, wont-fix), each with its own dot colour.
+    const statusModifier = feedback.status.replace(/_/g, "-");
+    const dotColors: Record<FeedbackStatus, string> = {
+      open: "#22c55e",
+      in_progress: "#f59e0b",
+      resolved: "#9ca3af",
+      wont_fix: "#94a3b8",
+    };
     const statusRow = el("div", { class: "sp-detail-status" });
     const pill = el("span", {
-      class: `sp-detail-status-pill ${isResolved ? "sp-detail-status-pill--resolved" : "sp-detail-status-pill--open"}`,
+      class: `sp-detail-status-pill sp-detail-status-pill--${statusModifier}`,
     });
     const dot = el("span", { class: "sp-detail-status-dot" });
-    dot.style.background = isResolved ? "#9ca3af" : "#22c55e";
+    dot.style.background = dotColors[feedback.status] ?? dotColors.open;
     pill.appendChild(dot);
     const pillLabel = el("span");
-    setText(pillLabel, isResolved ? this.t("detail.reopen") : this.t("detail.resolve"));
-    // Actually label the pill with Open/Resolved
-    setText(pillLabel, isResolved ? "Resolved" : "Open");
+    setText(pillLabel, getStatusLabel(feedback.status, this.t));
     pill.appendChild(pillLabel);
     statusRow.appendChild(pill);
     container.appendChild(statusRow);
@@ -1105,7 +1126,7 @@ export class DetailView {
     // Resolve / Reopen
     this.resolveBtn = document.createElement("button");
     this.resolveBtn.type = "button";
-    if (isResolved) {
+    if (isClosed) {
       this.resolveBtn.className = "sp-detail-btn-reopen";
       this.resolveBtn.appendChild(parseSvg(ICON_UNDO));
       const span = document.createElement("span");
@@ -1183,10 +1204,12 @@ export class DetailView {
       },
     );
 
-    // Resolved at (only if resolved)
+    // Closure date (resolvedAt is the closure timestamp for BOTH terminal
+    // statuses — label it "closed" rather than "resolved" for won't-fix)
     if (feedback.resolvedAt) {
       const resolvedDate = feedback.resolvedAt;
-      this.addMetaRow(meta, ICON_CHECK, this.t("detail.resolvedAt"), () => {
+      const dateLabel = feedback.status === "wont_fix" ? this.t("detail.closedAt") : this.t("detail.resolvedAt");
+      this.addMetaRow(meta, ICON_CHECK, dateLabel, () => {
         const value = el("div", { class: "sp-detail-meta-value sp-detail-meta-value--secondary" });
         setText(value, formatFullDate(resolvedDate, this.locale.startsWith("fr") ? "fr" : "en"));
         return value;
@@ -1455,10 +1478,10 @@ export class DetailView {
     this.resolveBtn.disabled = false;
     this.resolveBtn.replaceChildren();
 
-    const isResolved = feedback.status === "resolved";
-    this.resolveBtn.appendChild(parseSvg(isResolved ? ICON_UNDO : ICON_CHECK));
+    const isClosed = isClosedStatus(feedback.status);
+    this.resolveBtn.appendChild(parseSvg(isClosed ? ICON_UNDO : ICON_CHECK));
     const span = document.createElement("span");
-    setText(span, isResolved ? this.t("detail.reopen") : this.t("detail.resolve"));
+    setText(span, isClosed ? this.t("detail.reopen") : this.t("detail.resolve"));
     this.resolveBtn.appendChild(span);
   }
 

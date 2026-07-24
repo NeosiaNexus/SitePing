@@ -28,6 +28,8 @@ export interface Translations {
   "panel.statusAll": string;
   "panel.statusOpen": string;
   "panel.statusResolved": string;
+  "panel.statusInProgress": string;
+  "panel.statusWontFix": string;
 
   // Feedback type labels (UI display only)
   "type.label": string;
@@ -127,6 +129,8 @@ export interface Translations {
   "detail.viewport": string;
   "detail.browser": string;
   "detail.resolvedAt": string;
+  /** Closure-date label for won't-fix feedbacks. */
+  "detail.closedAt": string;
   "detail.goToAnnotation": string;
   "detail.element": string;
   "detail.selector": string;

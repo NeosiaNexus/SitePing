@@ -32,6 +32,10 @@ export interface ThemeColors {
   statusOpenBg: string;
   statusResolved: string;
   statusResolvedBg: string;
+  statusInProgress: string;
+  statusInProgressBg: string;
+  statusWontFix: string;
+  statusWontFixBg: string;
 }
 
 const DEFAULT_ACCENT = "#0066ff";
@@ -123,6 +127,10 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
       statusOpenBg: "rgba(74, 222, 128, 0.15)",
       statusResolved: "#94a3b8",
       statusResolvedBg: "rgba(148, 163, 184, 0.15)",
+      statusInProgress: "#fbbf24",
+      statusInProgressBg: "rgba(245, 158, 11, 0.15)",
+      statusWontFix: "#94a3b8",
+      statusWontFixBg: "rgba(148, 163, 184, 0.15)",
     };
   }
 
@@ -159,6 +167,10 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
     statusOpenBg: "#f0fdf4",
     statusResolved: "#64748b",
     statusResolvedBg: "#f1f5f9",
+    statusInProgress: "#d97706",
+    statusInProgressBg: "#fffbeb",
+    statusWontFix: "#64748b",
+    statusWontFixBg: "#f1f5f9",
   };
 }
 
@@ -172,6 +184,32 @@ export function getTypeColor(type: string, colors: ThemeColors): string {
       return colors.typeBug;
     default:
       return colors.typeOther;
+  }
+}
+
+export function getStatusColor(status: string, colors: ThemeColors): string {
+  switch (status) {
+    case "in_progress":
+      return colors.statusInProgress;
+    case "resolved":
+      return colors.statusResolved;
+    case "wont_fix":
+      return colors.statusWontFix;
+    default:
+      return colors.statusOpen;
+  }
+}
+
+export function getStatusBgColor(status: string, colors: ThemeColors): string {
+  switch (status) {
+    case "in_progress":
+      return colors.statusInProgressBg;
+    case "resolved":
+      return colors.statusResolvedBg;
+    case "wont_fix":
+      return colors.statusWontFixBg;
+    default:
+      return colors.statusOpenBg;
   }
 }
 

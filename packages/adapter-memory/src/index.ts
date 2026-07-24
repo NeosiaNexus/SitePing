@@ -94,6 +94,7 @@ export class MemoryStore implements SitepingStore {
       // Fine for tests and dev; production users should configure a real
       // ScreenshotStorage on adapter-prisma.
       screenshotUrl: data.screenshotDataUrl ?? null,
+      screenshotRegion: data.screenshotRegion ?? null,
       diagnostics: data.diagnostics ?? null,
     };
 

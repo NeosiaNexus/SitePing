@@ -1,0 +1,90 @@
+import type { Translations } from "./types.js";
+
+export const ru: Translations = {
+  // Inbox
+  "inbox.regionLabel": "Входящие отзывы",
+  "inbox.listLabel": "Список отзывов",
+  "inbox.statusFilter": "Фильтр по статусу",
+  "inbox.searchPlaceholder": "Поиск по сообщениям…",
+  "inbox.searchAria": "Поиск по отзывам",
+  "inbox.clearSearch": "Очистить поиск",
+  "inbox.resultsCount": "Отзывов: {count}",
+  "inbox.typeFilter": "Фильтр по типу",
+  "inbox.typeAll": "Все типы",
+  "inbox.project": "Проект",
+  "inbox.refresh": "Обновить",
+  "inbox.loadMore": "Загрузить ещё ({count})",
+  "inbox.emptyTitle": "Пока нет отзывов",
+  "inbox.emptySub": "Отзывы, отправленные из виджета, появляются здесь.",
+  "inbox.emptyFilteredTitle": "Ничего нет",
+  "inbox.emptyFilteredSub": "Ни один отзыв не соответствует этому фильтру.",
+  "inbox.viewAll": "Показать все",
+  "inbox.inboxZeroTitle": "Всё разобрано",
+  "inbox.inboxZeroSub": "Все открытые отзывы обработаны.",
+  "inbox.loadError": "Не удалось загрузить отзывы",
+  "inbox.retry": "Повторить",
+  "inbox.cancel": "Отмена",
+  "inbox.undo": "Отменить",
+  "inbox.actionFailed": "Что-то пошло не так. Изменение отменено.",
+  "inbox.copied": "Скопировано",
+  "inbox.markedAs": "Отмечено как {status}",
+  "inbox.deleted": "Отзыв удалён",
+
+  // Status labels
+  "status.all": "Все",
+  "status.open": "Открыт",
+  "status.in_progress": "В работе",
+  "status.resolved": "Решён",
+  "status.wont_fix": "Не будет исправлено",
+
+  // Feedback type labels
+  "type.question": "Вопрос",
+  "type.change": "Улучшение",
+  "type.bug": "Баг",
+  "type.other": "Другое",
+
+  // Drawer
+  "drawer.title": "Детали отзыва",
+  "drawer.close": "Закрыть детали",
+  "drawer.openOnPage": "Открыть на странице",
+  "drawer.status": "Статус",
+  "drawer.author": "Автор",
+  "drawer.page": "Страница",
+  "drawer.viewport": "Viewport",
+  "drawer.submitted": "Отправлен",
+  "drawer.browser": "Браузер",
+  "drawer.anchor": "Якорь",
+  "drawer.diagnostics": "Диагностика",
+  "drawer.showAllDiagnostics": "Показать все ({count})",
+  "drawer.hideAnnotation": "Скрыть аннотацию",
+  "drawer.showAnnotation": "Показать аннотацию",
+  "drawer.screenshotAlt": "Скриншот области с аннотацией",
+  "drawer.zoomScreenshot": "Увеличить снимок",
+  "drawer.noScreenshot": "Для этого отзыва нет скриншота",
+  "drawer.delete": "Удалить отзыв",
+  "drawer.deleteConfirm": "Удалить навсегда? Это действие необратимо.",
+  "drawer.deleteYes": "Удалить",
+
+  // Keyboard hints
+  "hints.navigate": "навигация",
+  "hints.open": "открыть",
+  "hints.resolve": "решить",
+  "hints.inProgress": "в работу",
+  "hints.wontFix": "не будет исправлено",
+  "hints.help": "горячие клавиши",
+
+  // Shortcuts overlay
+  "shortcuts.title": "Горячие клавиши",
+  "shortcuts.close": "Закрыть",
+
+  // Relative time
+  "time.now": "только что",
+  "time.minutes": "{n} мин",
+  "time.hours": "{n} ч",
+  "time.days": "{n} дн",
+  "time.weeks": "{n} нед",
+  "time.month": "{n} мес",
+  "time.months": "{n} мес",
+  "time.year": "{n} г.",
+  "time.years": "{n} г.",
+};

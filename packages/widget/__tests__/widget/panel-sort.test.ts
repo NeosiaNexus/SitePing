@@ -73,6 +73,22 @@ describe("panel sort utilities", () => {
     ]);
   });
 
+  it("sorts closed statuses (resolved, wont_fix) last; in_progress stays with open", () => {
+    const feedbacks = [
+      makeFeedback({ id: "wont-fix", status: "wont_fix", createdAt: "2026-04-06T00:00:00.000Z" }),
+      makeFeedback({ id: "in-progress", status: "in_progress", createdAt: "2026-04-03T00:00:00.000Z" }),
+      makeFeedback({ id: "resolved", status: "resolved", createdAt: "2026-04-02T00:00:00.000Z" }),
+      makeFeedback({ id: "open", status: "open", createdAt: "2026-04-05T00:00:00.000Z" }),
+    ];
+
+    expect(sortFeedbacks(feedbacks, "open-first").map((fb) => fb.id)).toEqual([
+      "open",
+      "in-progress",
+      "wont-fix",
+      "resolved",
+    ]);
+  });
+
   it("sort 'by-type' falls back to 99 priority for unknown types and breaks ties by date", () => {
     const feedbacks = [
       makeFeedback({ id: "weird", type: "unknown" as never, createdAt: "2026-04-05T00:00:00.000Z" }),
