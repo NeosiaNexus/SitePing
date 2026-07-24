@@ -269,8 +269,8 @@ describe("#174 — scan cost and fairness", () => {
     // top-K, orphaning the annotation. The snippet is mutated the way real
     // content drifts (a few character edits since capture) — an EXACT snippet
     // scores high enough on char bigrams alone to mask the blind spot.
-    const rand = (() => {
-      let s = 0xfeed;
+    const mulberry = (seed: number) => {
+      let s = seed;
       return () => {
         s |= 0;
         s = (s + 0x6d2b79f5) | 0;
@@ -278,23 +278,33 @@ describe("#174 — scan cost and fairness", () => {
         t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
       };
-    })();
+    };
     const VOCAB = "the quick brown fox jumps over lazy dog submit cancel order shipping free trial account settings profile download invoice billing customer support contact about pricing features".split(" ");
+    const rand = mulberry(0xfeed);
     const sentence = (words: number) =>
       Array.from({ length: words }, () => VOCAB[Math.floor(rand() * VOCAB.length)]).join(" ");
-    const drift = (s: string) =>
-      s
-        .split("")
-        .map((ch) => (rand() < 0.08 ? (rand() < 0.5 ? String.fromCharCode(97 + Math.floor(rand() * 26)) : `${ch}x`) : ch))
-        .join("");
+    const drift = (s: string) => {
+      // Substitutions, deletions, and insertions — how content actually moves.
+      const r = mulberry(0xf00d);
+      let out = "";
+      for (const ch of s) {
+        if (r() < 0.08) {
+          const op = r();
+          if (op < 0.34) out += String.fromCharCode(97 + Math.floor(r() * 26));
+          else if (op >= 0.67) out += `${ch}x`;
+          // middle third: deletion
+        } else out += ch;
+      }
+      return out;
+    };
 
     const grid = document.createElement("main");
     document.body.appendChild(grid);
     let target: HTMLElement | null = null;
-    for (let i = 0; i < 400; i++) {
+    for (let i = 0; i < 1000; i++) {
       const card = document.createElement("div");
       card.textContent = sentence(70);
-      if (i === 320) target = card;
+      if (i === 800) target = card;
       grid.appendChild(card);
     }
 
