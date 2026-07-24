@@ -841,6 +841,10 @@ export interface FeedbackResponse {
   viewport: string;
   userAgent: string;
   authorName: string;
+  /**
+   * May be an empty string — HTTP adapters redact it for unauthenticated
+   * requests. The full value requires a Bearer-authenticated request.
+   */
   authorEmail: string;
   resolvedAt: string | null;
   createdAt: string;
