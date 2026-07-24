@@ -1,0 +1,90 @@
+import type { Translations } from "./types.js";
+
+export const es: Translations = {
+  // Inbox
+  "inbox.regionLabel": "Bandeja de comentarios",
+  "inbox.listLabel": "Lista de comentarios",
+  "inbox.statusFilter": "Filtrar por estado",
+  "inbox.searchPlaceholder": "Buscar en los mensajes…",
+  "inbox.searchAria": "Buscar comentarios",
+  "inbox.clearSearch": "Borrar búsqueda",
+  "inbox.resultsCount": "{count} comentarios",
+  "inbox.typeFilter": "Filtrar por tipo",
+  "inbox.typeAll": "Todos los tipos",
+  "inbox.project": "Proyecto",
+  "inbox.refresh": "Actualizar",
+  "inbox.loadMore": "Cargar más ({count})",
+  "inbox.emptyTitle": "Aún no hay comentarios",
+  "inbox.emptySub": "Los comentarios enviados desde el widget llegan aquí.",
+  "inbox.emptyFilteredTitle": "Nada por aquí",
+  "inbox.emptyFilteredSub": "Ningún comentario coincide con este filtro.",
+  "inbox.viewAll": "Ver todo",
+  "inbox.inboxZeroTitle": "Todo en orden",
+  "inbox.inboxZeroSub": "Todos los comentarios abiertos han sido atendidos.",
+  "inbox.loadError": "No se pudieron cargar los comentarios",
+  "inbox.retry": "Reintentar",
+  "inbox.cancel": "Cancelar",
+  "inbox.undo": "Deshacer",
+  "inbox.actionFailed": "Algo salió mal. Cambio revertido.",
+  "inbox.copied": "Copiado",
+  "inbox.markedAs": "Marcado como {status}",
+  "inbox.deleted": "Comentario eliminado",
+
+  // Statuses
+  "status.all": "Todos",
+  "status.open": "Abierto",
+  "status.in_progress": "En curso",
+  "status.resolved": "Resuelto",
+  "status.wont_fix": "No se corregirá",
+
+  // Types
+  "type.question": "Pregunta",
+  "type.change": "Cambio",
+  "type.bug": "Error",
+  "type.other": "Otro",
+
+  // Drawer
+  "drawer.title": "Detalles del comentario",
+  "drawer.close": "Cerrar detalles",
+  "drawer.openOnPage": "Abrir en la página",
+  "drawer.status": "Estado",
+  "drawer.author": "Autor",
+  "drawer.page": "Página",
+  "drawer.viewport": "Viewport",
+  "drawer.submitted": "Enviado",
+  "drawer.browser": "Navegador",
+  "drawer.anchor": "Ancla",
+  "drawer.diagnostics": "Diagnósticos",
+  "drawer.showAllDiagnostics": "Mostrar todo ({count})",
+  "drawer.hideAnnotation": "Ocultar anotación",
+  "drawer.showAnnotation": "Mostrar anotación",
+  "drawer.screenshotAlt": "Captura de la zona anotada",
+  "drawer.zoomScreenshot": "Ampliar captura",
+  "drawer.noScreenshot": "No hay captura para este comentario",
+  "drawer.delete": "Eliminar comentario",
+  "drawer.deleteConfirm": "¿Eliminar permanentemente? Esta acción no se puede deshacer.",
+  "drawer.deleteYes": "Eliminar",
+
+  // Keyboard hints
+  "hints.navigate": "navegar",
+  "hints.open": "abrir",
+  "hints.resolve": "resolver",
+  "hints.inProgress": "en curso",
+  "hints.wontFix": "no se corregirá",
+  "hints.help": "atajos",
+
+  // Shortcuts overlay
+  "shortcuts.title": "Atajos de teclado",
+  "shortcuts.close": "Cerrar",
+
+  // Relative time
+  "time.now": "ahora",
+  "time.minutes": "{n} min",
+  "time.hours": "{n} h",
+  "time.days": "{n} d",
+  "time.weeks": "{n} sem",
+  "time.month": "{n} mes",
+  "time.months": "{n} meses",
+  "time.year": "{n} año",
+  "time.years": "{n} años",
+};

@@ -293,8 +293,21 @@ export const FEEDBACK_TYPES = ["question", "change", "bug", "other"] as const;
 export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 
 /** Single source of truth for feedback statuses. */
-export const FEEDBACK_STATUSES = ["open", "resolved"] as const;
+export const FEEDBACK_STATUSES = ["open", "in_progress", "resolved", "wont_fix"] as const;
 export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
+
+/**
+ * Terminal statuses — the feedback needs no further action. `resolvedAt` is
+ * the closure timestamp: set when a feedback enters a closed status, null
+ * while it is open or in progress. The derivation happens at the edge (HTTP
+ * handler, dashboard) — store adapters persist whatever they are given.
+ */
+export const CLOSED_FEEDBACK_STATUSES = ["resolved", "wont_fix"] as const;
+
+/** Whether a status is terminal (`resolved` or `wont_fix`). */
+export function isClosedStatus(status: FeedbackStatus): boolean {
+  return (CLOSED_FEEDBACK_STATUSES as readonly FeedbackStatus[]).includes(status);
+}
 
 /**
  * Page scope returned by `SitepingConfig.getPageScope()`.
@@ -344,6 +357,14 @@ export interface FeedbackCreateInput {
    */
   screenshotDataUrl?: string | null | undefined;
   /**
+   * Where the client's annotation rect sits within the screenshot image,
+   * as fractions [0, 1] of the image dimensions. Present when the widget
+   * captured context around the drawn rect; null for legacy captures that
+   * were cropped exactly to the rect (dashboards then render the image
+   * without an overlay).
+   */
+  screenshotRegion?: ScreenshotRegion | null | undefined;
+  /**
    * Optional console + failed-network snapshot captured by the widget when
    * `SitepingConfig.captureDiagnostics` is enabled. Stored as JSON on
    * `FeedbackRecord.diagnostics` so reviewers can replay the context.
@@ -384,7 +405,15 @@ export interface AnnotationCreateInput {
 export interface FeedbackQuery {
   projectName: string;
   type?: FeedbackType | undefined;
+  /** Exact single-status filter. For "any of a set" (bucket) semantics, use `statuses`. */
   status?: FeedbackStatus | undefined;
+  /**
+   * Filter to feedbacks whose status is any of the listed values — bucket
+   * semantics used by the panel's binary tabs (e.g. "Open" passes
+   * `["open", "in_progress"]`). When both `status` and `statuses` are set,
+   * `statuses` wins. An empty array is treated as absent (no status filter).
+   */
+  statuses?: readonly FeedbackStatus[] | undefined;
   search?: string | undefined;
   page?: number | undefined;
   limit?: number | undefined;
@@ -436,6 +465,11 @@ export interface FeedbackRecord {
    * was captured (legacy records, capture failed, or host disabled it).
    */
   screenshotUrl: string | null;
+  /**
+   * Annotation rect position within the screenshot image, as fractions of
+   * its dimensions. Null for legacy captures cropped exactly to the rect.
+   */
+  screenshotRegion: ScreenshotRegion | null;
   /**
    * Console + failed-network snapshot captured at submit time. Null when
    * diagnostics weren't enabled on the widget side.
@@ -648,6 +682,12 @@ export interface FeedbackPayload {
    */
   screenshotDataUrl?: string | null | undefined;
   /**
+   * Annotation rect position within the screenshot image — see
+   * `ScreenshotRegion`. Null/absent when no screenshot was captured or the
+   * capture predates contextual framing.
+   */
+  screenshotRegion?: ScreenshotRegion | null | undefined;
+  /**
    * Snapshot of the last few console messages and failed network requests
    * captured at submit time when `captureDiagnostics` is enabled.
    */
@@ -723,6 +763,24 @@ export interface AnchorData {
   anchorKey?: string | null | undefined;
 }
 
+/**
+ * Where the client's annotation rect sits within the captured screenshot,
+ * as fractions [0, 1] of the image dimensions. The widget captures context
+ * around the drawn rect and records the rect's position here so dashboards
+ * can re-render the annotation on top of the image. Survives downscaling
+ * (fractions are resolution-independent).
+ */
+export interface ScreenshotRegion {
+  /** X offset of the rect as fraction of image width — [0, 1] */
+  xPct: number;
+  /** Y offset of the rect as fraction of image height — [0, 1] */
+  yPct: number;
+  /** Rect width as fraction of image width — [0, 1] */
+  wPct: number;
+  /** Rect height as fraction of image height — [0, 1] */
+  hPct: number;
+}
+
 /** Drawn rectangle coordinates as percentages relative to the anchor element. */
 export interface RectData {
   /** X offset as fraction of anchor element width — must be in range [0, 1] */
@@ -770,6 +828,8 @@ export interface FeedbackResponse {
   annotations: AnnotationResponse[];
   /** Screenshot URL (data: or http:) — see `FeedbackRecord.screenshotUrl`. */
   screenshotUrl: string | null;
+  /** Annotation rect within the screenshot image, or null — see `ScreenshotRegion`. */
+  screenshotRegion: ScreenshotRegion | null;
   /** Console + failed-network snapshot, or null when diagnostics weren't captured. */
   diagnostics: DiagnosticsSnapshot | null;
 }

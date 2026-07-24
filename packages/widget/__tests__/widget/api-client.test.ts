@@ -52,6 +52,80 @@ describe("ApiClient", () => {
     );
   });
 
+  // -------------------------------------------------------------------------
+  // screenshotRegion wire shape — present only when a region was captured,
+  // so servers that predate the field never see an explicit null.
+  // -------------------------------------------------------------------------
+
+  const basePayload = {
+    projectName: "test",
+    type: "bug" as const,
+    message: "broken",
+    url: "https://example.com",
+    viewport: "1920x1080",
+    userAgent: "test",
+    authorName: "Alice",
+    authorEmail: "alice@test.com",
+    annotations: [],
+    clientId: "uuid-1",
+  };
+
+  function lastPostBody(): Record<string, unknown> {
+    const init = vi.mocked(fetch).mock.calls.at(-1)?.[1] as RequestInit;
+    return JSON.parse(init.body as string) as Record<string, unknown>;
+  }
+
+  it("includes screenshotRegion in the POST body when a region was captured", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 201 }));
+
+    const region = { xPct: 0.25, yPct: 0.1, wPct: 0.5, hPct: 0.4 };
+    await client.sendFeedback({ ...basePayload, screenshotRegion: region });
+
+    expect(lastPostBody().screenshotRegion).toEqual(region);
+  });
+
+  it("omits screenshotRegion from the POST body when it is null", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 201 }));
+
+    await client.sendFeedback({ ...basePayload, screenshotRegion: null });
+
+    expect("screenshotRegion" in lastPostBody()).toBe(false);
+  });
+
+  it("omits screenshotRegion from the POST body when the payload never set it", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 201 }));
+
+    await client.sendFeedback(basePayload);
+
+    expect("screenshotRegion" in lastPostBody()).toBe(false);
+  });
+
+  it("queues the region-stripped wire shape for retry on failure", async () => {
+    // Node test env has no persistent localStorage — back it with a Map so
+    // queueForRetry's fire-and-forget write is observable.
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    });
+    vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+
+    await expect(client.sendFeedback({ ...basePayload, screenshotRegion: null })).rejects.toThrow();
+
+    // Let the fire-and-forget queue write (behind the Web Lock) settle.
+    await vi.waitFor(() => {
+      const raw = store.get("siteping_retry_queue");
+      expect(raw).toBeDefined();
+      const queue = JSON.parse(raw!) as Array<{ payload: Record<string, unknown> }>;
+      expect(queue).toHaveLength(1);
+      expect("screenshotRegion" in queue[0].payload).toBe(false);
+    });
+
+    vi.unstubAllGlobals();
+  });
+
   it("throws on 4xx errors without retrying", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
 
@@ -340,6 +414,25 @@ describe("ApiClient", () => {
     expect(calledUrl).toContain("type=bug");
     expect(calledUrl).toContain("status=resolved");
     expect(calledUrl).toContain("search=broken");
+  });
+
+  it("serializes the statuses bucket as a CSV query param", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
+
+    await client.getFeedbacks("test-project", { statuses: ["open", "in_progress"] });
+
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    // URLSearchParams percent-encodes the comma to %2C.
+    expect(decodeURIComponent(calledUrl)).toContain("statuses=open,in_progress");
+  });
+
+  it("omits the statuses param when the bucket is empty", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
+
+    await client.getFeedbacks("test-project", { statuses: [] });
+
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain("statuses=");
   });
 
   it("resolveFeedback sends status='open' when resolved=false", async () => {

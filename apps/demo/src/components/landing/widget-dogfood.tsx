@@ -16,6 +16,8 @@ export function WidgetDogfood() {
         accentColor: "#173CFF",
         locale: "en",
         position: "bottom-right",
+        // "Open on page" links from /demo/inbox (?siteping=<id>) focus the annotation.
+        deepLink: true,
       });
     });
 

@@ -244,8 +244,22 @@ describe("MarkerManager", () => {
       expect(marker.textContent).toContain("\u2713");
     });
 
+    it("displays checkmark text for wont_fix markers (closed status)", () => {
+      markers.render([makeFeedback({ status: "wont_fix" })]);
+
+      const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
+      expect(marker.textContent).toContain("\u2713");
+    });
+
     it("displays number for open markers", () => {
       markers.render([makeFeedback({ status: "open" })]);
+
+      const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
+      expect(marker.textContent).toContain("1");
+    });
+
+    it("displays number for in_progress markers (still actionable)", () => {
+      markers.render([makeFeedback({ status: "in_progress" })]);
 
       const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
       expect(marker.textContent).toContain("1");
@@ -863,15 +877,17 @@ describe("MarkerManager", () => {
   // -------------------------------------------------------------------------
 
   describe("openCount + markers:changed", () => {
-    it("openCount counts only feedbacks with status === 'open'", () => {
+    it("openCount counts only non-closed feedbacks (open + in_progress)", () => {
       markers.render([
         makeFeedback({ id: "fb-1", status: "open" }),
         makeFeedback({ id: "fb-2", status: "resolved" }),
         makeFeedback({ id: "fb-3", status: "open" }),
+        makeFeedback({ id: "fb-4", status: "in_progress" }),
+        makeFeedback({ id: "fb-5", status: "wont_fix" }),
       ]);
 
-      expect(markers.count).toBe(3);
-      expect(markers.openCount).toBe(2);
+      expect(markers.count).toBe(5);
+      expect(markers.openCount).toBe(3);
     });
 
     it("emits markers:changed with openCount on render()", () => {

@@ -35,6 +35,7 @@ jobs:
       adapter-release_created: ${{ steps.release.outputs['packages/adapter-prisma--release_created'] }}
       adapter-memory-release_created: ${{ steps.release.outputs['packages/adapter-memory--release_created'] }}
       adapter-localstorage-release_created: ${{ steps.release.outputs['packages/adapter-localstorage--release_created'] }}
+      dashboard-release_created: ${{ steps.release.outputs['packages/dashboard--release_created'] }}
       cli-release_created: ${{ steps.release.outputs['packages/cli--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v4
@@ -72,6 +73,7 @@ jobs:
             packages/adapter-prisma/dist/
             packages/adapter-memory/dist/
             packages/adapter-localstorage/dist/
+            packages/dashboard/dist/
             packages/cli/dist/
           retention-days: 1
 
@@ -216,6 +218,42 @@ jobs:
       - name: Publish @siteping/adapter-memory
         run: npm publish --access public --provenance
         working-directory: packages/adapter-memory
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-dashboard:
+    needs: [release-please, build]
+    if: |
+      !failure() && !cancelled() &&
+      (needs.release-please.outputs.dashboard-release_created == 'true' ||
+       (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: dist-packages
+          path: packages/
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish @siteping/dashboard
+        run: npm publish --access public --provenance
+        working-directory: packages/dashboard
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

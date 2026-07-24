@@ -145,6 +145,7 @@ export class LocalStorageStore implements SitepingStore {
       // screenshots. Production users should use adapter-prisma with a
       // configured ScreenshotStorage.
       screenshotUrl: data.screenshotDataUrl ?? null,
+      screenshotRegion: data.screenshotRegion ?? null,
       diagnostics: data.diagnostics ?? null,
     };
 
@@ -229,8 +230,11 @@ function reviveFeedback(raw: SerializedFeedback): FeedbackRecord {
       ...ann,
       createdAt: new Date(ann.createdAt),
     })),
-    // Legacy records (pre-diagnostics) won't have this key. Default to null
-    // so the field is always present on the in-memory shape.
+    // Legacy records (pre-diagnostics / pre-region) won't have these keys.
+    // Default to null so the fields are always present on the in-memory
+    // shape. screenshotRegion is a plain JSON object (no Date inside), so
+    // it survives the round-trip verbatim — no revival needed.
+    screenshotRegion: raw.screenshotRegion ?? null,
     diagnostics: raw.diagnostics ?? null,
   };
 }

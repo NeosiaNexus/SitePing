@@ -195,6 +195,7 @@ describe("syncPrismaModels", () => {
     expect(addedFieldNames).toContain("authorName");
     expect(addedFieldNames).toContain("authorEmail");
     expect(addedFieldNames).toContain("clientId");
+    expect(addedFieldNames).toContain("screenshotRegion");
     expect(addedFieldNames).toContain("annotations");
 
     // Verify the output contains the new fields
@@ -202,6 +203,24 @@ describe("syncPrismaModels", () => {
     expect(output).toContain("clientId");
     expect(output).toContain("@unique");
     expect(output).toContain("authorEmail");
+  });
+
+  it("adds only screenshotRegion to a schema from the previous release", () => {
+    // A schema generated before screenshotRegion existed — `siteping sync` is
+    // how existing users pick the new column up, so it must be the single
+    // change reported.
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+    syncPrismaModels(schemaPath);
+    // Strip the screenshotRegion line to simulate the pre-region schema.
+    const upToDate = readFileSync(schemaPath, "utf-8");
+    writeFileSync(schemaPath, upToDate.replace(/^\s*screenshotRegion\s+Json\?\s*\n/m, ""));
+
+    const result = syncPrismaModels(schemaPath);
+
+    expect(result.addedModels).toHaveLength(0);
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0]).toMatchObject({ model: "SitepingFeedback", field: "screenshotRegion", action: "added" });
+    expect(readFileSync(schemaPath, "utf-8")).toMatch(/screenshotRegion\s+Json\?/);
   });
 
   // -----------------------------------------------------------------------
@@ -258,6 +277,9 @@ describe("syncPrismaModels", () => {
     expect(output).toMatch(/clientId\s+String\s+@unique/);
     // Optional field: resolvedAt DateTime?
     expect(output).toMatch(/resolvedAt\s+DateTime\?/);
+    // Optional Json fields: screenshotRegion + diagnostics
+    expect(output).toMatch(/screenshotRegion\s+Json\?/);
+    expect(output).toMatch(/diagnostics\s+Json\?/);
     // createdAt with @default(now())
     expect(output).toMatch(/createdAt\s+DateTime\s+@default\(now\(\)\)/);
   });

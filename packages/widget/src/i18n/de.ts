@@ -30,6 +30,8 @@ export const de: Translations = {
   "panel.statusAll": "Alle",
   "panel.statusOpen": "Offen",
   "panel.statusResolved": "Erledigt",
+  "panel.statusInProgress": "In Arbeit",
+  "panel.statusWontFix": "Wird nicht behoben",
 
   // Feedback type labels
   "type.label": "Typ",
@@ -128,6 +130,7 @@ export const de: Translations = {
   "detail.viewport": "Viewport",
   "detail.browser": "Browser",
   "detail.resolvedAt": "Erledigt am",
+  "detail.closedAt": "Geschlossen am",
   "detail.goToAnnotation": "Zur Anmerkung",
   "detail.element": "Element",
   "detail.selector": "Selektor",

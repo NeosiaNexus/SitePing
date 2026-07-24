@@ -180,6 +180,27 @@ describe("launcher — FAB unread badge (real MarkerManager)", () => {
     instance.destroy();
   });
 
+  it("counts in_progress as open in the badge and excludes closed statuses (resolved, wont_fix)", async () => {
+    mockGetFeedbacks.mockResolvedValue({
+      feedbacks: [
+        makeFeedbackResponse({ id: "fb-1", status: "open" }),
+        makeFeedbackResponse({ id: "fb-2", status: "in_progress" }),
+        makeFeedbackResponse({ id: "fb-3", status: "resolved" }),
+        makeFeedbackResponse({ id: "fb-4", status: "wont_fix" }),
+      ],
+      total: 4,
+    });
+
+    const instance = launch(defaultConfig());
+
+    // open + in_progress = 2; resolved and wont_fix are closed and excluded.
+    await vi.waitFor(() => {
+      expect(getBadge()?.textContent).toBe("2");
+    });
+
+    instance.destroy();
+  });
+
   it("increments the badge when a submitted feedback flows through the real addFeedback()", async () => {
     mockGetFeedbacks.mockResolvedValue({
       feedbacks: [makeFeedbackResponse({ id: "fb-1", status: "open" })],

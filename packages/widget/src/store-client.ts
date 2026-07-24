@@ -38,6 +38,8 @@ export class StoreClient implements WidgetClient {
       clientId: payload.clientId,
       annotations: payload.annotations.map(flattenAnnotation),
       screenshotDataUrl: payload.screenshotDataUrl ?? null,
+      screenshotRegion: payload.screenshotRegion ?? null,
+      diagnostics: payload.diagnostics ?? null,
     });
 
     return toResponse(record);
@@ -50,6 +52,7 @@ export class StoreClient implements WidgetClient {
       limit: options?.limit,
       type: options?.type,
       status: options?.status,
+      statuses: options?.statuses,
       search: options?.search,
       url: options?.url,
       urlPattern: options?.urlPattern,
@@ -97,6 +100,7 @@ function toResponse(record: FeedbackRecord): FeedbackResponse {
     updatedAt: record.updatedAt.toISOString(),
     annotations: record.annotations.map(toAnnotationResponse),
     screenshotUrl: record.screenshotUrl ?? null,
+    screenshotRegion: record.screenshotRegion ?? null,
     diagnostics: record.diagnostics ?? null,
   };
 }

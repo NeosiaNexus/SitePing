@@ -9,6 +9,7 @@ import {
   type FeedbackUpdateInput,
   flattenAnnotation,
   hasOwn,
+  isClosedStatus,
   isStoreDuplicate,
   isStoreNotFound,
   type ScreenshotStorage,
@@ -194,7 +195,8 @@ export interface PrismaStoreOptions {
 interface FeedbackWhereInput {
   projectName: string;
   type?: FeedbackType;
-  status?: FeedbackStatus;
+  // Exact match (`status`) or bucket match (`{ in: [...] }` from `statuses`).
+  status?: FeedbackStatus | { in: FeedbackStatus[] };
   url?: string;
   urlPattern?: string;
   message?: { contains: string; mode?: "insensitive" };
@@ -247,6 +249,10 @@ export class PrismaStore implements SitepingStore {
         url: data.url,
         urlPattern: data.urlPattern ?? null,
         screenshotUrl,
+        // Persisted as JSON when the model has a `screenshotRegion Json?`
+        // column — same omit-when-null contract as `diagnostics` below, so
+        // hosts that haven't run `npx siteping sync` keep working.
+        ...(data.screenshotRegion ? { screenshotRegion: data.screenshotRegion } : {}),
         // Persisted as JSON when the model has a `diagnostics Json?` column.
         // Hosts that haven't run `npx siteping sync` keep their schema as-is
         // and Prisma will throw if we pass an unknown column, so omit the
@@ -341,11 +347,17 @@ export class PrismaStore implements SitepingStore {
   }
 
   async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
-    const { projectName, type, status, search, url, urlPattern, page = 1, limit = 50 } = query;
+    const { projectName, type, status, statuses, search, url, urlPattern, page = 1, limit = 50 } = query;
 
     const where: FeedbackWhereInput = { projectName };
     if (type) where.type = type;
-    if (status) where.status = status;
+    // Bucket filter (`statuses`) wins over the exact `status` filter; an empty
+    // array is treated as absent so no status constraint is applied.
+    if (statuses && statuses.length > 0) {
+      where.status = { in: [...statuses] };
+    } else if (status) {
+      where.status = status;
+    }
     if (url) where.url = url;
     if (urlPattern) where.urlPattern = urlPattern;
     if (search) {
@@ -670,6 +682,7 @@ export function createSitepingHandler({
           clientId: data.clientId,
           annotations: data.annotations.map(flattenAnnotation),
           screenshotDataUrl: data.screenshotDataUrl ?? null,
+          screenshotRegion: data.screenshotRegion ?? null,
           diagnostics: data.diagnostics ?? null,
         });
 
@@ -701,7 +714,17 @@ export function createSitepingHandler({
 
       const url = new URL(request.url);
       const rawQuery: Record<string, string> = {};
-      for (const key of ["projectName", "page", "limit", "type", "status", "search", "url", "urlPattern"] as const) {
+      for (const key of [
+        "projectName",
+        "page",
+        "limit",
+        "type",
+        "status",
+        "statuses",
+        "search",
+        "url",
+        "urlPattern",
+      ] as const) {
         const val = url.searchParams.get(key);
         if (val !== null) rawQuery[key] = val;
       }
@@ -748,9 +771,12 @@ export function createSitepingHandler({
           }
         }
 
+        // resolvedAt is the CLOSURE timestamp — set when the feedback enters
+        // a terminal status (resolved / wont_fix), cleared otherwise. The
+        // derivation lives here at the edge; stores persist what they're given.
         const feedback = await store.updateFeedback(parsed.data.id, {
           status: parsed.data.status,
-          resolvedAt: parsed.data.status === "resolved" ? new Date() : null,
+          resolvedAt: isClosedStatus(parsed.data.status) ? new Date() : null,
         });
 
         return withCors(Response.json(feedback), corsHeaders);

@@ -64,7 +64,14 @@ export interface GetFeedbacksOptions {
   page?: number;
   limit?: number;
   type?: FeedbackType;
+  /** Exact single-status filter. For "any of a set" (bucket) semantics, use `statuses`. */
   status?: FeedbackStatus;
+  /**
+   * Bucket status filter — matches feedbacks whose status is any of these
+   * values. Serialized to the wire as `statuses=<csv>` and wins over the exact
+   * `status` filter server-side. Used by the panel's binary Open/Resolved tabs.
+   */
+  statuses?: readonly FeedbackStatus[];
   search?: string;
   /** Restrict to feedbacks created on this exact URL (path). */
   url?: string;
@@ -255,6 +262,11 @@ export class ApiClient implements WidgetClient {
   ) {}
 
   async sendFeedback(payload: FeedbackPayload): Promise<FeedbackResponse> {
+    // Only put `screenshotRegion` on the wire when a region was actually
+    // captured — servers that predate the field would otherwise reject an
+    // explicit `screenshotRegion: null` on every legacy capture.
+    const { screenshotRegion, ...rest } = payload;
+    const body: FeedbackPayload = screenshotRegion ? { ...rest, screenshotRegion } : rest;
     // Match the legacy contract: every failure path (network or HTTP) queues
     // for retry. Tests + host apps already rely on this — narrowing to
     // network-only would be a silent behaviour change.
@@ -264,7 +276,7 @@ export class ApiClient implements WidgetClient {
         response = await resilientFetch(this.endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(body),
         });
       } catch (error) {
         throw networkErrorFromException(error, "Failed to send feedback");
@@ -276,7 +288,9 @@ export class ApiClient implements WidgetClient {
 
       return parseJsonAs<FeedbackResponse>(response);
     } catch (error) {
-      queueForRetry(this.endpoint, payload);
+      // Queue the wire shape (region stripped when absent) so a later
+      // flushRetryQueue replays exactly what a fresh POST would send.
+      queueForRetry(this.endpoint, body);
       throw error;
     }
   }
@@ -287,6 +301,7 @@ export class ApiClient implements WidgetClient {
     if (options?.limit) params.set("limit", String(options.limit));
     if (options?.type) params.set("type", options.type);
     if (options?.status) params.set("status", options.status);
+    if (options?.statuses?.length) params.set("statuses", options.statuses.join(","));
     if (options?.search) params.set("search", options.search);
     if (options?.url) params.set("url", options.url);
     if (options?.urlPattern) params.set("urlPattern", options.urlPattern);
