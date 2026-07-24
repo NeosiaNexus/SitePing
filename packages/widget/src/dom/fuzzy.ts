@@ -191,3 +191,48 @@ export function diceAgainst(needleCounts: Map<number, number>, needleBigramTotal
 
   return (2 * matches) / (needleBigramTotal + textBigramTotal);
 }
+
+/**
+ * Word-pair shingle multiset ("quick brown", "brown fox", …) of a
+ * whitespace-normalized string. Character bigrams are order-blind: on pages
+ * where many elements share a vocabulary (card grids, list views), every
+ * candidate looks alike to them, while word ORDER still discriminates —
+ * a true match preserves most word pairs, shared vocabulary in a different
+ * order preserves almost none. Scripts without spaces produce no pairs and
+ * callers fall back to character bigrams alone.
+ */
+export function wordPairCounts(s: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  const words = s.split(" ");
+  for (let i = 0; i < words.length - 1; i++) {
+    const key = `${words[i]} ${words[i + 1]}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Sørensen–Dice over word-pair shingles, multiset semantics, O(|text|).
+ * Same ranking-only contract as `diceAgainst`.
+ */
+export function wordPairDiceAgainst(needlePairs: Map<string, number>, needlePairTotal: number, text: string): number {
+  if (needlePairTotal <= 0) return 0;
+  const words = text.split(" ");
+  const textPairTotal = words.length - 1;
+  if (textPairTotal <= 0) return 0;
+
+  let matches = 0;
+  const consumed = new Map<string, number>();
+  for (let i = 0; i < words.length - 1; i++) {
+    const key = `${words[i]} ${words[i + 1]}`;
+    const available = needlePairs.get(key);
+    if (available === undefined) continue;
+    const used = consumed.get(key) ?? 0;
+    if (used < available) {
+      consumed.set(key, used + 1);
+      matches++;
+    }
+  }
+
+  return (2 * matches) / (needlePairTotal + textPairTotal);
+}

@@ -261,6 +261,56 @@ describe("#174 — scan cost and fairness", () => {
     expect(result!.strategy).toBe("scan");
   });
 
+  it("finds the target on shared-vocabulary pages where char bigrams are order-blind", () => {
+    // Card-grid pathology: every element draws from the same small vocabulary,
+    // so character-bigram overlap is near-identical across ALL candidates and
+    // only word ORDER discriminates. Found via benchmarking — a bigram-only
+    // prefilter ranked the true (lightly drifted) target ~187th/1000, outside
+    // top-K, orphaning the annotation. The snippet is mutated the way real
+    // content drifts (a few character edits since capture) — an EXACT snippet
+    // scores high enough on char bigrams alone to mask the blind spot.
+    const rand = (() => {
+      let s = 0xfeed;
+      return () => {
+        s |= 0;
+        s = (s + 0x6d2b79f5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    })();
+    const VOCAB = "the quick brown fox jumps over lazy dog submit cancel order shipping free trial account settings profile download invoice billing customer support contact about pricing features".split(" ");
+    const sentence = (words: number) =>
+      Array.from({ length: words }, () => VOCAB[Math.floor(rand() * VOCAB.length)]).join(" ");
+    const drift = (s: string) =>
+      s
+        .split("")
+        .map((ch) => (rand() < 0.08 ? (rand() < 0.5 ? String.fromCharCode(97 + Math.floor(rand() * 26)) : `${ch}x`) : ch))
+        .join("");
+
+    const grid = document.createElement("main");
+    document.body.appendChild(grid);
+    let target: HTMLElement | null = null;
+    for (let i = 0; i < 400; i++) {
+      const card = document.createElement("div");
+      card.textContent = sentence(70);
+      if (i === 320) target = card;
+      grid.appendChild(card);
+    }
+
+    const result = resolveAnchor(
+      makeAnchor({
+        cssSelector: "__nomatch__",
+        xpath: "/nonexistent",
+        elementTag: "DIV",
+        textSnippet: drift((target?.textContent ?? "").slice(0, 120)),
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(target);
+    expect(result!.strategy).toBe("scan");
+  });
+
   it("skips the tag sweep entirely when a selector candidate is unbeatable", () => {
     const div = document.createElement("div");
     div.className = "target";

@@ -1,7 +1,15 @@
 import type { AnchorData, RectData } from "@siteping/core";
 import { ANCHOR_KEY_ATTR } from "./anchor.js";
 import { attrHash, scoreFingerprint } from "./fingerprint.js";
-import { bigramCounts, diceAgainst, fuzzyIncludes, normalizeText, similarity } from "./fuzzy.js";
+import {
+  bigramCounts,
+  diceAgainst,
+  fuzzyIncludes,
+  normalizeText,
+  similarity,
+  wordPairCounts,
+  wordPairDiceAgainst,
+} from "./fuzzy.js";
 import { adjacentText, boundedText, neighborText } from "./text-context.js";
 import { classifyVisibility, visibilityFactor } from "./visibility.js";
 
@@ -80,6 +88,8 @@ interface AnchorSignals {
   snippet: string;
   snippetBigrams: Map<number, number>;
   snippetBigramTotal: number;
+  snippetWordPairs: Map<string, number>;
+  snippetWordPairTotal: number;
   prefix: string;
   suffix: string;
   neighbor: string;
@@ -98,10 +108,15 @@ interface ScoredCandidate {
 
 function buildSignals(anchor: AnchorData): AnchorSignals {
   const snippet = normalizeText(anchor.textSnippet ?? "");
+  const snippetWordPairs = wordPairCounts(snippet);
+  let snippetWordPairTotal = 0;
+  for (const count of snippetWordPairs.values()) snippetWordPairTotal += count;
   return {
     snippet,
     snippetBigrams: bigramCounts(snippet),
     snippetBigramTotal: Math.max(0, snippet.length - 1),
+    snippetWordPairs,
+    snippetWordPairTotal,
     prefix: normalizeText(anchor.textPrefix ?? ""),
     suffix: normalizeText(anchor.textSuffix ?? ""),
     neighbor: normalizeText(anchor.neighborText ?? ""),
@@ -277,7 +292,17 @@ function sweepScanCandidates(signals: AnchorSignals, pool: Map<Element, Resoluti
     let cheap = 0;
     if (signals.snippetBigramTotal > 0) {
       const text = normalizeText(boundedText(el, CANDIDATE_TEXT_CAP));
-      cheap += 0.6 * diceAgainst(signals.snippetBigrams, signals.snippetBigramTotal, text);
+      const charDice = diceAgainst(signals.snippetBigrams, signals.snippetBigramTotal, text);
+      // Character bigrams are order-blind: on shared-vocabulary pages (card
+      // grids) every candidate scores alike. Word-pair shingles restore order
+      // sensitivity; when the snippet has no pairs (single word, no-space
+      // scripts) the whole weight stays on character bigrams.
+      if (signals.snippetWordPairTotal > 0) {
+        const wordDice = wordPairDiceAgainst(signals.snippetWordPairs, signals.snippetWordPairTotal, text);
+        cheap += 0.6 * (0.5 * charDice + 0.5 * wordDice);
+      } else {
+        cheap += 0.6 * charDice;
+      }
     }
     if (storedAttrHash && attrHash(el) === storedAttrHash) cheap += 0.25;
     if (!Number.isNaN(storedChildCount)) {

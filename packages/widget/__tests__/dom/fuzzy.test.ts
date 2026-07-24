@@ -7,6 +7,8 @@ import {
   MIN_FUZZY_NEEDLE_LENGTH,
   normalizeText,
   similarity,
+  wordPairCounts,
+  wordPairDiceAgainst,
 } from "../../src/dom/fuzzy";
 
 describe("editDistance", () => {
@@ -238,6 +240,42 @@ describe("bigramCounts / diceAgainst", () => {
     const close = diceAgainst(counts, total, "ajouter au paniers");
     const far = diceAgainst(counts, total, "supprimer le compte");
     expect(close).toBeGreaterThan(far);
+  });
+});
+
+describe("wordPairCounts / wordPairDiceAgainst", () => {
+  it("builds word-pair shingles as a multiset", () => {
+    const counts = wordPairCounts("the quick brown fox");
+    expect(counts.get("the quick")).toBe(1);
+    expect(counts.get("quick brown")).toBe(1);
+    expect(counts.get("brown fox")).toBe(1);
+    expect(counts.size).toBe(3);
+  });
+
+  it("returns 0 for single-word or empty needles (no-space scripts fall back)", () => {
+    expect(wordPairDiceAgainst(wordPairCounts("word"), 0, "word word")).toBe(0);
+    expect(wordPairDiceAgainst(wordPairCounts(""), 0, "anything")).toBe(0);
+  });
+
+  it("discriminates word ORDER where character bigrams cannot", () => {
+    // Same vocabulary, different order — the char-bigram blind spot.
+    const needle = "free shipping on every order over fifty";
+    const shuffled = "order shipping fifty on free every over";
+    const charCounts = bigramCounts(needle);
+    const charTotal = needle.length - 1;
+    const pairCounts = wordPairCounts(needle);
+    const pairTotal = needle.split(" ").length - 1;
+
+    const charSame = diceAgainst(charCounts, charTotal, needle);
+    const charShuffled = diceAgainst(charCounts, charTotal, shuffled);
+    const pairSame = wordPairDiceAgainst(pairCounts, pairTotal, needle);
+    const pairShuffled = wordPairDiceAgainst(pairCounts, pairTotal, shuffled);
+
+    // char bigrams: shuffled text still scores high (order-blind)
+    expect(charShuffled).toBeGreaterThan(0.8);
+    // word pairs: shuffled text collapses, true order stays perfect
+    expect(pairSame).toBe(1);
+    expect(pairShuffled).toBeLessThan(0.2);
   });
 });
 
