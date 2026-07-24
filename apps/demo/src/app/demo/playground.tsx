@@ -332,6 +332,9 @@ export function Playground() {
   const tabRef = useRef<HTMLButtonElement>(null);
   const collapseRef = useRef<HTMLButtonElement>(null);
   const toggledRef = useRef(false);
+  // Deep links (?siteping=<id>) focus their annotation on the FIRST init only —
+  // playground rebuilds must not re-scroll the visitor back to it on every toggle.
+  const firstInitRef = useRef(true);
 
   // Start collapsed on narrow viewports so the panel doesn't cover the demo site.
   useEffect(() => {
@@ -368,7 +371,7 @@ export function Playground() {
         projectName: "demo",
         forceShow: true,
         // "Open on page" links from the inbox (?siteping=<id>) focus the annotation.
-        deepLink: true,
+        deepLink: firstInitRef.current,
         theme,
         locale,
         position,
@@ -381,6 +384,7 @@ export function Playground() {
           ? { store: new storeModule.LocalStorageStore({ key: LOCAL_STORE_KEY }) }
           : { endpoint: "/api/siteping" }),
       });
+      firstInitRef.current = false;
     })();
 
     return () => {
@@ -389,7 +393,17 @@ export function Playground() {
     };
   }, [mode, theme, locale, position, accent, screenshot, diagnostics, rightClick, identity]);
 
-  const patch = (partial: Partial<PlaygroundState>) => writeState({ ...state, ...partial });
+  const patch = (partial: Partial<PlaygroundState>) => {
+    // Fold in (and disarm) any pending debounced accent commit so it can't
+    // fire later with a stale snapshot and revert this change.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const pending = draftAccent && HEX_RE.test(draftAccent.slice(1)) ? { accent: draftAccent } : {};
+    setDraftAccent(null);
+    writeState({ ...state, ...pending, ...partial });
+  };
 
   const shownAccent = draftAccent ?? accent;
 
@@ -620,7 +634,6 @@ export function Playground() {
           type="button"
           onClick={() => toggleOpen(true)}
           aria-expanded="false"
-          aria-controls={PANEL_ID}
           className="rounded-r-lg border border-l-0 border-gray-200 bg-white px-1.5 py-4 text-xs font-semibold tracking-wide text-gray-700 shadow-lg transition-colors [writing-mode:vertical-rl] hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-accent motion-reduce:transition-none"
         >
           Playground

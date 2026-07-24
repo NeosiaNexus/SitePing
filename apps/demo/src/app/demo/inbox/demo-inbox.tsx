@@ -2,11 +2,23 @@
 
 import { LocalStorageStore } from "@siteping/adapter-localstorage";
 import { createStoreSource, SitepingInbox } from "@siteping/dashboard";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 
 // Same key the /demo playground writes to in local mode.
 const LOCAL_STORE_KEY = "siteping_demo_local";
+
+/** In-copy link back to /demo — keeps ?mode=local so local-mode visitors stay on their store. */
+export function DemoSiteLink({ children }: { children: ReactNode }) {
+  const params = useSearchParams();
+  const href = params.get("mode") === "local" ? "/demo?mode=local" : "/demo";
+  return (
+    <Link href={href} className="text-gray-200 underline underline-offset-2 hover:text-white">
+      {children}
+    </Link>
+  );
+}
 
 const LOCALES = [
   ["en", "English"],
