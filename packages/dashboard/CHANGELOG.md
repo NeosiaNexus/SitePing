@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.1...dashboard-v0.2.2) (2026-07-24)
+
+
+### Tests
+
+* **dashboard:** unmount hooks in use-inbox tests — post-teardown debounce flake (fixes [#206](https://github.com/NeosiaNexus/SitePing/issues/206)) ([#212](https://github.com/NeosiaNexus/SitePing/issues/212)) ([2f74b78](https://github.com/NeosiaNexus/SitePing/commit/2f74b78df326597926b70051dec1bdea6e701fc6))
+
 ## [0.2.1](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.0...dashboard-v0.2.1) (2026-07-24)
 
 
