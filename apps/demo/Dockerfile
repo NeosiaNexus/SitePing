@@ -9,6 +9,7 @@ RUN bun run --filter='@siteping/core' build && \
     bun run --filter='@siteping/widget' build && \
     bun run --filter='@siteping/dashboard' build && \
     bun run --filter='@siteping/adapter-memory' build && \
+    bun run --filter='@siteping/adapter-localstorage' build && \
     bun run --filter='@siteping/adapter-prisma' build
 RUN cd apps/demo && bun run build
 
