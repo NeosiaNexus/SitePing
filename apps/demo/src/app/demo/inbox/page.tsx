@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { DemoInbox } from "./demo-inbox";
+import { DemoInbox, DemoSiteLink } from "./demo-inbox";
 
 export const metadata: Metadata = {
   title: "Feedback inbox — SitePing demo",
@@ -18,9 +18,15 @@ export default function InboxPage() {
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Feedback inbox</h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-400">
               Everything clients draw on the{" "}
-              <a href="/demo" className="text-gray-200 underline underline-offset-2 hover:text-white">
-                demo site
-              </a>{" "}
+              <Suspense
+                fallback={
+                  <a href="/demo" className="text-gray-200 underline underline-offset-2 hover:text-white">
+                    demo site
+                  </a>
+                }
+              >
+                <DemoSiteLink>demo site</DemoSiteLink>
+              </Suspense>{" "}
               arrives here. Try the keyboard: <Kbd>j</Kbd>/<Kbd>k</Kbd> to move, <Kbd>e</Kbd> resolve, <Kbd>p</Kbd> in
               progress, <Kbd>x</Kbd> won&apos;t fix, <Kbd>Enter</Kbd> for details, <Kbd>?</Kbd> for everything else.
             </p>

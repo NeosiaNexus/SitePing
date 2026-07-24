@@ -21,6 +21,7 @@
       "name": "@siteping/demo",
       "version": "0.0.0",
       "dependencies": {
+        "@siteping/adapter-localstorage": "workspace:*",
         "@siteping/adapter-memory": "workspace:*",
         "@siteping/adapter-prisma": "workspace:*",
         "@siteping/dashboard": "workspace:*",
@@ -40,21 +41,21 @@
     },
     "packages/adapter-localstorage": {
       "name": "@siteping/adapter-localstorage",
-      "version": "0.4.6",
+      "version": "0.5.0",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
     },
     "packages/adapter-memory": {
       "name": "@siteping/adapter-memory",
-      "version": "0.4.6",
+      "version": "0.5.0",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
     },
     "packages/adapter-prisma": {
       "name": "@siteping/adapter-prisma",
-      "version": "0.5.0",
+      "version": "0.6.1",
       "dependencies": {
         "zod": "^4.4.3",
       },
@@ -67,7 +68,7 @@
     },
     "packages/cli": {
       "name": "@siteping/cli",
-      "version": "0.4.9",
+      "version": "0.5.0",
       "bin": {
         "siteping": "./dist/index.js",
       },
@@ -84,7 +85,7 @@
     },
     "packages/dashboard": {
       "name": "@siteping/dashboard",
-      "version": "0.1.0",
+      "version": "0.2.1",
       "devDependencies": {
         "@siteping/core": "workspace:*",
         "@size-limit/preset-small-lib": "^12.1.0",
@@ -100,7 +101,7 @@
     },
     "packages/widget": {
       "name": "@siteping/widget",
-      "version": "0.9.16",
+      "version": "0.10.2",
       "dependencies": {
         "@medv/finder": "^4.0.2",
         "html2canvas": "^1.4.1",
