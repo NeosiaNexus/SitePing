@@ -257,6 +257,8 @@ Add three tests next to the existing locales: a `createT` lookup test, a key-par
 
 Type union is in `packages/core/src/types.ts` (`SitepingConfig.locale`) and the README locale list is in `packages/widget/README.md` — please update both so users get autocomplete and documentation.
 
+The dashboard (`packages/dashboard/src/i18n/`) has its own translation set with the same structure and the same built-in locales — a new locale should land in both packages (same three steps, plus the lazy-import `switch` in each package's `i18n/index.ts`).
+
 ## Testing
 
 - **Unit tests** — Vitest. Place in `packages/<name>/__tests__/`.
