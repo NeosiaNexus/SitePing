@@ -179,13 +179,27 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     return () => observer.disconnect();
   }, []);
 
+  // ----- return keyboard focus to the listbox (after a drawer/toast unmounts)
+  const focusList = useCallback(() => {
+    rootRef.current?.querySelector<HTMLElement>(".spd-list")?.focus();
+  }, []);
+
+  // ----- announce the result count whenever a fetch settles (separate from the toast)
+  const [resultsMsg, setResultsMsg] = useState("");
+  const wasLoading = useRef(state.loading);
+  useEffect(() => {
+    if (wasLoading.current && !state.loading) {
+      setResultsMsg(tWithParams(t, "inbox.resultsCount", { count: state.total ?? state.items.length }));
+    }
+    wasLoading.current = state.loading;
+  }, [state.loading, state.total, state.items.length, t]);
+
   // ----- keyboard
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const toggleStatus = useCallback(
-    (status: FeedbackStatus) => {
-      const id = state.focusedId ?? state.openedId;
+    (status: FeedbackStatus, id: string | null) => {
       if (!id) return;
       const record = state.items.find((item) => item.id === id) ?? (state.opened?.id === id ? state.opened : null);
       if (!record) return;
@@ -204,36 +218,57 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
         target instanceof HTMLSelectElement;
 
       if (event.key === "Escape") {
-        if (state.openedId) state.closeFeedback();
-        else if (shortcutsOpen) setShortcutsOpen(false);
-        else if (searchRef.current && document.activeElement === searchRef.current) searchRef.current.blur();
-        else return;
+        // Esc inside search stays inside search — it never closes the drawer.
+        if (target && target === searchRef.current) {
+          if (state.search) {
+            state.setSearch(""); // keep focus in the field
+          } else {
+            searchRef.current?.blur();
+            focusList();
+          }
+          event.preventDefault();
+          return;
+        }
+        if (state.openedId) {
+          state.closeFeedback();
+          focusList(); // else focus drops to <body> and every shortcut dies
+        } else if (shortcutsOpen) {
+          setShortcutsOpen(false);
+        } else {
+          return;
+        }
         event.preventDefault();
         return;
       }
       if (inField) return;
 
+      // Overlay mode hides the list behind a backdrop: list navigation is
+      // meaningless and the status/Enter keys must act on the opened record.
+      const overlayOpen = state.openedId !== null && !wide;
+      const actionId = overlayOpen ? state.openedId : (state.focusedId ?? state.openedId);
+
       switch (event.key) {
         case "j":
         case "ArrowDown":
+          if (overlayOpen) return;
           state.focusNext();
           break;
         case "k":
         case "ArrowUp":
+          if (overlayOpen) return;
           state.focusPrev();
           break;
         case "Enter": {
           // Native activation wins on interactive elements (buttons, links).
           if (target?.closest("button, a, [role='button'], summary")) return;
-          const targetId = state.focusedId ?? state.openedId;
-          if (!targetId) return;
-          if (state.openedId === targetId) {
+          if (!actionId) return;
+          if (state.openedId === actionId) {
             // Drawer already open for this feedback → jump to it on the page.
-            const record = state.items.find((item) => item.id === targetId) ?? state.opened;
+            const record = state.items.find((item) => item.id === actionId) ?? state.opened;
             const link = record ? buildDeepLink(record, deepLinkParam) : null;
             if (link) window.open(link, "_blank", "noopener");
           } else {
-            state.openFeedback(targetId);
+            state.openFeedback(actionId);
           }
           break;
         }
@@ -242,13 +277,13 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           state.openFeedback(state.focusedId);
           break;
         case "e":
-          toggleStatus("resolved");
+          toggleStatus("resolved", actionId);
           break;
         case "p":
-          toggleStatus("in_progress");
+          toggleStatus("in_progress", actionId);
           break;
         case "x":
-          toggleStatus("wont_fix");
+          toggleStatus("wont_fix", actionId);
           break;
         case "r":
           void state.refresh();
@@ -283,11 +318,11 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
       }
       event.preventDefault();
     },
-    [state, shortcutsOpen, toggleStatus, undo, deepLinkParam],
+    [state, shortcutsOpen, toggleStatus, undo, deepLinkParam, wide, focusList],
   );
 
   // ----- render
-  const ui = useMemo<InboxUiContextValue>(() => ({ t, locale, notify }), [t, locale, notify]);
+  const ui = useMemo<InboxUiContextValue>(() => ({ t, locale, notify, focusList }), [t, locale, notify, focusList]);
 
   const showSkeleton = state.loading && state.items.length === 0;
   const showError = state.error !== null && state.items.length === 0 && !showSkeleton;
@@ -302,6 +337,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
         style={rootStyle}
         data-theme={resolvedTheme}
         data-density={density}
+        lang={locale}
         aria-label={t("inbox.regionLabel")}
         onKeyDown={handleKeyDown}
       >
@@ -375,6 +411,9 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           <span className="spd-hint">
             <kbd className="spd-kbd">?</kbd> {t("hints.help")}
           </span>
+        </div>
+        <div className="spd-sr-only" role="status">
+          {resultsMsg}
         </div>
         <Toast
           toast={toast}

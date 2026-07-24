@@ -1,6 +1,6 @@
 import type { ReactElement, RefObject } from "react";
 import { useInboxUi } from "./context.js";
-import { SearchIcon } from "./icons.js";
+import { CloseIcon, SearchIcon } from "./icons.js";
 
 interface SearchInputProps {
   value: string;
@@ -24,7 +24,21 @@ export function SearchInput({ value, onChange, inputRef }: SearchInputProps): Re
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-      <kbd className="spd-kbd">/</kbd>
+      {value ? (
+        <button
+          type="button"
+          className="spd-search-clear"
+          aria-label={t("inbox.clearSearch")}
+          onClick={() => {
+            onChange("");
+            inputRef.current?.focus();
+          }}
+        >
+          <CloseIcon />
+        </button>
+      ) : (
+        <kbd className="spd-kbd">/</kbd>
+      )}
     </div>
   );
 }

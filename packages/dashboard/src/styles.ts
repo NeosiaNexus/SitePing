@@ -73,8 +73,8 @@ export const INBOX_CSS = `
   --spd-border: #1e293b;
   --spd-border-strong: #334155;
   --spd-text: #f1f5f9;
-  --spd-text-2: #94a3b8;
-  --spd-text-3: #64748b;
+  --spd-text-2: #a5b3c7;
+  --spd-text-3: #8a99b0; /* >=4.5:1 on every dark surface incl. raised */
   --spd-accent-bright: color-mix(in srgb, var(--spd-accent) 65%, #ffffff);
   --spd-st-open: var(--spd-accent-bright);
   --spd-st-progress: #fbbf24;
@@ -98,11 +98,11 @@ export const INBOX_CSS = `
   --spd-border-strong: #cbd5e1;
   --spd-text: #0f172a;
   --spd-text-2: #475569;
-  --spd-text-3: #64748b;
+  --spd-text-3: #56657b; /* >=4.5:1 on white AND raised #f1f5f9 */
   --spd-accent-bright: var(--spd-accent);
   --spd-st-open: var(--spd-accent);
-  --spd-st-progress: #d97706;
-  --spd-st-resolved: #059669;
+  --spd-st-progress: #b45309;
+  --spd-st-resolved: #047857;
   --spd-st-wontfix: #64748b;
   --spd-ty-question: #3b82f6;
   --spd-ty-change: #b45309;
@@ -123,7 +123,7 @@ export const INBOX_CSS = `
 
 .spd-root :is(h1, h2, h3, h4, p, ul, ol, figure, blockquote) { margin: 0; padding: 0; }
 .spd-root :is(ul, ol) { list-style: none; }
-.spd-root a { color: inherit; text-decoration: none; }
+.spd-root :where(a) { color: inherit; text-decoration: none; }
 .spd-root svg { display: block; flex: none; }
 
 /* :where() keeps this reset at zero specificity so every component rule
@@ -138,9 +138,25 @@ export const INBOX_CSS = `
   padding: 0;
 }
 .spd-root :where(button) { cursor: pointer; }
+.spd-root :where(button):disabled { opacity: 0.55; cursor: default; }
+.spd-root :where(button):not(:disabled):active { transform: translateY(0.5px); }
+.spd-root :where(h2, h3, p, dl, dt, dd, ul, li, figure) { margin: 0; padding: 0; font: inherit; list-style: none; }
+
+/* visually hidden, exposed to assistive tech */
+.spd-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 
 .spd-root :focus-visible {
-  outline: 2px solid var(--spd-accent);
+  outline: 2px solid var(--spd-accent-bright);
   outline-offset: 2px;
 }
 
@@ -153,10 +169,11 @@ export const INBOX_CSS = `
 .spd-toolbar {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  height: 48px;
-  padding: 0 10px;
+  min-height: 48px;
+  padding: 8px 10px;
   background: var(--spd-surface);
   border-bottom: 1px solid var(--spd-border);
 }
@@ -205,6 +222,7 @@ export const INBOX_CSS = `
    active one is tinted with the accent so the current filter is unmissable. */
 .spd-tabs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -228,7 +246,7 @@ export const INBOX_CSS = `
   background: color-mix(in srgb, var(--spd-raised) 90%, transparent);
   box-shadow: inset 0 0 0 1px var(--spd-border-strong);
 }
-.spd-tab[aria-selected="true"] {
+.spd-tab[aria-checked="true"] {
   color: var(--spd-text);
   background: color-mix(in srgb, var(--spd-accent) 16%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spd-accent) 42%, transparent);
@@ -264,7 +282,7 @@ export const INBOX_CSS = `
   background: color-mix(in srgb, var(--spd-st-wontfix) 20%, transparent);
   color: color-mix(in srgb, var(--spd-st-wontfix) 75%, var(--spd-text));
 }
-.spd-tab[aria-selected="true"] .spd-tab-count { font-weight: 600; }
+.spd-tab[aria-checked="true"] .spd-tab-count { font-weight: 600; }
 
 .spd-toolbar-spacer { flex: 1 1 0; min-width: 0; }
 
@@ -291,6 +309,14 @@ export const INBOX_CSS = `
   color: var(--spd-text);
 }
 .spd-search-input::placeholder { color: var(--spd-text-3); }
+.spd-search-clear {
+  display: inline-flex;
+  flex: none;
+  color: var(--spd-text-3);
+  border-radius: var(--spd-radius-xs);
+}
+.spd-search-clear:hover { color: var(--spd-text); }
+.spd-search-clear svg { width: 12px; height: 12px; }
 .spd-search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .spd-search-input:focus-visible { outline: none; }
 
@@ -340,7 +366,8 @@ export const INBOX_CSS = `
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.spd-list { outline: none; }
+.spd-list { outline: none; transition: opacity 120ms var(--spd-ease); }
+.spd-list[aria-busy="true"] { opacity: 0.6; pointer-events: none; }
 .spd-list:focus-visible { outline: none; }
 
 /* ------------------------------------------------------------------ rows */
@@ -358,10 +385,10 @@ export const INBOX_CSS = `
 .spd-row-focused,
 .spd-row[aria-selected="true"] {
   background: var(--spd-raised);
-  box-shadow: inset 2px 0 0 0 var(--spd-accent);
+  box-shadow: inset 2px 0 0 0 var(--spd-accent-bright);
 }
 .spd-list:focus-visible .spd-row-focused {
-  outline: 2px solid var(--spd-accent);
+  outline: 2px solid var(--spd-accent-bright);
   outline-offset: -2px;
 }
 /* Transient exit after a status change removes the row from the filter.
@@ -689,8 +716,15 @@ export const INBOX_CSS = `
 .spd-status-menu-item[aria-selected="true"] { color: var(--spd-text); }
 .spd-status-menu-item > svg:last-child { margin-left: auto; color: var(--spd-text-2); }
 
+/* expandable console entries render as real buttons; inherit the mono look.
+   No display here — the base .spd-diag-msg -webkit-box clamp must keep
+   applying while collapsed (data-expanded flips it to block). */
+.spd-root :where(button).spd-diag-msg { width: 100%; text-align: left; }
+.spd-root :where(button).spd-diag-msg:hover { color: var(--spd-text); }
+
 /* --------------------------------------------- evidence card (signature) */
 .spd-evidence {
+  flex: none;
   border: 1px solid var(--spd-border);
   border-radius: var(--spd-radius-sm);
   overflow: hidden;
@@ -945,8 +979,9 @@ export const INBOX_CSS = `
 .spd-hints {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  gap: 8px 14px;
   height: 32px;
   padding: 0 12px;
   border-top: 1px solid var(--spd-border);
@@ -1056,20 +1091,24 @@ export const INBOX_CSS = `
 @container spd (max-width: 619.98px) {
   .spd-tab .spd-tab-label { display: none; }
   .spd-tab[data-status="all"] .spd-tab-label,
-  .spd-tab[aria-selected="true"] .spd-tab-label { display: inline; }
+  .spd-tab[aria-checked="true"] .spd-tab-label { display: inline; }
 }
 @container spd (max-width: 479.98px) {
-  .spd-type-filter { display: none; }
+  /* Keep the type filter reachable (WCAG 1.4.10 reflow) — the wrapping
+     toolbar absorbs the width; just tighten it. */
+  .spd-type-filter select { max-width: 110px; }
   .spd-search { width: 120px; }
 }
 
 /* ---------------------------------------------------------------- motion */
 @media (prefers-reduced-motion: reduce) {
+  /* !important is deliberate: this kill-switch must beat every specificity,
+     including compound rules like .spd-spin svg. */
   .spd-root *,
   .spd-root *::before,
   .spd-root *::after {
-    animation: none;
-    transition: none;
+    animation: none !important;
+    transition: none !important;
   }
 }
 

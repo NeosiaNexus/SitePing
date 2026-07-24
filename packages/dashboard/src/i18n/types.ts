@@ -6,6 +6,9 @@ export interface Translations {
   "inbox.statusFilter": string;
   "inbox.searchPlaceholder": string;
   "inbox.searchAria": string;
+  "inbox.clearSearch": string;
+  /** Screen-reader announcement of the visible result count. */
+  "inbox.resultsCount": string;
   "inbox.typeFilter": string;
   "inbox.typeAll": string;
   "inbox.project": string;
@@ -60,6 +63,7 @@ export interface Translations {
   "drawer.hideAnnotation": string;
   "drawer.showAnnotation": string;
   "drawer.screenshotAlt": string;
+  "drawer.zoomScreenshot": string;
   "drawer.noScreenshot": string;
   "drawer.delete": string;
   "drawer.deleteConfirm": string;

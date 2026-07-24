@@ -21,9 +21,14 @@ interface ToastProps {
 /**
  * Single toast slot at the bottom-center of the root. Auto-dismisses after 5s;
  * the timer pauses while hovered or focused so the undo button stays reachable.
+ *
+ * The `role="status"` live region stays permanently mounted (an empty div when
+ * idle) so screen readers reliably announce each message — a region that only
+ * appears alongside its text is announced inconsistently. The visible pill
+ * renders inside it.
  */
-export function Toast({ toast, onUndo, onDismiss }: ToastProps): ReactElement | null {
-  const { t } = useInboxUi();
+export function Toast({ toast, onUndo, onDismiss }: ToastProps): ReactElement {
+  const { t, focusList } = useInboxUi();
   const [paused, setPaused] = useState(false);
 
   // A new toast always starts unpaused, even if the pointer still rests on the slot.
@@ -39,23 +44,32 @@ export function Toast({ toast, onUndo, onDismiss }: ToastProps): ReactElement | 
     return () => clearTimeout(timer);
   }, [toast, paused, onDismiss]);
 
-  if (!toast) return null;
-
   return (
-    <div
-      className="spd-toast"
-      role="status"
-      aria-live="polite"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
-    >
-      <span className="spd-toast-msg">{toast.message}</span>
-      {toast.undoable ? (
-        <button type="button" className="spd-btn-ghost" onClick={onUndo}>
-          {t("inbox.undo")} <kbd className="spd-kbd">u</kbd>
-        </button>
+    <div className="spd-toast-region" role="status" aria-live="polite">
+      {toast ? (
+        // biome-ignore lint/a11y/noStaticElementInteractions: hover/focus only pause the auto-dismiss timer; the live region role lives on the parent
+        <div
+          className="spd-toast"
+          onMouseEnter={() => setPaused(true)}
+          onMouseLeave={() => setPaused(false)}
+          onFocus={() => setPaused(true)}
+          onBlur={() => setPaused(false)}
+        >
+          <span className="spd-toast-msg">{toast.message}</span>
+          {toast.undoable ? (
+            <button
+              type="button"
+              className="spd-btn-ghost"
+              onClick={() => {
+                onUndo();
+                // The button unmounts on undo; hand focus back to the listbox.
+                focusList();
+              }}
+            >
+              {t("inbox.undo")} <kbd className="spd-kbd">u</kbd>
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

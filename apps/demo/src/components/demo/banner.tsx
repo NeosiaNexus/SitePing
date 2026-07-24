@@ -7,7 +7,7 @@ export function Banner() {
   const onInbox = usePathname() === "/demo/inbox";
 
   return (
-    <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5">
+    <header className="border-b border-amber-200 bg-amber-50 px-4 py-2.5">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-6 gap-y-1 text-sm text-amber-900">
         <div className="flex min-w-0 items-center gap-2">
           <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -41,6 +41,6 @@ export function Banner() {
           </Link>
         </div>
       </div>
-    </div>
+    </header>
   );
 }

@@ -79,6 +79,7 @@ export function List({ state }: ListProps): ReactElement {
       tabIndex={0}
       aria-label={t("inbox.listLabel")}
       aria-activedescendant={state.focusedId ? rowDomId(state.focusedId) : undefined}
+      aria-busy={state.loading || undefined}
     >
       {rendered.map(({ record, ghost }) => (
         <Row
@@ -86,6 +87,7 @@ export function List({ state }: ListProps): ReactElement {
           record={record}
           domId={rowDomId(record.id)}
           focused={!ghost && state.focusedId === record.id}
+          selected={!ghost && state.openedId === record.id}
           leaving={ghost}
           onSelect={() => {
             state.focus(record.id);

@@ -6,7 +6,10 @@ import { Row } from "../../src/components/row.js";
 import { makeRecord } from "../helpers.js";
 import { renderWithUi } from "../render.js";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function renderRow(recordOverrides = {}, props: Partial<Parameters<typeof Row>[0]> = {}) {
   const record = makeRecord(recordOverrides);
@@ -17,6 +20,7 @@ function renderRow(recordOverrides = {}, props: Partial<Parameters<typeof Row>[0
       record={record}
       domId={`row-${record.id}`}
       focused={false}
+      selected={false}
       leaving={false}
       onSelect={onSelect}
       refCallback={refCallback}
@@ -44,10 +48,41 @@ describe("Row", () => {
     expect(row.querySelector(".spd-row-author")?.textContent).toBe("Sam");
   });
 
-  it("adds the focused class and aria-selected when focused", () => {
-    const { row } = renderRow({}, { focused: true });
+  it("adds the focused class (keyboard focus) but does not set aria-selected", () => {
+    const { row } = renderRow({}, { focused: true, selected: false });
     expect(row.className).toContain("spd-row-focused");
+    expect(row.getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("sets aria-selected only when it is the opened (selected) row", () => {
+    const { row } = renderRow({}, { focused: false, selected: true });
     expect(row.getAttribute("aria-selected")).toBe("true");
+    expect(row.className).not.toContain("spd-row-focused");
+  });
+
+  it("exposes the type label to assistive tech and hides the visual duplicate", () => {
+    const { row } = renderRow({ type: "question" });
+    const type = row.querySelector(".spd-row-type") as HTMLElement;
+    expect(type.querySelector(".spd-sr-only")?.textContent).toBe("Question");
+    expect(type.querySelector(".spd-type-label")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("carries title tooltips on the truncated fields", () => {
+    const { row } = renderRow({
+      message: "The header overlaps the logo on mobile",
+      url: "https://demo.dev/pricing#plans",
+      authorName: "Sam",
+    });
+    expect(row.querySelector(".spd-row-message")?.getAttribute("title")).toBe("The header overlaps the logo on mobile");
+    expect(row.querySelector(".spd-row-path")?.getAttribute("title")).toBe("/pricing#plans");
+    expect(row.querySelector(".spd-row-author")?.getAttribute("title")).toBe("Sam");
+  });
+
+  it("does not open when the click follows a text selection", () => {
+    vi.spyOn(window, "getSelection").mockReturnValue({ toString: () => "selected text" } as unknown as Selection);
+    const { row, onSelect } = renderRow();
+    fireEvent.click(row);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("shows the camera glyph only when a screenshot exists", () => {

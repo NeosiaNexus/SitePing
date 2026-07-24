@@ -154,6 +154,17 @@ function MyInbox() {
 | `1`–`5` | Status tabs (all, open, in progress, resolved, won't fix) |
 | `?` | Keyboard shortcuts overlay |
 
+## Accessibility
+
+The inbox is built and audited against WCAG 2.1 AA (axe-core, measured contrast ratios, real keyboard runs):
+
+- **Fully keyboard-operable** — every interaction (triage, drawer, status menu, screenshot zoom, diagnostics expanders, undo) works without a pointer; focus is always visible and never dropped or trapped unintentionally. The overlay drawer is a proper modal (focus trap + restore).
+- **Screen readers** — the list is a `listbox` with `aria-activedescendant` (selection = the opened record), status filters are a `radiogroup`, the drawer is a labeled dialog/region, metadata is a definition list, status changes and result counts are announced through polite live regions, and the component sets `lang` from its `locale`.
+- **Contrast** — both themes meet AA (4.5:1 text / 3:1 non-text) on every measured pair, including the status-tinted chips and focus indicators.
+- **Preferences respected** — `prefers-reduced-motion` disables every animation (including spinners); `forced-colors` gets system-color borders and `Highlight` focus outlines.
+
+Found a gap? Please open an issue — accessibility reports are treated as bugs, not feature requests.
+
 ## i18n
 
 Built-in locales: `en` (default), `fr`, `de`, `es`, `it`, `pt` (Brazilian), `ru`. English is bundled; other locales load as tiny lazy chunks. Add your own at runtime:

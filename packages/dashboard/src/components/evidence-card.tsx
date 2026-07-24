@@ -1,6 +1,6 @@
 import type { AnnotationRecord, FeedbackRecord, ScreenshotRegion } from "@siteping/core";
 import type { CSSProperties, ReactElement } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { pathFromUrl } from "../format.js";
 import { useInboxUi } from "./context.js";
 
@@ -49,14 +49,27 @@ interface AnchorFallbackProps {
 /** Anchor view — CSS selector (click to copy) + text snippet. Used when no screenshot exists and for extra annotations. */
 function AnchorFallback({ annotation, withCorners }: AnchorFallbackProps): ReactElement {
   const { t, notify } = useInboxUi();
-  const copySelector = (): void => {
-    navigator.clipboard?.writeText(annotation.cssSelector).then(
-      () => notify(t("inbox.copied")),
-      () => {
-        /* clipboard unavailable — nothing to report */
-      },
-    );
+  const selectorRef = useRef<HTMLButtonElement | null>(null);
+  const hasClipboard = typeof navigator !== "undefined" && Boolean(navigator.clipboard);
+
+  const copySelector = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(annotation.cssSelector);
+      notify(t("inbox.copied"));
+    } catch {
+      // Write blocked (permission, insecure context): select the text so a
+      // manual Ctrl+C works, and stay silent — nothing landed on the clipboard.
+      const el = selectorRef.current;
+      const selection = typeof window !== "undefined" ? window.getSelection() : null;
+      if (el && selection) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
   };
+
   return (
     <div className="spd-evidence-fallback">
       {withCorners ? (
@@ -66,9 +79,23 @@ function AnchorFallback({ annotation, withCorners }: AnchorFallbackProps): React
         </div>
       ) : null}
       <div className="spd-meta-label">{t("drawer.anchor")}</div>
-      <button type="button" className="spd-anchor-selector" title={annotation.cssSelector} onClick={copySelector}>
-        {annotation.cssSelector}
-      </button>
+      {hasClipboard ? (
+        <button
+          ref={selectorRef}
+          type="button"
+          className="spd-anchor-selector"
+          title={annotation.cssSelector}
+          onClick={() => {
+            void copySelector();
+          }}
+        >
+          {annotation.cssSelector}
+        </button>
+      ) : (
+        <div className="spd-anchor-selector" title={annotation.cssSelector}>
+          {annotation.cssSelector}
+        </div>
+      )}
       {annotation.textSnippet ? (
         <blockquote className="spd-anchor-snippet">« {annotation.textSnippet} »</blockquote>
       ) : null}
@@ -108,19 +135,33 @@ export function EvidenceCard({ record }: EvidenceCardProps): ReactElement {
       {record.screenshotUrl ? (
         <>
           <div className={`spd-evidence-stage${zoomed ? " spd-evidence-zoomed" : ""}`}>
-            {/* biome-ignore lint/a11y/useKeyWithClickEvents: zoom is a pointer affordance; the image stays reachable without it */}
-            <img
-              className="spd-evidence-img"
-              src={record.screenshotUrl}
-              alt={t("drawer.screenshotAlt")}
+            <button
+              type="button"
+              className="spd-evidence-zoom"
+              aria-pressed={zoomed}
+              aria-label={t("drawer.zoomScreenshot")}
+              style={{ display: "block", width: "100%", cursor: zoomed ? "zoom-out" : "zoom-in" }}
               onClick={() => setZoomed((value) => !value)}
-              onLoad={(event) => {
-                const img = event.currentTarget;
-                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                  setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+              onKeyDown={(event) => {
+                // Esc collapses the zoom without bubbling up to close the drawer.
+                if (event.key === "Escape" && zoomed) {
+                  event.stopPropagation();
+                  setZoomed(false);
                 }
               }}
-            />
+            >
+              <img
+                className="spd-evidence-img"
+                src={record.screenshotUrl}
+                alt={t("drawer.screenshotAlt")}
+                onLoad={(event) => {
+                  const img = event.currentTarget;
+                  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+                  }
+                }}
+              />
+            </button>
             {region && showAnnotation ? (
               <>
                 {dimStyles(region).map((style, index) => (

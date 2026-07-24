@@ -6,13 +6,17 @@ import { StatusInProgressIcon, StatusOpenIcon, StatusResolvedIcon, StatusWontFix
 
 /**
  * UI context shared by every inbox sub-component: the translation function,
- * the active locale (for `Intl` formatting) and a `notify` callback that
- * routes transient messages (e.g. "Copied") to the single toast slot.
+ * the active locale (for `Intl` formatting), a `notify` callback that routes
+ * transient messages (e.g. "Copied") to the single toast slot, and
+ * `focusList` to return keyboard focus to the listbox after a transient layer
+ * (drawer, toast) unmounts.
  */
 export interface InboxUiContextValue {
   t: TFunction;
   locale: string;
   notify: (message: string) => void;
+  /** Move keyboard focus back to the listbox so shortcuts keep working. */
+  focusList: () => void;
 }
 
 const InboxUiContext = createContext<InboxUiContextValue | null>(null);

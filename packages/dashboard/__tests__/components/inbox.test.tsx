@@ -86,15 +86,34 @@ describe("SitepingInbox — list & tabs", () => {
     expect(container.querySelector('.spd-tab[data-status="resolved"] .spd-tab-count')?.textContent).toBe("1");
   });
 
-  it("switches the filter when a status tab is clicked", async () => {
+  it("switches the filter when a status radio is clicked", async () => {
     renderInbox();
     await ready();
-    fireEvent.click(screen.getByRole("tab", { name: /Resolved/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Resolved/ }));
     await waitFor(() => {
       const rows = listRows();
       expect(rows).toHaveLength(1);
       expect(rows[0]?.getAttribute("data-status")).toBe("resolved");
     });
+  });
+
+  it("exposes the status filter as a radiogroup with the active status checked", async () => {
+    renderInbox();
+    await ready();
+    const group = screen.getByRole("radiogroup", { name: "Filter by status" });
+    expect(group).toBeTruthy();
+    await waitFor(() => {
+      // Default filter is "open" (2nd radio) — its count landed, so name is "Open (3)".
+      expect(screen.getByRole("radio", { name: "Open (3)" }).getAttribute("aria-checked")).toBe("true");
+    });
+    expect(screen.getByRole("radio", { name: /Resolved/ }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("marks the list aria-busy while it is (re)loading", async () => {
+    renderInbox();
+    const listbox = await ready();
+    // After the first page settles, the list is idle.
+    await waitFor(() => expect(listbox.getAttribute("aria-busy")).toBeNull());
   });
 
   it("shows a load-more button when more pages exist and appends on click", async () => {
@@ -108,14 +127,25 @@ describe("SitepingInbox — list & tabs", () => {
 });
 
 describe("SitepingInbox — keyboard", () => {
-  it("j / k move the aria-selected row", async () => {
+  it("j / k move the keyboard focus (focus ring), not the selection", async () => {
     renderInbox();
     const listbox = await ready();
     fireEvent.keyDown(listbox, { key: "j" });
-    await waitFor(() => expect(listRows()[0]?.getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(listRows()[0]?.className).toContain("spd-row-focused"));
+    // Focus is not selection — nothing is opened yet, so no row is aria-selected.
+    expect(listRows().some((row) => row.getAttribute("aria-selected") === "true")).toBe(false);
     fireEvent.keyDown(listbox, { key: "j" });
-    await waitFor(() => expect(listRows()[1]?.getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(listRows()[1]?.className).toContain("spd-row-focused"));
     fireEvent.keyDown(listbox, { key: "k" });
+    await waitFor(() => expect(listRows()[0]?.className).toContain("spd-row-focused"));
+  });
+
+  it("aria-selected tracks the opened row, not keyboard focus", async () => {
+    renderInbox();
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+    fireEvent.keyDown(listbox, { key: "Enter" }); // open o1
+    await screen.findByRole("dialog", { name: /Feedback details/ });
     await waitFor(() => expect(listRows()[0]?.getAttribute("aria-selected")).toBe("true"));
   });
 
@@ -124,7 +154,7 @@ describe("SitepingInbox — keyboard", () => {
     const listbox = await ready();
     fireEvent.keyDown(listbox, { key: "j" });
     fireEvent.keyDown(listbox, { key: "Enter" });
-    expect(await screen.findByRole("dialog", { name: "Feedback details" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: /Feedback details/ })).toBeTruthy();
   });
 
   it("e resolves the focused row — it leaves the open tab and a toast offers undo, u reverts", async () => {
@@ -133,8 +163,7 @@ describe("SitepingInbox — keyboard", () => {
     fireEvent.keyDown(listbox, { key: "j" }); // focus o1
 
     fireEvent.keyDown(listbox, { key: "e" });
-    const toast = await screen.findByRole("status");
-    expect(toast.textContent).toContain("Marked as resolved");
+    expect(await screen.findByText("Marked as resolved")).toBeTruthy();
     await waitFor(() => expect(listRows()).toHaveLength(2)); // o1 left the open list
 
     fireEvent.keyDown(listbox, { key: "u" });
@@ -146,8 +175,7 @@ describe("SitepingInbox — keyboard", () => {
     const listbox = await ready();
     fireEvent.keyDown(listbox, { key: "j" });
     fireEvent.keyDown(listbox, { key: "p" });
-    const toast = await screen.findByRole("status");
-    expect(toast.textContent).toContain("Marked as in progress");
+    expect(await screen.findByText("Marked as in progress")).toBeTruthy();
     await waitFor(() => expect(listRows()).toHaveLength(2));
   });
 
@@ -177,6 +205,76 @@ describe("SitepingInbox — keyboard", () => {
       expect(rows[0]?.getAttribute("data-status")).toBe("resolved");
     });
   });
+
+  it("ignores j/k while the overlay drawer is open (the list is behind the backdrop)", async () => {
+    renderInbox();
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+    fireEvent.keyDown(listbox, { key: "Enter" }); // open o1 (overlay mode in jsdom)
+    await screen.findByRole("dialog", { name: /Feedback details/ });
+    fireEvent.keyDown(listbox, { key: "j" }); // should be ignored
+    // Focus stays on o1 (the first row keeps its focus ring).
+    expect(listRows()[0]?.className).toContain("spd-row-focused");
+  });
+
+  it("e targets the opened record while the overlay drawer is open", async () => {
+    renderInbox();
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" }); // focus + will open o1
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    await screen.findByRole("dialog", { name: /Feedback details/ });
+    fireEvent.keyDown(listbox, { key: "e" }); // resolves the opened record
+    expect(await screen.findByText("Marked as resolved")).toBeTruthy();
+    await waitFor(() => expect(listRows()).toHaveLength(2)); // o1 left the open list
+  });
+});
+
+describe("SitepingInbox — search & live regions", () => {
+  it("shows a clear button once the search has text and clearing it empties the field", async () => {
+    const { container } = renderInbox();
+    await ready();
+    const input = container.querySelector<HTMLInputElement>(".spd-search-input") as HTMLInputElement;
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+
+    fireEvent.change(input, { target: { value: "header" } });
+    const clear = await screen.findByRole("button", { name: "Clear search" });
+    fireEvent.click(clear);
+    await waitFor(() => expect(input.value).toBe(""));
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+  });
+
+  it("Esc in the search field clears the query first, then exits the field — never the drawer", async () => {
+    const { container } = renderInbox();
+    await ready();
+    const input = container.querySelector<HTMLInputElement>(".spd-search-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "header" } });
+    await waitFor(() => expect(input.value).toBe("header"));
+
+    // First Esc clears the query (focus stays in the field).
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(input.value).toBe(""));
+
+    // Second Esc (empty) blurs the field.
+    input.focus();
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).not.toBe(input));
+  });
+
+  it("keeps a permanently-mounted status live region for result announcements", async () => {
+    const { container } = renderInbox();
+    await ready();
+    const liveRegion = container.querySelector(".spd-sr-only[role='status']");
+    expect(liveRegion).not.toBeNull();
+    await waitFor(() => expect(liveRegion?.textContent).toContain("feedbacks"));
+  });
+
+  it("keeps the toast live region mounted even when no toast is showing", async () => {
+    const { container } = renderInbox();
+    await ready();
+    // The permanent toast region exists (empty) so announcements are reliable.
+    expect(container.querySelector(".spd-toast-region[role='status']")).not.toBeNull();
+    expect(container.querySelector(".spd-toast")).toBeNull();
+  });
 });
 
 describe("SitepingInbox — drawer", () => {
@@ -184,7 +282,7 @@ describe("SitepingInbox — drawer", () => {
     const listbox = await ready();
     fireEvent.keyDown(listbox, { key: "j" });
     fireEvent.keyDown(listbox, { key: "Enter" });
-    await screen.findByRole("dialog", { name: "Feedback details" });
+    await screen.findByRole("dialog", { name: /Feedback details/ });
   }
 
   it("links Open on page to the record URL with the deep-link param", async () => {
@@ -205,8 +303,9 @@ describe("SitepingInbox — drawer", () => {
   it("opens the status menu with the four statuses", async () => {
     renderInbox();
     await openFirst();
-    const dialog = screen.getByRole("dialog", { name: "Feedback details" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Status" }));
+    const dialog = screen.getByRole("dialog", { name: /Feedback details/ });
+    // The trigger's accessible name is the visible status (o1 is open), per WCAG 2.5.3.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Open" }));
     const menu = await screen.findByRole("listbox", { name: "Status" });
     expect(within(menu).getAllByRole("option")).toHaveLength(4);
   });
@@ -215,6 +314,49 @@ describe("SitepingInbox — drawer", () => {
     const { container } = renderInbox();
     await openFirst();
     expect(container.querySelector(".spd-evidence-rect")).not.toBeNull();
+  });
+
+  it("presents the metadata as a definition list", async () => {
+    const { container } = renderInbox();
+    await openFirst();
+    const dl = container.querySelector("dl.spd-meta-grid");
+    expect(dl).not.toBeNull();
+    expect(dl?.querySelectorAll("dt.spd-meta-label").length).toBeGreaterThanOrEqual(5);
+    expect(dl?.querySelectorAll("dd.spd-meta-value").length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("is a modal dialog in overlay (narrow) mode", async () => {
+    renderInbox();
+    await openFirst();
+    const dialog = screen.getByRole("dialog", { name: /Feedback details/ });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.tagName).toBe("DIV");
+  });
+
+  it("is a non-modal region in side-by-side (wide) mode", async () => {
+    const original = globalThis.ResizeObserver;
+    class WideResizeObserver {
+      private readonly cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+      }
+      observe(): void {
+        this.cb([{ contentRect: { width: 1200 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    globalThis.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
+    try {
+      renderInbox();
+      const listbox = await ready();
+      fireEvent.keyDown(listbox, { key: "j" });
+      fireEvent.keyDown(listbox, { key: "Enter" });
+      const panel = await screen.findByRole("region", { name: /Feedback details/ });
+      expect(panel.getAttribute("aria-modal")).toBeNull();
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
   });
 });
 

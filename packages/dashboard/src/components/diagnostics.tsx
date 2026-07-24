@@ -1,5 +1,5 @@
 import type { ConsoleDiagnosticEntry, DiagnosticsSnapshot, NetworkDiagnosticEntry } from "@siteping/core";
-import type { CSSProperties, ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
 import { tWithParams } from "../i18n/index.js";
 import { useInboxUi } from "./context.js";
@@ -7,13 +7,10 @@ import { useInboxUi } from "./context.js";
 /** Entries shown before "Show all" expands the list. */
 const VISIBLE_COUNT = 6;
 
-/** Inline override that defeats the CSS 2-line clamp when a console message is expanded. */
-const EXPANDED_STYLE: CSSProperties = {
-  display: "block",
-  overflow: "visible",
-  maxHeight: "none",
-  WebkitLineClamp: "unset",
-};
+/** A console message is only worth an expander when it can actually overflow the 2-line clamp. */
+function isClampable(message: string): boolean {
+  return message.length > 90 || message.includes("\n");
+}
 
 type MergedEntry =
   | { kind: "console"; key: string; timestamp: string; console: ConsoleDiagnosticEntry }
@@ -67,43 +64,53 @@ export function Diagnostics({ diagnostics }: DiagnosticsProps): ReactElement {
     });
   };
 
-  const expandKeyDown = (event: ReactKeyboardEvent<HTMLSpanElement>, key: string): void => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    event.stopPropagation();
-    toggleExpanded(key);
-  };
-
   return (
     <section className="spd-diagnostics">
       <div className="spd-meta-label">
         {t("drawer.diagnostics")} · {merged.length}
       </div>
-      <div className="spd-diag-list">
-        {visible.map((item) =>
-          item.kind === "console" ? (
-            <div key={item.key} className="spd-diag-entry" data-level={item.console.level}>
-              <span className="spd-diag-time">{formatTime(item.timestamp)}</span>
-              <span className="spd-diag-level">{item.console.level}</span>
-              {/* biome-ignore lint/a11y/useSemanticElements: a native button would block the entry's inherited mono styling; role+tabIndex+keydown provide the same semantics */}
-              <span
-                className="spd-diag-msg"
-                role="button"
-                tabIndex={0}
-                style={expanded.has(item.key) ? EXPANDED_STYLE : undefined}
-                onClick={() => toggleExpanded(item.key)}
-                onKeyDown={(event) => expandKeyDown(event, item.key)}
+      <ul className="spd-diag-list">
+        {visible.map((item) => {
+          if (item.kind === "console") {
+            const clampable = isClampable(item.console.message);
+            const isExpanded = expanded.has(item.key);
+            return (
+              <li
+                key={item.key}
+                className="spd-diag-entry"
+                data-level={item.console.level}
+                data-expanded={clampable && isExpanded ? "true" : undefined}
               >
-                {item.console.message}
-              </span>
-            </div>
-          ) : (
-            <div
+                <time className="spd-diag-time" dateTime={item.timestamp}>
+                  {formatTime(item.timestamp)}
+                </time>
+                <span className="spd-diag-level">{item.console.level}</span>
+                {clampable ? (
+                  <button
+                    type="button"
+                    className="spd-diag-msg"
+                    aria-expanded={isExpanded}
+                    onClick={() => toggleExpanded(item.key)}
+                  >
+                    {item.console.message}
+                  </button>
+                ) : (
+                  <span className="spd-diag-msg" style={{ cursor: "auto" }}>
+                    {item.console.message}
+                  </span>
+                )}
+              </li>
+            );
+          }
+          return (
+            <li
               key={item.key}
               className="spd-diag-entry"
               data-level={item.network.status >= 400 || item.network.status === 0 ? "error" : "info"}
             >
-              <span className="spd-diag-time">{formatTime(item.timestamp)}</span>
+              <time className="spd-diag-time" dateTime={item.timestamp}>
+                {formatTime(item.timestamp)}
+              </time>
               <span className="spd-diag-method">{item.network.method}</span>
               <span
                 className="spd-diag-status"
@@ -115,10 +122,10 @@ export function Diagnostics({ diagnostics }: DiagnosticsProps): ReactElement {
                 {item.network.url}
               </span>
               <span className="spd-diag-dur">{Math.round(item.network.durationMs)}ms</span>
-            </div>
-          ),
-        )}
-      </div>
+            </li>
+          );
+        })}
+      </ul>
       {!showAll && merged.length > VISIBLE_COUNT ? (
         <button type="button" className="spd-btn-ghost" onClick={() => setShowAll(true)}>
           {tWithParams(t, "drawer.showAllDiagnostics", { count: merged.length })}

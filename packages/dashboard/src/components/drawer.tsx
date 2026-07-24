@@ -36,7 +36,7 @@ export function Drawer({
   onDelete,
 }: DrawerProps): ReactElement {
   const { t, locale } = useInboxUi();
-  const asideRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const [confirming, setConfirming] = useState(false);
 
@@ -49,10 +49,10 @@ export function Drawer({
   useEffect(() => {
     if (!overlay) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    asideRef.current?.focus();
+    panelRef.current?.focus();
     return () => {
       const active = document.activeElement;
-      const leftInside = active === null || active === document.body || asideRef.current?.contains(active) === true;
+      const leftInside = active === null || active === document.body || panelRef.current?.contains(active) === true;
       if (leftInside && previous?.isConnected) previous.focus();
     };
   }, [overlay]);
@@ -60,13 +60,15 @@ export function Drawer({
   // Focus trap — only in overlay mode; side-by-side keeps the natural tab order.
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
     if (!overlay || event.key !== "Tab") return;
-    const root = asideRef.current;
+    const root = panelRef.current;
     if (!root) return;
     const focusables = root.querySelectorAll<HTMLElement>(FOCUSABLE);
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
     if (!first || !last) return;
-    if (event.shiftKey && document.activeElement === first) {
+    // Focus can rest on the container itself (it takes focus on open); Shift+Tab
+    // from there must wrap to the last focusable, not escape behind the backdrop.
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === root)) {
       event.preventDefault();
       last.focus();
     } else if (!event.shiftKey && document.activeElement === last) {
@@ -87,15 +89,19 @@ export function Drawer({
         // biome-ignore lint/a11y/noStaticElementInteractions: standard dialog backdrop — Esc is the keyboard path
         <div className="spd-drawer-backdrop" role="presentation" onClick={onClose} />
       ) : null}
-      <aside
-        ref={asideRef}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: the panel is a dialog/region widget; the keydown handler drives the focus trap */}
+      {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: aria-modal is only emitted in overlay mode, where the role is dialog */}
+      <div
+        ref={panelRef}
         className="spd-drawer"
-        role="dialog"
+        // Overlay is a modal dialog; side-by-side is a non-modal complementary panel.
+        role={overlay ? "dialog" : "region"}
         aria-modal={overlay || undefined}
-        aria-label={t("drawer.title")}
+        aria-label={`${t("drawer.title")} — ${getTypeLabel(record.type, t)} #${shortId(record.id)}`}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
+        <h2 className="spd-sr-only">{t("drawer.title")}</h2>
         <div className="spd-drawer-head">
           <div className="spd-drawer-titles">
             <span className="spd-drawer-type">
@@ -120,13 +126,13 @@ export function Drawer({
         <div className="spd-drawer-scroll">
           <EvidenceCard record={record} />
           <p className="spd-message">{record.message}</p>
-          <div className="spd-meta-grid">
-            <div className="spd-meta-label">{t("drawer.author")}</div>
-            <div className="spd-meta-value">
+          <dl className="spd-meta-grid">
+            <dt className="spd-meta-label">{t("drawer.author")}</dt>
+            <dd className="spd-meta-value">
               {record.authorName} <span data-mono>&lt;{record.authorEmail}&gt;</span>
-            </div>
-            <div className="spd-meta-label">{t("drawer.page")}</div>
-            <div className="spd-meta-value" data-mono>
+            </dd>
+            <dt className="spd-meta-label">{t("drawer.page")}</dt>
+            <dd className="spd-meta-value" data-mono>
               {pageUrl ? (
                 <a href={pageUrl} target="_blank" rel="noreferrer">
                   {record.url}
@@ -134,22 +140,22 @@ export function Drawer({
               ) : (
                 record.url
               )}
-            </div>
-            <div className="spd-meta-label">{t("drawer.viewport")}</div>
-            <div className="spd-meta-value" data-mono>
+            </dd>
+            <dt className="spd-meta-label">{t("drawer.viewport")}</dt>
+            <dd className="spd-meta-value" data-mono>
               {record.viewport}
-            </div>
-            <div className="spd-meta-label">{t("drawer.submitted")}</div>
-            <div className="spd-meta-value">
+            </dd>
+            <dt className="spd-meta-label">{t("drawer.submitted")}</dt>
+            <dd className="spd-meta-value">
               <time dateTime={record.createdAt.toISOString()}>{formatAbsolute(record.createdAt, locale)}</time>
               {" · "}
               {formatRelativeTime(record.createdAt, t)}
-            </div>
-            <div className="spd-meta-label">{t("drawer.browser")}</div>
-            <div className="spd-meta-value spd-clamp-2" title={record.userAgent}>
+            </dd>
+            <dt className="spd-meta-label">{t("drawer.browser")}</dt>
+            <dd className="spd-meta-value spd-clamp-2" title={record.userAgent}>
               {record.userAgent}
-            </div>
-          </div>
+            </dd>
+          </dl>
           {hasDiagnostics && diagnostics ? <Diagnostics diagnostics={diagnostics} /> : null}
           <div className="spd-danger-zone">
             {confirming ? (
@@ -179,7 +185,7 @@ export function Drawer({
             <kbd className="spd-kbd">⏎</kbd>
           </div>
         ) : null}
-      </aside>
+      </div>
     </>
   );
 }

@@ -108,6 +108,7 @@ export function StatusMenu({ status, onSelect }: StatusMenuProps): ReactElement 
 
   return (
     <div ref={rootRef} className="spd-status-menu">
+      {/* No aria-label: the accessible name is the visible status text (WCAG 2.5.3). */}
       <button
         ref={triggerRef}
         type="button"
@@ -115,7 +116,6 @@ export function StatusMenu({ status, onSelect }: StatusMenuProps): ReactElement 
         data-status={status}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={t("drawer.status")}
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={handleTriggerKeyDown}
       >
