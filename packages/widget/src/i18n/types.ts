@@ -56,6 +56,7 @@ export interface Translations {
 
   // Annotator
   "annotator.instruction": string;
+  "annotator.instantInstruction": string;
   "annotator.cancel": string;
 
   // Popup (annotation form)

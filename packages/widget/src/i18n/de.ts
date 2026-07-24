@@ -57,6 +57,7 @@ export const de: Translations = {
 
   // Annotator
   "annotator.instruction": "Zeichne ein Rechteck um den Bereich, den du kommentieren möchtest",
+  "annotator.instantInstruction": "Kommentar zur angeklickten Stelle",
   "annotator.cancel": "Abbrechen",
 
   // Popup

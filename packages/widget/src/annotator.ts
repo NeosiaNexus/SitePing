@@ -516,7 +516,7 @@ export class Annotator {
     this.drawingRect.setAttribute("data-siteping-ignore", "true");
     this.overlay?.appendChild(this.drawingRect);
 
-    const screenshotCache: { value?: string | null } = {};
+    const screenshotCache: { value?: AnnotatedScreenshot | null } = {};
     await this.popup.show(pointRect, (formResult) =>
       this.runSubmission(annotation, formResult, captureRect, screenshotCache),
     );

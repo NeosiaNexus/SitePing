@@ -56,6 +56,7 @@ export const ru: Translations = {
 
   // Annotator
   "annotator.instruction": "Выделите область для комментария",
+  "annotator.instantInstruction": "Комментарий к выбранной точке",
   "annotator.cancel": "Отмена",
 
   // Popup

@@ -56,6 +56,7 @@ export const fr: Translations = {
 
   // Annotator
   "annotator.instruction": "Tracez un rectangle sur la zone \u00e0 commenter",
+  "annotator.instantInstruction": "Commenter l'endroit cliqu\u00e9",
   "annotator.cancel": "Annuler",
 
   // Popup
