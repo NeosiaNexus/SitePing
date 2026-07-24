@@ -52,6 +52,7 @@ export type {
   NetworkDiagnosticEntry,
   PageScope,
   RectData,
+  ScreenshotRegion,
   SitepingConfig,
   SitepingDeepLinkOptions,
   SitepingIdentity,
@@ -67,9 +68,11 @@ export type {
 } from "./types.js";
 export {
   BUILTIN_LOCALES,
+  CLOSED_FEEDBACK_STATUSES,
   FEEDBACK_STATUSES,
   FEEDBACK_TYPES,
   flattenAnnotation,
+  isClosedStatus,
   isStoreDuplicate,
   isStoreNotFound,
   isStorePersistence,

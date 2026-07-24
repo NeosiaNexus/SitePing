@@ -193,6 +193,19 @@ export function testSitepingStore(factory: () => SitepingStore): void {
         expect(record.screenshotUrl).toBe(dataUrl);
       });
 
+      it("persists screenshotRegion verbatim when provided", async () => {
+        freshStore();
+        const region = { xPct: 0.1234, yPct: 0.5678, wPct: 0.25, hPct: 0.125 };
+        const record = await store.createFeedback(createInput({ screenshotRegion: region }));
+        expect(record.screenshotRegion).toEqual(region);
+      });
+
+      it("persists screenshotRegion as null when omitted", async () => {
+        freshStore();
+        const record = await store.createFeedback(createInput());
+        expect(record.screenshotRegion).toBeNull();
+      });
+
       it("deduplicates by clientId (idempotent)", async () => {
         freshStore();
         const input = createInput({ clientId: "same-id" });
@@ -267,6 +280,99 @@ export function testSitepingStore(factory: () => SitepingStore): void {
 
         const result = await store.getFeedbacks({ projectName: "test-project", status: "open" });
         expect(result.feedbacks).toHaveLength(1);
+      });
+
+      it("filters by status in_progress", async () => {
+        freshStore();
+        const fb = await store.createFeedback(createInput());
+        await store.updateFeedback(fb.id, { status: "in_progress", resolvedAt: null });
+        await store.createFeedback(createInput());
+
+        const result = await store.getFeedbacks({ projectName: "test-project", status: "in_progress" });
+        expect(result.feedbacks).toHaveLength(1);
+        expect(result.feedbacks[0]?.status).toBe("in_progress");
+      });
+
+      it("filters by status wont_fix", async () => {
+        freshStore();
+        const fb = await store.createFeedback(createInput());
+        await store.updateFeedback(fb.id, { status: "wont_fix", resolvedAt: new Date() });
+        await store.createFeedback(createInput());
+
+        const result = await store.getFeedbacks({ projectName: "test-project", status: "wont_fix" });
+        expect(result.feedbacks).toHaveLength(1);
+        expect(result.feedbacks[0]?.status).toBe("wont_fix");
+      });
+
+      it("filters by a statuses bucket (any of the listed values)", async () => {
+        freshStore();
+        const open = await store.createFeedback(createInput());
+        const prog = await store.createFeedback(createInput());
+        await store.updateFeedback(prog.id, { status: "in_progress", resolvedAt: null });
+        const resolved = await store.createFeedback(createInput());
+        await store.updateFeedback(resolved.id, { status: "resolved", resolvedAt: new Date() });
+
+        const result = await store.getFeedbacks({
+          projectName: "test-project",
+          statuses: ["open", "in_progress"],
+        });
+        expect(result.total).toBe(2);
+        expect(result.feedbacks.map((f) => f.id).sort()).toEqual([open.id, prog.id].sort());
+      });
+
+      it("paginates a statuses bucket with the correct total", async () => {
+        freshStore();
+        for (let i = 0; i < 3; i++) {
+          const fb = await store.createFeedback(createInput());
+          await store.updateFeedback(fb.id, { status: "in_progress", resolvedAt: null });
+        }
+        // A closed record that must never appear in the open bucket.
+        const closed = await store.createFeedback(createInput());
+        await store.updateFeedback(closed.id, { status: "resolved", resolvedAt: new Date() });
+
+        const page1 = await store.getFeedbacks({
+          projectName: "test-project",
+          statuses: ["open", "in_progress"],
+          page: 1,
+          limit: 2,
+        });
+        expect(page1.total).toBe(3);
+        expect(page1.feedbacks).toHaveLength(2);
+
+        const page2 = await store.getFeedbacks({
+          projectName: "test-project",
+          statuses: ["open", "in_progress"],
+          page: 2,
+          limit: 2,
+        });
+        expect(page2.total).toBe(3);
+        expect(page2.feedbacks).toHaveLength(1);
+      });
+
+      it("prefers statuses over status when both are set", async () => {
+        freshStore();
+        await store.createFeedback(createInput());
+        const prog = await store.createFeedback(createInput());
+        await store.updateFeedback(prog.id, { status: "in_progress", resolvedAt: null });
+
+        // `status: "open"` alone would exclude the in_progress record, but the
+        // `statuses` bucket wins — both records match.
+        const result = await store.getFeedbacks({
+          projectName: "test-project",
+          status: "open",
+          statuses: ["open", "in_progress"],
+        });
+        expect(result.total).toBe(2);
+      });
+
+      it("ignores an empty statuses array (no status filter)", async () => {
+        freshStore();
+        await store.createFeedback(createInput());
+        const prog = await store.createFeedback(createInput());
+        await store.updateFeedback(prog.id, { status: "in_progress", resolvedAt: null });
+
+        const result = await store.getFeedbacks({ projectName: "test-project", statuses: [] });
+        expect(result.total).toBe(2);
       });
 
       it("filters by search (case-insensitive)", async () => {
@@ -353,7 +459,7 @@ export function testSitepingStore(factory: () => SitepingStore): void {
     // ------------------------------------------------------------------
 
     describe("updateFeedback", () => {
-      it("updates status and resolvedAt", async () => {
+      it("updates status to resolved with resolvedAt", async () => {
         freshStore();
         const fb = await store.createFeedback(createInput());
         const resolvedAt = new Date();
@@ -364,6 +470,25 @@ export function testSitepingStore(factory: () => SitepingStore): void {
         expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(fb.updatedAt.getTime());
       });
 
+      it("updates status to in_progress with resolvedAt null", async () => {
+        freshStore();
+        const fb = await store.createFeedback(createInput());
+        const updated = await store.updateFeedback(fb.id, { status: "in_progress", resolvedAt: null });
+
+        expect(updated.status).toBe("in_progress");
+        expect(updated.resolvedAt).toBeNull();
+      });
+
+      it("updates status to wont_fix with the given resolvedAt", async () => {
+        freshStore();
+        const fb = await store.createFeedback(createInput());
+        const resolvedAt = new Date();
+        const updated = await store.updateFeedback(fb.id, { status: "wont_fix", resolvedAt });
+
+        expect(updated.status).toBe("wont_fix");
+        expect(updated.resolvedAt).toEqual(resolvedAt);
+      });
+
       it("throws StoreNotFoundError for unknown id", async () => {
         freshStore();
         await expect(store.updateFeedback("unknown", { status: "resolved", resolvedAt: new Date() })).rejects.toThrow(
@@ -371,13 +496,18 @@ export function testSitepingStore(factory: () => SitepingStore): void {
         );
       });
 
-      it("can reopen a resolved feedback", async () => {
+      it("can reopen a closed feedback", async () => {
         freshStore();
         const fb = await store.createFeedback(createInput());
         await store.updateFeedback(fb.id, { status: "resolved", resolvedAt: new Date() });
         const reopened = await store.updateFeedback(fb.id, { status: "open", resolvedAt: null });
         expect(reopened.status).toBe("open");
         expect(reopened.resolvedAt).toBeNull();
+
+        await store.updateFeedback(fb.id, { status: "wont_fix", resolvedAt: new Date() });
+        const reopenedAgain = await store.updateFeedback(fb.id, { status: "open", resolvedAt: null });
+        expect(reopenedAgain.status).toBe("open");
+        expect(reopenedAgain.resolvedAt).toBeNull();
       });
     });
 

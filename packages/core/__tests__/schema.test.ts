@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SITEPING_MODELS } from "../src/schema.js";
 import type { FeedbackStatus, FeedbackType } from "../src/types.js";
-import { FEEDBACK_STATUSES, FEEDBACK_TYPES } from "../src/types.js";
+import { CLOSED_FEEDBACK_STATUSES, FEEDBACK_STATUSES, FEEDBACK_TYPES, isClosedStatus } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
 // Valid Prisma scalar types (non-relation)
@@ -48,6 +48,7 @@ describe("SitepingFeedback model", () => {
       "message",
       "status",
       "url",
+      "screenshotRegion",
       "viewport",
       "userAgent",
       "authorName",
@@ -88,6 +89,11 @@ describe("SitepingFeedback model", () => {
   it("clientId is unique (for deduplication)", () => {
     expect(fields.clientId.type).toBe("String");
     expect(fields.clientId.isUnique).toBe(true);
+  });
+
+  it("screenshotRegion is an optional Json field", () => {
+    expect(fields.screenshotRegion.type).toBe("Json");
+    expect(fields.screenshotRegion.optional).toBe(true);
   });
 
   it("resolvedAt is an optional DateTime", () => {
@@ -290,9 +296,8 @@ describe("FEEDBACK_STATUSES", () => {
     expect(FEEDBACK_STATUSES.length).toBeGreaterThan(0);
   });
 
-  it("contains expected statuses", () => {
-    expect(FEEDBACK_STATUSES).toContain("open");
-    expect(FEEDBACK_STATUSES).toContain("resolved");
+  it("contains exactly the 4 expected statuses", () => {
+    expect(FEEDBACK_STATUSES).toEqual(["open", "in_progress", "resolved", "wont_fix"]);
   });
 
   it("has no duplicate entries", () => {
@@ -303,5 +308,24 @@ describe("FEEDBACK_STATUSES", () => {
   it("FeedbackStatus union matches array values (compile-time check)", () => {
     const statuses: readonly FeedbackStatus[] = FEEDBACK_STATUSES;
     expect(statuses).toBe(FEEDBACK_STATUSES);
+  });
+});
+
+describe("CLOSED_FEEDBACK_STATUSES / isClosedStatus", () => {
+  it("closed statuses are exactly resolved and wont_fix", () => {
+    expect(CLOSED_FEEDBACK_STATUSES).toEqual(["resolved", "wont_fix"]);
+  });
+
+  it("every closed status is a valid feedback status", () => {
+    for (const status of CLOSED_FEEDBACK_STATUSES) {
+      expect(FEEDBACK_STATUSES).toContain(status);
+    }
+  });
+
+  it("isClosedStatus returns true only for terminal statuses", () => {
+    expect(isClosedStatus("resolved")).toBe(true);
+    expect(isClosedStatus("wont_fix")).toBe(true);
+    expect(isClosedStatus("open")).toBe(false);
+    expect(isClosedStatus("in_progress")).toBe(false);
   });
 });
