@@ -198,33 +198,37 @@ export const INBOX_CSS = `
 /* Segmented control: inset track one step below the toolbar surface, the
    active tab lifted back up as a bordered pill — each tab owns a clear zone
    so a count never visually attaches to the next tab's glyph. */
+/* Each tab is a standalone bordered chip with real air between them; the
+   active one is tinted with the accent so the current filter is unmissable. */
 .spd-tabs {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
   min-width: 0;
-  padding: 2px;
-  background: var(--spd-bg);
-  border: 1px solid var(--spd-border);
-  border-radius: 8px;
 }
 .spd-tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 26px;
-  padding: 0 8px;
+  height: 28px;
+  padding: 0 10px;
   font-size: 12px;
   font-weight: 500;
   color: var(--spd-text-2);
+  background: color-mix(in srgb, var(--spd-raised) 55%, transparent);
+  box-shadow: inset 0 0 0 1px var(--spd-border);
   border-radius: var(--spd-radius-sm);
   white-space: nowrap;
 }
-.spd-tab:hover { color: var(--spd-text); background: color-mix(in srgb, var(--spd-raised) 60%, transparent); }
+.spd-tab:hover {
+  color: var(--spd-text);
+  background: color-mix(in srgb, var(--spd-raised) 90%, transparent);
+  box-shadow: inset 0 0 0 1px var(--spd-border-strong);
+}
 .spd-tab[aria-selected="true"] {
   color: var(--spd-text);
-  background: var(--spd-surface);
-  box-shadow: inset 0 0 0 1px var(--spd-border-strong);
+  background: color-mix(in srgb, var(--spd-accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spd-accent) 42%, transparent);
 }
 .spd-tab-glyph { display: inline-flex; }
 .spd-tab-glyph svg { width: 13px; height: 13px; }
@@ -240,7 +244,24 @@ export const INBOX_CSS = `
   font-variant-numeric: tabular-nums;
   color: var(--spd-text-2);
 }
-.spd-tab[aria-selected="true"] .spd-tab-count { color: var(--spd-text); }
+/* count chips take their status hue — each label reads as its own object */
+.spd-tab[data-status="open"] .spd-tab-count {
+  background: color-mix(in srgb, var(--spd-st-open) 20%, transparent);
+  color: color-mix(in srgb, var(--spd-st-open) 75%, var(--spd-text));
+}
+.spd-tab[data-status="in_progress"] .spd-tab-count {
+  background: color-mix(in srgb, var(--spd-st-progress) 20%, transparent);
+  color: color-mix(in srgb, var(--spd-st-progress) 75%, var(--spd-text));
+}
+.spd-tab[data-status="resolved"] .spd-tab-count {
+  background: color-mix(in srgb, var(--spd-st-resolved) 20%, transparent);
+  color: color-mix(in srgb, var(--spd-st-resolved) 75%, var(--spd-text));
+}
+.spd-tab[data-status="wont_fix"] .spd-tab-count {
+  background: color-mix(in srgb, var(--spd-st-wontfix) 20%, transparent);
+  color: color-mix(in srgb, var(--spd-st-wontfix) 75%, var(--spd-text));
+}
+.spd-tab[aria-selected="true"] .spd-tab-count { font-weight: 600; }
 
 .spd-toolbar-spacer { flex: 1 1 0; min-width: 0; }
 
