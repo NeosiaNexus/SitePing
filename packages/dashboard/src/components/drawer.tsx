@@ -129,7 +129,14 @@ export function Drawer({
           <dl className="spd-meta-grid">
             <dt className="spd-meta-label">{t("drawer.author")}</dt>
             <dd className="spd-meta-value">
-              {record.authorName} <span data-mono>&lt;{record.authorEmail}&gt;</span>
+              {/* Empty email = redacted by the adapter (unauthenticated request) — skip the <> shell. */}
+              {record.authorEmail ? (
+                <>
+                  {record.authorName} <span data-mono>&lt;{record.authorEmail}&gt;</span>
+                </>
+              ) : (
+                record.authorName
+              )}
             </dd>
             <dt className="spd-meta-label">{t("drawer.page")}</dt>
             <dd className="spd-meta-value" data-mono>

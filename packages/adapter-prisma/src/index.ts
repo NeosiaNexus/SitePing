@@ -547,6 +547,21 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 /**
+ * Serialize a feedback record for the HTTP wire (edge DTO — stores return raw
+ * records, redaction happens here).
+ *
+ * `clientId` is always stripped: it is a browser-local dedup secret, and the
+ * POST dedup path returns the full existing record for whoever presents it —
+ * exposing it via responses would turn that into a record-theft oracle.
+ * `authorEmail` is PII: blanked unless the requester is Bearer-authenticated.
+ * Never mutates the input — webhooks receive the same record object.
+ */
+function toWireFeedback(feedback: FeedbackRecord, includeEmail: boolean): Omit<FeedbackRecord, "clientId"> {
+  const { clientId: _clientId, ...wire } = feedback;
+  return includeEmail ? wire : { ...wire, authorEmail: "" };
+}
+
+/**
  * Create request handlers for the Siteping API endpoint.
  *
  * Accepts either a `store` (abstract) or a `prisma` client (backwards compatible).
@@ -617,6 +632,17 @@ export function createSitepingHandler({
       : [webhooks as WebhookConfig]
     : [];
 
+  /**
+   * True iff `apiKey` is configured AND the request carries a matching Bearer
+   * token. Distinct from `authenticate`: a valid token on a public method still
+   * counts as authenticated here (drives PII redaction, not access control).
+   */
+  function isBearerAuthenticated(request: Request): boolean {
+    if (!apiKey) return false;
+    const header = request.headers.get("Authorization");
+    return header !== null && safeCompare(header, `Bearer ${apiKey}`);
+  }
+
   /** Verify Bearer token when apiKey is configured. Skips methods listed in `publicEndpoints`. */
   function authenticate(request: Request, method: SitepingHttpMethod): Response | null {
     if (!apiKey) {
@@ -628,8 +654,7 @@ export function createSitepingHandler({
       return null;
     }
     if (publicMethods?.has(method)) return null;
-    const header = request.headers.get("Authorization");
-    if (!header || !safeCompare(header, `Bearer ${apiKey}`)) {
+    if (!isBearerAuthenticated(request)) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
     return null;
@@ -693,12 +718,14 @@ export function createSitepingHandler({
           void dispatchWebhooks(webhookList, feedback);
         }
 
-        return withCors(Response.json(feedback, { status: 201 }), corsHeaders);
+        // Email stays intact on POST responses: the requester supplied it.
+        return withCors(Response.json(toWireFeedback(feedback, true), { status: 201 }), corsHeaders);
       } catch (error) {
-        // Handle unique constraint violation (clientId dedup)
+        // Handle unique constraint violation (clientId dedup) — presenting the
+        // clientId proves ownership of the record, so the email stays intact.
         if (isStoreDuplicate(error)) {
           const existing = await store.findByClientId(data.clientId);
-          if (existing) return withCors(Response.json(existing, { status: 201 }), corsHeaders);
+          if (existing) return withCors(Response.json(toWireFeedback(existing, true), { status: 201 }), corsHeaders);
         }
 
         const message = actionableErrorMessage(error);
@@ -735,8 +762,12 @@ export function createSitepingHandler({
       }
 
       try {
+        // GET can be public (no apiKey, or "GET" in publicEndpoints for widget
+        // hosts) — redact author emails unless the requester sent the key.
+        const authed = isBearerAuthenticated(request);
         const result = await store.getFeedbacks(parsed.data);
-        return withCors(Response.json(result, { headers: { "Cache-Control": "private, max-age=5" } }), corsHeaders);
+        const body = { ...result, feedbacks: result.feedbacks.map((f) => toWireFeedback(f, authed)) };
+        return withCors(Response.json(body, { headers: { "Cache-Control": "private, max-age=5" } }), corsHeaders);
       } catch (error) {
         const message = actionableErrorMessage(error);
         console.error("[siteping] Failed to fetch feedbacks:", error);
@@ -779,7 +810,9 @@ export function createSitepingHandler({
           resolvedAt: isClosedStatus(parsed.data.status) ? new Date() : null,
         });
 
-        return withCors(Response.json(feedback), corsHeaders);
+        // PATCH can be made public via publicEndpoints / requireAuthForDestructive:
+        // false — don't leak the author's email through the update response.
+        return withCors(Response.json(toWireFeedback(feedback, isBearerAuthenticated(request))), corsHeaders);
       } catch (error) {
         if (isStoreNotFound(error)) {
           return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);

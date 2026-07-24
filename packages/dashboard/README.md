@@ -186,7 +186,7 @@ In endpoint mode the inbox reads and mutates through your adapter route, which s
 <SitepingInbox endpoint="/api/siteping" projects="my-project" apiKey={process.env.NEXT_PUBLIC_SITEPING_KEY} />
 ```
 
-`apiKey` becomes `Authorization: Bearer <apiKey>` on every request. For cookie/session auth or custom schemes, use `headers` — it also accepts an async function, handy for refreshing tokens. The inbox is an **admin surface**: gate the page it renders on, and remember the widget's own submissions stay unauthenticated unless your adapter requires a key.
+`apiKey` becomes `Authorization: Bearer <apiKey>` on every request. For cookie/session auth or custom schemes, use `headers` — it also accepts an async function, handy for refreshing tokens. The inbox is an **admin surface**: gate the page it renders on, and remember the widget's own submissions stay unauthenticated unless your adapter requires a key. Without authentication the adapter redacts reviewer emails (`authorEmail: ""`) — see [`@siteping/adapter-prisma` › PII redaction](https://www.npmjs.com/package/@siteping/adapter-prisma#pii-redaction).
 
 > **Counts queries** — the status tab counts are fetched as five extra `limit=1` queries (one per status + all) after each list load. They are cheap `COUNT` queries for SQL adapters, but if your endpoint is rate-limited, budget for them.
 
