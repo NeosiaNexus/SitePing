@@ -103,6 +103,25 @@
         "code",
         "test"
       ]
+    },
+    {
+      "login": "Rehansanjay",
+      "name": "Rehuz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/179024758?v=4",
+      "profile": "https://rehansanjay-portfolio.vercel.app/",
+      "contributions": [
+        "code",
+        "test"
+      ]
+    },
+    {
+      "login": "vongohren",
+      "name": "Snorre Lothar von Gohren Edwin",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1012055?v=4",
+      "profile": "https://vongohren.me/",
+      "contributions": [
+        "ideas"
+      ]
     }
   ],
   "commitType": "docs"
