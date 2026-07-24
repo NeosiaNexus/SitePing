@@ -60,4 +60,77 @@ describe("MemoryStore specific", () => {
     });
     expect(fb.id).toMatch(/^mem-1-/);
   });
+
+  it("persists screenshotRegion verbatim and defaults to null when omitted", async () => {
+    const store = new MemoryStore();
+    const region = { xPct: 0.12, yPct: 0.34, wPct: 0.5, hPct: 0.25 };
+
+    const withRegion = await store.createFeedback({
+      projectName: "a",
+      type: "bug",
+      message: "with region",
+      status: "open",
+      url: "https://example.com",
+      viewport: "1920x1080",
+      userAgent: "test",
+      authorName: "Alice",
+      authorEmail: "a@t.com",
+      clientId: "r1",
+      annotations: [],
+      screenshotDataUrl: "data:image/jpeg;base64,xxxx",
+      screenshotRegion: region,
+    });
+    expect(withRegion.screenshotRegion).toEqual(region);
+
+    const withoutRegion = await store.createFeedback({
+      projectName: "a",
+      type: "bug",
+      message: "no region",
+      status: "open",
+      url: "https://example.com",
+      viewport: "1920x1080",
+      userAgent: "test",
+      authorName: "Alice",
+      authorEmail: "a@t.com",
+      clientId: "r2",
+      annotations: [],
+    });
+    expect(withoutRegion.screenshotRegion).toBeNull();
+  });
+
+  it("updateFeedback persists every status of the 4-status model", async () => {
+    const store = new MemoryStore();
+    const fb = await store.createFeedback({
+      projectName: "a",
+      type: "bug",
+      message: "test",
+      status: "open",
+      url: "https://example.com",
+      viewport: "1920x1080",
+      userAgent: "test",
+      authorName: "Alice",
+      authorEmail: "a@t.com",
+      clientId: "s1",
+      annotations: [],
+    });
+
+    // Open statuses — resolvedAt stays null.
+    const inProgress = await store.updateFeedback(fb.id, { status: "in_progress", resolvedAt: null });
+    expect(inProgress.status).toBe("in_progress");
+    expect(inProgress.resolvedAt).toBeNull();
+
+    // Closed statuses — the store persists the closure timestamp it is given.
+    const closedAt = new Date("2026-01-15T10:00:00.000Z");
+    const wontFix = await store.updateFeedback(fb.id, { status: "wont_fix", resolvedAt: closedAt });
+    expect(wontFix.status).toBe("wont_fix");
+    expect(wontFix.resolvedAt).toEqual(closedAt);
+
+    const reopened = await store.updateFeedback(fb.id, { status: "open", resolvedAt: null });
+    expect(reopened.status).toBe("open");
+    expect(reopened.resolvedAt).toBeNull();
+
+    const resolved = await store.updateFeedback(fb.id, { status: "resolved", resolvedAt: closedAt });
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolvedAt).toEqual(closedAt);
+  });
 });
