@@ -11,6 +11,7 @@ export type {
   FeedbackType,
   RectData,
   SitepingConfig,
+  SitepingHeadersOption,
   SitepingInstance,
   SitepingPublicEvents,
   SitepingStore,

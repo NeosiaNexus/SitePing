@@ -44,10 +44,42 @@ export interface SitepingDeepLinkOptions {
   param?: string;
 }
 
+/**
+ * Extra request headers for HTTP mode — a static map, or a factory (sync or
+ * async) invoked once per request to produce fresh values (e.g. a short-lived
+ * session token).
+ */
+export type SitepingHeadersOption =
+  | Record<string, string>
+  | (() => Record<string, string> | Promise<Record<string, string>>);
+
 /** Configuration options for the Siteping widget. */
 export interface SitepingConfig {
   /** HTTP endpoint that receives feedbacks (e.g. '/api/siteping'). Required unless `store` is provided. */
   endpoint?: string | undefined;
+  /**
+   * Convenience auth for HTTP mode — sent as `Authorization: Bearer <apiKey>`
+   * on every request to `endpoint`.
+   *
+   * **WARNING: the widget runs in every visitor's browser, so a static key
+   * configured here is public** — anyone can read it from your page source
+   * and replay it against your API. Only use `apiKey` for internal tools
+   * already behind your own login. On public sites, prefer `headers` with a
+   * per-request factory returning a short-lived session token.
+   *
+   * Ignored in store mode.
+   */
+  apiKey?: string | undefined;
+  /**
+   * Extra headers for every HTTP-mode request — a static map, or a factory
+   * (sync or async) called once per request (e.g. to fetch a fresh session
+   * token). Merged over the widget's generated headers, so an explicit
+   * `Authorization` entry overrides `apiKey`. A throwing/rejecting factory
+   * fails the request like a network error.
+   *
+   * Ignored in store mode.
+   */
+  headers?: SitepingHeadersOption | undefined;
   /** Required — project identifier used to scope feedbacks */
   projectName: string;
   /** Direct store for client-side mode. When set, bypasses HTTP and uses the store directly in the browser. */

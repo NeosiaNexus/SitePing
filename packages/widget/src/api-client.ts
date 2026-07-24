@@ -6,6 +6,7 @@ import {
   type FeedbackType,
   SitepingAuthError,
   SitepingError,
+  type SitepingHeadersOption,
   SitepingNetworkError,
   SitepingValidationError,
 } from "@siteping/core";
@@ -77,6 +78,34 @@ export interface GetFeedbacksOptions {
   url?: string;
   /** Restrict to feedbacks created on this URL pattern (e.g. `/orders/:orderId`). */
   urlPattern?: string;
+}
+
+/** Auth options for `ApiClient` / `flushRetryQueue` (HTTP mode). */
+export interface ApiClientAuth {
+  /** Sent as `Authorization: Bearer <apiKey>` on every request. */
+  apiKey?: string | undefined;
+  /** Extra headers, static or per-request factory. An explicit `Authorization` entry wins over `apiKey`. */
+  headers?: SitepingHeadersOption | undefined;
+}
+
+/**
+ * Build the headers for one request — mirrors the dashboard's
+ * `createEndpointSource` semantics: `Content-Type` when the request carries a
+ * JSON body, then `Bearer` from `apiKey`, then `headers` merged on top so an
+ * explicit `Authorization` wins.
+ *
+ * A function `headers` resolves once per call — retries inside
+ * `resilientFetch` reuse the values (max retry window ~7s, acceptable for
+ * short-lived tokens; the dashboard has the same per-request semantics). A
+ * throwing/rejecting factory fails the request like a network error.
+ */
+export async function buildRequestHeaders(auth: ApiClientAuth, json: boolean): Promise<Record<string, string>> {
+  const merged: Record<string, string> = {};
+  if (json) merged["Content-Type"] = "application/json";
+  if (auth.apiKey) merged.Authorization = `Bearer ${auth.apiKey}`;
+  const extra = typeof auth.headers === "function" ? await auth.headers() : auth.headers;
+  if (extra) Object.assign(merged, extra);
+  return merged;
 }
 
 const MAX_RETRIES = 3;
@@ -182,8 +211,15 @@ function normalizeEmail(value: string): string {
  * This prevents user A's offline feedback from being POSTed under user B's
  * identity after a session change. When omitted, all entries are replayed to
  * preserve the legacy behavior for callers that don't track identity.
+ *
+ * `auth` headers resolve fresh at flush time (once per flush call) — queue
+ * entries persist payloads only, never headers or token material.
  */
-export async function flushRetryQueue(endpoint: string, currentIdentity?: Identity | null): Promise<void> {
+export async function flushRetryQueue(
+  endpoint: string,
+  currentIdentity?: Identity | null,
+  auth: ApiClientAuth = {},
+): Promise<void> {
   await withRetryLock(async () => {
     try {
       const queue = readQueue();
@@ -218,18 +254,21 @@ export async function flushRetryQueue(endpoint: string, currentIdentity?: Identi
 
       // Process items sequentially to avoid overwhelming the server
       const failed: RetryEntry[] = [];
-      for (const entry of toRetry) {
-        try {
-          const res = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(entry.payload),
-          });
-          if (!res.ok) {
+      if (toRetry.length > 0) {
+        const headers = await buildRequestHeaders(auth, true);
+        for (const entry of toRetry) {
+          try {
+            const res = await fetch(endpoint, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(entry.payload),
+            });
+            if (!res.ok) {
+              failed.push(entry);
+            }
+          } catch {
             failed.push(entry);
           }
-        } catch {
-          failed.push(entry);
         }
       }
 
@@ -259,6 +298,7 @@ export class ApiClient implements WidgetClient {
   constructor(
     private readonly endpoint: string,
     private readonly projectName: string,
+    private readonly auth: ApiClientAuth = {},
   ) {}
 
   async sendFeedback(payload: FeedbackPayload): Promise<FeedbackResponse> {
@@ -275,7 +315,7 @@ export class ApiClient implements WidgetClient {
       try {
         response = await resilientFetch(this.endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: await buildRequestHeaders(this.auth, true),
           body: JSON.stringify(body),
         });
       } catch (error) {
@@ -308,9 +348,13 @@ export class ApiClient implements WidgetClient {
 
     let response: Response;
     try {
+      // GET carries no body — only attach headers when auth produced some, so
+      // the no-auth wire shape stays byte-identical to the legacy client.
+      const headers = await buildRequestHeaders(this.auth, false);
       response = await resilientFetch(`${this.endpoint}?${params.toString()}`, {
         method: "GET",
         cache: "no-store",
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
       });
     } catch (error) {
       throw networkErrorFromException(error, "Failed to fetch feedbacks");
@@ -328,7 +372,7 @@ export class ApiClient implements WidgetClient {
     try {
       response = await resilientFetch(this.endpoint, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: await buildRequestHeaders(this.auth, true),
         body: JSON.stringify({ id, projectName: this.projectName, status: resolved ? "resolved" : "open" }),
       });
     } catch (error) {
@@ -347,7 +391,7 @@ export class ApiClient implements WidgetClient {
     try {
       response = await resilientFetch(this.endpoint, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: await buildRequestHeaders(this.auth, true),
         body: JSON.stringify({ id, projectName: this.projectName }),
       });
     } catch (error) {
@@ -364,7 +408,7 @@ export class ApiClient implements WidgetClient {
     try {
       response = await resilientFetch(this.endpoint, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: await buildRequestHeaders(this.auth, true),
         body: JSON.stringify({ projectName, deleteAll: true }),
       });
     } catch (error) {

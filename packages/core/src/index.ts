@@ -55,6 +55,7 @@ export type {
   ScreenshotRegion,
   SitepingConfig,
   SitepingDeepLinkOptions,
+  SitepingHeadersOption,
   SitepingIdentity,
   SitepingInstance,
   SitepingLocale,
