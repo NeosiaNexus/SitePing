@@ -89,6 +89,17 @@ const rows = [
     userback: <Cross />,
   },
   {
+    feature: "Triage inbox",
+    siteping: (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-400">
+        React component
+      </span>
+    ),
+    markerio: <Partial label="SaaS only" />,
+    bugherd: <Partial label="SaaS only" />,
+    userback: <Partial label="SaaS only" />,
+  },
+  {
     feature: "Customizable",
     siteping: (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-400">

@@ -13,11 +13,11 @@ const faqs = [
   },
   {
     q: "Is there a dashboard to view feedback?",
-    a: "A dashboard UI is on the roadmap. Currently, feedback is accessible via the widget panel and the API. You can query, filter, and manage feedback programmatically.",
+    a: "Yes — install @siteping/dashboard and drop the <SitepingInbox /> React component into your admin page. It is a Linear-style triage inbox with j/k keyboard shortcuts, four statuses, and the client's annotation re-drawn on the screenshot. See it working at /demo/inbox.",
   },
   {
     q: "How big is the widget bundle?",
-    a: "The widget is under 20 kB gzipped. It loads asynchronously and never blocks your page rendering.",
+    a: "About 28 kB gzipped on first paint — the feedback panel, screenshot capture, and non-English locales load on demand. The widget loads asynchronously and never blocks your page rendering.",
   },
   {
     q: "Is it GDPR compliant?",
@@ -25,7 +25,15 @@ const faqs = [
   },
   {
     q: "Can I customize the widget appearance?",
-    a: "Yes — accent color, position (bottom-right or bottom-left), theme (light, dark, auto), and locale (English, French). Full event system for custom integrations.",
+    a: "Yes — accent color, position (bottom-right or bottom-left), theme (light, dark, auto), and 7 built-in locales (English, French, German, Spanish, Italian, Portuguese, Russian) plus registerLocale for your own. Try every option live on the demo.",
+  },
+  {
+    q: "Is it accessible?",
+    a: "Yes — the widget and the inbox are audited against WCAG 2.1 AA. The full flow works from the keyboard, including drawing an annotation: Tab to the element, press Enter. Actions are announced to screen readers.",
+  },
+  {
+    q: "How is reviewers' data handled?",
+    a: "Feedback lives in your own database — SitePing is self-hosted. The API blanks reviewer emails on unauthenticated reads by default, and elements marked data-siteping-ignore are masked out of screenshots.",
   },
   {
     q: "Do I need to create an account?",

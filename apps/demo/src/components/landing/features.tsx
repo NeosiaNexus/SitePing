@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 interface Framework {
   name: string;
   color: string;
@@ -176,6 +178,54 @@ function DomAnchoredVisual() {
   );
 }
 
+function TriageInboxVisual() {
+  return (
+    <div className="mt-6 overflow-hidden rounded-xl border border-gray-800/60 bg-gray-950/80 text-xs">
+      <div className="flex items-center justify-between border-b border-gray-800/60 px-3 py-2 text-gray-500">
+        <span>Inbox &middot; 2 open</span>
+        <span className="flex items-center gap-1" aria-hidden="true">
+          <kbd className="rounded border border-gray-700 bg-gray-900 px-1.5 font-mono text-[10px] text-gray-400">j</kbd>
+          <kbd className="rounded border border-gray-700 bg-gray-900 px-1.5 font-mono text-[10px] text-gray-400">k</kbd>
+          <span className="ml-1 text-[10px]">to move</span>
+        </span>
+      </div>
+      <div className="divide-y divide-gray-800/60">
+        <div className="flex items-center gap-2.5 border-l-2 border-accent bg-accent/5 px-3 py-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
+          <span className="truncate text-gray-300">The hero image is blurry on retina</span>
+          <span className="ml-auto shrink-0 text-[10px] text-gray-500">Open</span>
+        </div>
+        <div className="flex items-center gap-2.5 border-l-2 border-transparent px-3 py-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-400" />
+          <span className="truncate text-gray-400">Swap the two hero buttons</span>
+          <span className="ml-auto shrink-0 text-[10px] text-gray-500">In progress</span>
+        </div>
+        <div className="flex items-center gap-2.5 border-l-2 border-transparent px-3 py-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400" />
+          <span className="truncate text-gray-500 line-through">Footer links open in the same tab</span>
+          <span className="ml-auto shrink-0 text-[10px] text-gray-500">Resolved</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiagnosticsVisual() {
+  return (
+    <div className="mt-6 overflow-hidden rounded-xl border border-gray-800/60 bg-gray-950/80 p-4 font-mono text-[11px] leading-relaxed sm:text-xs">
+      <p className="text-red-400/80">
+        <span className="mr-1.5">&#10007;</span>TypeError: cart is undefined
+      </p>
+      <p className="text-red-400/80">
+        <span className="mr-1.5">&#10007;</span>POST /api/checkout &rarr; 500
+      </p>
+      <p className="mt-1 text-gray-500">
+        <span className="mr-1.5 text-green-500/70">&#10003;</span>Attached to the feedback
+      </p>
+    </div>
+  );
+}
+
 export function Features() {
   return (
     <section id="features" className="bg-gray-950 px-6 pb-24 pt-16">
@@ -188,7 +238,7 @@ export function Features() {
         </div>
 
         {/* Bento grid */}
-        <div className="mt-16 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:grid-rows-[auto_auto]">
+        <div className="mt-16 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* ── Large card: Self-Hosted (spans 2 cols on desktop) ── */}
           <article
             data-gsap="feature-card-large"
@@ -245,7 +295,170 @@ export function Features() {
             <DomAnchoredVisual />
           </article>
 
-          {/* ── Row 2: npm Install (1) + Open Source (1) + CLI Scaffold (1) = 3 cols ── */}
+          {/* ── Row 2: Triage inbox (2 cols) + Annotated screenshots (1 col) ── */}
+
+          {/* Triage inbox */}
+          <article
+            data-gsap="feature-card-large"
+            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-8 transition-all duration-300 hover:border-white/10 hover:bg-gray-900 sm:col-span-2 before:pointer-events-none before:absolute before:top-0 before:right-0 before:left-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-accent/50 before:to-transparent"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z"
+                />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-xl font-semibold text-white">Triage inbox</h3>
+            <p className="mt-2 max-w-xl leading-relaxed text-gray-400">
+              Drop <code className="font-mono text-sm text-accent-light">&lt;SitepingInbox /&gt;</code> into your admin
+              page and work through reports with <kbd className="font-mono text-sm text-gray-300">j</kbd>/
+              <kbd className="font-mono text-sm text-gray-300">k</kbd> — four statuses, the client&apos;s annotation
+              re-drawn on the screenshot. Slack, Discord, and generic webhooks ping your team the moment feedback lands.
+            </p>
+            <TriageInboxVisual />
+            <Link
+              href="/demo/inbox"
+              className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-accent-light transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent-light"
+            >
+              See it live in the demo inbox &rarr;
+            </Link>
+          </article>
+
+          {/* Annotated screenshots + diagnostics */}
+          <article
+            data-gsap="feature-card-large"
+            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-8 transition-all duration-300 hover:border-white/10 hover:bg-gray-900 lg:row-span-1 before:pointer-events-none before:absolute before:top-0 before:right-0 before:left-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-accent/50 before:to-transparent"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
+                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-xl font-semibold text-white">Annotated screenshots</h3>
+            <p className="mt-2 leading-relaxed text-gray-400">
+              Each report can attach a capture of the exact area the client circled, plus the last console errors and
+              failed requests — &quot;it just doesn&apos;t work&quot; arrives with evidence.
+            </p>
+            <DiagnosticsVisual />
+          </article>
+
+          {/* ── Row 3: i18n (1) + Accessibility (1) + Auth & privacy (1) = 3 cols ── */}
+
+          {/* 7 languages built in */}
+          <article
+            data-gsap="feature-card"
+            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802"
+                />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-white">7 languages built in</h3>
+            <p className="mt-2 text-sm leading-relaxed text-gray-400">
+              English, French, German, Spanish, Italian, Portuguese, and Russian — in the widget and the inbox.
+            </p>
+            <div className="mt-4 rounded-lg border border-gray-800/60 bg-gray-950/80 px-3 py-2">
+              <code className="font-mono text-xs text-accent-light">registerLocale(code, translations)</code>
+            </div>
+          </article>
+
+          {/* Keyboard-first accessibility */}
+          <article
+            data-gsap="feature-card"
+            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3.75 9h16.5m-16.5 6.75h16.5M5.25 5.25h13.5A1.5 1.5 0 0120.25 6.75v10.5a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V6.75a1.5 1.5 0 011.5-1.5z"
+                />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-white">Keyboard-first accessibility</h3>
+            <p className="mt-2 text-sm leading-relaxed text-gray-400">
+              Audited against WCAG 2.1 AA. Clients can annotate without a mouse — Tab to the element, press Enter. Ready
+              for the European Accessibility Act.
+            </p>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/5 px-3 py-1 text-xs font-medium text-accent-light">
+              WCAG 2.1 AA
+            </div>
+          </article>
+
+          {/* Auth & privacy */}
+          <article
+            data-gsap="feature-card"
+            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-white">Auth &amp; privacy</h3>
+            <p className="mt-2 text-sm leading-relaxed text-gray-400">
+              Set an API key and admin routes require a Bearer token. Reads without one get reviewer emails blanked by
+              default.
+            </p>
+            <div className="mt-4 rounded-lg border border-gray-800/60 bg-gray-950/80 px-3 py-2">
+              <code className="font-mono text-xs text-gray-400">Authorization: Bearer &bull;&bull;&bull;</code>
+            </div>
+          </article>
+
+          {/* ── Row 4: npm Install (1) + Open Source (1) + CLI Scaffold (1) = 3 cols ── */}
 
           {/* npm Install & Go */}
           <article
@@ -341,7 +554,7 @@ export function Features() {
             </div>
           </article>
 
-          {/* ── Row 3: Shadow DOM Isolated (3 cols, bannière) ── */}
+          {/* ── Row 5: Shadow DOM Isolated (3 cols, bannière) ── */}
           <article
             data-gsap="feature-card"
             className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900 sm:col-span-2 lg:col-span-3"
