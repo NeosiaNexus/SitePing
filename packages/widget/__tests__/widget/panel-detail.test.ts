@@ -274,6 +274,20 @@ describe("DetailView", () => {
       expect(pill.textContent).toContain("Resolved");
     });
 
+    it("renders status pill labelled 'In progress' for in_progress feedbacks", () => {
+      setup.view.show(makeFeedback({ status: "in_progress" }), 1);
+      const pill = setup.view.element.querySelector<HTMLElement>(".sp-detail-status-pill")!;
+      expect(pill.classList.contains("sp-detail-status-pill--in-progress")).toBe(true);
+      expect(pill.textContent).toContain("In progress");
+    });
+
+    it("renders status pill labelled 'Won't fix' for wont_fix feedbacks", () => {
+      setup.view.show(makeFeedback({ status: "wont_fix" }), 1);
+      const pill = setup.view.element.querySelector<HTMLElement>(".sp-detail-status-pill")!;
+      expect(pill.classList.contains("sp-detail-status-pill--wont-fix")).toBe(true);
+      expect(pill.textContent).toContain("Won't fix");
+    });
+
     it("renders Resolve button (and Reopen variant for resolved feedbacks)", () => {
       // Open feedback => Resolve button
       setup.view.show(makeFeedback({ status: "open" }), 1);
@@ -289,6 +303,18 @@ describe("DetailView", () => {
       // Resolve variant should be gone
       resolveBtn = setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-resolve");
       expect(resolveBtn).toBeNull();
+    });
+
+    it("in_progress gets Resolve, wont_fix gets Reopen (binary actions on 4 statuses)", () => {
+      // in_progress is still actionable => Resolve button
+      setup.view.show(makeFeedback({ status: "in_progress" }), 1);
+      expect(setup.view.element.querySelector(".sp-detail-btn-resolve")).not.toBeNull();
+      expect(setup.view.element.querySelector(".sp-detail-btn-reopen")).toBeNull();
+
+      // wont_fix is closed => Reopen button
+      setup.view.show(makeFeedback({ status: "wont_fix" }), 1);
+      expect(setup.view.element.querySelector(".sp-detail-btn-reopen")).not.toBeNull();
+      expect(setup.view.element.querySelector(".sp-detail-btn-resolve")).toBeNull();
     });
 
     it("renders the Delete button", () => {

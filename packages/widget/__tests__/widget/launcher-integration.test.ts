@@ -213,6 +213,45 @@ describe("launcher — annotation:complete integration", () => {
 
       instance.destroy();
     });
+
+    it("passes screenshotDataUrl and screenshotRegion from annotation:complete into the payload", async () => {
+      mockSendFeedback.mockResolvedValue(makeFeedbackResponse());
+
+      const instance = launch(defaultConfig());
+      const region = { xPct: 0.25, yPct: 0.1, wPct: 0.5, hPct: 0.4 };
+      capturedBus!.emit("annotation:complete", {
+        ...makeAnnotationCompleteData(),
+        screenshotDataUrl: "data:image/jpeg;base64,CAP",
+        screenshotRegion: region,
+      });
+
+      await vi.waitFor(() => {
+        expect(mockSendFeedback).toHaveBeenCalledOnce();
+      });
+
+      const payload = mockSendFeedback.mock.calls[0][0];
+      expect(payload.screenshotDataUrl).toBe("data:image/jpeg;base64,CAP");
+      expect(payload.screenshotRegion).toEqual(region);
+
+      instance.destroy();
+    });
+
+    it("defaults screenshotDataUrl and screenshotRegion to null when capture was skipped", async () => {
+      mockSendFeedback.mockResolvedValue(makeFeedbackResponse());
+
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        expect(mockSendFeedback).toHaveBeenCalledOnce();
+      });
+
+      const payload = mockSendFeedback.mock.calls[0][0];
+      expect(payload.screenshotDataUrl).toBeNull();
+      expect(payload.screenshotRegion).toBeNull();
+
+      instance.destroy();
+    });
   });
 
   // -------------------------------------------------------------------------

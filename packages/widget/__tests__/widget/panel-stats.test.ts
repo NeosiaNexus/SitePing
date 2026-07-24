@@ -121,6 +121,30 @@ describe("PanelStats", () => {
     expect(values[2].textContent).toBe("2");
   });
 
+  it("buckets in_progress as open and wont_fix as resolved (binary client view)", () => {
+    const stats = new PanelStats(buildThemeColors(), createT("en"));
+    document.body.appendChild(stats.element);
+
+    stats.update(
+      [
+        makeFeedback({ id: "1", status: "open" }),
+        makeFeedback({ id: "2", status: "in_progress" }),
+        makeFeedback({ id: "3", status: "resolved" }),
+        makeFeedback({ id: "4", status: "wont_fix" }),
+      ],
+      4,
+    );
+
+    const values = stats.element.querySelectorAll<HTMLElement>(".sp-stats-value");
+    // open bucket = open + in_progress, resolved bucket = resolved + wont_fix
+    expect(values[0].textContent).toBe("2");
+    expect(values[1].textContent).toBe("2");
+
+    // Progress reflects the closed share: 2/4 = 50%
+    const fill = stats.element.querySelector<HTMLElement>(".sp-stats-progress-fill")!;
+    expect(fill.style.width).toBe("50%");
+  });
+
   it("computes the percentage resolved relative to visible feedbacks", () => {
     const stats = new PanelStats(buildThemeColors(), createT("en"));
     document.body.appendChild(stats.element);

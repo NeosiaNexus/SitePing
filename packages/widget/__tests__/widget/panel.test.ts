@@ -328,6 +328,78 @@ describe("Panel", () => {
       const allSeg = shadow.querySelector<HTMLButtonElement>('[data-status-filter="all"]')!;
       expect(allSeg.getAttribute("aria-checked")).toBe("false");
     });
+
+    it("Open tab requests the open bucket (open + in_progress)", async () => {
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+
+      shadow.querySelector<HTMLButtonElement>('[data-status-filter="open"]')!.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.getFeedbacks).toHaveBeenCalledWith(
+          "test-project",
+          expect.objectContaining({ statuses: ["open", "in_progress"] }),
+        );
+      });
+    });
+
+    it("Resolved tab requests the resolved bucket (resolved + wont_fix)", async () => {
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+
+      shadow.querySelector<HTMLButtonElement>('[data-status-filter="resolved"]')!.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.getFeedbacks).toHaveBeenCalledWith(
+          "test-project",
+          expect.objectContaining({ statuses: ["resolved", "wont_fix"] }),
+        );
+      });
+    });
+
+    it("All tab sends neither status nor statuses", async () => {
+      await panel.open();
+      // Switch to Open first so there is a filter to clear.
+      shadow.querySelector<HTMLButtonElement>('[data-status-filter="open"]')!.click();
+      apiClient.getFeedbacks.mockClear();
+
+      shadow.querySelector<HTMLButtonElement>('[data-status-filter="all"]')!.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.getFeedbacks).toHaveBeenCalled();
+      });
+      const lastOptions = apiClient.getFeedbacks.mock.calls.at(-1)![1] as Record<string, unknown>;
+      expect(lastOptions).not.toHaveProperty("statuses");
+      expect(lastOptions).not.toHaveProperty("status");
+    });
+
+    it("keeps an in_progress feedback visible under the Open tab", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-ip", status: "in_progress" })],
+        total: 1,
+      });
+      await panel.open();
+
+      shadow.querySelector<HTMLButtonElement>('[data-status-filter="open"]')!.click();
+
+      await vi.waitFor(() => {
+        expect(shadow.querySelector<HTMLElement>('[data-feedback-id="fb-ip"]')).not.toBeNull();
+      });
+    });
+
+    it("keeps a wont_fix feedback visible under the Resolved tab", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-wf", status: "wont_fix" })],
+        total: 1,
+      });
+      await panel.open();
+
+      shadow.querySelector<HTMLButtonElement>('[data-status-filter="resolved"]')!.click();
+
+      await vi.waitFor(() => {
+        expect(shadow.querySelector<HTMLElement>('[data-feedback-id="fb-wf"]')).not.toBeNull();
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -375,6 +447,43 @@ describe("Panel", () => {
 
       const card = shadow.querySelector<HTMLElement>(".sp-card--resolved");
       expect(card).not.toBeNull();
+    });
+
+    it("renders 'resolved' class on wont_fix cards but not on in_progress cards", async () => {
+      const feedbacks = [
+        makeFeedback({ id: "fb-wf", status: "wont_fix" }),
+        makeFeedback({ id: "fb-ip", status: "in_progress" }),
+      ];
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks, total: 2 });
+
+      await panel.open();
+
+      const wontFixCard = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-wf"]')!;
+      expect(wontFixCard.classList.contains("sp-card--resolved")).toBe(true);
+      const inProgressCard = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-ip"]')!;
+      expect(inProgressCard.classList.contains("sp-card--resolved")).toBe(false);
+    });
+
+    it("renders a status badge with the record's actual status on each card", async () => {
+      const feedbacks = [
+        makeFeedback({ id: "fb-open", status: "open" }),
+        makeFeedback({ id: "fb-ip", status: "in_progress" }),
+        makeFeedback({ id: "fb-res", status: "resolved" }),
+        makeFeedback({ id: "fb-wf", status: "wont_fix" }),
+      ];
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks, total: 4 });
+
+      await panel.open();
+
+      // The suite runs with the fr locale (setup-i18n.ts registers it).
+      const badgeFor = (id: string) =>
+        shadow.querySelector<HTMLElement>(`[data-feedback-id="${id}"] .sp-badge--status`)!;
+      expect(badgeFor("fb-open").textContent).toBe("Ouvert");
+      expect(badgeFor("fb-open").dataset.status).toBe("open");
+      expect(badgeFor("fb-ip").textContent).toBe("En cours");
+      expect(badgeFor("fb-res").textContent).toBe("Résolu");
+      expect(badgeFor("fb-wf").textContent).toBe("Sans suite");
+      expect(badgeFor("fb-wf").dataset.status).toBe("wont_fix");
     });
 
     it("shows empty state when no feedbacks exist", async () => {
@@ -561,6 +670,42 @@ describe("Panel", () => {
 
       await vi.waitFor(() => {
         expect(apiClient.resolveFeedback).toHaveBeenCalledWith("fb-2", false);
+      });
+    });
+
+    it("clicking resolve on in_progress feedback resolves it (not closed yet)", async () => {
+      const fb = makeFeedback({ id: "fb-3", status: "in_progress" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.resolveFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-resolve")!;
+      resolveBtn.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.resolveFeedback).toHaveBeenCalledWith("fb-3", true);
+      });
+    });
+
+    it("clicking resolve on wont_fix feedback reopens it (closed status)", async () => {
+      const fb = makeFeedback({ id: "fb-4", status: "wont_fix" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.resolveFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+
+      // Closed card renders the "Reopen" variant of the resolve button (fr locale)
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-resolve")!;
+      expect(resolveBtn.textContent).toContain("Rouvrir");
+      resolveBtn.click();
+
+      await vi.waitFor(() => {
+        expect(apiClient.resolveFeedback).toHaveBeenCalledWith("fb-4", false);
       });
     });
 
@@ -1670,7 +1815,7 @@ describe("Panel", () => {
             page: 2,
             limit: 20,
             type: "bug",
-            status: "open",
+            statuses: ["open", "in_progress"],
             search: "needle",
           }),
         );

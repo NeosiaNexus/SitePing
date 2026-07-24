@@ -1,4 +1,4 @@
-import type { AnchorData, FeedbackResponse, RectData } from "@siteping/core";
+import { type AnchorData, type FeedbackResponse, isClosedStatus, type RectData } from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
 import { resolveAnnotation } from "./dom/resolver.js";
 import { el, setText } from "./dom-utils.js";
@@ -95,7 +95,8 @@ export class MarkerManager {
   get openCount(): number {
     let count = 0;
     for (const entry of this.entries) {
-      if (entry.feedback.status === "open") count++;
+      // Anything not closed (open, in_progress) still needs attention.
+      if (!isClosedStatus(entry.feedback.status)) count++;
     }
     return count;
   }
@@ -460,7 +461,7 @@ export class MarkerManager {
   }
 
   private applyConfidenceStyle(marker: HTMLElement, confidence: number, feedback: FeedbackResponse): void {
-    const isResolved = feedback.status === "resolved";
+    const isResolved = isClosedStatus(feedback.status);
     if (confidence < LOW_CONFIDENCE_THRESHOLD && !isResolved) {
       marker.style.borderStyle = "dashed";
       marker.style.opacity = "0.7";
@@ -474,7 +475,8 @@ export class MarkerManager {
 
   private createMarker(number: number, feedback: FeedbackResponse, pos: { top: number; left: number }): HTMLElement {
     const typeColor = getTypeColor(feedback.type, this.colors);
-    const isResolved = feedback.status === "resolved";
+    // Closed feedbacks (resolved, wont_fix) render as muted checkmark markers.
+    const isResolved = isClosedStatus(feedback.status);
 
     const marker = el("div", {
       style: `

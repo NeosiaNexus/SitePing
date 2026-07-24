@@ -28,8 +28,10 @@ export const pt: Translations = {
 
   // Status filter labels
   "panel.statusAll": "Todos",
-  "panel.statusOpen": "Abertos",
-  "panel.statusResolved": "Resolvidos",
+  "panel.statusOpen": "Aberto",
+  "panel.statusResolved": "Resolvido",
+  "panel.statusInProgress": "Em andamento",
+  "panel.statusWontFix": "Não será corrigido",
 
   // Feedback type labels
   "type.label": "Tipo",
@@ -128,6 +130,7 @@ export const pt: Translations = {
   "detail.viewport": "Viewport",
   "detail.browser": "Navegador",
   "detail.resolvedAt": "Resolvido em",
+  "detail.closedAt": "Fechado em",
   "detail.goToAnnotation": "Ir para anotação",
   "detail.element": "Elemento",
   "detail.selector": "Seletor",

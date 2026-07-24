@@ -1,4 +1,4 @@
-import type { BuiltinLocale, FeedbackType } from "@siteping/core";
+import type { BuiltinLocale, FeedbackStatus, FeedbackType } from "@siteping/core";
 import { BUILTIN_LOCALES } from "@siteping/core";
 import type { TFunction, TranslationKey, Translations } from "./types.js";
 
@@ -112,6 +112,28 @@ export function getTypeLabel(type: FeedbackType | string, t: TFunction): string 
       return t("type.other");
     default:
       return type;
+  }
+}
+
+/**
+ * Returns the status label for a `FeedbackStatus` value.
+ *
+ * Maps API enum values (English) to localised display labels. The exhaustive
+ * `switch` is paired with a fall-through so adding a new `FeedbackStatus`
+ * still renders the raw value instead of crashing.
+ */
+export function getStatusLabel(status: FeedbackStatus | string, t: TFunction): string {
+  switch (status) {
+    case "open":
+      return t("panel.statusOpen");
+    case "in_progress":
+      return t("panel.statusInProgress");
+    case "resolved":
+      return t("panel.statusResolved");
+    case "wont_fix":
+      return t("panel.statusWontFix");
+    default:
+      return status;
   }
 }
 

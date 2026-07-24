@@ -67,6 +67,16 @@ describe("feedback export conversion", () => {
     expect(feedbacksToCsv([])).toBe("id,type,status,message,url,authorName,authorEmail,createdAt,resolvedAt,viewport");
   });
 
+  it("exports the new statuses (in_progress, wont_fix) verbatim in CSV", () => {
+    const csv = feedbacksToCsv([
+      makeFeedback({ id: "fb-ip", status: "in_progress" }),
+      makeFeedback({ id: "fb-wf", status: "wont_fix", resolvedAt: "2026-05-01T00:00:00.000Z" }),
+    ]);
+    const rows = csv.split("\n");
+    expect(rows[1]).toContain("fb-ip,bug,in_progress");
+    expect(rows[2]).toContain("fb-wf,bug,wont_fix");
+  });
+
   it("neutralizes spreadsheet formula injection in user-controlled fields", () => {
     const csv = feedbacksToCsv([
       makeFeedback({

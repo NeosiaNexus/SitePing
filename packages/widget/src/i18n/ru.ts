@@ -27,8 +27,10 @@ export const ru: Translations = {
 
   // Status filter labels
   "panel.statusAll": "Все",
-  "panel.statusOpen": "Открытые",
-  "panel.statusResolved": "Решённые",
+  "panel.statusOpen": "Открыт",
+  "panel.statusResolved": "Решён",
+  "panel.statusInProgress": "В работе",
+  "panel.statusWontFix": "Не будет исправлено",
 
   // Feedback type labels
   "type.label": "Тип",
@@ -127,6 +129,7 @@ export const ru: Translations = {
   "detail.viewport": "Viewport",
   "detail.browser": "Браузер",
   "detail.resolvedAt": "Решён",
+  "detail.closedAt": "Закрыт",
   "detail.goToAnnotation": "Перейти к аннотации",
   "detail.element": "Элемент",
   "detail.selector": "Селектор",

@@ -28,6 +28,12 @@ const popupMocks = vi.hoisted(() => {
      */
     lastSubmitPromise: null as Promise<void> | null,
     /**
+     * The `onSubmit` callback captured on the last `show()` call, so tests
+     * can re-invoke it — mirroring the real popup's retry path after a
+     * failed submit (screenshot-cache tests need a second `runSubmission`).
+     */
+    capturedOnSubmit: null as ((r: { type: string; message: string }) => Promise<void>) | null,
+    /**
      * When true the mock's `show()` stays pending (mirroring the real popup,
      * which only resolves once `runSubmission` settles). Tests that exercise
      * the still-open-popup window (serialization, destroy-mid-submit) set this.
@@ -49,6 +55,7 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
         // callback (its settlement is captured on `lastSubmitPromise` so
         // tests can await it) and resolve show() with the same result the
         // real popup would have produced on success.
+        popupMocks.capturedOnSubmit = onSubmit ?? null;
         if (popupMocks.nextResult && onSubmit) {
           const submit = onSubmit(popupMocks.nextResult);
           popupMocks.lastSubmitPromise = submit;
@@ -64,6 +71,17 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
       popupMocks.destroyCount += 1;
     }),
   })),
+}));
+
+// Mock the screenshot module — jsdom can't drive html2canvas. The annotator
+// only calls `captureAnnotatedScreenshot` when constructed with
+// `enableScreenshot: true`; the capture tests below flip the resolved value.
+const screenshotMocks = vi.hoisted(() => ({
+  captureAnnotatedScreenshot: vi.fn(),
+}));
+
+vi.mock(new URL("../../src/screenshot.js", import.meta.url).pathname, () => ({
+  captureAnnotatedScreenshot: screenshotMocks.captureAnnotatedScreenshot,
 }));
 
 // Mock anchor helpers to avoid @medv/finder dependency in jsdom
@@ -123,8 +141,11 @@ describe("Annotator", () => {
   beforeEach(() => {
     popupMocks.nextResult = { type: "bug", message: "Test message" };
     popupMocks.lastSubmitPromise = null;
+    popupMocks.capturedOnSubmit = null;
     popupMocks.keepShowPending = false;
     popupMocks.destroyCount = 0;
+    screenshotMocks.captureAnnotatedScreenshot.mockReset();
+    screenshotMocks.captureAnnotatedScreenshot.mockResolvedValue(null);
     ({ annotator, bus } = createAnnotator());
   });
 
@@ -1080,6 +1101,141 @@ describe("Annotator", () => {
       // The terminal-event listeners were unsubscribed on destroy — a late
       // terminal event must be inert (no second settle, no throw).
       expect(() => bus.emit("submission:cancelled")).not.toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Contextual screenshot capture — dataUrl + region passthrough & caching
+  // -------------------------------------------------------------------------
+
+  describe("screenshot capture (enableScreenshot)", () => {
+    const capture = {
+      dataUrl: "data:image/jpeg;base64,CAP",
+      region: { xPct: 0.25, yPct: 0.25, wPct: 0.5, hPct: 0.5 },
+    };
+
+    /** Annotator with screenshots ON — the shared beforeEach one has them off. */
+    function createCapturingAnnotator() {
+      const capturingBus = new EventBus<WidgetEvents>();
+      const capturing = new Annotator(colors, capturingBus, t, true);
+      return { capturing, capturingBus };
+    }
+
+    function draw(overlay: HTMLElement): void {
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+    }
+
+    it("emits annotation:complete with the captured dataUrl and region", async () => {
+      screenshotMocks.captureAnnotatedScreenshot.mockResolvedValue(capture);
+      const { capturing, capturingBus } = createCapturingAnnotator();
+
+      try {
+        const completeListener = vi.fn();
+        capturingBus.on("annotation:complete", completeListener);
+
+        capturingBus.emit("annotation:start");
+        draw(findOverlay()!);
+
+        await vi.waitFor(() => {
+          expect(completeListener).toHaveBeenCalledOnce();
+        });
+
+        const data = completeListener.mock.calls[0][0];
+        expect(data.screenshotDataUrl).toBe("data:image/jpeg;base64,CAP");
+        expect(data.screenshotRegion).toEqual(capture.region);
+        // Captured with the drawn rect's viewport geometry.
+        const rect = screenshotMocks.captureAnnotatedScreenshot.mock.calls[0]![0] as DOMRect;
+        expect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height }).toEqual({
+          x: 50,
+          y: 50,
+          width: 150,
+          height: 100,
+        });
+      } finally {
+        capturing.destroy();
+      }
+    });
+
+    it("emits null dataUrl AND null region when the capture fails", async () => {
+      screenshotMocks.captureAnnotatedScreenshot.mockResolvedValue(null);
+      const { capturing, capturingBus } = createCapturingAnnotator();
+
+      try {
+        const completeListener = vi.fn();
+        capturingBus.on("annotation:complete", completeListener);
+
+        capturingBus.emit("annotation:start");
+        draw(findOverlay()!);
+
+        await vi.waitFor(() => {
+          expect(completeListener).toHaveBeenCalledOnce();
+        });
+
+        const data = completeListener.mock.calls[0][0];
+        expect(data.screenshotDataUrl).toBeNull();
+        expect(data.screenshotRegion).toBeNull();
+      } finally {
+        capturing.destroy();
+      }
+    });
+
+    it("does not invoke capture at all when enableScreenshot is off (default annotator)", async () => {
+      // Uses the shared beforeEach annotator (constructed without the flag).
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      draw(findOverlay()!);
+
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      expect(screenshotMocks.captureAnnotatedScreenshot).not.toHaveBeenCalled();
+      const data = completeListener.mock.calls[0][0];
+      expect(data.screenshotDataUrl).toBeNull();
+      expect(data.screenshotRegion).toBeNull();
+    });
+
+    it("captures once and reuses the cached pair across submit retries", async () => {
+      screenshotMocks.captureAnnotatedScreenshot.mockResolvedValue(capture);
+      // Keep show() pending so the popup stays "open" across the retry.
+      popupMocks.keepShowPending = true;
+      const { capturing, capturingBus } = createCapturingAnnotator();
+
+      try {
+        const completeListener = vi.fn();
+        capturingBus.on("annotation:complete", completeListener);
+
+        capturingBus.emit("annotation:start");
+        draw(findOverlay()!);
+
+        await vi.waitFor(() => {
+          expect(completeListener).toHaveBeenCalledOnce();
+        });
+
+        // Fail the first submission, then retry through the same onSubmit
+        // the popup holds — exactly what the real popup's retry button does.
+        capturingBus.emit("feedback:error", new Error("network blip"));
+        await expect(popupMocks.lastSubmitPromise!).rejects.toThrow("network blip");
+
+        const retry = popupMocks.capturedOnSubmit!({ type: "bug", message: "Test message" });
+        void retry.catch(() => {});
+
+        await vi.waitFor(() => {
+          expect(completeListener).toHaveBeenCalledTimes(2);
+        });
+
+        // One capture, both submissions carry the same cached pair — the
+        // user is never punished with a second html2canvas run.
+        expect(screenshotMocks.captureAnnotatedScreenshot).toHaveBeenCalledOnce();
+        const second = completeListener.mock.calls[1][0];
+        expect(second.screenshotDataUrl).toBe("data:image/jpeg;base64,CAP");
+        expect(second.screenshotRegion).toEqual(capture.region);
+      } finally {
+        capturing.destroy();
+      }
     });
   });
 });

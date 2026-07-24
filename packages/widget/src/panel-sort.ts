@@ -10,7 +10,7 @@
  * smooth micro-interactions.
  */
 
-import type { FeedbackResponse, FeedbackType } from "@siteping/core";
+import { type FeedbackResponse, type FeedbackType, isClosedStatus } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
@@ -68,9 +68,9 @@ export function sortFeedbacks(feedbacks: FeedbackResponse[], mode: SortMode): Fe
 
     case "open-first":
       sorted.sort((a, b) => {
-        // Open (0) before resolved (1)
-        const statusA = a.status === "open" ? 0 : 1;
-        const statusB = b.status === "open" ? 0 : 1;
+        // Still-actionable (0: open, in_progress) before closed (1: resolved, wont_fix)
+        const statusA = isClosedStatus(a.status) ? 1 : 0;
+        const statusB = isClosedStatus(b.status) ? 1 : 0;
         if (statusA !== statusB) return statusA - statusB;
         // Within same status: newest first
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();

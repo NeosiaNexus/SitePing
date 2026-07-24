@@ -1,4 +1,4 @@
-import type { FeedbackResponse } from "@siteping/core";
+import { type FeedbackResponse, isClosedStatus } from "@siteping/core";
 import { el, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
@@ -191,8 +191,10 @@ export class PanelStats {
     let bugCount = 0;
 
     for (const fb of feedbacks) {
-      if (fb.status === "open") openCount++;
-      if (fb.status === "resolved") resolvedCount++;
+      // Binary client-facing buckets: "open" = anything still actionable
+      // (open, in_progress), "resolved" = any closed status (resolved, wont_fix).
+      if (isClosedStatus(fb.status)) resolvedCount++;
+      else openCount++;
       if (fb.type === "bug") bugCount++;
     }
 
