@@ -55,7 +55,8 @@ export const ru: Translations = {
   "fab.annotations": "Показать или скрыть метки",
 
   // Annotator
-  "annotator.instruction": "Выделите область для комментария",
+  "annotator.instruction":
+    "Выделите область для комментария — или нажмите Enter, чтобы прокомментировать последний активный элемент",
   "annotator.instantInstruction": "Комментарий к выбранной точке",
   "annotator.cancel": "Отмена",
 

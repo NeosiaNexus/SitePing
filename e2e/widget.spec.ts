@@ -250,6 +250,60 @@ test.describe("Annotation mode", () => {
   });
 });
 
+test.describe("Keyboard-only annotation", () => {
+  test("FAB-launched Enter annotation targets the last focused page element", async ({ page }) => {
+    const s = shadow(page);
+
+    // 1. Focus a real page element — the fixture has no native button, so
+    //    inject one (the focus tracker needs a focusin from page content).
+    await page.evaluate(() => {
+      const btn = document.createElement("button");
+      btn.id = "kbd-target";
+      btn.textContent = "Focus me";
+      document.getElementById("target-element")?.after(btn);
+      btn.focus();
+    });
+
+    // 2. Open the FAB via keyboard (Enter on the focused button = click).
+    await page.evaluate(() => {
+      const host = document.querySelector("siteping-widget");
+      (host?.shadowRoot?.querySelector(".sp-fab") as HTMLElement)?.focus();
+    });
+    await page.keyboard.press("Enter");
+    await s.waitFor(".sp-radial-item--open");
+
+    // 3. The first radial item (chat) receives focus after the open animation
+    //    — ArrowDown to the annotate item, then Enter to activate it.
+    await page.waitForFunction(() => {
+      const host = document.querySelector("siteping-widget");
+      return host?.shadowRoot?.activeElement?.classList.contains("sp-radial-item") ?? false;
+    });
+    await page.keyboard.press("ArrowDown");
+    await page.waitForFunction(() => {
+      const host = document.querySelector("siteping-widget");
+      return host?.shadowRoot?.activeElement?.getAttribute("data-item-id") === "annotate";
+    });
+    await page.keyboard.press("Enter");
+
+    // 4. The overlay is up and focused — Enter annotates the tracked button
+    //    (the FAB stole focus, so only the tracker knows the real target).
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
+    await page.keyboard.press("Enter");
+
+    // 5. The feedback popup appears...
+    await page.waitForSelector("button[data-type='bug']");
+
+    // ...and the keyboard highlight rect (fixed-position, screenshot-ignored)
+    // covers the target element.
+    const hasHighlight = await page.evaluate(() => {
+      const overlay = document.querySelector("div[style*='crosshair']");
+      const rect = overlay?.querySelector("div[data-siteping-ignore]") as HTMLElement | null;
+      return !!rect && rect.style.position === "fixed" && parseFloat(rect.style.width) > 0;
+    });
+    expect(hasHighlight).toBe(true);
+  });
+});
+
 test.describe("Full annotation flow", () => {
   test("draw → popup → submit → marker + API persist", async ({ page }) => {
     const s = shadow(page);

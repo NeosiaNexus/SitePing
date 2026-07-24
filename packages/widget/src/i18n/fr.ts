@@ -55,7 +55,8 @@ export const fr: Translations = {
   "fab.annotations": "Afficher ou masquer les marqueurs",
 
   // Annotator
-  "annotator.instruction": "Tracez un rectangle sur la zone \u00e0 commenter",
+  "annotator.instruction":
+    "Tracez un rectangle sur la zone \u00e0 commenter \u2014 ou appuyez sur Entr\u00e9e pour commenter le dernier \u00e9l\u00e9ment actif",
   "annotator.instantInstruction": "Commenter l'endroit cliqu\u00e9",
   "annotator.cancel": "Annuler",
 

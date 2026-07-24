@@ -57,7 +57,8 @@ export const it: Translations = {
   "fab.annotations": "Mostra o nascondi i marcatori",
 
   // Annotator
-  "annotator.instruction": "Disegna un rettangolo sull'area da commentare",
+  "annotator.instruction":
+    "Disegna un rettangolo sull'area da commentare — oppure premi Invio per commentare l'ultimo elemento attivo",
   "annotator.instantInstruction": "Commenta il punto selezionato",
   "annotator.cancel": "Annulla",
 

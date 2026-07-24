@@ -14,6 +14,7 @@ import { ConsoleBuffer } from "./diagnostics/console-buffer.js";
 import { NetworkBuffer } from "./diagnostics/network-buffer.js";
 import { EventBus, type PublicWidgetEvents, type WidgetEvents } from "./events.js";
 import { Fab } from "./fab.js";
+import { createFocusTracker } from "./focus-tracker.js";
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
 import { getIdentity, type Identity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
@@ -297,6 +298,12 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   document.body.appendChild(host);
 
+  // Track the last page element the user focused. FAB-launched annotation
+  // moves focus into the shadow root before the annotator activates, so its
+  // own activeElement capture only sees the 0x0 shadow host — the tracker
+  // supplies the real keyboard (Enter) target instead. See issue #162.
+  const focusTracker = createFocusTracker(host);
+
   // Screen reader live region for feedback submission announcements
   const liveRegion = document.createElement("div");
   liveRegion.setAttribute("role", "status");
@@ -383,7 +390,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
     }
   });
 
-  const annotator = new Annotator(colors, bus, t, config.enableScreenshot ?? false);
+  const annotator = new Annotator(colors, bus, t, config.enableScreenshot ?? false, () =>
+    focusTracker.getLastPageFocus(),
+  );
 
   let onContextMenu: ((e: MouseEvent) => void) | null = null;
   if (config.enableRightClickComment) {
@@ -684,6 +693,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       destroyed = true;
       pendingOpen = false;
       teardownNavigation?.();
+      focusTracker.destroy();
       unsubAnnotation();
       unsubToggle();
       fab.destroy();
