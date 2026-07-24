@@ -59,7 +59,7 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **CLI scaffold** — `npx @siteping/cli init` sets up Prisma schema + API route
 - **Monorepo** — Split into independent packages (`widget`, `dashboard`, `adapter-prisma`, `adapter-memory`, `adapter-localstorage`, `cli`)
 - **Dev-only by default** — Widget auto-hides in production unless `forceShow: true`
-- **Lightweight** — ~28 kB gzipped on first paint (ESM entry); the panel, screenshot capture, and non-English locales load on demand
+- **Lightweight** — ~49 kB gzipped on the wire; the panel, screenshot capture, and non-English locales load on demand on top of that
 
 ---
 

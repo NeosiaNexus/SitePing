@@ -295,7 +295,39 @@ export function Features() {
             <DomAnchoredVisual />
           </article>
 
-          {/* ── Row 2: Triage inbox (2 cols) + Annotated screenshots (1 col) ── */}
+          {/* ── Row 2: Annotated screenshots (1 col) pairs with DOM-Anchored on sm; Triage inbox (2 cols) takes the next row ── */}
+
+          {/* Annotated screenshots + diagnostics */}
+          <article
+            data-gsap="feature-card-large"
+            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-8 transition-all duration-300 hover:border-white/10 hover:bg-gray-900 lg:row-span-1 before:pointer-events-none before:absolute before:top-0 before:right-0 before:left-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-accent/50 before:to-transparent"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
+                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-xl font-semibold text-white">Annotated screenshots</h3>
+            <p className="mt-2 leading-relaxed text-gray-400">
+              Each report can attach a capture of the exact area the client circled, plus the last console errors and
+              failed requests — &quot;it just doesn&apos;t work&quot; arrives with evidence.
+            </p>
+            <DiagnosticsVisual />
+          </article>
+
+          {/* ── Row 3: i18n (1) + Accessibility (1) + Auth & privacy (1) = 3 cols ── */}
 
           {/* Triage inbox */}
           <article
@@ -333,38 +365,6 @@ export function Features() {
               See it live in the demo inbox &rarr;
             </Link>
           </article>
-
-          {/* Annotated screenshots + diagnostics */}
-          <article
-            data-gsap="feature-card-large"
-            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-8 transition-all duration-300 hover:border-white/10 hover:bg-gray-900 lg:row-span-1 before:pointer-events-none before:absolute before:top-0 before:right-0 before:left-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-accent/50 before:to-transparent"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                className="h-6 w-6"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
-                />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-              </svg>
-            </div>
-            <h3 className="mt-4 text-xl font-semibold text-white">Annotated screenshots</h3>
-            <p className="mt-2 leading-relaxed text-gray-400">
-              Each report can attach a capture of the exact area the client circled, plus the last console errors and
-              failed requests — &quot;it just doesn&apos;t work&quot; arrives with evidence.
-            </p>
-            <DiagnosticsVisual />
-          </article>
-
-          {/* ── Row 3: i18n (1) + Accessibility (1) + Auth & privacy (1) = 3 cols ── */}
 
           {/* 7 languages built in */}
           <article

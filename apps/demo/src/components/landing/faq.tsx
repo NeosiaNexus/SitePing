@@ -1,4 +1,7 @@
-const faqs = [
+import Link from "next/link";
+import type { ReactNode } from "react";
+
+const faqs: { q: string; a: ReactNode }[] = [
   {
     q: "What databases are supported?",
     a: "Any database supported by Prisma — PostgreSQL, MySQL, SQLite, MongoDB, CockroachDB, and more. A Drizzle adapter is on the roadmap.",
@@ -13,11 +16,24 @@ const faqs = [
   },
   {
     q: "Is there a dashboard to view feedback?",
-    a: "Yes — install @siteping/dashboard and drop the <SitepingInbox /> React component into your admin page. It is a Linear-style triage inbox with j/k keyboard shortcuts, four statuses, and the client's annotation re-drawn on the screenshot. See it working at /demo/inbox.",
+    a: (
+      <>
+        Yes — install @siteping/dashboard and drop the {"<SitepingInbox />"} React component into your admin page. It is
+        a Linear-style triage inbox with j/k keyboard shortcuts, four statuses, and the client&apos;s annotation
+        re-drawn on the screenshot.{" "}
+        <Link
+          href="/demo/inbox"
+          className="text-accent-light underline underline-offset-2 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-light"
+        >
+          See it working in the demo inbox
+        </Link>
+        .
+      </>
+    ),
   },
   {
     q: "How big is the widget bundle?",
-    a: "About 28 kB gzipped on first paint — the feedback panel, screenshot capture, and non-English locales load on demand. The widget loads asynchronously and never blocks your page rendering.",
+    a: "About 49 kB gzipped on the wire; the feedback panel, screenshot capture, and non-English locales load on demand on top of that. The widget loads asynchronously and never blocks your page rendering.",
   },
   {
     q: "Is it GDPR compliant?",
@@ -33,7 +49,7 @@ const faqs = [
   },
   {
     q: "How is reviewers' data handled?",
-    a: "Feedback lives in your own database — SitePing is self-hosted. The API blanks reviewer emails on unauthenticated reads by default, and elements marked data-siteping-ignore are masked out of screenshots.",
+    a: 'Feedback lives in your own database — SitePing is self-hosted. The API blanks reviewer emails on unauthenticated reads by default, and elements marked data-siteping-ignore="true" are masked out of screenshots.',
   },
   {
     q: "Do I need to create an account?",
