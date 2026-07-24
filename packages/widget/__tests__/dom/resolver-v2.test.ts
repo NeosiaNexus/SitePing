@@ -488,6 +488,34 @@ describe("strongest-signal acceptance and confidence", () => {
     expect(result!.strategy).toBe("css");
   });
 
+  it("anchorKey survives the wrapper refactor it exists for, at full confidence (realistic fingerprint)", () => {
+    // The host refactored section→div and restructured its contents but kept
+    // the semantic key — the EXACT scenario anchorKey guarantees. The stored
+    // fingerprint (captured pre-refactor, always non-empty in production)
+    // collapses; the key match + intact text must still carry 1.0.
+    const refactored = document.createElement("div");
+    refactored.setAttribute("data-feedback-anchor", "hero");
+    const inner = document.createElement("p");
+    inner.textContent = "Launch your project in minutes";
+    refactored.appendChild(inner);
+    document.body.appendChild(refactored);
+
+    const result = resolveAnchor(
+      makeAnchor({
+        anchorKey: "hero",
+        elementTag: "SECTION", // pre-refactor tag — anchorKey never enforces it
+        cssSelector: "__nomatch__",
+        textSnippet: "Launch your project in minutes",
+        fingerprint: "4:1:oldsection", // pre-refactor structure
+        neighborText: "Old sibling copy | that moved away",
+      }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.element).toBe(refactored);
+    expect(result!.strategy).toBe("anchorKey");
+    expect(result!.confidence).toBe(1.0);
+  });
+
   it("keeps full confidence for id + exact text when only the surroundings moved", () => {
     // `<h2 id="pricing">Pricing</h2>` relocated into a new wrapper: the id
     // matches, the text matches exactly — the drifted fingerprint and dead
