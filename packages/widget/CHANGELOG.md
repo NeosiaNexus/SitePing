@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.0...widget-v0.10.1) (2026-07-24)
+
+
+### Features
+
+* **widget:** add opt-in right-click to start comment (fixes [#190](https://github.com/NeosiaNexus/SitePing/issues/190)) ([#191](https://github.com/NeosiaNexus/SitePing/issues/191)) ([470c576](https://github.com/NeosiaNexus/SitePing/commit/470c576283df06ad287c29cdb1c2bf5689942cc0))
+
 ## [0.10.0](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.9.16...widget-v0.10.0) (2026-07-24)
 
 
