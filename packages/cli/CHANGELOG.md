@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.0...cli-v0.5.1) (2026-07-25)
+
+
+### Bug Fixes
+
+* **cli:** run under plain Node — createRequire shim + Object.groupBy polyfill ([#221](https://github.com/NeosiaNexus/SitePing/issues/221)) ([45ee65d](https://github.com/NeosiaNexus/SitePing/commit/45ee65de4ed164b683d76e8ac6adc3b5bbe8240e))
+
 ## [0.5.0](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.4.9...cli-v0.5.0) (2026-07-24)
 
 
