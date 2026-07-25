@@ -177,7 +177,7 @@ initSiteping({
   enableScreenshot: false,        // Capture a JPEG of the annotated area on
                                   // submit. Off by default — see "Screenshot
                                   // capture" below for the masking story.
-  enableRightClickComment: false, // Right-click anywhere to leave a comment.
+  enableRightClickComment: false, // Right-click anywhere to leave a comment. Keyboard menus yield to native.
                                   // Shift/Ctrl/Alt/Meta + right-click still
                                   // opens the native context menu. Default: false
   identity: {                     // Pre-fill author from the host (SSO apps).
@@ -769,7 +769,7 @@ This project follows the [all-contributors](https://allcontributors.org) specifi
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://humen.lmm.best/mcp/"><img src="https://avatars.githubusercontent.com/u/106986785?v=4?s=100" width="100px;" alt="LIghtJUNction"/><br /><sub><b>LIghtJUNction</b></sub></a><br /><a href="https://github.com/NeosiaNexus/SitePing/commits?author=LIghtJUNction" title="Code">💻</a> <a href="https://github.com/NeosiaNexus/SitePing/commits?author=LIghtJUNction" title="Tests">⚠️</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://rehansanjay-portfolio.vercel.app/"><img src="https://avatars.githubusercontent.com/u/179024758?v=4?s=100" width="100px;" alt="Rehuz"/><br /><sub><b>Rehuz</b></sub></a><br /><a href="https://github.com/NeosiaNexus/SitePing/commits?author=Rehansanjay" title="Code">💻</a> <a href="https://github.com/NeosiaNexus/SitePing/commits?author=Rehansanjay" title="Tests">⚠️</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://rehansanjay-portfolio.vercel.app/"><img src="https://avatars.githubusercontent.com/u/179024758?v=4?s=100" width="100px;" alt="Rehuz"/><br /><sub><b>Rehuz</b></sub></a><br /><a href="https://github.com/NeosiaNexus/SitePing/commits?author=Rehansanjay" title="Code">💻</a> <a href="https://github.com/NeosiaNexus/SitePing/commits?author=Rehansanjay" title="Tests">⚠️</a> <a href="https://github.com/NeosiaNexus/SitePing/commits?author=Rehansanjay" title="Documentation">📖</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://vongohren.me/"><img src="https://avatars.githubusercontent.com/u/1012055?v=4?s=100" width="100px;" alt="Snorre Lothar von Gohren Edwin"/><br /><sub><b>Snorre Lothar von Gohren Edwin</b></sub></a><br /><a href="#ideas-vongohren" title="Ideas, Planning, & Feedback">🤔</a></td>
     </tr>
   </tbody>

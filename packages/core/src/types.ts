@@ -175,6 +175,10 @@ export interface SitepingConfig {
    * `false` — the browser's native context menu is never hijacked unless the
    * host explicitly opts in.
    *
+   * Keyboard-triggered context menus (≣ Menu key, Shift+F10) always get the
+   * native menu; only mouse right-click and touch/pen long-press open the
+   * composer.
+   *
    * **Modifier-key escape hatch:** holding Shift, Ctrl, Alt, or Meta while
    * right-clicking always falls through to the native context menu, giving
    * users (and devtools) an escape hatch regardless of this setting.

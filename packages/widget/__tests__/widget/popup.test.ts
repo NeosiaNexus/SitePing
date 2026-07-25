@@ -1076,6 +1076,64 @@ describe("Popup", () => {
       expect(result).toBeNull();
       expect(document.querySelector('[role="dialog"]')).toBeNull();
     });
+
+    describe("isOpen (drawing-guard contract)", () => {
+      it("is false at rest, true between show() and cancel", async () => {
+        expect(popup.isOpen).toBe(false);
+        const promise = popup.show(makeBounds());
+        expect(popup.isOpen).toBe(true);
+        getCancelButton().click();
+        await promise;
+        expect(popup.isOpen).toBe(false);
+      });
+
+      it("stays true while onSubmit is pending and after its rejection (retry window)", async () => {
+        let rejectSubmit!: (e: Error) => void;
+        const onSubmit = vi.fn().mockReturnValue(
+          new Promise<void>((_resolve, reject) => {
+            rejectSubmit = reject;
+          }),
+        );
+
+        const promise = popup.show(makeBounds(), onSubmit);
+        fillForm();
+        getSubmitButton().click();
+        await vi.waitFor(() => {
+          expect(getSubmitButton().getAttribute("aria-busy")).toBe("true");
+        });
+
+        // The annotator's drawing guards read isOpen during exactly this
+        // window — it must hold while the submission is in flight…
+        expect(popup.isOpen).toBe(true);
+
+        rejectSubmit(new Error("network down"));
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // …and through the retry window after a failed submit.
+        expect(popup.isOpen).toBe(true);
+
+        getCancelButton().click();
+        expect(await promise).toBeNull();
+        expect(popup.isOpen).toBe(false);
+      });
+
+      it("is false after a successful submit settles show()", async () => {
+        const onSubmit = vi.fn().mockResolvedValue(undefined);
+        const promise = popup.show(makeBounds(), onSubmit);
+        fillForm();
+        getSubmitButton().click();
+        await promise;
+        expect(popup.isOpen).toBe(false);
+      });
+
+      it("is false after destroy()", () => {
+        void popup.show(makeBounds());
+        expect(popup.isOpen).toBe(true);
+        popup.destroy();
+        expect(popup.isOpen).toBe(false);
+      });
+    });
   });
 });
 

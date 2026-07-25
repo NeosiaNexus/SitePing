@@ -1,39 +1,36 @@
 version: 1
 
+# srvaroa/labeler schema: conditions live DIRECTLY on the label entry.
+# A `matcher:` sub-object is silently ignored (the engine logs "title is
+# not set in config" and applies nothing) — that exact mistake kept this
+# file dead while the job stayed green.
+#
+# The engine is Go/RE2: no lookaheads. `type:chore` excludes deps scopes
+# via explicit alternation (any scope not starting with "deps"); the only
+# real-world deps scopes are dependabot's `chore(deps)` / `chore(deps-dev)`.
+
 labels:
   - label: "enhancement"
-    matcher:
-      title: "^feat(\\(.+\\))?!?:.*"
+    title: "^feat(\\(.+\\))?!?:.*"
   - label: "bug"
-    matcher:
-      title: "^fix(\\(.+\\))?!?:.*"
+    title: "^fix(\\(.+\\))?!?:.*"
   - label: "documentation"
-    matcher:
-      title: "^docs(\\(.+\\))?!?:.*"
+    title: "^docs(\\(.+\\))?!?:.*"
   - label: "type:performance"
-    matcher:
-      title: "^perf(\\(.+\\))?!?:.*"
+    title: "^perf(\\(.+\\))?!?:.*"
   - label: "type:refactor"
-    matcher:
-      title: "^refactor(\\(.+\\))?!?:.*"
+    title: "^refactor(\\(.+\\))?!?:.*"
   - label: "type:test"
-    matcher:
-      title: "^test(\\(.+\\))?!?:.*"
+    title: "^test(\\(.+\\))?!?:.*"
   - label: "type:ci"
-    matcher:
-      title: "^ci(\\(.+\\))?!?:.*"
+    title: "^ci(\\(.+\\))?!?:.*"
   - label: "type:build"
-    matcher:
-      title: "^build(\\(.+\\))?!?:.*"
+    title: "^build(\\(.+\\))?!?:.*"
   - label: "dependencies"
-    matcher:
-      title: "^(chore\\(deps(-dev)?\\)|deps)(\\(.+\\))?!?:.*"
+    title: "^(chore\\(deps(-dev)?\\)|deps)(\\(.+\\))?!?:.*"
   - label: "type:chore"
-    matcher:
-      title: "^chore(?!\\(deps(-dev)?\\))(\\(.+\\))?!?:.*"
+    title: "^chore(\\((?:[^d][^)]*|d(?:[^e][^)]*)?|de(?:[^p][^)]*)?|dep(?:[^s][^)]*)?)\\))?!?:.*"
   - label: "type:i18n"
-    matcher:
-      title: "(?i).*(i18n|locale|translation|translate).*"
+    title: "(?i).*(i18n|locale|translation|translate).*"
   - label: "type:breaking"
-    matcher:
-      title: "^[a-z]+(\\(.+\\))?!:.*"
+    title: "^[a-z]+(\\(.+\\))?!:.*"

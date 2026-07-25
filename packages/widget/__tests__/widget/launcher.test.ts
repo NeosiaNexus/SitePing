@@ -858,6 +858,7 @@ describe("launch", () => {
       const instance = launch(defaultConfig({ enableRightClickComment: true }));
 
       const event = new MouseEvent("contextmenu", {
+        button: 2,
         clientX: 100,
         clientY: 100,
         shiftKey: true,
@@ -875,6 +876,7 @@ describe("launch", () => {
       const instance = launch(defaultConfig({ enableRightClickComment: true }));
 
       const event = new MouseEvent("contextmenu", {
+        button: 2,
         clientX: 100,
         clientY: 100,
         bubbles: true,
@@ -893,6 +895,7 @@ describe("launch", () => {
       const instance = launch(defaultConfig({ enableRightClickComment: true }));
 
       const event = new MouseEvent("contextmenu", {
+        button: 2,
         clientX: 100,
         clientY: 100,
         bubbles: true,
@@ -911,6 +914,7 @@ describe("launch", () => {
 
       // Simulate a click on the SitePing widget (or something inside it)
       const event = new MouseEvent("contextmenu", {
+        button: 2,
         clientX: 100,
         clientY: 100,
         bubbles: true,
@@ -923,6 +927,88 @@ describe("launch", () => {
 
       expect(event.defaultPrevented).toBe(false);
       expect(annotatorCapture.startInstantAnnotation).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("does not preventDefault for keyboard-triggered contextmenu (Menu key)", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      // Keyboard contextmenu events (Menu key) are mandated to have pointerType=""
+      const event = new PointerEvent("contextmenu", {
+        pointerType: "",
+        button: 0,
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+
+      // Should yield to the native menu (not prevented)
+      expect(event.defaultPrevented).toBe(false);
+      expect(annotatorCapture.startInstantAnnotation).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("does not preventDefault for legacy keyboard-triggered contextmenu (no pointerType, button 0)", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      // Legacy engines dispatch a MouseEvent (no pointerType property)
+      const event = new MouseEvent("contextmenu", {
+        button: 0,
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(annotatorCapture.startInstantAnnotation).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("touch long-press (pointerType 'touch', button 0) still starts the instant flow", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      // Android / Windows-touch long-press: contextmenu arrives as a
+      // PointerEvent with pointerType "touch" and button 0 — the exact
+      // combination the pointerType leg of the gate exists for.
+      const event = new PointerEvent("contextmenu", {
+        pointerType: "touch",
+        button: 0,
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(annotatorCapture.startInstantAnnotation).toHaveBeenCalledWith(100, 100);
+
+      instance.destroy();
+    });
+
+    it("pen long-press (pointerType 'pen', button 0) still starts the instant flow", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      // Windows Ink long-press
+      const event = new PointerEvent("contextmenu", {
+        pointerType: "pen",
+        button: 0,
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(annotatorCapture.startInstantAnnotation).toHaveBeenCalledWith(100, 100);
 
       instance.destroy();
     });
