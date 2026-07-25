@@ -62,9 +62,7 @@ export class Annotator {
   private pendingMoveEvent: MouseEvent | Touch | null = null;
   /**
    * Reject handle for the in-flight `runSubmission` promise, or null when no
-   * submission is pending. Serves two purposes: a non-null value means a
-   * submission is in flight (so pointer-driven drawing is suppressed — the
-   * popup is open), and `destroy()` calls it to settle the promise rather
+   * submission is pending. `destroy()` calls it to settle the promise rather
    * than leaving the awaiting closure hung past teardown.
    */
   private rejectPendingSubmission: ((reason: Error) => void) | null = null;
@@ -98,16 +96,6 @@ export class Annotator {
    */
   refreshLabels(): void {
     this.popup.refreshLabels();
-  }
-
-  /**
-   * True while a submission is in flight (popup open, `runSubmission`
-   * pending). Drawing a second rectangle in this window would orphan the
-   * first `popup.show()` promise and start a second, concurrent
-   * `runSubmission` — so all drawing entry points are no-ops while it holds.
-   */
-  private get submissionInFlight(): boolean {
-    return this.rejectPendingSubmission !== null;
   }
 
   /**
@@ -324,9 +312,9 @@ export class Annotator {
   private onOverlayKeyDown = async (e: KeyboardEvent): Promise<void> => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    // A submission is already running with the popup open — ignore so we
+    // A submission is already running or the popup is open — ignore so we
     // can't orphan the first `popup.show()` / `runSubmission` pair.
-    if (this.submissionInFlight) return;
+    if (this.popup.isOpen) return;
     // Mid-pointer-drag: the user is drawing — hijacking `drawingRect` for the
     // keyboard highlight here would corrupt the drag's geometry updates.
     if (this.isDrawing) return;
@@ -386,12 +374,11 @@ export class Annotator {
   };
 
   private startDrawing(clientX: number, clientY: number): void {
-    // Suppress pointer-driven drawing while a submission is in flight: the
-    // popup is open over the page, and starting a second rectangle would
-    // orphan the first `popup.show()` promise (and its `runSubmission`).
-    // This also closes a latent bug where drawing during the open popup
-    // already overwrote `Popup.resolve`.
-    if (this.submissionInFlight) return;
+    // Suppress pointer-driven drawing while the popup is open over the page.
+    // Starting a second rectangle would orphan the first `popup.show()`
+    // promise (and its `runSubmission`). This closes a latent bug where
+    // drawing during the open popup overwrote `Popup.resolve`.
+    if (this.popup.isOpen) return;
 
     this.isDrawing = true;
     this.startX = clientX;
@@ -592,7 +579,7 @@ export class Annotator {
    * - `submission:cancelled` — reject as a silent abort (popup restores; no
    *   error is surfaced — e.g. the user cancelled the identity prompt).
    *
-   * Submissions are serialized by the drawing guards (`submissionInFlight`),
+   * Submissions are serialized by the popup guard (`this.popup.isOpen`),
    * so exactly one `runSubmission` is ever live — the global outcome events
    * cannot cross-wire between submissions and need no correlation id.
    */

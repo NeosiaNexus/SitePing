@@ -69,6 +69,17 @@ export class Popup {
   /** WAAPI handle for the running spinner — cancelled when submitting ends. */
   private spinnerAnimation: Animation | null = null;
 
+  /**
+   * True from `show()` until its promise settles — through typing, the
+   * in-flight `onSubmit` await, AND the failed-submit retry window. The
+   * annotator's drawing guards read this to serialize popup sessions
+   * (#114/#196): if a refactor ever nulls `resolve` before `onSubmit`
+   * settles, those guards die silently — popup.test.ts pins the lifecycle.
+   */
+  get isOpen(): boolean {
+    return this.resolve !== null;
+  }
+
   constructor(
     private readonly colors: ThemeColors,
     private readonly t: TFunction,

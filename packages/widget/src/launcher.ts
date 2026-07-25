@@ -401,6 +401,15 @@ export function launch(config: SitepingConfig): SitepingInstance {
       // editors). Element-level handlers fire before this document-level
       // listener, so if they called preventDefault() we yield.
       if (e.defaultPrevented) return;
+      // Keyboard-triggered contextmenu (≣ Menu key, Shift+F10): Pointer
+      // Events L3 mandates pointerType === "" (pointerId -1) for non-pointer
+      // activations — yield to the native menu. contextmenu is a PointerEvent
+      // in Chrome/Edge 92+, Firefox 129+, Safari 18.2+.
+      const pointerType = (e as PointerEvent).pointerType;
+      if (pointerType === "") return;
+      // Legacy MouseEvent engines (no pointerType to consult): fall back to
+      // requiring a genuine right-button click.
+      if (pointerType === undefined && e.button !== 2) return;
       // Modifier-key escape hatch: Shift/Ctrl/Alt/Meta → native menu.
       if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
       // Exclude SitePing's own UI — right-clicking the FAB, panel, markers,
