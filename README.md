@@ -11,6 +11,7 @@ Draw rectangles, leave comments, track bugs — directly on the live site.
 
 [![Website](https://img.shields.io/badge/website-siteping.dev-000000?style=flat&colorA=000000&colorB=000000)](https://siteping.dev)
 [![Live Demo](https://img.shields.io/badge/demo-try%20it%20live-22c55e?style=flat&colorA=000000)](https://siteping.dev/demo)
+[![Docs](https://img.shields.io/badge/docs-siteping.dev%2Fdocs-0066ff?style=flat&colorA=000000)](https://siteping.dev/docs)
 [![npm version](https://img.shields.io/npm/v/@siteping/widget?style=flat&colorA=000000&colorB=000000)](https://www.npmjs.com/package/@siteping/widget)
 [![npm downloads](https://img.shields.io/npm/dm/@siteping/widget?style=flat&colorA=000000&colorB=000000)](https://www.npmjs.com/package/@siteping/widget)
 [![license](https://img.shields.io/npm/l/@siteping/widget?style=flat&colorA=000000&colorB=000000)](./LICENSE)
@@ -21,7 +22,7 @@ Draw rectangles, leave comments, track bugs — directly on the live site.
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
 [![Bundle Size](https://img.shields.io/badge/widget-%E2%89%A454%20KB%20gzip%20(ESM)-blue)](./packages/widget/.size-limit.json)
 
-[Getting Started](#getting-started) &middot; [Configuration](#configuration) &middot; [API Reference](#api-reference) &middot; [CLI](#cli) &middot; [Architecture](#architecture)
+[**Documentation**](https://siteping.dev/docs) &middot; [Quickstart](https://siteping.dev/docs/quickstart) &middot; [Live Demo](https://siteping.dev/demo) &middot; [Contributing](./CONTRIBUTING.md)
 
 </div>
 
@@ -33,8 +34,6 @@ Draw rectangles, leave comments, track bugs — directly on the live site.
 
 Stop chasing client feedback across Slack threads, email chains, and Notion docs. SitePing gives your clients a **contextual** way to leave feedback — anchored to the exact element they're looking at.
 
-### SitePing vs. the alternatives
-
 | | SitePing | Marker.io | BugHerd |
 |---|---|---|---|
 | **Self-hosted** | Yes — your DB, your data | No (SaaS) | No (SaaS) |
@@ -43,709 +42,65 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 | **Pricing** | Free & open source | From $39/mo | From $42/mo |
 | **DOM-anchored annotations** | Multi-selector (CSS + XPath + text) | Screenshot-based | Pin-based |
 | **Annotations survive layout changes** | Yes (percentage-relative rects) | No (pixel coordinates) | Partially |
-| **Customizable** | Full control (accent color, position, events) | Limited | Limited |
-
----
 
 ## Features
 
-- **Rectangle annotations** — Clients draw directly on the page, with category + message
-- **DOM-anchored persistence** — Annotations are tied to elements, not pixels. They survive layout changes
-- **Shadow DOM isolation** — Widget CSS never leaks into your site, and your site CSS never breaks the widget
-- **Radial menu** — Clean FAB with expandable actions (chat, annotate, toggle)
-- **Feedback panel** — Searchable, filterable history with type chips and resolve/unresolve
-- **Smart tooltips** — Hover a marker to preview, click to open the panel
-- **Triage inbox** — `<SitepingInbox />` React component (`@siteping/dashboard`): keyboard-first triage with annotated screenshots re-rendered in place
-- **Retry with backoff** — Failed submissions are queued in localStorage and retried automatically
-- **Zero config auth** — Clients identify once (name + email), persisted locally
-- **Full event system** — `onOpen`, `onClose`, `onFeedbackSent`, `onError`, `onAnnotationStart`, `onAnnotationEnd`
-- **CLI scaffold** — `npx @siteping/cli init` sets up Prisma schema + API route
-- **Monorepo** — Split into independent packages (`widget`, `dashboard`, `adapter-prisma`, `adapter-memory`, `adapter-localstorage`, `cli`)
-- **Dev-only by default** — Widget auto-hides in production unless `forceShow: true`
-- **Lightweight** — ~49 kB gzipped on the wire; the panel, screenshot capture, and non-English locales load on demand on top of that
+- **Rectangle annotations** — clients draw directly on the page, with category + message
+- **DOM-anchored persistence** — annotations tie to elements, not pixels; they survive layout changes
+- **Instant right-click comments** — opt-in, and it never hijacks keyboard or modifier-key context menus
+- **Screenshots + diagnostics** — opt-in JPEG of the annotated area (with privacy masking) and console/network capture
+- **Triage inbox** — `<SitepingInbox />` (`@siteping/dashboard`): Linear-style, keyboard-first, light/dark, 7 locales
+- **Reliability built in** — retry with backoff plus a localStorage queue; a flaky network never loses a comment
+- **Shadow DOM isolation** — widget CSS never leaks into your site, and your site CSS never breaks the widget
+- **Dev-only by default** — auto-hides in production builds unless `forceShow: true`
+- **Lightweight** — ~30 KB gzipped (ESM); the panel, screenshot engine, and non-English locales load on demand
 
----
-
-## Getting Started
-
-### 1. Install
+## Quickstart
 
 ```bash
-npm install @siteping/widget
-# or
-bun add @siteping/widget
-```
-
-### 2. Run the CLI
-
-```bash
-npx @siteping/cli init
-```
-
-This will:
-- Add `SitepingFeedback` and `SitepingAnnotation` models to your `prisma/schema.prisma`
-- Generate an API route at `app/api/siteping/route.ts`
-
-Then push the schema:
-
-```bash
+npm i @siteping/widget @siteping/adapter-prisma
+npx @siteping/cli init   # adds the Prisma models + generates the API route
 npx prisma db push
-```
-
-### 3. Add the widget
-
-#### React (recommended)
-
-```tsx
-"use client"
-
-import { useSiteping } from "@siteping/widget/react"
-
-export default function Layout({ children }: { children: React.ReactNode }) {
-  useSiteping({
-    endpoint: "/api/siteping",
-    projectName: "my-app",
-  })
-  return <>{children}</>
-}
-```
-
-The `useSiteping` hook handles StrictMode double-mounts safely and tears the widget down on unmount. It returns the live instance so you can drive it programmatically from anywhere:
-
-```tsx
-"use client"
-import { useSiteping } from "@siteping/widget/react"
-
-export function HelpButton() {
-  const widget = useSiteping({ endpoint: "/api/siteping", projectName: "my-app" })
-  return <button onClick={() => widget?.open()}>Need help?</button>
-}
-```
-
-React is declared as an optional peer dep — installing `@siteping/widget` alone won't pull React in, and the `/react` entry only resolves when you actually import it.
-
-#### Vanilla JS / Any framework
-
-```html
-<script type="module">
-  import { initSiteping } from '@siteping/widget'
-
-  const widget = initSiteping({
-    endpoint: '/api/siteping',
-    projectName: 'my-project',
-    forceShow: true,
-  })
-
-  // Clean up when needed
-  // widget.destroy()
-</script>
-```
-
-The widget is framework-agnostic — it works with React, Vue, Svelte, Astro, or plain HTML.
-
-That's it. Your clients can now draw rectangles on the site and leave feedback.
-
----
-
-## Configuration
-
-```ts
-initSiteping({
-  // Required (one of endpoint or store)
-  endpoint: '/api/siteping',      // Your API route (HTTP mode)
-  // OR
-  store: new LocalStorageStore(), // Direct store (client-side mode, no server)
-  projectName: 'my-project',      // Scopes feedbacks to this project
-
-  // Optional
-  position: 'bottom-right',       // 'bottom-right' | 'bottom-left'
-  accentColor: '#0066ff',         // Widget accent color
-  theme: 'light',                 // 'light' | 'dark' | 'auto'
-  locale: 'en',                   // 'en' | 'fr' | 'de' | 'es' | 'it' | 'pt' | 'ru'
-                                  // (default: 'en')
-  forceShow: false,               // Always render — bypasses BOTH the
-                                  // production guard and the mobile-viewport
-                                  // guard. Default: false
-  minViewportWidth: 768,          // Minimum viewport width (px) to render;
-                                  // below it onSkip('mobile') fires. Set 0 to
-                                  // allow mobile viewports. Default: 768
-  debug: false,                   // Enable debug logging
-  showAnnotationsToggle: true,    // Show the "toggle markers visibility" item
-                                  // in the FAB radial menu. Default: true. Set
-                                  // to false for hosts that always want markers
-                                  // visible or find the eye icon redundant.
-  enableScreenshot: false,        // Capture a JPEG of the annotated area on
-                                  // submit. Off by default — see "Screenshot
-                                  // capture" below for the masking story.
-  enableRightClickComment: false, // Right-click anywhere to leave a comment. Keyboard menus yield to native.
-                                  // Shift/Ctrl/Alt/Meta + right-click still
-                                  // opens the native context menu. Default: false
-  identity: {                     // Pre-fill author from the host (SSO apps).
-    name: 'Alice',                // When set, skips localStorage + modal.
-    email: 'alice@example.com',
-  },
-
-  // Events
-  onOpen: () => {},
-  onClose: () => {},
-  onFeedbackSent: (feedback) => {},
-  onError: (error) => {},
-  onAnnotationStart: () => {},
-  onAnnotationEnd: () => {},
-  onSkip: (reason) => {},         // Called when widget is skipped (production/mobile)
-})
-```
-
-### Return value
-
-```ts
-const widget = initSiteping({ ... })
-
-widget.open()       // Open the feedback panel
-widget.close()      // Close the feedback panel
-widget.refresh()    // Refresh feedbacks from the server
-widget.destroy()    // Remove the widget and clean up all DOM elements + listeners
-
-// Event listeners (alternative to config callbacks)
-const unsub = widget.on('feedback:sent', (feedback) => { ... })
-unsub()             // Unsubscribe
-widget.off('feedback:sent', handler)
-
-// All public events:
-// 'feedback:sent'    — fired after a feedback is successfully submitted
-// 'feedback:deleted' — fired after a feedback is deleted (receives feedback id)
-// 'panel:open'       — fired when the feedback panel opens
-// 'panel:close'      — fired when the feedback panel closes
-```
-
----
-
-## Host-provided identity
-
-Apps with their own authentication (SSO, NextAuth, Symfony Security, …) can pre-fill the feedback author directly:
-
-```ts
-initSiteping({
-  endpoint: '/api/siteping',
-  projectName: 'my-app',
-  identity: { name: currentUser.fullName, email: currentUser.email },
-})
-```
-
-When `identity` is set, the widget skips both the localStorage lookup and the identity modal — useful when the host already knows who the user is. The value is **not persisted** and is read at widget init time, not on every render. Hosts that need to react to live sign-in/sign-out changes should currently remount the widget (e.g. via a React `key` on the wrapping component). See [#85](https://github.com/NeosiaNexus/SitePing/issues/85) for tracking a future enhancement that propagates identity updates without a remount.
-
-When `identity` is unset (default), the widget falls back to the existing behavior — localStorage first, modal as a last resort.
-
----
-
-## Deep-linking to annotations
-
-When a feedback is created, downstream tools (Zammad tickets, Slack notifications, email digests, internal dashboards) usually want to link back to the exact pixel — not just the page. Set `deepLink: true` and the widget will pick up a `?siteping=<feedbackId>` query parameter on initial load, scroll the matching annotation into view, pin its highlight, and pulse the marker.
-
-```ts
-initSiteping({
-  endpoint: '/api/siteping',
-  projectName: 'my-app',
-  deepLink: true,
-})
-```
-
-```ts
-// On the receiving side (Zammad webhook, Slack handler, …), build the link:
-const url = `${feedback.url}?siteping=${feedback.id}`
-```
-
-When the recipient clicks the link, the widget opens on the original page with the annotation already in focus. Use a custom query key if `siteping` clashes with a host-app parameter:
-
-```ts
-deepLink: { param: 'fb' }   // → ?fb=<feedbackId>
-```
-
-**Only the initial page load triggers focus.** SPA navigations and `history.pushState` updates never trigger an automatic *re-scroll* — re-scrolling during normal browsing would be surprising. (The feedback **data** does follow route changes automatically: the widget re-fetches the new page's feedbacks on SPA navigation by default — see `watchNavigation`. It's only the deep-link *focus/scroll* that stays initial-load only.) Hosts that need to drive focus after a route change can call the imperative counterpart instead:
-
-```ts
-const widget = initSiteping({ endpoint: '/api/siteping', projectName: 'my-app' })
-
-// Inside a notification handler, after navigating to feedback.url:
-const matched = widget.focusFeedback(feedback.id)
-// Returns false when no visible marker matches (unknown ID, filtered by
-// scopeAnnotationsByUrl, or markers not yet loaded — initial fetch is async).
-```
-
-Both entry points share the same focus implementation — only the trigger differs.
-
----
-
-## Screenshot capture
-
-Turn on `enableScreenshot` and every submitted feedback ships with a JPEG of the annotated rectangle, embedded inline as a `data:` URL on the feedback record. The reviewer panel shows a dedicated **Screenshot** section on each feedback that has one.
-
-```ts
-initSiteping({
-  endpoint: '/api/siteping',
-  projectName: 'my-project',
-  enableScreenshot: true,
-})
-```
-
-`html2canvas` ships as a regular dependency of `@siteping/widget` — no separate install. The widget dynamic-imports it on the first capture (≈ 40 KB gzip), so installs that leave the option off pay only disk space.
-
-**Masking sensitive elements.** Add `data-siteping-ignore="true"` to any element you do **not** want captured. The capture predicate skips matching elements *and their descendants*, so a single attribute on a wrapper is enough:
-
-```html
-<input type="password" data-siteping-ignore="true">
-<section data-siteping-ignore="true">
-  <!-- credit-card form, API tokens, PII … -->
-</section>
-```
-
-Set masks **before** turning the option on in production — once a feedback is saved, the screenshot is in your database (or object storage) regardless of what was on the page when it was captured.
-
-**Privacy.** Screenshots embed page content. Inform end users in your widget host UI when enabling, and treat the feature as an opt-in for environments where casual page content might be confidential.
-
-**Output.** The widget produces JPEG at quality 0.85, downscaled to a max width of 1200 CSS pixels (≈ 50–150 KB for a typical annotated area). Both numbers are currently fixed; if a use case appears that needs different settings, the option could grow into `enableScreenshot: true | { quality?, maxWidth? }` — file an issue if you'd find that useful.
-
-**Context framing.** The capture includes padding around the drawn rectangle, and the rect's position within the image ships alongside as `screenshotRegion` (fractions of the image). That's what lets the [triage inbox](#triage-inbox--sitepingdashboard) re-render the client's annotation on top of the screenshot. Captures from older widget versions render fine — just without the overlay.
-
-**Failure handling.** If `html2canvas` fails to load or the capture throws (CORS-tainted canvas, missing 2D context, …), the widget returns `null` and the feedback still submits without the screenshot — the option never blocks a submission.
-
----
-
-## Diagnostics capture
-
-Turn on `captureDiagnostics` and every feedback ships with the last few `console.*` messages and failed network requests (HTTP ≥ 400 or network error). Closes the loop on the dreaded *"this page just doesn't work"* report.
-
-```ts
-initSiteping({
-  endpoint: '/api/siteping',
-  projectName: 'my-project',
-  captureDiagnostics: true,
-})
-```
-
-Or with per-channel control:
-
-```ts
-captureDiagnostics: {
-  console: true,
-  network: true,
-  maxConsoleEntries: 50,   // default
-  maxNetworkEntries: 20,   // default
-}
-```
-
-The reviewer panel shows a collapsible **Diagnostics** section on each feedback that has captured data — colour-coded console levels and a status/method/URL line per failed request.
-
-**Storage migration.** The Prisma schema gains a `diagnostics Json?` column. Existing installs need to re-run the sync:
-
-```bash
-npx siteping sync
-npx prisma db push
-```
-
-The column is nullable so existing rows are unaffected. Hosts who don't want the migration can leave `captureDiagnostics` off — the widget never sends the field and the adapter never asks Prisma to write it.
-
-**Privacy.** Console messages may contain whatever your app logs (user emails, IDs, …). Failed network URLs include the query string but never the response body. Inform end users in environments where they might log sensitive values, or restrict capture to internal builds.
-
----
-
-## Triage inbox — `@siteping/dashboard`
-
-The freelancer's side of the loop: a Linear-style inbox React component that triages every feedback across pages — keyboard-first, with the client's annotation re-rendered on top of the screenshot.
-
-```bash
-npm install @siteping/dashboard
 ```
 
 ```tsx
 "use client";
+import { useSiteping } from "@siteping/widget/react";
+
+export function Feedback() {
+  useSiteping({ endpoint: "/api/siteping", projectName: "my-app" });
+  return null;
+}
+```
+
+Your clients can now draw rectangles on the site and leave feedback. Triage it with one component:
+
+```tsx
 import { SitepingInbox } from "@siteping/dashboard";
 
-export default function AdminFeedbackPage() {
-  return (
-    <SitepingInbox
-      endpoint="/api/siteping"
-      projects={["my-client-site"]}
-      apiKey={process.env.NEXT_PUBLIC_SITEPING_KEY} // if your handler sets one
-    />
-  );
-}
+<SitepingInbox projects="my-app" endpoint="/api/siteping" theme="auto" />
 ```
 
-- **Annotated screenshots** — the drawn rect is re-rendered on the capture (`screenshotRegion`), with a spotlight on what the client circled
-- **Keyboard triage** — `j`/`k` navigate, `e` resolve, `p` in progress, `x` won't fix, `Enter` opens details, `?` shows all shortcuts
-- **Four statuses** — `open`, `in_progress`, `resolved`, `wont_fix` (the widget stays simple for clients: resolve/reopen)
-- **Deep links** — "Open on page" jumps to the live page with the annotation focused (`?siteping=<id>`)
-- **Store or HTTP** — same adapter pattern as the widget: pass a `store` for client-side/demo mode, or an `endpoint` (+ `apiKey`/custom `headers`)
-- **Headless option** — `useSitepingInbox()` exposes the full state machine if you want your own UI
-
-**Storage migration.** The Prisma schema gains a `screenshotRegion Json?` column (nullable — existing rows unaffected):
-
-```bash
-npx siteping sync
-npx prisma db push
-```
-
-See [`packages/dashboard`](./packages/dashboard) for the full props, theming (accent color, dark mode, density, CSS variables), and i18n docs.
-
----
-
-## Notifications
-
-Fire a Slack, Discord, or generic HTTP webhook every time a feedback is created — useful for surfacing client feedback in the team channel without leaving the chat.
-
-```ts
-// app/api/siteping/route.ts
-import { createSitepingHandler } from '@siteping/adapter-prisma'
-import { prisma } from '@/lib/prisma'
-
-export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
-  prisma,
-  webhooks: [
-    {
-      url: process.env.SLACK_WEBHOOK_URL!,
-      type: 'slack',
-    },
-    {
-      url: process.env.DISCORD_WEBHOOK_URL!,
-      type: 'discord',
-    },
-  ],
-})
-```
-
-You can pass a single config or an array. Each entry accepts:
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `url` | `string` | **Required.** Endpoint to POST to (Slack/Discord incoming webhook, or your own). |
-| `type` | `'slack' \| 'discord' \| 'generic'` | Payload format. Defaults to `'generic'` (raw `FeedbackRecord` JSON). |
-| `headers` | `Record<string, string>` | Extra headers merged on top of `Content-Type: application/json` (sign payloads, add bearer tokens, …). |
-| `timeoutMs` | `number` | Abort after this many ms. Defaults to `5000`. |
-| `onError` | `(err, feedbackId) => void` | Observe delivery failures (network error, non-2xx, timeout). Without it, errors land in `console.warn`. |
-
-**Behaviour**
-
-- **Fire-and-forget.** The widget gets its `201` response before any webhook is awaited — a slow Slack response never blocks the user.
-- **Per-webhook isolation.** One failing receiver does not stop the others.
-- **Generic payload.** When `type` is omitted, the body is the full feedback record — wire your own formatter (Microsoft Teams, Mattermost, custom dashboard, …).
-
-```ts
-// Generic receiver — verify signatures, persist to your own queue, etc.
-webhooks: [
-  {
-    url: 'https://my-server.example.com/notify',
-    headers: { 'X-Signature': process.env.WEBHOOK_SECRET! },
-    onError: (err, id) => logger.warn({ err, feedbackId: id }, 'webhook failed'),
-  },
-]
-```
-
----
-
-## API Reference
-
-### Server adapter
-
-The adapter handles all API logic — validation, persistence, error handling.
-
-```ts
-// app/api/siteping/route.ts
-import { createSitepingHandler } from '@siteping/adapter-prisma'
-import { prisma } from '@/lib/prisma'
-
-export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ prisma })
-```
-
-> **Note:** The handler does not include rate limiting. Consider adding rate limiting middleware in production.
-
-#### Endpoints
-
-| Method | Description | Status |
-|--------|-------------|--------|
-| `POST` | Create a feedback with annotations | `201` with full feedback object |
-| `GET` | List feedbacks (filterable by type, status, search) | `200` with `{ feedbacks, total }` |
-| `PATCH` | Update a feedback's status | `200` with updated feedback |
-| `DELETE` | Delete a feedback or all feedbacks for a project | `200` with `{ deleted: true }` |
-
-#### Query parameters (GET)
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `projectName` | `string` | **Required.** Filter by project |
-| `type` | `string` | Filter: `question`, `change`, `bug`, `other` |
-| `status` | `string` | Filter: `open`, `in_progress`, `resolved`, `wont_fix` |
-| `search` | `string` | Full-text search on message content |
-| `page` | `number` | Pagination (default: 1) |
-| `limit` | `number` | Items per page (default: 50, max: 100) |
-
-### Prisma schema
-
-The CLI generates these models automatically. If you prefer manual setup:
-
-```prisma
-model SitepingFeedback {
-  id          String   @id @default(cuid())
-  projectName String
-  type        String   // question | change | bug | other
-  message     String
-  status      String   @default("open")
-  url         String
-  diagnostics Json?    // captureDiagnostics snapshot — optional
-  viewport    String
-  userAgent   String
-  authorName  String
-  authorEmail String
-  clientId    String   @unique
-  resolvedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  annotations SitepingAnnotation[]
-}
-
-model SitepingAnnotation {
-  id               String   @id @default(cuid())
-  feedbackId       String
-  feedback         SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
-  cssSelector      String
-  xpath            String
-  textSnippet      String
-  elementTag       String
-  elementId        String?
-  textPrefix       String
-  textSuffix       String
-  fingerprint      String
-  neighborText     String
-  xPct             Float
-  yPct             Float
-  wPct             Float
-  hPct             Float
-  scrollX          Float
-  scrollY          Float
-  viewportW        Int
-  viewportH        Int
-  devicePixelRatio Float    @default(1)
-  createdAt        DateTime @default(now())
-}
-```
-
----
-
-## CLI
-
-```bash
-npx @siteping/cli init
-```
-
-Interactive setup that:
-
-1. Detects your `prisma/schema.prisma` file
-2. Merges the Siteping models (idempotent — safe to run multiple times)
-3. Generates the Next.js App Router API route
-
-Requires Node ≥ 20 (also runs under `bun x`). CI exercises the CLI on Node 20, 22 and 24.
-
----
-
-## Architecture
-
-```
-HTTP mode (endpoint)                Client-side mode (store)
-                                    
-Browser              Server         Browser
-  |                    |              |
-  |  initSiteping()    |              |  initSiteping({ store })
-  |  Widget ────────>  |              |  Widget ── StoreClient
-  |                    |              |               |
-  |  POST /api/siteping|              |       LocalStorageStore
-  |  ───────────────>  |              |       or MemoryStore
-  |                    |              |
-  |  Handler           |              |  No server needed
-  |    Zod validation  |              |
-  |    Prisma / Store  |              |
-  |  <── 201 ────────  |              |
-```
-
-### Key design decisions
-
-- **Shadow DOM (closed)** — Widget styles are fully isolated from the host page
-- **Overlay outside Shadow DOM** — The annotation overlay and markers live in the main DOM to avoid clipping from `overflow:hidden` containers
-- **Multi-selector anchoring** — Each annotation stores a CSS selector ([`@medv/finder`](https://github.com/antonmedv/finder)), XPath, text snippet, structural fingerprint, and neighboring-text context. Re-anchoring gathers candidates from **every** strategy, verifies each against all stored signals, prefers visible elements over hidden responsive twins, and returns the best-scoring match — inspired by [Hypothesis](https://web.hypothes.is/blog/fuzzy-anchoring/)'s quote-verified anchoring and the [Similo](https://arxiv.org/abs/2208.00677) multi-locator line of work
-- **Known limitation: host-page shadow DOM** — Anchoring does not traverse the host page's shadow roots: annotations drawn on content inside a web component capture a host-level anchor or fail to re-resolve ([#177](https://github.com/NeosiaNexus/SitePing/issues/177) tracks open-root traversal)
-- **Percentage-relative rectangles** — Annotation positions are stored as fractions of the anchor element's bounding box, so they survive responsive layout changes
-- **Event bus with error isolation** — User callbacks (`onError`, etc.) cannot crash internal widget logic
-
-### Packages
-
-| Package | Platform | Description |
-|---------|----------|-------------|
-| [`@siteping/widget`](https://www.npmjs.com/package/@siteping/widget) | Browser | Widget: `initSiteping()` |
-| [`@siteping/dashboard`](https://www.npmjs.com/package/@siteping/dashboard) | React | Triage inbox: `<SitepingInbox />` |
-| [`@siteping/adapter-prisma`](https://www.npmjs.com/package/@siteping/adapter-prisma) | Node.js | Server: `createSitepingHandler()` |
-| [`@siteping/adapter-memory`](https://www.npmjs.com/package/@siteping/adapter-memory) | Any | In-memory store (testing, demos, serverless) |
-| [`@siteping/adapter-localstorage`](https://www.npmjs.com/package/@siteping/adapter-localstorage) | Browser | Client-side localStorage store (demos, prototyping) |
-| [`@siteping/cli`](https://www.npmjs.com/package/@siteping/cli) | CLI | Setup: `init`, `sync`, `status`, `doctor` |
-
-Each package is independently published and tree-shakeable. The widget bundle never includes Prisma or Zod. The adapter never includes DOM code.
-
-All adapters implement the `SitepingStore` interface — swap adapters without changing any other code.
-
----
-
-## Data & Privacy
-
-- **What the widget collects:** author name, email, feedback message, page URL, viewport dimensions, user agent, and DOM anchoring data (CSS selector, XPath, text snippet, element coordinates).
-- **No screenshots or full DOM snapshots are captured by default** — only the minimal data needed to re-anchor annotations. Hosts can opt in to per-annotation screenshot capture via `enableScreenshot: true`; see [Screenshot capture](#screenshot-capture) for the masking story and the privacy caveat.
-- **Self-hosted** — all data is stored in your own database. Nothing is sent to third-party servers.
-- **Sensitive URL parameters are automatically stripped** before submission to prevent accidental data leakage.
-
----
-
-## TypeScript
-
-Full type definitions are included. Key exported types:
-
-```ts
-import type {
-  SitepingConfig,
-  SitepingInstance,
-  SitepingPublicEvents,
-  FeedbackType,       // 'question' | 'change' | 'bug' | 'other'
-  FeedbackStatus,     // 'open' | 'in_progress' | 'resolved' | 'wont_fix'
-  FeedbackPayload,
-  FeedbackResponse,
-  AnnotationPayload,
-  AnnotationResponse,
-  AnchorData,
-  RectData,
-} from '@siteping/widget'
-```
-
----
-
-## Testing
-
-```bash
-# Unit tests (Vitest)
-bun run test:run
-
-# E2E tests (Playwright + Chromium)
-bun run test:e2e
-
-# Type check
-bun run check
-```
-
-| Suite | Tests | What it covers |
-|-------|-------|----------------|
-| Unit (Vitest) | ~1900 | Zod validation, API handlers, store conformance, adapter tests, EventBus, API client retry, identity persistence, theme normalization, DOM anchoring, resolver, fuzzy matching, fingerprinting, XPath, text context, i18n |
-| E2E (Playwright) | 29 (×3 browsers) | Full browser: widget injection, FAB, panel, annotation draw, popup submit, marker creation, API persistence, i18n, search, touch, event delegation, cleanup |
-
----
-
-## Troubleshooting
-
-### Widget doesn't appear
-
-The widget is **dev-only by default**. It auto-hides when `NODE_ENV=production` or `import.meta.env.MODE === 'production'`.
-
-- **Fix:** Pass `forceShow: true` in the config to show it in production. Note that `forceShow` also bypasses the mobile-viewport guard below.
-- The widget also hides on viewports narrower than **768px** (mobile). This is by design — annotation drawing works best with a pointer device. Tune the threshold with `minViewportWidth` (set `0` to allow mobile viewports), or bypass it entirely with `forceShow: true`.
-
-### Prisma errors after setup
-
-If you see errors like `The table does not exist in the current database`, the schema hasn't been pushed yet.
-
-```bash
-npx prisma db push
-```
-
-If you changed your schema manually, ensure the `SitepingFeedback` and `SitepingAnnotation` models match the expected structure. Run `npx @siteping/cli doctor` to verify.
-
-### Security notes
-
-- By default, the API has **no authentication**. Anyone who knows the endpoint URL can read, create, and delete feedbacks. For production, always set the `apiKey` option in `createSitepingHandler({ prisma, apiKey: process.env.SITEPING_API_KEY })`.
-- The widget sends feedback without authentication (it runs in the browser). The `apiKey` protects admin operations (GET, PATCH, DELETE).
-- Add rate limiting at your framework/infrastructure level to prevent abuse.
-
-### Widget styles look broken
-
-The widget renders inside a **closed Shadow DOM**, so host page styles cannot leak in. If you see style issues:
-
-- Ensure no script is removing the `<siteping-widget>` element from the DOM.
-- The annotation overlay and markers live **outside** the Shadow DOM (in the main DOM) to avoid `overflow: hidden` clipping. This is expected behavior.
-- If a CSS reset targets `*` with `!important`, it may affect the overlay elements. Scope your reset to avoid `siteping-*` elements.
-
----
-
-## Upgrading
-
-See [CHANGELOG.md](./CHANGELOG.md) for version history.
-
----
-
-## Roadmap
-
-**Recently shipped**
-
-- ✅ Multi-language support — 7 built-in locales (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`)
-- ✅ Client-side store mode (no server needed)
-- ✅ In-memory + localStorage adapters
-- ✅ Adapter conformance test suite (22 tests, shared across adapters)
-- ✅ Webhook notifications (Slack, Discord, generic HTTP) — see [Notifications](#notifications)
-- ✅ Triage inbox dashboard (`@siteping/dashboard`) — see [Triage inbox](#triage-inbox--sitepingdashboard)
-
-**Up next**
-
-- 🚧 Drizzle adapter — [help wanted](https://github.com/NeosiaNexus/SitePing/labels/help%20wanted)
-- 🚧 Framework example apps (Astro, SvelteKit, Nuxt) — [good first issues](https://github.com/NeosiaNexus/SitePing/labels/good%20first%20issue)
-- 🚧 MutationObserver for SPA re-anchoring
-
-**Planned**
-
-- 📋 Screenshot fallback when re-anchoring fails
-
-> Want to help ship these? Browse [`good first issue`](https://github.com/NeosiaNexus/SitePing/labels/good%20first%20issue) and [`help wanted`](https://github.com/NeosiaNexus/SitePing/labels/help%20wanted).
-
----
+No server? The widget also runs fully client-side with `store: new LocalStorageStore()` — the [three-minute quickstart](https://siteping.dev/docs/quickstart) covers both paths, prerequisites included.
+
+## Documentation
+
+The full documentation lives at **[siteping.dev/docs](https://siteping.dev/docs)** (English and French) — every option, default, and behavior on these pages is verified against the source code.
+
+| Package | | Docs |
+|---|---|---|
+| [`@siteping/widget`](./packages/widget) | The feedback widget (framework-agnostic + React hook) | [Widget](https://siteping.dev/docs/widget) · [Configuration](https://siteping.dev/docs/widget/configuration) · [Screenshots](https://siteping.dev/docs/widget/screenshots) |
+| [`@siteping/dashboard`](./packages/dashboard) | Triage inbox component + headless hook | [Dashboard](https://siteping.dev/docs/dashboard) · [Theming](https://siteping.dev/docs/dashboard/theming) |
+| [`@siteping/adapter-prisma`](./packages/adapter-prisma) | Production server adapter (auth, CORS, webhooks) | [Prisma adapter](https://siteping.dev/docs/adapters/prisma) |
+| [`@siteping/adapter-memory`](./packages/adapter-memory) | In-memory store (tests, demos) | [Memory adapter](https://siteping.dev/docs/adapters/memory) |
+| [`@siteping/adapter-localstorage`](./packages/adapter-localstorage) | Client-side store (zero server) | [localStorage adapter](https://siteping.dev/docs/adapters/localstorage) |
+| [`@siteping/cli`](./packages/cli) | `init` / `sync` / `status` / `doctor` | [CLI](https://siteping.dev/docs/cli) |
 
 ## Contributing
 
-Contributions are welcome — first-time contributors especially.
+Bug reports, locale translations, docs fixes, features — everything counts, and locale additions are the friendliest first PR. Start with [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-**Where to start**
-
-- 🌱 [`good first issue`](https://github.com/NeosiaNexus/SitePing/labels/good%20first%20issue) — small, well-scoped tasks (locales, examples, docs, CLI flags)
-- 🎯 [`help wanted`](https://github.com/NeosiaNexus/SitePing/labels/help%20wanted) — meatier features (new adapters, dashboard)
-- 📖 [Contributing guide](./CONTRIBUTING.md) — local setup, architecture, release flow
-- 🌍 Adding a new locale takes three small steps — see [Adding a Locale](./CONTRIBUTING.md#adding-a-locale)
-
-**Quick setup**
-
-```bash
-git clone https://github.com/NeosiaNexus/SitePing.git
-cd SitePing
-bun install
-bun run build      # Build all packages
-bun run test       # Tests in watch mode
-bun run test:e2e   # E2E tests
-```
-
----
-
-## Acknowledgements
-
-A big thank you to the [Trade-su/SitePing](https://github.com/Trade-su/SitePing) fork — Valerii ([@Trade-su](https://github.com/Trade-su)) and grizodubov ([@grizodubov](https://github.com/grizodubov)) — for the work that inspired several upstream features. Forks that ship real ideas back are the best kind.
-
-Specifically:
-
-- **Page-scoped annotations + semantic anchors** (`data-feedback-anchor`) — solves the cross-page leak when CSS selectors accidentally match unrelated elements.
-- **Screenshot capture** via `html2canvas` — adapted upstream with a pluggable `ScreenshotStorage` so production users can offload to S3/R2 instead of bloating Postgres.
-- **Popup positioning fix** — clamps inside the viewport when the drawn rect leaves no room above or below.
-
-If you maintain a fork that adds features, opening an upstream PR or even just an issue describing what you've built is incredibly valuable — it lets the community benefit beyond your fork's user base.
-
----
+Maintaining a fork with extra features (semantic anchors, screenshot storage backends, positioning fixes have all come from forks)? An upstream PR — or even an issue describing what you built — lets everyone benefit.
 
 ## Contributors
 

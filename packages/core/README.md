@@ -1,74 +1,13 @@
 # @siteping/core
 
-**Internal package** -- shared types and schema definitions for all `@siteping/*` packages.
+**Internal package** — shared types, schema, and helpers for all `@siteping/*` packages.
 
-Part of the [@siteping](https://github.com/NeosiaNexus/SitePing) monorepo.
+`private: true`, never published to npm. It exports raw TypeScript (no build step) and is bundled into consumers via `noExternal: ["@siteping/core"]` in their tsup configs — which makes it the single source of truth for:
 
-## Internal Package
+- All shared TypeScript types (`SitepingConfig`, `SitepingInstance`, `FeedbackRecord`, `SitepingStore`, …)
+- Feedback statuses (`FEEDBACK_STATUSES`: `open` / `in_progress` / `resolved` / `wont_fix`) and `isClosedStatus()`
+- The Prisma model definitions the CLI generates from (`SITEPING_MODELS`)
+- Store error classes (`StoreNotFoundError`, `StoreDuplicateError`, `StorePersistenceError`) and their guards — the guards match on `code` as well as `instanceof`, because every package bundles its own copy
+- `@siteping/core/testing` — `testSitepingStore(factory)`, the 40-test conformance suite every store adapter must pass
 
-This package is `private: true` and is **never published to npm**. It exports raw TypeScript (no build step) and is bundled directly into consumers via `noExternal: ["@siteping/core"]` in their tsup config.
-
-This makes `@siteping/core` the **single source of truth** for:
-
-- All shared TypeScript types
-- The Prisma model definitions used by the CLI to generate schemas
-- Store error classes and type guards
-- Shared adapter helpers
-- Conformance test suite for adapter authors
-
-## Main Exports
-
-### Types
-
-| Type | Description |
-|------|-------------|
-| `SitepingConfig` | Widget initialization options (endpoint, projectName, position, accentColor, events) |
-| `SitepingInstance` | Return value of `initSiteping()` — contains `destroy()` |
-| `FeedbackType` | `'question' \| 'change' \| 'bug' \| 'other'` |
-| `FeedbackStatus` | `'open' \| 'resolved'` |
-| `FeedbackPayload` | Shape of the POST request body sent by the widget |
-| `FeedbackResponse` | Shape of feedback objects returned by the API |
-| `AnnotationPayload` | Annotation data sent with a feedback (anchor + rect + viewport) |
-| `AnnotationResponse` | Annotation as returned by the API |
-| `AnchorData` | Multi-selector anchoring data (CSS selector, XPath, text snippet, fingerprint) |
-| `RectData` | Percentage-relative rectangle within the anchor element |
-| `FieldDef` | Schema field definition used by `SITEPING_MODELS` |
-
-### Adapter Pattern
-
-| Export | Description |
-|--------|-------------|
-| `SitepingStore` | Abstract store interface — 6 methods that every adapter implements |
-| `StoreNotFoundError` | Error class for missing records (update/delete) |
-| `StoreDuplicateError` | Error class for duplicate `clientId` |
-| `isStoreNotFound(err)` | Type guard — detects `StoreNotFoundError` and Prisma P2025 |
-| `isStoreDuplicate(err)` | Type guard — detects `StoreDuplicateError` and Prisma P2002 |
-| `flattenAnnotation(payload)` | Convert nested `AnnotationPayload` to flat `AnnotationCreateInput` |
-
-### Testing (`@siteping/core/testing`)
-
-| Export | Description |
-|--------|-------------|
-| `testSitepingStore(factory)` | Conformance test suite — runs 22 tests against any `SitepingStore` implementation |
-
-### Schema
-
-| Export | Description |
-|--------|-------------|
-| `SITEPING_MODELS` | TypeScript representation of the Prisma models (`SitepingFeedback`, `SitepingAnnotation`). Used by the CLI to generate and sync the actual `.prisma` schema. |
-
-## How It's Consumed
-
-```ts
-// In tsup.config.ts of widget, adapter-prisma, or cli:
-export default defineConfig({
-  noExternal: ["@siteping/core"],
-  // ...
-})
-```
-
-This inlines the raw TS exports at build time -- no separate build step needed for core.
-
-## License
-
-[MIT](https://github.com/NeosiaNexus/SitePing/blob/main/LICENSE)
+Consumers never install this package: everything relevant is re-exported by the published packages. End-user documentation lives at [siteping.dev/docs](https://siteping.dev/docs).
