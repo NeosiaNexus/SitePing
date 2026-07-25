@@ -82,9 +82,7 @@ describe("draw flow — popup re-entry guards (#196, real Popup)", () => {
     drag(overlay, 100, 100, 200, 200);
     await flush();
 
-    const cancelBtn = Array.from(document.body.querySelectorAll("button")).find(
-      (b) => b.textContent === "Cancel",
-    )!;
+    const cancelBtn = Array.from(document.body.querySelectorAll("button")).find((b) => b.textContent === "Cancel")!;
     expect(cancelBtn).toBeDefined();
     cancelBtn.click();
     await flush();
