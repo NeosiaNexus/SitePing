@@ -15,6 +15,15 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      # The coverage provider must ship the same major as vitest itself:
+      # separate major-bump PRs each fail CI alone (#223/#225). No
+      # update-types filter — majors included — so the family always
+      # arrives as one lockstep PR. Listed first: dependabot assigns each
+      # dependency to the first matching group.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
       dev-dependencies:
         dependency-type: development
         update-types:
