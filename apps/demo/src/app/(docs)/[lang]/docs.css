@@ -5,17 +5,20 @@ body {
   font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
-/* Full-bleed shell. Fumadocs centres the layout by default, and the sidebar
-   area spans the centring gutter as well as its own column — at 1920 that is
-   a 452px sidebar band, 772px at 2560. Pinning the shell to the viewport
-   collapses those gutters to zero (grid becomes 0 / 268 / 1fr / 268 / 0), so
-   the sidebar is one flush-left column at every width. */
-#nd-notebook-layout {
-  --fd-layout-width: 100%;
+/* Fumadocs centres the whole shell, and the sidebar area spans the centring
+   gutter as well as its own column — so the nav ends up floating mid-screen
+   with a dead band to its left. Keep the centring (it is what puts the article
+   dead centre and leaves the TOC a right margin), and pin only the chrome to
+   the viewport edges: the sidebar panel to the start of its area, the navbar
+   across the full grid. */
+#nd-sidebar {
+  align-items: flex-start;
 }
 
-/* Separate the sidebar from the page the way the navbar separates from the
-   content: a hairline rather than a filled band. */
-#nd-sidebar {
+#nd-sidebar > * {
   border-inline-end: 1px solid var(--color-fd-border);
+}
+
+#nd-notebook-layout > [class*="grid-area:header"] {
+  grid-column: 1 / -1;
 }
