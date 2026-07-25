@@ -76,6 +76,10 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
         // while `runSubmission` is in flight — the overlay therefore stays up,
         // which is exactly the window the serialization guard must cover.
         if (popupMocks.keepShowPending) return new Promise(() => {});
+        // Lifecycle divergence from the real Popup: this flips isOpen false
+        // while `lastSubmitPromise` may still be pending, whereas the real
+        // popup stays open until `onSubmit` settles. The real-popup suite
+        // (annotator-popup-reentry.test.ts) pins the true invariant.
         popupMocks.isOpenState = false;
         return Promise.resolve(popupMocks.nextResult);
       }),

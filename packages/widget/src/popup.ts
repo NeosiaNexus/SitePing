@@ -62,17 +62,23 @@ export class Popup {
   private submitLabel: HTMLSpanElement;
   private hint: HTMLElement;
   private resolve: ((result: PopupResult | null) => void) | null = null;
-
-  get isOpen(): boolean {
-    return this.resolve !== null;
-  }
-
   private previouslyFocused: HTMLElement | null = null;
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
   private onSubmit: PopupSubmitHandler | null = null;
   private submittingState = false;
   /** WAAPI handle for the running spinner — cancelled when submitting ends. */
   private spinnerAnimation: Animation | null = null;
+
+  /**
+   * True from `show()` until its promise settles — through typing, the
+   * in-flight `onSubmit` await, AND the failed-submit retry window. The
+   * annotator's drawing guards read this to serialize popup sessions
+   * (#114/#196): if a refactor ever nulls `resolve` before `onSubmit`
+   * settles, those guards die silently — popup.test.ts pins the lifecycle.
+   */
+  get isOpen(): boolean {
+    return this.resolve !== null;
+  }
 
   constructor(
     private readonly colors: ThemeColors,
