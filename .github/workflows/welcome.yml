@@ -10,16 +10,22 @@ on:
   issues:
     types: [opened]
 
-permissions:
-  pull-requests: write
-  issues: write
+permissions: {}
 
 jobs:
   welcome:
+    # first-interaction's prior-contribution search never matches bot logins,
+    # so dependabot/allcontributors were greeted as "new" on every PR. Bots
+    # don't need a welcome — skip them at the job level.
+    if: github.event.sender.type != 'Bot'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      issues: write
     steps:
       - name: Greet first-time contributors
-        uses: actions/first-interaction@v3
+        uses: actions/first-interaction@1c4688942c71f71d4f5502a26ea67c331730fa4d # v3.1.0
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           issue_message: |

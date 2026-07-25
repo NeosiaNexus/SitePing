@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.2...dashboard-v0.2.3) (2026-07-25)
+
+
+### Bug Fixes
+
+* ship fully resolvable type declarations for every published package ([#232](https://github.com/NeosiaNexus/SitePing/issues/232)) ([01a8085](https://github.com/NeosiaNexus/SitePing/commit/01a8085c90fab4e721eaede8def9a4d9f5eefcc0))
+
 ## [0.2.2](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.1...dashboard-v0.2.2) (2026-07-24)
 
 

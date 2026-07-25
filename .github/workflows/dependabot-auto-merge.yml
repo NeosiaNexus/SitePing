@@ -1,0 +1,41 @@
+name: Dependabot auto-merge
+
+# Auto-merges Dependabot PRs for minor/patch updates of DEVELOPMENT
+# dependencies once every required branch-protection check passes.
+# Production dependencies, majors and GitHub Actions bumps stay manual —
+# those deserve human eyes (supply-chain risk / runtime impact).
+#
+# Safe: the gate is the PR author (github.event.pull_request.user.login),
+# which cannot be spoofed by re-running the workflow, and `gh pr merge --auto`
+# only queues the merge behind the required status checks.
+
+on: pull_request
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    if: >
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.repository == 'NeosiaNexus/SitePing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for dev-dependency minor/patch bumps
+        if: >
+          steps.metadata.outputs.dependency-type == 'direct:development' &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-patch')
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"

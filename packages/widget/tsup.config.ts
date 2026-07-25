@@ -1,11 +1,13 @@
 import { defineConfig } from "tsup";
 
 // Three parallel builds:
-//  - ESM main: code-split so dynamic imports (Panel, locale chunks) ship as
-//    separate files and only load when actually used.
+//  - ESM+CJS main: ESM is code-split so dynamic imports (Panel, locale
+//    chunks) ship as separate files and only load when actually used; the
+//    CJS twin is a single file (splitting is ESM-only) for require()
+//    consumers — Jest setups, legacy bundlers (#220).
 //  - IIFE main: single global script for <script src> consumers — splitting is
 //    incompatible with IIFE, so everything is inlined.
-//  - ESM React entry (`@siteping/widget/react`): React stays external so
+//  - ESM+CJS React entry (`@siteping/widget/react`): React stays external so
 //    consumers pin their own version.
 //
 // `esbuildOptions.pure` strips `console.debug` / `console.info` calls in the
@@ -26,7 +28,7 @@ const keepNodeEnvLiteral = { "process.env.NODE_ENV": "process.env.NODE_ENV" } as
 export default defineConfig([
   {
     entry: ["src/index.ts"],
-    format: ["esm"],
+    format: ["esm", "cjs"],
     platform: "browser",
     target: "es2022",
     dts: true,
@@ -61,7 +63,7 @@ export default defineConfig([
   },
   {
     entry: ["src/react.ts"],
-    format: ["esm"],
+    format: ["esm", "cjs"],
     platform: "browser",
     target: "es2022",
     dts: true,

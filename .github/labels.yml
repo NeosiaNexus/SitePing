@@ -56,3 +56,16 @@
 - name: ignore-for-release
   color: e4e669
   description: Exclude this PR from auto-generated release notes
+
+# Triage-flow labels — the stale workflow only acts on the first two.
+- name: awaiting-response
+  color: e99695
+  description: Waiting for more information from the author
+
+- name: needs-reproduction
+  color: fbca04
+  description: Needs a minimal reproduction before triage can continue
+
+- name: stale
+  color: ededed
+  description: No recent activity — will be closed soon without an update

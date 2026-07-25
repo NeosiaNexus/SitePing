@@ -1,14 +1,19 @@
 {
   "name": "@siteping/adapter-prisma",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Prisma adapter for Siteping — server-side request handlers",
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "main": "./dist/index.cjs",
