@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.1...adapter-prisma-v0.6.2) (2026-07-25)
+
+
+### Bug Fixes
+
+* ship fully resolvable type declarations for every published package ([#232](https://github.com/NeosiaNexus/SitePing/issues/232)) ([01a8085](https://github.com/NeosiaNexus/SitePing/commit/01a8085c90fab4e721eaede8def9a4d9f5eefcc0))
+
 ## [0.6.1](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.0...adapter-prisma-v0.6.1) (2026-07-24)
 
 
