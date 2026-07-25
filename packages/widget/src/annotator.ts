@@ -62,9 +62,7 @@ export class Annotator {
   private pendingMoveEvent: MouseEvent | Touch | null = null;
   /**
    * Reject handle for the in-flight `runSubmission` promise, or null when no
-   * submission is pending. Serves two purposes: a non-null value means a
-   * submission is in flight (so pointer-driven drawing is suppressed — the
-   * popup is open), and `destroy()` calls it to settle the promise rather
+   * submission is pending. `destroy()` calls it to settle the promise rather
    * than leaving the awaiting closure hung past teardown.
    */
   private rejectPendingSubmission: ((reason: Error) => void) | null = null;
@@ -581,7 +579,7 @@ export class Annotator {
    * - `submission:cancelled` — reject as a silent abort (popup restores; no
    *   error is surfaced — e.g. the user cancelled the identity prompt).
    *
-   * Submissions are serialized by the drawing guards (`submissionInFlight`),
+   * Submissions are serialized by the popup guard (`this.popup.isOpen`),
    * so exactly one `runSubmission` is ever live — the global outcome events
    * cannot cross-wire between submissions and need no correlation id.
    */
