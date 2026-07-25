@@ -292,3 +292,34 @@ jobs:
         working-directory: packages/adapter-localstorage
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Post-release guard (#184): every version in the release-please manifest
+  # must exist on npm once the publish fan-out settles. Catches a publish job
+  # that failed after tagging (run #166) and the tag-created-but-publish-
+  # skipped case (run #182), and keeps failing every push until the gap is
+  # repaired (rescue: workflow_dispatch with publish=true). Skipped when
+  # release-please itself did not run (CI failure): a merged-but-unreleased
+  # release PR would otherwise read as a false gap.
+  verify-publish:
+    needs:
+      - release-please
+      - publish-widget
+      - publish-adapter-prisma
+      - publish-cli
+      - publish-adapter-memory
+      - publish-dashboard
+      - publish-adapter-localstorage
+    if: |
+      !cancelled() &&
+      (needs.release-please.result == 'success' ||
+       (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Verify npm versions match the release-please manifest
+        run: node scripts/verify-npm-publish.mjs
