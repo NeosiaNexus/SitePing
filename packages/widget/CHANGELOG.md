@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.4...widget-v0.10.5) (2026-07-25)
+
+
+### Bug Fixes
+
+* **widget:** prevent re-entry during popup open ([#196](https://github.com/NeosiaNexus/SitePing/issues/196)) and fix contextmenu trigger ([#197](https://github.com/NeosiaNexus/SitePing/issues/197)) ([#217](https://github.com/NeosiaNexus/SitePing/issues/217)) ([a885eba](https://github.com/NeosiaNexus/SitePing/commit/a885eba8814ce90a4d93949b119e48f4436fea76))
+
 ## [0.10.4](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.3...widget-v0.10.4) (2026-07-25)
 
 
