@@ -195,6 +195,12 @@ jobs:
       - name: Build
         run: bun run build
 
+      # Guards the `npx @siteping/cli` startup path: the ESM bundle once
+      # shipped without a require shim and crashed instantly under Node
+      # (fixed in #221). A --help run catches any bundle-init regression.
+      - name: CLI binary smoke test
+        run: node packages/cli/dist/index.js --help
+
       - name: publint
         run: |
           for pkg in widget adapter-prisma adapter-memory adapter-localstorage dashboard cli; do
