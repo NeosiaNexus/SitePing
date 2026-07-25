@@ -543,6 +543,8 @@ Interactive setup that:
 2. Merges the Siteping models (idempotent — safe to run multiple times)
 3. Generates the Next.js App Router API route
 
+Requires Node ≥ 20 (also runs under `bun x`). CI exercises the CLI on Node 20, 22 and 24.
+
 ---
 
 ## Architecture
