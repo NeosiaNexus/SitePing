@@ -4,6 +4,16 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Conventional title: the repo is squash-only, so the PR title must pass
+    # the PR-title check and be parseable by the auto-labeller.
+    commit-message:
+      prefix: chore
+      include: scope
+    # Wait a week before adopting a new release: a freshly compromised
+    # package version is usually yanked within days. Security advisories
+    # bypass the cooldown.
+    cooldown:
+      default-days: 7
     groups:
       dev-dependencies:
         dependency-type: development
@@ -21,4 +31,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5

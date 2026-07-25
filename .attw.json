@@ -1,0 +1,4 @@
+{
+  "profile": "node16",
+  "ignoreRules": ["internal-resolution-error", "false-esm", "cjs-resolves-to-esm"]
+}

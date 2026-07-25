@@ -15,8 +15,7 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: enrich-release-${{ github.event.release.id || inputs.release_tag }}
@@ -25,9 +24,12 @@ concurrency:
 jobs:
   enrich:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
       - name: Append contributors section to release notes
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
           INPUT_FORCE: ${{ inputs.force }}

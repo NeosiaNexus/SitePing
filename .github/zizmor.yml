@@ -1,0 +1,18 @@
+# zizmor (workflow security audit) configuration.
+# Run in CI by the lint-workflows job; each ignore is a reviewed exception.
+
+rules:
+  dangerous-triggers:
+    ignore:
+      # These use pull_request_target deliberately so they work on fork PRs.
+      # None of them checks out or executes PR code, and no untrusted input
+      # reaches a `run:` step — see the header comment in each file.
+      - welcome.yml
+      - auto-label.yml
+      - pr-title.yml
+
+  use-trusted-publishing:
+    ignore:
+      # pkg.pr.new previews are not npm publishes — auth is its GitHub App,
+      # there is no trusted-publishing equivalent to switch to.
+      - pkg-pr-new.yml

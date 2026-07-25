@@ -1,0 +1,31 @@
+name: PR title
+
+# The repo is squash-only: the PR title becomes the commit message that
+# release-please and the auto-labeller parse. A malformed title silently
+# breaks changelogs and labels — validate it up front.
+#
+# Safe: reads only the PR title via the GitHub API; never checks out or
+# executes PR code. `pull_request_target` is required so the check also runs
+# with a token on PRs from forks.
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Validate conventional commit title
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
