@@ -1,0 +1,78 @@
+---
+title: Dashboard
+description: A Linear-style triage inbox for your feedback — one React component, keyboard-first.
+---
+
+`@siteping/dashboard` gives you a complete triage UI: filter, search, change statuses, delete, undo — designed for the keyboard, styled to blend into your app.
+
+```bash
+npm i @siteping/dashboard
+```
+
+```tsx
+import { SitepingInbox } from "@siteping/dashboard";
+
+export function Triage() {
+  return (
+    <SitepingInbox
+      projects="my-project"
+      endpoint="https://my-site.com/api/siteping"
+      apiKey={process.env.NEXT_PUBLIC_SITEPING_KEY}
+      theme="auto"
+    />
+  );
+}
+```
+
+It works with React 18 and 19, ships ESM and CJS, and has zero dependencies besides React. Give it a container with a height — the inbox fills its parent (minimum 480 px).
+
+## Props
+
+`SitepingInbox` accepts every [`useSitepingInbox` option](/docs/dashboard/headless) plus these presentation props:
+
+| Prop | Type | Default | What it does |
+|---|---|---|---|
+| `theme` | `"light"` \| `"dark"` \| `"auto"` | `"auto"` | `auto` follows the system preference — live, including mid-session changes |
+| `accentColor` | `string` | `"#0066ff"` | Hex only; every accent shade derives from this one value. See [Theming](/docs/dashboard/theming) |
+| `density` | `"comfortable"` \| `"compact"` | `"comfortable"` | Row height 44 px vs 36 px |
+| `locale` | `string` | `"en"` | Any BCP-47 tag — see [Languages](#languages) |
+| `deepLinkParam` | `string` | `"siteping"` | Query param used by "Open on page" links; must match the widget's `deepLink` param |
+| `emptyState` | `ReactNode` | — | Custom node for the "no feedback in this project yet" state only — the inbox-zero and no-filter-match states keep their defaults |
+| `className` | `string` | — | Appended to the root element's classes |
+
+## Keyboard
+
+Focus the list once, then:
+
+| Key | Action |
+|---|---|
+| `j` / `↓`, `k` / `↑` | Move between rows |
+| `Enter` or `o` | Open the focused feedback; a second `Enter` on an open record opens it on the live page |
+| `e` / `p` / `x` | Toggle resolved / in progress / won't fix (pressing the current status returns it to open) |
+| `u` | Undo the last status change |
+| `r` | Refresh |
+| `/` | Jump to search |
+| `1`–`5` | Status tabs (all, open, in progress, resolved, won't fix) |
+| `?` | Shortcuts cheat sheet |
+| `Esc` | In search: clear the query, then leave search. Otherwise: close the drawer, then the cheat sheet |
+
+Shortcuts require focus inside the component (they're bound to it, not to `document`) and never fire while you're typing in a field — except `Esc`.
+
+## Statuses and actions
+
+Four statuses: `open`, `in_progress`, `resolved`, `wont_fix`. The dashboard can set any of them (the widget's own actions stay binary — resolve/reopen). Closing a feedback (`resolved` or `wont_fix`) stamps `resolvedAt`; reopening clears it. Status changes are optimistic with undo; **delete is permanent** — it sits behind an inline confirmation and has no undo.
+
+## Languages
+
+Same seven built-in locales as the widget (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`), English bundled, the rest lazy-loaded, BCP-47 tags normalized (`fr-CA` → `fr`).
+
+The dashboard also accepts custom locales at runtime:
+
+```ts
+import { registerLocale } from "@siteping/dashboard";
+
+registerLocale("nl", { /* all 73 keys */ });
+// later: <SitepingInbox locale="nl" ... />
+```
+
+Two rules the implementation enforces: register under the **base language code** (`"nl"`, not `"nl-BE"` — lookups normalize to the base), and call `registerLocale` **before the inbox mounts**. The dictionary is complete by design — pass every key, and TypeScript will hold you to it on the object literal.

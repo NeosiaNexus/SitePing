@@ -1,0 +1,85 @@
+---
+title: Démarrage rapide
+description: Du npm install au premier feedback épinglé en trois minutes environ.
+---
+
+Deux chemins : l'**installation complète** (Next.js + Prisma — la forme de production) ou la version **sans serveur** (60 secondes, tout dans le navigateur).
+
+## Installation complète — Next.js + Prisma
+
+### 1. Installer
+
+```bash
+npm i @siteping/widget @siteping/adapter-prisma
+```
+
+Il vous faut Prisma déjà en place, plus un singleton client dans `@/lib/prisma`. Si vous n'en avez pas :
+
+```ts
+// src/lib/prisma.ts
+import { PrismaClient } from "@prisma/client";
+
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+export const prisma = globalForPrisma.prisma ?? new PrismaClient();
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+```
+
+### 2. Générer
+
+```bash
+npx @siteping/cli init
+```
+
+Confirmez les deux questions : le CLI ajoute les deux modèles SitePing à votre schéma Prisma et génère la route API (`app/api/siteping/route.ts`, ou sous `src/app/` selon votre projet). Poussez ensuite le schéma vers votre base :
+
+```bash
+npx prisma db push
+```
+
+### 3. Monter le widget
+
+```tsx
+// N'importe où côté client — par exemple votre layout racine
+"use client";
+import { useSiteping } from "@siteping/widget/react";
+
+export function Feedback() {
+  useSiteping({ endpoint: "/api/siteping", projectName: "mon-projet" });
+  return null;
+}
+```
+
+Lancez votre serveur de dev et regardez en bas à droite : le bouton SitePing est là. Dessinez un rectangle sur n'importe quoi, tapez un commentaire, envoyez.
+
+Par défaut le widget apparaît en développement mais **jamais dans un build de production** — c'est voulu : les clients relisent sur des URLs de dev/staging. Pour un staging construit en mode production, passez `forceShow: true`.
+
+### 4. Trier ce qui arrive
+
+```tsx
+import { SitepingInbox } from "@siteping/dashboard";
+
+<SitepingInbox projects="mon-projet" endpoint="/api/siteping" theme="auto" />
+```
+
+La boucle est complète. Pour aller plus loin : [options du widget](/fr/docs/widget/configuration) · [captures d'écran](/fr/docs/widget/screenshots) · [auth et sécurité](/fr/docs/adapters/prisma).
+
+## Sans serveur
+
+Pas de backend, pas de base — le feedback vit dans le navigateur du visiteur. Parfait pour les prototypes et démos :
+
+```bash
+npm i @siteping/widget @siteping/adapter-localstorage
+```
+
+```ts
+import { initSiteping } from "@siteping/widget";
+import { LocalStorageStore } from "@siteping/adapter-localstorage";
+
+initSiteping({
+  store: new LocalStorageStore(),
+  projectName: "ma-demo",
+  forceShow: true,
+});
+```
+
+Ce site de documentation tourne exactement avec cette configuration — essayez le widget ici même.

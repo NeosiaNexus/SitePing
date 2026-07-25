@@ -1,0 +1,179 @@
+---
+title: Prisma adapter
+description: The production adapter — HTTP handlers backed by your database, with auth, CORS, redaction, and webhooks.
+---
+
+`@siteping/adapter-prisma` turns one URL of your app into a complete feedback API. It supports Prisma Client v5, v6, and v7, and requires Node 20+.
+
+```bash
+npm i @siteping/adapter-prisma
+```
+
+## Mounting
+
+The factory returns one Web-standard handler (`Request` → `Response`) per HTTP method — mounting them is your framework's job:
+
+```ts
+// app/api/siteping/route.ts — Next.js App Router
+import { createSitepingHandler } from "@siteping/adapter-prisma";
+import { prisma } from "@/lib/prisma";
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ prisma });
+```
+
+Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …) can mount the same handlers on a single endpoint and dispatch by method.
+
+## Options
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `prisma` | `SitepingPrismaClient` | — | Your Prisma client. Required unless you pass `store` |
+| `store` | `SitepingStore` | — | Use any store instead of Prisma (takes precedence) |
+| `apiKey` | `string` | — | Enables Bearer auth. Requests send `Authorization: Bearer <key>` |
+| `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` when `apiKey` is set | Methods that skip auth. **Passing a value replaces the default** — include `"POST"` yourself or the widget can no longer submit |
+| `requireAuthForDestructive` | `boolean` | `true` | Without an `apiKey`, PATCH and DELETE answer `401`. In `NODE_ENV=production` the factory refuses to start without an `apiKey` |
+| `redactUnauthenticatedEmails` | `boolean` | `true` | See [what responses expose](#what-responses-expose) |
+| `allowedOrigins` | `string[]` | — | Exact-match CORS allowlist. **No wildcard support** — `["*"]` matches nothing; unset means no CORS headers at all |
+| `screenshotStorage` | `ScreenshotStorage` | — | Upload screenshots somewhere real instead of inlining data URLs. Ignored when you pass a custom `store` |
+| `caseInsensitiveSearch` | `boolean` | auto-detected | Detected from the Prisma provider (on for PostgreSQL, MongoDB, CockroachDB). Only applies when `prisma` is given |
+| `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Fire on each new feedback — see [webhooks](#webhooks) |
+
+## The security model, honestly
+
+- **Reads are public by default.** Without an `apiKey`, anyone who knows the URL can list feedbacks (with emails redacted — see below).
+- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key.
+- `OPTIONS` is always public — preflights must work.
+
+### What responses expose
+
+- `clientId` is stripped from **every** response.
+- `authorEmail` is blanked unless the request carries a valid `Authorization: Bearer` header. The one exception: a successful `POST` echoes the email back to its author.
+
+## HTTP reference
+
+One endpoint, five methods. All bodies are JSON.
+
+| Method | Purpose | Success |
+|---|---|---|
+| `POST` | Create feedback (widget submissions) | `201` + record. Duplicate `clientId` returns the existing record instead of failing |
+| `GET` | List feedbacks | `200` + `{ feedbacks, total }`, with `Cache-Control: private, max-age=5` |
+| `PATCH` | Change a status | `200` + updated record |
+| `DELETE` | Delete one or all | `200` + `{ deleted: true }` |
+| `OPTIONS` | CORS preflight | `204` |
+
+**GET query parameters:** `projectName` (required), `page` (default 1), `limit` (default 50, max 100), `type`, `status`, `statuses` (comma-separated list, max 4 — e.g. `statuses=open,in_progress`), `search`, `url`, `urlPattern`.
+
+**PATCH body:** `{ id, projectName, status }` — all three required. `status` is one of `open`, `in_progress`, `resolved`, `wont_fix`. The server derives `resolvedAt` automatically: set when the status is closed (`resolved`/`wont_fix`), cleared otherwise.
+
+**DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
+
+**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`; unknown id → `404`; missing table → `500` with a hint to run `npx prisma db push`; anything else → `500 { error: "Internal server error" }`.
+
+### Validation limits worth knowing
+
+`message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+`.
+
+## Database schema
+
+This is the exact schema the adapter needs — it's what `npx @siteping/cli sync` generates. Prefer the CLI; if you write it by hand, don't drop columns: the adapter writes `urlPattern`, `screenshotUrl`, and `anchorKey` on every insert, so a partial schema fails on the first submission.
+
+```prisma
+model SitepingFeedback {
+  id               String               @id @default(cuid())
+  projectName      String
+  type             String
+  message          String               @db.Text
+  status           String               @default("open")
+  url              String
+  urlPattern       String?
+  screenshotUrl    String?              @db.Text
+  screenshotRegion Json?
+  diagnostics      Json?
+  viewport         String
+  userAgent        String
+  authorName       String
+  authorEmail      String
+  clientId         String               @unique
+  resolvedAt       DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  annotations      SitepingAnnotation[]
+
+  @@index([projectName])
+  @@index([projectName, status, createdAt])
+  @@index([projectName, url])
+}
+
+model SitepingAnnotation {
+  id               String           @id @default(cuid())
+  feedbackId       String
+  feedback         SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  cssSelector      String           @db.Text
+  xpath            String           @db.Text
+  textSnippet      String           @db.Text
+  elementTag       String
+  elementId        String?
+  textPrefix       String           @db.Text
+  textSuffix       String           @db.Text
+  fingerprint      String
+  neighborText     String           @db.Text
+  anchorKey        String?
+  xPct             Float
+  yPct             Float
+  wPct             Float
+  hPct             Float
+  scrollX          Float
+  scrollY          Float
+  viewportW        Int
+  viewportH        Int
+  devicePixelRatio Float            @default(1)
+  createdAt        DateTime         @default(now())
+
+  @@index([feedbackId])
+}
+```
+
+> `@db.Text` targets PostgreSQL and MySQL. On SQLite, remove those attributes — plain `String` is already unbounded there.
+
+## Screenshot storage
+
+By default, screenshots are stored inline as `data:` URLs in the `screenshotUrl` column — fine for trying things out, heavy for a real database. For production, plug in a `ScreenshotStorage`:
+
+```ts
+createSitepingHandler({
+  prisma,
+  screenshotStorage: {
+    async upload(dataUrl, { feedbackId, mimeType }) {
+      const url = await uploadToS3(dataUrl, `siteping/${feedbackId}.jpg`, mimeType);
+      return { url };
+    },
+  },
+});
+```
+
+If an upload fails, the feedback is still saved (with `screenshotUrl: null`) and a warning is logged — a broken bucket never loses a client's comment.
+
+## Webhooks
+
+Get pinged on every new feedback:
+
+```ts
+createSitepingHandler({
+  prisma,
+  webhooks: [
+    { url: process.env.SLACK_WEBHOOK_URL!, type: "slack" },
+    { url: "https://my-api.dev/hooks/siteping", type: "generic", headers: { "x-secret": "…" } },
+  ],
+});
+```
+
+`type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the raw, unredacted record, so treat generic webhook targets as trusted). Each call has a 5-second timeout, failures never block the submission, and an optional `onError(err, feedbackId)` lets you log them.
+
+## Using a custom store
+
+`createSitepingHandler({ store })` mounts any `SitepingStore` (the memory adapter, or your own) behind the same HTTP surface — same validation, auth, and redaction.
+
+Two caveats, straight from the source:
+
+- The cross-project ownership check on PATCH/DELETE currently runs only for `PrismaStore`. With a custom store, any caller who knows a feedback `id` can modify it regardless of `projectName` — put custom-store endpoints behind an `apiKey`.
+- `screenshotStorage` and `caseInsensitiveSearch` only apply to the built-in Prisma path; with a custom store, handle screenshots inside your store.

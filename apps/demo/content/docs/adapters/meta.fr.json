@@ -1,0 +1,4 @@
+{
+  "title": "Adaptateurs",
+  "pages": ["index", "prisma", "memory", "localstorage"]
+}

@@ -1,0 +1,93 @@
+---
+title: Widget
+description: Install the feedback widget, understand when it shows, and control it from your app.
+---
+
+The widget is the part your clients see: a floating button that lets them draw a rectangle on the page, type a comment, and send it — pinned to the exact element.
+
+```bash
+npm i @siteping/widget
+```
+
+```ts
+import { initSiteping } from "@siteping/widget";
+
+const siteping = initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "my-project",
+});
+```
+
+`initSiteping` is the package's only runtime export (plus TypeScript types). It weighs about **30 KB gzipped** (ESM), lazy-loads its heavier parts (panel, locales, screenshot engine), and renders inside a closed Shadow DOM so your page styles and the widget's never collide.
+
+## When the widget shows — and when it doesn't
+
+`initSiteping` runs a series of guards, in this order. When one skips, you get a no-op instance back (every method exists, nothing renders):
+
+1. **Server-side rendering** — no `window`? The widget skips with `onSkip("ssr")`. Never bypassed.
+2. **Already initialized** — a second `initSiteping()` call returns the *existing* instance (one widget per page). `destroy()` resets this.
+3. **Production** — when `process.env.NODE_ENV === "production"`, the widget skips with `onSkip("production")`. This is the "clients see it during review, visitors never do" default. Bypass with `forceShow: true` for staging/preview environments. Note: only `process.env.NODE_ENV` is read — no `import.meta.env`.
+4. **Small viewports** — below `minViewportWidth` (default **768 px**) it skips with `onSkip("mobile")`. Also bypassed by `forceShow`.
+5. **Config validation** — no `endpoint`/`store`, or no `projectName`? The widget logs a `console.error` and no-ops. This one does **not** call `onSkip` — check the console, not the callback.
+
+## The instance
+
+```ts
+const siteping = initSiteping({ ... });
+
+siteping.open();                  // open the feedback panel
+siteping.close();                 // close it
+siteping.refresh();               // re-fetch feedbacks for the current page (never throws)
+siteping.focusFeedback(id);       // scroll to + highlight a marker; false if unknown
+const off = siteping.on("feedback:sent", (feedback) => { ... });
+siteping.destroy();               // full teardown, restores all patched globals
+```
+
+Public events: `feedback:sent` (payload: the created feedback), `feedback:deleted` (payload: the id), `panel:open`, `panel:close`. `on()` returns an unsubscribe function.
+
+## React
+
+Use the dedicated hook — it survives StrictMode double-mounts and lets callbacks change between renders without re-initializing:
+
+```tsx
+"use client";
+import { useSiteping } from "@siteping/widget/react";
+
+export function Feedback() {
+  const siteping = useSiteping({
+    endpoint: "/api/siteping",
+    projectName: "my-project",
+    onFeedbackSent: (f) => console.log("new feedback", f.id),
+  });
+  return null; // the widget renders itself
+}
+```
+
+The hook returns `null` until it mounts, then the instance. Changing `endpoint` or other structural options requires a remount; changing the callbacks does not.
+
+## Handling errors
+
+`onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER"`) and `retryable` (boolean):
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "my-project",
+  onError: (error) => {
+    const code = (error as { code?: string }).code;
+    if (code === "AUTH") console.warn("check your apiKey");
+  },
+});
+```
+
+Branch on `error.code`, not `instanceof` — the error classes themselves are not exported from the package. When the user cancels the identity prompt, no error fires: that's a cancellation, not a failure.
+
+## Statuses, from the widget's side
+
+Feedback has four statuses (`open`, `in_progress`, `resolved`, `wont_fix`). The widget **displays** all four but its own actions are deliberately binary: resolve and reopen. The in-between states belong to your triage workflow in the [dashboard](/docs/dashboard).
+
+## Reliability details you get for free
+
+- **Retry with backoff** — failed submissions retry 3 times (10 s timeout, exponential backoff with jitter). Server errors and network failures retry; validation errors don't.
+- **Offline queue** — when submission keeps failing, the payload is queued in localStorage (up to 20 entries) and flushed on the next page load. The queue stores payloads only — never tokens or headers, which are recomputed at flush time.
+- Both apply to HTTP mode (`endpoint`). In client-side [`store` mode](/docs/adapters/localstorage) writes are local, so there is nothing to retry.

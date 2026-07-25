@@ -1,8 +1,6 @@
 {
   "$schema": "https://turborepo.dev/schema.v2.json",
-  "extends": [
-    "//"
-  ],
+  "extends": ["//"],
   "tasks": {
     "build": {
       "inputs": [
@@ -14,22 +12,11 @@
         "package.json",
         "tsconfig.json"
       ],
-      "outputs": [
-        ".next/**",
-        "!.next/cache/**"
-      ]
+      "outputs": [".next/**", "!.next/cache/**"]
     },
     "check": {
-      "dependsOn": [
-        "^build"
-      ],
-      "inputs": [
-        "src/**",
-        "content/**",
-        "source.config.ts",
-        "package.json",
-        "tsconfig.json"
-      ],
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "content/**", "source.config.ts", "package.json", "tsconfig.json"],
       "outputs": []
     }
   }

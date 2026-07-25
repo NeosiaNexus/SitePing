@@ -1,0 +1,99 @@
+---
+title: CLI
+description: Set up and check SitePing from the command line — init, sync, status, and doctor.
+---
+
+The SitePing CLI automates project setup and health checks. It ships as a single self-contained binary with **zero runtime dependencies** and requires **Node 20 or newer**.
+
+```bash
+npx @siteping/cli --help
+```
+
+> **The package name matters.** Always run `npx @siteping/cli <command>`. There is no `siteping` package on npm, so `npx siteping` only works if `@siteping/cli` is already installed in your project.
+
+## `init` — interactive setup
+
+```bash
+npx @siteping/cli init
+```
+
+`init` walks you through two confirmations:
+
+1. **Sync Prisma models** — if a schema is found (see [schema detection](#schema-detection)), it offers to add the `SitepingFeedback` and `SitepingAnnotation` models.
+2. **Generate the API route** — offers to create a Next.js App Router route that serves the widget. The file goes to `app/api/siteping/route.ts`, or `src/app/api/siteping/route.ts` when your project uses a `src/` layout. An existing route is never overwritten.
+
+The generated route imports two things you need to provide yourself — the CLI installs nothing:
+
+- the `@siteping/adapter-prisma` package (`npm i @siteping/adapter-prisma`)
+- a Prisma client exported from `@/lib/prisma`
+
+If your project has no `app/` (or `src/app/`) directory, `init` exits with an error: it only scaffolds Next.js App Router routes. Other frameworks wire the adapter manually — see [Adapters](/docs/adapters).
+
+`init` is interactive by design and does nothing in CI (it exits silently without a terminal). For automation, use `sync`.
+
+## `sync` — non-interactive schema merge
+
+```bash
+npx @siteping/cli sync
+npx @siteping/cli sync --schema prisma/schema.prisma
+```
+
+`sync` merges the SitePing models into your Prisma schema without prompts, which makes it safe for CI and update scripts. It works at the AST level:
+
+- creates the two models if they are missing,
+- adds any missing fields and `@@index` blocks,
+- rewrites SitePing fields whose type or attributes drifted from the expected shape,
+- **never touches fields you added yourself.**
+
+When something changed, it reminds you to run `npx prisma db push`. Running it twice in a row is a no-op.
+
+> **Commit before you run it.** `sync` re-prints the whole schema file, so formatting (blank lines after comments, column alignment) is normalized across your own models too. A clean git diff makes the changes easy to review.
+
+## `status` — project health report
+
+```bash
+npx @siteping/cli status
+npx @siteping/cli status --schema prisma/schema.prisma
+```
+
+`status` runs four checks and prints a report:
+
+| Check | What it looks at |
+|---|---|
+| Prisma schema | Both models present, every field up to date |
+| API route | `app/api/siteping/route.ts` or `src/app/api/siteping/route.ts` exists |
+| Package | `@siteping/widget` listed in your `package.json` |
+| Widget integration | `initSiteping` referenced somewhere in `src/`, `app/`, or `pages/` |
+
+The API route check only knows about the Next.js App Router. If you serve the adapter from Express, Hono, or the Pages Router, that line will read "Not found" even though your setup works.
+
+## `doctor` — live endpoint check
+
+```bash
+npx @siteping/cli doctor --url http://localhost:3000 --endpoint /api/siteping
+```
+
+`doctor` sends one GET request to your running server and tells you whether a SitePing handler answered (10-second timeout). Pass **both** flags to run it non-interactively — any flag you omit becomes a prompt.
+
+It checks the HTTP response only — it never reads your schema. For schema verification, use `status`.
+
+## Exit codes
+
+All commands are scriptable. `0` means success, `1` means something needs fixing:
+
+| Command | Exits 1 when |
+|---|---|
+| `init` | Route generation or schema sync fails |
+| `sync` | No schema found, `--schema` file missing, or parse/write error |
+| `status` | Schema, API route, `package.json`, or the widget dependency is missing |
+| `doctor` | Non-200 response, unreachable server, or timeout |
+
+Two caveats for CI pipelines: `status` exits `0` (with a hint to run `sync`) when schema fields merely drift, and `doctor` exits `0` on any 200 response — even one that is not a SitePing handler (it prints a warning instead). Neither is a strict gate.
+
+## Schema detection
+
+When you don't pass `--schema`, the CLI probes three locations in order:
+
+1. `prisma/schema.prisma`
+2. `schema.prisma`
+3. `prisma/schema/schema.prisma`

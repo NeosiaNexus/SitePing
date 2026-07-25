@@ -1,0 +1,85 @@
+---
+title: Quickstart
+description: From npm install to your first pinned feedback in about three minutes.
+---
+
+Two paths: the **full setup** (Next.js + Prisma — the production shape) or the **zero-server** one (60 seconds, everything in the browser).
+
+## Full setup — Next.js + Prisma
+
+### 1. Install
+
+```bash
+npm i @siteping/widget @siteping/adapter-prisma
+```
+
+You'll need Prisma already set up, plus a client singleton at `@/lib/prisma`. If you don't have one:
+
+```ts
+// src/lib/prisma.ts
+import { PrismaClient } from "@prisma/client";
+
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+export const prisma = globalForPrisma.prisma ?? new PrismaClient();
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+```
+
+### 2. Scaffold
+
+```bash
+npx @siteping/cli init
+```
+
+Confirm both prompts: the CLI adds the two SitePing models to your Prisma schema and generates the API route (`app/api/siteping/route.ts`, or under `src/app/` if that's your layout). Then push the schema to your database:
+
+```bash
+npx prisma db push
+```
+
+### 3. Mount the widget
+
+```tsx
+// Anywhere client-side — e.g. your root layout
+"use client";
+import { useSiteping } from "@siteping/widget/react";
+
+export function Feedback() {
+  useSiteping({ endpoint: "/api/siteping", projectName: "my-project" });
+  return null;
+}
+```
+
+Run your dev server and look bottom-right: the SitePing button is there. Draw a rectangle on anything, type a comment, hit Send.
+
+By default the widget shows in development but **never in production builds** — that's the point: clients review on dev/staging URLs. For a staging environment that builds in production mode, pass `forceShow: true`.
+
+### 4. Triage what comes in
+
+```tsx
+import { SitepingInbox } from "@siteping/dashboard";
+
+<SitepingInbox projects="my-project" endpoint="/api/siteping" theme="auto" />
+```
+
+That's the whole loop. From here: [widget options](/docs/widget/configuration) · [screenshots](/docs/widget/screenshots) · [auth & security](/docs/adapters/prisma#the-security-model-honestly).
+
+## Zero-server setup
+
+No backend, no database — feedback lives in the visitor's browser. Perfect for prototypes and demos:
+
+```bash
+npm i @siteping/widget @siteping/adapter-localstorage
+```
+
+```ts
+import { initSiteping } from "@siteping/widget";
+import { LocalStorageStore } from "@siteping/adapter-localstorage";
+
+initSiteping({
+  store: new LocalStorageStore(),
+  projectName: "my-demo",
+  forceShow: true,
+});
+```
+
+This documentation site runs exactly this setup — try the widget right here.

@@ -1,0 +1,64 @@
+---
+title: Headless hook
+description: useSitepingInbox — all the inbox logic, none of the UI. Build your own triage view.
+---
+
+Everything `SitepingInbox` does — fetching, filters, optimistic mutations, undo, pagination — lives in one hook you can drive from your own components:
+
+```tsx
+import { useSitepingInbox } from "@siteping/dashboard";
+
+const inbox = useSitepingInbox({
+  projects: "my-project",
+  endpoint: "/api/siteping",
+});
+```
+
+## Options
+
+| Option | Type | Default | Notes |
+|---|---|---|---|
+| `projects` | `string` or `string[]` | **required** | An empty array throws at render. The first entry is selected initially |
+| `endpoint` | `string` | — | HTTP mode |
+| `store` | `SitepingStore` | — | Store mode — beats `endpoint` |
+| `source` | `InboxSource` | — | Fully custom data source — beats both; see [Data sources](/docs/dashboard/sources) |
+| `apiKey` | `string` | — | `Authorization: Bearer` on every request (endpoint mode) |
+| `headers` | object or function | — | Extra headers; an explicit `Authorization` beats `apiKey`. Read live — changing it doesn't rebuild the source |
+| `pageSize` | `number` | `50` | Clamped to 1–100 |
+| `onStatusChange` | `(feedback, previousStatus) => void` | — | After the server confirms |
+| `onDelete` | `(feedback) => void` | — | After the server confirms |
+| `onError` | `(error) => void` | — | Every failed load or mutation |
+
+Providing none of `source` / `store` / `endpoint` throws immediately — there's no silent degraded mode.
+
+## What you get back
+
+**Data** — `items` (all loaded pages), `total` (`null` until the first page lands), `counts` (per-status totals, best-effort), `loading`, `loadingMore`, `error`, `hasMore`, `loadMore()`, `refresh()`.
+
+**Filters** — `project`/`setProject`, `status`/`setStatus` (starts on `"open"`), `type`/`setType`, `search`/`setSearch`. Search updates state instantly and debounces the refetch by 250 ms; queries are trimmed and capped at 200 characters.
+
+**Focus & drawer** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (the open record — it stays available even if a filter removes its row), `openFeedback(id)`, `closeFeedback()`.
+
+**Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
+
+## Mutations are optimistic — and they re-throw
+
+The UI updates immediately; if the server rejects, the hook rolls everything back (items, counts, focus, the open record) **and then re-throws**. Always attach a catch:
+
+```tsx
+<button
+  onClick={() => {
+    inbox.changeStatus(item.id, "resolved").catch(() => {
+      // state is already rolled back — surface a toast here
+    });
+  }}
+>
+  Resolve
+</button>
+```
+
+Only the last status change is undoable (`pendingUndo` + `undo()`); delete is permanent, so gate it behind your own confirmation UI.
+
+## Pagination
+
+`loadMore()` is manual — the bundled component renders a "Load more" button, not infinite scroll. Pages are deduplicated by id, and the next page number is derived from `items.length`, so optimistic removals never skip rows.

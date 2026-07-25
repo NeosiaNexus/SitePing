@@ -1,0 +1,43 @@
+---
+title: Screenshots
+description: Capture the annotated area as an image — with privacy masking and region metadata.
+---
+
+With `enableScreenshot: true`, the widget captures a JPEG of the area around each annotation when the client hits Send. Your triage view then shows exactly what they saw — including transient states like open dropdowns or hover styles that a later visit can't reproduce.
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "my-project",
+  enableScreenshot: true,
+});
+```
+
+## What gets captured
+
+- The drawn rectangle **plus generous context** around it (up to ~280 px horizontally, ~220 px vertically), so the screenshot is recognizable, not a postage stamp.
+- Rendered at the device's pixel ratio, encoded as JPEG (quality 0.85), downscaled when wider than 1200 output pixels — on a 2× display that's about 600 CSS pixels of page width.
+- A `screenshotRegion` — the annotation's position inside the image as fractions — travels with it, so dashboards can re-draw the rectangle on top of the screenshot.
+- Captured **once** per submission and reused across retries.
+
+## Privacy masking
+
+Add `data-siteping-ignore="true"` to any element that must never appear in a screenshot. The element and all its descendants are removed from the render:
+
+```html
+<div data-siteping-ignore="true">
+  <CreditCardForm />
+</div>
+```
+
+The value must be exactly `"true"` — the bare attribute or `"false"` does not mask. The widget's own UI opts out the same way, so screenshots never contain SitePing chrome.
+
+> Masking an element also disables [right-click commenting](/docs/widget/right-click) on it — the widget treats `data-siteping-ignore` as "not mine to touch".
+
+## Failure is always safe
+
+Screenshot capture is best-effort by design: if the rendering engine fails to load or the capture throws, the feedback **still submits** — just without an image. A screenshot problem never loses a client's comment.
+
+## Where the image goes
+
+By default the JPEG travels inline (a `data:` URL, capped at 1.5 MB) and is stored as-is by the adapter. That's fine to start; for production volume, configure a [`screenshotStorage`](/docs/adapters/prisma#screenshot-storage) on the server adapter to upload images to S3/R2/GCS and store only the URL.

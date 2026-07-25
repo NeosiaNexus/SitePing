@@ -1,0 +1,51 @@
+---
+title: Data sources
+description: Endpoint, store, or fully custom — how the inbox talks to your data.
+---
+
+The inbox reads and writes through a small abstraction, resolved in this order of precedence: `source` > `store` > `endpoint`.
+
+## Endpoint mode (production default)
+
+```tsx
+<SitepingInbox projects="my-project" endpoint="/api/siteping" apiKey={KEY} />
+```
+
+Talks to your [adapter endpoint](/docs/adapters/prisma): `GET` for lists, `PATCH` for statuses, `DELETE` for removals, always with `cache: "no-store"`. Errors arrive typed by `code` (`AUTH` for 401/403, `VALIDATION` for other 4xx, `SERVER` for 5xx, `NETWORK` for fetch failures). There are deliberately **no retries** — a triage UI should tell you immediately.
+
+## Store mode
+
+```tsx
+<SitepingInbox projects="my-demo" store={new LocalStorageStore()} />
+```
+
+Runs against any `SitepingStore` in-process — the same stores the widget's client-side mode uses. Demos and prototypes never need a server.
+
+## Custom source
+
+For tRPC, GraphQL, or server actions, implement the three-method `InboxSource` contract and pass it as `source`:
+
+```ts
+import type { InboxSource } from "@siteping/dashboard";
+
+const source: InboxSource = {
+  async list(query) {
+    // query: projectName, page, limit, status?, type?, search?, url?, urlPattern?
+    const { feedbacks, total } = await trpc.siteping.list.query(query);
+    // Important: createdAt / updatedAt / resolvedAt must be real Date objects
+    return { feedbacks: feedbacks.map(reviveDates), total };
+  },
+  async setStatus(id, projectName, status) {
+    return reviveDates(await trpc.siteping.setStatus.mutate({ id, projectName, status }));
+  },
+  async remove(id, projectName) {
+    await trpc.siteping.remove.mutate({ id, projectName });
+  },
+};
+```
+
+The two building blocks behind the built-in modes are exported too — `createEndpointSource({ endpoint, apiKey, headers })` and `createStoreSource(store)` — so you can wrap, compose, or decorate them (e.g. add logging around the HTTP client) instead of starting from scratch.
+
+## Types without extra dependencies
+
+`@siteping/dashboard` re-exports the shared types and helpers so you never need to install anything else: `FeedbackRecord`, `FeedbackStatus`, `FeedbackType`, `SitepingStore`, `FEEDBACK_STATUSES`, `FEEDBACK_TYPES`, and `isClosedStatus()`.
