@@ -15,6 +15,9 @@ Draw rectangles, leave comments, track bugs — directly on the live site.
 [![npm downloads](https://img.shields.io/npm/dm/@siteping/widget?style=flat&colorA=000000&colorB=000000)](https://www.npmjs.com/package/@siteping/widget)
 [![license](https://img.shields.io/npm/l/@siteping/widget?style=flat&colorA=000000&colorB=000000)](./LICENSE)
 [![build](https://img.shields.io/github/actions/workflow/status/NeosiaNexus/SitePing/ci.yml?style=flat&colorA=000000&colorB=000000)](https://github.com/NeosiaNexus/SitePing/actions)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/NeosiaNexus/SitePing/codeql.yml?label=CodeQL&style=flat&colorA=000000&colorB=000000)](https://github.com/NeosiaNexus/SitePing/security/code-scanning)
+[![coverage](https://img.shields.io/codecov/c/github/NeosiaNexus/SitePing?style=flat&colorA=000000&colorB=000000)](https://app.codecov.io/gh/NeosiaNexus/SitePing)
+[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/NeosiaNexus/SitePing?label=scorecard&style=flat&colorA=000000&colorB=000000)](https://scorecard.dev/viewer/?uri=github.com/NeosiaNexus/SitePing)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
 [![Bundle Size](https://img.shields.io/badge/widget-%E2%89%A454%20KB%20gzip%20(ESM)-blue)](./packages/widget/.size-limit.json)
 

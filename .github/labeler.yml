@@ -27,10 +27,10 @@ labels:
       title: "^build(\\(.+\\))?!?:.*"
   - label: "dependencies"
     matcher:
-      title: "^(chore\\(deps\\)|deps)(\\(.+\\))?!?:.*"
+      title: "^(chore\\(deps(-dev)?\\)|deps)(\\(.+\\))?!?:.*"
   - label: "type:chore"
     matcher:
-      title: "^chore(?!\\(deps\\))(\\(.+\\))?!?:.*"
+      title: "^chore(?!\\(deps(-dev)?\\))(\\(.+\\))?!?:.*"
   - label: "type:i18n"
     matcher:
       title: "(?i).*(i18n|locale|translation|translate).*"

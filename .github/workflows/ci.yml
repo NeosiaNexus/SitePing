@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_call:
 
+# Read-only everywhere: publishing, labelling and greeting live in dedicated
+# workflows with their own scoped tokens.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -12,15 +17,18 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.3.11"
 
       - name: Cache bun install
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -42,29 +50,56 @@ jobs:
         run: bun run test:run -- --coverage
 
       - name: Bundle size gate
-        run: bun --cwd packages/widget run size
+        shell: bash
+        run: |
+          {
+            echo '### Bundle size — @siteping/widget'
+            echo '```'
+            bun --cwd packages/widget run size
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Dashboard bundle size gate
-        run: bun --cwd packages/dashboard run size
+        shell: bash
+        run: |
+          {
+            echo '### Bundle size — @siteping/dashboard'
+            echo '```'
+            bun --cwd packages/dashboard run size
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-report
           path: coverage/
 
+      # Tokenless upload works for fork PRs; CODECOV_TOKEN covers pushes and
+      # same-repo branches. Never blocks CI — Codecov's own status checks are
+      # informational (see codecov.yml).
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.3.11"
 
       - name: Cache bun install
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -81,7 +116,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
@@ -102,8 +137,120 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # The workflows themselves are an attack surface (pull_request_target,
+  # template injection, unpinned actions). actionlint checks syntax and the
+  # embedded shell; zizmor audits for security anti-patterns. Exceptions are
+  # documented in .github/zizmor.yml.
+  lint-workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # go run verifies the module against the public checksum database —
+      # no curl-piped installer, no extra pinned action.
+      - name: actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pipx run zizmor==1.28.0 .
+
+  # What we publish must actually resolve for consumers: exports map, types,
+  # ESM/CJS duality. publint lints the packed tarball; attw type-checks it
+  # under every resolution mode. Known pre-existing debt (bundled d.ts files
+  # referencing modules that are not shipped) is ignored via .attw.json —
+  # see the tracking issue — so this gate only fails on NEW problem kinds.
+  pkg-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.11"
+
+      - name: Cache bun install
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      # Guards the `npx @siteping/cli` startup path: the ESM bundle once
+      # shipped without a require shim and crashed instantly under Node
+      # (fixed in #221). A --help run catches any bundle-init regression.
+      - name: CLI binary smoke test
+        run: node packages/cli/dist/index.js --help
+
+      - name: publint
+        run: |
+          for pkg in widget adapter-prisma adapter-memory adapter-localstorage dashboard cli; do
+            echo "::group::publint @siteping/$pkg"
+            bun x publint@0.3.22 "packages/$pkg"
+            echo "::endgroup::"
+          done
+
+      - name: Are the types wrong
+        run: |
+          for pkg in widget adapter-prisma adapter-memory adapter-localstorage dashboard cli; do
+            echo "::group::attw @siteping/$pkg"
+            bun x @arethetypeswrong/cli@0.18.5 "packages/$pkg" --pack
+            echo "::endgroup::"
+          done
+
+  # bun only drives install/build — vitest and the published adapters run on
+  # the consumer's Node. Exercise the supported majors.
+  node-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.11"
+
+      - name: Cache bun install
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Build
+        run: bun run build
+
+      - name: Unit tests on Node ${{ matrix.node-version }}
+        run: ./node_modules/.bin/vitest run
