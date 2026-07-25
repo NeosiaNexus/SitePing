@@ -858,6 +858,7 @@ describe("launch", () => {
       const instance = launch(defaultConfig({ enableRightClickComment: true }));
 
       const event = new MouseEvent("contextmenu", {
+        button: 2,
         clientX: 100,
         clientY: 100,
         shiftKey: true,
@@ -875,6 +876,7 @@ describe("launch", () => {
       const instance = launch(defaultConfig({ enableRightClickComment: true }));
 
       const event = new MouseEvent("contextmenu", {
+        button: 2,
         clientX: 100,
         clientY: 100,
         bubbles: true,
@@ -893,6 +895,7 @@ describe("launch", () => {
       const instance = launch(defaultConfig({ enableRightClickComment: true }));
 
       const event = new MouseEvent("contextmenu", {
+        button: 2,
         clientX: 100,
         clientY: 100,
         bubbles: true,
@@ -911,6 +914,7 @@ describe("launch", () => {
 
       // Simulate a click on the SitePing widget (or something inside it)
       const event = new MouseEvent("contextmenu", {
+        button: 2,
         clientX: 100,
         clientY: 100,
         bubbles: true,
@@ -921,6 +925,26 @@ describe("launch", () => {
       // Need composedPath() to include the widget, so dispatch from it or a shadow child
       widget.dispatchEvent(event);
 
+      expect(event.defaultPrevented).toBe(false);
+      expect(annotatorCapture.startInstantAnnotation).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("does not preventDefault for keyboard-triggered contextmenu (Menu key)", () => {
+      const instance = launch(defaultConfig({ enableRightClickComment: true }));
+
+      // Keyboard contextmenu events typically have button = 0 and no pointerType
+      const event = new MouseEvent("contextmenu", {
+        button: 0,
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+
+      // Should yield to the native menu (not prevented)
       expect(event.defaultPrevented).toBe(false);
       expect(annotatorCapture.startInstantAnnotation).not.toHaveBeenCalled();
 

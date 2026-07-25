@@ -62,6 +62,11 @@ export class Popup {
   private submitLabel: HTMLSpanElement;
   private hint: HTMLElement;
   private resolve: ((result: PopupResult | null) => void) | null = null;
+
+  get isOpen(): boolean {
+    return this.resolve !== null;
+  }
+
   private previouslyFocused: HTMLElement | null = null;
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
   private onSubmit: PopupSubmitHandler | null = null;

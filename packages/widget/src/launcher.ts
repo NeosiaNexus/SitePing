@@ -401,6 +401,11 @@ export function launch(config: SitepingConfig): SitepingInstance {
       // editors). Element-level handlers fire before this document-level
       // listener, so if they called preventDefault() we yield.
       if (e.defaultPrevented) return;
+      // Gate on genuine mouse/touch triggers to avoid hijacking the keyboard
+      // Menu key. Touch triggers may report e.button as 0 depending on the
+      // browser/OS, so we check pointerType when available.
+      const isTouch = "pointerType" in e && (e as PointerEvent).pointerType === "touch";
+      if (e.button !== 2 && !isTouch) return;
       // Modifier-key escape hatch: Shift/Ctrl/Alt/Meta → native menu.
       if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
       // Exclude SitePing's own UI — right-clicking the FAB, panel, markers,

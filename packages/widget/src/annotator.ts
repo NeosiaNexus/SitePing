@@ -101,16 +101,6 @@ export class Annotator {
   }
 
   /**
-   * True while a submission is in flight (popup open, `runSubmission`
-   * pending). Drawing a second rectangle in this window would orphan the
-   * first `popup.show()` promise and start a second, concurrent
-   * `runSubmission` — so all drawing entry points are no-ops while it holds.
-   */
-  private get submissionInFlight(): boolean {
-    return this.rejectPendingSubmission !== null;
-  }
-
-  /**
    * Capture a contextual screenshot of the drawn rect (padded with the
    * surrounding UI, plus the rect's region within the image) when
    * `enableScreenshot` is on. Returns null on disable / capture failure /
@@ -324,9 +314,9 @@ export class Annotator {
   private onOverlayKeyDown = async (e: KeyboardEvent): Promise<void> => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    // A submission is already running with the popup open — ignore so we
+    // A submission is already running or the popup is open — ignore so we
     // can't orphan the first `popup.show()` / `runSubmission` pair.
-    if (this.submissionInFlight) return;
+    if (this.popup.isOpen) return;
     // Mid-pointer-drag: the user is drawing — hijacking `drawingRect` for the
     // keyboard highlight here would corrupt the drag's geometry updates.
     if (this.isDrawing) return;
@@ -386,12 +376,11 @@ export class Annotator {
   };
 
   private startDrawing(clientX: number, clientY: number): void {
-    // Suppress pointer-driven drawing while a submission is in flight: the
-    // popup is open over the page, and starting a second rectangle would
-    // orphan the first `popup.show()` promise (and its `runSubmission`).
-    // This also closes a latent bug where drawing during the open popup
-    // already overwrote `Popup.resolve`.
-    if (this.submissionInFlight) return;
+    // Suppress pointer-driven drawing while the popup is open over the page.
+    // Starting a second rectangle would orphan the first `popup.show()`
+    // promise (and its `runSubmission`). This closes a latent bug where
+    // drawing during the open popup overwrote `Popup.resolve`.
+    if (this.popup.isOpen) return;
 
     this.isDrawing = true;
     this.startX = clientX;
