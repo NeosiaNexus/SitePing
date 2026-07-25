@@ -54,6 +54,10 @@ jobs:
       # cd, which is what the mutation test in the PR verified end-to-end.
       - name: Bundle size gate
         shell: bash
+        # NO_COLOR: size-limit force-colorizes under CI=1; the step summary
+        # renders ANSI codes as literal garbage.
+        env:
+          NO_COLOR: "1"
         run: |
           {
             echo '### Bundle size — @siteping/widget'
@@ -64,6 +68,8 @@ jobs:
 
       - name: Dashboard bundle size gate
         shell: bash
+        env:
+          NO_COLOR: "1"
         run: |
           {
             echo '### Bundle size — @siteping/dashboard'
