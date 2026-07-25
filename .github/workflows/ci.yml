@@ -49,23 +49,32 @@ jobs:
       - name: Test
         run: bun run test:run -- --coverage
 
+      # `bun --cwd <dir> run <script>` silently prints usage and exits 0 on
+      # current bun — the gate never ran and nothing failed. Use a subshell
+      # cd, which is what the mutation test in the PR verified end-to-end.
       - name: Bundle size gate
         shell: bash
+        # NO_COLOR: size-limit force-colorizes under CI=1; the step summary
+        # renders ANSI codes as literal garbage.
+        env:
+          NO_COLOR: "1"
         run: |
           {
             echo '### Bundle size — @siteping/widget'
             echo '```'
-            bun --cwd packages/widget run size
+            (cd packages/widget && bun run size)
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Dashboard bundle size gate
         shell: bash
+        env:
+          NO_COLOR: "1"
         run: |
           {
             echo '### Bundle size — @siteping/dashboard'
             echo '```'
-            bun --cwd packages/dashboard run size
+            (cd packages/dashboard && bun run size)
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
