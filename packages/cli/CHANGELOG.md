@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.1...cli-v0.5.2) (2026-07-25)
+
+
+### Miscellaneous
+
+* **deps-dev:** bump commander from 14.0.3 to 15.0.0 ([#227](https://github.com/NeosiaNexus/SitePing/issues/227)) ([903b9fa](https://github.com/NeosiaNexus/SitePing/commit/903b9faacebfb5c616794c96a708859782ab287a))
+
 ## [0.5.1](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.0...cli-v0.5.1) (2026-07-25)
 
 
