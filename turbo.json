@@ -1,6 +1,6 @@
 {
   "$schema": "https://turborepo.dev/schema.v2.json",
-  "globalDependencies": ["tsconfig.base.json", "biome.json"],
+  "globalDependencies": ["tsconfig.base.json", "biome.json", "scripts/fix-dts.mjs"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
