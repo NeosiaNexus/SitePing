@@ -11,3 +11,4 @@ coverage/
 .env.local
 .claude/worktrees/
 coverage-report/
+.source/

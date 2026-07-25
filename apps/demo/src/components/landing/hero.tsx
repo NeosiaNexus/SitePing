@@ -54,6 +54,14 @@ export function Hero() {
           >
             Try the Demo &rarr;
           </Link>
+
+          {/* Secondary: Docs */}
+          <Link
+            href="/docs"
+            className="rounded-lg border border-gray-600 px-5 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:border-gray-400 hover:text-white"
+          >
+            Read the Docs
+          </Link>
         </div>
 
         {/* Friction removers */}
