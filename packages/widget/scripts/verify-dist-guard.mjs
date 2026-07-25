@@ -28,15 +28,18 @@ const esbuild = resolveEsbuild();
 const distDir = new URL("../dist", import.meta.url).pathname;
 const LITERAL = "process.env.NODE_ENV";
 
-const jsFiles = readdirSync(distDir).filter((f) => f.endsWith(".js"));
+const jsFiles = readdirSync(distDir).filter((f) => f.endsWith(".js") || f.endsWith(".cjs"));
 const sources = new Map(jsFiles.map((f) => [f, readFileSync(join(distDir, f), "utf8")]));
 
 // The IIFE bundle is self-contained; ESM entries may carry the launcher in a
-// shared chunk — check bundle *groups*, not individual files.
+// shared chunk — check bundle *groups*, not individual files. The CJS twins
+// are single-file bundles and must carry the literal too.
 const groups = {
   "index.global.js (iife)": ["index.global.js"],
   "index.js (+chunks)": jsFiles.filter((f) => f === "index.js" || f.startsWith("chunk-")),
   "react.js (+chunks)": jsFiles.filter((f) => f === "react.js" || f.startsWith("chunk-")),
+  "index.cjs (cjs)": ["index.cjs"],
+  "react.cjs (cjs)": ["react.cjs"],
 };
 
 const errors = [];

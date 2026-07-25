@@ -14,7 +14,9 @@ const pureCalls = ["console.debug", "console.info"] as const;
 
 export default defineConfig({
   entry: ["src/index.ts"],
-  format: ["esm"],
+  // CJS twin is a single file (splitting is ESM-only): require() consumers
+  // lose lazy locale chunks but keep full functionality (#220).
+  format: ["esm", "cjs"],
   platform: "browser",
   target: "es2022",
   dts: true,
