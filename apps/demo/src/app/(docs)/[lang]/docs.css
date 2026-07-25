@@ -5,21 +5,17 @@ body {
   font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
-/* Fumadocs leaves --fd-layout-width unset, which lets the docs shell stretch
-   edge to edge. The sidebar's card background then fills the entire left
-   gutter — 452px at 1920, 848px at 2560 — with the nav links pinned to its
-   right edge. Cap the shell, and paint the card on the panel itself so the
-   sidebar reads as its own column at any width. */
-#nd-docs-layout {
-  --fd-layout-width: 1400px;
+/* Full-bleed shell. Fumadocs centres the layout by default, and the sidebar
+   area spans the centring gutter as well as its own column — at 1920 that is
+   a 452px sidebar band, 772px at 2560. Pinning the shell to the viewport
+   collapses those gutters to zero (grid becomes 0 / 268 / 1fr / 268 / 0), so
+   the sidebar is one flush-left column at every width. */
+#nd-notebook-layout {
+  --fd-layout-width: 100%;
 }
 
+/* Separate the sidebar from the page the way the navbar separates from the
+   content: a hairline rather than a filled band. */
 #nd-sidebar {
-  background-color: transparent;
-  border-inline-end-color: transparent;
-}
-
-#nd-sidebar > * {
-  background-color: var(--color-fd-card);
   border-inline-end: 1px solid var(--color-fd-border);
 }
