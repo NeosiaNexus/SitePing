@@ -48,6 +48,8 @@ const popupMocks = vi.hoisted(() => {
      * orphans the first `await`.
      */
     showCount: 0,
+    /** Tracks whether the mock popup is currently open. */
+    isOpenState: false,
   };
 });
 
@@ -57,6 +59,7 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
       .fn()
       .mockImplementation((_rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
         popupMocks.showCount += 1;
+        popupMocks.isOpenState = true;
         // The real popup awaits its `onSubmit` callback before resolving so
         // the spinner stays visible until feedback:sent or feedback:error
         // arrives. Tests don't run a launcher, so we fire-and-forget the
@@ -73,11 +76,20 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
         // while `runSubmission` is in flight — the overlay therefore stays up,
         // which is exactly the window the serialization guard must cover.
         if (popupMocks.keepShowPending) return new Promise(() => {});
+        // Lifecycle divergence from the real Popup: this flips isOpen false
+        // while `lastSubmitPromise` may still be pending, whereas the real
+        // popup stays open until `onSubmit` settles. The real-popup suite
+        // (annotator-popup-reentry.test.ts) pins the true invariant.
+        popupMocks.isOpenState = false;
         return Promise.resolve(popupMocks.nextResult);
       }),
     destroy: vi.fn().mockImplementation(() => {
       popupMocks.destroyCount += 1;
+      popupMocks.isOpenState = false;
     }),
+    get isOpen() {
+      return popupMocks.isOpenState;
+    },
   })),
 }));
 
@@ -152,6 +164,7 @@ describe("Annotator", () => {
     popupMocks.lastSubmitPromise = null;
     popupMocks.capturedOnSubmit = null;
     popupMocks.keepShowPending = false;
+    popupMocks.isOpenState = false;
     popupMocks.destroyCount = 0;
     popupMocks.showCount = 0;
     screenshotMocks.captureAnnotatedScreenshot.mockReset();
