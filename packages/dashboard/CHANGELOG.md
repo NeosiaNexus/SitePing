@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.3...dashboard-v0.2.4) (2026-07-26)
+
+
+### Documentation
+
+* **site:** ship siteping.dev/docs — verified bilingual documentation + slimmed READMEs ([#241](https://github.com/NeosiaNexus/SitePing/issues/241)) ([252073f](https://github.com/NeosiaNexus/SitePing/commit/252073f2eb11a99980d81eecb5ed37b23c3894f8))
+
 ## [0.2.3](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.2...dashboard-v0.2.3) (2026-07-25)
 
 

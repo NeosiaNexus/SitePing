@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.6](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.5...widget-v0.10.6) (2026-07-26)
+
+
+### Documentation
+
+* **site:** ship siteping.dev/docs — verified bilingual documentation + slimmed READMEs ([#241](https://github.com/NeosiaNexus/SitePing/issues/241)) ([252073f](https://github.com/NeosiaNexus/SitePing/commit/252073f2eb11a99980d81eecb5ed37b23c3894f8))
+
+
+### Miscellaneous
+
+* **security:** close every actionable OpenSSF Scorecard finding ([#242](https://github.com/NeosiaNexus/SitePing/issues/242)) ([8d989a3](https://github.com/NeosiaNexus/SitePing/commit/8d989a3bfb4a80c107a968fc66379e76ff830ea8))
+
 ## [0.10.5](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.4...widget-v0.10.5) (2026-07-25)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.2...cli-v0.5.3) (2026-07-26)
+
+
+### Documentation
+
+* **site:** ship siteping.dev/docs — verified bilingual documentation + slimmed READMEs ([#241](https://github.com/NeosiaNexus/SitePing/issues/241)) ([252073f](https://github.com/NeosiaNexus/SitePing/commit/252073f2eb11a99980d81eecb5ed37b23c3894f8))
+
 ## [0.5.2](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.1...cli-v0.5.2) (2026-07-25)
 
 
