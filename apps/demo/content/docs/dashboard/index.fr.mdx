@@ -1,0 +1,78 @@
+---
+title: Dashboard
+description: Une inbox de tri façon Linear pour vos feedbacks — un composant React, pilotable au clavier.
+---
+
+`@siteping/dashboard` vous donne une interface de tri complète : filtrer, rechercher, changer les statuts, supprimer, annuler — pensée pour le clavier, stylée pour se fondre dans votre app.
+
+```bash
+npm i @siteping/dashboard
+```
+
+```tsx
+import { SitepingInbox } from "@siteping/dashboard";
+
+export function Triage() {
+  return (
+    <SitepingInbox
+      projects="mon-projet"
+      endpoint="https://mon-site.com/api/siteping"
+      apiKey={process.env.NEXT_PUBLIC_SITEPING_KEY}
+      theme="auto"
+    />
+  );
+}
+```
+
+Compatible React 18 et 19, livré en ESM et CJS, sans aucune dépendance en dehors de React. Donnez-lui un conteneur avec une hauteur — l'inbox remplit son parent (minimum 480 px).
+
+## Props
+
+`SitepingInbox` accepte toutes les [options de `useSitepingInbox`](/fr/docs/dashboard/headless) plus ces props de présentation :
+
+| Prop | Type | Défaut | Ce que ça fait |
+|---|---|---|---|
+| `theme` | `"light"` \| `"dark"` \| `"auto"` | `"auto"` | `auto` suit la préférence système — en direct, y compris quand elle change en cours de session |
+| `accentColor` | `string` | `"#0066ff"` | Hexadécimal uniquement ; toutes les nuances d'accent dérivent de cette seule valeur. Voir [Personnalisation](/fr/docs/dashboard/theming) |
+| `density` | `"comfortable"` \| `"compact"` | `"comfortable"` | Hauteur de ligne 44 px contre 36 px |
+| `locale` | `string` | `"en"` | N'importe quelle étiquette BCP-47 — voir [Langues](#langues) |
+| `deepLinkParam` | `string` | `"siteping"` | Paramètre d'URL utilisé par les liens « Ouvrir sur la page » ; doit correspondre au paramètre `deepLink` du widget |
+| `emptyState` | `ReactNode` | — | Nœud personnalisé pour l'état « aucun feedback dans ce projet » uniquement — les états inbox-zéro et aucun-résultat gardent leurs valeurs par défaut |
+| `className` | `string` | — | Ajouté aux classes de l'élément racine |
+
+## Clavier
+
+Donnez le focus à la liste une fois, puis :
+
+| Touche | Action |
+|---|---|
+| `j` / `↓`, `k` / `↑` | Se déplacer entre les lignes |
+| `Entrée` ou `o` | Ouvrir le feedback ciblé ; un second `Entrée` sur un feedback ouvert l'ouvre sur la page en direct |
+| `e` / `p` / `x` | Basculer résolu / en cours / sans suite (appuyer sur le statut courant le remet à ouvert) |
+| `u` | Annuler le dernier changement de statut |
+| `r` | Actualiser |
+| `/` | Aller à la recherche |
+| `1`–`5` | Onglets de statut (tous, ouvert, en cours, résolu, sans suite) |
+| `?` | Aide-mémoire des raccourcis |
+| `Échap` | Dans la recherche : effacer la requête, puis quitter la recherche. Sinon : fermer le tiroir, puis l'aide-mémoire |
+
+Les raccourcis exigent le focus à l'intérieur du composant (ils sont liés à lui, pas à `document`) et ne se déclenchent jamais pendant que vous tapez dans un champ — sauf `Échap`.
+
+## Statuts et actions
+
+Quatre statuts : `open`, `in_progress`, `resolved`, `wont_fix`. Le dashboard peut les définir tous (les actions du widget, elles, restent binaires : résoudre/rouvrir). Clore un feedback (`resolved` ou `wont_fix`) horodate `resolvedAt` ; le rouvrir l'efface. Les changements de statut sont optimistes avec annulation ; **la suppression est définitive** — elle passe par une confirmation en ligne et n'a pas d'annulation.
+
+## Langues
+
+Les mêmes sept locales intégrées que le widget (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`), l'anglais embarqué, le reste chargé à la demande, les étiquettes BCP-47 normalisées (`fr-CA` → `fr`).
+
+Le dashboard accepte aussi des locales personnalisées à l'exécution :
+
+```ts
+import { registerLocale } from "@siteping/dashboard";
+
+registerLocale("nl", { /* les 73 clés */ });
+// plus tard : <SitepingInbox locale="nl" ... />
+```
+
+Deux règles que l'implémentation impose : enregistrez sous le **code de langue de base** (`"nl"`, pas `"nl-BE"` — les recherches se normalisent vers la base), et appelez `registerLocale` **avant le montage de l'inbox**. Le dictionnaire est complet par conception : passez toutes les clés, et TypeScript vous y tiendra sur le littéral d'objet.

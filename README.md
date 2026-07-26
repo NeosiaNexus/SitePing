@@ -20,7 +20,7 @@ Draw rectangles, leave comments, track bugs — directly on the live site.
 [![coverage](https://img.shields.io/codecov/c/github/NeosiaNexus/SitePing?style=flat&colorA=000000&colorB=000000)](https://app.codecov.io/gh/NeosiaNexus/SitePing)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/NeosiaNexus/SitePing?label=scorecard&style=flat&colorA=000000&colorB=000000)](https://scorecard.dev/viewer/?uri=github.com/NeosiaNexus/SitePing)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
-[![Bundle Size](https://img.shields.io/badge/widget-%E2%89%A454%20KB%20gzip%20(ESM)-blue)](./packages/widget/.size-limit.json)
+[![Bundle Size](https://img.shields.io/badge/widget-~30%20KB%20gzip%20(ESM)-blue)](./packages/widget/.size-limit.json)
 
 [**Documentation**](https://siteping.dev/docs) &middot; [Quickstart](https://siteping.dev/docs/quickstart) &middot; [Live Demo](https://siteping.dev/demo) &middot; [Contributing](./CONTRIBUTING.md)
 

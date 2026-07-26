@@ -18,12 +18,13 @@
   - `@siteping/adapter-prisma` — server-side Prisma request handlers
   - `@siteping/adapter-memory` — in-memory adapter (testing, demos, serverless)
   - `@siteping/adapter-localstorage` — client-side localStorage adapter (demos, prototyping)
-  - `@siteping/cli` — CLI tool for project setup (`siteping init/sync/status/doctor`)
+  - `@siteping/cli` — CLI tool for project setup (`npx @siteping/cli init/sync/status/doctor` — there is no bare `siteping` package on npm)
 - Widget uses Shadow DOM (mode: closed), overlay lives outside Shadow DOM
 - DOM anchoring: @medv/finder CSS selector + XPath fallback + text snippet fallback
 - Annotations stored as % relative to anchor element bounding box
 - Core is an Internal Package (exports raw TS, no build step), bundled into consumers via `noExternal: ["@siteping/core"]` in tsup
 - Turborepo handles build orchestration, dependency ordering (`^build`), and local caching
+- **Docs site** — `apps/demo` (private, Next.js) serves siteping.dev: landing, `/demo`, and `/docs` (Fumadocs). Pages are MDX in `apps/demo/content/docs/`; EN at bare URLs, other locales prefixed (`/fr/docs/...`), `.fr.mdx` siblings + `meta.fr.json` for sidebar labels, `fallbackLanguage: "en"`. **Docs are written from the source code, never copied from a README** — package READMEs are thin npm cards pointing at the site. Sitemap, search index, and hreflang are all derived from the content tree. See CONTRIBUTING.md "Editing the Documentation".
 
 ## Code Style
 - TypeScript strict mode with exactOptionalPropertyTypes

@@ -15,7 +15,11 @@ export const { provider } = defineI18nUI(i18n, {
     "No Headings(table of contents)": "Aucun titre",
     "Next Page(pagination)": "Page suivante",
     "Previous Page(pagination)": "Page précédente",
-    "Last updated on(page footer)": "Dernière mise à jour le",
+    // No "Last updated on" entry: driving it needs `lastModifiedTime: "git"`,
+    // which reads `git log` per file. CI checkouts (and the Docker build, which
+    // excludes `.git`) are shallow, so every page would claim the same date —
+    // a wrong date is worse than no date. Add the key back if we ever build
+    // from a full clone.
     "Edit on GitHub(edit page)": "Modifier sur GitHub",
     "Back to Home(404 page)": "Retour à l'accueil",
     "Page Not Found(404 page)": "Page introuvable",

@@ -1,0 +1,43 @@
+---
+title: Captures d'écran
+description: Capturer la zone annotée en image — avec masquage des données sensibles et métadonnées de région.
+---
+
+Avec `enableScreenshot: true`, le widget capture un JPEG de la zone autour de chaque annotation au moment où le client clique sur Envoyer. Votre vue de tri montre alors exactement ce qu'il voyait — y compris les états transitoires (menu déroulant ouvert, styles de survol) qu'une visite ultérieure ne pourrait pas reproduire.
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "mon-projet",
+  enableScreenshot: true,
+});
+```
+
+## Ce qui est capturé
+
+- Le rectangle dessiné **plus une marge de contexte généreuse** (jusqu'à ~280 px horizontalement, ~220 px verticalement), pour que la capture soit lisible et pas réduite à un timbre-poste.
+- Rendu au ratio de pixels de l'appareil, encodé en JPEG (qualité 0,85), réduit au-delà de 1200 pixels de large en sortie — sur un écran 2×, cela correspond à environ 600 pixels CSS de largeur de page.
+- Une `screenshotRegion` — la position de l'annotation dans l'image, exprimée en fractions — voyage avec elle, pour que les dashboards puissent redessiner le rectangle par-dessus la capture.
+- Capturée **une seule fois** par envoi, et réutilisée à chaque réessai.
+
+## Masquer les données sensibles
+
+Ajoutez `data-siteping-ignore="true"` à tout élément qui ne doit jamais apparaître dans une capture. L'élément et tous ses descendants sont retirés du rendu :
+
+```html
+<div data-siteping-ignore="true">
+  <CreditCardForm />
+</div>
+```
+
+La valeur doit être exactement `"true"` — l'attribut nu ou `"false"` ne masque rien. L'interface du widget elle-même s'exclut de la même façon, donc les captures ne contiennent jamais l'habillage SitePing.
+
+> Masquer un élément désactive aussi le [commentaire au clic droit](/fr/docs/widget/right-click) dessus — le widget traite `data-siteping-ignore` comme un « ne pas y toucher ».
+
+## L'échec est toujours sans danger
+
+La capture est volontairement « au mieux » : si le moteur de rendu ne se charge pas ou si la capture lève une erreur, le feedback **est quand même envoyé** — simplement sans image. Un problème de capture ne fait jamais perdre le commentaire d'un client.
+
+## Où va l'image
+
+Par défaut, le JPEG voyage en ligne (une URL `data:`, plafonnée à 1,5 Mo) et est stocké tel quel par l'adapter. C'est très bien pour démarrer ; pour un volume de production, configurez un [`screenshotStorage`](/fr/docs/adapters/prisma#stockage-des-captures) côté adapter serveur pour envoyer les images sur S3/R2/GCS et ne stocker que l'URL.

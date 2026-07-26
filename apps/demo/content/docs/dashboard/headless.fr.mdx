@@ -1,0 +1,64 @@
+---
+title: Hook headless
+description: useSitepingInbox — toute la logique de l'inbox, aucune interface. Construisez votre propre vue de tri.
+---
+
+Tout ce que fait `SitepingInbox` — chargement, filtres, mutations optimistes, annulation, pagination — vit dans un hook que vous pouvez piloter depuis vos propres composants :
+
+```tsx
+import { useSitepingInbox } from "@siteping/dashboard";
+
+const inbox = useSitepingInbox({
+  projects: "mon-projet",
+  endpoint: "/api/siteping",
+});
+```
+
+## Options
+
+| Option | Type | Défaut | Notes |
+|---|---|---|---|
+| `projects` | `string` ou `string[]` | **obligatoire** | Un tableau vide lève une erreur au rendu. La première entrée est sélectionnée au départ |
+| `endpoint` | `string` | — | Mode HTTP |
+| `store` | `SitepingStore` | — | Mode store — prioritaire sur `endpoint` |
+| `source` | `InboxSource` | — | Source de données entièrement personnalisée — prioritaire sur les deux ; voir [Sources de données](/fr/docs/dashboard/sources) |
+| `apiKey` | `string` | — | `Authorization: Bearer` sur chaque requête (mode endpoint) |
+| `headers` | objet ou fonction | — | En-têtes supplémentaires ; un `Authorization` explicite l'emporte sur `apiKey`. Lu en direct — le modifier ne reconstruit pas la source |
+| `pageSize` | `number` | `50` | Borné entre 1 et 100 |
+| `onStatusChange` | `(feedback, previousStatus) => void` | — | Après confirmation du serveur |
+| `onDelete` | `(feedback) => void` | — | Après confirmation du serveur |
+| `onError` | `(error) => void` | — | Chaque chargement ou mutation en échec |
+
+Ne fournir aucun de `source` / `store` / `endpoint` lève immédiatement — il n'y a pas de mode dégradé silencieux.
+
+## Ce que vous récupérez
+
+**Données** — `items` (toutes les pages chargées), `total` (`null` jusqu'à l'arrivée de la première page), `counts` (totaux par statut, au mieux), `loading`, `loadingMore`, `error`, `hasMore`, `loadMore()`, `refresh()`.
+
+**Filtres** — `project`/`setProject`, `status`/`setStatus` (démarre sur `"open"`), `type`/`setType`, `search`/`setSearch`. La recherche met l'état à jour instantanément et temporise le rechargement de 250 ms ; les requêtes sont nettoyées et plafonnées à 200 caractères.
+
+**Focus et tiroir** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (le feedback ouvert — il reste disponible même si un filtre retire sa ligne), `openFeedback(id)`, `closeFeedback()`.
+
+**Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
+
+## Les mutations sont optimistes — et elles relèvent l'erreur
+
+L'interface se met à jour immédiatement ; si le serveur refuse, le hook annule tout (items, compteurs, focus, feedback ouvert) **puis relève l'erreur**. Attachez toujours un `catch` :
+
+```tsx
+<button
+  onClick={() => {
+    inbox.changeStatus(item.id, "resolved").catch(() => {
+      // l'état est déjà revenu en arrière — affichez un toast ici
+    });
+  }}
+>
+  Résoudre
+</button>
+```
+
+Seul le dernier changement de statut est annulable (`pendingUndo` + `undo()`) ; la suppression est définitive, alors protégez-la derrière votre propre confirmation.
+
+## Pagination
+
+`loadMore()` est manuel — le composant fourni affiche un bouton « Charger plus », pas un défilement infini. Les pages sont dédoublonnées par id, et le numéro de page suivant est déduit de `items.length`, donc les suppressions optimistes ne font jamais sauter de lignes.

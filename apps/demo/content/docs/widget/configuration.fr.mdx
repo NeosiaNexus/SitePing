@@ -1,0 +1,69 @@
+---
+title: Configuration
+description: Chaque option d'initSiteping, avec sa vraie valeur par défaut et son comportement réel.
+---
+
+Toutes les options d'`initSiteping(config)`. Seuls `projectName` et l'un de `endpoint` / `store` sont obligatoires.
+
+## Connexion
+
+| Option | Type | Défaut | Ce que ça fait |
+|---|---|---|---|
+| `endpoint` | `string` | — | URL de votre API SitePing (ex. `/api/siteping`) |
+| `store` | `SitepingStore` | — | Mode côté client : écrit dans un store du navigateur au lieu de faire du HTTP. Prioritaire sur `endpoint` ; `apiKey`/`headers` sont ignorés |
+| `projectName` | `string` | — | Obligatoire. Cadre tout ce que le widget lit et écrit |
+| `apiKey` | `string` | — | Envoyé en `Authorization: Bearer <clé>` sur chaque requête |
+| `headers` | objet ou fonction | — | En-têtes supplémentaires, statiques ou calculés par requête (sync ou async). Fusionnés en dernier : un `Authorization` explicite ici l'emporte sur `apiKey` |
+
+## Visibilité
+
+| Option | Type | Défaut | Ce que ça fait |
+|---|---|---|---|
+| `forceShow` | `boolean` | `false` | Contourne les garde-fous production et taille d'écran (jamais celui du SSR) |
+| `minViewportWidth` | `number` | `768` | En dessous de cette largeur, le widget passe son tour avec `onSkip("mobile")`. Mettez `0` pour autoriser toutes les largeurs |
+| `position` | `"bottom-right"` \| `"bottom-left"` | `"bottom-right"` | Coin du bouton flottant |
+| `showAnnotationsToggle` | `boolean` | `true` | Mettez `false` pour retirer le bouton d'affichage des marqueurs du menu radial |
+
+## Apparence
+
+| Option | Type | Défaut | Ce que ça fait |
+|---|---|---|---|
+| `accentColor` | `string` | `"#0066ff"` | **Hexadécimal uniquement** (`#RGB`, `#RRGGBB`, `#RRGGBBAA`). Les couleurs nommées, `rgb()`, `hsl()` etc. affichent un avertissement et retombent sur la valeur par défaut |
+| `theme` | `"light"` \| `"dark"` \| `"auto"` | `"light"` | `auto` lit la préférence système **une seule fois à l'init** — un changement de thème de l'OS en cours de session ne re-thème pas le widget |
+| `locale` | `string` | `"en"` | N'importe quelle étiquette BCP-47 ; voir [Langues](/fr/docs/widget/i18n) |
+
+## Fonctionnalités
+
+| Option | Type | Défaut | Ce que ça fait |
+|---|---|---|---|
+| `enableScreenshot` | `boolean` | `false` | Capture un JPEG de la zone annotée à l'envoi — voir [Captures d'écran](/fr/docs/widget/screenshots) |
+| `enableRightClickComment` | `boolean` | `false` | Clic droit n'importe où pour commenter instantanément — voir [Commentaires au clic droit](/fr/docs/widget/right-click) |
+| `captureDiagnostics` | `boolean` ou objet | `false` | Joint les entrées console récentes (max 50) et les requêtes réseau (max 20) à chaque feedback. `true` active les deux ; un objet choisit les canaux et les limites |
+| `deepLink` | `boolean` ou `{ param?: string }` | `false` | Au premier chargement, met en avant le feedback référencé par `?siteping=<id>` (ou votre paramètre personnalisé). Chargement initial uniquement — pour les changements de route, appelez `focusFeedback()` |
+| `identity` | `{ name, email }` | — | Pré-remplit l'auteur (applis avec SSO) : évite complètement la modale d'identité, jamais persisté dans le localStorage |
+
+## Cadrage par page
+
+| Option | Type | Défaut | Ce que ça fait |
+|---|---|---|---|
+| `scopeAnnotationsByUrl` | `boolean` | `true` | N'affiche que les marqueurs créés sur la page courante. Filtré côté serveur **et** côté client, donc les annotations ne peuvent pas fuiter d'une page à l'autre |
+| `getPageScope` | `() => { url, urlPattern }` | pathname | Redéfinit ce que « la page courante » veut dire — renvoyez une `url` stable (et éventuellement un gabarit comme `/produits/:id` en `urlPattern`) pour que les routes dynamiques partagent leurs feedbacks |
+| `watchNavigation` | `boolean` | `true` | Recharge les feedbacks lors d'une navigation SPA (patch de l'History API + `popstate`/`hashchange`). Données uniquement — ne fait jamais défiler ni ne redonne le focus. Mettez `false` et appelez `refresh()` vous-même pour vous en passer |
+
+> Le cadrage par défaut est `window.location.pathname` — par construction il ne contient aucune query string, donc les tokens ou paramètres de recherche présents dans l'URL n'atteignent jamais le serveur. Si vous fournissez `getPageScope`, conservez cette propriété : renvoyez un chemin ou un gabarit, pas `location.href`.
+
+## Callbacks
+
+| Option | Signature | Déclenché quand |
+|---|---|---|
+| `onFeedbackSent` | `(feedback) => void` | Un feedback a été créé avec succès |
+| `onError` | `(error) => void` | Un envoi ou un chargement a échoué — voir [gestion des erreurs](/fr/docs/widget#gérer-les-erreurs) |
+| `onOpen` / `onClose` | `() => void` | Le panneau s'est ouvert / fermé |
+| `onAnnotationStart` / `onAnnotationEnd` | `() => void` | Une session d'annotation a commencé / s'est terminée — mettez en pause vos bulles de chat ou vos overlays d'analytics ici |
+| `onSkip` | `(reason) => void` | Le widget a décidé de ne pas s'afficher : `"ssr"`, `"production"` ou `"mobile"`. Une config invalide affiche un `console.error` à la place |
+
+## Débogage
+
+| Option | Type | Défaut | Ce que ça fait |
+|---|---|---|---|
+| `debug` | `boolean` | `false` | Journalisation `[siteping]` verbeuse du cycle de vie via `console.debug` |

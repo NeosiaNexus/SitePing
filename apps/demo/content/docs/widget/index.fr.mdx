@@ -1,0 +1,93 @@
+---
+title: Widget
+description: Installer le widget de feedback, comprendre quand il s'affiche, et le piloter depuis votre app.
+---
+
+Le widget, c'est la partie que vos clients voient : un bouton flottant qui leur permet de dessiner un rectangle sur la page, de taper un commentaire et de l'envoyer — épinglé à l'élément exact.
+
+```bash
+npm i @siteping/widget
+```
+
+```ts
+import { initSiteping } from "@siteping/widget";
+
+const siteping = initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "mon-projet",
+});
+```
+
+`initSiteping` est le seul export runtime du package (avec les types TypeScript). Il pèse environ **30 KB gzip** (ESM), charge ses parties lourdes à la demande (panneau, locales, moteur de capture) et s'affiche dans un Shadow DOM fermé — les styles de votre page et ceux du widget ne peuvent jamais se marcher dessus.
+
+## Quand le widget s'affiche — et quand il ne s'affiche pas
+
+`initSiteping` exécute une série de garde-fous, dans cet ordre. Quand l'un d'eux s'active, vous récupérez une instance no-op (toutes les méthodes existent, rien ne s'affiche) :
+
+1. **Rendu côté serveur** — pas de `window` ? Le widget passe son tour avec `onSkip("ssr")`. Jamais contournable.
+2. **Déjà initialisé** — un second appel à `initSiteping()` renvoie l'instance *existante* (un seul widget par page). `destroy()` remet le compteur à zéro.
+3. **Production** — quand `process.env.NODE_ENV === "production"`, le widget passe son tour avec `onSkip("production")`. C'est le comportement « les clients le voient pendant la relecture, les visiteurs jamais ». Contournez-le avec `forceShow: true` pour les environnements de staging ou de preview. À noter : seul `process.env.NODE_ENV` est lu — pas `import.meta.env`.
+4. **Petits écrans** — en dessous de `minViewportWidth` (par défaut **768 px**), il passe son tour avec `onSkip("mobile")`. Également contourné par `forceShow`.
+5. **Validation de la config** — pas d'`endpoint`/`store`, ou pas de `projectName` ? Le widget affiche un `console.error` et ne fait rien. Ce cas-là n'appelle **pas** `onSkip` — regardez la console, pas le callback.
+
+## L'instance
+
+```ts
+const siteping = initSiteping({ ... });
+
+siteping.open();                  // ouvrir le panneau de feedback
+siteping.close();                 // le fermer
+siteping.refresh();               // recharger les feedbacks de la page courante (ne lève jamais)
+siteping.focusFeedback(id);       // faire défiler jusqu'à un marqueur et le mettre en évidence ; false si inconnu
+const off = siteping.on("feedback:sent", (feedback) => { ... });
+siteping.destroy();               // démontage complet, restaure tous les globals patchés
+```
+
+Événements publics : `feedback:sent` (charge utile : le feedback créé), `feedback:deleted` (charge utile : l'id), `panel:open`, `panel:close`. `on()` renvoie une fonction de désabonnement.
+
+## React
+
+Utilisez le hook dédié — il survit aux doubles montages du StrictMode et laisse les callbacks changer d'un rendu à l'autre sans réinitialiser :
+
+```tsx
+"use client";
+import { useSiteping } from "@siteping/widget/react";
+
+export function Feedback() {
+  const siteping = useSiteping({
+    endpoint: "/api/siteping",
+    projectName: "mon-projet",
+    onFeedbackSent: (f) => console.log("nouveau feedback", f.id),
+  });
+  return null; // le widget se rend tout seul
+}
+```
+
+Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint` ou une autre option structurelle demande un remontage ; changer les callbacks, non.
+
+## Gérer les erreurs
+
+`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER"`) et `retryable` (booléen) :
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "mon-projet",
+  onError: (error) => {
+    const code = (error as { code?: string }).code;
+    if (code === "AUTH") console.warn("vérifiez votre apiKey");
+  },
+});
+```
+
+Branchez sur `error.code`, pas sur `instanceof` — les classes d'erreur elles-mêmes ne sont pas exportées par le package. Quand l'utilisateur annule la demande d'identité, aucune erreur n'est émise : c'est une annulation, pas un échec.
+
+## Les statuts, côté widget
+
+Un feedback a quatre statuts (`open`, `in_progress`, `resolved`, `wont_fix`). Le widget **affiche** les quatre mais ses propres actions sont volontairement binaires : résoudre et rouvrir. Les états intermédiaires appartiennent à votre flux de tri dans le [dashboard](/fr/docs/dashboard).
+
+## La fiabilité, sans rien faire
+
+- **Réessais avec backoff** — les envois échoués sont retentés 3 fois (timeout de 10 s, backoff exponentiel avec jitter). Les erreurs serveur et les pannes réseau sont retentées, les erreurs de validation non.
+- **File d'attente hors ligne** — quand un envoi continue d'échouer, la charge utile est mise en file dans le localStorage (jusqu'à 20 entrées) et vidée au chargement suivant. La file ne stocke que les charges utiles — jamais de tokens ni d'en-têtes, qui sont recalculés au moment de la purge.
+- Les deux s'appliquent au mode HTTP (`endpoint`). En [mode `store`](/fr/docs/adapters/localstorage) côté client, les écritures sont locales : il n'y a rien à réessayer.

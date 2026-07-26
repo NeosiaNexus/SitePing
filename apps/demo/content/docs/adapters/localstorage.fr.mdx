@@ -1,0 +1,35 @@
+---
+title: Adapter localStorage
+description: Un store côté client — toute la boucle de feedback dans le navigateur, sans serveur.
+---
+
+`@siteping/adapter-localstorage` persiste les feedbacks dans le navigateur du visiteur. Combiné à l'option `store` du widget, vous obtenez une boucle de feedback complète sans aucun backend — idéal pour les démos, les prototypes et les sites de documentation (ce site l'utilise).
+
+```bash
+npm i @siteping/adapter-localstorage
+```
+
+```ts
+import { initSiteping } from "@siteping/widget";
+import { LocalStorageStore } from "@siteping/adapter-localstorage";
+
+initSiteping({
+  store: new LocalStorageStore(),
+  projectName: "ma-demo",
+});
+```
+
+## Options
+
+| Option | Type | Défaut | Ce que ça fait |
+|---|---|---|---|
+| `key` | `string` | `"siteping_feedbacks"` | L'unique clé localStorage contenant tout le tableau de feedbacks |
+
+## Notes de comportement
+
+- **Les données restent sur une seule machine.** Chaque visiteur ne voit que ses propres feedbacks — c'est voulu. Rien ne quitte le navigateur.
+- **Des données corrompues ne font jamais planter.** Si le JSON stocké ne peut pas être analysé, les lectures renvoient une liste vide ; à noter que le contenu corrompu est alors écrasé par la première écriture réussie.
+- **Sous pression de quota, les captures sautent en premier.** Si une écriture dépasse le quota de stockage du navigateur (~5 Mo par origine), l'adapter réessaie une fois sans la capture avant d'abandonner avec une `StorePersistenceError` — le commentaire survit même quand l'image ne peut pas.
+- **Les dates survivent à l'aller-retour** — `createdAt` et consorts reviennent en vrais objets `Date`, pas en chaînes.
+- **Compatible SSR là où ça compte :** les lectures et écritures se dégradent proprement sans `localStorage`. La seule exception est `clear()`, qui suppose un navigateur — ne l'appelez que côté client.
+- Les envois avec un `clientId` en double renvoient l'enregistrement existant, comme pour tous les autres adapters.

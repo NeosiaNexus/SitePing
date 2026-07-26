@@ -5,7 +5,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 ## Prerequisites
 
 - [Bun](https://bun.sh/) (latest) — used as the package manager (workspaces, scripts, lockfile)
-- Node.js >= 18 — required for development and post-build scripts (cross-platform compatible)
+- Node.js >= 20 — every package declares `engines.node >= 20`, and CI runs the suite on 20, 22, and 24
 - A Chromium-based browser (for Playwright E2E tests)
 
 ## Setup
@@ -33,7 +33,7 @@ Always run `check`, `test:run`, and `build` before submitting a PR.
 
 ## Architecture
 
-Monorepo with bun workspaces + Turborepo. All packages live in `packages/`:
+Monorepo with bun workspaces + Turborepo. Libraries live in `packages/`, the website in `apps/`:
 
 | Package | npm | Target | Description |
 |---------|-----|--------|-------------|
@@ -42,13 +42,57 @@ Monorepo with bun workspaces + Turborepo. All packages live in `packages/`:
 | `@siteping/adapter-prisma` | published | Node | Prisma database adapter |
 | `@siteping/adapter-memory` | published | Any | In-memory adapter (testing, demos, serverless) |
 | `@siteping/adapter-localstorage` | published | Browser | localStorage adapter (demos, prototyping) |
-| `@siteping/cli` | published | Node | CLI tool (`siteping init/sync/status/doctor`) |
+| `@siteping/cli` | published | Node | CLI tool (`npx @siteping/cli init/sync/status/doctor`) |
+| `@siteping/demo` (`apps/demo`) | private | Next.js | [siteping.dev](https://siteping.dev) — landing, live demo, **and the documentation site** ([editing it](#editing-the-documentation)) |
 
 - **Core** is an Internal Package — it exports raw TypeScript (no build step). Consumers bundle it via `noExternal: ["@siteping/core"]` in their tsup config.
 - **Turborepo** handles build orchestration, dependency ordering, and local caching.
 - Each published package is built independently with tsup.
 
 > **`noEmit` in tsconfig:** `tsconfig.base.json` sets `noEmit: true` (type-check only — tsup handles emit for published packages). Core overrides this with `noEmit: false` because it uses `tsc` directly to emit `.d.ts` files. If you add a package that emits via `tsc` instead of tsup, you must also override `noEmit: false` in its `tsconfig.json`.
+
+## Editing the Documentation
+
+All end-user documentation lives at **[siteping.dev/docs](https://siteping.dev/docs)**, built from MDX in this repo — the package READMEs are deliberately thin npm cards that point at it. Every docs page has an "Edit on GitHub" link that drops you straight on the right file.
+
+```bash
+cd apps/demo
+bun run dev          # http://localhost:3000/docs
+```
+
+### Where things live
+
+| Path | What it is |
+|------|------------|
+| `apps/demo/content/docs/**/*.mdx` | The pages. One file per page, frontmatter `title` + `description` required |
+| `apps/demo/content/docs/**/meta.json` | Sidebar folder title and page order |
+| `apps/demo/src/app/(docs)/` | The Fumadocs route group (layout, page, i18n plumbing) |
+| `apps/demo/src/lib/docs/` | Loader, i18n config, URL helpers |
+
+### The rule that matters: document the code, not the README
+
+**Every option, default, and behavior on the docs site is verified against the source before it ships.** Open the implementation, confirm the value, then write it down — do not copy an existing README, and do not describe intended behavior. A previous audit found 96 places where the READMEs had drifted from the code; that is the drift this rule exists to prevent.
+
+If you find the code is wrong rather than the docs, say so in the PR (or open an issue) instead of documenting the bug as a feature.
+
+### Translations
+
+English is the source language and lives at bare URLs (`/docs/widget`). Other languages are prefixed (`/fr/docs/widget`).
+
+- To translate a page, add a sibling with the language code before the extension: `configuration.mdx` → `configuration.fr.mdx`. Same for sidebar labels: `meta.json` → `meta.fr.json`.
+- **Internal links must carry the locale prefix** — `/fr/docs/widget/configuration`, not `/docs/widget/configuration`.
+- A page without a translation still resolves in that language, served in English (`fallbackLanguage: "en"`), so partial translations never 404.
+- Adding a language means one entry in `apps/demo/src/lib/docs/i18n.ts` plus its UI dictionary in `apps/demo/src/lib/docs/ui.ts`, and a `localeMap` entry in `apps/demo/src/app/api/search/route.ts` so search uses the right stemmer.
+
+> **French is currently 100% translated** (18/18 pages). Adding a new English page without its `.fr.mdx` twin silently drops that page back to English for French readers — please add both, or flag it in the PR so a translator can pick it up.
+
+### Before you open the PR
+
+```bash
+cd apps/demo && bun run build   # catches broken MDX, bad frontmatter, and type errors
+```
+
+New pages are picked up automatically — the sitemap, the search index, and the hreflang alternates are all generated from the content tree.
 
 ## Adding a New Package
 
@@ -222,7 +266,7 @@ export { StoreNotFoundError, StoreDuplicateError } from '@siteping/core'
 
 ## Adding a Locale
 
-The widget ships with a small set of built-in locales (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`). Unknown locales fall back to English. Adding a new built-in locale takes three small steps:
+The widget ships with a small set of built-in locales (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`). Unknown locales fall back to English. Adding a new built-in locale takes four small steps:
 
 ### 1. Create the translation file
 
@@ -255,7 +299,20 @@ This is enough — full locale tags like `de-DE` are resolved automatically via 
 
 Add three tests next to the existing locales: a `createT` lookup test, a key-parity test (`en.ts and <code>.ts have the same set of keys`), and a non-empty values test. The existing `ru` / `de` / `es` blocks are good templates.
 
-Type union is in `packages/core/src/types.ts` (`SitepingConfig.locale`) and the README locale list is in `packages/widget/README.md` — please update both so users get autocomplete and documentation.
+### 4. Update every place that lists the locales
+
+A new locale is only "shipped" once these are in sync — please do all of them in the same PR:
+
+| File | What to change |
+|------|----------------|
+| `packages/core/src/types.ts` | The `SitepingConfig.locale` type union — this is what gives users autocomplete |
+| `packages/widget/README.md` | The locale list in **Highlights** |
+| `packages/dashboard/README.md` | The "7 built-in locales" count in **Highlights** |
+| `apps/demo/content/docs/widget/i18n.mdx` (+ `.fr.mdx`) | The count, the list, and the resolution notes |
+| `apps/demo/content/docs/dashboard/index.mdx` (+ `.fr.mdx`) | The **Languages** section |
+| `README.md` (root) | The locale count in **Features** |
+
+> The docs site is the canonical reference for users — a locale that lands in the code but not in `apps/demo/content/docs/` is invisible to everyone who reads [siteping.dev/docs](https://siteping.dev/docs). See [Editing the Documentation](#editing-the-documentation).
 
 The dashboard (`packages/dashboard/src/i18n/`) has its own translation set with the same structure and the same built-in locales — a new locale should land in both packages (same three steps, plus the lazy-import `switch` in each package's `i18n/index.ts`).
 
