@@ -11,6 +11,12 @@ on:
         type: boolean
         default: true
 
+# Read-only floor. Every job that needs more (release-please, the npm publish
+# fan-out) re-declares its own scope, which replaces this block rather than
+# adding to it — so the default stays least-privilege even if a new job forgets.
+permissions:
+  contents: read
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false

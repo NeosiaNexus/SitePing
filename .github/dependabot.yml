@@ -46,3 +46,17 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+
+  # The demo image pins its bases by digest (supply-chain: a tag is mutable).
+  # Without this entry the digests would never move again and the images would
+  # silently rot — pinning is only safe when something bumps the pins.
+  - package-ecosystem: docker
+    directory: /apps/demo
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
