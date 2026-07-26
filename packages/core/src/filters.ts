@@ -13,7 +13,9 @@
  *   6. search       (lowercase substring match on `message`)
  *
  * Pagination clamps `limit` to a maximum of 100 and treats `page` as 1-based,
- * matching the public API contract documented on `getFeedbacks`.
+ * matching the public API contract documented on `getFeedbacks`. A page or
+ * limit below 1 is clamped up to 1 rather than indexing backwards from the
+ * end of the match set.
  */
 
 import type { FeedbackQuery, FeedbackRecord } from "./types.js";
@@ -56,8 +58,15 @@ export function applyFeedbackFilters(items: readonly FeedbackRecord[], query: Fe
   }
 
   const total = results.length;
-  const page = query.page ?? 1;
-  const limit = Math.min(query.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+  // Both bounds are clamped from below, not just `limit` from above:
+  // `(page - 1) * limit` goes negative for a non-positive page or limit, and
+  // `slice` reads negative indices from the END — so `page: -1` returned a
+  // window whose position depended on how many records happened to match,
+  // rather than an empty page or the first one. The Prisma adapter rejects
+  // these at the HTTP edge (`z.coerce.number().int().min(1)`), but the
+  // in-memory adapters have no schema in front of them and call straight in.
+  const page = Math.max(1, query.page ?? 1);
+  const limit = Math.max(1, Math.min(query.limit ?? DEFAULT_LIMIT, MAX_LIMIT));
   const start = (page - 1) * limit;
 
   return { feedbacks: results.slice(start, start + limit), total };
