@@ -2,7 +2,7 @@
 # `1.3.11-alpine` can be repointed at a different image than the one this
 # Dockerfile was reviewed against. Dependabot's docker ecosystem bumps the
 # digests (see .github/dependabot.yml), so pinning does not freeze them.
-FROM oven/bun:1.3.11-alpine@sha256:7ed9f74c326d1c260abe247ac423ccbf5ac92af62bb442d515d1f92f21e8ea9b AS builder
+FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS builder
 RUN apk add --no-cache nodejs
 WORKDIR /app
 COPY . .
