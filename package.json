@@ -36,7 +36,7 @@
     "tsup": "^8.5.1",
     "turbo": "^2.10.6",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "brace-expansion": "^5.0.8",
