@@ -3,6 +3,11 @@
 ## [0.5.2](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.5.1...adapter-localstorage-v0.5.2) (2026-07-26)
 
 
+### Bug Fixes
+
+* **core:** clamp non-positive page and limit instead of slicing from the tail ([#242](https://github.com/NeosiaNexus/SitePing/issues/242)) ([8d989a3](https://github.com/NeosiaNexus/SitePing/commit/8d989a3bfb4a80c107a968fc66379e76ff830ea8))
+
+
 ### Documentation
 
 * **site:** ship siteping.dev/docs — verified bilingual documentation + slimmed READMEs ([#241](https://github.com/NeosiaNexus/SitePing/issues/241)) ([252073f](https://github.com/NeosiaNexus/SitePing/commit/252073f2eb11a99980d81eecb5ed37b23c3894f8))
