@@ -50,6 +50,19 @@ updates:
   # The demo image pins its bases by digest (supply-chain: a tag is mutable).
   # Without this entry the digests would never move again and the images would
   # silently rot — pinning is only safe when something bumps the pins.
+  #
+  # Digest refreshes only. The tags themselves are deliberate and coupled to
+  # things this file cannot see: `node:20-alpine` matches the oldest Node major
+  # the packages support (and the version the publish jobs run), and the bun tag
+  # must stay in lockstep with `packageManager` and the `oven-sh/setup-bun` pin
+  # in the workflows. Left alone, Dependabot proposed node 20 -> 26 and bumped
+  # bun on its own, which would have split that agreement silently.
+  #
+  # Ignoring the three semver update-types does NOT also mute digest updates:
+  # each one expands to a version RANGE strictly above the current version
+  # (`> x.y.z`, `>= x.(y+1)`, `>= (x+1)`), and a digest refresh keeps the same
+  # tag, so it never falls inside them. Moving a tag is a manual, coordinated
+  # change.
   - package-ecosystem: docker
     directory: /apps/demo
     schedule:
@@ -59,4 +72,10 @@ updates:
       include: scope
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
     open-pull-requests-limit: 5
