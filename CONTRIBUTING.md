@@ -320,7 +320,54 @@ The dashboard (`packages/dashboard/src/i18n/`) has its own translation set with 
 
 - **Unit tests** — Vitest. Place in `packages/<name>/__tests__/`.
 - **E2E tests** — Playwright. Place in the `e2e/` directory at the root.
+- **Property tests** — [fast-check](https://fast-check.dev/), in `*.property.test.ts` next to the example-based suite.
 - Cover new features with unit tests. Cover user-facing flows with E2E tests when relevant.
+
+Reach for a property test when a function has an invariant that is awkward to
+enumerate — a metric that must stay symmetric, pages that must tile a result
+set exactly once, a normalizer that must be idempotent. State the law, let
+fast-check hunt for the counter-example, and keep the shrunk case it finds as
+a regression test. `packages/core/__tests__/filters.property.test.ts` is the
+worked example: it caught a pagination bug that only surfaced for a
+non-positive page number, which no hand-written case had thought to try.
+
+## Supply-chain posture
+
+The repo is scored by [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/NeosiaNexus/SitePing)
+on every push to `main`. Three of its checks are deliberately left alone, and
+each one looks like an easy win until you measure it:
+
+- **Branch-Protection has no PAT.** Scorecard's own docs suggest handing the
+  action a personal access token so it can read branch-protection settings.
+  Measured on this repo, that makes the check report **3/10** instead of
+  erroring out, and a check that scores counts toward the average while one
+  that errors does not — so the token costs about 0.4 points overall. The
+  same applies to migrating to Repo Rules, which are publicly readable and
+  would start scoring without any token. Revisit only if the review
+  requirements below ever become satisfiable.
+- **Code-Review sits at 0** because Scorecard counts changesets carrying an
+  approving review, and a solo maintainer cannot approve their own PR. It
+  moves when a second reviewer does, not before. Do not "fix" it by faking
+  Gerrit-style `Reviewed-by:` trailers — Scorecard trusts those, which is
+  exactly why using them dishonestly is out of the question.
+- **GitHub Releases carry no assets.** Scorecard skips assetless releases
+  entirely, so Signed-Releases reports "no releases found" and is excluded.
+  Attaching a single unsigned artifact flips it from excluded to **0/10** and
+  costs roughly 0.7 points. If release artifacts are ever wanted, ship them
+  with provenance (`actions/attest-build-provenance`, `.intoto.jsonl`) in the
+  same change — that path scores 10.
+
+Everything else is expected to stay green: workflow tokens least-privilege,
+all actions and container images pinned by hash, and zero known
+vulnerabilities in `bun.lock`. Verify a change locally before pushing:
+
+```bash
+docker run --rm -v "$PWD":/repo:ro gcr.io/openssf/scorecard:stable --local=/repo --show-details
+```
+
+(`--local` skips the checks that need the GitHub API — Code-Review,
+Branch-Protection, Signed-Releases — and reports `License` and `SAST`
+inaccurately for the same reason. Trust the published report for those.)
 
 ## Releases & Versioning
 

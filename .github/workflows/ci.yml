@@ -256,7 +256,7 @@ jobs:
           node -e "
           const fs = require('fs');
           const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          p.overrides = { react: '18.3.1', 'react-dom': '18.3.1' };
+          p.overrides = { ...p.overrides, react: '18.3.1', 'react-dom': '18.3.1' };
           fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
           "
 
