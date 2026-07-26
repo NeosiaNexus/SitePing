@@ -1,0 +1,35 @@
+---
+title: Choisir un adapter
+description: Où vivent vos feedbacks — Prisma pour la production, memory pour les tests et démos, localStorage pour le tout-client.
+---
+
+Un adapter, c'est la couche de stockage derrière SitePing. Les trois implémentent le même contrat `SitepingStore` (6 méthodes), vous pouvez donc les échanger sans toucher au widget.
+
+| Adapter | Où vivent les données | À utiliser pour |
+|---|---|---|
+| [`@siteping/adapter-prisma`](/fr/docs/adapters/prisma) | Votre base de données, via Prisma | La production — l'installation standard |
+| [`@siteping/adapter-memory`](/fr/docs/adapters/memory) | Un tableau en mémoire du processus | Tests, previews, démos jetables |
+| [`@siteping/adapter-localstorage`](/fr/docs/adapters/localstorage) | Le navigateur du visiteur | Démos et prototypes côté client — aucun serveur |
+
+## Deux façons de monter un store
+
+**Mode serveur** — le widget parle à un endpoint HTTP, et l'endpoint parle au store. C'est la forme de production :
+
+```ts
+// app/api/siteping/route.ts
+import { createSitepingHandler } from "@siteping/adapter-prisma";
+import { prisma } from "@/lib/prisma";
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ prisma });
+```
+
+**Mode côté client** — le widget écrit directement dans un store du navigateur, aucun serveur nécessaire :
+
+```ts
+import { initSiteping } from "@siteping/widget";
+import { LocalStorageStore } from "@siteping/adapter-localstorage";
+
+initSiteping({ store: new LocalStorageStore(), projectName: "ma-demo" });
+```
+
+> Vous écrivez votre propre adapter ? Implémentez les 6 méthodes de `SitepingStore` et lancez la suite de conformité partagée — `testSitepingStore(factory)` depuis `@siteping/core/testing` (40 tests) — contre lui.

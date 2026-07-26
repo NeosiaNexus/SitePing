@@ -1,0 +1,47 @@
+---
+title: FAQ
+description: Les questions que tout le monde pose, répondues d'après le comportement réel du code.
+---
+
+## J'ai appelé initSiteping et rien ne s'affiche. Pourquoi ?
+
+Par ordre de probabilité :
+
+1. **Vous êtes dans un build de production.** Le widget passe son tour quand `NODE_ENV` vaut `production` (seul `process.env.NODE_ENV` est lu). Passez `forceShow: true` en staging, ou vérifiez avec `onSkip`.
+2. **La fenêtre fait moins de 768 px.** Même solution : `onSkip` vous le dit, `minViewportWidth: 0` passe outre.
+3. **Config invalide** — un `endpoint`/`store` ou un `projectName` manquant affiche un `console.error` et ne monte rien. Ce cas ne déclenche *pas* `onSkip`, donc ouvrez la console.
+4. **Il est déjà monté.** Un second `initSiteping()` renvoie l'instance existante au lieu d'un deuxième bouton.
+
+## Mes clients ont-ils besoin d'un compte ?
+
+Non. La première fois qu'ils envoient un feedback, le widget demande un nom et un e-mail (conservés dans leur navigateur pour la fois suivante). Si votre app sait déjà qui ils sont, passez `identity: { name, email }` et la demande n'apparaît jamais.
+
+## C'est vraiment gratuit ? Qu'est-ce que j'héberge ?
+
+Licence MIT, aucune offre payante, aucune télémétrie. Vous hébergez un endpoint d'API (n'importe quel framework qui parle `Request`/`Response` du Web) et votre propre base de données via Prisma. Les données de feedback ne touchent jamais les serveurs de qui que ce soit d'autre.
+
+## Quels frameworks fonctionnent ?
+
+- **Widget :** n'importe quel site — c'est un simple script (ESM, CJS ou un `<script>` global). Un hook React (`@siteping/widget/react`) est inclus.
+- **Serveur :** l'adapter renvoie des handlers standard `Request` → `Response` — Next.js, Remix, SvelteKit, Hono, … Le générateur de route du CLI vise spécifiquement l'App Router de Next.js ; les autres frameworks montent les handlers manuellement.
+- **Dashboard :** React 18 ou 19.
+
+## Que contient un feedback ?
+
+Le commentaire, son type et son statut, la page (le **chemin** de l'URL uniquement par défaut — les query strings ne quittent jamais le navigateur), la taille de la fenêtre, le user agent, le nom et l'e-mail de l'auteur, et l'ancre DOM de chaque annotation. En option : une capture de la zone annotée et les diagnostics console/réseau récents. Masquez tout ce qui est sensible avec `data-siteping-ignore="true"` — les éléments masqués sont exclus des captures.
+
+## N'importe qui peut-il lire mon API de feedback ?
+
+Les lectures sont publiques par défaut, avec les e-mails des auteurs masqués pour les appelants non authentifiés, et `clientId` jamais exposé. Les appels destructifs (changements de statut, suppressions) exigent un `apiKey` d'origine — et en production, l'adapter serveur refuse de démarrer sans. [Détails](/fr/docs/adapters/prisma#le-modèle-de-sécurité-franchement).
+
+## Que se passe-t-il si le réseau lâche en plein envoi ?
+
+Le widget réessaie (3 tentatives avec backoff), puis met la charge utile en file dans le localStorage (jusqu'à 20 entrées) et la vide au chargement suivant. Les commentaires ne se perdent pas à cause d'une connexion capricieuse.
+
+## Un élément annoté a été supprimé. Où est passée l'annotation ?
+
+Le marqueur est masqué sur cette page (plus rien à quoi s'ancrer) plutôt que de pointer vers le mauvais élément — mais le feedback lui-même, avec son message et sa capture, reste dans le panneau et dans le dashboard. Voir [comment fonctionne l'ancrage](/fr/docs/widget/anchoring).
+
+## Ma langue n'est pas intégrée.
+
+Le dashboard accepte des locales à l'exécution via `registerLocale`. Les locales du widget sont compilées dedans — en ajouter une est la contribution la plus accessible du projet : voir [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md).

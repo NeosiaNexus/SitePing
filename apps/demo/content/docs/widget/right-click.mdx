@@ -1,0 +1,32 @@
+---
+title: Right-click comments
+description: Let clients comment anywhere with a right-click — without ever hijacking the menus they need.
+---
+
+With `enableRightClickComment: true`, a right-click anywhere on the page opens the comment composer at the cursor — the fastest possible "this thing here" feedback.
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "my-project",
+  enableRightClickComment: true,
+});
+```
+
+It's off by default: the browser's context menu is never hijacked unless the host explicitly opts in.
+
+## When the native menu wins
+
+The widget yields to the browser's own context menu in all of these cases, checked in order:
+
+1. **Your app already handled it** — if an element-level handler called `preventDefault()` first (a data grid, a code editor), the widget backs off. This is also how you carve out zones with your own context menu.
+2. **Keyboard-triggered menus** — the ≣ Menu key and Shift+F10 always get the native menu. (Per the Pointer Events spec, keyboard activations carry `pointerType: ""` — the widget checks exactly that.)
+3. **Modifier keys** — Shift, Ctrl, Alt, or Meta + right-click always falls through. The universal escape hatch, for users and your devtools.
+4. **SitePing's own UI** — right-clicking the button, panel, markers, or anything marked `data-siteping-ignore` is ignored.
+5. **Mid-annotation** — while a comment popup is already open, right-click works normally (so users can paste into the textarea).
+
+Mouse right-click, touch long-press, and pen long-press all open the composer; on tablets this pairs naturally with the widget's ≥768 px viewport rule.
+
+## What it opens
+
+The instant flow drops a small point annotation at the cursor, opens the composer immediately, and anchors the comment to the element under it. Screenshots (if enabled) capture that element's area — not just a 20-pixel dot.

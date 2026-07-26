@@ -1,0 +1,27 @@
+---
+title: Languages
+description: Seven built-in locales, lazy-loaded, with sensible fallbacks.
+---
+
+The widget ships with **7 built-in locales**: English (`en`), French (`fr`), German (`de`), Spanish (`es`), Italian (`it`), Brazilian Portuguese (`pt`), and Russian (`ru`).
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "my-project",
+  locale: "fr",
+});
+```
+
+## How resolution works
+
+- **English is bundled**; every other locale loads as its own tiny chunk, so you only download the language you use.
+- Full BCP-47 tags are welcome — `"fr-CA"` resolves to `fr`, `"pt-BR"` to `pt`.
+- An unknown locale logs a `console.warn` and falls back to English. Nothing breaks.
+- While a locale chunk is loading, labels render in English and re-localize the moment it lands; markers wait for the translations so screen-reader labels are never half-translated.
+
+## The dashboard follows the same set
+
+`@siteping/dashboard` ships the same seven locales with the same resolution rules. The dashboard additionally accepts custom locales at runtime through its `registerLocale(code, translations)` export — see [the dashboard docs](/docs/dashboard#languages).
+
+Want your language built in? Locale contributions are the friendliest first PR to this project — see [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md) ("Adding a Locale").

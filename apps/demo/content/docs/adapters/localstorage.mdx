@@ -1,0 +1,35 @@
+---
+title: localStorage adapter
+description: A client-side store — run the whole feedback loop in the browser, no server required.
+---
+
+`@siteping/adapter-localstorage` persists feedbacks in the visitor's browser. Combined with the widget's `store` option, you get a fully working feedback loop with zero backend — ideal for demos, prototypes, and docs sites (this site uses it).
+
+```bash
+npm i @siteping/adapter-localstorage
+```
+
+```ts
+import { initSiteping } from "@siteping/widget";
+import { LocalStorageStore } from "@siteping/adapter-localstorage";
+
+initSiteping({
+  store: new LocalStorageStore(),
+  projectName: "my-demo",
+});
+```
+
+## Options
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `key` | `string` | `"siteping_feedbacks"` | The single localStorage key holding the whole feedback array |
+
+## Behavior notes
+
+- **Data stays on one machine.** Each visitor sees only their own feedback — by design. It never leaves the browser.
+- **Corrupted data never crashes.** If the stored JSON can't be parsed, reads return an empty list; note the corrupted blob is then overwritten by the next successful write.
+- **Quota pressure drops screenshots first.** If a write exceeds the browser's storage quota (~5 MB per origin), the adapter retries once without the screenshot before giving up with a `StorePersistenceError` — the comment survives even when the image can't.
+- **Dates survive the round-trip** — `createdAt` and friends come back as real `Date` objects, not strings.
+- **SSR-safe for the paths that matter:** reads and writes degrade gracefully without `localStorage`. The one exception is `clear()`, which assumes a browser — only call it client-side.
+- Duplicate `clientId` submissions return the existing record, same as every other adapter.

@@ -1,0 +1,28 @@
+---
+title: How anchoring works
+description: Why annotations survive deploys — selectors, fallbacks, and honest limits.
+---
+
+When a client draws a rectangle, SitePing doesn't store screen coordinates — those break on the first layout change. It anchors the annotation to the **DOM element** under it, with layered fallbacks:
+
+1. **A minimal CSS selector** for the element, computed at capture time.
+2. **An XPath** to the same element, as the first fallback.
+3. **Text context** — a snippet of the element's text plus what surrounds it — as the last resort when both selectors go stale.
+
+The rectangle itself is stored **as percentages of the anchor element's bounding box**, not of the viewport. If the element moves, grows, or reflows, the annotation moves with it.
+
+Alongside the anchor, each annotation records the capture context (viewport size, scroll position, device pixel ratio) so positions can be interpreted faithfully later.
+
+## What this survives — and what it doesn't
+
+**Survives well:** content edits around the element, layout shifts, responsive reflow, other elements being added or removed, most refactors that keep the element recognizable.
+
+**Degrades:** deleting the element (nothing to anchor to), heavy rewrites that change tag, text, and position at once, and content inside **Shadow DOM**, which the anchor engine doesn't pierce today (tracked in [#177](https://github.com/NeosiaNexus/SitePing/issues/177)).
+
+When an anchor can't be resolved on a later visit, the marker is hidden for that page view rather than shown somewhere wrong — a missing marker is confusing, a lying one is worse. The feedback itself (message, screenshot, metadata) is never lost; it's always visible in the panel and the dashboard.
+
+## Helping the anchors help you
+
+- Stable `id` attributes on key containers make the CSS selector short and durable.
+- Avoid annotating ephemeral UI (toasts, skeletons) — the element is gone on the next visit by design.
+- On dynamic routes (`/products/42`), use [`getPageScope`](/docs/widget/configuration#page-scoping) with a `urlPattern` so feedback groups by template instead of by individual URL.

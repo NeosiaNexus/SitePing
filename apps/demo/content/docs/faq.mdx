@@ -1,0 +1,47 @@
+---
+title: FAQ
+description: The questions everyone asks, answered from how the code actually behaves.
+---
+
+## I called initSiteping and nothing shows. Why?
+
+In order of likelihood:
+
+1. **You're in a production build.** The widget skips when `NODE_ENV` is `production` (only `process.env.NODE_ENV` is read). Pass `forceShow: true` on staging, or check with `onSkip`.
+2. **The viewport is under 768 px.** Same fix: `onSkip` tells you, `minViewportWidth: 0` overrides.
+3. **Invalid config** — a missing `endpoint`/`store` or `projectName` logs a `console.error` and mounts nothing. This case does *not* fire `onSkip`, so open the console.
+4. **It's already mounted.** A second `initSiteping()` returns the existing instance instead of a second button.
+
+## Do my clients need an account?
+
+No. The first time they send feedback, the widget asks for a name and email (kept in their browser for next time). If your app already knows who they are, pass `identity: { name, email }` and the prompt never shows.
+
+## Is it really free? What do I host?
+
+MIT license, no paid tier, no phoning home. You host one API endpoint (any framework that speaks Web `Request`/`Response`) and your own database via Prisma. Feedback data never touches anyone else's servers.
+
+## Which frameworks work?
+
+- **Widget:** any site — it's a plain script (ESM, CJS, or a `<script>` global). A React hook (`@siteping/widget/react`) is included.
+- **Server:** the adapter returns standard `Request` → `Response` handlers — Next.js, Remix, SvelteKit, Hono, … The CLI's route generator targets Next.js App Router specifically; other frameworks mount the handlers manually.
+- **Dashboard:** React 18 or 19.
+
+## What data does a feedback contain?
+
+The comment, its type and status, the page (the URL **path** only by default — query strings never leave the browser), viewport size, user agent, the author's name and email, and the DOM anchor of each annotation. Opt-in extras: a screenshot of the annotated area and recent console/network diagnostics. Mask anything sensitive with `data-siteping-ignore="true"` — masked elements are excluded from screenshots.
+
+## Can anyone read my feedback API?
+
+Reads are public by default, with author emails redacted for unauthenticated callers, and `clientId` never exposed. Destructive calls (status changes, deletes) require an `apiKey` out of the box — and in production the server adapter refuses to start without one. [Details](/docs/adapters/prisma#the-security-model-honestly).
+
+## What happens if the network drops mid-submit?
+
+The widget retries (3 attempts with backoff), then queues the payload in localStorage (up to 20 entries) and flushes it on the next page load. Comments don't get lost to a flaky connection.
+
+## An annotated element was deleted. Where's the annotation?
+
+The marker hides on that page (nothing to anchor to) rather than pointing at the wrong element — but the feedback itself, with its message and screenshot, stays in the panel and dashboard. See [how anchoring works](/docs/widget/anchoring).
+
+## My language isn't built in.
+
+The dashboard accepts runtime locales via `registerLocale`. The widget's locales are compiled in — adding one is the friendliest first contribution to the project: see [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md).

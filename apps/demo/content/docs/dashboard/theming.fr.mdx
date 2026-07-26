@@ -1,0 +1,56 @@
+---
+title: Personnalisation
+description: Styles cadrés, variables CSS, et la bonne façon de les surcharger.
+---
+
+Le dashboard n'utilise **pas de Shadow DOM** — c'est le DOM de votre app, stylé par une feuille de styles injectée en `<style id="siteping-inbox-styles">` dans le `document.head` au premier montage (partagée entre les instances, compatible SSR). Tous les sélecteurs sont cadrés sous `.spd-root`, rien n'utilise `!important`, et tout le comportement responsive repose sur des **container queries** — l'inbox s'adapte à la largeur de la boîte dans laquelle vous la placez, pas à celle de la fenêtre. En dessous de 960 px de largeur de conteneur, le tiroir de détail devient une surcouche avec piège à focus ; au-dessus, il se place côte à côte.
+
+> Note CSP : la feuille de styles injectée exige que `style-src` l'autorise (une politique limitée à `'self'` sans `'unsafe-inline'` ni nonce la bloquera).
+
+## La couleur d'accent
+
+Définissez-la par la prop — elle est appliquée comme variable CSS en ligne, donc aucune règle de feuille de styles ne peut la surcharger :
+
+```tsx
+<SitepingInbox accentColor="#7c3aed" ... />
+```
+
+Hexadécimal uniquement (`#RGB`, `#RRGGBB`, `#RRGGBBAA`) ; toute autre valeur avertit et retombe sur `#0066ff`. Chaque nuance d'accent de l'interface est une dérivation `color-mix()` de cette unique valeur.
+
+## Surcharger les variables depuis le CSS
+
+Les variables de structure vivent sur `.spd-root` :
+
+```css
+.mon-app .spd-root {
+  --spd-font: "Inter", sans-serif;
+  --spd-mono: "Fira Code", monospace;
+  --spd-fs-body: 13px;
+  --spd-radius: 10px;
+  --spd-radius-sm: 8px;
+  --spd-radius-xs: 6px;
+  --spd-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+```
+
+Les variables de palette sont déclarées **par thème**, donc votre surcharge doit inclure l'attribut de thème pour l'emporter de façon fiable :
+
+```css
+.mon-app .spd-root[data-theme="dark"] {
+  --spd-bg: #0b0d12;
+  --spd-surface: #12151d;
+  --spd-raised: #1a1e29;
+  --spd-border: #232838;
+  --spd-border-strong: #2e3448;
+  --spd-text: #e7eaf2;
+  --spd-text-2: #a7adbf;
+  --spd-text-3: #6b7186;
+}
+/* à répéter pour [data-theme="light"] si vous gérez les deux */
+```
+
+Toute la surface de palette, surchargeable de la même façon : `--spd-bg`, `--spd-surface`, `--spd-raised`, `--spd-border`, `--spd-border-strong`, `--spd-text`, `--spd-text-2`, `--spd-text-3`, `--spd-accent-bright`, les couleurs de statut `--spd-st-open`, `--spd-st-progress`, `--spd-st-resolved`, `--spd-st-wontfix`, les couleurs de type `--spd-ty-question`, `--spd-ty-change`, `--spd-ty-bug`, `--spd-ty-other`, plus `--spd-danger`, `--spd-danger-strong` et `--spd-dim`.
+
+La hauteur de ligne suit la densité, alors surchargez-la avec l'attribut de densité : `.mon-app .spd-root[data-density="comfortable"] { --spd-row-h: 48px; }`.
+
+> Une réserve assumée : la feuille de styles injectée est ajoutée à la fin du `<head>` au montage, donc après vos feuilles de styles liées. Des surcharges utilisant exactement les sélecteurs ci-dessus (qui ont la même spécificité que l'injecté) peuvent perdre au départage par ordre d'apparition — les préfixer par la classe de votre app (comme montré) ajoute la spécificité qui tranche de façon déterministe.

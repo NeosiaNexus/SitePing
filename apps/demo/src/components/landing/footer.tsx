@@ -9,7 +9,7 @@ const links = [
   },
   {
     label: "Documentation",
-    href: "https://github.com/NeosiaNexus/SitePing#readme",
+    href: "/docs",
   },
 ] as const;
 

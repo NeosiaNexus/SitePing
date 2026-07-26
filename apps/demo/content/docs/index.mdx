@@ -1,0 +1,26 @@
+---
+title: What is SitePing?
+description: Open-source client feedback widget — DOM-anchored annotations, self-hosted, zero SaaS fees.
+---
+
+SitePing lets your clients leave feedback **directly on the website you're building for them**. They draw a rectangle on the page (or right-click), type a comment, and you receive it pinned to the exact element — no more screenshots pasted into emails, no more "the button at the top… no, the other one".
+
+It's built for freelancers and agencies who review work-in-progress sites with clients, and it replaces tools like Marker.io or BugHerd with something you own: MIT-licensed, self-hosted, your database, zero subscription.
+
+## How it works
+
+1. **You add the widget** to the site under review — one `npm install`, one `initSiteping()` call. By default it only shows in development and staging, never to production visitors.
+2. **Your client annotates** — draw a rectangle, or right-click anywhere. Each comment is anchored to the DOM element under it, so it survives deploys and layout changes. Optional extras: a screenshot of the annotated area, console/network diagnostics.
+3. **You triage** — in the drop-in dashboard (a Linear-style inbox with keyboard shortcuts) or through the plain HTTP API. Statuses flow `open` → `in_progress` → `resolved` / `wont_fix`.
+
+## The pieces
+
+| Package | What it is |
+|---|---|
+| [`@siteping/widget`](/docs/widget) | The feedback widget your clients use (~30 KB gzip, framework-agnostic, React hook included) |
+| [`@siteping/dashboard`](/docs/dashboard) | The triage inbox — one React component, or a headless hook |
+| [`@siteping/adapter-prisma`](/docs/adapters/prisma) | The production server adapter: one endpoint, auth, CORS, webhooks |
+| [`@siteping/adapter-memory`](/docs/adapters/memory) / [`-localstorage`](/docs/adapters/localstorage) | Stores for tests, demos, and server-less prototypes |
+| [`@siteping/cli`](/docs/cli) | `init`, `sync`, `status`, `doctor` — setup and health checks |
+
+Ready? The [quickstart](/docs/quickstart) takes about three minutes — or try everything live in the [demo](/demo), which runs this very widget.

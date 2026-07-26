@@ -1,0 +1,56 @@
+---
+title: Theming
+description: Scoped styles, CSS variables, and the correct way to override them.
+---
+
+The dashboard uses **no Shadow DOM** — it's your app's DOM, styled by one stylesheet injected as `<style id="siteping-inbox-styles">` into `document.head` on first mount (shared across instances, SSR-safe). Every selector is scoped under `.spd-root`, nothing uses `!important`, and all responsive behavior is driven by **container queries** — the inbox adapts to the width of the box you put it in, not the viewport. Below 960 px of container width, the detail drawer becomes a focus-trapped overlay; above, it docks side-by-side.
+
+> CSP note: the injected stylesheet requires `style-src` to allow it (a `'self'`-only policy without `'unsafe-inline'` or a nonce will block it).
+
+## The accent color
+
+Set it with the prop — it's applied as an inline CSS variable, so a stylesheet rule can't override it:
+
+```tsx
+<SitepingInbox accentColor="#7c3aed" ... />
+```
+
+Hex only (`#RGB`, `#RRGGBB`, `#RRGGBBAA`); anything else warns and falls back to `#0066ff`. Every accent shade in the UI is a `color-mix()` derivation of this single value.
+
+## Overriding variables from CSS
+
+Structure variables live on `.spd-root`:
+
+```css
+.my-app .spd-root {
+  --spd-font: "Inter", sans-serif;
+  --spd-mono: "Fira Code", monospace;
+  --spd-fs-body: 13px;
+  --spd-radius: 10px;
+  --spd-radius-sm: 8px;
+  --spd-radius-xs: 6px;
+  --spd-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+```
+
+Palette variables are declared **per theme**, so your override must include the theme attribute to win reliably:
+
+```css
+.my-app .spd-root[data-theme="dark"] {
+  --spd-bg: #0b0d12;
+  --spd-surface: #12151d;
+  --spd-raised: #1a1e29;
+  --spd-border: #232838;
+  --spd-border-strong: #2e3448;
+  --spd-text: #e7eaf2;
+  --spd-text-2: #a7adbf;
+  --spd-text-3: #6b7186;
+}
+/* repeat for [data-theme="light"] if you support both */
+```
+
+The full palette surface, all overridable the same way: `--spd-bg`, `--spd-surface`, `--spd-raised`, `--spd-border`, `--spd-border-strong`, `--spd-text`, `--spd-text-2`, `--spd-text-3`, `--spd-accent-bright`, status colors `--spd-st-open`, `--spd-st-progress`, `--spd-st-resolved`, `--spd-st-wontfix`, type colors `--spd-ty-question`, `--spd-ty-change`, `--spd-ty-bug`, `--spd-ty-other`, plus `--spd-danger`, `--spd-danger-strong`, `--spd-dim`.
+
+Row height follows density, so override it with the density attribute: `.my-app .spd-root[data-density="comfortable"] { --spd-row-h: 48px; }`.
+
+> One honest caveat: the injected stylesheet is appended at the end of `<head>` on mount, after your linked stylesheets. Overrides with the exact selectors above (which match the injected specificity) can lose the source-order tiebreak — prefixing with your app class (as shown) adds the specificity that settles it deterministically.

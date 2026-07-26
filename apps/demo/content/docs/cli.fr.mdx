@@ -1,0 +1,99 @@
+---
+title: CLI
+description: Installer et vérifier SitePing en ligne de commande — init, sync, status et doctor.
+---
+
+Le CLI SitePing automatise l'installation du projet et les vérifications de santé. Il est livré comme un binaire autonome unique, avec **zéro dépendance à l'exécution**, et exige **Node 20 ou plus récent**.
+
+```bash
+npx @siteping/cli --help
+```
+
+> **Le nom du package compte.** Lancez toujours `npx @siteping/cli <commande>`. Il n'existe pas de package `siteping` sur npm : `npx siteping` ne fonctionne que si `@siteping/cli` est déjà installé dans votre projet.
+
+## `init` — installation interactive
+
+```bash
+npx @siteping/cli init
+```
+
+`init` vous guide à travers deux confirmations :
+
+1. **Synchroniser les modèles Prisma** — si un schéma est trouvé (voir [détection du schéma](#détection-du-schéma)), il propose d'ajouter les modèles `SitepingFeedback` et `SitepingAnnotation`.
+2. **Générer la route API** — propose de créer une route Next.js App Router qui sert le widget. Le fichier va dans `app/api/siteping/route.ts`, ou `src/app/api/siteping/route.ts` si votre projet utilise une arborescence `src/`. Une route existante n'est jamais écrasée.
+
+La route générée importe deux choses que vous devez fournir vous-même — le CLI n'installe rien :
+
+- le package `@siteping/adapter-prisma` (`npm i @siteping/adapter-prisma`)
+- un client Prisma exporté depuis `@/lib/prisma`
+
+Si votre projet n'a pas de répertoire `app/` (ni `src/app/`), `init` se termine en erreur : il ne génère que des routes Next.js App Router. Les autres frameworks branchent l'adapter manuellement — voir [Adapters](/fr/docs/adapters).
+
+`init` est interactif par conception et ne fait rien en CI (il se termine silencieusement sans terminal). Pour l'automatisation, utilisez `sync`.
+
+## `sync` — fusion de schéma non interactive
+
+```bash
+npx @siteping/cli sync
+npx @siteping/cli sync --schema prisma/schema.prisma
+```
+
+`sync` fusionne les modèles SitePing dans votre schéma Prisma sans poser de question, ce qui le rend sûr pour la CI et les scripts de mise à jour. Il travaille au niveau de l'AST :
+
+- crée les deux modèles s'ils sont absents,
+- ajoute les champs et blocs `@@index` manquants,
+- réécrit les champs SitePing dont le type ou les attributs ont dérivé de la forme attendue,
+- **ne touche jamais aux champs que vous avez ajoutés vous-même.**
+
+Quand quelque chose a changé, il vous rappelle de lancer `npx prisma db push`. Le lancer deux fois de suite ne fait rien.
+
+> **Committez avant de le lancer.** `sync` réimprime tout le fichier de schéma, donc le formatage (lignes vides après les commentaires, alignement des colonnes) est normalisé y compris sur vos propres modèles. Un diff git propre rend les changements faciles à relire.
+
+## `status` — rapport de santé du projet
+
+```bash
+npx @siteping/cli status
+npx @siteping/cli status --schema prisma/schema.prisma
+```
+
+`status` lance quatre vérifications et imprime un rapport :
+
+| Vérification | Ce qu'elle regarde |
+|---|---|
+| Schéma Prisma | Les deux modèles présents, chaque champ à jour |
+| Route API | `app/api/siteping/route.ts` ou `src/app/api/siteping/route.ts` existe |
+| Package | `@siteping/widget` listé dans votre `package.json` |
+| Intégration du widget | `initSiteping` référencé quelque part dans `src/`, `app/` ou `pages/` |
+
+La vérification de la route API ne connaît que l'App Router de Next.js. Si vous servez l'adapter depuis Express, Hono ou le Pages Router, cette ligne affichera « Not found » alors même que votre installation fonctionne.
+
+## `doctor` — vérification de l'endpoint en direct
+
+```bash
+npx @siteping/cli doctor --url http://localhost:3000 --endpoint /api/siteping
+```
+
+`doctor` envoie une requête GET à votre serveur en fonctionnement et vous dit si un handler SitePing a répondu (timeout de 10 secondes). Passez **les deux** options pour l'exécuter sans interaction — toute option omise devient une question.
+
+Il ne vérifie que la réponse HTTP — il ne lit jamais votre schéma. Pour vérifier le schéma, utilisez `status`.
+
+## Codes de sortie
+
+Toutes les commandes sont scriptables. `0` signifie succès, `1` que quelque chose doit être corrigé :
+
+| Commande | Sort en 1 quand |
+|---|---|
+| `init` | La génération de route ou la synchronisation du schéma échoue |
+| `sync` | Aucun schéma trouvé, fichier `--schema` absent, ou erreur d'analyse/d'écriture |
+| `status` | Le schéma, la route API, le `package.json` ou la dépendance widget manque |
+| `doctor` | Réponse différente de 200, serveur injoignable, ou timeout |
+
+Deux réserves pour les pipelines CI : `status` sort en `0` (avec une indication de lancer `sync`) quand les champs du schéma ont simplement dérivé, et `doctor` sort en `0` sur toute réponse 200 — y compris une qui ne vient pas d'un handler SitePing (il affiche un avertissement à la place). Ni l'un ni l'autre n'est un garde-fou strict.
+
+## Détection du schéma
+
+Quand vous ne passez pas `--schema`, le CLI teste trois emplacements dans l'ordre :
+
+1. `prisma/schema.prisma`
+2. `schema.prisma`
+3. `prisma/schema/schema.prisma`

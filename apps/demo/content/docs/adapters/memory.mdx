@@ -1,0 +1,32 @@
+---
+title: Memory adapter
+description: An in-process store for tests, previews, and throwaway demos.
+---
+
+`@siteping/adapter-memory` keeps everything in a plain array. No persistence, no configuration — restart the process and it's gone.
+
+```bash
+npm i @siteping/adapter-memory
+```
+
+```ts
+import { MemoryStore } from "@siteping/adapter-memory";
+
+const store = new MemoryStore();
+
+// Server-side, behind the HTTP handler:
+createSitepingHandler({ store });
+
+// Or client-side, directly in the widget:
+initSiteping({ store, projectName: "preview" });
+```
+
+## Behavior notes
+
+- **Newest first** — new feedbacks are prepended, so lists come back in reverse chronological order without sorting.
+- **Duplicate submissions are absorbed** — creating a feedback with an existing `clientId` returns the already-stored record instead of erroring. That's what makes the widget's retry queue safe.
+- **Records are returned by reference.** If you mutate an object the store gave you, you mutate the store. Clone before editing (`structuredClone(feedback)`) if you need a scratch copy.
+- **Unbounded** — there is no size cap or eviction. Fine for tests; don't leave it collecting feedback on a long-lived server.
+- `clear()` empties the store and resets ID numbering — handy between test cases.
+
+Unknown IDs throw `StoreNotFoundError` from `updateFeedback` / `deleteFeedback`; the error classes are re-exported by the package so you can catch them without importing core.

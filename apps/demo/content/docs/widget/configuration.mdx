@@ -1,0 +1,69 @@
+---
+title: Configuration
+description: Every initSiteping option, with its real default and behavior.
+---
+
+All options of `initSiteping(config)`. Only `projectName` plus one of `endpoint` / `store` are required.
+
+## Connection
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `endpoint` | `string` | — | URL of your SitePing API (e.g. `/api/siteping`) |
+| `store` | `SitepingStore` | — | Client-side mode: write to a store in the browser instead of HTTP. Wins over `endpoint`; `apiKey`/`headers` are ignored |
+| `projectName` | `string` | — | Required. Scopes everything the widget reads and writes |
+| `apiKey` | `string` | — | Sent as `Authorization: Bearer <key>` on every request |
+| `headers` | object or function | — | Extra headers, static or computed per request (sync or async). Merged last, so an explicit `Authorization` here beats `apiKey` |
+
+## Visibility
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `forceShow` | `boolean` | `false` | Bypasses the production and viewport guards (never the SSR guard) |
+| `minViewportWidth` | `number` | `768` | Below this width the widget skips with `onSkip("mobile")`. Use `0` to allow any width |
+| `position` | `"bottom-right"` \| `"bottom-left"` | `"bottom-right"` | Corner for the floating button |
+| `showAnnotationsToggle` | `boolean` | `true` | Set `false` to remove the marker-visibility toggle from the radial menu |
+
+## Appearance
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `accentColor` | `string` | `"#0066ff"` | **Hex only** (`#RGB`, `#RRGGBB`, `#RRGGBBAA`). Named colors, `rgb()`, `hsl()` etc. log a warning and fall back to the default |
+| `theme` | `"light"` \| `"dark"` \| `"auto"` | `"light"` | `auto` reads the system preference **once at init** — an OS theme change mid-session doesn't re-theme the widget |
+| `locale` | `string` | `"en"` | Any BCP-47 tag; see [Languages](/docs/widget/i18n) |
+
+## Features
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `enableScreenshot` | `boolean` | `false` | Capture a JPEG of the annotated area on submit — see [Screenshots](/docs/widget/screenshots) |
+| `enableRightClickComment` | `boolean` | `false` | Right-click anywhere to comment instantly — see [Right-click comments](/docs/widget/right-click) |
+| `captureDiagnostics` | `boolean` or object | `false` | Attach recent console entries (max 50) and network requests (max 20) to each feedback. `true` enables both; an object picks channels and limits |
+| `deepLink` | `boolean` or `{ param?: string }` | `false` | On first load, focus the feedback referenced by `?siteping=<id>` (or your custom param). Initial load only — for route changes, call `focusFeedback()` |
+| `identity` | `{ name, email }` | — | Pre-fill the author (SSO apps): skips the identity modal entirely, never persisted to localStorage |
+
+## Page scoping
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `scopeAnnotationsByUrl` | `boolean` | `true` | Only show markers created on the current page. Filtered both server-side and client-side, so annotations can't leak across pages |
+| `getPageScope` | `() => { url, urlPattern }` | pathname | Customize what "the current page" means — return a stable `url` (and optionally a template like `/products/:id` as `urlPattern`) so dynamic routes share their feedback |
+| `watchNavigation` | `boolean` | `true` | Re-fetch feedbacks on SPA navigation (History API patch + `popstate`/`hashchange`). Data only — it never scrolls or refocuses. Set `false` and call `refresh()` yourself to opt out |
+
+> The default page scope is `window.location.pathname` — by construction it contains no query string, so tokens or search params in the URL never reach the server. If you provide `getPageScope`, keep that property: return a path or a template, not `location.href`.
+
+## Callbacks
+
+| Option | Signature | Fires when |
+|---|---|---|
+| `onFeedbackSent` | `(feedback) => void` | A feedback was successfully created |
+| `onError` | `(error) => void` | A submission or fetch failed — see [error handling](/docs/widget#handling-errors) |
+| `onOpen` / `onClose` | `() => void` | The panel opened / closed |
+| `onAnnotationStart` / `onAnnotationEnd` | `() => void` | An annotation session began / ended — pause chat bubbles or analytics overlays here |
+| `onSkip` | `(reason) => void` | The widget decided not to render: `"ssr"`, `"production"`, or `"mobile"`. Invalid config logs a `console.error` instead |
+
+## Debug
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `debug` | `boolean` | `false` | Verbose `[siteping]` lifecycle logging via `console.debug` |

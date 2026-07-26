@@ -1,0 +1,4 @@
+{
+  "title": "Dashboard",
+  "pages": ["index", "headless", "theming", "sources"]
+}

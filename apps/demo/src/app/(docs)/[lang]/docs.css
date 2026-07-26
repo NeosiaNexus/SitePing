@@ -1,0 +1,24 @@
+@import "fumadocs-ui/style.css";
+@import "fumadocs-ui/css/neutral.css";
+
+body {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* Fumadocs centres the whole shell, and the sidebar area spans the centring
+   gutter as well as its own column — so the nav ends up floating mid-screen
+   with a dead band to its left. Keep the centring (it is what puts the article
+   dead centre and leaves the TOC a right margin), and pin only the chrome to
+   the viewport edges: the sidebar panel to the start of its area, the navbar
+   across the full grid. */
+#nd-sidebar {
+  align-items: flex-start;
+}
+
+#nd-sidebar > * {
+  border-inline-end: 1px solid var(--color-fd-border);
+}
+
+#nd-notebook-layout > [class*="grid-area:header"] {
+  grid-column: 1 / -1;
+}

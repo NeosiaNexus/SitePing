@@ -1,11 +1,12 @@
 [![npm version](https://img.shields.io/npm/v/@siteping/adapter-memory)](https://www.npmjs.com/package/@siteping/adapter-memory)
+[![Docs](https://img.shields.io/badge/docs-siteping.dev-0066ff)](https://siteping.dev/docs/adapters/memory)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
 
 # @siteping/adapter-memory
 
-In-memory adapter for [Siteping](https://github.com/NeosiaNexus/SitePing) — zero dependencies, works everywhere.
+In-memory store for [SitePing](https://github.com/NeosiaNexus/SitePing) — zero dependencies, zero configuration. For tests, previews, and throwaway demos: restart the process and it's gone.
 
-Part of the [@siteping](https://github.com/NeosiaNexus/SitePing) monorepo.
+**[Documentation](https://siteping.dev/docs/adapters/memory)**
 
 ## Install
 
@@ -15,71 +16,21 @@ npm install @siteping/adapter-memory
 
 ## Usage
 
-### With the HTTP handler (server-side)
-
 ```ts
-import { createSitepingHandler } from '@siteping/adapter-prisma'
-import { MemoryStore } from '@siteping/adapter-memory'
+import { MemoryStore } from "@siteping/adapter-memory";
 
-const store = new MemoryStore()
+const store = new MemoryStore();
 
-export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ store })
+// Behind the HTTP handler (server):
+createSitepingHandler({ store });
+
+// Or directly in the widget (client-side mode):
+initSiteping({ store, projectName: "preview" });
 ```
 
-### With the widget directly (client-side, no server)
+`clear()` resets it between test cases. Duplicate `clientId` submissions return the existing record (retry-safe), unknown IDs throw `StoreNotFoundError`, and records are returned **by reference** — clone before mutating.
 
-```ts
-import { initSiteping } from '@siteping/widget'
-import { MemoryStore } from '@siteping/adapter-memory'
-
-const store = new MemoryStore()
-
-initSiteping({
-  store,
-  projectName: 'my-project',
-})
-```
-
-## API
-
-### `new MemoryStore()`
-
-Creates a new in-memory store. Data lives in a plain array — lost on process restart.
-
-### `store.clear()`
-
-Remove all data and reset the ID counter.
-
-## Use Cases
-
-- **Testing** — fast, isolated store for unit and integration tests
-- **Demos** — lightweight store that needs no database or localStorage
-- **Prototyping** — get started without any infrastructure
-- **Reference implementation** — simplest possible adapter for contributors
-
-## Creating Your Own Adapter
-
-`MemoryStore` is the simplest reference implementation of the `SitepingStore` interface. To create a new adapter (e.g. Drizzle, Supabase):
-
-1. Implement the `SitepingStore` interface (6 methods)
-2. Throw `StoreNotFoundError` on missing records in `updateFeedback` / `deleteFeedback`
-3. Validate with the conformance test suite:
-
-```ts
-import { testSitepingStore } from '@siteping/core/testing'
-import { MyStore } from '../src/index.js'
-
-testSitepingStore(() => new MyStore())
-```
-
-## Related Packages
-
-| Package | Description |
-|---------|-------------|
-| [`@siteping/widget`](https://www.npmjs.com/package/@siteping/widget) | Browser feedback widget |
-| [`@siteping/adapter-prisma`](https://www.npmjs.com/package/@siteping/adapter-prisma) | Server-side Prisma adapter |
-| [`@siteping/adapter-localstorage`](https://www.npmjs.com/package/@siteping/adapter-localstorage) | Client-side localStorage adapter |
-| [`@siteping/cli`](https://www.npmjs.com/package/@siteping/cli) | CLI for project setup |
+Writing your own adapter? This store passes the shared 40-test conformance suite (`testSitepingStore` from `@siteping/core/testing`) — yours should too.
 
 ## License
 

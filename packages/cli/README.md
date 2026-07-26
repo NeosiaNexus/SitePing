@@ -1,12 +1,12 @@
 [![npm version](https://img.shields.io/npm/v/@siteping/cli)](https://www.npmjs.com/package/@siteping/cli)
-[![Live Demo](https://img.shields.io/badge/demo-try%20it%20live-22c55e)](https://siteping.dev/demo)
+[![Docs](https://img.shields.io/badge/docs-siteping.dev-0066ff)](https://siteping.dev/docs/cli)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
 
 # @siteping/cli
 
-CLI tool to set up [Siteping](https://github.com/NeosiaNexus/SitePing) in your project — scaffolds Prisma schema and API routes.
+Set up and check [SitePing](https://github.com/NeosiaNexus/SitePing) from the command line. Single self-contained binary, zero runtime dependencies, Node ≥ 20.
 
-Part of the [@siteping](https://github.com/NeosiaNexus/SitePing) monorepo — **[try the live demo](https://siteping.dev/demo)**.
+**[Documentation](https://siteping.dev/docs/cli)**
 
 ## Usage
 
@@ -14,59 +14,22 @@ Part of the [@siteping](https://github.com/NeosiaNexus/SitePing) monorepo — **
 npx @siteping/cli init
 ```
 
+> Always `npx @siteping/cli …` — there is no `siteping` package on npm, so `npx siteping` only works once `@siteping/cli` is installed locally.
+
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `init` | Interactive setup: Prisma schema + API route generation |
-| `sync` | Non-interactive Prisma schema sync (CI-friendly) |
-| `status` | Diagnostic check of your Siteping integration |
-| `doctor` | Test API endpoint connectivity |
+| Command | What it does |
+|---------|--------------|
+| `init` | Interactive setup: adds the Prisma models and generates the Next.js App Router API route |
+| `sync [--schema <path>]` | Non-interactive, CI-friendly schema merge — creates/updates the SitePing models, never touches your own fields |
+| `status [--schema <path>]` | Health report: schema, API route, package, and widget integration (exits 1 when something's missing) |
+| `doctor --url <url> --endpoint <path>` | One HTTP request against your running server to confirm a SitePing handler answers |
 
-### `init`
+Commit before `sync` — it re-prints the whole schema file, so formatting normalizes across your own models too.
 
-Walks you through setting up Siteping:
-1. Detects your `prisma/schema.prisma`
-2. Merges `SitepingFeedback` and `SitepingAnnotation` models (idempotent)
-3. Generates the Next.js App Router API route
+## Documentation
 
-```bash
-npx @siteping/cli init
-npx prisma db push
-```
-
-### `sync`
-
-Non-interactive schema sync, useful for CI:
-
-```bash
-npx @siteping/cli sync --schema prisma/schema.prisma
-```
-
-### `status`
-
-Checks your integration:
-
-```bash
-npx @siteping/cli status
-```
-
-### `doctor`
-
-Tests API connectivity:
-
-```bash
-npx @siteping/cli doctor --url http://localhost:3000
-```
-
-## Related Packages
-
-| Package | Description |
-|---------|-------------|
-| [`@siteping/widget`](https://www.npmjs.com/package/@siteping/widget) | Browser feedback widget |
-| [`@siteping/adapter-prisma`](https://www.npmjs.com/package/@siteping/adapter-prisma) | Server-side Prisma adapter |
-| [`@siteping/adapter-memory`](https://www.npmjs.com/package/@siteping/adapter-memory) | In-memory adapter (testing, demos) |
-| [`@siteping/adapter-localstorage`](https://www.npmjs.com/package/@siteping/adapter-localstorage) | Client-side localStorage adapter |
+Flags, exit codes, non-TTY behavior, and what each command writes: **[siteping.dev/docs/cli](https://siteping.dev/docs/cli)**.
 
 ## License
 

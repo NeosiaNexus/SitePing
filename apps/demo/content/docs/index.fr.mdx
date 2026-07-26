@@ -1,0 +1,26 @@
+---
+title: SitePing, c'est quoi ?
+description: Widget de feedback client open-source — annotations ancrées au DOM, auto-hébergé, zéro abonnement.
+---
+
+SitePing permet à vos clients de laisser leurs retours **directement sur le site que vous construisez pour eux**. Ils dessinent un rectangle sur la page (ou font un clic droit), tapent un commentaire, et vous le recevez épinglé à l'élément exact — fini les captures d'écran collées dans des e-mails, fini les « le bouton en haut… non, l'autre ».
+
+C'est pensé pour les freelances et agences qui font relire des sites en cours de construction à leurs clients, et ça remplace Marker.io ou BugHerd par un outil qui vous appartient : licence MIT, auto-hébergé, votre base de données, zéro abonnement.
+
+## Comment ça marche
+
+1. **Vous ajoutez le widget** au site en relecture — un `npm install`, un appel `initSiteping()`. Par défaut il n'apparaît qu'en développement et staging, jamais aux visiteurs de la prod.
+2. **Votre client annote** — un rectangle dessiné, ou un clic droit n'importe où. Chaque commentaire est ancré à l'élément du DOM visé, et survit donc aux déploiements et aux changements de mise en page. En option : une capture d'écran de la zone annotée, les diagnostics console/réseau.
+3. **Vous triez** — dans le dashboard prêt à l'emploi (une inbox façon Linear, pilotable au clavier) ou via l'API HTTP. Les statuts suivent `open` → `in_progress` → `resolved` / `wont_fix`.
+
+## Les briques
+
+| Package | Ce que c'est |
+|---|---|
+| [`@siteping/widget`](/fr/docs/widget) | Le widget que vos clients utilisent (~30 KB gzip, agnostique du framework, hook React inclus) |
+| [`@siteping/dashboard`](/fr/docs/dashboard) | L'inbox de triage — un composant React, ou un hook headless |
+| [`@siteping/adapter-prisma`](/fr/docs/adapters/prisma) | L'adapter serveur de production : un endpoint, auth, CORS, webhooks |
+| [`@siteping/adapter-memory`](/fr/docs/adapters/memory) / [`-localstorage`](/fr/docs/adapters/localstorage) | Des stores pour les tests, démos et prototypes sans serveur |
+| [`@siteping/cli`](/fr/docs/cli) | `init`, `sync`, `status`, `doctor` — installation et vérifications |
+
+Prêt ? Le [démarrage rapide](/fr/docs/quickstart) prend environ trois minutes — ou essayez tout en direct dans la [démo](/demo), qui tourne avec ce widget.

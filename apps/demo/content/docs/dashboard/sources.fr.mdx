@@ -1,0 +1,51 @@
+---
+title: Sources de données
+description: Endpoint, store ou entièrement personnalisée — comment l'inbox parle à vos données.
+---
+
+L'inbox lit et écrit à travers une petite abstraction, résolue dans cet ordre de priorité : `source` > `store` > `endpoint`.
+
+## Mode endpoint (le défaut en production)
+
+```tsx
+<SitepingInbox projects="mon-projet" endpoint="/api/siteping" apiKey={KEY} />
+```
+
+Parle à votre [endpoint d'adapter](/fr/docs/adapters/prisma) : `GET` pour les listes, `PATCH` pour les statuts, `DELETE` pour les suppressions, toujours avec `cache: "no-store"`. Les erreurs arrivent typées par `code` (`AUTH` pour 401/403, `VALIDATION` pour les autres 4xx, `SERVER` pour les 5xx, `NETWORK` pour les échecs de fetch). Il n'y a volontairement **aucun réessai** — une interface de tri doit vous dire les choses tout de suite.
+
+## Mode store
+
+```tsx
+<SitepingInbox projects="ma-demo" store={new LocalStorageStore()} />
+```
+
+Fonctionne avec n'importe quel `SitepingStore` en mémoire du processus — les mêmes stores que le mode côté client du widget. Les démos et prototypes n'ont jamais besoin de serveur.
+
+## Source personnalisée
+
+Pour tRPC, GraphQL ou les server actions, implémentez le contrat `InboxSource` à trois méthodes et passez-le en `source` :
+
+```ts
+import type { InboxSource } from "@siteping/dashboard";
+
+const source: InboxSource = {
+  async list(query) {
+    // query : projectName, page, limit, status?, type?, search?, url?, urlPattern?
+    const { feedbacks, total } = await trpc.siteping.list.query(query);
+    // Important : createdAt / updatedAt / resolvedAt doivent être de vrais objets Date
+    return { feedbacks: feedbacks.map(reviveDates), total };
+  },
+  async setStatus(id, projectName, status) {
+    return reviveDates(await trpc.siteping.setStatus.mutate({ id, projectName, status }));
+  },
+  async remove(id, projectName) {
+    await trpc.siteping.remove.mutate({ id, projectName });
+  },
+};
+```
+
+Les deux briques qui sous-tendent les modes intégrés sont également exportées — `createEndpointSource({ endpoint, apiKey, headers })` et `createStoreSource(store)` — pour que vous puissiez les envelopper, les composer ou les décorer (par exemple ajouter de la journalisation autour du client HTTP) plutôt que de repartir de zéro.
+
+## Des types sans dépendance supplémentaire
+
+`@siteping/dashboard` réexporte les types et helpers partagés, donc vous n'avez jamais besoin d'installer autre chose : `FeedbackRecord`, `FeedbackStatus`, `FeedbackType`, `SitepingStore`, `FEEDBACK_STATUSES`, `FEEDBACK_TYPES` et `isClosedStatus()`.

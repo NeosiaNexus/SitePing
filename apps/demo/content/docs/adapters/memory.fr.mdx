@@ -1,0 +1,32 @@
+---
+title: Adapter memory
+description: Un store en mémoire du processus pour les tests, previews et démos jetables.
+---
+
+`@siteping/adapter-memory` garde tout dans un simple tableau. Aucune persistance, aucune configuration — redémarrez le processus et tout a disparu.
+
+```bash
+npm i @siteping/adapter-memory
+```
+
+```ts
+import { MemoryStore } from "@siteping/adapter-memory";
+
+const store = new MemoryStore();
+
+// Côté serveur, derrière le handler HTTP :
+createSitepingHandler({ store });
+
+// Ou côté client, directement dans le widget :
+initSiteping({ store, projectName: "preview" });
+```
+
+## Notes de comportement
+
+- **Les plus récents d'abord** — les nouveaux feedbacks sont ajoutés en tête, donc les listes reviennent en ordre antichronologique sans tri.
+- **Les envois en double sont absorbés** — créer un feedback avec un `clientId` existant renvoie l'enregistrement déjà stocké au lieu d'échouer. C'est ce qui rend la file de réessai du widget sûre.
+- **Les enregistrements sont renvoyés par référence.** Si vous mutez un objet que le store vous a donné, vous mutez le store. Clonez avant de modifier (`structuredClone(feedback)`) si vous avez besoin d'une copie de travail.
+- **Sans limite** — il n'y a ni plafond de taille ni éviction. Parfait pour les tests ; ne le laissez pas accumuler des feedbacks sur un serveur de longue durée.
+- `clear()` vide le store et réinitialise la numérotation des id — pratique entre deux cas de test.
+
+Les id inconnus lèvent `StoreNotFoundError` depuis `updateFeedback` / `deleteFeedback` ; les classes d'erreur sont réexportées par le package, vous pouvez donc les attraper sans importer core.

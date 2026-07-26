@@ -1,0 +1,28 @@
+---
+title: Comment fonctionne l'ancrage
+description: Pourquoi les annotations survivent aux déploiements — sélecteurs, replis et limites assumées.
+---
+
+Quand un client dessine un rectangle, SitePing ne stocke pas des coordonnées à l'écran — celles-ci cassent au premier changement de mise en page. Il ancre l'annotation à l'**élément du DOM** situé dessous, avec des replis en couches :
+
+1. **Un sélecteur CSS minimal** pour l'élément, calculé au moment de la capture.
+2. **Un XPath** vers le même élément, comme premier repli.
+3. **Le contexte textuel** — un extrait du texte de l'élément et de ce qui l'entoure — en dernier recours, quand les deux sélecteurs sont périmés.
+
+Le rectangle lui-même est stocké **en pourcentages de la boîte englobante de l'élément d'ancrage**, pas de la fenêtre. Si l'élément se déplace, grandit ou se réagence, l'annotation le suit.
+
+À côté de l'ancre, chaque annotation enregistre le contexte de capture (taille de la fenêtre, position de défilement, ratio de pixels) pour que les positions puissent être interprétées fidèlement plus tard.
+
+## Ce que ça encaisse — et ce que ça n'encaisse pas
+
+**Bien encaissé :** les modifications de contenu autour de l'élément, les décalages de mise en page, le réagencement responsive, l'ajout ou la suppression d'autres éléments, et la plupart des refactorisations qui gardent l'élément reconnaissable.
+
+**Se dégrade :** la suppression de l'élément (plus rien à quoi s'ancrer), les réécritures lourdes qui changent d'un coup la balise, le texte et la position, et le contenu à l'intérieur d'un **Shadow DOM**, que le moteur d'ancrage ne traverse pas aujourd'hui (suivi dans [#177](https://github.com/NeosiaNexus/SitePing/issues/177)).
+
+Quand une ancre ne peut pas être résolue lors d'une visite ultérieure, le marqueur est masqué pour cette page plutôt qu'affiché au mauvais endroit — un marqueur manquant est déroutant, un marqueur qui ment est pire. Le feedback lui-même (message, capture, métadonnées) n'est jamais perdu : il reste visible dans le panneau et dans le dashboard.
+
+## Aider les ancres à vous aider
+
+- Des attributs `id` stables sur les conteneurs importants rendent le sélecteur CSS court et durable.
+- Évitez d'annoter des éléments d'interface éphémères (toasts, squelettes de chargement) — par construction, l'élément aura disparu à la visite suivante.
+- Sur les routes dynamiques (`/produits/42`), utilisez [`getPageScope`](/fr/docs/widget/configuration#cadrage-par-page) avec un `urlPattern` pour que les feedbacks se regroupent par gabarit plutôt que par URL individuelle.
