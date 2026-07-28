@@ -1,6 +1,6 @@
 {
   "name": "@siteping/dashboard",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Linear-style triage inbox React component for SitePing feedback",
   "type": "module",
   "sideEffects": false,
