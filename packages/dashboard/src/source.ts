@@ -1,15 +1,14 @@
 import {
+  errorFromResponse,
   type FeedbackPage,
   type FeedbackQuery,
   type FeedbackRecord,
   type FeedbackResponse,
   type FeedbackResponseList,
   type FeedbackStatus,
-  SitepingAuthError,
-  SitepingError,
-  SitepingNetworkError,
+  feedbackQueryToSearchParams,
+  networkErrorFromException,
   type SitepingStore,
-  SitepingValidationError,
   toFeedbackUpdate,
 } from "@siteping/core";
 import type { EndpointSourceOptions, InboxSource } from "./types.js";
@@ -32,33 +31,6 @@ function reviveRecord(response: FeedbackResponse): FeedbackRecord {
       createdAt: new Date(annotation.createdAt),
     })),
   };
-}
-
-// ---------------------------------------------------------------------------
-// Error mapping — mirrors the widget api-client (minus retries: the dashboard
-// is interactive, the user retries)
-// ---------------------------------------------------------------------------
-
-/**
- * Map a non-OK Response to the appropriate typed error.
- *   - 401 / 403 → `SitepingAuthError`
- *   - 4xx       → `SitepingValidationError`
- *   - 5xx (or anything else) → generic `SitepingError` (code `"SERVER"`)
- */
-async function errorFromResponse(response: Response, label: string): Promise<SitepingError> {
-  const text = await response.text().catch(() => "Unknown error");
-  const detail = text ? `${response.status} ${text}` : `${response.status}`;
-  const message = `${label}: ${detail}`;
-  if (response.status === 401 || response.status === 403) return new SitepingAuthError(message);
-  if (response.status >= 400 && response.status < 500) return new SitepingValidationError(message);
-  return new SitepingError(message, "SERVER", false);
-}
-
-/** Normalise an exception thrown by `fetch` into a `SitepingNetworkError`. */
-function networkErrorFromException(error: unknown, label: string): SitepingNetworkError {
-  if (error instanceof SitepingNetworkError) return error;
-  const detail = error instanceof Error ? error.message : String(error);
-  return new SitepingNetworkError(`${label}: ${detail}`);
 }
 
 /** Parse a JSON body and assert its TypeScript shape — server-side Zod is the source of truth. */
@@ -105,14 +77,9 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
 
   return {
     async list(query: FeedbackQuery): Promise<FeedbackPage> {
-      const params = new URLSearchParams({ projectName: query.projectName });
-      if (query.page) params.set("page", String(query.page));
-      if (query.limit) params.set("limit", String(query.limit));
-      if (query.status) params.set("status", query.status);
-      if (query.type) params.set("type", query.type);
-      if (query.search) params.set("search", query.search);
-      if (query.url) params.set("url", query.url);
-      if (query.urlPattern) params.set("urlPattern", query.urlPattern);
+      // Shared serializer from core — the previous local copy silently
+      // dropped the `statuses` bucket filter.
+      const params = feedbackQueryToSearchParams(query);
 
       const response = await request("Failed to fetch feedbacks", `${endpoint}?${params.toString()}`, {
         method: "GET",

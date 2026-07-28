@@ -12,7 +12,7 @@ import { ApiClient, flushRetryQueue, type WidgetClient } from "./api-client.js";
 import { MOBILE_BREAKPOINT, PAGE_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { ConsoleBuffer } from "./diagnostics/console-buffer.js";
 import { NetworkBuffer } from "./diagnostics/network-buffer.js";
-import { EventBus, type PublicWidgetEvents, type WidgetEvents } from "./events.js";
+import { EventBus, type WidgetEvents } from "./events.js";
 import { Fab } from "./fab.js";
 import { createFocusTracker } from "./focus-tracker.js";
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
@@ -239,7 +239,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   const colors = buildThemeColors(config.accentColor, config.theme);
   const bus = new EventBus<WidgetEvents>();
-  const publicBus = new EventBus<PublicWidgetEvents>();
+  const publicBus = new EventBus<SitepingPublicEvents>();
 
   // Client-side mode (store) vs HTTP mode (endpoint).
   // The earlier guard guarantees one of `store` / `endpoint` is set; we
@@ -262,11 +262,20 @@ export function launch(config: SitepingConfig): SitepingInstance {
   if (config.onAnnotationStart) bus.on("annotation:start", config.onAnnotationStart);
   if (config.onAnnotationEnd) bus.on("annotation:end", config.onAnnotationEnd);
 
-  // Bridge internal events to public bus
-  bus.on("feedback:sent", (fb) => publicBus.emit("feedback:sent", fb));
-  bus.on("feedback:deleted", (id) => publicBus.emit("feedback:deleted", id));
-  bus.on("open", () => publicBus.emit("panel:open"));
-  bus.on("close", () => publicBus.emit("panel:close"));
+  // Bridge internal events to the public bus. The mapped-object type forces
+  // one entry per public event — adding a key to SitepingPublicEvents
+  // without bridging it here is a compile error, so `instance.on` can never
+  // silently miss an event.
+  const publicBridges: { [K in keyof SitepingPublicEvents]: () => void } = {
+    "feedback:sent": () => bus.on("feedback:sent", (fb) => publicBus.emit("feedback:sent", fb)),
+    "feedback:deleted": () => bus.on("feedback:deleted", (id) => publicBus.emit("feedback:deleted", id)),
+    "feedback:error": () => bus.on("feedback:error", (err) => publicBus.emit("feedback:error", err)),
+    "panel:open": () => bus.on("open", () => publicBus.emit("panel:open")),
+    "panel:close": () => bus.on("close", () => publicBus.emit("panel:close")),
+    "annotation:start": () => bus.on("annotation:start", () => publicBus.emit("annotation:start")),
+    "annotation:end": () => bus.on("annotation:end", () => publicBus.emit("annotation:end")),
+  };
+  for (const wire of Object.values(publicBridges)) wire();
 
   // Debug logging for key lifecycle events
   bus.on("open", () => log("Panel opened"));
@@ -293,7 +302,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   } else {
     const style = document.createElement("style");
     style.textContent = buildStyles(colors);
-    (shadow as unknown as DocumentFragment).appendChild(style);
+    shadow.appendChild(style);
   }
 
   document.body.appendChild(host);
@@ -329,8 +338,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // Lazy-load Panel on first use (FAB click, instance.open, etc.) to keep the
   // initial bundle small. Panel + sub-modules are ~14 KB gzip on their own.
   // Memoize the import promise so subsequent calls reuse the same instance.
+  // The promise honestly resolves to null when the widget was destroyed
+  // before the panel chunk landed — callers already null-guard.
   let panelInstance: PanelType | null = null;
-  let panelPromise: Promise<PanelType> | null = null;
+  let panelPromise: Promise<PanelType | null> | null = null;
   let destroyed = false;
   // Monotonic token guarding the launcher's own marker renders (initial load +
   // doRefresh). The panel guards its own renders with an AbortController; the
@@ -344,7 +355,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     if (panelInstance) return panelInstance;
     if (!panelPromise) {
       panelPromise = import("./panel.js").then((mod) => {
-        if (destroyed) return null as unknown as PanelType;
+        if (destroyed) return null;
         panelInstance = new mod.Panel(shadow, colors, bus, client, config.projectName, markers, t, locale, {
           getScope,
           scopeAnnotationsByUrl,
@@ -746,8 +757,6 @@ export function launch(config: SitepingConfig): SitepingInstance {
     refresh: () => {
       void doRefresh().catch(() => {});
     },
-    // `PublicWidgetEvents` is a structural alias of `SitepingPublicEvents`, so
-    // these on/off forwarders compose without any runtime cast.
     on: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) =>
       publicBus.on(event, listener),
     off: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) => {

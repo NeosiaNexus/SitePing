@@ -375,8 +375,18 @@ export type SitepingUnsubscribe = () => void;
 export interface SitepingPublicEvents {
   "feedback:sent": [FeedbackResponse];
   "feedback:deleted": [FeedbackResponse["id"]];
+  /**
+   * A feedback API call failed. Same payload contract as
+   * `SitepingConfig.onError` — a `SitepingError` subclass in HTTP mode,
+   * possibly a raw `Error` in store mode.
+   */
+  "feedback:error": [Error];
   "panel:open": [];
   "panel:close": [];
+  /** The user started drawing an annotation. */
+  "annotation:start": [];
+  /** The user finished drawing an annotation. */
+  "annotation:end": [];
 }
 
 // ---------------------------------------------------------------------------

@@ -4,11 +4,18 @@ export { FEEDBACK_STATUSES, FEEDBACK_TYPES, isClosedStatus } from "@siteping/cor
 export { SitepingInbox } from "./components/inbox.js";
 export { registerLocale } from "./i18n/index.js";
 export { createEndpointSource, createStoreSource } from "./source.js";
+export type { InboxTheme, ResolvedTheme } from "./theme.js";
 export type {
+  EndpointSourceOptions,
+  InboxCustomSourceOptions,
+  InboxEndpointOptions,
+  InboxSharedOptions,
   InboxSource,
   InboxState,
   InboxStatusFilter,
+  InboxStoreOptions,
   InboxTypeFilter,
+  SitepingInboxPresentationProps,
   SitepingInboxProps,
   UseSitepingInboxOptions,
 } from "./types.js";

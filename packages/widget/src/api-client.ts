@@ -1,50 +1,17 @@
 import {
+  errorFromResponse,
   type FeedbackPayload,
+  type FeedbackQuery,
   type FeedbackResponse,
   type FeedbackResponseList,
-  type FeedbackStatus,
-  type FeedbackType,
-  SitepingAuthError,
-  SitepingError,
+  feedbackQueryToSearchParams,
+  hasOwn,
+  networkErrorFromException,
+  type Prettify,
   type SitepingHeadersOption,
   SitepingNetworkError,
-  SitepingValidationError,
 } from "@siteping/core";
 import type { Identity } from "./identity.js";
-
-/**
- * Map a non-OK Response to the appropriate typed error.
- *   - 401 / 403 → `SitepingAuthError`
- *   - 4xx       → `SitepingValidationError`
- *   - 5xx (or anything else) → generic `SitepingError`
- *
- * We consume the response body via `.text()` so the caller can keep the
- * server-supplied message in the thrown error. `text()` is awaited inside
- * a try/catch because some upstreams return `Content-Length: 0` with a
- * non-text type and `.text()` rejects.
- */
-async function errorFromResponse(response: Response, label: string): Promise<SitepingError> {
-  // Match the legacy fallback string ("Unknown error") so host apps that
-  // already grep error messages don't break on the migration.
-  const text = await response.text().catch(() => "Unknown error");
-  const detail = text ? `${response.status} ${text}` : `${response.status}`;
-  const message = `${label}: ${detail}`;
-  if (response.status === 401 || response.status === 403) return new SitepingAuthError(message);
-  if (response.status >= 400 && response.status < 500) return new SitepingValidationError(message);
-  return new SitepingError(message, "SERVER", false);
-}
-
-/**
- * Normalise an exception thrown by `fetch` (or our timeout AbortController)
- * into a `SitepingNetworkError`. We treat AbortErrors as network failures
- * because in our code path they always come from the internal timeout, not
- * a user-driven cancellation.
- */
-function networkErrorFromException(error: unknown, label: string): SitepingNetworkError {
-  if (error instanceof SitepingNetworkError) return error;
-  const detail = error instanceof Error ? error.message : String(error);
-  return new SitepingNetworkError(`${label}: ${detail}`);
-}
 
 /**
  * Abstract client interface used by the widget internals.
@@ -60,25 +27,13 @@ export interface WidgetClient {
   deleteAllFeedbacks(projectName: string): Promise<void>;
 }
 
-/** Options accepted by `WidgetClient.getFeedbacks`. */
-export interface GetFeedbacksOptions {
-  page?: number;
-  limit?: number;
-  type?: FeedbackType;
-  /** Exact single-status filter. For "any of a set" (bucket) semantics, use `statuses`. */
-  status?: FeedbackStatus;
-  /**
-   * Bucket status filter — matches feedbacks whose status is any of these
-   * values. Serialized to the wire as `statuses=<csv>` and wins over the exact
-   * `status` filter server-side. Used by the panel's binary Open/Resolved tabs.
-   */
-  statuses?: readonly FeedbackStatus[];
-  search?: string;
-  /** Restrict to feedbacks created on this exact URL (path). */
-  url?: string;
-  /** Restrict to feedbacks created on this URL pattern (e.g. `/orders/:orderId`). */
-  urlPattern?: string;
-}
+/**
+ * Options accepted by `WidgetClient.getFeedbacks` — core's `FeedbackQuery`
+ * minus the `projectName` the client already knows. Derived, so a new query
+ * filter added to core flows to both the HTTP and store clients
+ * automatically.
+ */
+export type GetFeedbacksOptions = Prettify<Omit<FeedbackQuery, "projectName">>;
 
 /** Auth options for `ApiClient` / `flushRetryQueue` (HTTP mode). */
 export interface ApiClientAuth {
@@ -172,11 +127,26 @@ async function withRetryLock<T>(callback: () => T | Promise<T>): Promise<T> {
   return callback();
 }
 
+/**
+ * Shape-check one queue element — localStorage can hold tampered or legacy
+ * entries, and a malformed one used to abort the whole flush via the outer
+ * catch. Bad entries are dropped individually instead.
+ */
+function isRetryEntry(value: unknown): value is RetryEntry {
+  return (
+    hasOwn(value, "endpoint") &&
+    typeof value.endpoint === "string" &&
+    hasOwn(value, "payload") &&
+    typeof value.payload === "object" &&
+    value.payload !== null
+  );
+}
+
 function readQueue(): RetryEntry[] {
   const raw = localStorage.getItem(RETRY_QUEUE_KEY);
   if (!raw) return [];
   const parsed: unknown = JSON.parse(raw);
-  return Array.isArray(parsed) ? (parsed as RetryEntry[]) : [];
+  return Array.isArray(parsed) ? parsed.filter(isRetryEntry) : [];
 }
 
 function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
@@ -337,15 +307,7 @@ export class ApiClient implements WidgetClient {
   }
 
   async getFeedbacks(projectName: string, options?: GetFeedbacksOptions): Promise<FeedbackResponseList> {
-    const params = new URLSearchParams({ projectName });
-    if (options?.page) params.set("page", String(options.page));
-    if (options?.limit) params.set("limit", String(options.limit));
-    if (options?.type) params.set("type", options.type);
-    if (options?.status) params.set("status", options.status);
-    if (options?.statuses?.length) params.set("statuses", options.statuses.join(","));
-    if (options?.search) params.set("search", options.search);
-    if (options?.url) params.set("url", options.url);
-    if (options?.urlPattern) params.set("urlPattern", options.urlPattern);
+    const params = feedbackQueryToSearchParams({ projectName, ...options });
 
     let response: Response;
     try {
