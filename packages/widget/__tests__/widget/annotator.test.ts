@@ -54,43 +54,47 @@ const popupMocks = vi.hoisted(() => {
 });
 
 vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
-  Popup: vi.fn().mockImplementation(() => ({
-    show: vi
-      .fn()
-      .mockImplementation((_rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
-        popupMocks.showCount += 1;
-        popupMocks.isOpenState = true;
-        // The real popup awaits its `onSubmit` callback before resolving so
-        // the spinner stays visible until feedback:sent or feedback:error
-        // arrives. Tests don't run a launcher, so we fire-and-forget the
-        // callback (its settlement is captured on `lastSubmitPromise` so
-        // tests can await it) and resolve show() with the same result the
-        // real popup would have produced on success.
-        popupMocks.capturedOnSubmit = onSubmit ?? null;
-        if (popupMocks.nextResult && onSubmit) {
-          const submit = onSubmit(popupMocks.nextResult);
-          popupMocks.lastSubmitPromise = submit;
-          void submit.catch(() => {});
-        }
-        // `keepShowPending` mirrors the real popup keeping `show()` unresolved
-        // while `runSubmission` is in flight — the overlay therefore stays up,
-        // which is exactly the window the serialization guard must cover.
-        if (popupMocks.keepShowPending) return new Promise(() => {});
-        // Lifecycle divergence from the real Popup: this flips isOpen false
-        // while `lastSubmitPromise` may still be pending, whereas the real
-        // popup stays open until `onSubmit` settles. The real-popup suite
-        // (annotator-popup-reentry.test.ts) pins the true invariant.
+  // Regular function (not an arrow) — vitest 4 requires a constructable
+  // implementation for mocks the source instantiates with `new`.
+  Popup: vi.fn(function (this: unknown) {
+    return {
+      show: vi
+        .fn()
+        .mockImplementation((_rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
+          popupMocks.showCount += 1;
+          popupMocks.isOpenState = true;
+          // The real popup awaits its `onSubmit` callback before resolving so
+          // the spinner stays visible until feedback:sent or feedback:error
+          // arrives. Tests don't run a launcher, so we fire-and-forget the
+          // callback (its settlement is captured on `lastSubmitPromise` so
+          // tests can await it) and resolve show() with the same result the
+          // real popup would have produced on success.
+          popupMocks.capturedOnSubmit = onSubmit ?? null;
+          if (popupMocks.nextResult && onSubmit) {
+            const submit = onSubmit(popupMocks.nextResult);
+            popupMocks.lastSubmitPromise = submit;
+            void submit.catch(() => {});
+          }
+          // `keepShowPending` mirrors the real popup keeping `show()` unresolved
+          // while `runSubmission` is in flight — the overlay therefore stays up,
+          // which is exactly the window the serialization guard must cover.
+          if (popupMocks.keepShowPending) return new Promise(() => {});
+          // Lifecycle divergence from the real Popup: this flips isOpen false
+          // while `lastSubmitPromise` may still be pending, whereas the real
+          // popup stays open until `onSubmit` settles. The real-popup suite
+          // (annotator-popup-reentry.test.ts) pins the true invariant.
+          popupMocks.isOpenState = false;
+          return Promise.resolve(popupMocks.nextResult);
+        }),
+      destroy: vi.fn().mockImplementation(() => {
+        popupMocks.destroyCount += 1;
         popupMocks.isOpenState = false;
-        return Promise.resolve(popupMocks.nextResult);
       }),
-    destroy: vi.fn().mockImplementation(() => {
-      popupMocks.destroyCount += 1;
-      popupMocks.isOpenState = false;
-    }),
-    get isOpen() {
-      return popupMocks.isOpenState;
-    },
-  })),
+      get isOpen() {
+        return popupMocks.isOpenState;
+      },
+    };
+  }),
 }));
 
 // Mock the screenshot module — jsdom can't drive html2canvas. The annotator
@@ -553,7 +557,7 @@ describe("Annotator", () => {
         expect(completeListener).toHaveBeenCalledOnce();
       });
 
-      const data = completeListener.mock.calls[0][0];
+      const data = completeListener.mock.calls[0]![0];
       expect(data.type).toBe("bug");
       expect(data.message).toBe("Test message");
       expect(data.annotation).toBeDefined();
@@ -591,7 +595,7 @@ describe("Annotator", () => {
       expect(cancelButtons).toHaveLength(1);
 
       // The cancel button is the LAST one (most recently added by activate())
-      const cancelBtn = cancelButtons[cancelButtons.length - 1];
+      const cancelBtn = cancelButtons[cancelButtons.length - 1]!;
 
       // Simulate clicking by dispatching the event on the button
       const endListener = vi.fn();
@@ -629,7 +633,7 @@ describe("Annotator", () => {
         expect(completeListener).toHaveBeenCalledOnce();
       });
 
-      const data = completeListener.mock.calls[0][0];
+      const data = completeListener.mock.calls[0]![0];
       expect(data.annotation.rect).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
 
       target.remove();
@@ -751,7 +755,7 @@ describe("Annotator", () => {
           expect(completeListener).toHaveBeenCalledOnce();
         });
 
-        const data = completeListener.mock.calls[0][0];
+        const data = completeListener.mock.calls[0]![0];
         expect(data.annotation.rect).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
         expect(generateAnchor).toHaveBeenLastCalledWith(pageButton);
       } finally {
@@ -882,7 +886,7 @@ describe("Annotator", () => {
         expect(completeListener).toHaveBeenCalledOnce();
       });
 
-      expect(completeListener.mock.calls[0][0].type).toBe("bug");
+      expect(completeListener.mock.calls[0]![0].type).toBe("bug");
     });
   });
 
@@ -1473,7 +1477,7 @@ describe("Annotator", () => {
           expect(completeListener).toHaveBeenCalledOnce();
         });
 
-        const data = completeListener.mock.calls[0][0];
+        const data = completeListener.mock.calls[0]![0];
         expect(data.screenshotDataUrl).toBe("data:image/jpeg;base64,CAP");
         expect(data.screenshotRegion).toEqual(capture.region);
         // Captured with the drawn rect's viewport geometry.
@@ -1504,7 +1508,7 @@ describe("Annotator", () => {
           expect(completeListener).toHaveBeenCalledOnce();
         });
 
-        const data = completeListener.mock.calls[0][0];
+        const data = completeListener.mock.calls[0]![0];
         expect(data.screenshotDataUrl).toBeNull();
         expect(data.screenshotRegion).toBeNull();
       } finally {
@@ -1525,7 +1529,7 @@ describe("Annotator", () => {
       });
 
       expect(screenshotMocks.captureAnnotatedScreenshot).not.toHaveBeenCalled();
-      const data = completeListener.mock.calls[0][0];
+      const data = completeListener.mock.calls[0]![0];
       expect(data.screenshotDataUrl).toBeNull();
       expect(data.screenshotRegion).toBeNull();
     });
@@ -1562,7 +1566,7 @@ describe("Annotator", () => {
         // One capture, both submissions carry the same cached pair — the
         // user is never punished with a second html2canvas run.
         expect(screenshotMocks.captureAnnotatedScreenshot).toHaveBeenCalledOnce();
-        const second = completeListener.mock.calls[1][0];
+        const second = completeListener.mock.calls[1]![0];
         expect(second.screenshotDataUrl).toBe("data:image/jpeg;base64,CAP");
         expect(second.screenshotRegion).toEqual(capture.region);
       } finally {

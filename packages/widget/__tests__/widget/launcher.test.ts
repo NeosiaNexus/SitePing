@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { SitepingConfig } from "@siteping/core";
+import type { SitepingConfig, SitepingHttpConfig, SitepingStore } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withViewportWidth } from "../helpers.js";
 
@@ -30,13 +30,15 @@ const { flushRetryQueueMock } = vi.hoisted(() => ({
 }));
 flushRetryQueueMock.mockResolvedValue(undefined);
 vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
-  ApiClient: vi.fn().mockImplementation(() => ({
-    sendFeedback: vi.fn().mockResolvedValue({}),
-    getFeedbacks: vi.fn().mockResolvedValue({ feedbacks: [], total: 0 }),
-    resolveFeedback: vi.fn(),
-    deleteFeedback: vi.fn(),
-    deleteAllFeedbacks: vi.fn(),
-  })),
+  ApiClient: vi.fn(function (this: unknown) {
+    return {
+      sendFeedback: vi.fn().mockResolvedValue({}),
+      getFeedbacks: vi.fn().mockResolvedValue({ feedbacks: [], total: 0 }),
+      resolveFeedback: vi.fn(),
+      deleteFeedback: vi.fn(),
+      deleteAllFeedbacks: vi.fn(),
+    };
+  }),
   flushRetryQueue: flushRetryQueueMock,
 }));
 
@@ -49,41 +51,44 @@ const annotatorCapture: {
 } = { bus: null, startInstantAnnotation: vi.fn().mockResolvedValue(undefined) };
 
 vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
-  Annotator: vi.fn().mockImplementation(
-    (
-      _colors: unknown,
-      bus: {
-        emit: (event: string, ...args: unknown[]) => void;
-        on: (event: string, listener: (...args: unknown[]) => void) => () => void;
-      },
-    ) => {
-      annotatorCapture.bus = bus;
-      bus.on("annotation:start", () => {});
-      return {
-        destroy: vi.fn(),
-        refreshLabels: vi.fn(),
-        startInstantAnnotation: annotatorCapture.startInstantAnnotation,
-        isBusy: false,
-      };
+  Annotator: vi.fn(function (
+    this: unknown,
+    _colors: unknown,
+    bus: {
+      emit: (event: string, ...args: unknown[]) => void;
+      on: (event: string, listener: (...args: unknown[]) => void) => () => void;
     },
-  ),
+  ) {
+    annotatorCapture.bus = bus;
+    bus.on("annotation:start", () => {});
+    return {
+      destroy: vi.fn(),
+      refreshLabels: vi.fn(),
+      startInstantAnnotation: annotatorCapture.startInstantAnnotation,
+      isBusy: false,
+    };
+  }),
 }));
 
 vi.mock("../../src/markers.js", () => ({
-  MarkerManager: vi.fn().mockImplementation(() => ({
-    render: vi.fn(),
-    highlight: vi.fn(),
-    pinHighlight: vi.fn(),
-    addFeedback: vi.fn(),
-    destroy: vi.fn(),
-    count: 0,
-  })),
+  MarkerManager: vi.fn(function (this: unknown) {
+    return {
+      render: vi.fn(),
+      highlight: vi.fn(),
+      pinHighlight: vi.fn(),
+      addFeedback: vi.fn(),
+      destroy: vi.fn(),
+      count: 0,
+    };
+  }),
 }));
 
 vi.mock("../../src/tooltip.js", () => ({
-  Tooltip: vi.fn().mockImplementation(() => ({
-    destroy: vi.fn(),
-  })),
+  Tooltip: vi.fn(function (this: unknown) {
+    return {
+      destroy: vi.fn(),
+    };
+  }),
 }));
 
 vi.mock("../../src/styles/base.js", () => ({
@@ -96,7 +101,7 @@ import { launch } from "../../src/launcher.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function defaultConfig(overrides: Partial<SitepingConfig> = {}): SitepingConfig {
+function defaultConfig(overrides: Partial<Omit<SitepingHttpConfig, "store">> = {}): SitepingConfig {
   return {
     endpoint: "/api/siteping",
     projectName: "test-project",
@@ -706,7 +711,7 @@ describe("launch", () => {
         deleteAllFeedbacks: vi.fn(),
       };
       const instance = launch({
-        store: fakeStore as unknown as SitepingConfig["store"],
+        store: fakeStore as unknown as SitepingStore,
         projectName: "test",
         forceShow: true,
       });

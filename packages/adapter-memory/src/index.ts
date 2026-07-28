@@ -1,13 +1,11 @@
 import {
-  type AnnotationCreateInput,
-  type AnnotationRecord,
-  applyFeedbackFilters,
+  createCollectionStore,
   type FeedbackCreateInput,
+  type FeedbackPage,
   type FeedbackQuery,
   type FeedbackRecord,
   type FeedbackUpdateInput,
   type SitepingStore,
-  StoreNotFoundError,
 } from "@siteping/core";
 
 export type { SitepingStore } from "@siteping/core";
@@ -24,6 +22,10 @@ export { isStorePersistence, StoreDuplicateError, StoreNotFoundError, StorePersi
  * - **Demos** — lightweight store that needs no database or localStorage
  * - **Reference** — simplest possible adapter for contributors to study
  *
+ * All store semantics (clientId dedup, filtering, pagination, error
+ * contract) come from core's `createCollectionStore` engine — this class
+ * only supplies the storage primitives: an array, an id generator.
+ *
  * @example
  * ```ts
  * import { MemoryStore } from '@siteping/adapter-memory'
@@ -36,98 +38,40 @@ export class MemoryStore implements SitepingStore {
   private feedbacks: FeedbackRecord[] = [];
   private idCounter = 1;
 
-  private generateId(): string {
-    return `mem-${this.idCounter++}-${Date.now().toString(36)}`;
+  private readonly engine = createCollectionStore({
+    load: () => this.feedbacks,
+    persist: (next) => {
+      this.feedbacks = next;
+    },
+    generateId: () => `mem-${this.idCounter++}-${Date.now().toString(36)}`,
+  });
+
+  createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
+    return this.engine.createFeedback(data);
   }
 
-  async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
-    // ClientId dedup — idempotent
-    const existing = this.feedbacks.find((f) => f.clientId === data.clientId);
-    if (existing) return existing;
-
-    const now = new Date();
-    const feedbackId = this.generateId();
-
-    const annotations: AnnotationRecord[] = data.annotations.map((ann: AnnotationCreateInput) => ({
-      id: this.generateId(),
-      feedbackId,
-      cssSelector: ann.cssSelector,
-      xpath: ann.xpath,
-      textSnippet: ann.textSnippet,
-      elementTag: ann.elementTag,
-      elementId: ann.elementId ?? null,
-      textPrefix: ann.textPrefix,
-      textSuffix: ann.textSuffix,
-      fingerprint: ann.fingerprint,
-      neighborText: ann.neighborText,
-      anchorKey: ann.anchorKey ?? null,
-      xPct: ann.xPct,
-      yPct: ann.yPct,
-      wPct: ann.wPct,
-      hPct: ann.hPct,
-      scrollX: ann.scrollX,
-      scrollY: ann.scrollY,
-      viewportW: ann.viewportW,
-      viewportH: ann.viewportH,
-      devicePixelRatio: ann.devicePixelRatio,
-      createdAt: now,
-    }));
-
-    const record: FeedbackRecord = {
-      id: feedbackId,
-      type: data.type,
-      message: data.message,
-      status: data.status,
-      projectName: data.projectName,
-      url: data.url,
-      urlPattern: data.urlPattern ?? null,
-      authorName: data.authorName,
-      authorEmail: data.authorEmail,
-      viewport: data.viewport,
-      userAgent: data.userAgent,
-      clientId: data.clientId,
-      resolvedAt: null,
-      createdAt: now,
-      updatedAt: now,
-      annotations,
-      // No external storage in memory adapter — keep the data URL inline.
-      // Fine for tests and dev; production users should configure a real
-      // ScreenshotStorage on adapter-prisma.
-      screenshotUrl: data.screenshotDataUrl ?? null,
-      screenshotRegion: data.screenshotRegion ?? null,
-      diagnostics: data.diagnostics ?? null,
-    };
-
-    this.feedbacks.unshift(record);
-    return record;
+  getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
+    return this.engine.getFeedbacks(query);
   }
 
-  async getFeedbacks(query: FeedbackQuery): Promise<{ feedbacks: FeedbackRecord[]; total: number }> {
-    return applyFeedbackFilters(this.feedbacks, query);
+  findByClientId(clientId: string): Promise<FeedbackRecord | null> {
+    return this.engine.findByClientId(clientId);
   }
 
-  async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
-    return this.feedbacks.find((f) => f.clientId === clientId) ?? null;
+  updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
+    return this.engine.updateFeedback(id, data);
   }
 
-  async updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
-    const fb = this.feedbacks.find((f) => f.id === id);
-    if (!fb) throw new StoreNotFoundError();
-
-    fb.status = data.status;
-    fb.resolvedAt = data.resolvedAt;
-    fb.updatedAt = new Date();
-    return fb;
+  deleteFeedback(id: string): Promise<void> {
+    return this.engine.deleteFeedback(id);
   }
 
-  async deleteFeedback(id: string): Promise<void> {
-    const idx = this.feedbacks.findIndex((f) => f.id === id);
-    if (idx === -1) throw new StoreNotFoundError();
-    this.feedbacks.splice(idx, 1);
+  deleteAllFeedbacks(projectName: string): Promise<void> {
+    return this.engine.deleteAllFeedbacks(projectName);
   }
 
-  async deleteAllFeedbacks(projectName: string): Promise<void> {
-    this.feedbacks = this.feedbacks.filter((f) => f.projectName !== projectName);
+  verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
+    return this.engine.verifyProjectOwnership(id, projectName);
   }
 
   /** Remove all data from this store instance. */

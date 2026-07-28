@@ -1,5 +1,5 @@
-import type { ConsoleDiagnosticLevel, FeedbackStatus, FeedbackType, Prettify, ScreenshotRegion } from "@siteping/core";
-import { FEEDBACK_STATUSES, FEEDBACK_TYPES } from "@siteping/core";
+import type { AssertEqual, FeedbackPayload, FeedbackStatus, FeedbackType, Prettify } from "@siteping/core";
+import { CONSOLE_DIAGNOSTIC_LEVELS, FEEDBACK_STATUSES, FEEDBACK_TYPES } from "@siteping/core";
 import * as zod from "zod";
 
 // Namespace import required: Zod publishes dual CJS/ESM, and bundlers (tsup, vitest) may
@@ -44,10 +44,8 @@ const annotationSchema = z.object({
 // Diagnostics caps mirror the widget defaults — the widget never sends more
 // than these, but the schema enforces it server-side too so a tampered
 // client can't blow up the JSON column with megabytes of garbage.
-const CONSOLE_LEVELS = ["log", "info", "warn", "error"] as const satisfies readonly ConsoleDiagnosticLevel[];
-
 const consoleEntrySchema = z.object({
-  level: z.enum(CONSOLE_LEVELS),
+  level: z.enum(CONSOLE_DIAGNOSTIC_LEVELS),
   timestamp: z.string().max(50),
   message: z.string().max(600),
 });
@@ -160,75 +158,13 @@ export const getQuerySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Explicit public interfaces — decoupled from Zod to keep .d.ts clean
+// Explicit public interfaces — decoupled from Zod to keep .d.ts clean.
+//
+// The create payload needs no local interface at all: the schema validates
+// core's `FeedbackPayload` wire shape, and the compile-time lock below keeps
+// the two identical. Only the wire shapes that exist solely at this HTTP
+// boundary (PATCH / DELETE / GET query) are declared here.
 // ---------------------------------------------------------------------------
-
-export interface AnchorInput {
-  cssSelector: string;
-  xpath: string;
-  textSnippet: string;
-  elementTag: string;
-  elementId?: string | undefined;
-  textPrefix: string;
-  textSuffix: string;
-  fingerprint: string;
-  neighborText: string;
-  anchorKey?: string | null | undefined;
-}
-
-export interface RectInput {
-  xPct: number;
-  yPct: number;
-  wPct: number;
-  hPct: number;
-}
-
-export interface AnnotationInput {
-  anchor: AnchorInput;
-  rect: RectInput;
-  scrollX: number;
-  scrollY: number;
-  viewportW: number;
-  viewportH: number;
-  /** Set to 1 by schema default when omitted from raw input. */
-  devicePixelRatio: number;
-}
-
-export interface ConsoleDiagnosticInput {
-  level: ConsoleDiagnosticLevel;
-  timestamp: string;
-  message: string;
-}
-
-export interface NetworkDiagnosticInput {
-  url: string;
-  method: string;
-  status: number;
-  durationMs: number;
-  timestamp: string;
-}
-
-export interface DiagnosticsInput {
-  console: ConsoleDiagnosticInput[];
-  network: NetworkDiagnosticInput[];
-}
-
-export interface FeedbackCreateInput {
-  projectName: string;
-  type: FeedbackType;
-  message: string;
-  url: string;
-  urlPattern?: string | null | undefined;
-  viewport: string;
-  userAgent: string;
-  authorName: string;
-  authorEmail: string;
-  annotations: AnnotationInput[];
-  clientId: string;
-  screenshotDataUrl?: string | null | undefined;
-  screenshotRegion?: ScreenshotRegion | null | undefined;
-  diagnostics?: DiagnosticsInput | null | undefined;
-}
 
 export interface FeedbackPatchInput {
   id: string;
@@ -263,33 +199,34 @@ export interface GetQueryInput {
 }
 
 // ---------------------------------------------------------------------------
-// Type-level assertions: manual interfaces stay in sync with schemas.
+// Type-level locks: the Zod schemas validate exactly the shapes the rest of
+// the monorepo speaks.
 //
-// We use a bidirectional `extends` check (the `_…Reverse` lines) to assert
-// structural equivalence between the inferred Zod type and the manually
-// authored interface — drift in either direction surfaces as a compile error.
-// `Prettify<>` smooths the inferred shape so the assertion compares clean
-// object types rather than intersection chains.
+// The create schema is locked against core's `FeedbackPayload` — the actual
+// wire contract the widget sends — so schema drift from the real payload is
+// a compile error, not a runtime 400. The boundary-only shapes (PATCH /
+// DELETE / GET query) are locked against their local interfaces the same
+// way. `Prettify<>` flattens the inferred shape so the equality check
+// compares clean object types rather than intersection chains.
 // ---------------------------------------------------------------------------
 
-type _AssertCreate = Prettify<zod.z.infer<typeof feedbackCreateSchema>> extends FeedbackCreateInput ? true : never;
-type _AssertCreateReverse = FeedbackCreateInput extends zod.z.infer<typeof feedbackCreateSchema> ? true : never;
-type _AssertPatch = Prettify<zod.z.infer<typeof feedbackPatchSchema>> extends FeedbackPatchInput ? true : never;
-type _AssertPatchReverse = FeedbackPatchInput extends zod.z.infer<typeof feedbackPatchSchema> ? true : never;
-type _AssertDelete = zod.z.infer<typeof feedbackDeleteSchema> extends FeedbackDeleteInput ? true : never;
-type _AssertDeleteReverse = FeedbackDeleteInput extends zod.z.infer<typeof feedbackDeleteSchema> ? true : never;
-type _AssertQuery = Prettify<zod.z.infer<typeof getQuerySchema>> extends GetQueryInput ? true : never;
-type _AssertQueryReverse = GetQueryInput extends zod.z.infer<typeof getQuerySchema> ? true : never;
-
-// Suppress unused-variable warnings — assertions are compile-time only
-void (0 as unknown as _AssertCreate);
-void (0 as unknown as _AssertCreateReverse);
-void (0 as unknown as _AssertPatch);
-void (0 as unknown as _AssertPatchReverse);
-void (0 as unknown as _AssertDelete);
-void (0 as unknown as _AssertDeleteReverse);
-void (0 as unknown as _AssertQuery);
-void (0 as unknown as _AssertQueryReverse);
+const _createSchemaMatchesPayload: AssertEqual<
+  Prettify<zod.z.infer<typeof feedbackCreateSchema>>,
+  FeedbackPayload
+> = true;
+void _createSchemaMatchesPayload;
+const _patchSchemaMatchesInput: AssertEqual<
+  Prettify<zod.z.infer<typeof feedbackPatchSchema>>,
+  FeedbackPatchInput
+> = true;
+void _patchSchemaMatchesInput;
+const _deleteSchemaMatchesInput: AssertEqual<
+  Prettify<zod.z.infer<typeof feedbackDeleteSchema>>,
+  FeedbackDeleteInput
+> = true;
+void _deleteSchemaMatchesInput;
+const _querySchemaMatchesInput: AssertEqual<Prettify<zod.z.infer<typeof getQuerySchema>>, GetQueryInput> = true;
+void _querySchemaMatchesInput;
 
 /** Single validation issue extracted from a `ZodError`. */
 export interface ValidationIssue {

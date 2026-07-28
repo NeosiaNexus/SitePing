@@ -98,6 +98,7 @@ function makeAnnotation(overrides: Partial<AnnotationResponse> = {}): Annotation
     textSuffix: "",
     fingerprint: "0:0:0",
     neighborText: "",
+    anchorKey: null,
     xPct: 0.1,
     yPct: 0.1,
     wPct: 0.5,
@@ -128,6 +129,10 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     annotations: [makeAnnotation()],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }
@@ -286,6 +291,17 @@ describe("MarkerManager", () => {
 
       const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
       expect(marker.style.borderStyle).toBe("dashed");
+    });
+
+    it("spells the confidence percentage out in the marker tooltip", () => {
+      mockState.confidence = 0.5;
+      mockState.element = null;
+
+      markers.render([makeFeedback()]);
+
+      const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
+      // The suite's `t` is French — the percentage lands inside the template.
+      expect(marker.title).toBe("Position approximative (confiance : 50%)");
     });
 
     it("applies reduced opacity (0.7) for low confidence annotations", () => {

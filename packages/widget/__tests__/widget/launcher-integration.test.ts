@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { FeedbackResponse, SitepingConfig } from "@siteping/core";
+import type { FeedbackPayload, FeedbackResponse, SitepingConfig, SitepingHttpConfig } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockMatchMedia } from "../helpers.js";
 
@@ -11,17 +11,19 @@ mockMatchMedia(false);
 // Mock modules before importing launcher
 // ---------------------------------------------------------------------------
 
-const mockSendFeedback = vi.fn<[], Promise<FeedbackResponse>>();
+const mockSendFeedback = vi.fn<(payload: FeedbackPayload) => Promise<FeedbackResponse>>();
 const mockGetFeedbacks = vi.fn().mockResolvedValue({ feedbacks: [], total: 0 });
 
 vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
-  ApiClient: vi.fn().mockImplementation(() => ({
-    sendFeedback: mockSendFeedback,
-    getFeedbacks: mockGetFeedbacks,
-    resolveFeedback: vi.fn(),
-    deleteFeedback: vi.fn(),
-    deleteAllFeedbacks: vi.fn(),
-  })),
+  ApiClient: vi.fn(function (this: unknown) {
+    return {
+      sendFeedback: mockSendFeedback,
+      getFeedbacks: mockGetFeedbacks,
+      resolveFeedback: vi.fn(),
+      deleteFeedback: vi.fn(),
+      deleteAllFeedbacks: vi.fn(),
+    };
+  }),
   flushRetryQueue: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -37,23 +39,22 @@ let capturedBus: {
 const mockAnnotatorRefreshLabels = vi.fn();
 
 vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
-  Annotator: vi.fn().mockImplementation(
-    (
-      _colors: unknown,
-      bus: {
-        emit: (event: string, ...args: unknown[]) => void;
-        on: (event: string, listener: (...args: unknown[]) => void) => () => void;
-      },
-    ) => {
-      capturedBus = bus;
-      // Wire annotation:start listener like the real Annotator constructor does
-      bus.on("annotation:start", () => {});
-      return {
-        destroy: vi.fn(),
-        refreshLabels: mockAnnotatorRefreshLabels,
-      };
+  Annotator: vi.fn(function (
+    this: unknown,
+    _colors: unknown,
+    bus: {
+      emit: (event: string, ...args: unknown[]) => void;
+      on: (event: string, listener: (...args: unknown[]) => void) => () => void;
     },
-  ),
+  ) {
+    capturedBus = bus;
+    // Wire annotation:start listener like the real Annotator constructor does
+    bus.on("annotation:start", () => {});
+    return {
+      destroy: vi.fn(),
+      refreshLabels: mockAnnotatorRefreshLabels,
+    };
+  }),
 }));
 
 // Module-level marker spies so individual tests can assert against the same
@@ -63,25 +64,29 @@ const mockMarkersRender = vi.fn();
 const mockMarkersFocusFeedback = vi.fn().mockReturnValue(false);
 
 vi.mock(new URL("../../src/markers.js", import.meta.url).pathname, () => ({
-  MarkerManager: vi.fn().mockImplementation(() => ({
-    render: mockMarkersRender,
-    highlight: vi.fn(),
-    pinHighlight: vi.fn(),
-    addFeedback: mockMarkersAddFeedback,
-    focusFeedback: mockMarkersFocusFeedback,
-    destroy: vi.fn(),
-    count: 0,
-  })),
+  MarkerManager: vi.fn(function (this: unknown) {
+    return {
+      render: mockMarkersRender,
+      highlight: vi.fn(),
+      pinHighlight: vi.fn(),
+      addFeedback: mockMarkersAddFeedback,
+      focusFeedback: mockMarkersFocusFeedback,
+      destroy: vi.fn(),
+      count: 0,
+    };
+  }),
 }));
 
 vi.mock(new URL("../../src/tooltip.js", import.meta.url).pathname, () => ({
-  Tooltip: vi.fn().mockImplementation(() => ({
-    tooltipId: "sp-tooltip",
-    show: vi.fn(),
-    scheduleHide: vi.fn(),
-    contains: vi.fn(),
-    destroy: vi.fn(),
-  })),
+  Tooltip: vi.fn(function (this: unknown) {
+    return {
+      tooltipId: "sp-tooltip",
+      show: vi.fn(),
+      scheduleHide: vi.fn(),
+      contains: vi.fn(),
+      destroy: vi.fn(),
+    };
+  }),
 }));
 
 vi.mock(new URL("../../src/styles/base.js", import.meta.url).pathname, () => ({
@@ -105,7 +110,7 @@ import { launch } from "../../src/launcher.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function defaultConfig(overrides: Partial<SitepingConfig> = {}): SitepingConfig {
+function defaultConfig(overrides: Partial<Omit<SitepingHttpConfig, "store">> = {}): SitepingConfig {
   return {
     endpoint: "/api/siteping",
     projectName: "test-project",
@@ -130,6 +135,10 @@ function makeFeedbackResponse(overrides: Partial<FeedbackResponse> = {}): Feedba
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     annotations: [],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }
@@ -202,7 +211,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       expect(payload).toMatchObject({
         projectName: "test-project",
         type: "bug",
@@ -230,7 +239,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       expect(payload.screenshotDataUrl).toBe("data:image/jpeg;base64,CAP");
       expect(payload.screenshotRegion).toEqual(region);
 
@@ -247,7 +256,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       expect(payload.screenshotDataUrl).toBeNull();
       expect(payload.screenshotRegion).toBeNull();
 
@@ -417,7 +426,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       expect(payload.authorName).toBe("Host User");
       expect(payload.authorEmail).toBe("host@example.com");
 
@@ -443,7 +452,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       expect(payload.authorName).toBe("Host User");
       expect(payload.authorEmail).toBe("host@example.com");
 
@@ -485,7 +494,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       expect(payload.authorName).toBe("LocalStorage User");
       expect(payload.authorEmail).toBe("ls@example.com");
 
@@ -684,7 +693,7 @@ describe("launcher — annotation:complete integration", () => {
         { timeout: 1500 },
       );
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       expect(payload.authorName).toBe("Alice");
       expect(payload.authorEmail).toBe("alice@example.com");
 
@@ -958,7 +967,7 @@ describe("launcher — annotation:complete integration", () => {
           expect(mockSendFeedback).toHaveBeenCalledOnce();
         });
 
-        const payload = mockSendFeedback.mock.calls[0][0];
+        const payload = mockSendFeedback.mock.calls[0]![0];
         // Fallback format: "<timestamp>-<random>"
         expect(payload.clientId).toMatch(/^\d+-[a-z0-9]+$/);
 
@@ -1179,7 +1188,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       // Pathname only — no origin, no query, no fragment.
       expect(payload.url).toBe("/orders/123");
       expect(payload.url).not.toContain("?");
@@ -1207,7 +1216,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       expect(payload.url).toBe("/custom/scope/key");
       expect(payload.urlPattern).toBe("/custom/:id");
 
@@ -1238,7 +1247,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      const payload = mockSendFeedback.mock.calls[0][0];
+      const payload = mockSendFeedback.mock.calls[0]![0];
       expect(payload.url).toBe("/fallback/path");
       expect(payload.urlPattern).toBeNull();
 
@@ -1365,7 +1374,7 @@ describe("launcher — annotation:complete integration", () => {
         expect(onError).toHaveBeenCalled();
       });
 
-      const arg = onError.mock.calls[0][0];
+      const arg = onError.mock.calls[0]![0];
       expect(arg).toBeInstanceOf(Error);
       expect((arg as Error).message).toContain("string error");
 

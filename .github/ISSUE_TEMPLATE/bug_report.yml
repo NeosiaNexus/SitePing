@@ -57,11 +57,29 @@ body:
     validations:
       required: false
 
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: Which SitePing package is affected?
+      options:
+        - "@siteping/widget"
+        - "@siteping/dashboard"
+        - "@siteping/adapter-prisma"
+        - "@siteping/adapter-memory"
+        - "@siteping/adapter-localstorage"
+        - "@siteping/adapter-kit"
+        - "@siteping/cli"
+        - "siteping.dev (site / docs / demo)"
+        - "Not sure"
+    validations:
+      required: true
+
   - type: input
     id: version
     attributes:
       label: SitePing version
-      description: The version of SitePing you are using.
+      description: The version of the package you are using.
       placeholder: "e.g. 0.1.0"
     validations:
       required: false

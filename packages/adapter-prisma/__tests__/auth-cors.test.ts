@@ -52,7 +52,7 @@ function postRequest(body: unknown, headers?: Record<string, string>): Request {
 }
 
 function getRequest(query: string, headers?: Record<string, string>): Request {
-  return new Request(`http://localhost/api/siteping?${query}`, { headers });
+  return new Request(`http://localhost/api/siteping?${query}`, headers ? { headers } : undefined);
 }
 
 function patchRequest(body: unknown, headers?: Record<string, string>): Request {
@@ -74,7 +74,7 @@ function deleteRequest(body: unknown, headers?: Record<string, string>): Request
 function optionsRequest(headers?: Record<string, string>): Request {
   return new Request("http://localhost/api/siteping", {
     method: "OPTIONS",
-    headers,
+    ...(headers ? { headers } : {}),
   });
 }
 

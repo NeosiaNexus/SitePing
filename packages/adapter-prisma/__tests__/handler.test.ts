@@ -3,8 +3,8 @@ import { createSitepingHandler } from "../src/index.js";
 import { validAnnotation, validPayloadNoAnnotations } from "./fixtures.js";
 
 // NOTE: the type-level regression guard for #99 (delegate bivariance) lives in
-// src/index.ts next to PrismaModelDelegate — `tsc --noEmit` only sees src/, so
-// a test-file assertion can never fail the check task.
+// src/index.ts next to PrismaModelDelegate, where it documents the constraint
+// at the definition site.
 
 function mockPrisma() {
   return {
@@ -118,10 +118,11 @@ describe("createSitepingHandler", () => {
       await handler.POST(req);
 
       expect(prisma.sitepingFeedback.create).toHaveBeenCalledOnce();
-      const createArg = prisma.sitepingFeedback.create.mock.calls[0][0] as {
+      const createArg = prisma.sitepingFeedback.create.mock.calls[0]?.[0] as {
         data: { annotations: { create: Array<Record<string, unknown>> } };
       };
-      const flatAnnotation = createArg.data.annotations.create[0];
+      const [flatAnnotation] = createArg.data.annotations.create;
+      if (!flatAnnotation) throw new Error("expected one annotation in the Prisma create payload");
 
       expect(flatAnnotation.cssSelector).toBe("div.main > section:nth-child(2)");
       expect(flatAnnotation.xpath).toBe("/html/body/div[1]/section[2]");
@@ -151,7 +152,7 @@ describe("createSitepingHandler", () => {
       });
       const res = await handler.POST(req);
       expect(res.status).toBe(201);
-      const createArg = prisma.sitepingFeedback.create.mock.calls[0][0] as { data: Record<string, unknown> };
+      const createArg = prisma.sitepingFeedback.create.mock.calls[0]?.[0] as { data: Record<string, unknown> };
       expect(createArg.data.screenshotRegion).toEqual(region);
     });
 
@@ -162,7 +163,7 @@ describe("createSitepingHandler", () => {
       });
       const res = await handler.POST(req);
       expect(res.status).toBe(201);
-      const createArg = prisma.sitepingFeedback.create.mock.calls[0][0] as { data: Record<string, unknown> };
+      const createArg = prisma.sitepingFeedback.create.mock.calls[0]?.[0] as { data: Record<string, unknown> };
       expect(createArg.data).not.toHaveProperty("screenshotRegion");
     });
 
@@ -209,7 +210,7 @@ describe("createSitepingHandler", () => {
       prisma.sitepingFeedback.count.mockResolvedValue(0);
       const req = new Request("http://localhost/api/siteping?projectName=test&type=bug&status=open");
       await handler.GET(req);
-      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
+      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
       expect(callArgs.where.type).toBe("bug");
       expect(callArgs.where.status).toBe("open");
     });
@@ -220,7 +221,7 @@ describe("createSitepingHandler", () => {
       const req = new Request(`http://localhost/api/siteping?projectName=test&status=${status}`);
       const res = await handler.GET(req);
       expect(res.status).toBe(200);
-      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
+      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
       expect(callArgs.where.status).toBe(status);
     });
 
@@ -230,7 +231,7 @@ describe("createSitepingHandler", () => {
       const req = new Request("http://localhost/api/siteping?projectName=test&statuses=open,in_progress");
       const res = await handler.GET(req);
       expect(res.status).toBe(200);
-      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
+      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
       expect(callArgs.where.status).toEqual({ in: ["open", "in_progress"] });
     });
 
@@ -240,7 +241,7 @@ describe("createSitepingHandler", () => {
       const req = new Request("http://localhost/api/siteping?projectName=test&status=open&statuses=resolved,wont_fix");
       const res = await handler.GET(req);
       expect(res.status).toBe(200);
-      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
+      const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
       expect(callArgs.where.status).toEqual({ in: ["resolved", "wont_fix"] });
     });
 
@@ -260,7 +261,7 @@ describe("createSitepingHandler", () => {
         prisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await handler.GET(req);
-        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).toEqual({ contains: "hello" });
@@ -273,7 +274,7 @@ describe("createSitepingHandler", () => {
         prisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await sqliteHandler.GET(req);
-        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).toEqual({ contains: "hello" });
@@ -287,7 +288,7 @@ describe("createSitepingHandler", () => {
         sqlitePrisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await sqliteHandler.GET(req);
-        const callArgs = sqlitePrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = sqlitePrisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).toEqual({ contains: "hello" });
@@ -300,7 +301,7 @@ describe("createSitepingHandler", () => {
         pgPrisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await pgHandler.GET(req);
-        const callArgs = pgPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = pgPrisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
@@ -316,7 +317,7 @@ describe("createSitepingHandler", () => {
         sqlitePrisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await overriddenHandler.GET(req);
-        const callArgs = sqlitePrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = sqlitePrisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
@@ -328,7 +329,7 @@ describe("createSitepingHandler", () => {
         prisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test");
         await sqliteHandler.GET(req);
-        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = prisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: Record<string, unknown>;
         };
         expect(callArgs.where).not.toHaveProperty("message");
@@ -343,7 +344,7 @@ describe("createSitepingHandler", () => {
         mysqlPrisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await mysqlHandler.GET(req);
-        const callArgs = mysqlPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = mysqlPrisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).not.toHaveProperty("mode");
@@ -358,7 +359,7 @@ describe("createSitepingHandler", () => {
         mongoPrisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await mongoHandler.GET(req);
-        const callArgs = mongoPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = mongoPrisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
@@ -371,7 +372,7 @@ describe("createSitepingHandler", () => {
         cockroachPrisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await cockroachHandler.GET(req);
-        const callArgs = cockroachPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = cockroachPrisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
@@ -384,7 +385,7 @@ describe("createSitepingHandler", () => {
         mssqlPrisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await mssqlHandler.GET(req);
-        const callArgs = mssqlPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = mssqlPrisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).not.toHaveProperty("mode");
@@ -397,7 +398,7 @@ describe("createSitepingHandler", () => {
         altPrisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await altHandler.GET(req);
-        const callArgs = altPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = altPrisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         expect(callArgs.where.message).toEqual({ contains: "hello", mode: "insensitive" });
@@ -419,7 +420,7 @@ describe("createSitepingHandler", () => {
         throwingPrisma.sitepingFeedback.count.mockResolvedValue(0);
         const req = new Request("http://localhost/api/siteping?projectName=test&search=hello");
         await throwingHandler.GET(req);
-        const callArgs = throwingPrisma.sitepingFeedback.findMany.mock.calls[0][0] as {
+        const callArgs = throwingPrisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as {
           where: { message?: { contains: string; mode?: string } };
         };
         // Probe threw → fallback → no mode (safe default).
@@ -444,7 +445,7 @@ describe("createSitepingHandler", () => {
       });
       const res = await handler.PATCH(req);
       expect(res.status).toBe(200);
-      const updateArgs = prisma.sitepingFeedback.update.mock.calls[0][0] as { data: Record<string, unknown> };
+      const updateArgs = prisma.sitepingFeedback.update.mock.calls[0]?.[0] as { data: Record<string, unknown> };
       expect(updateArgs.data.status).toBe("resolved");
       expect(updateArgs.data.resolvedAt).toBeInstanceOf(Date);
     });
@@ -463,7 +464,7 @@ describe("createSitepingHandler", () => {
         body: JSON.stringify({ id: "fb-1", projectName: "test-project", status: "open" }),
       });
       await handler.PATCH(req);
-      const updateArgs = prisma.sitepingFeedback.update.mock.calls[0][0] as { data: Record<string, unknown> };
+      const updateArgs = prisma.sitepingFeedback.update.mock.calls[0]?.[0] as { data: Record<string, unknown> };
       expect(updateArgs.data.resolvedAt).toBeNull();
     });
 
@@ -490,7 +491,7 @@ describe("createSitepingHandler", () => {
       });
       const res = await handler.PATCH(req);
       expect(res.status).toBe(200);
-      const updateArgs = prisma.sitepingFeedback.update.mock.calls[0][0] as { data: Record<string, unknown> };
+      const updateArgs = prisma.sitepingFeedback.update.mock.calls[0]?.[0] as { data: Record<string, unknown> };
       expect(updateArgs.data.status).toBe(status);
       if (expected === "date") {
         expect(updateArgs.data.resolvedAt).toBeInstanceOf(Date);

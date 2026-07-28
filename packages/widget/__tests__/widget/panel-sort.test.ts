@@ -22,6 +22,10 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     createdAt: "2026-04-01T00:00:00.000Z",
     updatedAt: "2026-04-01T00:00:00.000Z",
     annotations: [],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }
@@ -131,7 +135,7 @@ describe("PanelSortControls", () => {
     expect(sortButton.getAttribute("aria-expanded")).toBe("true");
     expect(controls.element.querySelectorAll('[role="option"]')).toHaveLength(4);
 
-    controls.element.querySelectorAll<HTMLButtonElement>('[role="option"]')[1].click();
+    controls.element.querySelectorAll<HTMLButtonElement>('[role="option"]')[1]!.click();
 
     expect(controls.sortMode).toBe("oldest");
     expect(sortButton.textContent).toContain("Oldest first");
@@ -197,7 +201,7 @@ describe("PanelSortControls", () => {
     sortButton.querySelector(".sp-sort-btn-label")?.remove();
 
     sortButton.click();
-    controls.element.querySelectorAll<HTMLButtonElement>('[role="option"]')[2].click();
+    controls.element.querySelectorAll<HTMLButtonElement>('[role="option"]')[2]!.click();
 
     expect(controls.sortMode).toBe("by-type");
     expect(onChange).toHaveBeenCalledTimes(1);

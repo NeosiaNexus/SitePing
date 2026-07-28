@@ -10,7 +10,7 @@ import type {
   ScreenshotRegion,
 } from "@siteping/core";
 import { isClosedStatus, StoreNotFoundError } from "@siteping/core";
-import { vi } from "vitest";
+import { type Mock, vi } from "vitest";
 import type { InboxSource } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
@@ -161,9 +161,9 @@ function byCreatedDesc(a: FeedbackRecord, b: FeedbackRecord): number {
 }
 
 export interface TestSource extends InboxSource {
-  list: ReturnType<typeof vi.fn>;
-  setStatus: ReturnType<typeof vi.fn>;
-  remove: ReturnType<typeof vi.fn>;
+  list: Mock<InboxSource["list"]>;
+  setStatus: Mock<InboxSource["setStatus"]>;
+  remove: Mock<InboxSource["remove"]>;
   readonly records: FeedbackRecord[];
   control: { failNextSetStatus: Error | null; failNextRemove: Error | null };
 }
@@ -231,11 +231,11 @@ export function makeSource(seed: FeedbackRecord[] = []): TestSource {
 // ---------------------------------------------------------------------------
 
 /** A `fetchFn` that always returns a 200 JSON `Response` and records its calls. */
-export function jsonFetch(body: unknown): ReturnType<typeof vi.fn> {
-  return vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(body), { status: 200 }));
+export function jsonFetch(body: unknown): Mock<typeof fetch> {
+  return vi.fn<typeof fetch>(async () => new Response(JSON.stringify(body), { status: 200 }));
 }
 
 /** A `fetchFn` returning a non-OK `Response` with `status` and a text body. */
-export function errorFetch(status: number, text = "boom"): ReturnType<typeof vi.fn> {
-  return vi.fn(async () => new Response(text, { status }));
+export function errorFetch(status: number, text = "boom"): Mock<typeof fetch> {
+  return vi.fn<typeof fetch>(async () => new Response(text, { status }));
 }

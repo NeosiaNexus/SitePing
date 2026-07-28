@@ -73,7 +73,39 @@ export function useSiteping(config: SitepingConfig): SitepingInstance | null {
     // its own singleton guard, so even if we managed to call init() twice
     // in a row we'd get the same instance back.
     let mounted = true;
-    const created = initSiteping(configRef.current);
+
+    // The widget wires config callbacks once at init, so passing the host's
+    // functions directly would freeze them at mount time. Instead we hand
+    // the widget stable wrappers that read the ref at call time — hosts can
+    // swap `onFeedbackSent`, `onError`, etc. between renders without
+    // recreating the widget. (Re-subscribing the host callbacks through
+    // `instance.on` on top of the config wiring would call them twice per
+    // event — the config wrappers are the single delivery path.)
+    // The `mounted` guard keeps callbacks silent after unmount.
+    const created = initSiteping({
+      ...configRef.current,
+      onSkip: (reason) => {
+        if (mounted) configRef.current.onSkip?.(reason);
+      },
+      onOpen: () => {
+        if (mounted) configRef.current.onOpen?.();
+      },
+      onClose: () => {
+        if (mounted) configRef.current.onClose?.();
+      },
+      onFeedbackSent: (fb) => {
+        if (mounted) configRef.current.onFeedbackSent?.(fb);
+      },
+      onError: (error) => {
+        if (mounted) configRef.current.onError?.(error);
+      },
+      onAnnotationStart: () => {
+        if (mounted) configRef.current.onAnnotationStart?.();
+      },
+      onAnnotationEnd: () => {
+        if (mounted) configRef.current.onAnnotationEnd?.();
+      },
+    });
     if (!mounted) {
       // Cleanup already ran (StrictMode dev edge case) — tear down to avoid
       // leaving a dangling widget in the DOM.
@@ -81,27 +113,10 @@ export function useSiteping(config: SitepingConfig): SitepingInstance | null {
       return;
     }
 
-    // Bridge mutable callbacks: subscribe through the widget's public event
-    // bus so we can call whatever the *latest* config has set. This lets
-    // hosts change `onFeedbackSent`, `onError`, etc. between renders without
-    // recreating the widget.
-    const unsubSent = created.on("feedback:sent", (fb) => {
-      configRef.current.onFeedbackSent?.(fb);
-    });
-    const unsubOpen = created.on("panel:open", () => {
-      configRef.current.onOpen?.();
-    });
-    const unsubClose = created.on("panel:close", () => {
-      configRef.current.onClose?.();
-    });
-
     setInstance(created);
 
     return () => {
       mounted = false;
-      unsubSent();
-      unsubOpen();
-      unsubClose();
       created.destroy();
       setInstance(null);
     };

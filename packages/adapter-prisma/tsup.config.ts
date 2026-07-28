@@ -1,13 +1,10 @@
 import { defineConfig } from "tsup";
+import { sitepingLibrary } from "../../tsup.preset.js";
 
-export default defineConfig({
-  entry: ["src/index.ts"],
-  format: ["esm", "cjs"],
-  platform: "node",
-  target: "node18",
-  dts: true,
-  sourcemap: true,
-  clean: true,
-  noExternal: ["@siteping/core"],
-  external: ["@prisma/client"],
-});
+export default defineConfig(
+  sitepingLibrary({
+    platform: "node",
+    target: "node18",
+    external: ["@prisma/client"],
+  }),
+);

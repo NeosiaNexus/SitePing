@@ -1,4 +1,4 @@
 {
   "title": "Adaptateurs",
-  "pages": ["index", "prisma", "memory", "localstorage"]
+  "pages": ["index", "prisma", "memory", "localstorage", "writing-an-adapter"]
 }

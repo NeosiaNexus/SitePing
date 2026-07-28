@@ -42,6 +42,10 @@ function isPublished(name, version) {
 }
 
 const targets = Object.entries(manifest).flatMap(([pkgPath, version]) => {
+  // "0.0.0" is the pre-first-release placeholder for a newly registered
+  // package — release-please bumps it before ever publishing, so there is
+  // no npm version to verify yet.
+  if (version === "0.0.0") return [];
   const pkg = JSON.parse(readFileSync(join(pkgPath, "package.json"), "utf8"));
   return pkg.private ? [] : [{ name: pkg.name, version }];
 });

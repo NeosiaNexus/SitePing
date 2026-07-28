@@ -33,6 +33,10 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     createdAt: "2026-04-30T12:00:00.000Z",
     updatedAt: "2026-04-30T12:30:00.000Z",
     annotations: [],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }
@@ -115,6 +119,7 @@ describe("feedback export conversion", () => {
             textSuffix: "After",
             fingerprint: "abc123",
             neighborText: "Cancel Submit",
+            anchorKey: null,
             xPct: 10,
             yPct: 20,
             wPct: 30,
@@ -154,7 +159,7 @@ describe("downloadFile", () => {
     downloadFile("id,message\n1,Hello", "feedbacks.csv", "text/csv;charset=utf-8");
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);
-    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const blob = createObjectURL.mock.calls[0]![0] as Blob;
     await expect(blob.text()).resolves.toBe("id,message\n1,Hello");
     expect(blob.type).toBe("text/csv;charset=utf-8");
     expect(click).toHaveBeenCalledTimes(1);
@@ -173,12 +178,15 @@ describe("ExportButton", () => {
     vi.restoreAllMocks();
     installObjectUrlMocks();
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    // Fake timers BEFORE the rAF spy: vitest 4 fakes requestAnimationFrame as
+    // part of useFakeTimers, which would silently replace a spy installed
+    // earlier — and the anchor-cleanup callback would never run.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-30T15:45:00.000Z"));
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
       callback(1);
       return 1;
     });
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-04-30T15:45:00.000Z"));
   });
 
   it("renders English labels by default, toggles, and closes on outside click", () => {
@@ -229,7 +237,7 @@ describe("ExportButton", () => {
     const trigger = button.element.querySelector<HTMLButtonElement>(".sp-export-btn")!;
 
     trigger.click();
-    button.element.querySelectorAll<HTMLButtonElement>(".sp-export-option")[0].click();
+    button.element.querySelectorAll<HTMLButtonElement>(".sp-export-option")[0]!.click();
 
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1);
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
@@ -238,7 +246,7 @@ describe("ExportButton", () => {
     );
 
     trigger.click();
-    button.element.querySelectorAll<HTMLButtonElement>(".sp-export-option")[1].click();
+    button.element.querySelectorAll<HTMLButtonElement>(".sp-export-option")[1]!.click();
 
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(2);
     const downloads = Array.from(document.querySelectorAll("a")).map((anchor) => anchor.getAttribute("download"));
@@ -267,7 +275,7 @@ describe("ExportButton", () => {
 
     const trigger = button.element.querySelector<HTMLButtonElement>(".sp-export-btn")!;
     trigger.click();
-    button.element.querySelectorAll<HTMLButtonElement>(".sp-export-option")[0].click();
+    button.element.querySelectorAll<HTMLButtonElement>(".sp-export-option")[0]!.click();
 
     // Verify createObjectURL was called (download flow ran with fallback name)
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);

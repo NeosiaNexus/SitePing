@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { en as SHORTCUTS_I18N_EN } from "../../src/i18n/en.js";
 import { fr as SHORTCUTS_I18N_FR } from "../../src/i18n/fr.js";
 import { createT } from "../../src/i18n/index.js";
@@ -13,31 +13,22 @@ import {
   type ShortcutCallbacks,
 } from "../../src/shortcuts.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
+import { createShadowRoot } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createCallbacks(): ShortcutCallbacks & {
-  onNavigate: ReturnType<typeof vi.fn>;
-  onResolve: ReturnType<typeof vi.fn>;
-  onDelete: ReturnType<typeof vi.fn>;
-  onFocusSearch: ReturnType<typeof vi.fn>;
-  onToggleSelect: ReturnType<typeof vi.fn>;
+function createCallbacks(): {
+  [K in keyof ShortcutCallbacks]-?: Mock<NonNullable<ShortcutCallbacks[K]>>;
 } {
   return {
-    onNavigate: vi.fn(),
-    onResolve: vi.fn(),
-    onDelete: vi.fn(),
-    onFocusSearch: vi.fn(),
-    onToggleSelect: vi.fn(),
+    onNavigate: vi.fn<NonNullable<ShortcutCallbacks["onNavigate"]>>(),
+    onResolve: vi.fn<NonNullable<ShortcutCallbacks["onResolve"]>>(),
+    onDelete: vi.fn<NonNullable<ShortcutCallbacks["onDelete"]>>(),
+    onFocusSearch: vi.fn<NonNullable<ShortcutCallbacks["onFocusSearch"]>>(),
+    onToggleSelect: vi.fn<NonNullable<ShortcutCallbacks["onToggleSelect"]>>(),
   };
-}
-
-function createShadowRoot(): ShadowRoot {
-  const host = document.createElement("div");
-  document.body.appendChild(host);
-  return host.attachShadow({ mode: "open" });
 }
 
 /** Build a KeyboardEvent with `composedPath` returning the given target. */

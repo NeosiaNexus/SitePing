@@ -187,7 +187,10 @@ describe("BulkActions", () => {
   });
 
   it("does nothing when toggling while processing", async () => {
-    let resolveOnDelete: (() => void) | null = null;
+    // Assigned from inside the onDelete promise executor — the definite
+    // assignment assertion keeps control-flow analysis from narrowing the
+    // variable to its `null` initializer at the call site below.
+    let resolveOnDelete!: () => void;
     const onResolve = vi.fn().mockResolvedValue(undefined);
     const onDelete = vi.fn().mockImplementation(
       () =>

@@ -1,7 +1,7 @@
 import type { SitepingConfig } from "@siteping/core";
 import { parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
-import type { TFunction, Translations } from "./i18n/index.js";
+import { type TFunction, type Translations, tWithParams } from "./i18n/index.js";
 import { ICON_CLOSE, ICON_EDIT, ICON_EYE, ICON_EYE_OFF, ICON_LIST, ICON_SITEPING } from "./icons.js";
 
 /** Closed set of radial menu item ids — keeps the label lookup exhaustive. */
@@ -216,7 +216,7 @@ export class Fab {
 
     const displayText = count > 99 ? "99+" : String(count);
     setText(this.badgeEl, displayText);
-    this.badgeEl.setAttribute("aria-label", this.t("fab.badge").replace("{count}", String(count)));
+    this.badgeEl.setAttribute("aria-label", tWithParams(this.t, "fab.badge", { count }));
   }
 
   private toggle(): void {

@@ -92,18 +92,10 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     },
     [onError, showToast, t],
   );
-  const state = useSitepingInbox({
-    projects: props.projects,
-    source: props.source,
-    store: props.store,
-    endpoint: props.endpoint,
-    apiKey: props.apiKey,
-    headers: props.headers,
-    pageSize: props.pageSize,
-    onStatusChange: props.onStatusChange,
-    onDelete: props.onDelete,
-    onError: handleError,
-  });
+  // Forward the source-mode options as-is (the union shape must survive —
+  // rebuilding the object field-by-field would mix the modes) and only
+  // override onError with the toast-wiring handler.
+  const state = useSitepingInbox({ ...props, onError: handleError });
 
   /** Run a mutation; returns true when it (and its rollback path) stayed silent. */
   const runMutation = useCallback(
@@ -324,9 +316,9 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   // ----- render
   const ui = useMemo<InboxUiContextValue>(() => ({ t, locale, notify, focusList }), [t, locale, notify, focusList]);
 
-  const showSkeleton = state.loading && state.items.length === 0;
-  const showError = state.error !== null && state.items.length === 0 && !showSkeleton;
-  const showEmpty = !showSkeleton && !showError && state.items.length === 0;
+  const showSkeleton = state.view === "loading";
+  const showError = state.view === "error";
+  const showEmpty = state.view === "empty";
   const remaining = state.total !== null ? Math.max(0, state.total - state.items.length) : 0;
 
   return (

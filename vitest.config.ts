@@ -12,13 +12,22 @@ export default defineConfig({
   test: {
     include: ["packages/**/__tests__/**/*.test.{ts,tsx}"],
     setupFiles: ["packages/widget/__tests__/setup-i18n.ts"],
-    // Cap forks so a local run leaves CPU headroom for the editor — on WSL2
-    // vscode-server shares the VM and a full-core run freezes it. Don't go
-    // lower: jsdom DOMs are retained in the heap, and a fork reused across
-    // more files balloons to ~15 GB at maxForks=2. No-op in CI (≤4 cores).
-    poolOptions: {
-      forks: { maxForks: 4 },
+    // Type-level tests: *.test-d.ts files are statically checked by tsc via
+    // vitest's typecheck mode (they never execute). They lock the public
+    // contracts — config unions rejecting invalid combos, the store
+    // interface, event maps — so a d.ts-breaking refactor fails `test:run`
+    // instead of a downstream consumer.
+    typecheck: {
+      enabled: true,
+      include: ["packages/**/__tests__/**/*.test-d.{ts,tsx}"],
+      tsconfig: "./tsconfig.typecheck.json",
     },
+    // Cap workers so a local run leaves CPU headroom for the editor — on WSL2
+    // vscode-server shares the VM and a full-core run freezes it. Don't go
+    // lower: jsdom DOMs are retained in the heap, and a worker reused across
+    // more files balloons to ~15 GB at 2. No-op in CI (≤4 cores).
+    // (vitest 4 replaced poolOptions.forks.maxForks with top-level maxWorkers.)
+    maxWorkers: 4,
     coverage: {
       provider: "istanbul",
       reporter: ["text", "lcov", "json-summary"],

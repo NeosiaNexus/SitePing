@@ -18,7 +18,7 @@ const siteping = initSiteping({
 });
 ```
 
-`initSiteping` is the package's only runtime export (plus TypeScript types). It weighs about **30 KB gzipped** (ESM), lazy-loads its heavier parts (panel, locales, screenshot engine), and renders inside a closed Shadow DOM so your page styles and the widget's never collide.
+`initSiteping` is the package's main runtime export, alongside the two i18n helpers (`registerLocale`, `loadLocale`) and the TypeScript types. It weighs about **30 KB gzipped** (ESM), lazy-loads its heavier parts (panel, locales, screenshot engine), and renders inside a closed Shadow DOM so your page styles and the widget's never collide.
 
 ## When the widget shows — and when it doesn't
 
@@ -43,7 +43,15 @@ const off = siteping.on("feedback:sent", (feedback) => { ... });
 siteping.destroy();               // full teardown, restores all patched globals
 ```
 
-Public events: `feedback:sent` (payload: the created feedback), `feedback:deleted` (payload: the id), `panel:open`, `panel:close`. `on()` returns an unsubscribe function.
+`on()` returns an unsubscribe function. Seven public events are available:
+
+| Event | Payload | Fires when |
+|---|---|---|
+| `feedback:sent` | the created feedback | A submission succeeded |
+| `feedback:deleted` | the feedback id | A feedback was deleted |
+| `feedback:error` | the `Error` | A feedback API call failed — same payload as the `onError` config callback |
+| `panel:open` / `panel:close` | — | The panel opened / closed |
+| `annotation:start` / `annotation:end` | — | An annotation session started / ended. `end` fires whether the user submitted or cancelled, and both entry paths — the FAB and [right-click comments](/docs/widget/right-click) — emit the symmetric pair, so you can pause chat bubbles or analytics overlays in between |
 
 ## React
 
@@ -63,7 +71,7 @@ export function Feedback() {
 }
 ```
 
-The hook returns `null` until it mounts, then the instance. Changing `endpoint` or other structural options requires a remount; changing the callbacks does not.
+The hook returns `null` until it mounts, then the instance. Changing `endpoint` or another structural option requires a remount; changing a callback does not — **every** callback the config accepts (`onFeedbackSent`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) is read at call time, so a handler that closes over fresh state fires with that state. They also go quiet after unmount, so a late response can't call into a torn-down tree.
 
 ## Handling errors
 

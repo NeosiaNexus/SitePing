@@ -26,6 +26,8 @@ const FEEDBACK: FeedbackRecord = {
   updatedAt: new Date("2026-05-14T10:00:00Z"),
   annotations: [],
   screenshotUrl: null,
+  screenshotRegion: null,
+  diagnostics: null,
 };
 
 let fetchSpy: ReturnType<typeof vi.fn>;
@@ -48,10 +50,7 @@ afterEach(() => {
 
 describe("buildWebhookPayload", () => {
   it("formats Slack payload with blocks + text fallback", () => {
-    const payload = buildWebhookPayload("slack", FEEDBACK) as {
-      text: string;
-      blocks: Array<{ type: string }>;
-    };
+    const payload = buildWebhookPayload("slack", FEEDBACK);
     expect(payload.text).toContain("Alice");
     expect(payload.text).toContain("bug");
     expect(payload.text).toContain("The button overlaps");
@@ -61,10 +60,7 @@ describe("buildWebhookPayload", () => {
   });
 
   it("formats Discord payload with content + embed", () => {
-    const payload = buildWebhookPayload("discord", FEEDBACK) as {
-      content: string;
-      embeds: Array<{ title: string; description: string; color: number }>;
-    };
+    const payload = buildWebhookPayload("discord", FEEDBACK);
     expect(payload.content).toContain("Alice");
     expect(payload.content).toContain("bug");
     expect(payload.embeds[0]?.title).toContain("test-project");
@@ -80,8 +76,8 @@ describe("buildWebhookPayload", () => {
 
   it("truncates excessively long messages for chat platforms", () => {
     const long = { ...FEEDBACK, message: "x".repeat(2000) };
-    const slack = buildWebhookPayload("slack", long) as { text: string };
-    const discord = buildWebhookPayload("discord", long) as { embeds: Array<{ description: string }> };
+    const slack = buildWebhookPayload("slack", long);
+    const discord = buildWebhookPayload("discord", long);
     // Headline + ': ' prefix + 300 char preview (with ellipsis) — stays
     // well below Slack's 3000-char block limit.
     expect(slack.text.length).toBeLessThan(500);

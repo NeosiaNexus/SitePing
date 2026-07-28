@@ -4,7 +4,7 @@ import { resolveAnnotation } from "./dom/resolver.js";
 import { classifyVisibility } from "./dom/visibility.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
-import { getTypeLabel, type TFunction } from "./i18n/index.js";
+import { getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { getTypeColor, type ThemeColors } from "./styles/theme.js";
 import type { Tooltip } from "./tooltip.js";
 
@@ -343,7 +343,7 @@ export class MarkerManager {
     // region (tests, embedded use cases) and when no marker is visible to
     // avoid noisy "0 markers" updates on every navigation.
     if (this.liveRegion && this.entries.length > 0) {
-      this.liveRegion.textContent = this.t("marker.count").replace("{count}", String(this.entries.length));
+      this.liveRegion.textContent = tWithParams(this.t, "marker.count", { count: this.entries.length });
     }
     this.emitMarkersChanged();
   }
@@ -526,7 +526,7 @@ export class MarkerManager {
     if (confidence < LOW_CONFIDENCE_THRESHOLD && !isResolved) {
       marker.style.borderStyle = "dashed";
       marker.style.opacity = "0.7";
-      marker.title = this.t("marker.approximate").replace("{confidence}", String(Math.round(confidence * 100)));
+      marker.title = tWithParams(this.t, "marker.approximate", { confidence: Math.round(confidence * 100) });
     } else {
       marker.style.borderStyle = "solid";
       marker.style.opacity = "1";
@@ -563,10 +563,11 @@ export class MarkerManager {
     marker.setAttribute("tabindex", "0");
     marker.setAttribute("role", "button");
     const truncatedMessage = feedback.message.length > 60 ? `${feedback.message.slice(0, 60)}...` : feedback.message;
-    const ariaLabel = this.t("marker.aria")
-      .replace("{number}", String(number))
-      .replace("{type}", getTypeLabel(feedback.type, this.t))
-      .replace("{message}", truncatedMessage);
+    const ariaLabel = tWithParams(this.t, "marker.aria", {
+      number,
+      type: getTypeLabel(feedback.type, this.t),
+      message: truncatedMessage,
+    });
     marker.setAttribute("aria-label", ariaLabel);
     marker.setAttribute("aria-describedby", this.tooltip.tooltipId);
     setText(marker, isResolved ? "\u2713" : String(number));

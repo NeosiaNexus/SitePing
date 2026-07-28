@@ -20,8 +20,23 @@ initSiteping({
 - An unknown locale logs a `console.warn` and falls back to English. Nothing breaks.
 - While a locale chunk is loading, labels render in English and re-localize the moment it lands; markers wait for the translations so screen-reader labels are never half-translated.
 
+## Custom locales
+
+`registerLocale(code, translations)` adds a language the widget doesn't ship, and `loadLocale(code)` fetches a built-in dictionary ahead of time. Both are runtime exports of `@siteping/widget`:
+
+```ts
+import { initSiteping, registerLocale, type Translations } from "@siteping/widget";
+
+registerLocale("nl", { "panel.title": "Feedbacks", "fab.annotate": "Nieuwe annotatie maken" });
+initSiteping({ endpoint: "/api/siteping", projectName: "my-project", locale: "nl" });
+```
+
+**Partial dictionaries are fine.** Missing keys fall back to English key by key, so overriding a single string never means copying the whole catalog — pass the `Translations` type only if you want the full set checked. Two rules the implementation enforces: register under the **base language code** (`"nl"`, not `"nl-BE"` — lookups normalize to the base), and call `registerLocale` **before** `initSiteping`.
+
+`await loadLocale("fr")` before init if you want a built-in locale on screen from the first paint instead of a brief English flash.
+
 ## The dashboard follows the same set
 
-`@siteping/dashboard` ships the same seven locales with the same resolution rules. The dashboard additionally accepts custom locales at runtime through its `registerLocale(code, translations)` export — see [the dashboard docs](/docs/dashboard#languages).
+`@siteping/dashboard` ships the same seven locales with the same resolution rules, and exports its own `registerLocale` with the same partial-dictionary behavior — see [the dashboard docs](/docs/dashboard#languages).
 
 Want your language built in? Locale contributions are the friendliest first PR to this project — see [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md) ("Adding a Locale").

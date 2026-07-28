@@ -44,12 +44,21 @@ if (!existsSync(coreDist)) {
 // paths — a global quoted-specifier rewrite is safe there.
 const toCjsSpecifiers = (content) => content.replace(/(["'])\.\/([^"']+)\.js\1/g, "$1./$2.cjs$1");
 
-// 1 + 2. Copy core declarations (and their .d.cts twins).
-const coreFiles = readdirSync(coreDist).filter((f) => f.endsWith(".d.ts") && f !== "testing.d.ts");
+// The consumer's declarations decide whether the testing subpath is needed
+// (only @siteping/adapter-kit re-exports it today) — scan before copying so
+// packages that never touch it don't ship a dead file.
+const ownDts = readdirSync(targetDir).filter((f) => f.endsWith(".d.ts") || f.endsWith(".d.cts"));
+const needsTesting = ownDts.some((f) => readFileSync(join(targetDir, f), "utf8").includes("@siteping/core/testing"));
+
+// 1 + 2. Copy core declarations (and their .d.cts twins). testing.d.ts is
+// copied only when referenced — its relative './types.js' imports resolve
+// against the copies made here.
+const coreFiles = readdirSync(coreDist).filter((f) => f.endsWith(".d.ts") && (f !== "testing.d.ts" || needsTesting));
 
 for (const file of coreFiles) {
   const content = readFileSync(join(coreDist, file), "utf8");
-  const base = file === "index.d.ts" ? "siteping-core" : file.slice(0, -".d.ts".length);
+  const base =
+    file === "index.d.ts" ? "siteping-core" : file === "testing.d.ts" ? "siteping-core-testing" : file.slice(0, -5);
   writeFileSync(join(targetDir, `${base}.d.ts`), content, "utf8");
   writeFileSync(join(targetDir, `${base}.d.cts`), toCjsSpecifiers(content), "utf8");
   console.log(`  Copied: ${file} -> ${base}.d.ts + ${base}.d.cts`);
@@ -57,14 +66,20 @@ for (const file of coreFiles) {
 
 // 3. Point the consumer's own declarations at the copies, per interpretation.
 // (The copies themselves never reference @siteping/core — no-op for them.)
+// The '/testing' subpath rewrite MUST run before the bare-name one so the
+// residual check below still catches any other, genuinely unknown subpath.
 const dtsFiles = readdirSync(targetDir).filter((f) => f.endsWith(".d.ts") || f.endsWith(".d.cts"));
 
 for (const file of dtsFiles) {
   const filePath = join(targetDir, file);
   let content = readFileSync(filePath, "utf8");
   const original = content;
-  const replacement = file.endsWith(".d.cts") ? "./siteping-core.cjs" : "./siteping-core.js";
+  const cjs = file.endsWith(".d.cts");
+  const replacement = cjs ? "./siteping-core.cjs" : "./siteping-core.js";
+  const testingReplacement = cjs ? "./siteping-core-testing.cjs" : "./siteping-core-testing.js";
 
+  content = content.replaceAll("'@siteping/core/testing'", `'${testingReplacement}'`);
+  content = content.replaceAll('"@siteping/core/testing"', `"${testingReplacement}"`);
   content = content.replaceAll("'@siteping/core'", `'${replacement}'`);
   content = content.replaceAll('"@siteping/core"', `"${replacement}"`);
 

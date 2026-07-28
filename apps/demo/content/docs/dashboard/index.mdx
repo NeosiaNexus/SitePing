@@ -71,8 +71,8 @@ The dashboard also accepts custom locales at runtime:
 ```ts
 import { registerLocale } from "@siteping/dashboard";
 
-registerLocale("nl", { /* all 73 keys */ });
+registerLocale("nl", { "status.open": "Open", "status.resolved": "Opgelost" });
 // later: <SitepingInbox locale="nl" ... />
 ```
 
-Two rules the implementation enforces: register under the **base language code** (`"nl"`, not `"nl-BE"` — lookups normalize to the base), and call `registerLocale` **before the inbox mounts**. The dictionary is complete by design — pass every key, and TypeScript will hold you to it on the object literal.
+**Partial dictionaries are accepted** — any key you leave out falls back to English on its own, so correcting a single label doesn't mean maintaining the whole catalog. Two rules the implementation enforces: register under the **base language code** (`"nl"`, not `"nl-BE"` — lookups normalize to the base), and call `registerLocale` **before the inbox mounts**. The widget's `registerLocale` works the same way against [its own key set](/docs/widget/i18n).

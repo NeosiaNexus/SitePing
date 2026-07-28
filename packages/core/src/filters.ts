@@ -57,6 +57,12 @@ export function applyFeedbackFilters(items: readonly FeedbackRecord[], query: Fe
     results = results.filter((f) => f.message.toLowerCase().includes(s));
   }
 
+  // Newest first is part of the store contract (PrismaStore orders by
+  // createdAt desc) — sort explicitly instead of relying on insertion order.
+  // Array.prototype.sort is stable, so same-millisecond records keep their
+  // insertion order (newest inserted first).
+  results.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
   const total = results.length;
   // Both bounds are clamped from below, not just `limit` from above:
   // `(page - 1) * limit` goes negative for a non-positive page or limit, and

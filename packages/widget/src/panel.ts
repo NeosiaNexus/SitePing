@@ -13,7 +13,7 @@ import { PAGE_SIZE } from "./constants.js";
 import { el, formatRelativeDate, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
-import { getStatusLabel, getTypeLabel, type TFunction } from "./i18n/index.js";
+import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import {
   ICON_BUG,
   ICON_CHANGE,
@@ -665,7 +665,7 @@ export class Panel {
       const loadMoreWrap = el("div", { class: "sp-load-more-wrap" });
       const loadMoreBtn = document.createElement("button");
       loadMoreBtn.className = "sp-btn-ghost sp-btn-load-more";
-      setText(loadMoreBtn, this.t("panel.loadMore").replace("{remaining}", String(remaining)));
+      setText(loadMoreBtn, tWithParams(this.t, "panel.loadMore", { remaining }));
       loadMoreBtn.addEventListener("click", () => this.loadMoreFeedbacks().catch(() => {}));
       loadMoreWrap.appendChild(loadMoreBtn);
       this.listContainer.appendChild(loadMoreWrap);

@@ -90,7 +90,7 @@ describe("captureAnnotatedScreenshot — graceful degrade", () => {
     const result = await captureAnnotatedScreenshot(new DOMRect(0, 0, 100, 100));
 
     expect(result).toBeNull();
-    const captureWarnings = warnSpy.mock.calls.filter((c) => /Screenshot capture failed/.test(String(c[0])));
+    const captureWarnings = warnSpy.mock.calls.filter((c: unknown[]) => /Screenshot capture failed/.test(String(c[0])));
     expect(captureWarnings.length).toBe(1);
   });
 

@@ -49,7 +49,7 @@ function createApiRoute(dir: string): void {
   writeFileSync(join(routeDir, "route.ts"), "export const GET = () => {};");
 }
 
-function allMessages(spy: ReturnType<typeof vi.spyOn>): string[] {
+function allMessages(spy: { mock: { calls: unknown[][] } }): string[] {
   return spy.mock.calls.map((call) => String(call[0]));
 }
 

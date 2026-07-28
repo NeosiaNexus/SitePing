@@ -45,11 +45,8 @@ jobs:
         run: bun run build
 
       - name: Publish previews
-        run: >
-          bun x pkg-pr-new@0.0.80 publish --comment=update
-          ./packages/widget
-          ./packages/adapter-prisma
-          ./packages/adapter-memory
-          ./packages/adapter-localstorage
-          ./packages/dashboard
-          ./packages/cli
+        # Package paths derive from the release-please manifest — one place
+        # to register a package, previews included automatically.
+        run: |
+          mapfile -t pkgs < <(node scripts/list-public-packages.mjs | sed 's|^|./|')
+          bun x pkg-pr-new@0.0.80 publish --comment=update "${pkgs[@]}"

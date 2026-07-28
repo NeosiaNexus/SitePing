@@ -1,9 +1,4 @@
-import type {
-  FeedbackResponse,
-  SitepingPublicEventListener,
-  SitepingPublicEvents,
-  SitepingUnsubscribe,
-} from "@siteping/core";
+import type { FeedbackResponse, SitepingUnsubscribe } from "@siteping/core";
 import type { AnnotationComplete } from "./annotator.js";
 
 /** Listener signature for a single key of an `EventBus` event map. */
@@ -74,22 +69,15 @@ export interface WidgetEvents {
    * Internal-only: a feedback submission was aborted by a benign user action
    * (e.g. cancelling the identity prompt). Distinct from `feedback:error` so a
    * cancellation does not surface through the host's `onError` callback. Not
-   * part of `PublicWidgetEvents` — never exposed to consumers.
+   * part of `SitepingPublicEvents` — never exposed to consumers.
    */
   "submission:cancelled": [];
   "annotations:toggle": [boolean];
   "panel:toggle": [boolean];
 }
 
-/**
- * Subset of `WidgetEvents` exposed to consumers via `SitepingInstance`.
- *
- * Kept structurally identical to `SitepingPublicEvents` from `@siteping/core`
- * so the launcher can bridge between the two without runtime casts. The
- * `satisfies` clause locks that contract at compile time — drift in either
- * side surfaces here.
- */
-export type PublicWidgetEvents = SitepingPublicEvents;
-
-/** Re-export the listener signature for ergonomics on the widget side. */
-export type PublicWidgetEventListener<K extends keyof PublicWidgetEvents> = SitepingPublicEventListener<K>;
+// NOTE: the public event surface is `SitepingPublicEvents` from
+// `@siteping/core`. The launcher bridges internal events onto the public bus
+// through a mapped object keyed by `keyof SitepingPublicEvents`, so adding a
+// public event without bridging it is a compile error there — no alias or
+// duplicate map is needed on this side.

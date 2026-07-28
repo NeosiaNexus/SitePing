@@ -24,6 +24,10 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     createdAt: "2026-04-01T00:00:00.000Z",
     updatedAt: "2026-04-01T00:00:00.000Z",
     annotations: [],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }
@@ -84,7 +88,7 @@ describe("PanelStats", () => {
     document.body.appendChild(stats.element);
 
     const labels = stats.element.querySelectorAll<HTMLElement>(".sp-stats-label");
-    expect(labels[0].textContent).toBe(STATS_I18N_EN["stats.open"]);
+    expect(labels[0]!.textContent).toBe(STATS_I18N_EN["stats.open"]);
   });
 
   it("hides the bar when total === 0", () => {
@@ -116,9 +120,9 @@ describe("PanelStats", () => {
 
     const values = stats.element.querySelectorAll<HTMLElement>(".sp-stats-value");
     // open=2, resolved=2, bugs=2
-    expect(values[0].textContent).toBe("2");
-    expect(values[1].textContent).toBe("2");
-    expect(values[2].textContent).toBe("2");
+    expect(values[0]!.textContent).toBe("2");
+    expect(values[1]!.textContent).toBe("2");
+    expect(values[2]!.textContent).toBe("2");
   });
 
   it("buckets in_progress as open and wont_fix as resolved (binary client view)", () => {
@@ -137,8 +141,8 @@ describe("PanelStats", () => {
 
     const values = stats.element.querySelectorAll<HTMLElement>(".sp-stats-value");
     // open bucket = open + in_progress, resolved bucket = resolved + wont_fix
-    expect(values[0].textContent).toBe("2");
-    expect(values[1].textContent).toBe("2");
+    expect(values[0]!.textContent).toBe("2");
+    expect(values[1]!.textContent).toBe("2");
 
     // Progress reflects the closed share: 2/4 = 50%
     const fill = stats.element.querySelector<HTMLElement>(".sp-stats-progress-fill")!;
@@ -180,9 +184,9 @@ describe("PanelStats", () => {
     expect(label.textContent).toContain("0%");
 
     const values = stats.element.querySelectorAll<HTMLElement>(".sp-stats-value");
-    expect(values[0].textContent).toBe("0");
-    expect(values[1].textContent).toBe("0");
-    expect(values[2].textContent).toBe("0");
+    expect(values[0]!.textContent).toBe("0");
+    expect(values[1]!.textContent).toBe("0");
+    expect(values[2]!.textContent).toBe("0");
   });
 
   it("uses the French progress text when locale='fr'", () => {

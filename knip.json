@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreExportsUsedInFile": true,
+  "ignoreDependencies": ["publint", "@arethetypeswrong/cli"],
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.mjs", "e2e/**/*.spec.ts", "tsup.preset.ts", "e2e/server.mjs"],
+      "project": ["scripts/**", "e2e/**", "*.ts"]
+    },
+    "packages/*": {
+      "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "project": ["src/**", "__tests__/**"]
+    },
+    "apps/demo": {}
+  }
+}
