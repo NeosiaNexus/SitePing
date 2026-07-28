@@ -4,9 +4,9 @@ Thanks for your interest in contributing! This guide covers everything you need 
 
 ## Prerequisites
 
-- [Bun](https://bun.sh/) (latest) — used as the package manager (workspaces, scripts, lockfile)
+- [Bun](https://bun.sh/) **1.3.x** — the exact version is pinned in `packageManager` (root `package.json`) and used by CI. Bun 1.4 is known to break the demo build locally (symlinked `.bun` installs rejected by Turbopack — workaround: `bun install --linker=hoisted`); stick to the pinned line.
 - Node.js >= 20 — every package declares `engines.node >= 20`, and CI runs the suite on 20, 22, and 24
-- A Chromium-based browser (for Playwright E2E tests)
+- For Playwright E2E tests: `bunx playwright install` — the config runs **three engines** (Chromium, Firefox, WebKit)
 
 ## Setup
 
@@ -19,17 +19,28 @@ bun install
 ## Development Workflow
 
 ```bash
-bun run build     # build all packages (via Turborepo, cached)
-bun run check     # TypeScript type-checking (via Turborepo, cached)
-bun run clean     # clean all dist/ directories
-bun run test      # run unit tests (watch mode)
-bun run test:run  # run unit tests once
-bun run test:e2e  # run Playwright E2E tests
-bun run lint      # lint with Biome
-bun run lint:fix  # auto-fix lint issues
+bun run build              # build all packages (via Turborepo, cached)
+bun run check              # TypeScript type-checking, src AND tests (via Turborepo, cached)
+bun run clean              # clean all dist/ directories
+bun run test               # run unit tests (watch mode)
+bun run test:run           # run unit + type tests once
+bun run test:e2e           # run Playwright E2E tests
+bun run lint               # lint with Biome (includes the type-aware rules domain)
+bun run lint:fix           # auto-fix lint issues
+bun run verify             # build + check + lint + test:run — the full pre-PR gate
+bun run pkg-checks         # publint + attw on every published package (same script CI runs)
+bun run check:consistency  # locale counts, package registration, fix-dts chains
+bun run knip               # dead files / exports / dependencies
+bun run new:locale <code>  # scaffold a new built-in locale (see Adding a Locale)
+bun run new:adapter <name> # scaffold a new first-party adapter (see Creating a New Adapter)
 ```
 
-Always run `check`, `test:run`, and `build` before submitting a PR.
+Run `bun run verify` before submitting a PR — it is exactly what CI enforces.
+
+> **WSL note:** if a local `vitest` run hangs or balloons in memory, use the
+> real binary (`./node_modules/.bin/vitest run`) rather than `bunx vitest`
+> (which fetches latest), and keep `maxForks` at the committed value in
+> `vitest.config.ts`.
 
 ## Architecture
 
@@ -39,9 +50,11 @@ Monorepo with bun workspaces + Turborepo. Libraries live in `packages/`, the web
 |---------|-----|--------|-------------|
 | `@siteping/core` | private | — | Shared types, schema, store errors, helpers, conformance tests |
 | `@siteping/widget` | published | Browser | Feedback widget (Shadow DOM, closed). Accepts `store` for client-side mode |
+| `@siteping/dashboard` | published | Browser (React) | Linear-style triage inbox (`<SitepingInbox />` + headless `useSitepingInbox()`) |
 | `@siteping/adapter-prisma` | published | Node | Prisma database adapter |
 | `@siteping/adapter-memory` | published | Any | In-memory adapter (testing, demos, serverless) |
 | `@siteping/adapter-localstorage` | published | Browser | localStorage adapter (demos, prototyping) |
+| `@siteping/adapter-kit` | published | Any | Everything third-party adapter authors need: store contract, helpers, `createCollectionStore`, and the conformance suite (`/testing`) |
 | `@siteping/cli` | published | Node | CLI tool (`npx @siteping/cli init/sync/status/doctor`) |
 | `@siteping/demo` (`apps/demo`) | private | Next.js | [siteping.dev](https://siteping.dev) — landing, live demo, **and the documentation site** ([editing it](#editing-the-documentation)) |
 
@@ -49,7 +62,7 @@ Monorepo with bun workspaces + Turborepo. Libraries live in `packages/`, the web
 - **Turborepo** handles build orchestration, dependency ordering, and local caching.
 - Each published package is built independently with tsup.
 
-> **`noEmit` in tsconfig:** `tsconfig.base.json` sets `noEmit: true` (type-check only — tsup handles emit for published packages). Core overrides this with `noEmit: false` because it uses `tsc` directly to emit `.d.ts` files. If you add a package that emits via `tsc` instead of tsup, you must also override `noEmit: false` in its `tsconfig.json`.
+> **`noEmit` in tsconfig:** `tsconfig.base.json` sets `noEmit: true` (type-check only — tsup handles emit for published packages), and every package's `check` covers `src/` **and** `__tests__/`. Core is the exception: its `tsconfig.json` is a build config (`tsc` emits its `.d.ts` from `src/`), so its `check` runs against a separate `tsconfig.check.json` that adds the tests back. If you add a package that emits via `tsc` instead of tsup, follow core's two-config pattern.
 
 ## Editing the Documentation
 
@@ -96,165 +109,92 @@ New pages are picked up automatically — the sitemap, the search index, and the
 
 ## Adding a New Package
 
-To add a new package to the monorepo (e.g. `@siteping/adapter-drizzle`):
-
-### 1. Create the package directory
-
-```
-packages/adapter-drizzle/
-├── src/
-│   └── index.ts
-├── package.json
-├── tsconfig.json
-└── tsup.config.ts
-```
-
-### 2. `package.json`
-
-```jsonc
-{
-  "name": "@siteping/adapter-drizzle",
-  "version": "0.1.0",
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    }
-  },
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": ["dist"],
-  "scripts": {
-    "build": "tsup",
-    "check": "tsc --noEmit",
-    "clean": "rm -rf dist"
-  },
-  "author": "neosianexus",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/NeosiaNexus/SitePing.git",
-    "directory": "packages/adapter-drizzle"
-  },
-  // If you import from @siteping/core:
-  "devDependencies": {
-    "@siteping/core": "workspace:*"
-  }
-}
-```
-
-> **Important:** `@siteping/core` must be a `devDependency`, never a `dependency` — it is bundled at build time and not published to npm.
-
-### 3. `tsconfig.json`
-
-```json
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src"
-  },
-  "include": ["src"]
-}
-```
-
-### 4. `tsup.config.ts`
-
-```ts
-import { defineConfig } from "tsup";
-
-export default defineConfig({
-  entry: ["src/index.ts"],
-  format: ["esm", "cjs"],
-  platform: "node",    // or "browser"
-  target: "node18",    // or "es2022"
-  dts: true,
-  sourcemap: true,
-  clean: true,
-  noExternal: ["@siteping/core"],  // bundle core (not published)
-});
-```
-
-### 5. Register in release-please
-
-**`release-please-config.json`** — add the package:
-```json
-"packages/<name>": {
-  "release-type": "node",
-  "component": "<name>",
-  "bump-minor-pre-major": true
-}
-```
-
-**`.release-please-manifest.json`** — add initial version:
-```json
-"packages/<name>": "0.1.0"
-```
-
-### 6. Add publish job in `.github/workflows/release.yml`
-
-Add an output in the `release-please` job:
-```yaml
-<name>-release_created: ${{ steps.release.outputs['packages/<name>--release_created'] }}
-```
-
-Add a publish job (copy an existing one and update the name, condition, and working-directory):
-```yaml
-publish-<name>:
-  needs: release-please
-  if: |
-    always() &&
-    (needs.release-please.outputs.<name>-release_created == 'true' ||
-     (github.event_name == 'workflow_dispatch' && inputs.publish))
-  # ... same steps as other publish jobs, with:
-  #   working-directory: packages/<name>
-```
-
-### 7. Verify
+For an adapter, use the scaffold — it writes every file below in the correct
+final shape and registers the package in release-please:
 
 ```bash
-bun install              # resolve the new workspace package
-bun run build            # Turborepo picks it up automatically
-bun run check            # type-check
-bun run lint             # lint
+bun run new:adapter drizzle -- --platform=node   # node | browser | neutral
 ```
 
-No changes needed in `turbo.json` or root `package.json` — Turborepo discovers new packages via the `workspaces` glob.
+For a non-adapter package, copy the closest existing one (`packages/adapter-memory`
+is the smallest). The pieces that matter:
+
+1. **`package.json`** — copy from a real adapter, not from memory. The
+   critical parts the old hand-written template used to miss: the dual
+   `import`/`require` exports map with per-condition `types`, `sideEffects: false`,
+   `publishConfig.access: public`, `engines.node >= 20`, and the build script
+   **must** chain fix-dts: `"build": "tsup && node ../../scripts/fix-dts.mjs dist"`
+   (`bun run check:consistency` fails if it's missing). `@siteping/core` is a
+   `devDependency`, never a `dependency` — it is bundled at build time and not
+   published to npm.
+2. **`tsconfig.json`** — `{ "extends": "../../tsconfig.base.json", "include": ["src", "__tests__"] }`.
+   No `outDir`/`rootDir`: `tsc` only type-checks; tsup emits.
+3. **`tsup.config.ts`** — use the shared preset:
+   ```ts
+   import { defineConfig } from "tsup";
+   import { sitepingLibrary } from "../../tsup.preset.js";
+
+   export default defineConfig(sitepingLibrary({ platform: "node" }));
+   ```
+4. **Register in release-please** — add the package to
+   `release-please-config.json` (release-type `node`, `bump-minor-pre-major`)
+   and to `.release-please-manifest.json` with the pre-first-release
+   placeholder version `"0.0.0"` (the post-release npm check knows to skip it).
+5. **Wire `.github/workflows/release.yml`** (4 spots — copy an existing
+   publish job): the `release_created` output, the build-artifact path, the
+   publish job itself, and the `verify-publish` needs list.
+6. **Verify** — `bun install`, then `bun run verify && bun run pkg-checks && bun run check:consistency`.
+
+The publint/attw gates and pkg-pr-new previews derive their package list from
+the manifest automatically, and `check:consistency` fails CI until every
+registration above is complete — nothing can be *silently* forgotten anymore.
 
 ## Creating a New Adapter
 
-Adapters implement the `SitepingStore` interface from `@siteping/core`. To create a new one (e.g. `adapter-drizzle`):
+Adapters implement the `SitepingStore` interface. **Third-party adapters**
+(outside this repo) depend on the published
+[`@siteping/adapter-kit`](https://siteping.dev/docs/adapters/writing-an-adapter),
+which exports the contract, the building blocks and the conformance suite.
+**First-party adapters** start with the scaffold:
 
-1. Copy `packages/adapter-memory/` as a starting point (simplest adapter)
-2. Implement the 6 methods of `SitepingStore`:
-   - `createFeedback` — idempotent on `clientId` (return existing or throw `StoreDuplicateError`)
-   - `getFeedbacks` — paginated query with filters (type, status, search)
-   - `findByClientId` — return `null` when not found (no error)
-   - `updateFeedback` — throw `StoreNotFoundError` when id doesn't exist
-   - `deleteFeedback` — throw `StoreNotFoundError` when id doesn't exist
-   - `deleteAllFeedbacks` — no-op when none exist (no error)
-3. Use the shared conformance test suite to verify your implementation:
+```bash
+bun run new:adapter drizzle -- --platform=node
+```
+
+Two implementation strategies:
+
+- **Snapshot backends** (KV, flat file, browser storage): hand
+  `createCollectionStore({ load, persist, generateId })` from `@siteping/core`
+  your three storage primitives and you get the complete store — clientId
+  dedup, filtering/pagination, the error contract, `verifyProjectOwnership`,
+  and the screenshot-drop retry on failed persists. `adapter-memory` is the
+  ~80-line reference.
+- **Query backends** (SQL, ORMs): implement the 6 methods directly. Use
+  `buildFeedbackRecord` / `buildAnnotationRecord` for input→record
+  construction, and follow the error contract documented on `SitepingStore`:
+  `createFeedback` idempotent on `clientId` (or throw `StoreDuplicateError`),
+  `updateFeedback`/`deleteFeedback` throw `StoreNotFoundError`,
+  `deleteAllFeedbacks` is a no-op when empty, every lost write throws
+  `StorePersistenceError`. Optionally implement `verifyProjectOwnership` so
+  HTTP handlers can reject cross-project PATCH/DELETE.
+
+Verify with the shared conformance suite (~44 tests — the scaffold pre-wires
+this file):
 
 ```ts
 // __tests__/my-store.test.ts
-import { testSitepingStore } from '@siteping/core/testing'
-import { MyStore } from '../src/index.js'
+import { testSitepingStore } from "@siteping/core/testing";
+import { MyStore } from "../src/index.js";
 
-// Runs 22 conformance tests covering the full SitepingStore contract
-testSitepingStore(() => new MyStore(testConfig))
+testSitepingStore(() => new MyStore(testConfig));
+// Options for legitimately varying contracts:
+//   testSitepingStore(factory, { duplicateBehavior: "throw", caseInsensitiveSearch: false })
 
 // Add adapter-specific tests below (connection handling, serialization, etc.)
 ```
 
-4. Re-export error types from your package for consumer convenience:
-```ts
-export { StoreNotFoundError, StoreDuplicateError } from '@siteping/core'
-```
-
-5. Use `flattenAnnotation()` from `@siteping/core` if your adapter handles HTTP payloads.
+Re-export the error types for consumer convenience, and use
+`flattenAnnotation()` if your adapter handles HTTP payloads directly.
 
 ## Code Style
 
@@ -266,59 +206,58 @@ export { StoreNotFoundError, StoreDuplicateError } from '@siteping/core'
 
 ## Adding a Locale
 
-The widget ships with a small set of built-in locales (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`). Unknown locales fall back to English. Adding a new built-in locale takes four small steps:
+The widget and the dashboard share the same set of built-in locales (`en`,
+`fr`, `de`, `es`, `it`, `pt`, `ru` — the single source of truth is
+`BUILTIN_LOCALES` in `packages/core/src/types.ts`). Unknown locales fall
+back to English. This is the friendliest first contribution, and the
+compiler + tests do most of the review:
 
-### 1. Create the translation file
+### 1. Scaffold
 
-Copy `packages/widget/src/i18n/en.ts` to `packages/widget/src/i18n/<code>.ts` (use a 2-letter ISO code) and translate every value. Keep the keys and `{placeholders}` exactly the same — values may be reordered for readability but the set must match `en.ts`.
-
-```ts
-// packages/widget/src/i18n/de.ts
-import type { Translations } from "./types.js";
-
-export const de: Translations = {
-  "panel.title": "Feedbacks",
-  "panel.close": "Panel schließen",
-  // ... every key from en.ts
-};
+```bash
+bun run new:locale nl
 ```
 
-### 2. Register it in the locale map
+This appends the code to `BUILTIN_LOCALES`, copies `en.ts` to `nl.ts` in
+**both** `packages/widget/src/i18n/` and `packages/dashboard/src/i18n/`, and
+adds the lazy-loader entry to both `i18n/index.ts` files. (You can also do
+those steps by hand — the loader maps are typed against `BUILTIN_LOCALES`,
+so `bun run check` fails until every step is done. Nothing can be silently
+forgotten.)
 
-In `packages/widget/src/i18n/index.ts`, add the import and the entry to `LOCALES` (alphabetical order):
+### 2. Translate
 
-```ts
-import { de } from "./de.js";
+Translate every value in the two new files (~120 widget keys, ~70 dashboard
+keys). Keep the keys and `{placeholders}` exactly as in `en.ts`:
 
-const LOCALES: Record<string, Translations> = { de, en, /* ... */ };
-```
+- a missing or extra **key** fails `bun run check` (the `Translations`
+  interface enforces completeness);
+- a dropped or renamed **`{placeholder}`** fails the placeholder-parity test.
 
-This is enough — full locale tags like `de-DE` are resolved automatically via the language prefix.
+### 3. Done — no test edits
 
-### 3. Add tests in `packages/widget/__tests__/i18n/i18n.test.ts`
+The i18n suites iterate `BUILTIN_LOCALES`, so the new locale is covered
+automatically (lazy-load, key parity, non-empty values, placeholder parity).
 
-Add three tests next to the existing locales: a `createT` lookup test, a key-parity test (`en.ts and <code>.ts have the same set of keys`), and a non-empty values test. The existing `ru` / `de` / `es` blocks are good templates.
+### 4. Update the user-facing lists
 
-### 4. Update every place that lists the locales
+Update the locale count/list in the docs site (`apps/demo/content/docs/widget/i18n.mdx`
+and `dashboard/index.mdx`, + their `.fr.mdx` twins), the two package READMEs
+and the root README. `bun run check:consistency` (run by CI) points at any
+count you missed.
 
-A new locale is only "shipped" once these are in sync — please do all of them in the same PR:
-
-| File | What to change |
-|------|----------------|
-| `packages/core/src/types.ts` | The `SitepingConfig.locale` type union — this is what gives users autocomplete |
-| `packages/widget/README.md` | The locale list in **Highlights** |
-| `packages/dashboard/README.md` | The "7 built-in locales" count in **Highlights** |
-| `apps/demo/content/docs/widget/i18n.mdx` (+ `.fr.mdx`) | The count, the list, and the resolution notes |
-| `apps/demo/content/docs/dashboard/index.mdx` (+ `.fr.mdx`) | The **Languages** section |
-| `README.md` (root) | The locale count in **Features** |
-
-> The docs site is the canonical reference for users — a locale that lands in the code but not in `apps/demo/content/docs/` is invisible to everyone who reads [siteping.dev/docs](https://siteping.dev/docs). See [Editing the Documentation](#editing-the-documentation).
-
-The dashboard (`packages/dashboard/src/i18n/`) has its own translation set with the same structure and the same built-in locales — a new locale should land in both packages (same three steps, plus the lazy-import `switch` in each package's `i18n/index.ts`).
+> **Custom locales without a PR:** both packages export `registerLocale`,
+> which accepts **partial** dictionaries — end users can override a single
+> string (or ship a private locale) at runtime without contributing it.
 
 ## Testing
 
-- **Unit tests** — Vitest. Place in `packages/<name>/__tests__/`.
+- **Unit tests** — Vitest. Place in `packages/<name>/__tests__/`. Test code
+  is type-checked under the same strict flags as `src/` (`bun run check`).
+- **Type tests** — `*.test-d.ts` files run by vitest's typecheck mode
+  (`expectTypeOf` + `@ts-expect-error`). Use them to lock public contracts:
+  an invalid config that must NOT compile, an inferred return type that must
+  not widen. See `packages/core/__tests__/contracts.test-d.ts`.
 - **E2E tests** — Playwright. Place in the `e2e/` directory at the root.
 - **Property tests** — [fast-check](https://fast-check.dev/), in `*.property.test.ts` next to the example-based suite.
 - Cover new features with unit tests. Cover user-facing flows with E2E tests when relevant.
