@@ -5,16 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { Fab } from "../../src/fab.js";
 import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
+import { createShadowRoot } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function createShadowRoot(): ShadowRoot {
-  const host = document.createElement("div");
-  document.body.appendChild(host);
-  return host.attachShadow({ mode: "open" });
-}
 
 function defaultConfig() {
   return {

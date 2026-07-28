@@ -1,5 +1,5 @@
 import type { FeedbackStatus, FeedbackType } from "@siteping/core";
-import { createI18n, tWithParams as coreTWithParams, interpolate } from "@siteping/core";
+import { tWithParams as coreTWithParams, createI18n, interpolate } from "@siteping/core";
 import type { TFunction, TranslationKey, Translations } from "./types.js";
 
 export type { TFunction, TranslationKey, Translations } from "./types.js";

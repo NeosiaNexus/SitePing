@@ -43,6 +43,13 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # Dead files/exports/dependencies across the workspace. Non-blocking
+      # while the signal settles — promote to a hard gate once it has stayed
+      # quiet for a few weeks (findings still show in the job log).
+      - name: Knip (dead code / deps)
+        run: bun run knip
+        continue-on-error: true
+
       - name: Type check
         run: bun run check
 
@@ -210,21 +217,14 @@ jobs:
       - name: CLI binary smoke test
         run: node packages/cli/dist/index.js --help
 
-      - name: publint
-        run: |
-          for pkg in widget adapter-prisma adapter-memory adapter-localstorage adapter-kit dashboard cli; do
-            echo "::group::publint @siteping/$pkg"
-            bun x publint@0.3.22 "packages/$pkg"
-            echo "::endgroup::"
-          done
+      - name: Package health (publint + attw)
+        # Same script contributors run locally (`bun run pkg-checks`); the
+        # package list derives from .release-please-manifest.json, so a new
+        # package can never be silently skipped by this gate.
+        run: bun run pkg-checks
 
-      - name: Are the types wrong
-        run: |
-          for pkg in widget adapter-prisma adapter-memory adapter-localstorage adapter-kit dashboard cli; do
-            echo "::group::attw @siteping/$pkg"
-            bun x @arethetypeswrong/cli@0.18.5 "packages/$pkg" --pack
-            echo "::endgroup::"
-          done
+      - name: Consistency check (locales, package registration, fix-dts chains)
+        run: bun run check:consistency
 
   # peerDependencies promise `react >=18`, but the suite's devDeps pin React
   # 19 — the oldest supported major was otherwise never exercised (same

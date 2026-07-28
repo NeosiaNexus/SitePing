@@ -6,12 +6,12 @@
 
 import { describe, expectTypeOf, it } from "vitest";
 import {
-  CLOSED_FEEDBACK_STATUSES,
+  type CLOSED_FEEDBACK_STATUSES,
   type ClosedFeedbackStatus,
   createCollectionStore,
   type FeedbackStatus,
   isClosedStatus,
-  OPEN_FEEDBACK_STATUSES,
+  type OPEN_FEEDBACK_STATUSES,
   type OpenFeedbackStatus,
   toFeedbackUpdate,
 } from "../src/index.js";
@@ -77,7 +77,9 @@ describe("FeedbackUpdateInput closure invariant", () => {
 
   it("keeps the status buckets exhaustive", () => {
     expectTypeOf<OpenFeedbackStatus | ClosedFeedbackStatus>().toEqualTypeOf<FeedbackStatus>();
-    expectTypeOf<(typeof OPEN_FEEDBACK_STATUSES)[number] | (typeof CLOSED_FEEDBACK_STATUSES)[number]>().toEqualTypeOf<FeedbackStatus>();
+    expectTypeOf<
+      (typeof OPEN_FEEDBACK_STATUSES)[number] | (typeof CLOSED_FEEDBACK_STATUSES)[number]
+    >().toEqualTypeOf<FeedbackStatus>();
   });
 });
 

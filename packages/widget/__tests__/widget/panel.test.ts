@@ -6,6 +6,7 @@ import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { createT } from "../../src/i18n/index.js";
 import { Panel } from "../../src/panel.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
+import { createShadowRoot } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -66,12 +67,6 @@ if (typeof globalThis.CSS === "undefined") {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function createShadowRoot(): ShadowRoot {
-  const host = document.createElement("div");
-  document.body.appendChild(host);
-  return host.attachShadow({ mode: "open" });
-}
 
 // ---------------------------------------------------------------------------
 // Tests

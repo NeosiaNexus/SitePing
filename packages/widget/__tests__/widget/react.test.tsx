@@ -85,9 +85,7 @@ describe("useSiteping", () => {
     expect(initSpy).toHaveBeenCalledTimes(1);
     // The hook overrides the callback props with stable ref-reading
     // wrappers — the transport/config fields must pass through untouched.
-    expect(initSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ endpoint: "/api/siteping", projectName: "test" }),
-    );
+    expect(initSpy).toHaveBeenCalledWith(expect.objectContaining({ endpoint: "/api/siteping", projectName: "test" }));
     expect(mockInstances).toHaveLength(1);
     expect(mockInstances[0]?.__destroyed).toBe(false);
 

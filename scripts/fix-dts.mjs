@@ -53,9 +53,7 @@ const needsTesting = ownDts.some((f) => readFileSync(join(targetDir, f), "utf8")
 // 1 + 2. Copy core declarations (and their .d.cts twins). testing.d.ts is
 // copied only when referenced — its relative './types.js' imports resolve
 // against the copies made here.
-const coreFiles = readdirSync(coreDist).filter(
-  (f) => f.endsWith(".d.ts") && (f !== "testing.d.ts" || needsTesting),
-);
+const coreFiles = readdirSync(coreDist).filter((f) => f.endsWith(".d.ts") && (f !== "testing.d.ts" || needsTesting));
 
 for (const file of coreFiles) {
   const content = readFileSync(join(coreDist, file), "utf8");

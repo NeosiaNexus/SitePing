@@ -3,8 +3,8 @@
  * mode — never executed).
  */
 
-import { describe, expectTypeOf, it } from "vitest";
 import type { SitepingStore } from "@siteping/core";
+import { describe, expectTypeOf, it } from "vitest";
 import type { InboxSource, InboxState, SitepingInboxProps, UseSitepingInboxOptions } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
 

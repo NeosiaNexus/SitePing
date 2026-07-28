@@ -210,11 +210,15 @@ export interface GetQueryInput {
 // compares clean object types rather than intersection chains.
 // ---------------------------------------------------------------------------
 
-const _createSchemaMatchesPayload: AssertEqual<Prettify<zod.z.infer<typeof feedbackCreateSchema>>, FeedbackPayload> =
-  true;
+const _createSchemaMatchesPayload: AssertEqual<
+  Prettify<zod.z.infer<typeof feedbackCreateSchema>>,
+  FeedbackPayload
+> = true;
 void _createSchemaMatchesPayload;
-const _patchSchemaMatchesInput: AssertEqual<Prettify<zod.z.infer<typeof feedbackPatchSchema>>, FeedbackPatchInput> =
-  true;
+const _patchSchemaMatchesInput: AssertEqual<
+  Prettify<zod.z.infer<typeof feedbackPatchSchema>>,
+  FeedbackPatchInput
+> = true;
 void _patchSchemaMatchesInput;
 const _deleteSchemaMatchesInput: AssertEqual<
   Prettify<zod.z.infer<typeof feedbackDeleteSchema>>,

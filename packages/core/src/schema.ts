@@ -183,8 +183,7 @@ export type SitepingModelFieldName<M extends SitepingModelName> = keyof (typeof 
 // surface as a runtime Prisma error).
 // ---------------------------------------------------------------------------
 
-const _feedbackModelMatchesRecord: AssertEqual<SitepingModelFieldName<"SitepingFeedback">, keyof FeedbackRecord> =
-  true;
+const _feedbackModelMatchesRecord: AssertEqual<SitepingModelFieldName<"SitepingFeedback">, keyof FeedbackRecord> = true;
 void _feedbackModelMatchesRecord;
 
 // `feedback` is the relation back-reference — the only field with no record

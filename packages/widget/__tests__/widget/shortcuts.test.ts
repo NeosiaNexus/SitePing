@@ -13,6 +13,7 @@ import {
   type ShortcutCallbacks,
 } from "../../src/shortcuts.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
+import { createShadowRoot } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -32,12 +33,6 @@ function createCallbacks(): ShortcutCallbacks & {
     onFocusSearch: vi.fn(),
     onToggleSelect: vi.fn(),
   };
-}
-
-function createShadowRoot(): ShadowRoot {
-  const host = document.createElement("div");
-  document.body.appendChild(host);
-  return host.attachShadow({ mode: "open" });
 }
 
 /** Build a KeyboardEvent with `composedPath` returning the given target. */

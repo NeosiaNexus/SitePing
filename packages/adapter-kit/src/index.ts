@@ -28,6 +28,8 @@
  */
 
 // The store contract and its data model
+// Building blocks — record construction, the shared filter pipeline, and
+// the full collection-store engine
 export type {
   AnchorData,
   AnnotationCreateInput,
@@ -35,6 +37,8 @@ export type {
   AnnotationRecord,
   AnnotationResponse,
   ClosedFeedbackStatus,
+  CollectionStore,
+  CollectionStoreBackend,
   ConsoleDiagnosticEntry,
   ConsoleDiagnosticLevel,
   DiagnosticsSnapshot,
@@ -48,6 +52,7 @@ export type {
   FeedbackStatus,
   FeedbackType,
   FeedbackUpdateInput,
+  FilterResult,
   NetworkDiagnosticEntry,
   OpenFeedbackStatus,
   RectData,
@@ -56,35 +61,25 @@ export type {
   Serialized,
   SitepingStore,
 } from "@siteping/core";
-
 // Status/type constants + helpers
-export {
-  CLOSED_FEEDBACK_STATUSES,
-  CONSOLE_DIAGNOSTIC_LEVELS,
-  FEEDBACK_STATUSES,
-  FEEDBACK_TYPES,
-  flattenAnnotation,
-  isClosedStatus,
-  OPEN_FEEDBACK_STATUSES,
-  toFeedbackUpdate,
-} from "@siteping/core";
-
 // Store errors — throw these from adapter implementations
-export {
-  isStoreDuplicate,
-  isStoreNotFound,
-  isStorePersistence,
-  StoreDuplicateError,
-  StoreNotFoundError,
-  StorePersistenceError,
-} from "@siteping/core";
-
-// Building blocks — record construction, the shared filter pipeline, and
-// the full collection-store engine
-export type { CollectionStore, CollectionStoreBackend, FilterResult } from "@siteping/core";
 export {
   applyFeedbackFilters,
   buildAnnotationRecord,
   buildFeedbackRecord,
+  CLOSED_FEEDBACK_STATUSES,
+  CONSOLE_DIAGNOSTIC_LEVELS,
   createCollectionStore,
+  FEEDBACK_STATUSES,
+  FEEDBACK_TYPES,
+  flattenAnnotation,
+  isClosedStatus,
+  isStoreDuplicate,
+  isStoreNotFound,
+  isStorePersistence,
+  OPEN_FEEDBACK_STATUSES,
+  StoreDuplicateError,
+  StoreNotFoundError,
+  StorePersistenceError,
+  toFeedbackUpdate,
 } from "@siteping/core";

@@ -3,7 +3,6 @@
  * mode — never executed).
  */
 
-import { describe, expectTypeOf, it } from "vitest";
 import type {
   FeedbackQuery,
   FeedbackResponse,
@@ -11,6 +10,7 @@ import type {
   SitepingPublicEvents,
   SitepingStore,
 } from "@siteping/core";
+import { describe, expectTypeOf, it } from "vitest";
 import type { GetFeedbacksOptions } from "../../src/api-client.js";
 import { initSiteping, registerLocale, type Translations } from "../../src/index.js";
 

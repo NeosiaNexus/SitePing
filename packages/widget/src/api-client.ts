@@ -9,7 +9,6 @@ import {
   networkErrorFromException,
   type Prettify,
   type SitepingHeadersOption,
-  SitepingNetworkError,
 } from "@siteping/core";
 import type { Identity } from "./identity.js";
 

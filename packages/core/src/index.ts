@@ -22,7 +22,6 @@ export type { CollectionStore, CollectionStoreBackend } from "./store-helpers.js
 export { buildAnnotationRecord, buildFeedbackRecord, createCollectionStore } from "./store-helpers.js";
 export type { AssertEqual, IfEquals, Prettify, Serialized } from "./type-utils.js";
 export { hasOwn, isRecord } from "./type-utils.js";
-export { errorFromResponse, feedbackQueryToSearchParams, networkErrorFromException } from "./wire.js";
 export type {
   AnchorData,
   AnnotationCreateInput,
@@ -84,3 +83,4 @@ export {
   StorePersistenceError,
   toFeedbackUpdate,
 } from "./types.js";
+export { errorFromResponse, feedbackQueryToSearchParams, networkErrorFromException } from "./wire.js";
