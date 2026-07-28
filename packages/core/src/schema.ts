@@ -10,6 +10,9 @@
  * The CLI generates the actual Prisma schema from this definition.
  */
 
+import type { AssertEqual } from "./type-utils.js";
+import type { AnnotationRecord, FeedbackRecord } from "./types.js";
+
 /** Prisma scalar types supported by Siteping field definitions. */
 export type PrismaScalarType =
   | "String"
@@ -171,3 +174,23 @@ export type SitepingModelName = keyof typeof SITEPING_MODELS;
 
 /** Field names declared on a specific Siteping model. */
 export type SitepingModelFieldName<M extends SitepingModelName> = keyof (typeof SITEPING_MODELS)[M]["fields"];
+
+// ---------------------------------------------------------------------------
+// Compile-time locks — the Prisma model definitions and the store record
+// interfaces describe the same columns. Adding a field to one side without
+// the other is a compile error here (the CLI generates the actual Prisma
+// schema from SITEPING_MODELS, so a missed column would otherwise only
+// surface as a runtime Prisma error).
+// ---------------------------------------------------------------------------
+
+const _feedbackModelMatchesRecord: AssertEqual<SitepingModelFieldName<"SitepingFeedback">, keyof FeedbackRecord> =
+  true;
+void _feedbackModelMatchesRecord;
+
+// `feedback` is the relation back-reference — the only field with no record
+// counterpart.
+const _annotationModelMatchesRecord: AssertEqual<
+  Exclude<SitepingModelFieldName<"SitepingAnnotation">, "feedback">,
+  keyof AnnotationRecord
+> = true;
+void _annotationModelMatchesRecord;

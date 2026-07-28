@@ -7,6 +7,7 @@ import {
   type FeedbackResponseList,
   flattenAnnotation,
   type SitepingStore,
+  toFeedbackUpdate,
 } from "@siteping/core";
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
 
@@ -62,10 +63,7 @@ export class StoreClient implements WidgetClient {
   }
 
   async resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse> {
-    const record = await this.store.updateFeedback(id, {
-      status: resolved ? "resolved" : "open",
-      resolvedAt: resolved ? new Date() : null,
-    });
+    const record = await this.store.updateFeedback(id, toFeedbackUpdate(resolved ? "resolved" : "open"));
     return toResponse(record);
   }
 

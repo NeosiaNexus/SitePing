@@ -16,17 +16,9 @@ export type {
 } from "./schema.js";
 export { isRelationField, isScalarField, SITEPING_MODELS } from "./schema.js";
 export type { ScreenshotStorage } from "./screenshot-storage.js";
-export type {
-  AssertEqual,
-  Brand,
-  DeepReadonly,
-  IfEquals,
-  KeysOfType,
-  NonEmptyArray,
-  Prettify,
-  Replace,
-  RequiredNonNull,
-} from "./type-utils.js";
+export type { CollectionStore, CollectionStoreBackend } from "./store-helpers.js";
+export { buildAnnotationRecord, buildFeedbackRecord, createCollectionStore } from "./store-helpers.js";
+export type { AssertEqual, IfEquals, Prettify, Serialized } from "./type-utils.js";
 export { hasOwn, isRecord } from "./type-utils.js";
 export type {
   AnchorData,
@@ -35,6 +27,7 @@ export type {
   AnnotationRecord,
   AnnotationResponse,
   BuiltinLocale,
+  ClosedFeedbackStatus,
   ConsoleDiagnosticEntry,
   ConsoleDiagnosticLevel,
   DiagnosticsCaptureOptions,
@@ -50,12 +43,15 @@ export type {
   FeedbackType,
   FeedbackUpdateInput,
   NetworkDiagnosticEntry,
+  OpenFeedbackStatus,
   PageScope,
   RectData,
   ScreenshotRegion,
+  SitepingBaseConfig,
   SitepingConfig,
   SitepingDeepLinkOptions,
   SitepingHeadersOption,
+  SitepingHttpConfig,
   SitepingIdentity,
   SitepingInstance,
   SitepingLocale,
@@ -64,12 +60,14 @@ export type {
   SitepingPublicEvents,
   SitepingSkipReason,
   SitepingStore,
+  SitepingStoreConfig,
   SitepingTheme,
   SitepingUnsubscribe,
 } from "./types.js";
 export {
   BUILTIN_LOCALES,
   CLOSED_FEEDBACK_STATUSES,
+  CONSOLE_DIAGNOSTIC_LEVELS,
   FEEDBACK_STATUSES,
   FEEDBACK_TYPES,
   flattenAnnotation,
@@ -77,7 +75,9 @@ export {
   isStoreDuplicate,
   isStoreNotFound,
   isStorePersistence,
+  OPEN_FEEDBACK_STATUSES,
   StoreDuplicateError,
   StoreNotFoundError,
   StorePersistenceError,
+  toFeedbackUpdate,
 } from "./types.js";

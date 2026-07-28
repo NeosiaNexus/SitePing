@@ -9,11 +9,11 @@ import {
   type FeedbackUpdateInput,
   flattenAnnotation,
   hasOwn,
-  isClosedStatus,
   isStoreDuplicate,
   isStoreNotFound,
   type ScreenshotStorage,
   type SitepingStore,
+  toFeedbackUpdate,
 } from "@siteping/core";
 import {
   feedbackCreateSchema,
@@ -831,10 +831,7 @@ export function createSitepingHandler({
         // resolvedAt is the CLOSURE timestamp — set when the feedback enters
         // a terminal status (resolved / wont_fix), cleared otherwise. The
         // derivation lives here at the edge; stores persist what they're given.
-        const feedback = await store.updateFeedback(parsed.data.id, {
-          status: parsed.data.status,
-          resolvedAt: isClosedStatus(parsed.data.status) ? new Date() : null,
-        });
+        const feedback = await store.updateFeedback(parsed.data.id, toFeedbackUpdate(parsed.data.status));
 
         // PATCH can be made public via publicEndpoints / requireAuthForDestructive:
         // false — don't leak the author's email through the update response.

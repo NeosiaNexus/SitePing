@@ -5,12 +5,12 @@ import {
   type FeedbackResponse,
   type FeedbackResponseList,
   type FeedbackStatus,
-  isClosedStatus,
   SitepingAuthError,
   SitepingError,
   SitepingNetworkError,
   type SitepingStore,
   SitepingValidationError,
+  toFeedbackUpdate,
 } from "@siteping/core";
 import type { EndpointSourceOptions, InboxSource } from "./types.js";
 
@@ -159,7 +159,7 @@ export function createStoreSource(store: SitepingStore): InboxSource {
       return store.getFeedbacks(query);
     },
     setStatus(id: string, _projectName: string, status: FeedbackStatus): Promise<FeedbackRecord> {
-      return store.updateFeedback(id, { status, resolvedAt: isClosedStatus(status) ? new Date() : null });
+      return store.updateFeedback(id, toFeedbackUpdate(status));
     },
     async remove(id: string, _projectName: string): Promise<void> {
       await store.deleteFeedback(id);

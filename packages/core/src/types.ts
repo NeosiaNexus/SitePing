@@ -1,4 +1,4 @@
-import { hasOwn, type Prettify } from "./type-utils.js";
+import { type AssertEqual, hasOwn, type Prettify, type Serialized } from "./type-utils.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -29,10 +29,10 @@ export type SitepingSkipReason = "production" | "mobile" | "ssr";
 
 /** Per-channel + per-buffer-size diagnostics configuration. */
 export interface DiagnosticsCaptureOptions {
-  console?: boolean;
-  network?: boolean;
-  maxConsoleEntries?: number;
-  maxNetworkEntries?: number;
+  console?: boolean | undefined;
+  network?: boolean | undefined;
+  maxConsoleEntries?: number | undefined;
+  maxNetworkEntries?: number | undefined;
 }
 
 /** Identity payload supplied by the host application — bypasses the modal. */
@@ -44,7 +44,7 @@ export interface SitepingIdentity {
 /** Deep-link configuration — controls how a feedback id is read from the URL. */
 export interface SitepingDeepLinkOptions {
   /** Query parameter name carrying the feedback id. Defaults to `"siteping"`. */
-  param?: string;
+  param?: string | undefined;
 }
 
 /**
@@ -56,39 +56,17 @@ export type SitepingHeadersOption =
   | Record<string, string>
   | (() => Record<string, string> | Promise<Record<string, string>>);
 
-/** Configuration options for the Siteping widget. */
-export interface SitepingConfig {
-  /** HTTP endpoint that receives feedbacks (e.g. '/api/siteping'). Required unless `store` is provided. */
-  endpoint?: string | undefined;
-  /**
-   * Convenience auth for HTTP mode — sent as `Authorization: Bearer <apiKey>`
-   * on every request to `endpoint`.
-   *
-   * **WARNING: the widget runs in every visitor's browser, so a static key
-   * configured here is public** — anyone can read it from your page source
-   * and replay it against your API. Only use `apiKey` for internal tools
-   * already behind your own login. On public sites, prefer `headers` with a
-   * per-request factory returning a short-lived session token.
-   *
-   * Ignored in store mode.
-   */
-  apiKey?: string | undefined;
-  /**
-   * Extra headers for every HTTP-mode request — a static map, or a factory
-   * (sync or async) called once per request (e.g. to fetch a fresh session
-   * token). Merged over the widget's generated headers, so an explicit
-   * `Authorization` entry overrides `apiKey`. A throwing/rejecting factory
-   * fails the request like a network error.
-   *
-   * Ignored in store mode.
-   */
-  headers?: SitepingHeadersOption | undefined;
+/**
+ * Options shared by both widget modes (HTTP and direct store).
+ *
+ * Do not use this type directly — use {@link SitepingConfig}, the
+ * discriminated union that adds the mode-specific fields.
+ */
+export interface SitepingBaseConfig {
   /** Required — project identifier used to scope feedbacks */
   projectName: string;
-  /** Direct store for client-side mode. When set, bypasses HTTP and uses the store directly in the browser. */
-  store?: SitepingStore | undefined;
   /** FAB position — defaults to 'bottom-right' */
-  position?: SitepingPosition;
+  position?: SitepingPosition | undefined;
   /**
    * Show the "toggle markers visibility" item in the FAB radial menu.
    * Defaults to `true` (current behavior). Set to `false` to hide that
@@ -104,7 +82,7 @@ export interface SitepingConfig {
    */
   showAnnotationsToggle?: boolean | undefined;
   /** Accent color for the widget UI — defaults to '#0066ff' */
-  accentColor?: string;
+  accentColor?: string | undefined;
   /**
    * Render the widget even when it would normally be skipped — this bypasses
    * BOTH the production-environment guard AND the mobile-viewport guard.
@@ -113,7 +91,7 @@ export interface SitepingConfig {
    * Defaults to false. Use it for dedicated review tools, staging environments,
    * or responsive testing where you always want the widget present.
    */
-  forceShow?: boolean;
+  forceShow?: boolean | undefined;
   /**
    * Minimum viewport width (px) at or above which the widget renders. Below it,
    * the widget is skipped and `onSkip("mobile")` fires. Defaults to `768`.
@@ -123,9 +101,9 @@ export interface SitepingConfig {
    */
   minViewportWidth?: number | undefined;
   /** Enable debug logging of lifecycle events — defaults to false */
-  debug?: boolean;
+  debug?: boolean | undefined;
   /** Color theme — defaults to 'light' */
-  theme?: SitepingTheme;
+  theme?: SitepingTheme | undefined;
   /** UI locale — defaults to 'en'. Built-in: en, fr, de, es, it, pt (Brazilian), ru. Any other string falls back to English. */
   locale?: SitepingLocale | undefined;
   /**
@@ -280,10 +258,11 @@ export interface SitepingConfig {
 
   // Events
   /** Called when the feedback panel is opened. */
-  onOpen?: () => void;
+  onOpen?: (() => void) | undefined;
   /** Called when the feedback panel is closed. */
-  onClose?: () => void;
-  onFeedbackSent?: (feedback: FeedbackResponse) => void;
+  onClose?: (() => void) | undefined;
+  /** Called after a feedback is successfully submitted. */
+  onFeedbackSent?: ((feedback: FeedbackResponse) => void) | undefined;
   /**
    * Called when a feedback API call fails.
    *
@@ -295,12 +274,67 @@ export interface SitepingConfig {
    * direct-store callers can still surface raw errors without breaking the
    * contract.
    */
-  onError?: (error: Error) => void;
+  onError?: ((error: Error) => void) | undefined;
   /** Called when the user starts drawing an annotation. */
-  onAnnotationStart?: () => void;
+  onAnnotationStart?: (() => void) | undefined;
   /** Called when the user finishes drawing an annotation. */
-  onAnnotationEnd?: () => void;
+  onAnnotationEnd?: (() => void) | undefined;
 }
+
+/**
+ * HTTP mode — the widget talks to a server endpoint backed by a store
+ * adapter (e.g. `@siteping/adapter-prisma` request handlers).
+ */
+export interface SitepingHttpConfig extends SitepingBaseConfig {
+  /** HTTP endpoint that receives feedbacks (e.g. '/api/siteping'). */
+  endpoint: string;
+  /**
+   * Convenience auth for HTTP mode — sent as `Authorization: Bearer <apiKey>`
+   * on every request to `endpoint`.
+   *
+   * **WARNING: the widget runs in every visitor's browser, so a static key
+   * configured here is public** — anyone can read it from your page source
+   * and replay it against your API. Only use `apiKey` for internal tools
+   * already behind your own login. On public sites, prefer `headers` with a
+   * per-request factory returning a short-lived session token.
+   */
+  apiKey?: string | undefined;
+  /**
+   * Extra headers for every HTTP-mode request — a static map, or a factory
+   * (sync or async) called once per request (e.g. to fetch a fresh session
+   * token). Merged over the widget's generated headers, so an explicit
+   * `Authorization` entry overrides `apiKey`. A throwing/rejecting factory
+   * fails the request like a network error.
+   */
+  headers?: SitepingHeadersOption | undefined;
+  /** Not available in HTTP mode — use either `endpoint` or `store`, never both. */
+  store?: never;
+}
+
+/**
+ * Store mode — the widget talks to a `SitepingStore` directly in the
+ * browser, no server needed (demos, prototypes, localStorage persistence).
+ */
+export interface SitepingStoreConfig extends SitepingBaseConfig {
+  /** Direct store for client-side mode. Bypasses HTTP entirely. */
+  store: SitepingStore;
+  /** Not available in store mode — use either `endpoint` or `store`, never both. */
+  endpoint?: never;
+  /** HTTP-mode only — meaningless without an `endpoint`. */
+  apiKey?: never;
+  /** HTTP-mode only — meaningless without an `endpoint`. */
+  headers?: never;
+}
+
+/**
+ * Configuration options for the Siteping widget.
+ *
+ * A discriminated union over the two transport modes: pass `endpoint`
+ * (HTTP mode, optionally with `apiKey`/`headers`) **or** `store` (direct
+ * client-side mode) — never both, never neither. Invalid combinations are
+ * compile errors instead of runtime warnings.
+ */
+export type SitepingConfig = SitepingHttpConfig | SitepingStoreConfig;
 
 /** Instance returned by initSiteping() with lifecycle methods. */
 export interface SitepingInstance {
@@ -364,9 +398,21 @@ export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
  * handler, dashboard) — store adapters persist whatever they are given.
  */
 export const CLOSED_FEEDBACK_STATUSES = ["resolved", "wont_fix"] as const;
+/** A terminal status — `resolved` or `wont_fix`. */
+export type ClosedFeedbackStatus = (typeof CLOSED_FEEDBACK_STATUSES)[number];
 
-/** Whether a status is terminal (`resolved` or `wont_fix`). */
-export function isClosedStatus(status: FeedbackStatus): boolean {
+/** Non-terminal statuses — the feedback still needs attention. */
+export const OPEN_FEEDBACK_STATUSES = ["open", "in_progress"] as const;
+/** A non-terminal status — `open` or `in_progress`. */
+export type OpenFeedbackStatus = (typeof OPEN_FEEDBACK_STATUSES)[number];
+
+// Adding a fifth status without assigning it to exactly one bucket is a
+// compile error here.
+const _statusBucketsCoverAll: AssertEqual<OpenFeedbackStatus | ClosedFeedbackStatus, FeedbackStatus> = true;
+void _statusBucketsCoverAll;
+
+/** Whether a status is terminal (`resolved` or `wont_fix`). Narrows the status type. */
+export function isClosedStatus(status: FeedbackStatus): status is ClosedFeedbackStatus {
   return (CLOSED_FEEDBACK_STATUSES as readonly FeedbackStatus[]).includes(status);
 }
 
@@ -491,10 +537,27 @@ export interface FeedbackQuery {
   urlPattern?: string | undefined;
 }
 
-/** Update payload for patching a feedback. */
-export interface FeedbackUpdateInput {
-  status: FeedbackStatus;
-  resolvedAt: Date | null;
+/**
+ * Update payload for patching a feedback.
+ *
+ * A discriminated union encoding the closure invariant: a feedback entering
+ * a closed status carries its closure timestamp, an open one carries `null`.
+ * `{ status: "resolved", resolvedAt: null }` is a compile error instead of a
+ * silent data bug. Build it from a plain `FeedbackStatus` with
+ * {@link toFeedbackUpdate}.
+ */
+export type FeedbackUpdateInput =
+  | { status: OpenFeedbackStatus; resolvedAt: null }
+  | { status: ClosedFeedbackStatus; resolvedAt: Date };
+
+/**
+ * Derive the {@link FeedbackUpdateInput} for a status change — the closure
+ * timestamp is stamped for closed statuses and cleared otherwise. This is
+ * the edge derivation described on {@link CLOSED_FEEDBACK_STATUSES}; store
+ * adapters persist the result verbatim.
+ */
+export function toFeedbackUpdate(status: FeedbackStatus, closedAt: Date = new Date()): FeedbackUpdateInput {
+  return isClosedStatus(status) ? { status, resolvedAt: closedAt } : { status, resolvedAt: null };
 }
 
 /** A persisted feedback record returned by the store. */
@@ -617,7 +680,7 @@ export class StorePersistenceError extends Error {
 type CodedError<C extends string = string> = { code: C };
 
 function hasErrorCode<C extends string>(error: unknown, code: C): error is CodedError<C> {
-  return hasOwn(error, "code") && (error as { code: unknown }).code === code;
+  return hasOwn(error, "code") && error.code === code;
 }
 
 /** Type guard — works for `StoreNotFoundError` and ORM-specific equivalents (e.g. Prisma P2025). */
@@ -650,7 +713,7 @@ export function isStorePersistence(error: unknown): error is StorePersistenceErr
 // ---------------------------------------------------------------------------
 
 /** Flatten a widget `AnnotationPayload` (nested anchor + rect) into a flat `AnnotationCreateInput`. */
-export function flattenAnnotation(ann: AnnotationPayload): Prettify<AnnotationCreateInput> {
+export function flattenAnnotation(ann: AnnotationPayload): AnnotationCreateInput {
   return {
     cssSelector: ann.anchor.cssSelector,
     xpath: ann.anchor.xpath,
@@ -716,6 +779,15 @@ export interface SitepingStore {
   deleteFeedback(id: string): Promise<void>;
   /** Bulk delete all feedbacks for a project. No-op (not error) if none exist. Throws `StorePersistenceError` when the write cannot be persisted. */
   deleteAllFeedbacks(projectName: string): Promise<void>;
+  /**
+   * Optional — return `true` when the record with `id` belongs to
+   * `projectName`, `false` otherwise (including when it does not exist).
+   *
+   * HTTP handlers use this to reject cross-project PATCH/DELETE requests.
+   * Implement it whenever your store serves multiple projects; when absent,
+   * handlers skip the ownership check and rely on `id` alone.
+   */
+  verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
 }
 
 /** Payload sent from the widget to the server when submitting feedback. */
@@ -755,8 +827,10 @@ export interface FeedbackPayload {
   diagnostics?: DiagnosticsSnapshot | null | undefined;
 }
 
+/** Single source of truth for console diagnostic severity levels. */
+export const CONSOLE_DIAGNOSTIC_LEVELS = ["log", "info", "warn", "error"] as const;
 /** Severity levels persisted in `ConsoleDiagnosticEntry`. */
-export type ConsoleDiagnosticLevel = "log" | "info" | "warn" | "error";
+export type ConsoleDiagnosticLevel = (typeof CONSOLE_DIAGNOSTIC_LEVELS)[number];
 
 /** A single console entry captured by `ConsoleBuffer`. */
 export interface ConsoleDiagnosticEntry {
@@ -869,62 +943,23 @@ export interface AnnotationPayload {
 // API responses
 // ---------------------------------------------------------------------------
 
-/** Feedback record as returned by the API (dates serialized as strings). */
-export interface FeedbackResponse {
-  id: string;
-  projectName: string;
-  type: FeedbackType;
-  message: string;
-  status: FeedbackStatus;
-  url: string;
-  /** Parameterized URL template the feedback was created on, or null. */
-  urlPattern: string | null;
-  viewport: string;
-  userAgent: string;
-  authorName: string;
-  /**
-   * May be an empty string — HTTP adapters redact it for unauthenticated
-   * requests. The full value requires a Bearer-authenticated request.
-   */
-  authorEmail: string;
-  resolvedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  annotations: AnnotationResponse[];
-  /** Screenshot URL (data: or http:) — see `FeedbackRecord.screenshotUrl`. */
-  screenshotUrl: string | null;
-  /** Annotation rect within the screenshot image, or null — see `ScreenshotRegion`. */
-  screenshotRegion: ScreenshotRegion | null;
-  /** Console + failed-network snapshot, or null when diagnostics weren't captured. */
-  diagnostics: DiagnosticsSnapshot | null;
-}
+/**
+ * Feedback record as returned by the API — derived from
+ * {@link FeedbackRecord}: dates are serialized to ISO strings and `clientId`
+ * is omitted (server-side dedup concern, never exposed on the wire). Adding
+ * a field to `FeedbackRecord` updates this type automatically.
+ *
+ * Note: `authorEmail` may be an empty string — HTTP adapters redact it for
+ * unauthenticated requests; the full value requires a Bearer-authenticated
+ * request.
+ */
+export type FeedbackResponse = Prettify<Serialized<Omit<FeedbackRecord, "clientId">>>;
 
-/** Annotation record as returned by the API. */
-export interface AnnotationResponse {
-  id: string;
-  feedbackId: string;
-  cssSelector: string;
-  xpath: string;
-  textSnippet: string;
-  elementTag: string;
-  elementId: string | null;
-  textPrefix: string;
-  textSuffix: string;
-  fingerprint: string;
-  neighborText: string;
-  /** Semantic anchor identifier from `data-feedback-anchor`, or null. */
-  anchorKey: string | null;
-  xPct: number;
-  yPct: number;
-  wPct: number;
-  hPct: number;
-  scrollX: number;
-  scrollY: number;
-  viewportW: number;
-  viewportH: number;
-  devicePixelRatio: number;
-  createdAt: string;
-}
+/**
+ * Annotation record as returned by the API — {@link AnnotationRecord} with
+ * `createdAt` serialized to an ISO string.
+ */
+export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
 
 /** Paginated `FeedbackResponse` shape returned by the API. */
 export interface FeedbackResponseList {
