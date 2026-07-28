@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.8](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.7...widget-v0.10.8) (2026-07-28)
+
+
+### Miscellaneous
+
+* **deps-dev:** bump vitest from 3.2.7 to 4.1.10 in the vitest group across 1 directory ([#240](https://github.com/NeosiaNexus/SitePing/issues/240)) ([dca82f0](https://github.com/NeosiaNexus/SitePing/commit/dca82f078173c78d1703a7a8512adf1bffbc24ca))
+
 ## [0.10.7](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.6...widget-v0.10.7) (2026-07-28)
 
 
