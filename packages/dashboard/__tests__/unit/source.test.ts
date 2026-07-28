@@ -1,12 +1,12 @@
 import type { FeedbackQuery, FeedbackStatus, FeedbackUpdateInput, SitepingStore } from "@siteping/core";
 import { SitepingAuthError, SitepingNetworkError, SitepingValidationError } from "@siteping/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createEndpointSource, createStoreSource } from "../../src/source.js";
 import { errorFetch, jsonFetch, makeAnnotationResponse, makeRecord, makeResponse } from "../helpers.js";
 
 const ENDPOINT = "https://app.example/api/siteping";
 
-function lastCall(fetchFn: ReturnType<typeof vi.fn>): { url: string; init: RequestInit } {
+function lastCall(fetchFn: Mock<typeof fetch>): { url: string; init: RequestInit } {
   const [url, init] = fetchFn.mock.calls.at(-1) as [string, RequestInit];
   return { url, init };
 }

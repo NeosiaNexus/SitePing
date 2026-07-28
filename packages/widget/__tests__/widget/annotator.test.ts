@@ -54,43 +54,47 @@ const popupMocks = vi.hoisted(() => {
 });
 
 vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
-  Popup: vi.fn().mockImplementation(() => ({
-    show: vi
-      .fn()
-      .mockImplementation((_rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
-        popupMocks.showCount += 1;
-        popupMocks.isOpenState = true;
-        // The real popup awaits its `onSubmit` callback before resolving so
-        // the spinner stays visible until feedback:sent or feedback:error
-        // arrives. Tests don't run a launcher, so we fire-and-forget the
-        // callback (its settlement is captured on `lastSubmitPromise` so
-        // tests can await it) and resolve show() with the same result the
-        // real popup would have produced on success.
-        popupMocks.capturedOnSubmit = onSubmit ?? null;
-        if (popupMocks.nextResult && onSubmit) {
-          const submit = onSubmit(popupMocks.nextResult);
-          popupMocks.lastSubmitPromise = submit;
-          void submit.catch(() => {});
-        }
-        // `keepShowPending` mirrors the real popup keeping `show()` unresolved
-        // while `runSubmission` is in flight — the overlay therefore stays up,
-        // which is exactly the window the serialization guard must cover.
-        if (popupMocks.keepShowPending) return new Promise(() => {});
-        // Lifecycle divergence from the real Popup: this flips isOpen false
-        // while `lastSubmitPromise` may still be pending, whereas the real
-        // popup stays open until `onSubmit` settles. The real-popup suite
-        // (annotator-popup-reentry.test.ts) pins the true invariant.
+  // Regular function (not an arrow) — vitest 4 requires a constructable
+  // implementation for mocks the source instantiates with `new`.
+  Popup: vi.fn(function (this: unknown) {
+    return {
+      show: vi
+        .fn()
+        .mockImplementation((_rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
+          popupMocks.showCount += 1;
+          popupMocks.isOpenState = true;
+          // The real popup awaits its `onSubmit` callback before resolving so
+          // the spinner stays visible until feedback:sent or feedback:error
+          // arrives. Tests don't run a launcher, so we fire-and-forget the
+          // callback (its settlement is captured on `lastSubmitPromise` so
+          // tests can await it) and resolve show() with the same result the
+          // real popup would have produced on success.
+          popupMocks.capturedOnSubmit = onSubmit ?? null;
+          if (popupMocks.nextResult && onSubmit) {
+            const submit = onSubmit(popupMocks.nextResult);
+            popupMocks.lastSubmitPromise = submit;
+            void submit.catch(() => {});
+          }
+          // `keepShowPending` mirrors the real popup keeping `show()` unresolved
+          // while `runSubmission` is in flight — the overlay therefore stays up,
+          // which is exactly the window the serialization guard must cover.
+          if (popupMocks.keepShowPending) return new Promise(() => {});
+          // Lifecycle divergence from the real Popup: this flips isOpen false
+          // while `lastSubmitPromise` may still be pending, whereas the real
+          // popup stays open until `onSubmit` settles. The real-popup suite
+          // (annotator-popup-reentry.test.ts) pins the true invariant.
+          popupMocks.isOpenState = false;
+          return Promise.resolve(popupMocks.nextResult);
+        }),
+      destroy: vi.fn().mockImplementation(() => {
+        popupMocks.destroyCount += 1;
         popupMocks.isOpenState = false;
-        return Promise.resolve(popupMocks.nextResult);
       }),
-    destroy: vi.fn().mockImplementation(() => {
-      popupMocks.destroyCount += 1;
-      popupMocks.isOpenState = false;
-    }),
-    get isOpen() {
-      return popupMocks.isOpenState;
-    },
-  })),
+      get isOpen() {
+        return popupMocks.isOpenState;
+      },
+    };
+  }),
 }));
 
 // Mock the screenshot module — jsdom can't drive html2canvas. The annotator

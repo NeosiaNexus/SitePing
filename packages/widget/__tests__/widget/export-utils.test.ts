@@ -178,12 +178,15 @@ describe("ExportButton", () => {
     vi.restoreAllMocks();
     installObjectUrlMocks();
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    // Fake timers BEFORE the rAF spy: vitest 4 fakes requestAnimationFrame as
+    // part of useFakeTimers, which would silently replace a spy installed
+    // earlier — and the anchor-cleanup callback would never run.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-30T15:45:00.000Z"));
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
       callback(1);
       return 1;
     });
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-04-30T15:45:00.000Z"));
   });
 
   it("renders English labels by default, toggles, and closes on outside click", () => {

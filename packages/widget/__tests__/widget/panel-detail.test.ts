@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { AnnotationResponse, FeedbackResponse } from "@siteping/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
 import { DETAIL_CSS, type DetailCallbacks, DetailView } from "../../src/panel-detail.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
@@ -73,17 +73,14 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
   };
 }
 
-function createCallbacks(): DetailCallbacks & {
-  onBack: ReturnType<typeof vi.fn>;
-  onResolve: ReturnType<typeof vi.fn>;
-  onDelete: ReturnType<typeof vi.fn>;
-  onGoToAnnotation: ReturnType<typeof vi.fn>;
+function createCallbacks(): {
+  [K in keyof DetailCallbacks]: Mock<NonNullable<DetailCallbacks[K]>>;
 } {
   return {
-    onBack: vi.fn(),
-    onResolve: vi.fn().mockResolvedValue(undefined),
-    onDelete: vi.fn().mockResolvedValue(undefined),
-    onGoToAnnotation: vi.fn(),
+    onBack: vi.fn<NonNullable<DetailCallbacks["onBack"]>>(),
+    onResolve: vi.fn<NonNullable<DetailCallbacks["onResolve"]>>().mockResolvedValue(undefined),
+    onDelete: vi.fn<NonNullable<DetailCallbacks["onDelete"]>>().mockResolvedValue(undefined),
+    onGoToAnnotation: vi.fn<NonNullable<DetailCallbacks["onGoToAnnotation"]>>(),
   };
 }
 

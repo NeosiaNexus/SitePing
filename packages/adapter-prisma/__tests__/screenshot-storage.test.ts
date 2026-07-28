@@ -70,7 +70,7 @@ describe("PrismaStore — screenshot storage", () => {
       expect(calls[1]?.[0].data.screenshotUrl).toBe(SAMPLE_DATA_URL);
 
       // Warns once across multiple inline persists — not on every create
-      const inlineWarnings = warnSpy.mock.calls.filter((c) =>
+      const inlineWarnings = warnSpy.mock.calls.filter((c: unknown[]) =>
         /no `screenshotStorage` is configured/.test(String(c[0])),
       );
       expect(inlineWarnings.length).toBe(1);
@@ -120,7 +120,9 @@ describe("PrismaStore — screenshot storage", () => {
       expect(created.data.screenshotUrl).toBeNull();
       // The created feedback record should reflect the dropped screenshot.
       expect(result.screenshotUrl).toBeNull();
-      const failureWarnings = warnSpy.mock.calls.filter((c) => /screenshotStorage\.upload failed/.test(String(c[0])));
+      const failureWarnings = warnSpy.mock.calls.filter((c: unknown[]) =>
+        /screenshotStorage\.upload failed/.test(String(c[0])),
+      );
       expect(failureWarnings.length).toBe(1);
     });
   });

@@ -3,7 +3,7 @@
 import type { SitepingConfig, SitepingInstance } from "@siteping/core";
 import { act, render } from "@testing-library/react";
 import { StrictMode, useEffect } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock `initSiteping` so we can observe call count, capture listeners, and
@@ -18,10 +18,10 @@ interface MockedInstance extends SitepingInstance {
 }
 
 let mockInstances: MockedInstance[] = [];
-let initSpy: ReturnType<typeof vi.fn>;
+let initSpy: Mock<(config: SitepingConfig) => MockedInstance>;
 
 vi.mock(new URL("../../src/index.js", import.meta.url).pathname, () => ({
-  initSiteping: (...args: unknown[]) => initSpy(...args),
+  initSiteping: (config: SitepingConfig) => initSpy(config),
   __esModule: true,
 }));
 

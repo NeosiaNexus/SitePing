@@ -14,44 +14,52 @@ mockMatchMedia(false);
 const mockGetFeedbacks = vi.fn().mockResolvedValue({ feedbacks: [], total: 0 });
 
 vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
-  ApiClient: vi.fn().mockImplementation(() => ({
-    sendFeedback: vi.fn(),
-    getFeedbacks: mockGetFeedbacks,
-    resolveFeedback: vi.fn(),
-    deleteFeedback: vi.fn(),
-    deleteAllFeedbacks: vi.fn(),
-  })),
+  ApiClient: vi.fn(function (this: unknown) {
+    return {
+      sendFeedback: vi.fn(),
+      getFeedbacks: mockGetFeedbacks,
+      resolveFeedback: vi.fn(),
+      deleteFeedback: vi.fn(),
+      deleteAllFeedbacks: vi.fn(),
+    };
+  }),
   flushRetryQueue: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({
-  Annotator: vi.fn().mockImplementation(() => ({
-    destroy: vi.fn(),
-    refreshLabels: vi.fn(),
-  })),
+  Annotator: vi.fn(function (this: unknown) {
+    return {
+      destroy: vi.fn(),
+      refreshLabels: vi.fn(),
+    };
+  }),
 }));
 
 const mockMarkersRender = vi.fn();
 vi.mock(new URL("../../src/markers.js", import.meta.url).pathname, () => ({
-  MarkerManager: vi.fn().mockImplementation(() => ({
-    render: mockMarkersRender,
-    highlight: vi.fn(),
-    pinHighlight: vi.fn(),
-    addFeedback: vi.fn(),
-    focusFeedback: vi.fn().mockReturnValue(false),
-    destroy: vi.fn(),
-    count: 0,
-  })),
+  MarkerManager: vi.fn(function (this: unknown) {
+    return {
+      render: mockMarkersRender,
+      highlight: vi.fn(),
+      pinHighlight: vi.fn(),
+      addFeedback: vi.fn(),
+      focusFeedback: vi.fn().mockReturnValue(false),
+      destroy: vi.fn(),
+      count: 0,
+    };
+  }),
 }));
 
 vi.mock(new URL("../../src/tooltip.js", import.meta.url).pathname, () => ({
-  Tooltip: vi.fn().mockImplementation(() => ({
-    tooltipId: "sp-tooltip",
-    show: vi.fn(),
-    scheduleHide: vi.fn(),
-    contains: vi.fn(),
-    destroy: vi.fn(),
-  })),
+  Tooltip: vi.fn(function (this: unknown) {
+    return {
+      tooltipId: "sp-tooltip",
+      show: vi.fn(),
+      scheduleHide: vi.fn(),
+      contains: vi.fn(),
+      destroy: vi.fn(),
+    };
+  }),
 }));
 
 vi.mock(new URL("../../src/styles/base.js", import.meta.url).pathname, () => ({
@@ -71,15 +79,17 @@ const mockPanelRefresh = vi.fn().mockResolvedValue(undefined);
 let panelIsOpen = false;
 
 vi.mock(new URL("../../src/panel.js", import.meta.url).pathname, () => ({
-  Panel: vi.fn().mockImplementation(() => ({
-    open: mockPanelOpen,
-    close: vi.fn(),
-    refresh: mockPanelRefresh,
-    destroy: vi.fn(),
-    get isCurrentlyOpen() {
-      return panelIsOpen;
-    },
-  })),
+  Panel: vi.fn(function (this: unknown) {
+    return {
+      open: mockPanelOpen,
+      close: vi.fn(),
+      refresh: mockPanelRefresh,
+      destroy: vi.fn(),
+      get isCurrentlyOpen() {
+        return panelIsOpen;
+      },
+    };
+  }),
 }));
 
 import { launch } from "../../src/launcher.js";

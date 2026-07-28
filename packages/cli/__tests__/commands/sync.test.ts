@@ -240,10 +240,10 @@ model SitepingAnnotation {
     syncCommand({ schema: schemaPath });
 
     // No "Models synced" line should appear (addedModels is empty).
-    const successCalls = logSuccessSpy.mock.calls.map((call) => String(call[0]));
-    expect(successCalls.some((m) => m.startsWith("Models synced"))).toBe(false);
+    const successCalls = logSuccessSpy.mock.calls.map((call: unknown[]) => String(call[0]));
+    expect(successCalls.some((m: string) => m.startsWith("Models synced"))).toBe(false);
     // Field-level adds for the missing fields must still be logged.
-    expect(successCalls.some((m) => /\+ SitepingFeedback\..*added/.test(m))).toBe(true);
+    expect(successCalls.some((m: string) => /\+ SitepingFeedback\..*added/.test(m))).toBe(true);
     expect(exitSpy).not.toHaveBeenCalled();
   });
 

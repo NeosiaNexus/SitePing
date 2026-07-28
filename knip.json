@@ -8,7 +8,15 @@
       "project": ["scripts/**", "e2e/**", "*.ts"]
     },
     "packages/*": {
-      "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "entry": ["src/index.ts", "__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "project": ["src/**", "__tests__/**"]
+    },
+    "packages/widget": {
+      "entry": ["src/index.ts", "src/react.ts", "__tests__/**/*.{test,test-d}.{ts,tsx}", "__tests__/setup-i18n.ts"],
+      "project": ["src/**", "__tests__/**"]
+    },
+    "packages/adapter-kit": {
+      "entry": ["src/index.ts", "src/testing.ts", "__tests__/**/*.{test,test-d}.{ts,tsx}"],
       "project": ["src/**", "__tests__/**"]
     },
     "apps/demo": {}

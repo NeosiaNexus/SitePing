@@ -259,7 +259,7 @@ function createPrismaSchema(dir: string, content: string): string {
  * Collect all calls to the spy and return their first argument as strings.
  * Useful for searching through all messages logged by a specific log level.
  */
-function allMessages(spy: ReturnType<typeof vi.spyOn>): string[] {
+function allMessages(spy: { mock: { calls: unknown[][] } }): string[] {
   return spy.mock.calls.map((call) => String(call[0]));
 }
 
