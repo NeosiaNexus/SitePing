@@ -1,6 +1,6 @@
 {
   "name": "@siteping/adapter-kit",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Everything needed to build and conformance-test a custom Siteping store adapter",
   "type": "module",
   "sideEffects": false,
