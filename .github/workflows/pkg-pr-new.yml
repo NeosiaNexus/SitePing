@@ -51,5 +51,6 @@ jobs:
           ./packages/adapter-prisma
           ./packages/adapter-memory
           ./packages/adapter-localstorage
+          ./packages/adapter-kit
           ./packages/dashboard
           ./packages/cli

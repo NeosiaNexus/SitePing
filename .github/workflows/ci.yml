@@ -212,7 +212,7 @@ jobs:
 
       - name: publint
         run: |
-          for pkg in widget adapter-prisma adapter-memory adapter-localstorage dashboard cli; do
+          for pkg in widget adapter-prisma adapter-memory adapter-localstorage adapter-kit dashboard cli; do
             echo "::group::publint @siteping/$pkg"
             bun x publint@0.3.22 "packages/$pkg"
             echo "::endgroup::"
@@ -220,7 +220,7 @@ jobs:
 
       - name: Are the types wrong
         run: |
-          for pkg in widget adapter-prisma adapter-memory adapter-localstorage dashboard cli; do
+          for pkg in widget adapter-prisma adapter-memory adapter-localstorage adapter-kit dashboard cli; do
             echo "::group::attw @siteping/$pkg"
             bun x @arethetypeswrong/cli@0.18.5 "packages/$pkg" --pack
             echo "::endgroup::"
