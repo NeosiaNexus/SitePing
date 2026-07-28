@@ -47,4 +47,6 @@ jobs:
       - name: Publish previews
         # Package paths derive from the release-please manifest — one place
         # to register a package, previews included automatically.
-        run: bun x pkg-pr-new@0.0.80 publish --comment=update $(node scripts/list-public-packages.mjs | sed 's|^|./|' | tr '\n' ' ')
+        run: |
+          mapfile -t pkgs < <(node scripts/list-public-packages.mjs | sed 's|^|./|')
+          bun x pkg-pr-new@0.0.80 publish --comment=update "${pkgs[@]}"

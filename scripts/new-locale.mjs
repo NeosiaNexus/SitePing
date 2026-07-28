@@ -12,7 +12,7 @@
 // script is convenience, not correctness. Idempotent: done steps are
 // skipped.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const code = process.argv[2];
@@ -54,19 +54,23 @@ for (const pkg of ["widget", "dashboard"]) {
   const i18nDir = join(root, `packages/${pkg}/src/i18n`);
 
   const dictPath = join(i18nDir, `${code}.ts`);
-  if (existsSync(dictPath)) {
-    console.log(`  = packages/${pkg}/src/i18n/${code}.ts already exists`);
-  } else {
-    const en = readFileSync(join(i18nDir, "en.ts"), "utf8");
-    const dict = en
-      .replace(/export const en(:| =)/, `export const ${code}$1`)
-      .replace(
-        /^/,
-        `// TODO: translate every value below (copied from en.ts).\n// Keys are enforced by the Translations interface — extra or missing keys fail \`bun run check\`.\n`,
-      );
-    writeFileSync(dictPath, dict, "utf8");
+  const en = readFileSync(join(i18nDir, "en.ts"), "utf8");
+  const dict = en
+    .replace(/export const en(:| =)/, `export const ${code}$1`)
+    .replace(
+      /^/,
+      `// TODO: translate every value below (copied from en.ts).\n// Keys are enforced by the Translations interface — extra or missing keys fail \`bun run check\`.\n`,
+    );
+  try {
+    // "wx" creates atomically and throws EEXIST when the file is already
+    // there — no check-then-write race, idempotent re-runs keep the
+    // (possibly already translated) existing file.
+    writeFileSync(dictPath, dict, { encoding: "utf8", flag: "wx" });
     changed.push(`packages/${pkg}/src/i18n/${code}.ts`);
     console.log(`  + Created packages/${pkg}/src/i18n/${code}.ts (copy of en — translate it!)`);
+  } catch (err) {
+    if (err?.code !== "EEXIST") throw err;
+    console.log(`  = packages/${pkg}/src/i18n/${code}.ts already exists`);
   }
 
   const indexPath = join(i18nDir, "index.ts");
