@@ -7,6 +7,7 @@ import {
   type FeedbackStatus,
   type FeedbackType,
   type FeedbackUpdateInput,
+  type FeedbackPayload,
   flattenAnnotation,
   hasOwn,
   isStoreDuplicate,
@@ -32,12 +33,13 @@ export {
   StoreNotFoundError,
   StorePersistenceError,
 } from "@siteping/core";
-export type {
-  FeedbackCreateInput as FeedbackCreateSchemaInput,
-  FeedbackDeleteInput,
-  FeedbackPatchInput,
-  GetQueryInput,
-} from "./validation.js";
+export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "./validation.js";
+
+/**
+ * @deprecated The create wire shape is core's `FeedbackPayload` — import
+ * that instead. This alias is kept for one release cycle.
+ */
+export type FeedbackCreateSchemaInput = FeedbackPayload;
 export type {
   DiscordWebhookPayload,
   SlackWebhookPayload,
@@ -817,11 +819,11 @@ export function createSitepingHandler({
       }
 
       try {
-        // Verify project ownership before updating — PrismaStore can do a
-        // lightweight findUnique check; for other store implementations the
-        // projectName in the schema is still validated but the DB-level check
-        // is skipped (the store itself should enforce isolation).
-        if (store instanceof PrismaStore) {
+        // Verify project ownership before updating. Any store implementing
+        // the optional SitepingStore.verifyProjectOwnership gets the check;
+        // duck-typing instead of `instanceof` keeps it bundling-safe and
+        // open to third-party adapters.
+        if (store.verifyProjectOwnership) {
           const owns = await store.verifyProjectOwnership(parsed.data.id, parsed.data.projectName);
           if (!owns) {
             return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);
@@ -867,11 +869,11 @@ export function createSitepingHandler({
           return withCors(Response.json({ deleted: true }), corsHeaders);
         }
 
-        // Verify project ownership before deleting — PrismaStore can do a
-        // lightweight findUnique check; for other store implementations the
-        // projectName in the schema is still validated but the DB-level check
-        // is skipped (the store itself should enforce isolation).
-        if (store instanceof PrismaStore) {
+        // Verify project ownership before deleting. Any store implementing
+        // the optional SitepingStore.verifyProjectOwnership gets the check;
+        // duck-typing instead of `instanceof` keeps it bundling-safe and
+        // open to third-party adapters.
+        if (store.verifyProjectOwnership) {
           const owns = await store.verifyProjectOwnership(parsed.data.id, parsed.data.projectName);
           if (!owns) {
             return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);
