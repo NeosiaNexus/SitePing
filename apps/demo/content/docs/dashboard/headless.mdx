@@ -16,20 +16,22 @@ const inbox = useSitepingInbox({
 
 ## Options
 
+The options are a union over the three source modes: supply **exactly one** of `source`, `store` or `endpoint`. Supplying none, supplying two, or pairing endpoint-only options (`apiKey`, `headers`) with `store`/`source` is a compile error — not a runtime throw and not a silently ignored option.
+
 | Option | Type | Default | Notes |
 |---|---|---|---|
 | `projects` | `string` or `string[]` | **required** | An empty array throws at render. The first entry is selected initially |
 | `endpoint` | `string` | — | HTTP mode |
-| `store` | `SitepingStore` | — | Store mode — beats `endpoint` |
-| `source` | `InboxSource` | — | Fully custom data source — beats both; see [Data sources](/docs/dashboard/sources) |
-| `apiKey` | `string` | — | `Authorization: Bearer` on every request (endpoint mode) |
-| `headers` | object or function | — | Extra headers; an explicit `Authorization` beats `apiKey`. Read live — changing it doesn't rebuild the source |
+| `store` | `SitepingStore` | — | Store mode |
+| `source` | `InboxSource` | — | Fully custom data source; see [Data sources](/docs/dashboard/sources) |
+| `apiKey` | `string` | — | Endpoint mode only. `Authorization: Bearer` on every request |
+| `headers` | object or function | — | Endpoint mode only. An explicit `Authorization` beats `apiKey`. Read live — changing it doesn't rebuild the source |
 | `pageSize` | `number` | `50` | Clamped to 1–100 |
 | `onStatusChange` | `(feedback, previousStatus) => void` | — | After the server confirms |
 | `onDelete` | `(feedback) => void` | — | After the server confirms |
 | `onError` | `(error) => void` | — | Every failed load or mutation |
 
-Providing none of `source` / `store` / `endpoint` throws immediately — there's no silent degraded mode.
+Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions`, the shared `InboxSharedOptions`, and the `UseSitepingInboxOptions` union — so a wrapper component can accept just the mode it supports. Plain-JavaScript callers get the old behavior: no source at all still throws at render.
 
 ## What you get back
 
@@ -40,6 +42,26 @@ Providing none of `source` / `store` / `endpoint` throws immediately — there's
 **Focus & drawer** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (the open record — it stays available even if a filter removes its row), `openFeedback(id)`, `closeFeedback()`.
 
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
+
+## `view` — skip the flag algebra
+
+Deciding between a skeleton, an error state, an empty state and the list from `loading` / `error` / `items.length` is fiddly, and getting it subtly wrong is how a refetch ends up blanking the screen. `view` is that decision, already made — the exact value the shipped component renders from:
+
+| `view` | Meaning |
+|---|---|
+| `"loading"` | The first page is loading and there is nothing displayable yet |
+| `"error"` | The load failed and there is nothing displayable |
+| `"empty"` | The load succeeded and no rows match the current filters |
+| `"ready"` | Rows are displayable |
+
+```tsx
+if (inbox.view === "loading") return <Skeleton />;
+if (inbox.view === "error") return <ErrorState error={inbox.error} onRetry={inbox.refresh} />;
+if (inbox.view === "empty") return <EmptyState />;
+return <List items={inbox.items} />;
+```
+
+Rows win over every other signal: during a refetch the already-loaded rows stay on screen and `view` stays `"ready"`, so the list never flashes back to a skeleton. Read `loading` when you want a granular spinner on top of visible rows.
 
 ## Mutations are optimistic — and they re-throw
 

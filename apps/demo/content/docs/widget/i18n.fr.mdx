@@ -20,8 +20,23 @@ initSiteping({
 - Une locale inconnue affiche un `console.warn` et retombe sur l'anglais. Rien ne casse.
 - Pendant le chargement d'un chunk de locale, les libellés s'affichent en anglais et se re-localisent dès qu'il arrive ; les marqueurs, eux, attendent les traductions pour que les libellés destinés aux lecteurs d'écran ne soient jamais à moitié traduits.
 
+## Locales personnalisées
+
+`registerLocale(code, translations)` ajoute une langue que le widget ne fournit pas, et `loadLocale(code)` charge un dictionnaire intégré à l'avance. Les deux sont des exports runtime de `@siteping/widget` :
+
+```ts
+import { initSiteping, registerLocale, type Translations } from "@siteping/widget";
+
+registerLocale("nl", { "panel.title": "Feedbacks", "fab.annotate": "Nieuwe annotatie maken" });
+initSiteping({ endpoint: "/api/siteping", projectName: "mon-projet", locale: "nl" });
+```
+
+**Les dictionnaires partiels sont acceptés.** Les clés manquantes retombent sur l'anglais clé par clé : redéfinir une seule chaîne n'oblige jamais à recopier tout le catalogue — passez le type `Translations` uniquement si vous voulez que l'ensemble complet soit vérifié. Deux règles que l'implémentation impose : enregistrez sous le **code de langue de base** (`"nl"`, pas `"nl-BE"` — les recherches se normalisent vers la base), et appelez `registerLocale` **avant** `initSiteping`.
+
+Faites `await loadLocale("fr")` avant l'init si vous voulez une locale intégrée à l'écran dès le premier rendu, sans bref passage par l'anglais.
+
 ## Le dashboard suit le même jeu
 
-`@siteping/dashboard` embarque les mêmes sept locales avec les mêmes règles de résolution. Le dashboard accepte en plus des locales personnalisées à l'exécution via son export `registerLocale(code, translations)` — voir [la documentation du dashboard](/fr/docs/dashboard#langues).
+`@siteping/dashboard` embarque les mêmes sept locales avec les mêmes règles de résolution, et expose son propre `registerLocale` avec le même comportement de dictionnaire partiel — voir [la documentation du dashboard](/fr/docs/dashboard#langues).
 
 Vous voulez votre langue en natif ? Les contributions de locales sont la porte d'entrée la plus accessible de ce projet — voir [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md) (« Adding a Locale »).

@@ -11,6 +11,8 @@ Un adapter, c'est la couche de stockage derrière SitePing. Les trois implément
 | [`@siteping/adapter-memory`](/fr/docs/adapters/memory) | Un tableau en mémoire du processus | Tests, previews, démos jetables |
 | [`@siteping/adapter-localstorage`](/fr/docs/adapters/localstorage) | Le navigateur du visiteur | Démos et prototypes côté client — aucun serveur |
 
+Besoin d'un autre backend ? [Écrivez le vôtre](/fr/docs/adapters/writing-an-adapter) avec `@siteping/adapter-kit`.
+
 ## Deux façons de monter un store
 
 **Mode serveur** — le widget parle à un endpoint HTTP, et l'endpoint parle au store. C'est la forme de production :
@@ -32,4 +34,4 @@ import { LocalStorageStore } from "@siteping/adapter-localstorage";
 initSiteping({ store: new LocalStorageStore(), projectName: "ma-demo" });
 ```
 
-> Vous écrivez votre propre adapter ? Implémentez les 6 méthodes de `SitepingStore` et lancez la suite de conformité partagée — `testSitepingStore(factory)` depuis `@siteping/core/testing` (40 tests) — contre lui.
+> Vous écrivez votre propre adapter ? Installez `@siteping/adapter-kit` : les backends snapshot obtiennent un store complet via `createCollectionStore`, les backends à requêtes implémentent les 6 méthodes, et les deux se vérifient avec la suite de conformité partagée (44 tests). Voir [Écrire un adapter](/fr/docs/adapters/writing-an-adapter).
