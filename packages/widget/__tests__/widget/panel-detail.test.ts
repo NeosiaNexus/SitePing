@@ -33,6 +33,7 @@ function makeAnnotation(overrides: Partial<AnnotationResponse> = {}): Annotation
     textSuffix: "",
     fingerprint: "0:0:0",
     neighborText: "",
+    anchorKey: null,
     xPct: 12.345,
     yPct: 67.891,
     wPct: 23.456,
@@ -64,6 +65,10 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     createdAt: "2024-01-15T10:00:00.000Z",
     updatedAt: "2024-01-15T10:00:00.000Z",
     annotations: [],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }

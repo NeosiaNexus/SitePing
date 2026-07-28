@@ -32,6 +32,10 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     annotations: [],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }
@@ -198,7 +202,9 @@ describe("Tooltip", () => {
       vi.advanceTimersByTime(200);
 
       tooltip.scheduleHide();
-      tooltip.cancelHide();
+      // `cancelHide` is private — reach it the way a user does, by moving the
+      // pointer back onto the tooltip.
+      document.getElementById("sp-tooltip")!.dispatchEvent(new MouseEvent("mouseenter"));
       vi.advanceTimersByTime(200);
 
       const el = document.getElementById("sp-tooltip")!;

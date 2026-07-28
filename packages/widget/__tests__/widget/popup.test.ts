@@ -365,7 +365,7 @@ describe("Popup", () => {
       );
       expect(focusableEls.length).toBeGreaterThan(0);
 
-      const lastEl = focusableEls[focusableEls.length - 1];
+      const lastEl = focusableEls[focusableEls.length - 1]!;
       lastEl.focus();
 
       const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
@@ -385,7 +385,7 @@ describe("Popup", () => {
         ),
       );
 
-      const firstEl = focusableEls[0];
+      const firstEl = focusableEls[0]!;
       firstEl.focus();
 
       const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true });
@@ -677,7 +677,7 @@ describe("Popup", () => {
         ),
       );
       // Focus a middle element (not the first, not outside the popup)
-      const middle = focusableEls[Math.floor(focusableEls.length / 2)];
+      const middle = focusableEls[Math.floor(focusableEls.length / 2)]!;
       middle.focus();
 
       const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true });
@@ -696,7 +696,7 @@ describe("Popup", () => {
           'button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])',
         ),
       );
-      const middle = focusableEls[Math.floor(focusableEls.length / 2)];
+      const middle = focusableEls[Math.floor(focusableEls.length / 2)]!;
       middle.focus();
 
       const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
@@ -728,14 +728,14 @@ describe("Popup", () => {
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
       const buttons = dialog.querySelectorAll<HTMLButtonElement>("[data-type]");
       // Strip data-type from one of the existing buttons before selectType iterates
-      const target = buttons[0];
+      const target = buttons[0]!;
       delete target.dataset.type;
 
       // Click another button to trigger selectType which loops over all buttons
-      buttons[2].click();
+      buttons[2]!.click();
 
       // Should not throw — branch fallback `?? ""` is exercised
-      expect(buttons[2].getAttribute("aria-pressed")).toBe("true");
+      expect(buttons[2]!.getAttribute("aria-pressed")).toBe("true");
     });
   });
 

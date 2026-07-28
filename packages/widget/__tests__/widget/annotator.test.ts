@@ -553,7 +553,7 @@ describe("Annotator", () => {
         expect(completeListener).toHaveBeenCalledOnce();
       });
 
-      const data = completeListener.mock.calls[0][0];
+      const data = completeListener.mock.calls[0]![0];
       expect(data.type).toBe("bug");
       expect(data.message).toBe("Test message");
       expect(data.annotation).toBeDefined();
@@ -591,7 +591,7 @@ describe("Annotator", () => {
       expect(cancelButtons).toHaveLength(1);
 
       // The cancel button is the LAST one (most recently added by activate())
-      const cancelBtn = cancelButtons[cancelButtons.length - 1];
+      const cancelBtn = cancelButtons[cancelButtons.length - 1]!;
 
       // Simulate clicking by dispatching the event on the button
       const endListener = vi.fn();
@@ -629,7 +629,7 @@ describe("Annotator", () => {
         expect(completeListener).toHaveBeenCalledOnce();
       });
 
-      const data = completeListener.mock.calls[0][0];
+      const data = completeListener.mock.calls[0]![0];
       expect(data.annotation.rect).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
 
       target.remove();
@@ -751,7 +751,7 @@ describe("Annotator", () => {
           expect(completeListener).toHaveBeenCalledOnce();
         });
 
-        const data = completeListener.mock.calls[0][0];
+        const data = completeListener.mock.calls[0]![0];
         expect(data.annotation.rect).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
         expect(generateAnchor).toHaveBeenLastCalledWith(pageButton);
       } finally {
@@ -882,7 +882,7 @@ describe("Annotator", () => {
         expect(completeListener).toHaveBeenCalledOnce();
       });
 
-      expect(completeListener.mock.calls[0][0].type).toBe("bug");
+      expect(completeListener.mock.calls[0]![0].type).toBe("bug");
     });
   });
 
@@ -1473,7 +1473,7 @@ describe("Annotator", () => {
           expect(completeListener).toHaveBeenCalledOnce();
         });
 
-        const data = completeListener.mock.calls[0][0];
+        const data = completeListener.mock.calls[0]![0];
         expect(data.screenshotDataUrl).toBe("data:image/jpeg;base64,CAP");
         expect(data.screenshotRegion).toEqual(capture.region);
         // Captured with the drawn rect's viewport geometry.
@@ -1504,7 +1504,7 @@ describe("Annotator", () => {
           expect(completeListener).toHaveBeenCalledOnce();
         });
 
-        const data = completeListener.mock.calls[0][0];
+        const data = completeListener.mock.calls[0]![0];
         expect(data.screenshotDataUrl).toBeNull();
         expect(data.screenshotRegion).toBeNull();
       } finally {
@@ -1525,7 +1525,7 @@ describe("Annotator", () => {
       });
 
       expect(screenshotMocks.captureAnnotatedScreenshot).not.toHaveBeenCalled();
-      const data = completeListener.mock.calls[0][0];
+      const data = completeListener.mock.calls[0]![0];
       expect(data.screenshotDataUrl).toBeNull();
       expect(data.screenshotRegion).toBeNull();
     });
@@ -1562,7 +1562,7 @@ describe("Annotator", () => {
         // One capture, both submissions carry the same cached pair — the
         // user is never punished with a second html2canvas run.
         expect(screenshotMocks.captureAnnotatedScreenshot).toHaveBeenCalledOnce();
-        const second = completeListener.mock.calls[1][0];
+        const second = completeListener.mock.calls[1]![0];
         expect(second.screenshotDataUrl).toBe("data:image/jpeg;base64,CAP");
         expect(second.screenshotRegion).toEqual(capture.region);
       } finally {

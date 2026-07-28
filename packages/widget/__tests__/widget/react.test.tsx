@@ -36,6 +36,7 @@ beforeEach(() => {
       open: vi.fn(),
       close: vi.fn(),
       refresh: vi.fn(),
+      focusFeedback: vi.fn(() => true),
       on: <K extends string>(event: K, listener: Listener) => {
         let set = listeners.get(event);
         if (!set) {

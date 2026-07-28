@@ -7,7 +7,7 @@ describe("ApiClient", () => {
   const endpoint = "http://localhost/api/siteping";
 
   beforeEach(() => {
-    client = new ApiClient(endpoint);
+    client = new ApiClient(endpoint, "test");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 200 }));
   });
 
@@ -120,7 +120,7 @@ describe("ApiClient", () => {
       expect(raw).toBeDefined();
       const queue = JSON.parse(raw!) as Array<{ payload: Record<string, unknown> }>;
       expect(queue).toHaveLength(1);
-      expect("screenshotRegion" in queue[0].payload).toBe(false);
+      expect("screenshotRegion" in queue[0]!.payload).toBe(false);
     });
 
     vi.unstubAllGlobals();
@@ -211,7 +211,7 @@ describe("ApiClient", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("Server error", { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const retryClient = new ApiClient(endpoint);
+    const retryClient = new ApiClient(endpoint, "test");
     const promise = retryClient
       .sendFeedback({
         projectName: "test",
@@ -255,7 +255,7 @@ describe("ApiClient", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const retryClient = new ApiClient(endpoint);
+    const retryClient = new ApiClient(endpoint, "test");
     const promise = retryClient
       .sendFeedback({
         projectName: "test",
@@ -296,7 +296,7 @@ describe("ApiClient", () => {
 
     vi.mocked(fetch).mockResolvedValue(failingResponse);
 
-    const localClient = new ApiClient(endpoint);
+    const localClient = new ApiClient(endpoint, "test");
     await expect(
       localClient.sendFeedback({
         projectName: "test",
@@ -318,7 +318,7 @@ describe("ApiClient", () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("network down"));
     vi.stubGlobal("fetch", fetchMock);
 
-    const retryClient = new ApiClient(endpoint);
+    const retryClient = new ApiClient(endpoint, "test");
     const promise = retryClient
       .sendFeedback({
         projectName: "test",
@@ -360,7 +360,7 @@ describe("ApiClient", () => {
 
     vi.stubGlobal("fetch", fetchMock);
 
-    const retryClient = new ApiClient(endpoint);
+    const retryClient = new ApiClient(endpoint, "test");
     const promise = retryClient.sendFeedback({
       projectName: "test",
       type: "bug",
@@ -391,7 +391,7 @@ describe("ApiClient", () => {
 
     await client.getFeedbacks("test-project", { type: "bug", limit: 10 });
 
-    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    const calledUrl = vi.mocked(fetch).mock.calls[0]?.[0] as string;
     expect(calledUrl).toContain("projectName=test-project");
     expect(calledUrl).toContain("type=bug");
     expect(calledUrl).toContain("limit=10");
@@ -408,7 +408,7 @@ describe("ApiClient", () => {
       search: "broken",
     });
 
-    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    const calledUrl = vi.mocked(fetch).mock.calls[0]?.[0] as string;
     expect(calledUrl).toContain("page=2");
     expect(calledUrl).toContain("limit=25");
     expect(calledUrl).toContain("type=bug");
@@ -421,7 +421,7 @@ describe("ApiClient", () => {
 
     await client.getFeedbacks("test-project", { statuses: ["open", "in_progress"] });
 
-    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    const calledUrl = vi.mocked(fetch).mock.calls[0]?.[0] as string;
     // URLSearchParams percent-encodes the comma to %2C.
     expect(decodeURIComponent(calledUrl)).toContain("statuses=open,in_progress");
   });
@@ -431,7 +431,7 @@ describe("ApiClient", () => {
 
     await client.getFeedbacks("test-project", { statuses: [] });
 
-    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    const calledUrl = vi.mocked(fetch).mock.calls[0]?.[0] as string;
     expect(calledUrl).not.toContain("statuses=");
   });
 
@@ -440,7 +440,7 @@ describe("ApiClient", () => {
 
     await client.resolveFeedback("fb-2", false);
 
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
     expect(body.status).toBe("open");
   });
 
@@ -450,8 +450,8 @@ describe("ApiClient", () => {
     const result = await client.resolveFeedback("fb-1", true);
     expect(result.status).toBe("resolved");
 
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
-    expect(body).toEqual({ id: "fb-1", status: "resolved" });
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
+    expect(body).toEqual({ id: "fb-1", projectName: "test", status: "resolved" });
   });
 
   // -----------------------------------------------------------------------
@@ -468,7 +468,7 @@ describe("ApiClient", () => {
         endpoint,
         expect.objectContaining({
           method: "DELETE",
-          body: JSON.stringify({ id: "fb-1" }),
+          body: JSON.stringify({ id: "fb-1", projectName: "test" }),
         }),
       );
     });
@@ -490,7 +490,7 @@ describe("ApiClient", () => {
 
       await expect(client.deleteAllFeedbacks("my-project")).resolves.toBeUndefined();
 
-      const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+      const body = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
       expect(body).toEqual({ projectName: "my-project", deleteAll: true });
     });
 
@@ -737,7 +737,7 @@ describe("flushRetryQueue", () => {
     await flushRetryQueue(endpoint, null, { apiKey: "flush-key", headers: { "X-Flush": "1" } });
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    const init = vi.mocked(fetch).mock.calls[0][1] as RequestInit;
+    const init = vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit;
     expect(init.headers).toEqual({
       "Content-Type": "application/json",
       Authorization: "Bearer flush-key",
@@ -888,7 +888,7 @@ describe("flushRetryQueue", () => {
     await flushRetryQueue(endpoint, { name: "Alice", email: "alice@example.com" });
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).clientId).toBe("mixed-1");
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).clientId).toBe("mixed-1");
     expect(localStorage.setItem).toHaveBeenCalledWith(
       "siteping_retry_queue",
       JSON.stringify([{ endpoint: otherEndpoint, payload: otherPayload }]),
@@ -1060,7 +1060,7 @@ describe("queueForRetry (via sendFeedback)", () => {
     // Use 4xx to avoid retry backoff (resilientFetch doesn't retry 4xx)
     vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
 
-    const client = new ApiClient(endpoint);
+    const client = new ApiClient(endpoint, "test");
     const payload = {
       projectName: "test",
       type: "bug" as const,
@@ -1083,7 +1083,7 @@ describe("queueForRetry (via sendFeedback)", () => {
     vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify({ not: "an array" }));
     vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 400 }));
 
-    const client = new ApiClient(endpoint);
+    const client = new ApiClient(endpoint, "test");
     await expect(
       client.sendFeedback({
         projectName: "test",
@@ -1099,7 +1099,8 @@ describe("queueForRetry (via sendFeedback)", () => {
       }),
     ).rejects.toThrow();
 
-    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0][1];
+    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0]?.[1];
+    if (savedValue === undefined) throw new Error("expected the retry queue to be written to localStorage");
     const parsed = JSON.parse(savedValue);
     // Despite the corrupt non-array starting state, queue is rebuilt as a new array.
     expect(parsed).toHaveLength(1);
@@ -1128,7 +1129,7 @@ describe("queueForRetry (via sendFeedback)", () => {
     // Use 4xx to avoid retry backoff
     vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
 
-    const client = new ApiClient(endpoint);
+    const client = new ApiClient(endpoint, "test");
     await expect(
       client.sendFeedback({
         projectName: "test",
@@ -1144,7 +1145,8 @@ describe("queueForRetry (via sendFeedback)", () => {
       }),
     ).rejects.toThrow();
 
-    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0][1];
+    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0]?.[1];
+    if (savedValue === undefined) throw new Error("expected the retry queue to be written to localStorage");
     const parsed = JSON.parse(savedValue);
     expect(parsed).toHaveLength(2);
     expect(parsed[0].payload.message).toBe("existing");
@@ -1171,7 +1173,7 @@ describe("queueForRetry (via sendFeedback)", () => {
     vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify(existing));
     vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
 
-    const client = new ApiClient(endpoint);
+    const client = new ApiClient(endpoint, "test");
     await expect(
       client.sendFeedback({
         projectName: "test",
@@ -1187,7 +1189,8 @@ describe("queueForRetry (via sendFeedback)", () => {
       }),
     ).rejects.toThrow();
 
-    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0][1];
+    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0]?.[1];
+    if (savedValue === undefined) throw new Error("expected the retry queue to be written to localStorage");
     const parsed = JSON.parse(savedValue);
     // Oldest dropped, newest appended -> still 20 entries
     expect(parsed).toHaveLength(20);
@@ -1268,7 +1271,7 @@ describe("withRetryLock with navigator.locks present", () => {
   it("uses navigator.locks.request when available (queueForRetry via sendFeedback failure)", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 400 }));
 
-    const client = new ApiClient(endpoint);
+    const client = new ApiClient(endpoint, "test");
     await expect(
       client.sendFeedback({
         projectName: "test",

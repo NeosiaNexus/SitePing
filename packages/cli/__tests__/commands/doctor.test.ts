@@ -66,7 +66,15 @@ function allMessages(spy: ReturnType<typeof vi.spyOn>): string[] {
 // ---------------------------------------------------------------------------
 
 describe("doctorCommand", () => {
-  const spinnerMock = { start: vi.fn(), stop: vi.fn(), message: vi.fn() };
+  const spinnerMock = {
+    start: vi.fn(),
+    stop: vi.fn(),
+    message: vi.fn(),
+    cancel: vi.fn(),
+    error: vi.fn(),
+    clear: vi.fn(),
+    isCancelled: false,
+  };
 
   beforeEach(() => {
     vi.spyOn(process, "exit").mockImplementation(((code: number) => {
@@ -274,7 +282,7 @@ describe("doctorCommand", () => {
 
       await doctorCommand({ url: "http://localhost:3000", endpoint: "/api/siteping" });
 
-      const calledUrl = fetchFn.mock.calls[0][0];
+      const calledUrl = fetchFn.mock.calls[0]?.[0];
       expect(calledUrl).toBe("http://localhost:3000/api/siteping?projectName=__siteping_health_check__");
     });
   });

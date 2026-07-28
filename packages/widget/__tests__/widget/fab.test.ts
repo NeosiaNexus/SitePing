@@ -256,7 +256,7 @@ describe("Fab", () => {
       const radial = shadow.querySelector<HTMLElement>('[role="menu"]')!;
 
       // Focus the first item
-      items[0].focus();
+      items[0]!.focus();
       expect(shadow.activeElement).toBe(items[0]);
 
       // ArrowDown should move to second item
@@ -272,7 +272,7 @@ describe("Fab", () => {
       const radial = shadow.querySelector<HTMLElement>('[role="menu"]')!;
 
       // Focus the second item
-      items[1].focus();
+      items[1]!.focus();
 
       // ArrowUp should move to first item
       radial.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
@@ -287,7 +287,7 @@ describe("Fab", () => {
       const radial = shadow.querySelector<HTMLElement>('[role="menu"]')!;
 
       // Focus the last item
-      items[items.length - 1].focus();
+      items[items.length - 1]!.focus();
 
       // ArrowDown should wrap to first
       radial.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
@@ -302,7 +302,7 @@ describe("Fab", () => {
       const radial = shadow.querySelector<HTMLElement>('[role="menu"]')!;
 
       // Focus the first item
-      items[0].focus();
+      items[0]!.focus();
 
       // ArrowUp should wrap to last
       radial.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
@@ -316,7 +316,7 @@ describe("Fab", () => {
       const items = getRadialItems(shadow);
       const radial = shadow.querySelector<HTMLElement>('[role="menu"]')!;
 
-      items[2].focus();
+      items[2]!.focus();
       radial.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
       expect(shadow.activeElement).toBe(items[0]);
     });
@@ -328,7 +328,7 @@ describe("Fab", () => {
       const items = getRadialItems(shadow);
       const radial = shadow.querySelector<HTMLElement>('[role="menu"]')!;
 
-      items[0].focus();
+      items[0]!.focus();
       radial.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
       expect(shadow.activeElement).toBe(items[items.length - 1]);
     });
@@ -593,7 +593,7 @@ describe("Fab", () => {
       const items = getRadialItems(shadow);
 
       // Pre-focus an item (still possible while closed); then trigger ArrowDown
-      items[0].focus();
+      items[0]!.focus();
       radial.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
 
       // Should still be focused on items[0] — handler bailed out early

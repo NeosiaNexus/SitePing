@@ -9,7 +9,11 @@
     },
     "check": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "package.json", "tsconfig.json"],
+      "inputs": ["src/**", "__tests__/**", "package.json", "tsconfig.json", "tsconfig.check.json"],
+      "outputs": []
+    },
+    "//#check:root": {
+      "inputs": ["e2e/**", "playwright.config.ts", "vitest.config.ts", "tsup.preset.ts", "tsconfig.json"],
       "outputs": []
     },
     "lint": {

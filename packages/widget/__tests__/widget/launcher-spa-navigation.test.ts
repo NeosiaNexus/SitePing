@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { PageScope, SitepingConfig } from "@siteping/core";
+import type { PageScope, SitepingConfig, SitepingHttpConfig } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockMatchMedia } from "../helpers.js";
 
@@ -88,7 +88,7 @@ import { launch } from "../../src/launcher.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function defaultConfig(overrides: Partial<SitepingConfig> = {}): SitepingConfig {
+function defaultConfig(overrides: Partial<Omit<SitepingHttpConfig, "store">> = {}): SitepingConfig {
   return {
     endpoint: "/api/siteping",
     projectName: "test-project",

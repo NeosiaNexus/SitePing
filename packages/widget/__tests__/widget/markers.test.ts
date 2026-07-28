@@ -98,6 +98,7 @@ function makeAnnotation(overrides: Partial<AnnotationResponse> = {}): Annotation
     textSuffix: "",
     fingerprint: "0:0:0",
     neighborText: "",
+    anchorKey: null,
     xPct: 0.1,
     yPct: 0.1,
     wPct: 0.5,
@@ -128,6 +129,10 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     annotations: [makeAnnotation()],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }

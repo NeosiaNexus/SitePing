@@ -49,6 +49,10 @@ function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackRespon
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     annotations: [],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }
@@ -519,9 +523,9 @@ describe("Panel", () => {
 
       const cards = shadow.querySelectorAll<HTMLElement>('[role="listitem"]');
       expect(cards.length).toBe(3);
-      expect(cards[0].style.getPropertyValue("--sp-card-i")).toBe("0");
-      expect(cards[1].style.getPropertyValue("--sp-card-i")).toBe("1");
-      expect(cards[2].style.getPropertyValue("--sp-card-i")).toBe("2");
+      expect(cards[0]!.style.getPropertyValue("--sp-card-i")).toBe("0");
+      expect(cards[1]!.style.getPropertyValue("--sp-card-i")).toBe("1");
+      expect(cards[2]!.style.getPropertyValue("--sp-card-i")).toBe("2");
     });
   });
 
@@ -621,6 +625,7 @@ describe("Panel", () => {
       textSuffix: "",
       fingerprint: "0:0:0",
       neighborText: "",
+      anchorKey: null,
       xPct: 0.1,
       yPct: 0.2,
       wPct: 0.3,
@@ -800,6 +805,7 @@ describe("Panel", () => {
       textSuffix: "",
       fingerprint: "0:0:0",
       neighborText: "",
+      anchorKey: null,
       xPct: 0.1,
       yPct: 0.2,
       wPct: 0.3,
@@ -1264,6 +1270,7 @@ describe("Panel", () => {
       textSuffix: "",
       fingerprint: "0:0:0",
       neighborText: "",
+      anchorKey: null,
       xPct: 0.1,
       yPct: 0.2,
       wPct: 0.3,
@@ -1463,7 +1470,7 @@ describe("Panel", () => {
       shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
 
       const cards = shadow.querySelectorAll<HTMLElement>(".sp-card");
-      expect(cards[0].classList.contains("sp-card--focused")).toBe(true);
+      expect(cards[0]!.classList.contains("sp-card--focused")).toBe(true);
     });
 
     it("K key navigates to previous card", async () => {
@@ -1482,7 +1489,7 @@ describe("Panel", () => {
       shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "k", bubbles: true }));
 
       const cards = shadow.querySelectorAll<HTMLElement>(".sp-card");
-      expect(cards[0].classList.contains("sp-card--focused")).toBe(true);
+      expect(cards[0]!.classList.contains("sp-card--focused")).toBe(true);
     });
 
     it("R key triggers resolve on focused feedback", async () => {
@@ -2104,8 +2111,8 @@ describe("Panel", () => {
       const cards = shadow.querySelectorAll<HTMLElement>(".sp-card");
       expect(cards.length).toBe(3);
       // Global index in groups
-      expect(cards[0].style.getPropertyValue("--sp-card-i")).toBe("0");
-      expect(cards[2].style.getPropertyValue("--sp-card-i")).toBe("2");
+      expect(cards[0]!.style.getPropertyValue("--sp-card-i")).toBe("0");
+      expect(cards[2]!.style.getPropertyValue("--sp-card-i")).toBe("2");
     });
   });
 
@@ -3410,9 +3417,7 @@ describe("Panel", () => {
       // Stub URL.createObjectURL / revokeObjectURL (jsdom does not implement them)
       const createObjectURL = vi.fn().mockReturnValue("blob:mock");
       const revokeObjectURL = vi.fn();
-      // @ts-expect-error -- patch global for jsdom
       URL.createObjectURL = createObjectURL;
-      // @ts-expect-error -- patch global for jsdom
       URL.revokeObjectURL = revokeObjectURL;
 
       // Stub HTMLAnchorElement.click to avoid jsdom navigation warning

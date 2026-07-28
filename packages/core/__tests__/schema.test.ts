@@ -73,7 +73,7 @@ describe("SitepingFeedback model", () => {
 
   it("projectName is a required String", () => {
     expect(fields.projectName.type).toBe("String");
-    expect(fields.projectName.optional).toBeUndefined();
+    expect("optional" in fields.projectName).toBe(false);
   });
 
   it("message has nativeType Text for long content", () => {
@@ -197,7 +197,7 @@ describe("SitepingAnnotation model", () => {
   });
 
   it("coordinate fields (xPct, yPct, wPct, hPct) are Float", () => {
-    for (const field of ["xPct", "yPct", "wPct", "hPct"]) {
+    for (const field of ["xPct", "yPct", "wPct", "hPct"] as const) {
       expect(fields[field].type).toBe("Float");
     }
   });
@@ -218,7 +218,7 @@ describe("SitepingAnnotation model", () => {
   });
 
   it("text-heavy fields have nativeType Text", () => {
-    const textFields = ["cssSelector", "xpath", "textSnippet", "textPrefix", "textSuffix", "neighborText"];
+    const textFields = ["cssSelector", "xpath", "textSnippet", "textPrefix", "textSuffix", "neighborText"] as const;
     for (const field of textFields) {
       expect(fields[field].nativeType).toBe("Text");
     }

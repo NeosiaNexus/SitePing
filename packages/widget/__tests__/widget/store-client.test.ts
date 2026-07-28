@@ -95,6 +95,7 @@ function makeFeedbackRecord(overrides?: Partial<FeedbackRecord>): FeedbackRecord
         textSuffix: "footer",
         fingerprint: "2:0:x1",
         neighborText: "aside",
+        anchorKey: null,
         xPct: 0.1,
         yPct: 0.2,
         wPct: 0.5,

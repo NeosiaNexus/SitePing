@@ -4,6 +4,7 @@ import type { FeedbackRecord } from "@siteping/core";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { SitepingInbox } from "../../src/components/inbox.js";
+import type { InboxCustomSourceOptions, SitepingInboxPresentationProps } from "../../src/types.js";
 import { makeDiagnostics, makeRecord, makeSource, REGION } from "../helpers.js";
 import { installJsdomStubs } from "../render.js";
 
@@ -49,7 +50,19 @@ function seed(): FeedbackRecord[] {
   ];
 }
 
-function renderInbox(props: Partial<Parameters<typeof SitepingInbox>[0]> = {}, records = seed()) {
+/**
+ * Overrides accepted by `renderInbox` — presentation and shared options only.
+ * The source mode is fixed to custom-source, so `Partial` never has to weaken
+ * the `never` guards that keep the three modes mutually exclusive.
+ */
+type InboxOverrides = Partial<
+  Omit<
+    InboxCustomSourceOptions & SitepingInboxPresentationProps,
+    "source" | "store" | "endpoint" | "apiKey" | "headers"
+  >
+>;
+
+function renderInbox(props: InboxOverrides = {}, records = seed()) {
   const source = makeSource(records);
   const utils = render(<SitepingInbox source={source} projects="demo" theme="dark" {...props} />);
   return { source, ...utils };

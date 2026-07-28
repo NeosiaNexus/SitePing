@@ -17,7 +17,8 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "check": "turbo run check",
+    "check": "turbo run check //#check:root",
+    "check:root": "tsc --noEmit",
     "clean": "turbo run clean",
     "test": "vitest",
     "test:run": "vitest run",

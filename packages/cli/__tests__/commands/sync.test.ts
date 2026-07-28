@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { syncCommand } from "../../src/commands/sync.js";
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ model SitepingFeedback {
 
 describe("syncCommand", () => {
   let tmpDir: string;
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: MockInstance<typeof process.exit>;
   let logErrorSpy: ReturnType<typeof vi.spyOn>;
   let logInfoSpy: ReturnType<typeof vi.spyOn>;
   let logSuccessSpy: ReturnType<typeof vi.spyOn>;
