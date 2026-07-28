@@ -71,8 +71,8 @@ Le dashboard accepte aussi des locales personnalisées à l'exécution :
 ```ts
 import { registerLocale } from "@siteping/dashboard";
 
-registerLocale("nl", { /* les 73 clés */ });
+registerLocale("nl", { "status.open": "Open", "status.resolved": "Opgelost" });
 // plus tard : <SitepingInbox locale="nl" ... />
 ```
 
-Deux règles que l'implémentation impose : enregistrez sous le **code de langue de base** (`"nl"`, pas `"nl-BE"` — les recherches se normalisent vers la base), et appelez `registerLocale` **avant le montage de l'inbox**. Le dictionnaire est complet par conception : passez toutes les clés, et TypeScript vous y tiendra sur le littéral d'objet.
+**Les dictionnaires partiels sont acceptés** — toute clé omise retombe d'elle-même sur l'anglais, donc corriger un seul libellé n'oblige pas à maintenir tout le catalogue. Deux règles que l'implémentation impose : enregistrez sous le **code de langue de base** (`"nl"`, pas `"nl-BE"` — les recherches se normalisent vers la base), et appelez `registerLocale` **avant le montage de l'inbox**. Le `registerLocale` du widget fonctionne de la même façon sur [son propre jeu de clés](/fr/docs/widget/i18n).

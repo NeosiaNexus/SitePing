@@ -20,7 +20,7 @@ function getProject(page: Page): string {
 // Helpers — shadow DOM is open in test mode
 // ---------------------------------------------------------------------------
 
-function shadow(page: ReturnType<typeof test.extend>) {
+function shadow(page: Page) {
   return {
     /** Query inside the shadow root */
     async query(selector: string) {
@@ -362,11 +362,12 @@ test.describe("Full annotation flow", () => {
         const host = document.querySelector("siteping-widget");
         const sr = host?.shadowRoot;
         const inputs = sr?.querySelectorAll(".sp-input") as NodeListOf<HTMLInputElement>;
-        if (inputs?.length >= 2) {
-          inputs[0].value = "Test User";
-          inputs[0].dispatchEvent(new Event("input", { bubbles: true }));
-          inputs[1].value = "test@example.com";
-          inputs[1].dispatchEvent(new Event("input", { bubbles: true }));
+        const [nameInput, emailInput] = Array.from(inputs ?? []);
+        if (nameInput && emailInput) {
+          nameInput.value = "Test User";
+          nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+          emailInput.value = "test@example.com";
+          emailInput.dispatchEvent(new Event("input", { bubbles: true }));
         }
         (sr?.querySelector(".sp-btn-primary") as HTMLElement)?.click();
       });

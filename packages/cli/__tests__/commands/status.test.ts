@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { statusCommand } from "../../src/commands/status.js";
 
 // ---------------------------------------------------------------------------
@@ -270,7 +270,7 @@ function allMessages(spy: ReturnType<typeof vi.spyOn>): string[] {
 describe("statusCommand", () => {
   let tmpDir: string;
   let originalCwd: string;
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: MockInstance<typeof process.exit>;
   let logErrorSpy: ReturnType<typeof vi.spyOn>;
   let logSuccessSpy: ReturnType<typeof vi.spyOn>;
   let logWarnSpy: ReturnType<typeof vi.spyOn>;

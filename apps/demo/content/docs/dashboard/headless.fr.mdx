@@ -16,20 +16,22 @@ const inbox = useSitepingInbox({
 
 ## Options
 
+Les options forment une union sur les trois modes de source : fournissez **exactement un** de `source`, `store` ou `endpoint`. N'en fournir aucun, en fournir deux, ou associer des options propres au mode endpoint (`apiKey`, `headers`) à `store`/`source` est une erreur de compilation — pas une exception à l'exécution, et pas une option ignorée en silence.
+
 | Option | Type | Défaut | Notes |
 |---|---|---|---|
 | `projects` | `string` ou `string[]` | **obligatoire** | Un tableau vide lève une erreur au rendu. La première entrée est sélectionnée au départ |
 | `endpoint` | `string` | — | Mode HTTP |
-| `store` | `SitepingStore` | — | Mode store — prioritaire sur `endpoint` |
-| `source` | `InboxSource` | — | Source de données entièrement personnalisée — prioritaire sur les deux ; voir [Sources de données](/fr/docs/dashboard/sources) |
-| `apiKey` | `string` | — | `Authorization: Bearer` sur chaque requête (mode endpoint) |
-| `headers` | objet ou fonction | — | En-têtes supplémentaires ; un `Authorization` explicite l'emporte sur `apiKey`. Lu en direct — le modifier ne reconstruit pas la source |
+| `store` | `SitepingStore` | — | Mode store |
+| `source` | `InboxSource` | — | Source de données entièrement personnalisée ; voir [Sources de données](/fr/docs/dashboard/sources) |
+| `apiKey` | `string` | — | Mode endpoint uniquement. `Authorization: Bearer` sur chaque requête |
+| `headers` | objet ou fonction | — | Mode endpoint uniquement. Un `Authorization` explicite l'emporte sur `apiKey`. Lu en direct — le modifier ne reconstruit pas la source |
 | `pageSize` | `number` | `50` | Borné entre 1 et 100 |
 | `onStatusChange` | `(feedback, previousStatus) => void` | — | Après confirmation du serveur |
 | `onDelete` | `(feedback) => void` | — | Après confirmation du serveur |
 | `onError` | `(error) => void` | — | Chaque chargement ou mutation en échec |
 
-Ne fournir aucun de `source` / `store` / `endpoint` lève immédiatement — il n'y a pas de mode dégradé silencieux.
+Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions`, le socle commun `InboxSharedOptions` et l'union `UseSitepingInboxOptions` — pour qu'un composant d'enrobage n'accepte que le mode qu'il gère. En JavaScript pur, le comportement d'avant demeure : aucune source du tout lève toujours au rendu.
 
 ## Ce que vous récupérez
 
@@ -40,6 +42,26 @@ Ne fournir aucun de `source` / `store` / `endpoint` lève immédiatement — il 
 **Focus et tiroir** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (le feedback ouvert — il reste disponible même si un filtre retire sa ligne), `openFeedback(id)`, `closeFeedback()`.
 
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
+
+## `view` — l'algèbre des drapeaux en moins
+
+Choisir entre un squelette, un état d'erreur, un état vide et la liste à partir de `loading` / `error` / `items.length` est délicat, et se tromper d'un cheveu, c'est ce qui fait qu'un rechargement vide l'écran. `view` est cette décision, déjà prise — exactement la valeur dont part le composant fourni :
+
+| `view` | Signification |
+|---|---|
+| `"loading"` | La première page charge et il n'y a encore rien à afficher |
+| `"error"` | Le chargement a échoué et il n'y a rien à afficher |
+| `"empty"` | Le chargement a réussi et aucune ligne ne correspond aux filtres courants |
+| `"ready"` | Des lignes sont affichables |
+
+```tsx
+if (inbox.view === "loading") return <Skeleton />;
+if (inbox.view === "error") return <ErrorState error={inbox.error} onRetry={inbox.refresh} />;
+if (inbox.view === "empty") return <EmptyState />;
+return <List items={inbox.items} />;
+```
+
+Les lignes l'emportent sur tout autre signal : pendant un rechargement, les lignes déjà chargées restent à l'écran et `view` reste `"ready"`, donc la liste ne repasse jamais brutalement au squelette. Lisez `loading` quand vous voulez un indicateur plus fin par-dessus les lignes visibles.
 
 ## Les mutations sont optimistes — et elles relèvent l'erreur
 

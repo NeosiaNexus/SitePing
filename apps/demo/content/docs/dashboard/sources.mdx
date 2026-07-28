@@ -3,7 +3,7 @@ title: Data sources
 description: Endpoint, store, or fully custom — how the inbox talks to your data.
 ---
 
-The inbox reads and writes through a small abstraction, resolved in this order of precedence: `source` > `store` > `endpoint`.
+The inbox reads and writes through a small abstraction with three ways to supply it. Pick **exactly one** — `source`, `store`, or `endpoint`. They're mutually exclusive in the type, so there's no precedence to remember and no way to pass two and wonder which one won.
 
 ## Endpoint mode (production default)
 
@@ -48,4 +48,13 @@ The two building blocks behind the built-in modes are exported too — `createEn
 
 ## Types without extra dependencies
 
-`@siteping/dashboard` re-exports the shared types and helpers so you never need to install anything else: `FeedbackRecord`, `FeedbackStatus`, `FeedbackType`, `SitepingStore`, `FEEDBACK_STATUSES`, `FEEDBACK_TYPES`, and `isClosedStatus()`.
+`@siteping/dashboard` re-exports everything you need to type a wrapper around it, so you never install another package:
+
+| What you're typing | Exports |
+|---|---|
+| Feedback data | `FeedbackRecord`, `FeedbackStatus`, `FeedbackType`, `SitepingStore`, plus the `FEEDBACK_STATUSES` / `FEEDBACK_TYPES` constants and `isClosedStatus()` |
+| Hook options | `UseSitepingInboxOptions` and its three members — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions` — plus the shared `InboxSharedOptions` |
+| Hook result | `InboxState`, `InboxStatusFilter`, `InboxTypeFilter` |
+| Sources | `InboxSource`, `EndpointSourceOptions` (the argument of `createEndpointSource`) |
+| Component props | `SitepingInboxProps`, or `SitepingInboxPresentationProps` for the presentation half alone |
+| Theming | `InboxTheme` (`"light"` \| `"dark"` \| `"auto"`) and `ResolvedTheme` (`"light"` \| `"dark"` — what `auto` resolves to) |

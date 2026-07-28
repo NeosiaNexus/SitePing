@@ -1,6 +1,6 @@
 import { type FeedbackResponse, isClosedStatus } from "@siteping/core";
 import { el, setText } from "./dom-utils.js";
-import type { TFunction } from "./i18n/index.js";
+import { type TFunction, tWithParams } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -211,7 +211,7 @@ export class PanelStats {
       this.progressFill.style.width = `${pct}%`;
     });
 
-    const progressText = this.t("stats.progress").replace("{percent}", String(pct));
+    const progressText = tWithParams(this.t, "stats.progress", { percent: pct });
     setText(this.progressLabel, progressText);
   }
 }

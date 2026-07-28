@@ -1,0 +1,77 @@
+{
+  "name": "@siteping/adapter-kit",
+  "version": "0.0.0",
+  "description": "Everything needed to build and conformance-test a custom Siteping store adapter",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./testing": {
+      "import": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
+      },
+      "require": {
+        "types": "./dist/testing.d.cts",
+        "default": "./dist/testing.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && node ../../scripts/fix-dts.mjs dist",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "siteping",
+    "adapter",
+    "store",
+    "conformance",
+    "testing",
+    "feedback",
+    "typescript"
+  ],
+  "author": "neosianexus",
+  "license": "MIT",
+  "homepage": "https://siteping.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NeosiaNexus/SitePing.git",
+    "directory": "packages/adapter-kit"
+  },
+  "bugs": {
+    "url": "https://github.com/NeosiaNexus/SitePing/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "vitest": ">=3"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@siteping/core": "workspace:*"
+  }
+}

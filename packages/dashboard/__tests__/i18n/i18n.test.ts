@@ -13,9 +13,17 @@ import {
   registerLocale,
   tWithParams,
 } from "../../src/i18n/index.js";
-import { it as italian } from "../../src/i18n/it.js";
-import { pt } from "../../src/i18n/pt.js";
-import { ru } from "../../src/i18n/ru.js";
+import type { TranslationKey } from "../../src/i18n/types.js";
+
+// Loops below are driven by BUILTIN_LOCALES: adding a locale to core's list
+// requires zero edits here.
+const NON_EN_LOCALES = BUILTIN_LOCALES.filter((locale) => locale !== "en");
+const EN_KEYS = Object.keys(en).sort() as TranslationKey[];
+
+/** The distinct `{placeholder}` names a template expects, sorted. */
+function placeholdersOf(template: string): string[] {
+  return [...new Set([...template.matchAll(/\{(\w+)\}/g)].map(([, name]) => name as string))].sort();
+}
 
 // ---------------------------------------------------------------------------
 // Lazy-load upgrade — must run before anything else touches the "de" registry
@@ -43,10 +51,10 @@ describe("loadLocale — lazy upgrade", () => {
     expect(dict).toBe(en);
   });
 
-  it.each(BUILTIN_LOCALES.filter((l) => l !== "en"))("dynamically imports the builtin locale %s", async (locale) => {
+  it.each(NON_EN_LOCALES)("dynamically imports the builtin locale %s", async (locale) => {
     const dict = await loadLocale(locale);
     expect(dict).not.toBeNull();
-    expect(Object.keys(dict ?? {}).sort()).toEqual(Object.keys(en).sort());
+    expect(Object.keys(dict ?? {}).sort()).toEqual(EN_KEYS);
   });
 });
 
@@ -171,23 +179,28 @@ describe("getTypeLabel", () => {
 // ---------------------------------------------------------------------------
 
 describe("translation completeness", () => {
-  const enKeys = Object.keys(en).sort();
-  const locales: Array<[string, Record<string, string>]> = [
-    ["fr", fr],
-    ["de", de],
-    ["es", es],
-    ["it", italian],
-    ["pt", pt],
-    ["ru", ru],
-  ];
-
-  it.each(locales)("%s has exactly the same keys as en", (_name, dict) => {
-    expect(Object.keys(dict).sort()).toEqual(enKeys);
+  it.each(NON_EN_LOCALES)("%s has exactly the same keys as en", async (locale) => {
+    const dict = await loadLocale(locale);
+    expect(Object.keys(dict ?? {}).sort()).toEqual(EN_KEYS);
   });
 
-  it.each([["en", en], ...locales])("%s has no empty translation values", (_name, dict) => {
-    for (const [key, value] of Object.entries(dict)) {
-      expect(value, `${_name} key "${key}" is empty`).not.toBe("");
+  it.each(BUILTIN_LOCALES)("%s has no empty translation values", async (locale) => {
+    const dict = await loadLocale(locale);
+    expect(dict).not.toBeNull();
+    for (const [key, value] of Object.entries(dict ?? {})) {
+      expect(value, `${locale} key "${key}" is empty`).not.toBe("");
+    }
+  });
+
+  it.each(NON_EN_LOCALES)("%s uses exactly en's placeholders in every key", async (locale) => {
+    const dict = await loadLocale(locale);
+    expect(dict).not.toBeNull();
+    for (const key of EN_KEYS) {
+      const translated = dict?.[key];
+      expect(translated, `${locale} is missing key "${key}"`).toBeDefined();
+      expect(placeholdersOf(translated ?? ""), `${locale} key "${key}" placeholder mismatch`).toEqual(
+        placeholdersOf(en[key]),
+      );
     }
   });
 });

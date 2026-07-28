@@ -7,13 +7,31 @@ Toutes les options d'`initSiteping(config)`. Seuls `projectName` et l'un de `end
 
 ## Connexion
 
+`SitepingConfig` est une union discriminée sur les deux modes de transport — `endpoint` **ou** `store`, jamais les deux, jamais aucun. TypeScript rejette les combinaisons invalides à la compilation au lieu de vous les laisser découvrir à l'exécution :
+
+```ts
+initSiteping({ endpoint: "/api/siteping", store, projectName: "x" }); // ✗ les deux modes
+initSiteping({ store, apiKey: "sk-…", projectName: "x" });           // ✗ option HTTP en mode store
+initSiteping({ projectName: "x" });                                   // ✗ aucun transport
+```
+
 | Option | Type | Défaut | Ce que ça fait |
 |---|---|---|---|
-| `endpoint` | `string` | — | URL de votre API SitePing (ex. `/api/siteping`) |
-| `store` | `SitepingStore` | — | Mode côté client : écrit dans un store du navigateur au lieu de faire du HTTP. Prioritaire sur `endpoint` ; `apiKey`/`headers` sont ignorés |
-| `projectName` | `string` | — | Obligatoire. Cadre tout ce que le widget lit et écrit |
-| `apiKey` | `string` | — | Envoyé en `Authorization: Bearer <clé>` sur chaque requête |
-| `headers` | objet ou fonction | — | En-têtes supplémentaires, statiques ou calculés par requête (sync ou async). Fusionnés en dernier : un `Authorization` explicite ici l'emporte sur `apiKey` |
+| `endpoint` | `string` | — | **Mode HTTP.** URL de votre API SitePing (ex. `/api/siteping`) |
+| `store` | `SitepingStore` | — | **Mode store.** Écrit dans un store du navigateur au lieu de faire du HTTP — exclut `endpoint`, `apiKey` et `headers` |
+| `projectName` | `string` | — | Obligatoire dans les deux modes. Cadre tout ce que le widget lit et écrit |
+| `apiKey` | `string` | — | Mode HTTP uniquement. Envoyé en `Authorization: Bearer <clé>` sur chaque requête |
+| `headers` | objet ou fonction | — | Mode HTTP uniquement. En-têtes supplémentaires, statiques ou calculés par requête (sync ou async). Fusionnés en dernier : un `Authorization` explicite ici l'emporte sur `apiKey` |
+
+Les deux moitiés sont exportées sous les noms `SitepingHttpConfig` et `SitepingStoreConfig` — exactement ce qu'il vous faut quand un composant d'enrobage reçoit la config en prop et ne gère qu'un seul mode :
+
+```ts
+import type { SitepingHttpConfig } from "@siteping/widget";
+
+function mountFeedback(config: SitepingHttpConfig) { /* endpoint garanti */ }
+```
+
+> `apiKey` part dans votre bundle client — chaque visiteur peut le lire. Réservez-le aux outils internes déjà protégés par une authentification ; sur un site public, préférez `headers` avec une fonction qui renvoie un jeton à durée de vie courte.
 
 ## Visibilité
 

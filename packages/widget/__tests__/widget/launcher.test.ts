@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { SitepingConfig } from "@siteping/core";
+import type { SitepingConfig, SitepingHttpConfig, SitepingStore } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withViewportWidth } from "../helpers.js";
 
@@ -96,7 +96,7 @@ import { launch } from "../../src/launcher.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function defaultConfig(overrides: Partial<SitepingConfig> = {}): SitepingConfig {
+function defaultConfig(overrides: Partial<Omit<SitepingHttpConfig, "store">> = {}): SitepingConfig {
   return {
     endpoint: "/api/siteping",
     projectName: "test-project",
@@ -706,7 +706,7 @@ describe("launch", () => {
         deleteAllFeedbacks: vi.fn(),
       };
       const instance = launch({
-        store: fakeStore as unknown as SitepingConfig["store"],
+        store: fakeStore as unknown as SitepingStore,
         projectName: "test",
         forceShow: true,
       });

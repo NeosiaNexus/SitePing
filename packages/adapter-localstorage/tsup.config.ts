@@ -1,12 +1,4 @@
 import { defineConfig } from "tsup";
+import { sitepingLibrary } from "../../tsup.preset.js";
 
-export default defineConfig({
-  entry: ["src/index.ts"],
-  format: ["esm", "cjs"],
-  platform: "browser",
-  target: "es2022",
-  dts: true,
-  sourcemap: true,
-  clean: true,
-  noExternal: ["@siteping/core"],
-});
+export default defineConfig(sitepingLibrary({ platform: "browser" }));

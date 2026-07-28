@@ -1,14 +1,7 @@
-import { de } from "../src/i18n/de.js";
-import { es } from "../src/i18n/es.js";
-import { fr } from "../src/i18n/fr.js";
-import { registerLocale } from "../src/i18n/index.js";
-import { it } from "../src/i18n/it.js";
-import { pt } from "../src/i18n/pt.js";
-import { ru } from "../src/i18n/ru.js";
+import { BUILTIN_LOCALES } from "@siteping/core";
+import { loadLocale } from "../src/i18n/index.js";
 
-registerLocale("de", de);
-registerLocale("es", es);
-registerLocale("fr", fr);
-registerLocale("it", it);
-registerLocale("pt", pt);
-registerLocale("ru", ru);
+// Every built-in locale is lazy-loaded in production. Tests call `t(key)`
+// synchronously, so resolve the whole registry once here — driven by
+// BUILTIN_LOCALES, so a new locale needs no edit to this file.
+await Promise.all(BUILTIN_LOCALES.map((locale) => loadLocale(locale)));

@@ -1,7 +1,7 @@
 {
   "name": "@siteping/widget",
   "version": "0.10.6",
-  "description": "Feedback widget for client review during development — annotations, bugs, questions directly on the site",
+  "description": "Feedback widget for client review during development \u2014 annotations, bugs, questions directly on the site",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -81,6 +81,7 @@
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "esbuild": "^0.28.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "size-limit": "^12.1.0"

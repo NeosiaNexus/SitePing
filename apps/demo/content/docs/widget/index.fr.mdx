@@ -18,7 +18,7 @@ const siteping = initSiteping({
 });
 ```
 
-`initSiteping` est le seul export runtime du package (avec les types TypeScript). Il pèse environ **30 KB gzip** (ESM), charge ses parties lourdes à la demande (panneau, locales, moteur de capture) et s'affiche dans un Shadow DOM fermé — les styles de votre page et ceux du widget ne peuvent jamais se marcher dessus.
+`initSiteping` est l'export runtime principal du package, aux côtés des deux helpers i18n (`registerLocale`, `loadLocale`) et des types TypeScript. Il pèse environ **30 KB gzip** (ESM), charge ses parties lourdes à la demande (panneau, locales, moteur de capture) et s'affiche dans un Shadow DOM fermé — les styles de votre page et ceux du widget ne peuvent jamais se marcher dessus.
 
 ## Quand le widget s'affiche — et quand il ne s'affiche pas
 
@@ -43,7 +43,15 @@ const off = siteping.on("feedback:sent", (feedback) => { ... });
 siteping.destroy();               // démontage complet, restaure tous les globals patchés
 ```
 
-Événements publics : `feedback:sent` (charge utile : le feedback créé), `feedback:deleted` (charge utile : l'id), `panel:open`, `panel:close`. `on()` renvoie une fonction de désabonnement.
+`on()` renvoie une fonction de désabonnement. Sept événements publics sont disponibles :
+
+| Événement | Charge utile | Déclenché quand |
+|---|---|---|
+| `feedback:sent` | le feedback créé | Un envoi a réussi |
+| `feedback:deleted` | l'id du feedback | Un feedback a été supprimé |
+| `feedback:error` | l'`Error` | Un appel à l'API de feedback a échoué — même charge utile que le callback de config `onError` |
+| `panel:open` / `panel:close` | — | Le panneau s'est ouvert / fermé |
+| `annotation:start` / `annotation:end` | — | Une session d'annotation a commencé / s'est terminée. `end` se déclenche que l'utilisateur ait envoyé ou annulé, et les deux points d'entrée — le bouton flottant et les [commentaires au clic droit](/fr/docs/widget/right-click) — émettent la paire symétrique : de quoi mettre en pause vos bulles de chat ou vos overlays d'analytics entre les deux |
 
 ## React
 
@@ -63,7 +71,7 @@ export function Feedback() {
 }
 ```
 
-Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint` ou une autre option structurelle demande un remontage ; changer les callbacks, non.
+Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint` ou une autre option structurelle demande un remontage ; changer un callback, non — **tous** les callbacks acceptés par la config (`onFeedbackSent`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) sont lus au moment de l'appel, donc un handler qui capture un état frais se déclenche avec cet état. Ils se taisent également après le démontage : une réponse tardive ne peut pas rappeler dans un arbre déjà démonté.
 
 ## Gérer les erreurs
 

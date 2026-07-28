@@ -1,13 +1,12 @@
 import {
-  type AnnotationCreateInput,
-  type AnnotationRecord,
-  applyFeedbackFilters,
+  createCollectionStore,
   type FeedbackCreateInput,
+  type FeedbackPage,
   type FeedbackQuery,
   type FeedbackRecord,
   type FeedbackUpdateInput,
+  type Serialized,
   type SitepingStore,
-  StoreNotFoundError,
   StorePersistenceError,
 } from "@siteping/core";
 
@@ -18,7 +17,7 @@ const DEFAULT_KEY = "siteping_feedbacks";
 
 export interface LocalStorageStoreOptions {
   /** localStorage key prefix — defaults to `'siteping_feedbacks'` */
-  key?: string;
+  key?: string | undefined;
 }
 
 /**
@@ -26,6 +25,16 @@ export interface LocalStorageStoreOptions {
  *
  * Designed for demos, prototyping, and static sites that don't need a server.
  * Data persists across page reloads but is scoped to the current origin.
+ *
+ * All store semantics (clientId dedup, filtering, pagination, error
+ * contract, screenshot-drop retry on quota) come from core's
+ * `createCollectionStore` engine — this class only supplies the storage
+ * primitives: JSON persistence with Date revival, quota-safe writes, an id
+ * generator.
+ *
+ * Note: localStorage has its own ~5 MB hard cap; inline screenshots are OK
+ * for prototyping but will hit the cap quickly. Production users should use
+ * adapter-prisma with a configured `ScreenshotStorage`.
  *
  * @example
  * ```ts
@@ -43,19 +52,27 @@ export interface LocalStorageStoreOptions {
 export class LocalStorageStore implements SitepingStore {
   private readonly key: string;
 
+  private readonly engine = createCollectionStore({
+    load: () => this.load(),
+    persist: (next) => {
+      this.persist(next);
+    },
+    generateId: () => this.generateId(),
+  });
+
   constructor(options?: LocalStorageStoreOptions) {
     this.key = options?.key ?? DEFAULT_KEY;
   }
 
   // ---------------------------------------------------------------------------
-  // Persistence
+  // Storage primitives
   // ---------------------------------------------------------------------------
 
   private load(): FeedbackRecord[] {
     try {
       const raw = localStorage.getItem(this.key);
       if (!raw) return [];
-      const data = JSON.parse(raw) as SerializedFeedback[];
+      const data = JSON.parse(raw) as Serialized<FeedbackRecord>[];
       return data.map(reviveFeedback);
     } catch {
       return [];
@@ -85,118 +102,35 @@ export class LocalStorageStore implements SitepingStore {
   }
 
   // ---------------------------------------------------------------------------
-  // SitepingStore implementation
+  // SitepingStore implementation — delegated to the collection engine
   // ---------------------------------------------------------------------------
 
-  async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
-    const feedbacks = this.load();
-
-    // ClientId dedup — idempotent
-    const existing = feedbacks.find((f) => f.clientId === data.clientId);
-    if (existing) return existing;
-
-    const now = new Date();
-    const feedbackId = this.generateId();
-
-    const annotations: AnnotationRecord[] = data.annotations.map((ann: AnnotationCreateInput) => ({
-      id: this.generateId(),
-      feedbackId,
-      cssSelector: ann.cssSelector,
-      xpath: ann.xpath,
-      textSnippet: ann.textSnippet,
-      elementTag: ann.elementTag,
-      elementId: ann.elementId ?? null,
-      textPrefix: ann.textPrefix,
-      textSuffix: ann.textSuffix,
-      fingerprint: ann.fingerprint,
-      neighborText: ann.neighborText,
-      anchorKey: ann.anchorKey ?? null,
-      xPct: ann.xPct,
-      yPct: ann.yPct,
-      wPct: ann.wPct,
-      hPct: ann.hPct,
-      scrollX: ann.scrollX,
-      scrollY: ann.scrollY,
-      viewportW: ann.viewportW,
-      viewportH: ann.viewportH,
-      devicePixelRatio: ann.devicePixelRatio,
-      createdAt: now,
-    }));
-
-    const record: FeedbackRecord = {
-      id: feedbackId,
-      type: data.type,
-      message: data.message,
-      status: data.status,
-      projectName: data.projectName,
-      url: data.url,
-      urlPattern: data.urlPattern ?? null,
-      authorName: data.authorName,
-      authorEmail: data.authorEmail,
-      viewport: data.viewport,
-      userAgent: data.userAgent,
-      clientId: data.clientId,
-      resolvedAt: null,
-      createdAt: now,
-      updatedAt: now,
-      annotations,
-      // localStorage has its own ~5 MB hard cap; storing data URLs inline is
-      // OK for prototyping and demos but will hit the cap quickly with many
-      // screenshots. Production users should use adapter-prisma with a
-      // configured ScreenshotStorage.
-      screenshotUrl: data.screenshotDataUrl ?? null,
-      screenshotRegion: data.screenshotRegion ?? null,
-      diagnostics: data.diagnostics ?? null,
-    };
-
-    feedbacks.unshift(record);
-    try {
-      this.persist(feedbacks);
-    } catch (err) {
-      // Quota exceeded — usually the inline screenshot pushed us past the
-      // ~5 MB cap. Retry without the screenshot so the user's text feedback
-      // is preserved (the screenshot is by far the heaviest field). If even
-      // that fails, let the error propagate — returning the record would
-      // claim a success that was never persisted.
-      if (!record.screenshotUrl) throw err;
-      record.screenshotUrl = null;
-      this.persist(feedbacks);
-    }
-    return record;
+  createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
+    return this.engine.createFeedback(data);
   }
 
-  async getFeedbacks(query: FeedbackQuery): Promise<{ feedbacks: FeedbackRecord[]; total: number }> {
-    return applyFeedbackFilters(this.load(), query);
+  getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
+    return this.engine.getFeedbacks(query);
   }
 
-  async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
-    return this.load().find((f) => f.clientId === clientId) ?? null;
+  findByClientId(clientId: string): Promise<FeedbackRecord | null> {
+    return this.engine.findByClientId(clientId);
   }
 
-  async updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
-    const feedbacks = this.load();
-    const fb = feedbacks.find((f) => f.id === id);
-    if (!fb) throw new StoreNotFoundError();
-
-    fb.status = data.status;
-    fb.resolvedAt = data.resolvedAt;
-    fb.updatedAt = new Date();
-    this.persist(feedbacks);
-    return fb;
+  updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
+    return this.engine.updateFeedback(id, data);
   }
 
-  async deleteFeedback(id: string): Promise<void> {
-    const feedbacks = this.load();
-    const idx = feedbacks.findIndex((f) => f.id === id);
-    if (idx === -1) throw new StoreNotFoundError();
-
-    feedbacks.splice(idx, 1);
-    this.persist(feedbacks);
+  deleteFeedback(id: string): Promise<void> {
+    return this.engine.deleteFeedback(id);
   }
 
-  async deleteAllFeedbacks(projectName: string): Promise<void> {
-    const feedbacks = this.load().filter((f) => f.projectName !== projectName);
-    this.persist(feedbacks);
+  deleteAllFeedbacks(projectName: string): Promise<void> {
+    return this.engine.deleteAllFeedbacks(projectName);
+  }
+
+  verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
+    return this.engine.verifyProjectOwnership(id, projectName);
   }
 
   /** Remove all data from localStorage for this store key. */
@@ -206,21 +140,11 @@ export class LocalStorageStore implements SitepingStore {
 }
 
 // ---------------------------------------------------------------------------
-// JSON serialization helpers — revive date strings from localStorage
+// JSON revival — localStorage stores the Serialized<FeedbackRecord> wire
+// shape; Dates come back as ISO strings and must be revived.
 // ---------------------------------------------------------------------------
 
-interface SerializedFeedback extends Omit<FeedbackRecord, "createdAt" | "updatedAt" | "resolvedAt" | "annotations"> {
-  createdAt: string;
-  updatedAt: string;
-  resolvedAt: string | null;
-  annotations: SerializedAnnotation[];
-}
-
-interface SerializedAnnotation extends Omit<AnnotationRecord, "createdAt"> {
-  createdAt: string;
-}
-
-function reviveFeedback(raw: SerializedFeedback): FeedbackRecord {
+function reviveFeedback(raw: Serialized<FeedbackRecord>): FeedbackRecord {
   return {
     ...raw,
     createdAt: new Date(raw.createdAt),

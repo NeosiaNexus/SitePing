@@ -97,6 +97,9 @@ describe("useSitepingInbox — initial fetch & counts", () => {
 
   it("throws when no source, store or endpoint is provided", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The union rejects this at compile time — the runtime guard exists for
+    // JS consumers, and this test is what keeps it alive.
+    // @ts-expect-error - no source, store or endpoint supplied
     expect(() => renderHook(() => useSitepingInbox({ projects: "demo" }))).toThrow(/requires one of/);
     spy.mockRestore();
   });

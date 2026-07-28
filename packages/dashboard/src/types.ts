@@ -8,6 +8,7 @@ import type {
   SitepingStore,
 } from "@siteping/core";
 import type { ReactNode } from "react";
+import type { InboxTheme } from "./theme.js";
 
 // ---------------------------------------------------------------------------
 // Data source
@@ -59,20 +60,10 @@ export type InboxStatusFilter = FeedbackStatus | "all";
 /** Type filter — a concrete feedback type, or `"all"`. */
 export type InboxTypeFilter = FeedbackType | "all";
 
-/** Options accepted by `useSitepingInbox` (and, by extension, `<SitepingInbox />`). */
-export interface UseSitepingInboxOptions {
+/** Options shared by every `useSitepingInbox` source mode. */
+export interface InboxSharedOptions {
   /** Project name(s) to triage. The first entry is selected initially. */
   projects: string | readonly string[];
-  /** Custom data source — wins over `store`/`endpoint` when provided. */
-  source?: InboxSource | undefined;
-  /** Direct store for client-side mode (no server round-trip). */
-  store?: SitepingStore | undefined;
-  /** HTTP endpoint exposing the Siteping request handlers. */
-  endpoint?: string | undefined;
-  /** Sent as `Authorization: Bearer <apiKey>` (endpoint mode only). */
-  apiKey?: string | undefined;
-  /** Extra request headers (endpoint mode only) — see `EndpointSourceOptions.headers`. */
-  headers?: EndpointSourceOptions["headers"];
   /** Page size for list queries. Defaults to 50, clamped to 1..100. */
   pageSize?: number | undefined;
   /** Called after a status change is persisted, with the saved record and the status it had before. */
@@ -82,6 +73,57 @@ export interface UseSitepingInboxOptions {
   /** Called on every load or mutation failure, with a typed `SitepingError` where available. */
   onError?: ((error: Error) => void) | undefined;
 }
+
+/** Custom-source mode — bring your own `InboxSource` (tRPC, GraphQL, …). */
+export interface InboxCustomSourceOptions extends InboxSharedOptions {
+  /** Custom data source. */
+  source: InboxSource;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  store?: never;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  endpoint?: never;
+  /** Endpoint mode only. */
+  apiKey?: never;
+  /** Endpoint mode only. */
+  headers?: never;
+}
+
+/** Store mode — direct `SitepingStore` access, no server round-trip. */
+export interface InboxStoreOptions extends InboxSharedOptions {
+  /** Direct store for client-side mode. */
+  store: SitepingStore;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  source?: never;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  endpoint?: never;
+  /** Endpoint mode only. */
+  apiKey?: never;
+  /** Endpoint mode only. */
+  headers?: never;
+}
+
+/** Endpoint mode — HTTP against the Siteping request handlers. */
+export interface InboxEndpointOptions extends InboxSharedOptions {
+  /** HTTP endpoint exposing the Siteping request handlers. */
+  endpoint: string;
+  /** Sent as `Authorization: Bearer <apiKey>`. */
+  apiKey?: string | undefined;
+  /** Extra request headers — see `EndpointSourceOptions.headers`. */
+  headers?: EndpointSourceOptions["headers"];
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  source?: never;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  store?: never;
+}
+
+/**
+ * Options accepted by `useSitepingInbox` (and, by extension,
+ * `<SitepingInbox />`) — a union over the three source modes. Supplying no
+ * source, several sources, or endpoint-only options (`apiKey`/`headers`)
+ * alongside `store`/`source` is a compile error instead of a runtime throw
+ * or a silently ignored option.
+ */
+export type UseSitepingInboxOptions = InboxCustomSourceOptions | InboxStoreOptions | InboxEndpointOptions;
 
 /**
  * Full state + actions returned by `useSitepingInbox` — everything needed to
@@ -119,6 +161,18 @@ export interface InboxState {
   error: Error | null;
   /** Whether more pages exist beyond the loaded rows. */
   hasMore: boolean;
+  /**
+   * High-level view resolution — the exact algebra the shipped
+   * `<SitepingInbox />` uses to pick between skeleton, error state, empty
+   * state and the list, exposed so headless consumers don't have to
+   * re-derive it from the flags:
+   * - `"loading"` — first page is loading and nothing is displayable.
+   * - `"error"` — the load failed and nothing is displayable.
+   * - `"empty"` — loaded fine, zero rows for the current filters.
+   * - `"ready"` — rows are displayable (stale rows stay visible during a
+   *   refetch — check `loading` for granular spinners).
+   */
+  view: "loading" | "error" | "empty" | "ready";
   /** Fetch the next page and append it. */
   loadMore(): Promise<void>;
   /** Re-fetch page 1 + counts for the current filters. */
@@ -148,12 +202,12 @@ export interface InboxState {
 // Component props
 // ---------------------------------------------------------------------------
 
-/** Props accepted by `<SitepingInbox />`. */
-export interface SitepingInboxProps extends UseSitepingInboxOptions {
+/** Presentation props specific to the shipped `<SitepingInbox />` component. */
+export interface SitepingInboxPresentationProps {
   /** Accent color (any `#RGB`/`#RRGGBB`/`#RRGGBBAA` hex) — defaults to `"#0066ff"`. */
   accentColor?: string | undefined;
   /** Color theme — defaults to `"auto"`, which tracks the system preference live. */
-  theme?: "light" | "dark" | "auto" | undefined;
+  theme?: InboxTheme | undefined;
   /** Row density — defaults to `"comfortable"`. */
   density?: "comfortable" | "compact" | undefined;
   /** UI locale — defaults to `"en"`; non-English built-ins are lazy-loaded. */
@@ -165,3 +219,6 @@ export interface SitepingInboxProps extends UseSitepingInboxOptions {
   /** Replaces the default empty state shown when the project has no feedback at all. */
   emptyState?: ReactNode | undefined;
 }
+
+/** Props accepted by `<SitepingInbox />` — source-mode options plus presentation. */
+export type SitepingInboxProps = UseSitepingInboxOptions & SitepingInboxPresentationProps;

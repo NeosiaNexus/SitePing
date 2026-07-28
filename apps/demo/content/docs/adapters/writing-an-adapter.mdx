@@ -1,0 +1,170 @@
+---
+title: Writing an adapter
+description: Build your own store adapter with @siteping/adapter-kit — the engine, the contract, and the conformance suite.
+---
+
+The three bundled adapters cover most setups, but SitePing stores are pluggable: anything that can hold records can back the widget and the dashboard. `@siteping/adapter-kit` is the published package for that — it carries the `SitepingStore` contract, the building blocks the first-party adapters run on, and the conformance suite that proves your implementation behaves like the others.
+
+```bash
+npm i -D @siteping/adapter-kit vitest
+```
+
+`vitest` is an **optional peer dependency**, needed only by the `@siteping/adapter-kit/testing` entry. If you don't run the conformance suite, skip it. The kit itself has no runtime dependencies (`@siteping/core` is bundled into its `dist`), so a dev dependency works when you bundle your own package; if you publish unbundled output, move it to `dependencies`.
+
+> Why a separate package: `@siteping/core` is an internal package — it exports raw TypeScript and is never published to npm. The kit is the supported way to depend on those types and helpers from outside this repo.
+
+## Pick your path
+
+| Your backend | What you write | Guide |
+|---|---|---|
+| Snapshot — KV, flat file, IndexedDB, a cookie, an array | `load` / `persist` / `generateId` | [Snapshot backends](#snapshot-backends) |
+| Query — SQL, an ORM, an HTTP API | The 6 `SitepingStore` methods | [Query backends](#query-backends) |
+
+## Snapshot backends
+
+If your storage can hand back the whole feedback list and take a whole list back, `createCollectionStore` gives you a complete, conformant store. It implements every semantic of the contract — `clientId` deduplication, newest-first ordering, the filter and pagination pipeline, `StoreNotFoundError` on missing records, project-scoped bulk delete, and `verifyProjectOwnership`:
+
+```ts
+import { createCollectionStore, type FeedbackRecord, type SitepingStore } from "@siteping/adapter-kit";
+
+export function createArrayStore(): SitepingStore {
+  let feedbacks: FeedbackRecord[] = [];
+  let counter = 1;
+
+  return createCollectionStore({
+    load: () => feedbacks,
+    persist: (next) => {
+      feedbacks = next;
+    },
+    generateId: () => `kit-${counter++}`,
+  });
+}
+```
+
+That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 44 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
+
+**The three primitives:**
+
+| Function | Contract |
+|---|---|
+| `load()` | Return the current full snapshot of records. Sync or async — the engine awaits it either way |
+| `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
+| `generateId()` | A unique id, used for both feedback and annotation records |
+
+`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional, so you can delegate to it without a null check.
+
+**Quota pressure drops screenshots first.** When `persist` throws during `createFeedback` and the record carries an inline screenshot, the engine clears `screenshotUrl` — by far the heaviest field — and retries once, so the written comment survives a full storage bucket. If that second write also fails, the error propagates: returning the record would claim a success that never happened.
+
+## Query backends
+
+For SQL and ORMs, implement the six methods directly — you want your `WHERE` clauses in the database, not a full table load per request. The kit still saves you the input-to-record conversion:
+
+```ts
+import {
+  buildFeedbackRecord,
+  StoreNotFoundError,
+  type FeedbackCreateInput,
+  type FeedbackRecord,
+  type SitepingStore,
+} from "@siteping/adapter-kit";
+
+export class DrizzleStore implements SitepingStore {
+  async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
+    const record = buildFeedbackRecord(data, {
+      id: crypto.randomUUID(),
+      annotationId: () => crypto.randomUUID(),
+    });
+    // …insert `record` and its `record.annotations`
+    return record;
+  }
+
+  async deleteFeedback(id: string): Promise<void> {
+    const deleted = await db.delete(feedbacks).where(eq(feedbacks.id, id)).returning();
+    if (deleted.length === 0) throw new StoreNotFoundError();
+  }
+  // …the four remaining methods
+}
+```
+
+`buildFeedbackRecord` normalizes every optional field to `null`, stamps `createdAt`/`updatedAt`, sets `resolvedAt` to `null`, and builds the annotation records (`buildAnnotationRecord` does one annotation on its own if you insert them separately). It keeps the screenshot data URL inline on `screenshotUrl`; adapters with external object storage upload first and overwrite that field.
+
+### The error contract
+
+Handlers and the dashboard read behavior off these errors, so throw the kit's classes rather than your ORM's:
+
+| Situation | What to do |
+|---|---|
+| `updateFeedback` / `deleteFeedback` on an unknown id | Throw `StoreNotFoundError` — the HTTP handler turns it into a 404 |
+| `createFeedback` with an already-used `clientId` | Either return the existing record (idempotent) or throw `StoreDuplicateError`. Both are valid; handlers cope with either |
+| A mutation accepted but not persisted | Throw `StorePersistenceError` instead of reporting a phantom success |
+| Empty results on `getFeedbacks` / `findByClientId` | Don't throw — return an empty array or `null` |
+
+Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStorePersistence`. Use them instead of `instanceof` when you catch across package boundaries — every package bundles its own copy of the classes, so `instanceof` can fail on an error thrown by another one. The guards also recognize Prisma's `P2025` and `P2002` codes.
+
+### Query semantics to match
+
+`getFeedbacks` takes a `FeedbackQuery` and returns `{ feedbacks, total }`, where `total` is the count **before** pagination. The behavior the suite checks:
+
+- Filters: `projectName` (always), then `type`, `status`, `statuses`, `url`, `urlPattern`, `search` (substring on `message`).
+- `statuses` is a bucket — any of the listed values — and wins over `status` when both are set. An empty array means no status filter.
+- Newest first, by `createdAt` descending.
+- `page` is 1-based, `limit` defaults to 50 and is capped at 100.
+
+Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above.
+
+## Project ownership
+
+`verifyProjectOwnership(id, projectName)` is the one optional method. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
+
+```ts
+async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
+  const row = await db.feedback.findUnique({ where: { id }, select: { projectName: true } });
+  return row?.projectName === projectName;
+}
+```
+
+Implement it whenever your store serves more than one project. When it's absent, handlers skip the check and trust the `id` alone.
+
+## Prove it: the conformance suite
+
+The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 44 tests:
+
+```ts
+// __tests__/my-store.test.ts
+import { testSitepingStore } from "@siteping/adapter-kit/testing";
+import { MyStore } from "../src/index.js";
+
+testSitepingStore(() => new MyStore());
+```
+
+The factory runs before each test and may be async, which is where you spin up a transaction or a fresh schema. Two knobs cover contract variations that are legitimately backend-specific:
+
+| Option | Default | Set it when |
+|---|---|---|
+| `duplicateBehavior` | `"return"` | Your `createFeedback` throws `StoreDuplicateError` on a repeated `clientId` instead of returning the existing record — pass `"throw"` |
+| `caseInsensitiveSearch` | `true` | Your collation makes `search` case-sensitive — pass `false` and the suite only asserts same-case substring matching |
+
+```ts
+testSitepingStore(() => new PostgresStore(db), {
+  duplicateBehavior: "throw",
+  caseInsensitiveSearch: false,
+});
+```
+
+`verifyProjectOwnership` is covered too: stores that don't implement it skip the assertions, so adding it later is checked automatically with no test changes.
+
+## Using your adapter
+
+Nothing else changes. Server-side, hand it to the request handlers; client-side, hand it straight to the widget or the inbox:
+
+```ts
+// Server — the request handlers accept any SitepingStore, Prisma or not
+import { createSitepingHandler } from "@siteping/adapter-prisma";
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ store: new MyStore() });
+
+// Browser — client-side mode, no server at all
+import { initSiteping } from "@siteping/widget";
+initSiteping({ store: new MyStore(), projectName: "my-app" });
+```
+
+If you publish one, [open an issue](https://github.com/NeosiaNexus/SitePing/issues) — we'll link it from this page.

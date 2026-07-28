@@ -531,6 +531,12 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
   const hasMore = !exhausted && total !== null && items.length < total;
 
+  // High-level view resolution — the exact algebra the shipped component
+  // renders from, exposed so headless consumers don't re-derive it. Stale
+  // rows stay visible during a refetch, hence "ready" whenever rows exist.
+  const view: InboxState["view"] =
+    items.length > 0 ? "ready" : loading ? "loading" : error !== null ? "error" : "empty";
+
   return {
     project,
     projects,
@@ -548,6 +554,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     loadingMore,
     error,
     hasMore,
+    view,
     loadMore,
     refresh: load,
     focusedId,

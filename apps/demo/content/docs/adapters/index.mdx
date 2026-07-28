@@ -11,6 +11,8 @@ An adapter is the storage layer behind SitePing. All three implement the same `S
 | [`@siteping/adapter-memory`](/docs/adapters/memory) | An in-process array | Tests, previews, throwaway demos |
 | [`@siteping/adapter-localstorage`](/docs/adapters/localstorage) | The visitor's browser | Client-side demos and prototypes — no server at all |
 
+Need a different backend? [Write your own](/docs/adapters/writing-an-adapter) with `@siteping/adapter-kit`.
+
 ## Two ways to mount a store
 
 **Server mode** — the widget talks to an HTTP endpoint, and the endpoint talks to the store. This is the production shape:
@@ -32,4 +34,4 @@ import { LocalStorageStore } from "@siteping/adapter-localstorage";
 initSiteping({ store: new LocalStorageStore(), projectName: "my-demo" });
 ```
 
-> Writing your own adapter? Implement the 6 `SitepingStore` methods and run the shared conformance suite — `testSitepingStore(factory)` from `@siteping/core/testing` (40 tests) — against it.
+> Writing your own adapter? Install `@siteping/adapter-kit`: snapshot backends get a complete store from `createCollectionStore`, query backends implement the 6 methods, and both verify with the shared conformance suite (44 tests). See [Writing an adapter](/docs/adapters/writing-an-adapter).

@@ -9,7 +9,7 @@ import { classifyVisibility, visibilityFactor } from "../../src/dom/visibility";
 // per element and assert each branch explicitly, including the layout-less
 // "unknown" outcome jsdom itself must produce.
 
-type Stubbable = Element & {
+type Stubbable = HTMLElement & {
   checkVisibility?: (options?: object) => boolean;
   getClientRects: () => DOMRectList;
 };

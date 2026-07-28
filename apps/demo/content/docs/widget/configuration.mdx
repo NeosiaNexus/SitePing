@@ -7,13 +7,31 @@ All options of `initSiteping(config)`. Only `projectName` plus one of `endpoint`
 
 ## Connection
 
+`SitepingConfig` is a discriminated union over the two transport modes — `endpoint` **or** `store`, never both, never neither. TypeScript rejects the invalid combinations at compile time instead of leaving you to discover them at runtime:
+
+```ts
+initSiteping({ endpoint: "/api/siteping", store, projectName: "x" }); // ✗ both modes
+initSiteping({ store, apiKey: "sk-…", projectName: "x" });           // ✗ HTTP-only option in store mode
+initSiteping({ projectName: "x" });                                   // ✗ no transport
+```
+
 | Option | Type | Default | What it does |
 |---|---|---|---|
-| `endpoint` | `string` | — | URL of your SitePing API (e.g. `/api/siteping`) |
-| `store` | `SitepingStore` | — | Client-side mode: write to a store in the browser instead of HTTP. Wins over `endpoint`; `apiKey`/`headers` are ignored |
-| `projectName` | `string` | — | Required. Scopes everything the widget reads and writes |
-| `apiKey` | `string` | — | Sent as `Authorization: Bearer <key>` on every request |
-| `headers` | object or function | — | Extra headers, static or computed per request (sync or async). Merged last, so an explicit `Authorization` here beats `apiKey` |
+| `endpoint` | `string` | — | **HTTP mode.** URL of your SitePing API (e.g. `/api/siteping`) |
+| `store` | `SitepingStore` | — | **Store mode.** Write to a store in the browser instead of HTTP — excludes `endpoint`, `apiKey` and `headers` |
+| `projectName` | `string` | — | Required in both modes. Scopes everything the widget reads and writes |
+| `apiKey` | `string` | — | HTTP mode only. Sent as `Authorization: Bearer <key>` on every request |
+| `headers` | object or function | — | HTTP mode only. Extra headers, static or computed per request (sync or async). Merged last, so an explicit `Authorization` here beats `apiKey` |
+
+The two halves are exported as `SitepingHttpConfig` and `SitepingStoreConfig`, which is what you want when a wrapper component takes the config as a prop and only supports one mode:
+
+```ts
+import type { SitepingHttpConfig } from "@siteping/widget";
+
+function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
+```
+
+> `apiKey` ships in your client bundle — every visitor can read it. Use it for internal tools already behind a login; on public sites prefer `headers` with a function that returns a short-lived token.
 
 ## Visibility
 

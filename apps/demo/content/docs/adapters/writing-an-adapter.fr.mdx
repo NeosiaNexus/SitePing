@@ -1,0 +1,170 @@
+---
+title: Écrire un adapter
+description: Construisez votre propre adapter de stockage avec @siteping/adapter-kit — le moteur, le contrat et la suite de conformité.
+---
+
+Les trois adapters fournis couvrent la plupart des installations, mais les stores SitePing sont enfichables : tout ce qui peut conserver des enregistrements peut alimenter le widget et le dashboard. `@siteping/adapter-kit` est le package publié pour ça — il porte le contrat `SitepingStore`, les briques sur lesquelles tournent les adapters officiels, et la suite de conformité qui prouve que votre implémentation se comporte comme les autres.
+
+```bash
+npm i -D @siteping/adapter-kit vitest
+```
+
+`vitest` est une **peer dependency optionnelle**, nécessaire uniquement à l'entrée `@siteping/adapter-kit/testing`. Si vous ne lancez pas la suite de conformité, laissez-la de côté. Le kit lui-même n'a aucune dépendance runtime (`@siteping/core` est intégré dans son `dist`) : une dépendance de développement suffit si vous bundlez votre package ; si vous publiez du code non bundlé, déplacez-la dans `dependencies`.
+
+> Pourquoi un package séparé : `@siteping/core` est un package interne — il exporte du TypeScript brut et n'est jamais publié sur npm. Le kit est la façon supportée de dépendre de ces types et helpers depuis l'extérieur de ce dépôt.
+
+## Choisissez votre voie
+
+| Votre backend | Ce que vous écrivez | Guide |
+|---|---|---|
+| Snapshot — KV, fichier plat, IndexedDB, un cookie, un tableau | `load` / `persist` / `generateId` | [Backends snapshot](#backends-snapshot) |
+| Requêtes — SQL, un ORM, une API HTTP | Les 6 méthodes de `SitepingStore` | [Backends à requêtes](#backends-à-requêtes) |
+
+## Backends snapshot
+
+Si votre stockage sait rendre la liste complète des feedbacks et en reprendre une entière, `createCollectionStore` vous donne un store complet et conforme. Il implémente toutes les sémantiques du contrat — déduplication par `clientId`, tri du plus récent au plus ancien, pipeline de filtrage et de pagination, `StoreNotFoundError` sur enregistrement absent, suppression en masse cadrée au projet, et `verifyProjectOwnership` :
+
+```ts
+import { createCollectionStore, type FeedbackRecord, type SitepingStore } from "@siteping/adapter-kit";
+
+export function createArrayStore(): SitepingStore {
+  let feedbacks: FeedbackRecord[] = [];
+  let counter = 1;
+
+  return createCollectionStore({
+    load: () => feedbacks,
+    persist: (next) => {
+      feedbacks = next;
+    },
+    generateId: () => `kit-${counter++}`,
+  });
+}
+```
+
+C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les 44 tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
+
+**Les trois primitives :**
+
+| Fonction | Contrat |
+|---|---|
+| `load()` | Renvoie l'instantané complet des enregistrements. Synchrone ou asynchrone — le moteur l'attend dans les deux cas |
+| `persist(feedbacks)` | Réécrit l'instantané complet. Levez `StorePersistenceError` quand l'écriture est perdue (quota, stockage désactivé) — ne l'avalez jamais |
+| `generateId()` | Un identifiant unique, utilisé pour les feedbacks comme pour les annotations |
+
+`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` dont `verifyProjectOwnership` est garanti au lieu d'être optionnel, vous pouvez donc lui déléguer sans vérification préalable.
+
+**Sous pression de quota, les captures sautent en premier.** Quand `persist` lève pendant `createFeedback` et que l'enregistrement porte une capture d'écran en ligne, le moteur vide `screenshotUrl` — de loin le champ le plus lourd — et réessaie une fois, pour que le commentaire écrit survive à un espace de stockage plein. Si cette seconde écriture échoue aussi, l'erreur remonte : renvoyer l'enregistrement annoncerait une réussite qui n'a jamais eu lieu.
+
+## Backends à requêtes
+
+Pour SQL et les ORM, implémentez les six méthodes directement — vos clauses `WHERE` ont leur place dans la base, pas dans un chargement complet de la table à chaque requête. Le kit vous épargne quand même la conversion entrée → enregistrement :
+
+```ts
+import {
+  buildFeedbackRecord,
+  StoreNotFoundError,
+  type FeedbackCreateInput,
+  type FeedbackRecord,
+  type SitepingStore,
+} from "@siteping/adapter-kit";
+
+export class DrizzleStore implements SitepingStore {
+  async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
+    const record = buildFeedbackRecord(data, {
+      id: crypto.randomUUID(),
+      annotationId: () => crypto.randomUUID(),
+    });
+    // …insérez `record` et ses `record.annotations`
+    return record;
+  }
+
+  async deleteFeedback(id: string): Promise<void> {
+    const deleted = await db.delete(feedbacks).where(eq(feedbacks.id, id)).returning();
+    if (deleted.length === 0) throw new StoreNotFoundError();
+  }
+  // …les quatre méthodes restantes
+}
+```
+
+`buildFeedbackRecord` normalise chaque champ optionnel à `null`, horodate `createdAt`/`updatedAt`, met `resolvedAt` à `null` et construit les enregistrements d'annotations (`buildAnnotationRecord` en traite une seule si vous les insérez séparément). Il garde l'URL `data:` de la capture en ligne dans `screenshotUrl` ; les adapters dotés d'un stockage objet externe téléversent d'abord, puis écrasent ce champ.
+
+### Le contrat d'erreurs
+
+Les handlers et le dashboard déduisent leur comportement de ces erreurs : levez les classes du kit plutôt que celles de votre ORM.
+
+| Situation | Ce qu'il faut faire |
+|---|---|
+| `updateFeedback` / `deleteFeedback` sur un id inconnu | Levez `StoreNotFoundError` — le handler HTTP le traduit en 404 |
+| `createFeedback` avec un `clientId` déjà utilisé | Renvoyez l'enregistrement existant (idempotent) ou levez `StoreDuplicateError`. Les deux sont valides, les handlers gèrent l'un comme l'autre |
+| Une mutation acceptée mais non persistée | Levez `StorePersistenceError` au lieu d'annoncer une réussite fantôme |
+| Résultat vide sur `getFeedbacks` / `findByClientId` | Ne levez pas — renvoyez un tableau vide ou `null` |
+
+Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma.
+
+### Les sémantiques de requête à respecter
+
+`getFeedbacks` prend un `FeedbackQuery` et renvoie `{ feedbacks, total }`, où `total` est le compte **avant** pagination. Le comportement vérifié par la suite :
+
+- Filtres : `projectName` (toujours), puis `type`, `status`, `statuses`, `url`, `urlPattern`, `search` (sous-chaîne dans `message`).
+- `statuses` est un seau — n'importe laquelle des valeurs listées — et l'emporte sur `status` quand les deux sont présents. Un tableau vide vaut absence de filtre.
+- Du plus récent au plus ancien, par `createdAt` décroissant.
+- `page` commence à 1, `limit` vaut 50 par défaut et est plafonné à 100.
+
+Vous gardez un instantané en mémoire ? `applyFeedbackFilters(records, query)` est exporté précisément pour ça et implémente tout ce qui précède.
+
+## Appartenance au projet
+
+`verifyProjectOwnership(id, projectName)` est la seule méthode optionnelle. Les handlers HTTP l'appellent avant `PATCH` et `DELETE` et répondent 404 quand elle renvoie `false` — c'est ce qui empêche un projet de modifier les feedbacks d'un autre avec un id deviné. Le typage est structurel ici, donc les adapters tiers bénéficient de la vérification sans rien câbler :
+
+```ts
+async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
+  const row = await db.feedback.findUnique({ where: { id }, select: { projectName: true } });
+  return row?.projectName === projectName;
+}
+```
+
+Implémentez-la dès que votre store sert plus d'un projet. En son absence, les handlers sautent la vérification et se fient au seul `id`.
+
+## La preuve : la suite de conformité
+
+La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — 44 tests :
+
+```ts
+// __tests__/my-store.test.ts
+import { testSitepingStore } from "@siteping/adapter-kit/testing";
+import { MyStore } from "../src/index.js";
+
+testSitepingStore(() => new MyStore());
+```
+
+La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Deux réglages couvrent les variations de contrat légitimement propres au backend :
+
+| Option | Défaut | À régler quand |
+|---|---|---|
+| `duplicateBehavior` | `"return"` | Votre `createFeedback` lève `StoreDuplicateError` sur un `clientId` répété au lieu de renvoyer l'existant — passez `"throw"` |
+| `caseInsensitiveSearch` | `true` | Votre collation rend `search` sensible à la casse — passez `false` et la suite ne teste que la correspondance à casse identique |
+
+```ts
+testSitepingStore(() => new PostgresStore(db), {
+  duplicateBehavior: "throw",
+  caseInsensitiveSearch: false,
+});
+```
+
+`verifyProjectOwnership` est couverte elle aussi : les stores qui ne l'implémentent pas sautent les assertions, donc l'ajouter plus tard est vérifié automatiquement, sans toucher aux tests.
+
+## Utiliser votre adapter
+
+Rien d'autre ne change. Côté serveur, passez-le aux handlers de requêtes ; côté client, passez-le directement au widget ou à l'inbox :
+
+```ts
+// Serveur — les handlers de requêtes acceptent n'importe quel SitepingStore, Prisma ou non
+import { createSitepingHandler } from "@siteping/adapter-prisma";
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ store: new MyStore() });
+
+// Navigateur — mode côté client, aucun serveur
+import { initSiteping } from "@siteping/widget";
+initSiteping({ store: new MyStore(), projectName: "mon-app" });
+```
+
+Si vous en publiez un, [ouvrez une issue](https://github.com/NeosiaNexus/SitePing/issues) — nous le référencerons depuis cette page.

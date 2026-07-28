@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { FeedbackResponse, SitepingConfig } from "@siteping/core";
+import type { FeedbackResponse, SitepingConfig, SitepingHttpConfig } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockMatchMedia } from "../helpers.js";
 
@@ -18,7 +18,7 @@ mockMatchMedia(false);
 // stops emitting `markers:changed` — would fail these tests.
 // ---------------------------------------------------------------------------
 
-const mockSendFeedback = vi.fn<[], Promise<FeedbackResponse>>();
+const mockSendFeedback = vi.fn<() => Promise<FeedbackResponse>>();
 const mockGetFeedbacks = vi.fn().mockResolvedValue({ feedbacks: [], total: 0 });
 
 vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
@@ -75,7 +75,7 @@ import { MarkerManager } from "../../src/markers.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function defaultConfig(overrides: Partial<SitepingConfig> = {}): SitepingConfig {
+function defaultConfig(overrides: Partial<Omit<SitepingHttpConfig, "store">> = {}): SitepingConfig {
   return {
     endpoint: "/api/siteping",
     projectName: "test-project",
@@ -103,6 +103,10 @@ function makeFeedbackResponse(overrides: Partial<FeedbackResponse> = {}): Feedba
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     annotations: [],
+    urlPattern: null,
+    screenshotUrl: null,
+    screenshotRegion: null,
+    diagnostics: null,
     ...overrides,
   };
 }

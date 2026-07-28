@@ -40,6 +40,11 @@ export interface ScreenshotStorage {
    *
    * Adapters call this synchronously inside `createFeedback` — keep it
    * fast or move to a queue if needed.
+   *
+   * **Security note:** `ctx.feedbackId` is the *client-generated* id
+   * (`clientId`) — the record id does not exist yet at upload time. Treat it
+   * as attacker-controlled: sanitize before using it in filesystem paths or
+   * object keys, even though server adapters validate its shape upstream.
    */
   upload(dataUrl: string, ctx: { feedbackId: string; mimeType: string }): Promise<{ url: string }>;
   /**
