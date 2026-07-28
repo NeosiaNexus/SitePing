@@ -60,7 +60,10 @@ for (const pkg of ["widget", "dashboard"]) {
     const en = readFileSync(join(i18nDir, "en.ts"), "utf8");
     const dict = en
       .replace(/export const en(:| =)/, `export const ${code}$1`)
-      .replace(/^/, `// TODO: translate every value below (copied from en.ts).\n// Keys are enforced by the Translations interface — extra or missing keys fail \`bun run check\`.\n`);
+      .replace(
+        /^/,
+        `// TODO: translate every value below (copied from en.ts).\n// Keys are enforced by the Translations interface — extra or missing keys fail \`bun run check\`.\n`,
+      );
     writeFileSync(dictPath, dict, "utf8");
     changed.push(`packages/${pkg}/src/i18n/${code}.ts`);
     console.log(`  + Created packages/${pkg}/src/i18n/${code}.ts (copy of en — translate it!)`);
@@ -76,7 +79,9 @@ for (const pkg of ["widget", "dashboard"]) {
     const entryRe = /^ {2}([a-z]{2,3}): \(\) => import\("\.\/\1\.js"\)\.then\(\(m\) => m\.\1\),$/gm;
     const entries = [...index.matchAll(entryRe)];
     if (entries.length === 0) {
-      console.error(`Could not find the loader map in packages/${pkg}/src/i18n/index.ts — add this line manually:\n${loaderLine}`);
+      console.error(
+        `Could not find the loader map in packages/${pkg}/src/i18n/index.ts — add this line manually:\n${loaderLine}`,
+      );
       process.exit(1);
     }
     const after = entries.filter((e) => e[1] < code).at(-1) ?? null;
