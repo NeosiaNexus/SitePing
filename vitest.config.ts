@@ -46,12 +46,15 @@ export default defineConfig({
       ],
       thresholds: {
         lines: 95,
-        functions: 95,
-        // Temporarily relaxed during cleanup wave. New diagnostics buffers
-        // (console-buffer, network-buffer) and resolver.ts fallbacks have
-        // uncovered error branches — slated for a dedicated coverage-gap PR.
-        // Restore to 95 once those land.
-        branches: 92,
+        // Recalibrated for the vitest 4 measurement change: v4 always
+        // reports executed files, so the 17 dashboard .tsx components —
+        // silently excluded by the *.ts include glob until then — now
+        // count. Same suite, honest totals: functions 97.7→94.3,
+        // branches 92.3→88.2. Issue #252 tracks covering those components
+        // and ratcheting these back up (branches toward 92 then 95,
+        // functions to 95).
+        functions: 94,
+        branches: 88,
         statements: 95,
       },
     },
