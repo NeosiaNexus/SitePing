@@ -11,7 +11,7 @@
 
 import { type FeedbackResponse, type FeedbackStatus, isClosedStatus } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
-import { getStatusLabel, type TFunction } from "./i18n/index.js";
+import { getStatusLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -952,7 +952,7 @@ export class DetailView {
     header.replaceChildren(backBtn);
 
     const title = el("span", { class: "sp-detail-title" });
-    setText(title, this.t("detail.title").replace("{number}", String(number)));
+    setText(title, tWithParams(this.t, "detail.title", { number }));
     header.appendChild(title);
 
     const badge = el("span", { class: "sp-badge" });

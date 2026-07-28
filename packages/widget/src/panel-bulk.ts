@@ -7,7 +7,7 @@
  */
 
 import { el, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
-import type { TFunction } from "./i18n/index.js";
+import { type TFunction, tWithParams } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -362,7 +362,7 @@ export class BulkActions {
 
     // Left: count label
     this.countLabel = el("span", { class: "sp-bulk-bar-count" });
-    setText(this.countLabel, this.t("bulk.selected").replace("{count}", "0"));
+    setText(this.countLabel, tWithParams(this.t, "bulk.selected", { count: 0 }));
 
     // Right: action buttons
     const actions = el("div", { class: "sp-bulk-bar-actions" });
@@ -552,7 +552,7 @@ export class BulkActions {
     const visible = count > 0;
 
     this.barElement.classList.toggle("sp-bulk-bar--visible", visible);
-    setText(this.countLabel, this.t("bulk.selected").replace("{count}", String(count)));
+    setText(this.countLabel, tWithParams(this.t, "bulk.selected", { count }));
     this.updateButtonLabels();
   }
 

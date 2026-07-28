@@ -288,6 +288,17 @@ describe("MarkerManager", () => {
       expect(marker.style.borderStyle).toBe("dashed");
     });
 
+    it("spells the confidence percentage out in the marker tooltip", () => {
+      mockState.confidence = 0.5;
+      mockState.element = null;
+
+      markers.render([makeFeedback()]);
+
+      const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
+      // The suite's `t` is French — the percentage lands inside the template.
+      expect(marker.title).toBe("Position approximative (confiance : 50%)");
+    });
+
     it("applies reduced opacity (0.7) for low confidence annotations", () => {
       mockState.confidence = 0.5;
       mockState.element = null;
