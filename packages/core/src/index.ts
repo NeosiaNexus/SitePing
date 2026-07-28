@@ -2,6 +2,8 @@ export type { SitepingErrorCode } from "./errors.js";
 export { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
 export type { FilterResult } from "./filters.js";
 export { applyFeedbackFilters } from "./filters.js";
+export type { I18n, LocaleLoaders, TranslateFunction } from "./i18n.js";
+export { createI18n, interpolate, tWithParams } from "./i18n.js";
 export type {
   FieldDef,
   IndexDef,

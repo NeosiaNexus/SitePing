@@ -12,12 +12,18 @@ export type {
   RectData,
   SitepingConfig,
   SitepingHeadersOption,
+  SitepingHttpConfig,
   SitepingInstance,
+  SitepingLocale,
   SitepingPublicEvents,
   SitepingStore,
+  SitepingStoreConfig,
 } from "@siteping/core";
 
 export type { Identity } from "./identity.js";
+
+export type { TFunction, TranslationKey, Translations } from "./i18n/index.js";
+export { loadLocale, registerLocale } from "./i18n/index.js";
 
 /**
  * Initialize the Siteping feedback widget.
