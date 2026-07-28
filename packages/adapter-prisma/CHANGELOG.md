@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.3...adapter-prisma-v0.6.4) (2026-07-28)
+
+
+### Features
+
+* type-safe contracts + mechanical extension paths (adapters, locales, packages) ([#247](https://github.com/NeosiaNexus/SitePing/issues/247)) ([75cd2f5](https://github.com/NeosiaNexus/SitePing/commit/75cd2f5024509e5552bfbcf7587a0d67819909a6))
+
 ## [0.6.3](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.2...adapter-prisma-v0.6.3) (2026-07-26)
 
 
