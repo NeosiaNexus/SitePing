@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.4...dashboard-v0.2.5) (2026-07-28)
+
+
+### Features
+
+* type-safe contracts + mechanical extension paths (adapters, locales, packages) ([#247](https://github.com/NeosiaNexus/SitePing/issues/247)) ([75cd2f5](https://github.com/NeosiaNexus/SitePing/commit/75cd2f5024509e5552bfbcf7587a0d67819909a6))
+
 ## [0.2.4](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.3...dashboard-v0.2.4) (2026-07-26)
 
 

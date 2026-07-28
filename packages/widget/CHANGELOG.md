@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.7](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.6...widget-v0.10.7) (2026-07-28)
+
+
+### Features
+
+* type-safe contracts + mechanical extension paths (adapters, locales, packages) ([#247](https://github.com/NeosiaNexus/SitePing/issues/247)) ([75cd2f5](https://github.com/NeosiaNexus/SitePing/commit/75cd2f5024509e5552bfbcf7587a0d67819909a6))
+
 ## [0.10.6](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.5...widget-v0.10.6) (2026-07-26)
 
 

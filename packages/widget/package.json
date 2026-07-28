@@ -1,7 +1,7 @@
 {
   "name": "@siteping/widget",
-  "version": "0.10.6",
-  "description": "Feedback widget for client review during development \u2014 annotations, bugs, questions directly on the site",
+  "version": "0.10.7",
+  "description": "Feedback widget for client review during development — annotations, bugs, questions directly on the site",
   "type": "module",
   "sideEffects": false,
   "exports": {
