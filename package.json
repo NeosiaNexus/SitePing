@@ -39,7 +39,7 @@
     "@types/node": "^26.1.2",
     "@vitest/coverage-istanbul": "^4.1.10",
     "fast-check": "^4.9.0",
-    "jsdom": "29.1.1",
+    "jsdom": "30.0.1",
     "knip": "^6.29.0",
     "publint": "0.3.22",
     "tsup": "^8.5.1",
