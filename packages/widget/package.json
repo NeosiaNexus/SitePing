@@ -81,7 +81,7 @@
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "size-limit": "^12.1.0"
