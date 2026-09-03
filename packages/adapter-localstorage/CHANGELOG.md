@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.4](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.5.3...adapter-localstorage-v0.5.4) (2026-09-03)
+
+
+### Bug Fixes
+
+* harden webhooks, validation, store engine and adapter contracts (audit 2026-09) ([#279](https://github.com/NeosiaNexus/SitePing/issues/279)) ([7336eea](https://github.com/NeosiaNexus/SitePing/commit/7336eea220938df4b34c8ece9270d246f772e61d))
+
 ## [0.5.3](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.5.2...adapter-localstorage-v0.5.3) (2026-07-28)
 
 

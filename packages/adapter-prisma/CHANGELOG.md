@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.5](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.4...adapter-prisma-v0.6.5) (2026-09-03)
+
+
+### Bug Fixes
+
+* harden webhooks, validation, store engine and adapter contracts (audit 2026-09) ([#279](https://github.com/NeosiaNexus/SitePing/issues/279)) ([7336eea](https://github.com/NeosiaNexus/SitePing/commit/7336eea220938df4b34c8ece9270d246f772e61d))
+
+
+### Miscellaneous
+
+* **deps-dev:** bump vitest from 3.2.7 to 4.1.10 in the vitest group across 1 directory ([#240](https://github.com/NeosiaNexus/SitePing/issues/240)) ([dca82f0](https://github.com/NeosiaNexus/SitePing/commit/dca82f078173c78d1703a7a8512adf1bffbc24ca))
+
 ## [0.6.4](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.3...adapter-prisma-v0.6.4) (2026-07-28)
 
 

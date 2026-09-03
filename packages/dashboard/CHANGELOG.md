@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.6](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.5...dashboard-v0.2.6) (2026-09-03)
+
+
+### Miscellaneous
+
+* **deps-dev:** bump the dev-dependencies group with 7 updates ([#262](https://github.com/NeosiaNexus/SitePing/issues/262)) ([8be0415](https://github.com/NeosiaNexus/SitePing/commit/8be04151442a492d9b10a269b33d705c5c2c980c))
+* **deps-dev:** bump vitest from 3.2.7 to 4.1.10 in the vitest group across 1 directory ([#240](https://github.com/NeosiaNexus/SitePing/issues/240)) ([dca82f0](https://github.com/NeosiaNexus/SitePing/commit/dca82f078173c78d1703a7a8512adf1bffbc24ca))
+
 ## [0.2.5](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.4...dashboard-v0.2.5) (2026-07-28)
 
 
