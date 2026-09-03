@@ -92,6 +92,49 @@ describe("createSitepingHandler", () => {
       expect(res.status).toBe(201);
     });
 
+    it("handles a unique-constraint race (P2002 after the replay check) gracefully", async () => {
+      // findUnique sees nothing, the insert collides, findUnique then finds the winner.
+      prisma.sitepingFeedback.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: "fb-1", ...validPayloadNoAnnotations });
+      prisma.sitepingFeedback.create.mockRejectedValue({ code: "P2002" });
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify(validPayloadNoAnnotations),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(201);
+    });
+
+    it("does not insert again when the clientId was already stored (replay)", async () => {
+      prisma.sitepingFeedback.findUnique.mockResolvedValue({ id: "fb-1", ...validPayloadNoAnnotations });
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify(validPayloadNoAnnotations),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(201);
+      expect(prisma.sitepingFeedback.create).not.toHaveBeenCalled();
+    });
+
+    it("answers 409 when the clientId already belongs to another project's record", async () => {
+      // A clientId is unique across the whole store — a replay that resolves
+      // to a foreign project's record must not hand that record over.
+      prisma.sitepingFeedback.findUnique.mockResolvedValue({
+        id: "fb-1",
+        ...validPayloadNoAnnotations,
+        projectName: "another-project",
+      });
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify(validPayloadNoAnnotations),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "clientId already used by another project" });
+      expect(prisma.sitepingFeedback.create).not.toHaveBeenCalled();
+    });
+
     it("returns 500 on unexpected DB error", async () => {
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       prisma.sitepingFeedback.create.mockRejectedValue(new Error("DB down"));

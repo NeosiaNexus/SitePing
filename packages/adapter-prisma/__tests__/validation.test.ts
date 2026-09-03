@@ -443,3 +443,27 @@ describe("formatValidationErrors", () => {
     expect(result).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// authorEmail — one pattern shared with the widget's identity modal
+// ---------------------------------------------------------------------------
+
+describe("feedbackCreateSchema — authorEmail", () => {
+  it.each(["françois@exemple.fr", "user@münchen.de", "user+tag@example.co.uk", "o'brien@example.ie"])(
+    "accepts %s (what the identity modal accepts, the server accepts)",
+    (authorEmail) => {
+      expect(feedbackCreateSchema.safeParse({ ...validPayload, authorEmail }).success).toBe(true);
+    },
+  );
+
+  it.each(["not-email", "a@b.c", "user@exa_mple.com", ".lead@example.com", "john doe@example.com"])(
+    "rejects %s",
+    (authorEmail) => {
+      const result = feedbackCreateSchema.safeParse({ ...validPayload, authorEmail });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(formatValidationErrors(result.error).map((i) => i.field)).toContain("authorEmail");
+      }
+    },
+  );
+});

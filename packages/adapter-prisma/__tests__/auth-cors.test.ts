@@ -18,10 +18,13 @@ function mockPrisma() {
         annotations: [],
       }),
       findMany: vi.fn().mockResolvedValue([]),
-      findUnique: vi.fn().mockResolvedValue({
-        id: "fb-1",
-        projectName: "test",
-      }),
+      // By key: a clientId lookup (POST replay check) finds nothing, an id
+      // lookup (PATCH/DELETE ownership check) finds the owned row.
+      findUnique: vi
+        .fn()
+        .mockImplementation(async (args: { where: { id?: string; clientId?: string } }) =>
+          args.where.clientId ? null : { id: "fb-1", projectName: "test" },
+        ),
       update: vi.fn().mockResolvedValue({
         id: "fb-1",
         projectName: "test",

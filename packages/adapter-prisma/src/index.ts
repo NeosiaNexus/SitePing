@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import {
+  clampPagination,
   type FeedbackCreateInput,
   type FeedbackPage,
   type FeedbackPayload,
@@ -14,6 +15,8 @@ import {
   isStoreNotFound,
   type ScreenshotStorage,
   type SitepingStore,
+  StoreDuplicateError,
+  StoreNotFoundError,
   toFeedbackUpdate,
 } from "@siteping/core";
 import {
@@ -42,6 +45,7 @@ export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "./v
 export type FeedbackCreateSchemaInput = FeedbackPayload;
 export type {
   DiscordWebhookPayload,
+  GenericWebhookPayload,
   SlackWebhookPayload,
   WebhookConfig,
   WebhookPayloadMap,
@@ -205,6 +209,26 @@ interface FeedbackWhereInput {
 }
 
 /**
+ * Translate Prisma's coded errors into the store contract's classes (the
+ * handler layer and the dashboard are ORM-agnostic and only know these).
+ * Anything else — connection failures, validation errors — passes through.
+ */
+function toStoreError(error: unknown): unknown {
+  if (error instanceof StoreNotFoundError || error instanceof StoreDuplicateError) return error;
+  if (isStoreNotFound(error)) return new StoreNotFoundError(undefined, { cause: error });
+  if (isStoreDuplicate(error)) return new StoreDuplicateError(undefined, { cause: error });
+  return error;
+}
+
+/**
+ * Whether a persisted `screenshotUrl` points at an object a `ScreenshotStorage`
+ * owns — inline `data:` URLs were never uploaded, so there is nothing to delete.
+ */
+function isStoredScreenshotUrl(url: unknown): url is string {
+  return typeof url === "string" && url.length > 0 && !url.startsWith("data:");
+}
+
+/**
  * Prisma-backed implementation of `SitepingStore`.
  *
  * Wraps a PrismaClient to satisfy the abstract store interface.
@@ -242,6 +266,18 @@ export class PrismaStore implements SitepingStore {
   async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
     const screenshotUrl = await this.persistScreenshot(data.screenshotDataUrl, data.clientId);
 
+    try {
+      return await this.insertFeedback(data, screenshotUrl);
+    } catch (error) {
+      // A replay of an already-stored clientId (the widget's retry queue):
+      // the existing row keeps its own screenshot, so the one just uploaded
+      // for this attempt is an orphan — drop it before reporting the dup.
+      if (isStoreDuplicate(error)) await this.discardScreenshots([screenshotUrl]);
+      throw toStoreError(error);
+    }
+  }
+
+  private async insertFeedback(data: FeedbackCreateInput, screenshotUrl: string | null): Promise<FeedbackRecord> {
     return (await this.prisma.sitepingFeedback.create({
       data: {
         projectName: data.projectName,
@@ -341,6 +377,40 @@ export class PrismaStore implements SitepingStore {
     return dataUrl;
   }
 
+  /**
+   * Best-effort cleanup of stored screenshots through `ScreenshotStorage.delete`
+   * — the hook the interface documents for feedback deletion. Failures are
+   * logged and swallowed: an orphaned object is preferable to a delete that
+   * reports failure after the row is already gone. Inline `data:` URLs and
+   * stores without a `delete` hook are skipped.
+   */
+  private async discardScreenshots(urls: ReadonlyArray<unknown>): Promise<void> {
+    const remove = this.screenshotStorage?.delete?.bind(this.screenshotStorage);
+    if (!remove) return;
+    const stored = urls.filter(isStoredScreenshotUrl);
+    if (stored.length === 0) return;
+
+    const results = await Promise.allSettled(stored.map((url) => remove(url)));
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.warn(
+          `[siteping] screenshotStorage.delete failed for ${stored[index]} — object left in place:`,
+          result.reason,
+        );
+      }
+    });
+  }
+
+  /** URLs of the stored screenshots in `projectName` — only fetched when a `delete` hook can use them. */
+  private async storedScreenshotUrls(projectName: string): Promise<string[]> {
+    if (!this.screenshotStorage?.delete) return [];
+    const rows = (await this.prisma.sitepingFeedback.findMany({
+      where: { projectName, screenshotUrl: { not: null } },
+      select: { screenshotUrl: true },
+    })) as ReadonlyArray<{ screenshotUrl: string | null }>;
+    return rows.map((row) => row.screenshotUrl).filter(isStoredScreenshotUrl);
+  }
+
   async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
     return (await this.prisma.sitepingFeedback.findUnique({
       where: { clientId },
@@ -349,7 +419,10 @@ export class PrismaStore implements SitepingStore {
   }
 
   async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
-    const { projectName, type, status, statuses, search, url, urlPattern, page = 1, limit = 50 } = query;
+    const { projectName, type, status, statuses, search, url, urlPattern } = query;
+    // Same clamp as the in-memory pipeline: the HTTP schema already bounds
+    // page/limit, but direct callers reach the store without it.
+    const { limit, skip } = clampPagination(query);
 
     const where: FeedbackWhereInput = { projectName };
     if (type) where.type = type;
@@ -371,7 +444,7 @@ export class PrismaStore implements SitepingStore {
         where,
         include: INCLUDE_ANNOTATIONS,
         orderBy: { createdAt: "desc" },
-        skip: (page - 1) * limit,
+        skip,
         take: limit,
       }),
       this.prisma.sitepingFeedback.count({ where }),
@@ -381,22 +454,41 @@ export class PrismaStore implements SitepingStore {
   }
 
   async updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
-    return (await this.prisma.sitepingFeedback.update({
-      where: { id },
-      data: {
-        status: data.status,
-        resolvedAt: data.resolvedAt,
-      },
-      include: INCLUDE_ANNOTATIONS,
-    })) as FeedbackRecord;
+    try {
+      return (await this.prisma.sitepingFeedback.update({
+        where: { id },
+        data: {
+          status: data.status,
+          resolvedAt: data.resolvedAt,
+        },
+        include: INCLUDE_ANNOTATIONS,
+      })) as FeedbackRecord;
+    } catch (error) {
+      throw toStoreError(error);
+    }
   }
 
   async deleteFeedback(id: string): Promise<void> {
-    await this.prisma.sitepingFeedback.delete({ where: { id } });
+    let deleted: { screenshotUrl?: string | null } | null;
+    try {
+      // Prisma returns the deleted row — the only chance to learn which
+      // screenshot object the feedback owned.
+      deleted = (await this.prisma.sitepingFeedback.delete({ where: { id } })) as {
+        screenshotUrl?: string | null;
+      } | null;
+    } catch (error) {
+      throw toStoreError(error);
+    }
+    await this.discardScreenshots([deleted?.screenshotUrl]);
   }
 
   async deleteAllFeedbacks(projectName: string): Promise<void> {
+    // Rows first, storage second: a failed storage cleanup leaves orphaned
+    // objects (acceptable), the reverse would leave rows pointing at deleted
+    // screenshots.
+    const screenshotUrls = await this.storedScreenshotUrls(projectName);
     await this.prisma.sitepingFeedback.deleteMany({ where: { projectName } });
+    await this.discardScreenshots(screenshotUrls);
   }
 
   /**
@@ -720,7 +812,33 @@ export function createSitepingHandler({
         return withCors(Response.json({ error: "Too many annotations (max 50)" }, { status: 400 }), corsHeaders);
       }
 
+      /**
+       * Respond to a create that resolved to `feedback`. A clientId is unique
+       * across the whole store, so a replay that resolves to another
+       * project's record is a boundary violation, not a dedup: refuse it
+       * rather than hand that record (email included) to a request scoped to
+       * a different project. Email stays intact otherwise: the requester
+       * supplied it (fresh insert) or proved ownership by presenting the
+       * clientId (replay).
+       */
+      const created = (feedback: FeedbackRecord): Response => {
+        if (feedback.projectName !== data.projectName) {
+          return withCors(
+            Response.json({ error: "clientId already used by another project" }, { status: 409 }),
+            corsHeaders,
+          );
+        }
+        return withCors(Response.json(toWireFeedback(feedback, true), { status: 201 }), corsHeaders);
+      };
+
       try {
+        // Replay detection up front, for every store alike: stores that return
+        // the existing record on a duplicate clientId are indistinguishable
+        // from a fresh insert afterwards, and a replayed submission must not
+        // notify the webhooks a second time.
+        const replayed = await store.findByClientId(data.clientId);
+        if (replayed) return created(replayed);
+
         const feedback = await store.createFeedback({
           projectName: data.projectName,
           type: data.type,
@@ -742,18 +860,17 @@ export function createSitepingHandler({
         // Fire-and-forget: drop the promise so the widget isn't held back
         // on slow Slack/Discord/generic receivers. `dispatchWebhooks` traps
         // its own errors and reports them through `WebhookConfig.onError`.
-        if (webhookList.length > 0) {
+        if (webhookList.length > 0 && feedback.projectName === data.projectName) {
           void dispatchWebhooks(webhookList, feedback);
         }
 
-        // Email stays intact on POST responses: the requester supplied it.
-        return withCors(Response.json(toWireFeedback(feedback, true), { status: 201 }), corsHeaders);
+        return created(feedback);
       } catch (error) {
-        // Handle unique constraint violation (clientId dedup) — presenting the
-        // clientId proves ownership of the record, so the email stays intact.
+        // Unique-constraint race: the same clientId landed between the replay
+        // check above and the insert. The presenter still owns the record.
         if (isStoreDuplicate(error)) {
           const existing = await store.findByClientId(data.clientId);
-          if (existing) return withCors(Response.json(toWireFeedback(existing, true), { status: 201 }), corsHeaders);
+          if (existing) return created(existing);
         }
 
         const message = actionableErrorMessage(error);
