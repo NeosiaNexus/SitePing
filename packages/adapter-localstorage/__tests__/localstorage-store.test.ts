@@ -177,6 +177,48 @@ describe("LocalStorageStore specific", () => {
       expect(feedbacks[0]!.screenshotRegion).toBeNull();
     });
 
+    it("back-fills every nullable field a 0.4.3 blob lacks (urlPattern, screenshotUrl, anchorKey, …)", async () => {
+      const fb = await store.createFeedback({
+        ...input,
+        annotations: [
+          {
+            cssSelector: "div",
+            xpath: "/div",
+            textSnippet: "",
+            elementTag: "DIV",
+            textPrefix: "",
+            textSuffix: "",
+            fingerprint: "1:0:x",
+            neighborText: "",
+            xPct: 0,
+            yPct: 0,
+            wPct: 1,
+            hPct: 1,
+            scrollX: 0,
+            scrollY: 0,
+            viewportW: 1920,
+            viewportH: 1080,
+            devicePixelRatio: 1,
+          },
+        ],
+      });
+      const raw = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<Record<string, unknown>>;
+      for (const key of ["urlPattern", "screenshotUrl", "screenshotRegion", "diagnostics"]) delete raw[0]![key];
+      const annotations = raw[0]!.annotations as Array<Record<string, unknown>>;
+      delete annotations[0]!.anchorKey;
+      localStorage.setItem("test_feedbacks", JSON.stringify(raw));
+
+      const store2 = new LocalStorageStore({ key: "test_feedbacks" });
+      const { feedbacks } = await store2.getFeedbacks({ projectName: "test-project" });
+      const revived = feedbacks[0]!;
+      expect(revived.id).toBe(fb.id);
+      expect(revived.urlPattern).toBeNull();
+      expect(revived.screenshotUrl).toBeNull();
+      expect(revived.screenshotRegion).toBeNull();
+      expect(revived.diagnostics).toBeNull();
+      expect(revived.annotations[0]!.anchorKey).toBeNull();
+    });
+
     it("revives legacy records without the screenshotRegion key to null", async () => {
       // Simulate a record persisted by a pre-region version of the adapter.
       const fb = await store.createFeedback(input);

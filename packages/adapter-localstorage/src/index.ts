@@ -1,4 +1,5 @@
 import {
+  type AnnotationRecord,
   createCollectionStore,
   type FeedbackCreateInput,
   type FeedbackPage,
@@ -72,7 +73,7 @@ export class LocalStorageStore implements SitepingStore {
     try {
       const raw = localStorage.getItem(this.key);
       if (!raw) return [];
-      const data = JSON.parse(raw) as Serialized<FeedbackRecord>[];
+      const data = JSON.parse(raw) as StoredFeedback[];
       return data.map(reviveFeedback);
     } catch {
       return [];
@@ -141,23 +142,43 @@ export class LocalStorageStore implements SitepingStore {
 
 // ---------------------------------------------------------------------------
 // JSON revival — localStorage stores the Serialized<FeedbackRecord> wire
-// shape; Dates come back as ISO strings and must be revived.
+// shape; Dates come back as ISO strings and must be revived, and fields added
+// after the adapter's first release may be missing on records written back
+// then (0.4.3 predates `urlPattern`, `screenshotUrl`, `anchorKey`,
+// `screenshotRegion` and `diagnostics`).
 // ---------------------------------------------------------------------------
 
-function reviveFeedback(raw: Serialized<FeedbackRecord>): FeedbackRecord {
+/** Nullable record fields that a blob written by an older release may lack. */
+type LegacyFeedbackKey = "urlPattern" | "screenshotUrl" | "screenshotRegion" | "diagnostics";
+type LegacyAnnotationKey = "anchorKey";
+
+type StoredAnnotation = Omit<Serialized<AnnotationRecord>, LegacyAnnotationKey> &
+  Partial<Pick<Serialized<AnnotationRecord>, LegacyAnnotationKey>>;
+
+/** What `localStorage` may actually hold — the wire shape of any published version. */
+type StoredFeedback = Omit<Serialized<FeedbackRecord>, LegacyFeedbackKey | "annotations"> &
+  Partial<Pick<Serialized<FeedbackRecord>, LegacyFeedbackKey>> & { annotations: StoredAnnotation[] };
+
+function reviveAnnotation(raw: StoredAnnotation): AnnotationRecord {
+  return {
+    ...raw,
+    anchorKey: raw.anchorKey ?? null,
+    createdAt: new Date(raw.createdAt),
+  };
+}
+
+function reviveFeedback(raw: StoredFeedback): FeedbackRecord {
   return {
     ...raw,
     createdAt: new Date(raw.createdAt),
     updatedAt: new Date(raw.updatedAt),
     resolvedAt: raw.resolvedAt ? new Date(raw.resolvedAt) : null,
-    annotations: raw.annotations.map((ann) => ({
-      ...ann,
-      createdAt: new Date(ann.createdAt),
-    })),
-    // Legacy records (pre-diagnostics / pre-region) won't have these keys.
-    // Default to null so the fields are always present on the in-memory
-    // shape. screenshotRegion is a plain JSON object (no Date inside), so
-    // it survives the round-trip verbatim — no revival needed.
+    annotations: raw.annotations.map(reviveAnnotation),
+    // Legacy back-fill: every nullable field is present on the in-memory
+    // shape, as `null`, exactly like a freshly built record. Plain JSON
+    // values (region, diagnostics) survive the round-trip verbatim.
+    urlPattern: raw.urlPattern ?? null,
+    screenshotUrl: raw.screenshotUrl ?? null,
     screenshotRegion: raw.screenshotRegion ?? null,
     diagnostics: raw.diagnostics ?? null,
   };
