@@ -3,9 +3,9 @@ import "../utils/object-group-by-polyfill.js";
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import * as p from "@clack/prompts";
-import type { Field, Model } from "@mrleebo/prisma-ast";
 import { getSchema } from "@mrleebo/prisma-ast";
-import { hasOwn, SITEPING_MODELS } from "@siteping/core";
+import { hasOwn } from "@siteping/core";
+import { reconcileSitepingModels } from "../generators/prisma.js";
 import { findPrismaSchema } from "../utils/find-schema.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -97,64 +97,26 @@ interface SchemaCheckResult {
   outdatedFields: string[];
 }
 
+/**
+ * Diff the schema against the Siteping models with the exact reconciliation
+ * `sync` applies — so "Up to date" here means `sync` would change nothing,
+ * attributes and indexes included. (The AST is reconciled in memory only;
+ * nothing is written.)
+ */
 function checkSchema(schemaPath: string | null): SchemaCheckResult {
   if (!schemaPath || !existsSync(schemaPath)) {
     return { found: false, path: null, missingModels: [], missingFields: [], outdatedFields: [] };
   }
 
-  const source = readFileSync(schemaPath, "utf-8");
-  const schema = getSchema(source);
+  const { addedModels, changes } = reconcileSitepingModels(getSchema(readFileSync(schemaPath, "utf-8")));
 
-  const existingModels = new Map<string, Model>();
-  for (const item of schema.list) {
-    if (item.type === "model") {
-      existingModels.set(item.name, item as Model);
-    }
-  }
-
-  const missingModels: string[] = [];
-  const missingFields: string[] = [];
-  const outdatedFields: string[] = [];
-
-  for (const [modelName, modelDef] of Object.entries(SITEPING_MODELS)) {
-    const model = existingModels.get(modelName);
-
-    if (!model) {
-      missingModels.push(modelName);
-      continue;
-    }
-
-    const existingFields = new Map<string, Field>();
-    for (const prop of model.properties) {
-      if (prop.type === "field") {
-        existingFields.set((prop as Field).name, prop as Field);
-      }
-    }
-
-    for (const [fieldName, fieldDef] of Object.entries(modelDef.fields)) {
-      const existing = existingFields.get(fieldName);
-
-      if (!existing) {
-        missingFields.push(`${modelName}.${fieldName}`);
-        continue;
-      }
-
-      // Check type match
-      const expectedType = fieldDef.relation ? fieldDef.relation.model : fieldDef.type;
-      const expectedOptional = fieldDef.optional ?? false;
-      const expectedArray = fieldDef.relation?.kind === "1-to-many";
-
-      const typeMatch = existing.fieldType === expectedType;
-      const optionalMatch = (existing.optional ?? false) === expectedOptional;
-      const arrayMatch = (existing.array ?? false) === expectedArray;
-
-      if (!typeMatch || !optionalMatch || !arrayMatch) {
-        outdatedFields.push(`${modelName}.${fieldName}`);
-      }
-    }
-  }
-
-  return { found: true, path: schemaPath, missingModels, missingFields, outdatedFields };
+  return {
+    found: true,
+    path: schemaPath,
+    missingModels: addedModels,
+    missingFields: changes.filter((c) => c.action === "added").map((c) => `${c.model}.${c.field}`),
+    outdatedFields: changes.filter((c) => c.action === "updated").map((c) => `${c.model}.${c.field} (${c.detail})`),
+  };
 }
 
 // ── Formatting helpers ─────────────────────────────────────────────────
