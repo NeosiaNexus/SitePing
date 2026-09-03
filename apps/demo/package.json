@@ -30,7 +30,7 @@
     "@siteping/core": "workspace:*",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react-dom": "^19.2.5",
     "tailwindcss": "^4.0.0",
     "@types/mdx": "^2.0.13"
   }
