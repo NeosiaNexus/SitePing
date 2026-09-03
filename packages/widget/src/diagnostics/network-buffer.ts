@@ -63,6 +63,10 @@ export class NetworkBuffer {
   private originalFetch: typeof fetch | null = null;
   private originalXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
   private originalXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
+  /** The wrappers we installed — `dispose()` only restores when they are still in place. */
+  private wrappedFetch: typeof fetch | null = null;
+  private wrappedXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
+  private wrappedXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
   private disposed = false;
 
   constructor(maxEntries: number = DEFAULT_MAX_ENTRIES) {
@@ -116,6 +120,7 @@ export class NetworkBuffer {
       }
     };
 
+    this.wrappedFetch = wrapped;
     globalThis.fetch = wrapped;
   }
 
@@ -132,7 +137,7 @@ export class NetworkBuffer {
     // so each request is fully isolated even with concurrent opens.
     const meta = new WeakMap<XMLHttpRequest, { method: string; url: string; startedAt: Date; t0: number }>();
 
-    proto.open = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: unknown[]) {
+    const wrappedOpen = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: unknown[]) {
       try {
         meta.set(this, {
           method: method.toUpperCase(),
@@ -150,7 +155,7 @@ export class NetworkBuffer {
       return looseOpen.call(this, method, url, ...rest);
     } as typeof proto.open;
 
-    proto.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
+    const wrappedSend = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
       const info = meta.get(this);
       if (info) {
         // `loadend` fires for both success and failure — we just inspect the
@@ -187,6 +192,11 @@ export class NetworkBuffer {
       }
       return originalSend.call(this, body ?? null);
     } as typeof proto.send;
+
+    this.wrappedXhrOpen = wrappedOpen;
+    this.wrappedXhrSend = wrappedSend;
+    proto.open = wrappedOpen;
+    proto.send = wrappedSend;
   }
 
   /** Snapshot of captured entries — returns a new array each call. */
@@ -194,12 +204,21 @@ export class NetworkBuffer {
     return this.entries.slice();
   }
 
-  /** Restore the original fetch + XHR methods. Idempotent. */
+  /**
+   * Restore the original fetch + XHR methods. Idempotent.
+   *
+   * Each global is restored only if our wrapper is still the one installed —
+   * if another library (an error tracker, a RUM agent) wrapped on top of us
+   * after init, writing the original back would silently rip its wrapper
+   * out. Our patch then stays in the chain but is inert: it still forwards to
+   * the original, and a disposed buffer merely records entries nobody reads.
+   * Same rule the launcher applies to the History API.
+   */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
 
-    if (this.originalFetch && typeof globalThis.fetch === "function") {
+    if (this.originalFetch && globalThis.fetch === this.wrappedFetch) {
       try {
         globalThis.fetch = this.originalFetch;
       } catch {
@@ -208,8 +227,9 @@ export class NetworkBuffer {
     }
     if (typeof XMLHttpRequest !== "undefined") {
       try {
-        if (this.originalXhrOpen) XMLHttpRequest.prototype.open = this.originalXhrOpen;
-        if (this.originalXhrSend) XMLHttpRequest.prototype.send = this.originalXhrSend;
+        const proto = XMLHttpRequest.prototype;
+        if (this.originalXhrOpen && proto.open === this.wrappedXhrOpen) proto.open = this.originalXhrOpen;
+        if (this.originalXhrSend && proto.send === this.wrappedXhrSend) proto.send = this.originalXhrSend;
       } catch {
         // Best-effort
       }

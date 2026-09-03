@@ -97,5 +97,5 @@ Un feedback a quatre statuts (`open`, `in_progress`, `resolved`, `wont_fix`). Le
 ## La fiabilité, sans rien faire
 
 - **Réessais avec backoff** — les envois échoués sont retentés 3 fois (timeout de 10 s, backoff exponentiel avec jitter). Les erreurs serveur et les pannes réseau sont retentées, les erreurs de validation non.
-- **File d'attente hors ligne** — quand un envoi continue d'échouer, la charge utile est mise en file dans le localStorage (jusqu'à 20 entrées) et vidée au chargement suivant. La file ne stocke que les charges utiles — jamais de tokens ni d'en-têtes, qui sont recalculés au moment de la purge.
+- **File d'attente hors ligne** — quand un envoi échoue encore après les réessais, la charge utile est mise en file dans le localStorage (jusqu'à 20 entrées) et vidée au chargement suivant. Seuls les échecs transitoires sont mis en file (pannes réseau, 5xx) : un 4xx est le verdict du serveur sur la charge utile et échouerait à l'identique au rejeu, il est donc signalé via `onError` et jamais mis en file. La file ne stocke que les charges utiles — jamais de tokens ni d'en-têtes, qui sont recalculés au moment de la purge.
 - Les deux s'appliquent au mode HTTP (`endpoint`). En [mode `store`](/fr/docs/adapters/localstorage) côté client, les écritures sont locales : il n'y a rien à réessayer.

@@ -1,11 +1,12 @@
-import type {
-  DiagnosticsSnapshot,
-  FeedbackPayload,
-  PageScope,
-  SitepingConfig,
-  SitepingInstance,
-  SitepingPublicEventListener,
-  SitepingPublicEvents,
+import {
+  type DiagnosticsSnapshot,
+  type FeedbackPayload,
+  isValidEmail,
+  type PageScope,
+  type SitepingConfig,
+  type SitepingInstance,
+  type SitepingPublicEventListener,
+  type SitepingPublicEvents,
 } from "@siteping/core";
 import { Annotator } from "./annotator.js";
 import { ApiClient, flushRetryQueue, type WidgetClient } from "./api-client.js";
@@ -875,8 +876,10 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
       const name = nameInput.value.trim();
       const email = emailInput.value.trim();
       if (!name || !email) return;
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      // Same pattern the server schema enforces — what the modal accepts here
+      // is persisted and replayed on every submission, so it must never be
+      // something the server rejects.
+      if (!isValidEmail(email)) {
         emailInput.style.borderColor = "var(--sp-type-bug, #ef4444)";
         return;
       }

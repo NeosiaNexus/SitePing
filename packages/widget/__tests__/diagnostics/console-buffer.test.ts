@@ -123,3 +123,29 @@ describe("ConsoleBuffer", () => {
     buffer.dispose();
   });
 });
+
+describe("ConsoleBuffer — dispose() vs wrappers installed on top", () => {
+  const originalError = console.error;
+  const originalWarn = console.warn;
+
+  afterEach(() => {
+    console.error = originalError;
+    console.warn = originalWarn;
+  });
+
+  it("leaves a console.error wrapper installed on top of the widget's in place, restores the rest", () => {
+    const buffer = new ConsoleBuffer();
+    const widgetError = console.error;
+    const widgetWarn = console.warn;
+    expect(widgetWarn).not.toBe(originalWarn);
+
+    // A third-party SDK wraps console.error AFTER the widget.
+    const thirdParty = (...args: unknown[]) => widgetError(...args);
+    console.error = thirdParty;
+
+    buffer.dispose();
+
+    expect(console.error).toBe(thirdParty);
+    expect(console.warn).toBe(originalWarn);
+  });
+});

@@ -1,6 +1,31 @@
-import { SitepingAuthError, type SitepingError, SitepingNetworkError, SitepingValidationError } from "@siteping/core";
+import {
+  type FeedbackPayload,
+  SitepingAuthError,
+  type SitepingError,
+  SitepingNetworkError,
+  SitepingValidationError,
+} from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
+
+/** Burn through resilientFetch's three backoffs (1s + 2s + 4s, ±500ms jitter) under fake timers. */
+async function drainRetryBackoff(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(1500);
+  await vi.advanceTimersByTimeAsync(2500);
+  await vi.advanceTimersByTimeAsync(4500);
+}
+
+/**
+ * Submit under fake timers, burn through the retry backoff, and assert that
+ * the failure surfaced as a (transient, hence queued) network error.
+ */
+async function expectTransientFailure(client: ApiClient, payload: FeedbackPayload): Promise<void> {
+  vi.useFakeTimers();
+  const promise = client.sendFeedback(payload).catch((e: Error) => e);
+  await drainRetryBackoff();
+  expect(await promise).toBeInstanceOf(SitepingNetworkError);
+  vi.useRealTimers();
+}
 
 describe("ApiClient", () => {
   let client: ApiClient;
@@ -100,9 +125,11 @@ describe("ApiClient", () => {
     expect("screenshotRegion" in lastPostBody()).toBe(false);
   });
 
-  it("queues the region-stripped wire shape for retry on failure", async () => {
-    // Node test env has no persistent localStorage — back it with a Map so
-    // queueForRetry's fire-and-forget write is observable.
+  /**
+   * Node test env has no persistent localStorage — back it with a Map so
+   * queueForRetry's fire-and-forget write is observable.
+   */
+  function stubLocalStorage(): Map<string, string> {
     const store = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (k: string) => store.get(k) ?? null,
@@ -110,18 +137,55 @@ describe("ApiClient", () => {
       removeItem: (k: string) => void store.delete(k),
       clear: () => store.clear(),
     });
+    return store;
+  }
+
+  function readQueue(store: Map<string, string>): Array<{ endpoint: string; payload: Record<string, unknown> }> {
+    const raw = store.get("siteping_retry_queue");
+    return raw ? (JSON.parse(raw) as Array<{ endpoint: string; payload: Record<string, unknown> }>) : [];
+  }
+
+  it("queues the region-stripped wire shape for retry on a transient (5xx) failure", async () => {
+    const store = stubLocalStorage();
+    vi.useFakeTimers();
+    vi.mocked(fetch).mockResolvedValue(new Response("Service Unavailable", { status: 503 }));
+
+    const promise = client.sendFeedback({ ...basePayload, screenshotRegion: null }).catch((e: Error) => e);
+    await drainRetryBackoff();
+    expect(await promise).toBeInstanceOf(Error);
+    vi.useRealTimers();
+
+    const queue = readQueue(store);
+    expect(queue).toHaveLength(1);
+    expect("screenshotRegion" in queue[0]!.payload).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("queues the payload for retry on a network failure", async () => {
+    const store = stubLocalStorage();
+    vi.useFakeTimers();
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+
+    const promise = client.sendFeedback(basePayload).catch((e: Error) => e);
+    await drainRetryBackoff();
+    expect(await promise).toBeInstanceOf(SitepingNetworkError);
+    vi.useRealTimers();
+
+    expect(readQueue(store)).toHaveLength(1);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("does not queue a 4xx rejection — a replay would fail identically", async () => {
+    const store = stubLocalStorage();
     vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
 
-    await expect(client.sendFeedback({ ...basePayload, screenshotRegion: null })).rejects.toThrow();
+    await expect(client.sendFeedback(basePayload)).rejects.toThrow("Failed to send feedback: 400");
 
-    // Let the fire-and-forget queue write (behind the Web Lock) settle.
-    await vi.waitFor(() => {
-      const raw = store.get("siteping_retry_queue");
-      expect(raw).toBeDefined();
-      const queue = JSON.parse(raw!) as Array<{ payload: Record<string, unknown> }>;
-      expect(queue).toHaveLength(1);
-      expect("screenshotRegion" in queue[0]!.payload).toBe(false);
-    });
+    // Give the fire-and-forget queue write every chance to run before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.has("siteping_retry_queue")).toBe(false);
 
     vi.unstubAllGlobals();
   });
@@ -628,24 +692,28 @@ describe("ApiClient — auth & headers", () => {
       removeItem: (k: string) => void store.delete(k),
       clear: () => store.clear(),
     });
-    vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+    vi.useFakeTimers();
+    vi.mocked(fetch).mockResolvedValue(new Response("Service Unavailable", { status: 503 }));
 
     const client = new ApiClient(endpoint, "test", {
       apiKey: "super-secret",
       headers: () => ({ "X-Session": "token-material" }),
     });
-    await expect(client.sendFeedback(payload)).rejects.toThrow();
+    const promise = client.sendFeedback(payload).catch((e: Error) => e);
+    // Burn through the three retry backoffs so the transient failure is final.
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(4500);
+    expect(await promise).toBeInstanceOf(Error);
+    vi.useRealTimers();
 
-    // Let the fire-and-forget queue write (behind the Web Lock) settle.
-    await vi.waitFor(() => {
-      const raw = store.get("siteping_retry_queue");
-      expect(raw).toBeDefined();
-      const queue = JSON.parse(raw!) as Array<Record<string, unknown>>;
-      expect(queue).toEqual([{ endpoint, payload }]);
-      expect(raw).not.toContain("Authorization");
-      expect(raw).not.toContain("super-secret");
-      expect(raw).not.toContain("token-material");
-    });
+    const raw = store.get("siteping_retry_queue");
+    expect(raw).toBeDefined();
+    const queue = JSON.parse(raw!) as Array<Record<string, unknown>>;
+    expect(queue).toEqual([{ endpoint, payload }]);
+    expect(raw).not.toContain("Authorization");
+    expect(raw).not.toContain("super-secret");
+    expect(raw).not.toContain("token-material");
 
     vi.unstubAllGlobals();
   });
@@ -690,6 +758,43 @@ describe("flushRetryQueue", () => {
     vi.mocked(localStorage.getItem).mockReturnValue(null);
     await flushRetryQueue(endpoint);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("drops entries the server rejects with 4xx and keeps 5xx ones for the next flush", async () => {
+    const base = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "replay",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+    };
+    const rejected = { ...base, clientId: "rejected-1" };
+    const transient = { ...base, clientId: "transient-1" };
+    vi.mocked(localStorage.getItem).mockReturnValue(
+      JSON.stringify([
+        { endpoint, payload: rejected },
+        { endpoint, payload: transient },
+      ]),
+    );
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response("Bad Request", { status: 400 }))
+      .mockResolvedValueOnce(new Response("", { status: 503 }));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await flushRetryQueue(endpoint);
+
+    // The 4xx entry is gone for good — replaying it would fail identically
+    // on every page load; the 5xx one waits for the next flush.
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      "siteping_retry_queue",
+      JSON.stringify([{ endpoint, payload: transient }]),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("dropped 1 queued feedback"));
+    warnSpy.mockRestore();
   });
 
   it("retries queued items and removes on success", async () => {
@@ -1057,8 +1162,8 @@ describe("queueForRetry (via sendFeedback)", () => {
   });
 
   it("queues payload to localStorage when sendFeedback fails", async () => {
-    // Use 4xx to avoid retry backoff (resilientFetch doesn't retry 4xx)
-    vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+    // A network failure is transient, hence queued; fake timers burn the retry backoff.
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
 
     const client = new ApiClient(endpoint, "test");
     const payload = {
@@ -1074,30 +1179,29 @@ describe("queueForRetry (via sendFeedback)", () => {
       clientId: "q1",
     };
 
-    await expect(client.sendFeedback(payload)).rejects.toThrow();
+    await expectTransientFailure(client, payload);
 
     expect(localStorage.setItem).toHaveBeenCalledWith("siteping_retry_queue", expect.stringContaining("queued"));
   });
 
   it("treats non-array stored value as empty queue (queueForRetry via sendFeedback)", async () => {
     vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify({ not: "an array" }));
-    vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 400 }));
+    // A network failure is transient, hence queued; fake timers burn the retry backoff.
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
 
     const client = new ApiClient(endpoint, "test");
-    await expect(
-      client.sendFeedback({
-        projectName: "test",
-        type: "bug",
-        message: "from-corrupt-store",
-        url: "https://example.com",
-        viewport: "1x1",
-        userAgent: "t",
-        authorName: "A",
-        authorEmail: "a@b.com",
-        annotations: [],
-        clientId: "c1",
-      }),
-    ).rejects.toThrow();
+    await expectTransientFailure(client, {
+      projectName: "test",
+      type: "bug",
+      message: "from-corrupt-store",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "c1",
+    });
 
     const savedValue = vi.mocked(localStorage.setItem).mock.calls[0]?.[1];
     if (savedValue === undefined) throw new Error("expected the retry queue to be written to localStorage");
@@ -1126,24 +1230,22 @@ describe("queueForRetry (via sendFeedback)", () => {
       },
     ];
     vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify(existing));
-    // Use 4xx to avoid retry backoff
-    vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+    // A network failure is transient, hence queued; fake timers burn the retry backoff.
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
 
     const client = new ApiClient(endpoint, "test");
-    await expect(
-      client.sendFeedback({
-        projectName: "test",
-        type: "bug",
-        message: "new",
-        url: "https://example.com",
-        viewport: "1x1",
-        userAgent: "t",
-        authorName: "A",
-        authorEmail: "a@b.com",
-        annotations: [],
-        clientId: "n1",
-      }),
-    ).rejects.toThrow();
+    await expectTransientFailure(client, {
+      projectName: "test",
+      type: "bug",
+      message: "new",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "n1",
+    });
 
     const savedValue = vi.mocked(localStorage.setItem).mock.calls[0]?.[1];
     if (savedValue === undefined) throw new Error("expected the retry queue to be written to localStorage");
@@ -1171,23 +1273,22 @@ describe("queueForRetry (via sendFeedback)", () => {
       },
     }));
     vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify(existing));
-    vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+    // A network failure is transient, hence queued; fake timers burn the retry backoff.
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
 
     const client = new ApiClient(endpoint, "test");
-    await expect(
-      client.sendFeedback({
-        projectName: "test",
-        type: "bug",
-        message: "newest",
-        url: "https://example.com",
-        viewport: "1x1",
-        userAgent: "t",
-        authorName: "A",
-        authorEmail: "a@b.com",
-        annotations: [],
-        clientId: "newest",
-      }),
-    ).rejects.toThrow();
+    await expectTransientFailure(client, {
+      projectName: "test",
+      type: "bug",
+      message: "newest",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "newest",
+    });
 
     const savedValue = vi.mocked(localStorage.setItem).mock.calls[0]?.[1];
     if (savedValue === undefined) throw new Error("expected the retry queue to be written to localStorage");
@@ -1269,23 +1370,22 @@ describe("withRetryLock with navigator.locks present", () => {
   });
 
   it("uses navigator.locks.request when available (queueForRetry via sendFeedback failure)", async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 400 }));
+    // A network failure is transient, hence queued; fake timers burn the retry backoff.
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
 
     const client = new ApiClient(endpoint, "test");
-    await expect(
-      client.sendFeedback({
-        projectName: "test",
-        type: "bug",
-        message: "lock-queued",
-        url: "https://example.com",
-        viewport: "1x1",
-        userAgent: "t",
-        authorName: "A",
-        authorEmail: "a@b.com",
-        annotations: [],
-        clientId: "lock-2",
-      }),
-    ).rejects.toThrow();
+    await expectTransientFailure(client, {
+      projectName: "test",
+      type: "bug",
+      message: "lock-queued",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "lock-2",
+    });
 
     // Wait microtasks so queueForRetry's deferred callback runs
     await new Promise((r) => setTimeout(r, 0));

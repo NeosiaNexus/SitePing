@@ -95,6 +95,8 @@ export class ConsoleBuffer {
   private readonly maxEntries: number;
   private readonly entries: ConsoleEntry[] = [];
   private originals = new Map<ConsoleEntry["level"], (...args: unknown[]) => void>();
+  /** The wrappers we installed — `dispose()` only restores a level whose wrapper is still in place. */
+  private wrappers = new Map<ConsoleEntry["level"], (...args: unknown[]) => void>();
   private disposed = false;
 
   constructor(maxEntries: number = DEFAULT_MAX_ENTRIES) {
@@ -128,6 +130,7 @@ export class ConsoleBuffer {
       } catch {
         // Older engines reject defineProperty on function name — best-effort only.
       }
+      this.wrappers.set(level, wrapped);
       (console as unknown as Record<string, unknown>)[level] = wrapped;
     }
   }
@@ -149,19 +152,29 @@ export class ConsoleBuffer {
     return this.entries.slice();
   }
 
-  /** Restore the original console methods. Idempotent. */
+  /**
+   * Restore the original console methods. Idempotent.
+   *
+   * A level is restored only if our wrapper is still installed on it — when
+   * another library wrapped `console.error` on top of us after init, writing
+   * the original back would silently remove its wrapper. Ours then stays in
+   * the chain but keeps forwarding to the original, so nothing is lost.
+   */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     if (typeof console === "undefined") return;
+    const target = console as unknown as Record<string, unknown>;
     for (const [level, original] of this.originals) {
+      if (target[level] !== this.wrappers.get(level)) continue;
       try {
-        (console as unknown as Record<string, unknown>)[level] = original;
+        target[level] = original;
       } catch {
         // Console may be frozen in exotic environments — leave the wrapper
         // in place; it still proxies to the original via closure.
       }
     }
     this.originals.clear();
+    this.wrappers.clear();
   }
 }
