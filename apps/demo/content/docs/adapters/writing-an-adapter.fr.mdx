@@ -53,6 +53,8 @@ C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la 
 
 `createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` dont `verifyProjectOwnership` est garanti au lieu d'être optionnel, vous pouvez donc lui déléguer sans vérification préalable.
 
+**Un `persist` qui échoue laisse votre instantané intact.** Le moteur ne modifie jamais le tableau renvoyé par `load()` — chaque écriture construit un nouveau tableau et le passe à `persist`. Donc si `load()` sert un tableau en cache et que l'écriture lève, aucun enregistrement fantôme ne reste visible, et le réessai du widget avec le même `clientId` est écrit pour de bon au lieu d'être dédupliqué contre quelque chose qui n'a jamais atteint le stockage.
+
 **Sous pression de quota, les captures sautent en premier.** Quand `persist` lève pendant `createFeedback` et que l'enregistrement porte une capture d'écran en ligne, le moteur vide `screenshotUrl` — de loin le champ le plus lourd — et réessaie une fois, pour que le commentaire écrit survive à un espace de stockage plein. Si cette seconde écriture échoue aussi, l'erreur remonte : renvoyer l'enregistrement annoncerait une réussite qui n'a jamais eu lieu.
 
 ## Backends à requêtes
@@ -110,7 +112,7 @@ Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`
 - Du plus récent au plus ancien, par `createdAt` décroissant.
 - `page` commence à 1, `limit` vaut 50 par défaut et est plafonné à 100.
 
-Vous gardez un instantané en mémoire ? `applyFeedbackFilters(records, query)` est exporté précisément pour ça et implémente tout ce qui précède.
+Vous gardez un instantané en mémoire ? `applyFeedbackFilters(records, query)` est exporté précisément pour ça et implémente tout ce qui précède. Vous interrogez une base ? `clampPagination(query)` renvoie le `{ page, limit, skip }` normalisé — le même plafonnement que le pipeline en mémoire et `PrismaStore`, à passer tel quel à votre `LIMIT`/`OFFSET`.
 
 ## Appartenance au projet
 

@@ -53,6 +53,8 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 
 `createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional, so you can delegate to it without a null check.
 
+**A failed `persist` leaves your snapshot untouched.** The engine never mutates the array `load()` returned — every write builds a new array and hands it to `persist`. So if `load()` serves a cached array and the write throws, no phantom record stays visible, and the widget's retry of the same `clientId` is written for real instead of being deduplicated against something that never reached storage.
+
 **Quota pressure drops screenshots first.** When `persist` throws during `createFeedback` and the record carries an inline screenshot, the engine clears `screenshotUrl` — by far the heaviest field — and retries once, so the written comment survives a full storage bucket. If that second write also fails, the error propagates: returning the record would claim a success that never happened.
 
 ## Query backends
@@ -110,7 +112,7 @@ Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreP
 - Newest first, by `createdAt` descending.
 - `page` is 1-based, `limit` defaults to 50 and is capped at 100.
 
-Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above.
+Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above. Querying a database? `clampPagination(query)` returns the normalized `{ page, limit, skip }` — the same clamp the in-memory pipeline and `PrismaStore` use, so pass its `limit` and `skip` straight to your `LIMIT`/`OFFSET`.
 
 ## Project ownership
 

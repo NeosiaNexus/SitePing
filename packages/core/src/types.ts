@@ -653,8 +653,8 @@ export interface AnnotationRecord {
  */
 export class StoreNotFoundError extends Error {
   readonly code = "STORE_NOT_FOUND" as const;
-  constructor(message = "Record not found") {
-    super(message);
+  constructor(message = "Record not found", options?: ErrorOptions) {
+    super(message, options);
     this.name = "StoreNotFoundError";
   }
 }
@@ -666,8 +666,8 @@ export class StoreNotFoundError extends Error {
  */
 export class StoreDuplicateError extends Error {
   readonly code = "STORE_DUPLICATE" as const;
-  constructor(message = "Duplicate record") {
-    super(message);
+  constructor(message = "Duplicate record", options?: ErrorOptions) {
+    super(message, options);
     this.name = "StoreDuplicateError";
   }
 }
