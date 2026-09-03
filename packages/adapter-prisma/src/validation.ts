@@ -1,5 +1,5 @@
 import type { AssertEqual, FeedbackPayload, FeedbackStatus, FeedbackType, Prettify } from "@siteping/core";
-import { CONSOLE_DIAGNOSTIC_LEVELS, FEEDBACK_STATUSES, FEEDBACK_TYPES } from "@siteping/core";
+import { CONSOLE_DIAGNOSTIC_LEVELS, EMAIL_PATTERN, FEEDBACK_STATUSES, FEEDBACK_TYPES } from "@siteping/core";
 import * as zod from "zod";
 
 // Namespace import required: Zod publishes dual CJS/ESM, and bundlers (tsup, vitest) may
@@ -91,7 +91,9 @@ export const feedbackCreateSchema = z.object({
   viewport: z.string().min(1).max(50),
   userAgent: z.string().min(1).max(500),
   authorName: z.string().min(1).max(200),
-  authorEmail: z.email().max(200),
+  // The widget's identity modal validates against the same core pattern, so
+  // an address the modal accepts (and persists) is never a 400 here.
+  authorEmail: z.email({ pattern: EMAIL_PATTERN }).max(200),
   annotations: z.array(annotationSchema).max(50),
   // Restrict to URL-safe identifiers. The widget generates UUIDs (or a
   // Date+Math.random fallback), both of which match. Anything outside this

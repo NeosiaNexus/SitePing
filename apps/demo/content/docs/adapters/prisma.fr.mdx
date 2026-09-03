@@ -55,7 +55,7 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 
 | Méthode | Rôle | Succès |
 |---|---|---|
-| `POST` | Créer un feedback (envois du widget) | `201` + l'enregistrement. Un `clientId` en double renvoie l'enregistrement existant au lieu d'échouer |
+| `POST` | Créer un feedback (envois du widget) | `201` + l'enregistrement. Un `clientId` rejoué renvoie l'enregistrement existant au lieu d'échouer (et ne notifie jamais les webhooks deux fois) ; un `clientId` déjà utilisé par **un autre** projet est refusé avec `409` |
 | `GET` | Lister les feedbacks | `200` + `{ feedbacks, total }`, avec `Cache-Control: private, max-age=5` |
 | `PATCH` | Changer un statut | `200` + l'enregistrement mis à jour |
 | `DELETE` | Supprimer un ou tous | `200` + `{ deleted: true }` |
@@ -67,11 +67,11 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 
 **Corps du DELETE :** `{ id, projectName }` pour un enregistrement, ou `{ projectName, deleteAll: true }` pour tout le projet.
 
-**Erreurs :** JSON invalide → `400 { error }` ; échec de validation → `400 { errors: [{ field, message }] }` ; id inconnu → `404` ; table manquante → `500` avec une indication d'exécuter `npx prisma db push` ; tout le reste → `500 { error: "Internal server error" }`.
+**Erreurs :** JSON invalide → `400 { error }` ; échec de validation → `400 { errors: [{ field, message }] }` ; id inconnu → `404` ; `clientId` appartenant à un autre projet → `409 { error }` ; table manquante → `500` avec une indication d'exécuter `npx prisma db push` ; tout le reste → `500 { error: "Internal server error" }`.
 
 ### Les limites de validation à connaître
 
-`message` ≤ 5000 caractères · `annotations` ≤ 50 par feedback · `screenshotDataUrl` ≤ 1,5 Mo, JPEG/PNG/WebP uniquement · `diagnostics` ≤ 50 entrées console + 20 réseau · `clientId` doit correspondre à `[a-zA-Z0-9_-]+`.
+`message` ≤ 5000 caractères · `annotations` ≤ 50 par feedback · `screenshotDataUrl` ≤ 1,5 Mo, JPEG/PNG/WebP uniquement · `diagnostics` ≤ 50 entrées console + 20 réseau · `clientId` doit correspondre à `[a-zA-Z0-9_-]+` · `authorEmail` suit le même motif Unicode que la fenêtre d'identité du widget (`françois@exemple.fr` passe), donc une adresse acceptée par la fenêtre n'est jamais refusée ici.
 
 ## Schéma de base de données
 
@@ -153,6 +153,8 @@ createSitepingHandler({
 
 Si un envoi échoue, le feedback est quand même enregistré (avec `screenshotUrl: null`) et un avertissement est journalisé — un bucket cassé ne fait jamais perdre le commentaire d'un client.
 
+Ajoutez un `delete(url)` optionnel et l'adapter l'appelle à la suppression d'un feedback — `DELETE` unitaire comme `deleteAll` — pour ne rien laisser traîner dans votre bucket. C'est du meilleur effort : un `delete` qui échoue est journalisé et ne fait jamais échouer la suppression (un objet orphelin vaut mieux qu'une ligne qui refuse de partir). Les URL `data:` en ligne ne lui sont jamais passées.
+
 ## Webhooks
 
 Soyez notifié à chaque nouveau feedback :
@@ -167,7 +169,9 @@ createSitepingHandler({
 });
 ```
 
-`type` vaut `"slack"`, `"discord"` ou `"generic"` (le défaut — il poste l'enregistrement brut, non masqué : traitez donc les cibles de webhook générique comme de confiance). Chaque appel a un timeout de 5 secondes, les échecs ne bloquent jamais l'envoi, et un `onError(err, feedbackId)` optionnel permet de les journaliser.
+`type` vaut `"slack"`, `"discord"` ou `"generic"` (le défaut — il poste l'enregistrement en JSON avec l'e-mail de l'auteur non masqué : traitez donc les cibles de webhook générique comme de confiance ; le `clientId` est retiré comme partout ailleurs). Chaque appel a un timeout de 5 secondes, les échecs ne bloquent jamais l'envoi, et un `onError(err, feedbackId)` optionnel permet de les journaliser.
+
+Le texte des feedbacks est saisi par des visiteurs anonymes, les charges utiles de chat sont donc durcies : le texte Slack est échappé (un commentaire contenant `<!channel>` s'affiche tel quel, jamais comme une notification) et les messages Discord partent avec l'analyse des mentions désactivée (`allowed_mentions: { parse: [] }`) — un formulaire public ne peut pas servir à notifier tout votre serveur.
 
 ## Utiliser un store personnalisé
 
@@ -175,5 +179,5 @@ createSitepingHandler({
 
 Deux réserves, directement issues du code source :
 
-- La vérification d'appartenance inter-projets sur PATCH/DELETE ne tourne actuellement que pour `PrismaStore`. Avec un store personnalisé, quiconque connaît l'`id` d'un feedback peut le modifier quel que soit le `projectName` — placez les endpoints à store personnalisé derrière un `apiKey`.
+- La vérification d'appartenance inter-projets sur PATCH/DELETE tourne pour tout store qui implémente la méthode optionnelle `verifyProjectOwnership` — les adapters memory et localStorage et tout ce qui repose sur `createCollectionStore` le font. Un store écrit à la main qui l'omet saute la vérification : quiconque connaît l'`id` d'un feedback peut alors le modifier quel que soit le `projectName`, donc implémentez la méthode (voir [écrire un adapter](/fr/docs/adapters/writing-an-adapter#appartenance-au-projet)) ou placez l'endpoint derrière un `apiKey`.
 - `screenshotStorage` et `caseInsensitiveSearch` ne s'appliquent qu'au chemin Prisma intégré ; avec un store personnalisé, gérez les captures à l'intérieur de votre store.

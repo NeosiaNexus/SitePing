@@ -1,4 +1,4 @@
-import { hasOwn, type SitepingIdentity } from "@siteping/core";
+import { hasOwn, isValidEmail, type SitepingIdentity } from "@siteping/core";
 
 const STORAGE_KEY = "siteping_identity";
 
@@ -9,11 +9,17 @@ const STORAGE_KEY = "siteping_identity";
  */
 export type Identity = SitepingIdentity;
 
-/** Type guard — narrows an unknown value to `Identity` only when both fields are non-empty strings. */
+/**
+ * Type guard — narrows an unknown value to `Identity` only when the name is a
+ * non-empty string and the email is one the server accepts. A stored identity
+ * that fails the shared email pattern (persisted by an older, laxer modal) is
+ * treated as absent so the modal asks again instead of every submission
+ * failing with a 400.
+ */
 function isIdentity(value: unknown): value is Identity {
   if (!hasOwn(value, "name") || !hasOwn(value, "email")) return false;
   const { name, email } = value;
-  return typeof name === "string" && typeof email === "string" && name.length > 0 && email.length > 0;
+  return typeof name === "string" && typeof email === "string" && name.length > 0 && isValidEmail(email);
 }
 
 export function getIdentity(): Identity | null {

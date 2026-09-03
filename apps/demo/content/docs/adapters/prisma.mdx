@@ -55,7 +55,7 @@ One endpoint, five methods. All bodies are JSON.
 
 | Method | Purpose | Success |
 |---|---|---|
-| `POST` | Create feedback (widget submissions) | `201` + record. Duplicate `clientId` returns the existing record instead of failing |
+| `POST` | Create feedback (widget submissions) | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks twice); a `clientId` already used by **another** project is refused with `409` |
 | `GET` | List feedbacks | `200` + `{ feedbacks, total }`, with `Cache-Control: private, max-age=5` |
 | `PATCH` | Change a status | `200` + updated record |
 | `DELETE` | Delete one or all | `200` + `{ deleted: true }` |
@@ -67,11 +67,11 @@ One endpoint, five methods. All bodies are JSON.
 
 **DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
 
-**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`; unknown id → `404`; missing table → `500` with a hint to run `npx prisma db push`; anything else → `500 { error: "Internal server error" }`.
+**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`; unknown id → `404`; `clientId` owned by another project → `409 { error }`; missing table → `500` with a hint to run `npx prisma db push`; anything else → `500 { error: "Internal server error" }`.
 
 ### Validation limits worth knowing
 
-`message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+`.
+`message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
 
 ## Database schema
 
@@ -153,6 +153,8 @@ createSitepingHandler({
 
 If an upload fails, the feedback is still saved (with `screenshotUrl: null`) and a warning is logged — a broken bucket never loses a client's comment.
 
+Add an optional `delete(url)` and the adapter calls it when a feedback is deleted — single `DELETE` and `deleteAll` alike — so nothing is left behind in your bucket. It is best-effort: a failing `delete` is logged and never fails the deletion (an orphaned object beats a row that refuses to go away). Inline `data:` URLs are never passed to it.
+
 ## Webhooks
 
 Get pinged on every new feedback:
@@ -167,7 +169,9 @@ createSitepingHandler({
 });
 ```
 
-`type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the raw, unredacted record, so treat generic webhook targets as trusted). Each call has a 5-second timeout, failures never block the submission, and an optional `onError(err, feedbackId)` lets you log them.
+`type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the record as JSON with the author's email unredacted, so treat generic webhook targets as trusted; `clientId` is stripped like everywhere else). Each call has a 5-second timeout, failures never block the submission, and an optional `onError(err, feedbackId)` lets you log them.
+
+Feedback text is typed by anonymous visitors, so the chat payloads are hardened: Slack text is escaped (a comment containing `<!channel>` is shown literally, never as a notification) and Discord messages are sent with mention parsing disabled (`allowed_mentions: { parse: [] }`) — a public form can't be used to ping your whole server.
 
 ## Using a custom store
 
@@ -175,5 +179,5 @@ createSitepingHandler({
 
 Two caveats, straight from the source:
 
-- The cross-project ownership check on PATCH/DELETE currently runs only for `PrismaStore`. With a custom store, any caller who knows a feedback `id` can modify it regardless of `projectName` — put custom-store endpoints behind an `apiKey`.
+- The cross-project ownership check on PATCH/DELETE runs for every store that implements the optional `verifyProjectOwnership` — the memory and localStorage adapters and anything built on `createCollectionStore` do. A hand-written store that omits it skips the check: any caller who knows a feedback `id` can then modify it regardless of `projectName`, so either implement the method (see [writing an adapter](/docs/adapters/writing-an-adapter#project-ownership)) or put the endpoint behind an `apiKey`.
 - `screenshotStorage` and `caseInsensitiveSearch` only apply to the built-in Prisma path; with a custom store, handle screenshots inside your store.

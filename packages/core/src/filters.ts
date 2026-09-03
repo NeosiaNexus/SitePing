@@ -12,22 +12,53 @@
  *   5. urlPattern
  *   6. search       (lowercase substring match on `message`)
  *
- * Pagination clamps `limit` to a maximum of 100 and treats `page` as 1-based,
- * matching the public API contract documented on `getFeedbacks`. A page or
- * limit below 1 is clamped up to 1 rather than indexing backwards from the
- * end of the match set.
+ * Pagination goes through `clampPagination`: `limit` capped at 100, `page`
+ * 1-based, both clamped up to 1 rather than indexing backwards from the end
+ * of the match set. Query adapters reuse the same helper so every store
+ * paginates identically.
  */
 
 import type { FeedbackQuery, FeedbackRecord } from "./types.js";
 
 /** Default page size when the caller omits `query.limit`. */
-const DEFAULT_LIMIT = 50;
+export const DEFAULT_PAGE_LIMIT = 50;
 /** Maximum allowed page size — defends against memory blow-ups on hostile callers. */
-const MAX_LIMIT = 100;
+export const MAX_PAGE_LIMIT = 100;
 
 export interface FilterResult {
   feedbacks: FeedbackRecord[];
   total: number;
+}
+
+/** Normalised pagination window — see {@link clampPagination}. */
+export interface Pagination {
+  /** 1-based page number, at least 1. */
+  page: number;
+  /** Page size in `[1, MAX_PAGE_LIMIT]`. */
+  limit: number;
+  /** Offset of the first row: `(page - 1) * limit`. */
+  skip: number;
+}
+
+function toPositiveInteger(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) ? Math.max(1, Math.floor(value)) : fallback;
+}
+
+/**
+ * Normalise `page` / `limit` to the store contract: `page` is 1-based and
+ * clamped up to 1, `limit` defaults to 50 and is clamped into `[1, 100]`,
+ * non-finite values fall back to the defaults. `skip` is the derived row
+ * offset for query backends (`OFFSET`, Prisma `skip`).
+ *
+ * Shared by the in-memory pipeline and query adapters (`PrismaStore`) so
+ * every store paginates identically — the HTTP schema clamps the same way,
+ * but direct callers (dashboard store mode, server actions) reach the store
+ * without a schema in front of them.
+ */
+export function clampPagination(query: Pick<FeedbackQuery, "page" | "limit">): Pagination {
+  const page = toPositiveInteger(query.page, 1);
+  const limit = Math.min(toPositiveInteger(query.limit, DEFAULT_PAGE_LIMIT), MAX_PAGE_LIMIT);
+  return { page, limit, skip: (page - 1) * limit };
 }
 
 /**
@@ -64,16 +95,11 @@ export function applyFeedbackFilters(items: readonly FeedbackRecord[], query: Fe
   results.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
   const total = results.length;
-  // Both bounds are clamped from below, not just `limit` from above:
-  // `(page - 1) * limit` goes negative for a non-positive page or limit, and
-  // `slice` reads negative indices from the END — so `page: -1` returned a
-  // window whose position depended on how many records happened to match,
-  // rather than an empty page or the first one. The Prisma adapter rejects
-  // these at the HTTP edge (`z.coerce.number().int().min(1)`), but the
-  // in-memory adapters have no schema in front of them and call straight in.
-  const page = Math.max(1, query.page ?? 1);
-  const limit = Math.max(1, Math.min(query.limit ?? DEFAULT_LIMIT, MAX_LIMIT));
-  const start = (page - 1) * limit;
+  // Both bounds are clamped (see `clampPagination`): `(page - 1) * limit`
+  // goes negative for a non-positive page or limit, and `slice` reads
+  // negative indices from the END — so `page: -1` used to return a window
+  // whose position depended on how many records happened to match.
+  const { limit, skip } = clampPagination(query);
 
-  return { feedbacks: results.slice(start, start + limit), total };
+  return { feedbacks: results.slice(skip, skip + limit), total };
 }

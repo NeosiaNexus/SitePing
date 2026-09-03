@@ -82,7 +82,8 @@ export async function initCommand(): Promise<void> {
   p.note(
     [
       "1. Run: npx prisma db push",
-      "2. Add the widget to your layout:",
+      "2. Set SITEPING_API_KEY in your environment (required in production)",
+      "3. Add the widget to your layout:",
       "",
       '   import { initSiteping } from "@siteping/widget"',
       "",

@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
@@ -161,7 +161,8 @@ model SitepingAnnotation {
 /**
  * Schema with exactly one missing field — used to exercise the "1 missing
  * field" pluralisation branch (`missingCount > 1 ? "s" : ""` → "").
- * Drops only `updatedAt` from the otherwise complete model.
+ * Drops only `updatedAt` from the otherwise complete model (attributes and
+ * `@@index` blocks included — they count as drift too).
  */
 const SINGLE_MISSING_FIELD_SCHEMA = `
 datasource db {
@@ -192,6 +193,10 @@ model SitepingFeedback {
   resolvedAt    DateTime?
   createdAt     DateTime            @default(now())
   annotations   SitepingAnnotation[]
+
+  @@index([projectName])
+  @@index([projectName, status, createdAt])
+  @@index([projectName, url])
 }
 
 model SitepingAnnotation {
@@ -218,6 +223,8 @@ model SitepingAnnotation {
   viewportH        Int
   devicePixelRatio Float            @default(1)
   createdAt        DateTime         @default(now())
+
+  @@index([feedbackId])
 }
 `;
 
@@ -341,6 +348,40 @@ describe("statusCommand", () => {
 
       const successes = allMessages(logSuccessSpy);
       expect(successes.some((m) => m.includes("Prisma schema"))).toBe(true);
+    });
+  });
+
+  describe("schema drift — same diff as sync", () => {
+    // Structurally complete, but three things `sync` would rewrite: the
+    // `@unique` on clientId (the adapter's dedup relies on it), the
+    // `@db.Text` on message, and the `@@index([projectName, url])` block.
+    const DRIFTED_SCHEMA = FULL_SCHEMA.replace("@unique", "")
+      .replace(/message\s+String\s+@db\.Text/, "message String")
+      .replace("@@index([projectName, url])", "");
+
+    it("reports attribute and index drift instead of 'Up to date'", () => {
+      createPrismaSchema(tmpDir, DRIFTED_SCHEMA);
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      const schemaLine = allMessages(logWarnSpy).find((m) => m.startsWith("Prisma schema"));
+      expect(schemaLine).toBeDefined();
+      expect(schemaLine).toContain("SitepingFeedback.clientId (+@unique)");
+      expect(schemaLine).toContain("SitepingFeedback.message (+@db.Text)");
+      expect(schemaLine).toContain("SitepingFeedback.@@index([projectName, url])");
+      expect(allMessages(logSuccessSpy).some((m) => m.startsWith("Prisma schema"))).toBe(false);
+    });
+
+    it("leaves the schema file untouched", () => {
+      const schemaPath = createPrismaSchema(tmpDir, DRIFTED_SCHEMA);
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      expect(readFileSync(schemaPath, "utf-8")).toBe(DRIFTED_SCHEMA);
     });
   });
 

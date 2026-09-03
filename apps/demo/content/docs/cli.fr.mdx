@@ -60,7 +60,7 @@ npx @siteping/cli status --schema prisma/schema.prisma
 
 | Vérification | Ce qu'elle regarde |
 |---|---|
-| Schéma Prisma | Les deux modèles présents, chaque champ à jour |
+| Schéma Prisma | Les deux modèles présents, chaque champ à jour — exactement le diff qu'applique `sync`, donc type, optionalité, attributs (`@unique`, `@db.Text`, …) et blocs `@@index` comptent tous |
 | Route API | `app/api/siteping/route.ts` ou `src/app/api/siteping/route.ts` existe |
 | Package | `@siteping/widget` listé dans votre `package.json` |
 | Intégration du widget | `initSiteping` référencé quelque part dans `src/`, `app/` ou `pages/` |
@@ -71,9 +71,10 @@ La vérification de la route API ne connaît que l'App Router de Next.js. Si vou
 
 ```bash
 npx @siteping/cli doctor --url http://localhost:3000 --endpoint /api/siteping
+npx @siteping/cli doctor --url https://app.example.com --api-key "$SITEPING_API_KEY"
 ```
 
-`doctor` envoie une requête GET à votre serveur en fonctionnement et vous dit si un handler SitePing a répondu (timeout de 10 secondes). Passez **les deux** options pour l'exécuter sans interaction — toute option omise devient une question.
+`doctor` envoie une requête GET à votre serveur en fonctionnement et vous dit si un handler SitePing a répondu (timeout de 10 secondes). Passez **à la fois** `--url` et `--endpoint` pour l'exécuter sans interaction — celle que vous omettez devient une question. Quand l'endpoint est configuré avec un `apiKey` et que `GET` n'est pas public, passez la clé avec `--api-key` ; sans elle, un `401` s'accompagne d'une indication.
 
 Il ne vérifie que la réponse HTTP — il ne lit jamais votre schéma. Pour vérifier le schéma, utilisez `status`.
 

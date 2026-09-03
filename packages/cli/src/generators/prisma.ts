@@ -1,7 +1,7 @@
 // Must run before prisma-ast: chevrotain needs Object.groupBy (Node 21+).
 import "../utils/object-group-by-polyfill.js";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import type { AttributeArgument, BlockAttribute, Field, Model, Property } from "@mrleebo/prisma-ast";
+import { readFileSync, writeFileSync } from "node:fs";
+import type { AttributeArgument, BlockAttribute, Field, Model, Property, Schema } from "@mrleebo/prisma-ast";
 import { getSchema, printSchema } from "@mrleebo/prisma-ast";
 import { type FieldDef, type IndexDef, SITEPING_MODELS } from "@siteping/core";
 
@@ -14,10 +14,14 @@ export interface FieldChange {
   detail: string;
 }
 
-export interface SyncResult {
-  schemaPath: string;
+/** What reconciling a schema with `SITEPING_MODELS` had to change — empty means up to date. */
+export interface SchemaReconciliation {
   addedModels: string[];
   changes: FieldChange[];
+}
+
+export interface SyncResult extends SchemaReconciliation {
+  schemaPath: string;
 }
 
 /**
@@ -30,13 +34,52 @@ export interface SyncResult {
  * - User-added fields outside Siteping's definition are left untouched
  */
 export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): SyncResult {
-  if (!existsSync(schemaPath)) {
-    throw new Error(`Schema file not found: ${schemaPath}`);
+  const schema = getSchema(readSchemaSource(schemaPath));
+  const { addedModels, changes } = reconcileSitepingModels(schema);
+
+  if (addedModels.length > 0 || changes.length > 0) {
+    // prisma-ast's printSchema() unconditionally prepends a newline, and prints
+    // blank lines as os.EOL ("\r\n" on Windows) -- strip both forms (#98)
+    const output = printSchema(schema).replace(/^(\r?\n)+/, "");
+    try {
+      writeFileSync(schemaPath, output, "utf-8");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EACCES" || code === "EPERM") {
+        throw new Error(`Permission denied: cannot write to ${schemaPath}. Check file permissions.`);
+      }
+      throw error;
+    }
   }
 
-  const source = readFileSync(schemaPath, "utf-8");
-  const schema = getSchema(source);
+  return { schemaPath, addedModels, changes };
+}
 
+/**
+ * Read the schema file, turning a missing file into the CLI's own error. The
+ * read itself is the existence check — a separate existence probe followed
+ * by the read would be a check-then-act race on a user-controlled path.
+ */
+function readSchemaSource(schemaPath: string): string {
+  try {
+    return readFileSync(schemaPath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(`Schema file not found: ${schemaPath}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Reconcile a parsed Prisma schema with the Siteping model definitions,
+ * updating the AST in place, and report what had to change. This is the one
+ * definition of "up to date" — `sync` writes the reconciled schema back,
+ * `status` only reads the report — so both commands agree on type,
+ * optionality, cardinality, attributes (`@unique`, `@db.Text`, `@default`,
+ * `@updatedAt`, `@relation`) and `@@index` blocks.
+ */
+export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
   const existingModelsMap = new Map<string, Model>();
   for (const item of schema.list) {
     if (item.type === "model") {
@@ -132,22 +175,7 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
     }
   }
 
-  if (addedModels.length > 0 || changes.length > 0) {
-    // prisma-ast's printSchema() unconditionally prepends a newline, and prints
-    // blank lines as os.EOL ("\r\n" on Windows) -- strip both forms (#98)
-    const output = printSchema(schema).replace(/^(\r?\n)+/, "");
-    try {
-      writeFileSync(schemaPath, output, "utf-8");
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "EACCES" || code === "EPERM") {
-        throw new Error(`Permission denied: cannot write to ${schemaPath}. Check file permissions.`);
-      }
-      throw error;
-    }
-  }
-
-  return { schemaPath, addedModels, changes };
+  return { addedModels, changes };
 }
 
 /** Check if two fields have the same type, optionality, and attributes. */

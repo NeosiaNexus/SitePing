@@ -1,7 +1,8 @@
+export { EMAIL_PATTERN, isValidEmail } from "./email.js";
 export type { SitepingErrorCode } from "./errors.js";
 export { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
-export type { FilterResult } from "./filters.js";
-export { applyFeedbackFilters } from "./filters.js";
+export type { FilterResult, Pagination } from "./filters.js";
+export { applyFeedbackFilters, clampPagination, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from "./filters.js";
 export type { I18n, LocaleLoaders, TranslateFunction } from "./i18n.js";
 export { createI18n, interpolate, tWithParams } from "./i18n.js";
 export type {

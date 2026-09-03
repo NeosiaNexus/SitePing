@@ -1,4 +1,4 @@
-import type { FeedbackRecord } from "@siteping/core";
+import { createCollectionStore, type FeedbackRecord } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSitepingHandler } from "../src/index.js";
 import { buildWebhookPayload, dispatchWebhook, dispatchWebhooks, type WebhookConfig } from "../src/webhooks.js";
@@ -69,9 +69,12 @@ describe("buildWebhookPayload", () => {
     expect(payload.embeds[0]?.color).toBe(0xef4444);
   });
 
-  it("returns raw feedback as generic payload", () => {
+  it("returns the record minus clientId as generic payload", () => {
+    const { clientId: _clientId, ...expected } = FEEDBACK;
     const payload = buildWebhookPayload("generic", FEEDBACK);
-    expect(payload).toBe(FEEDBACK);
+    expect(payload).toEqual(expected);
+    // clientId is the browser-local dedup secret — it never leaves the server.
+    expect("clientId" in payload).toBe(false);
   });
 
   it("truncates excessively long messages for chat platforms", () => {
@@ -83,6 +86,49 @@ describe("buildWebhookPayload", () => {
     expect(slack.text.length).toBeLessThan(500);
     expect(discord.embeds[0]?.description.length).toBeLessThan(500);
     expect(discord.embeds[0]?.description.endsWith("…")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Untrusted input — message and authorName come from anonymous visitors
+// ---------------------------------------------------------------------------
+
+describe("buildWebhookPayload — untrusted input", () => {
+  it("escapes Slack control characters in every mrkdwn field", () => {
+    const payload = buildWebhookPayload("slack", {
+      ...FEEDBACK,
+      message: "<!channel> the site is down & <https://evil.example/phish|Reset your password>",
+      authorName: "<!here>",
+      projectName: "a<b",
+      url: "/orders?a=1&b=2",
+    });
+    const mrkdwn = JSON.stringify([payload.text, ...payload.blocks.filter((b) => b.type !== "header")]);
+
+    expect(mrkdwn).not.toContain("<!channel>");
+    expect(mrkdwn).not.toContain("<!here>");
+    expect(mrkdwn).not.toContain("<https://evil.example/phish|");
+    expect(mrkdwn).toContain(
+      "&lt;!channel&gt; the site is down &amp; &lt;https://evil.example/phish|Reset your password&gt;",
+    );
+    expect(mrkdwn).toContain("*From:* &lt;!here&gt; (alice@example.com)");
+    expect(mrkdwn).toContain("*Project:* a&lt;b");
+    expect(mrkdwn).toContain("*URL:* /orders?a=1&amp;b=2");
+  });
+
+  it("keeps the plain_text header raw (Slack renders it verbatim) but within the 150-char Block Kit limit", () => {
+    const payload = buildWebhookPayload("slack", { ...FEEDBACK, authorName: "Tom & Jerry <3" });
+    const header = payload.blocks[0] as { type: "header"; text: { text: string } };
+    expect(header.text.text).toBe("New bug feedback from Tom & Jerry <3");
+
+    const long = buildWebhookPayload("slack", { ...FEEDBACK, authorName: "x".repeat(200) });
+    const longHeader = long.blocks[0] as { type: "header"; text: { text: string } };
+    expect(longHeader.text.text.length).toBeLessThanOrEqual(150);
+  });
+
+  it("disables Discord mention parsing so @everyone in an author name is text, not a ping", () => {
+    const payload = buildWebhookPayload("discord", { ...FEEDBACK, authorName: "@everyone" });
+    expect(payload.allowed_mentions).toEqual({ parse: [] });
+    expect(payload.content).toContain("@everyone");
   });
 });
 
@@ -318,5 +364,42 @@ describe("createSitepingHandler — webhooks option", () => {
     // Give any erroneous fire-and-forget a chance to run before asserting.
     await Promise.resolve();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Handler integration — replays never notify twice
+// ---------------------------------------------------------------------------
+
+describe("createSitepingHandler — webhooks on clientId replays", () => {
+  it("does not dispatch again when a store returns the existing record for a replayed clientId", async () => {
+    // Snapshot stores (memory, localStorage, adapter-kit) are idempotent on
+    // clientId: a replay resolves like a fresh insert. The handler must still
+    // recognise it as a replay — the widget's retry queue replays after a
+    // network flake even though the first POST was persisted.
+    let feedbacks: FeedbackRecord[] = [];
+    const store = createCollectionStore({
+      load: () => feedbacks,
+      persist: (next) => {
+        feedbacks = next;
+      },
+      generateId: () => `id-${feedbacks.length + 1}`,
+    });
+    const handler = createSitepingHandler({ store, webhooks: { url: "https://hooks.example.com" } });
+    const post = () =>
+      handler.POST(
+        new Request("http://localhost/api/siteping", {
+          method: "POST",
+          body: JSON.stringify({ ...validPayloadNoAnnotations, clientId: "replayed-once" }),
+        }),
+      );
+
+    expect((await post()).status).toBe(201);
+    expect((await post()).status).toBe(201);
+
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
+    // Give a stray second dispatch every chance to surface before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchSpy).toHaveBeenCalledOnce();
   });
 });

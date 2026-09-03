@@ -8,7 +8,10 @@
  * the DB by the time we dial out.
  *
  * - **Type-specific formatting**: Slack uses `{ text, blocks }`, Discord uses
- *   `{ content, embeds }`, generic uses the raw `FeedbackRecord` JSON.
+ *   `{ content, embeds }`, generic posts the record as JSON (minus `clientId`).
+ * - **Untrusted input**: `message` and `authorName` come from anonymous
+ *   visitors. Slack text is escaped and Discord mention parsing is disabled,
+ *   so a public feedback form can never be turned into a channel-wide ping.
  * - **Timeout**: 5s by default (overridable per webhook).
  * - **Error handling**: `config.onError(err, feedback.id)` is invoked when
  *   present; otherwise we log a one-liner to `console.warn` so the issue is
@@ -88,13 +91,25 @@ export interface DiscordWebhookPayload {
     fields: ReadonlyArray<{ name: string; value: string; inline: boolean }>;
     timestamp: string;
   }>;
+  /**
+   * Mention parsing is switched off: `content` carries end-user text, so an
+   * author called `@everyone` must render as text, never as a notification.
+   */
+  allowed_mentions: { parse: ReadonlyArray<"roles" | "users" | "everyone"> };
 }
+
+/**
+ * Generic webhook body — the stored record as JSON. `clientId` is stripped like
+ * on every other output: it is the browser-local dedup secret and the POST
+ * replay path hands the full record to whoever presents it.
+ */
+export type GenericWebhookPayload = Omit<FeedbackRecord, "clientId">;
 
 /** Mapping from webhook type to its concrete body shape. */
 export interface WebhookPayloadMap {
   slack: SlackWebhookPayload;
   discord: DiscordWebhookPayload;
-  generic: FeedbackRecord;
+  generic: GenericWebhookPayload;
 }
 
 /** Truncate a message for chat-platform previews (Slack/Discord look bad with walls of text). */
@@ -103,16 +118,35 @@ function truncate(text: string, max = 300): string {
   return `${text.slice(0, max - 1)}…`;
 }
 
-/** Slack message: text fallback + Block Kit blocks for rich rendering. */
+/** Block Kit caps `header` text at 150 characters — longer payloads are rejected outright. */
+const SLACK_HEADER_MAX = 150;
+
+/**
+ * Escape the three characters Slack parses as control characters in message
+ * text (`&`, `<`, `>`) — the exact escaping Slack's formatting rules require
+ * for user-provided content. Feedback text is typed by anonymous visitors:
+ * unescaped, `<!channel>` notifies the whole channel and
+ * `<https://evil.example|Reset your password>` renders as a disguised link.
+ */
+function escapeSlackText(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Slack message: text fallback + Block Kit blocks for rich rendering. Every
+ * `mrkdwn` field is escaped; the `plain_text` header is rendered verbatim by
+ * Slack (no markup parsing), so it keeps the raw author name.
+ */
 function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
-  const preview = truncate(feedback.message);
+  const preview = escapeSlackText(truncate(feedback.message));
+  const author = escapeSlackText(feedback.authorName);
   const headline = `New ${feedback.type} feedback from ${feedback.authorName}`;
   return {
-    text: `${headline}: ${preview}`,
+    text: `${escapeSlackText(headline)}: ${preview}`,
     blocks: [
       {
         type: "header",
-        text: { type: "plain_text", text: headline, emoji: true },
+        text: { type: "plain_text", text: truncate(headline, SLACK_HEADER_MAX), emoji: true },
       },
       {
         type: "section",
@@ -121,17 +155,21 @@ function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
       {
         type: "context",
         elements: [
-          { type: "mrkdwn", text: `*Project:* ${feedback.projectName}` },
+          { type: "mrkdwn", text: `*Project:* ${escapeSlackText(feedback.projectName)}` },
           { type: "mrkdwn", text: `*Type:* ${feedback.type}` },
-          { type: "mrkdwn", text: `*URL:* ${feedback.url}` },
-          { type: "mrkdwn", text: `*From:* ${feedback.authorName} <${feedback.authorEmail}>` },
+          { type: "mrkdwn", text: `*URL:* ${escapeSlackText(feedback.url)}` },
+          { type: "mrkdwn", text: `*From:* ${author} (${escapeSlackText(feedback.authorEmail)})` },
         ],
       },
     ],
   };
 }
 
-/** Discord message: content fallback + embed for rich rendering. */
+/**
+ * Discord message: content fallback + embed for rich rendering. Sent with
+ * mention parsing disabled — `content` embeds the author name, and Discord
+ * would otherwise turn `@everyone` / `@here` into a server-wide ping.
+ */
 function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
   const preview = truncate(feedback.message);
   return {
@@ -149,7 +187,14 @@ function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
         timestamp: new Date(feedback.createdAt).toISOString(),
       },
     ],
+    allowed_mentions: { parse: [] },
   };
+}
+
+/** Generic JSON body — the record minus its `clientId`. */
+function buildGenericPayload(feedback: FeedbackRecord): GenericWebhookPayload {
+  const { clientId: _clientId, ...payload } = feedback;
+  return payload;
 }
 
 /**
@@ -161,14 +206,14 @@ function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
 export function buildWebhookPayload<T extends WebhookType | undefined>(
   type: T,
   feedback: FeedbackRecord,
-): T extends "slack" ? SlackWebhookPayload : T extends "discord" ? DiscordWebhookPayload : FeedbackRecord {
+): T extends "slack" ? SlackWebhookPayload : T extends "discord" ? DiscordWebhookPayload : GenericWebhookPayload {
   switch (type) {
     case "slack":
       return buildSlackPayload(feedback) as never;
     case "discord":
       return buildDiscordPayload(feedback) as never;
     default:
-      return feedback as never;
+      return buildGenericPayload(feedback) as never;
   }
 }
 

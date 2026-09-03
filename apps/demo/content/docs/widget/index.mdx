@@ -97,5 +97,5 @@ Feedback has four statuses (`open`, `in_progress`, `resolved`, `wont_fix`). The 
 ## Reliability details you get for free
 
 - **Retry with backoff** — failed submissions retry 3 times (10 s timeout, exponential backoff with jitter). Server errors and network failures retry; validation errors don't.
-- **Offline queue** — when submission keeps failing, the payload is queued in localStorage (up to 20 entries) and flushed on the next page load. The queue stores payloads only — never tokens or headers, which are recomputed at flush time.
+- **Offline queue** — when a submission still fails after the retries, the payload is queued in localStorage (up to 20 entries) and flushed on the next page load. Only transient failures are queued (network errors, 5xx): a 4xx is the server's verdict on the payload and would fail identically on replay, so it is reported through `onError` and never queued. The queue stores payloads only — never tokens or headers, which are recomputed at flush time.
 - Both apply to HTTP mode (`endpoint`). In client-side [`store` mode](/docs/adapters/localstorage) writes are local, so there is nothing to retry.

@@ -138,3 +138,51 @@ describe("NetworkBuffer — XHR", () => {
     buffer.dispose();
   });
 });
+
+describe("NetworkBuffer — dispose() vs wrappers installed on top", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    XMLHttpRequest.prototype.open = originalXhrOpen;
+    XMLHttpRequest.prototype.send = originalXhrSend;
+  });
+
+  it("restores fetch when the widget's wrapper is still the one installed", () => {
+    const base = vi.fn() as unknown as typeof fetch;
+    globalThis.fetch = base;
+    const buffer = new NetworkBuffer();
+    expect(globalThis.fetch).not.toBe(base);
+    buffer.dispose();
+    expect(globalThis.fetch).toBe(base);
+  });
+
+  it("leaves a fetch wrapper installed on top of the widget's in place", () => {
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
+    const buffer = new NetworkBuffer();
+    const widgetPatched = globalThis.fetch;
+
+    // A third-party SDK (error tracker, RUM agent) wraps fetch AFTER the widget.
+    const thirdParty: typeof fetch = (...args) => widgetPatched(...args);
+    globalThis.fetch = thirdParty;
+
+    buffer.dispose();
+
+    // Same rule the launcher applies to history.pushState: only restore when
+    // we are still the top of the chain — the other library keeps working.
+    expect(globalThis.fetch).toBe(thirdParty);
+  });
+
+  it("leaves XHR wrappers installed on top of the widget's in place", () => {
+    const buffer = new NetworkBuffer();
+    const widgetOpen = XMLHttpRequest.prototype.open;
+    const thirdPartyOpen = function (this: XMLHttpRequest, ...args: unknown[]) {
+      return (widgetOpen as unknown as (...a: unknown[]) => void).apply(this, args);
+    } as typeof XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = thirdPartyOpen;
+
+    buffer.dispose();
+
+    expect(XMLHttpRequest.prototype.open).toBe(thirdPartyOpen);
+    // `send` was still ours, so it is restored.
+    expect(XMLHttpRequest.prototype.send).toBe(originalXhrSend);
+  });
+});

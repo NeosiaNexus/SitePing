@@ -127,3 +127,105 @@ describe("PrismaStore — screenshot storage", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cleanup — the `delete` hook the ScreenshotStorage interface documents
+// ---------------------------------------------------------------------------
+
+describe("PrismaStore — screenshot cleanup", () => {
+  const REMOTE_URL = "https://cdn.example.com/feedback/c1.jpg";
+
+  function storageWithDelete(): ScreenshotStorage & { delete: ReturnType<typeof vi.fn> } {
+    return {
+      upload: vi.fn().mockResolvedValue({ url: REMOTE_URL }),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  let prisma: ReturnType<typeof mockPrisma>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    prisma = mockPrisma();
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("deleteFeedback deletes the stored screenshot of the deleted row", async () => {
+    const storage = storageWithDelete();
+    prisma.sitepingFeedback.delete.mockResolvedValue({ id: "fb-1", screenshotUrl: REMOTE_URL });
+
+    await new PrismaStore(prisma, { screenshotStorage: storage }).deleteFeedback("fb-1");
+
+    expect(storage.delete).toHaveBeenCalledWith(REMOTE_URL);
+  });
+
+  it("deleteFeedback skips inline data URLs and rows without a screenshot", async () => {
+    const storage = storageWithDelete();
+    const store = new PrismaStore(prisma, { screenshotStorage: storage });
+
+    prisma.sitepingFeedback.delete.mockResolvedValueOnce({ id: "fb-1", screenshotUrl: SAMPLE_DATA_URL });
+    await store.deleteFeedback("fb-1");
+    prisma.sitepingFeedback.delete.mockResolvedValueOnce({ id: "fb-2", screenshotUrl: null });
+    await store.deleteFeedback("fb-2");
+
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("deleteAllFeedbacks deletes every stored screenshot of the project, rows first", async () => {
+    const storage = storageWithDelete();
+    const calls: string[] = [];
+    prisma.sitepingFeedback.findMany.mockResolvedValue([
+      { screenshotUrl: "https://cdn.example.com/a.jpg" },
+      { screenshotUrl: "https://cdn.example.com/b.jpg" },
+      { screenshotUrl: SAMPLE_DATA_URL },
+    ]);
+    prisma.sitepingFeedback.deleteMany.mockImplementation(async () => {
+      calls.push("deleteMany");
+      return { count: 3 };
+    });
+    storage.delete.mockImplementation(async (url: string) => {
+      calls.push(url);
+    });
+
+    await new PrismaStore(prisma, { screenshotStorage: storage }).deleteAllFeedbacks("p");
+
+    expect(prisma.sitepingFeedback.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { projectName: "p", screenshotUrl: { not: null } } }),
+    );
+    expect(calls[0]).toBe("deleteMany");
+    expect(calls.slice(1).sort()).toEqual(["https://cdn.example.com/a.jpg", "https://cdn.example.com/b.jpg"]);
+  });
+
+  it("deleteAllFeedbacks does not query screenshots when the storage has no delete hook", async () => {
+    const storage: ScreenshotStorage = { upload: vi.fn() };
+    await new PrismaStore(prisma, { screenshotStorage: storage }).deleteAllFeedbacks("p");
+    expect(prisma.sitepingFeedback.findMany).not.toHaveBeenCalled();
+    expect(prisma.sitepingFeedback.deleteMany).toHaveBeenCalledOnce();
+  });
+
+  it("a failing delete hook is logged and never fails the deletion", async () => {
+    const storage = storageWithDelete();
+    storage.delete.mockRejectedValue(new Error("bucket gone"));
+    prisma.sitepingFeedback.delete.mockResolvedValue({ id: "fb-1", screenshotUrl: REMOTE_URL });
+
+    await expect(
+      new PrismaStore(prisma, { screenshotStorage: storage }).deleteFeedback("fb-1"),
+    ).resolves.toBeUndefined();
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("screenshotStorage.delete failed"), expect.anything());
+  });
+
+  it("discards the upload of a replayed clientId (the stored row keeps its own screenshot)", async () => {
+    const storage = storageWithDelete();
+    prisma.sitepingFeedback.create.mockRejectedValue(Object.assign(new Error("dup"), { code: "P2002" }));
+
+    await expect(
+      new PrismaStore(prisma, { screenshotStorage: storage }).createFeedback(
+        createInput({ screenshotDataUrl: SAMPLE_DATA_URL, clientId: "c1" }),
+      ),
+    ).rejects.toThrow();
+
+    expect(storage.upload).toHaveBeenCalledOnce();
+    expect(storage.delete).toHaveBeenCalledWith(REMOTE_URL);
+  });
+});

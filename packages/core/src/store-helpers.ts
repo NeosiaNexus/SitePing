@@ -112,11 +112,18 @@ export function buildFeedbackRecord(
  * and async KV stores all fit the same three functions.
  */
 export interface CollectionStoreBackend {
-  /** Return the current full snapshot of feedback records. */
+  /**
+   * Return the current full snapshot of feedback records. The engine never
+   * mutates this array — handing out a live cache is safe.
+   */
   load(): FeedbackRecord[] | Promise<FeedbackRecord[]>;
   /**
-   * Persist the full snapshot. Throw `StorePersistenceError` when the write
-   * is lost (quota, storage disabled, …) — never swallow the failure.
+   * Persist the full snapshot — always a new array, never the one `load()`
+   * returned. Throw `StorePersistenceError` when the write is lost (quota,
+   * storage disabled, …) — never swallow the failure. Because the loaded
+   * snapshot is left untouched, a throw here leaves a cached `load()` result
+   * consistent with durable storage: no phantom record, no half-applied
+   * update.
    */
   persist(feedbacks: FeedbackRecord[]): void | Promise<void>;
   /** Generate a unique id for a new feedback or annotation record. */
@@ -135,7 +142,9 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * The engine implements the whole store contract: clientId dedup (idempotent
  * create), newest-first ordering, the standard filter/pagination pipeline,
  * `StoreNotFoundError` on missing update/delete, project-scoped bulk delete,
- * and `verifyProjectOwnership`. When `persist` fails during `createFeedback`
+ * and `verifyProjectOwnership`. The snapshot returned by `load` is never
+ * mutated: every write hands `persist` a new array, so a failed write leaves
+ * a cached snapshot exactly as it was. When `persist` fails during `createFeedback`
  * and the record carries an inline screenshot, the engine retries once
  * without the screenshot (by far the heaviest field) so the text feedback
  * survives a storage-quota hit; if that also fails, the error propagates —
@@ -158,6 +167,12 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * ```
  */
 export function createCollectionStore(backend: CollectionStoreBackend): CollectionStore {
+  // Every mutation below builds a NEW array for `persist` instead of editing
+  // the loaded one in place. A backend whose `load()` serves a live cache (an
+  // in-memory array, a KV read-through) would otherwise see the change before
+  // the write is confirmed — and when `persist` throws, the phantom record
+  // stays visible, and the widget's retry of the same clientId dedups against
+  // it instead of being written for real.
   return {
     async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
       const feedbacks = await backend.load();
@@ -171,13 +186,13 @@ export function createCollectionStore(backend: CollectionStoreBackend): Collecti
         annotationId: () => backend.generateId(),
       });
 
-      feedbacks.unshift(record);
+      const next = [record, ...feedbacks];
       try {
-        await backend.persist(feedbacks);
+        await backend.persist(next);
       } catch (err) {
         if (!record.screenshotUrl) throw err;
         record.screenshotUrl = null;
-        await backend.persist(feedbacks);
+        await backend.persist(next);
       }
       return record;
     },
@@ -192,23 +207,24 @@ export function createCollectionStore(backend: CollectionStoreBackend): Collecti
 
     async updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
       const feedbacks = await backend.load();
-      const fb = feedbacks.find((f) => f.id === id);
-      if (!fb) throw new StoreNotFoundError();
+      const current = feedbacks.find((f) => f.id === id);
+      if (!current) throw new StoreNotFoundError();
 
-      fb.status = data.status;
-      fb.resolvedAt = data.resolvedAt;
-      fb.updatedAt = new Date();
-      await backend.persist(feedbacks);
-      return fb;
+      const updated: FeedbackRecord = {
+        ...current,
+        status: data.status,
+        resolvedAt: data.resolvedAt,
+        updatedAt: new Date(),
+      };
+      await backend.persist(feedbacks.map((f) => (f === current ? updated : f)));
+      return updated;
     },
 
     async deleteFeedback(id: string): Promise<void> {
       const feedbacks = await backend.load();
-      const idx = feedbacks.findIndex((f) => f.id === id);
-      if (idx === -1) throw new StoreNotFoundError();
+      if (!feedbacks.some((f) => f.id === id)) throw new StoreNotFoundError();
 
-      feedbacks.splice(idx, 1);
-      await backend.persist(feedbacks);
+      await backend.persist(feedbacks.filter((f) => f.id !== id));
     },
 
     async deleteAllFeedbacks(projectName: string): Promise<void> {

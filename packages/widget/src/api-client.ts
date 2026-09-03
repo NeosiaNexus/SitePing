@@ -8,7 +8,9 @@ import {
   hasOwn,
   networkErrorFromException,
   type Prettify,
+  SitepingError,
   type SitepingHeadersOption,
+  SitepingNetworkError,
 } from "@siteping/core";
 import type { Identity } from "./identity.js";
 
@@ -111,6 +113,23 @@ async function resilientFetch(url: string, init: RequestInit, retries = MAX_RETR
 interface RetryEntry {
   endpoint: string;
   payload: FeedbackPayload;
+}
+
+/**
+ * Whether a failed submission is worth replaying later. Network failures and
+ * server errors (5xx) are transient — the same payload can succeed once the
+ * server is back. A 4xx is the server's verdict on the payload itself
+ * (validation, auth, size…): replaying it verbatim fails identically every
+ * time, so it is surfaced to the host through `onError` and never queued —
+ * a queued rejection used to be replayed, and rejected, on every page load.
+ */
+function isTransientFailure(error: unknown): boolean {
+  return error instanceof SitepingNetworkError || (error instanceof SitepingError && error.code === "SERVER");
+}
+
+/** Same verdict for a replayed request: keep 5xx for the next flush, drop 4xx for good. */
+function isTransientStatus(status: number): boolean {
+  return status >= 500;
 }
 
 const LOCK_NAME = "siteping_retry_queue";
@@ -224,6 +243,7 @@ export async function flushRetryQueue(
 
       // Process items sequentially to avoid overwhelming the server
       const failed: RetryEntry[] = [];
+      let rejected = 0;
       if (toRetry.length > 0) {
         const headers = await buildRequestHeaders(auth, true);
         for (const entry of toRetry) {
@@ -233,13 +253,19 @@ export async function flushRetryQueue(
               headers,
               body: JSON.stringify(entry.payload),
             });
-            if (!res.ok) {
-              failed.push(entry);
-            }
+            if (res.ok) continue;
+            if (isTransientStatus(res.status)) failed.push(entry);
+            else rejected += 1;
           } catch {
             failed.push(entry);
           }
         }
+      }
+
+      if (rejected > 0) {
+        console.warn(
+          `[siteping] flushRetryQueue: dropped ${rejected} queued feedback(s) the server rejected (4xx) — they would fail identically on every replay`,
+        );
       }
 
       // Rebuild queue: keep unrelated entries + failed retries
@@ -277,9 +303,6 @@ export class ApiClient implements WidgetClient {
     // explicit `screenshotRegion: null` on every legacy capture.
     const { screenshotRegion, ...rest } = payload;
     const body: FeedbackPayload = screenshotRegion ? { ...rest, screenshotRegion } : rest;
-    // Match the legacy contract: every failure path (network or HTTP) queues
-    // for retry. Tests + host apps already rely on this — narrowing to
-    // network-only would be a silent behaviour change.
     try {
       let response: Response;
       try {
@@ -299,8 +322,9 @@ export class ApiClient implements WidgetClient {
       return parseJsonAs<FeedbackResponse>(response);
     } catch (error) {
       // Queue the wire shape (region stripped when absent) so a later
-      // flushRetryQueue replays exactly what a fresh POST would send.
-      queueForRetry(this.endpoint, body);
+      // flushRetryQueue replays exactly what a fresh POST would send — but
+      // only when a replay can succeed (see `isTransientFailure`).
+      if (isTransientFailure(error)) queueForRetry(this.endpoint, body);
       throw error;
     }
   }

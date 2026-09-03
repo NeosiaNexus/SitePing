@@ -60,7 +60,7 @@ npx @siteping/cli status --schema prisma/schema.prisma
 
 | Check | What it looks at |
 |---|---|
-| Prisma schema | Both models present, every field up to date |
+| Prisma schema | Both models present, every field up to date — the exact diff `sync` applies, so type, optionality, attributes (`@unique`, `@db.Text`, …) and `@@index` blocks all count |
 | API route | `app/api/siteping/route.ts` or `src/app/api/siteping/route.ts` exists |
 | Package | `@siteping/widget` listed in your `package.json` |
 | Widget integration | `initSiteping` referenced somewhere in `src/`, `app/`, or `pages/` |
@@ -71,9 +71,10 @@ The API route check only knows about the Next.js App Router. If you serve the ad
 
 ```bash
 npx @siteping/cli doctor --url http://localhost:3000 --endpoint /api/siteping
+npx @siteping/cli doctor --url https://app.example.com --api-key "$SITEPING_API_KEY"
 ```
 
-`doctor` sends one GET request to your running server and tells you whether a SitePing handler answered (10-second timeout). Pass **both** flags to run it non-interactively — any flag you omit becomes a prompt.
+`doctor` sends one GET request to your running server and tells you whether a SitePing handler answered (10-second timeout). Pass **both** `--url` and `--endpoint` to run it non-interactively — either one you omit becomes a prompt. When the endpoint is configured with an `apiKey` and `GET` is not public, pass the key with `--api-key`; without it, a `401` comes with a hint.
 
 It checks the HTTP response only — it never reads your schema. For schema verification, use `status`.
 
