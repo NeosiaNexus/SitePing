@@ -117,6 +117,29 @@ describe("doctorCommand", () => {
       expect(p.outro).toHaveBeenCalledWith("Diagnostics complete");
     });
 
+    it("sends the --api-key as a Bearer token", async () => {
+      const fetchMock = mockFetchOk({ total: 1, feedbacks: [] });
+      vi.stubGlobal("fetch", fetchMock);
+
+      await doctorCommand({ url: "http://localhost:3000", endpoint: "/api/siteping", apiKey: "sk-live" });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:3000/api/siteping?projectName=__siteping_health_check__",
+        expect.objectContaining({ headers: { Authorization: "Bearer sk-live" } }),
+      );
+      expect(p.log.success).toHaveBeenCalledWith(expect.stringContaining("1 feedback(s) found"));
+    });
+
+    it("sends no Authorization header without --api-key", async () => {
+      const fetchMock = mockFetchOk({ total: 0, feedbacks: [] });
+      vi.stubGlobal("fetch", fetchMock);
+
+      await doctorCommand({ url: "http://localhost:3000", endpoint: "/api/siteping" });
+
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(init.headers).toBeUndefined();
+    });
+
     it("shows warning when response has no data.total", async () => {
       vi.stubGlobal("fetch", mockFetchOk({ something: "else" }));
 
@@ -151,6 +174,15 @@ describe("doctorCommand", () => {
       expect(spinnerMock.stop).toHaveBeenCalledWith(expect.stringContaining("HTTP error 500"));
       expect(p.log.error).toHaveBeenCalledWith(expect.stringContaining("500 Internal Server Error"));
       expect(p.log.info).toHaveBeenCalledWith(expect.stringContaining("Something went wrong"));
+    });
+
+    it("hints at --api-key on a 401 when no key was passed", async () => {
+      vi.stubGlobal("fetch", mockFetchHttpError(401, "Unauthorized", '{"error":"Unauthorized"}'));
+
+      const err = await doctorCommand({ url: "http://localhost:3000", endpoint: "/api/siteping" }).catch((e) => e);
+
+      expect((err as ExitError).code).toBe(1);
+      expect(p.log.info).toHaveBeenCalledWith(expect.stringContaining("--api-key"));
     });
 
     it("shows error only for HTTP error with empty body", async () => {

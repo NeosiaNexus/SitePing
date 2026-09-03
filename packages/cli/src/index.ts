@@ -34,10 +34,11 @@ program
   .description("Test the connection to the Siteping API")
   .option("--url <url>", "Server URL (default: http://localhost:3000)")
   .option("--endpoint <path>", "Endpoint path (default: /api/siteping)")
+  .option("--api-key <key>", "Bearer token for endpoints configured with apiKey")
   .action(doctorCommand)
   .addHelpText(
     "after",
-    "\n  Examples:\n    $ siteping doctor\n    $ siteping doctor --url https://staging.example.com --endpoint /api/feedback",
+    "\n  Examples:\n    $ siteping doctor\n    $ siteping doctor --url https://staging.example.com --endpoint /api/feedback\n    $ siteping doctor --url https://app.example.com --api-key $SITEPING_API_KEY",
   );
 
 program.parse();

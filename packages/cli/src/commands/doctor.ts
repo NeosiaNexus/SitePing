@@ -6,6 +6,8 @@ export interface DoctorCommandOptions {
   url?: string;
   /** Override the API endpoint path (defaults to prompt / `/api/siteping`). */
   endpoint?: string;
+  /** Bearer token for endpoints configured with `apiKey` (sent as `Authorization: Bearer <key>`). */
+  apiKey?: string;
 }
 
 /** Shape of the `GET /api/siteping?projectName=…` health-check response. */
@@ -55,7 +57,10 @@ export async function doctorCommand(options: DoctorCommandOptions): Promise<void
 
   try {
     const start = performance.now();
-    const response = await fetch(fullUrl, { signal: AbortSignal.timeout(10_000) });
+    const response = await fetch(fullUrl, {
+      signal: AbortSignal.timeout(10_000),
+      ...(options.apiKey ? { headers: { Authorization: `Bearer ${options.apiKey}` } } : {}),
+    });
     const elapsed = Math.round(performance.now() - start);
 
     if (response.ok) {
@@ -77,6 +82,9 @@ export async function doctorCommand(options: DoctorCommandOptions): Promise<void
       const text = await response.text().catch(() => "");
       p.log.error(`Server responded with: ${response.status} ${response.statusText}`);
       if (text) p.log.info(text.slice(0, 200));
+      if (response.status === 401 && !options.apiKey) {
+        p.log.info("The endpoint requires authentication — pass the configured key with --api-key <key>");
+      }
       process.exit(1);
     }
   } catch (error) {

@@ -88,7 +88,10 @@ describe("generateRoute", () => {
     expect(content).toContain('import { prisma } from "@/lib/prisma"');
     expect(content).toContain("export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({");
     expect(content).toContain("prisma,");
-    expect(content).toContain("// apiKey: process.env.SITEPING_API_KEY,");
+    // The key is wired, not commented out: the handler refuses to start in
+    // production without one, so the generated route must not hide it.
+    expect(content).toContain("apiKey: process.env.SITEPING_API_KEY,");
+    expect(content).not.toContain("// apiKey");
     expect(content).toContain('// allowedOrigins: ["https://your-site.com"],');
   });
 
