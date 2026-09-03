@@ -1,6 +1,6 @@
 // Must run before prisma-ast: chevrotain needs Object.groupBy (Node 21+).
 import "../utils/object-group-by-polyfill.js";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import type { AttributeArgument, BlockAttribute, Field, Model, Property, Schema } from "@mrleebo/prisma-ast";
 import { getSchema, printSchema } from "@mrleebo/prisma-ast";
 import { type FieldDef, type IndexDef, SITEPING_MODELS } from "@siteping/core";
@@ -34,12 +34,7 @@ export interface SyncResult extends SchemaReconciliation {
  * - User-added fields outside Siteping's definition are left untouched
  */
 export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): SyncResult {
-  if (!existsSync(schemaPath)) {
-    throw new Error(`Schema file not found: ${schemaPath}`);
-  }
-
-  const source = readFileSync(schemaPath, "utf-8");
-  const schema = getSchema(source);
+  const schema = getSchema(readSchemaSource(schemaPath));
   const { addedModels, changes } = reconcileSitepingModels(schema);
 
   if (addedModels.length > 0 || changes.length > 0) {
@@ -58,6 +53,22 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
   }
 
   return { schemaPath, addedModels, changes };
+}
+
+/**
+ * Read the schema file, turning a missing file into the CLI's own error. The
+ * read itself is the existence check — a separate existence probe followed
+ * by the read would be a check-then-act race on a user-controlled path.
+ */
+function readSchemaSource(schemaPath: string): string {
+  try {
+    return readFileSync(schemaPath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(`Schema file not found: ${schemaPath}`);
+    }
+    throw error;
+  }
 }
 
 /**
