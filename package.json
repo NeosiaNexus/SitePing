@@ -34,18 +34,18 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@biomejs/biome": "2.5.5",
-    "@playwright/test": "^1.61.1",
-    "@types/node": "^26.1.1",
-    "@vitest/coverage-istanbul": "^4.1.10",
+    "@biomejs/biome": "2.5.10",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.4.0",
+    "@vitest/coverage-istanbul": "^4.1.11",
     "fast-check": "^4.9.0",
     "jsdom": "29.1.1",
-    "knip": "^6.29.0",
-    "publint": "0.3.22",
+    "knip": "^6.32.3",
+    "publint": "0.3.24",
     "tsup": "^8.5.1",
-    "turbo": "^2.10.6",
+    "turbo": "^2.10.12",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "brace-expansion": "^5.0.8",
