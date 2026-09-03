@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.8](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.7...widget-v0.10.8) (2026-09-03)
+
+
+### Bug Fixes
+
+* harden webhooks, validation, store engine and adapter contracts (audit 2026-09) ([#279](https://github.com/NeosiaNexus/SitePing/issues/279)) ([7336eea](https://github.com/NeosiaNexus/SitePing/commit/7336eea220938df4b34c8ece9270d246f772e61d))
+
+
+### Miscellaneous
+
+* **deps-dev:** bump the dev-dependencies group with 5 updates ([#269](https://github.com/NeosiaNexus/SitePing/issues/269)) ([d64923b](https://github.com/NeosiaNexus/SitePing/commit/d64923b0a3dbb126b9a856a3b8a581836a33021a))
+* **deps-dev:** bump the dev-dependencies group with 5 updates ([#276](https://github.com/NeosiaNexus/SitePing/issues/276)) ([cfd32b6](https://github.com/NeosiaNexus/SitePing/commit/cfd32b6a0c4c243293b2c1656026595aea4f1ff8))
+* **deps-dev:** bump the dev-dependencies group with 7 updates ([#262](https://github.com/NeosiaNexus/SitePing/issues/262)) ([8be0415](https://github.com/NeosiaNexus/SitePing/commit/8be04151442a492d9b10a269b33d705c5c2c980c))
+* **deps-dev:** bump vitest from 3.2.7 to 4.1.10 in the vitest group across 1 directory ([#240](https://github.com/NeosiaNexus/SitePing/issues/240)) ([dca82f0](https://github.com/NeosiaNexus/SitePing/commit/dca82f078173c78d1703a7a8512adf1bffbc24ca))
+
 ## [0.10.7](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.6...widget-v0.10.7) (2026-07-28)
 
 
