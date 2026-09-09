@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // reference is defined when the factory runs.
 const { mockHtml2Canvas } = vi.hoisted(() => ({ mockHtml2Canvas: vi.fn() }));
 
-vi.mock("html2canvas", () => ({
+vi.mock("html2canvas-pro", () => ({
   default: mockHtml2Canvas,
 }));
 
@@ -54,7 +54,7 @@ function stubCanvas(width = 100, height = 100) {
 beforeEach(() => {
   _resetScreenshotCacheForTests();
   mockHtml2Canvas.mockReset();
-  // Default success stub — give html2canvas a real-looking canvas so tests
+  // Default success stub — give html2canvas-pro a real-looking canvas so tests
   // that focus on geometry can complete without tripping graceful degrade.
   mockHtml2Canvas.mockResolvedValue(stubCanvas());
   // A big document and no scroll unless a test says otherwise.
@@ -65,8 +65,8 @@ beforeEach(() => {
 // -----------------------------------------------------------------------
 // Graceful-degrade contract: captureAnnotatedScreenshot NEVER throws.
 //
-// html2canvas is a regular dependency, so it's always installed — the
-// runtime failure modes that matter are: html2canvas threw (content-
+// html2canvas-pro is a regular dependency, so it's always installed — the
+// runtime failure modes that matter are: html2canvas-pro threw (content-
 // tainted canvas, version mismatch) and the dynamic import resolved to
 // something unexpected (interop edge case). Both must result in `null`
 // so the feedback submission still completes.
@@ -83,7 +83,7 @@ describe("captureAnnotatedScreenshot — graceful degrade", () => {
     warnSpy.mockRestore();
   });
 
-  it("returns null when html2canvas rejects (covers all runtime capture failures)", async () => {
+  it("returns null when html2canvas-pro rejects (covers all runtime capture failures)", async () => {
     mockHtml2Canvas.mockReset();
     mockHtml2Canvas.mockRejectedValue(new Error("canvas tainted"));
 
@@ -95,12 +95,12 @@ describe("captureAnnotatedScreenshot — graceful degrade", () => {
   });
 
   it("returns null when the dynamic import resolves to something un-callable", async () => {
-    // Simulate a bundler/transform that exposes html2canvas as `undefined`
+    // Simulate a bundler/transform that exposes html2canvas-pro as `undefined`
     // (rare but possible with some interop modes). The catch should swallow
     // the resulting TypeError.
     mockHtml2Canvas.mockReset();
     mockHtml2Canvas.mockImplementation(() => {
-      throw new TypeError("html2canvas is not a function");
+      throw new TypeError("html2canvas-pro is not a function");
     });
 
     const result = await captureAnnotatedScreenshot(new DOMRect(0, 0, 100, 100));

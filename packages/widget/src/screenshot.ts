@@ -1,10 +1,17 @@
 /**
- * Screenshot capture via html2canvas.
+ * Screenshot capture via html2canvas-pro.
  *
- * `html2canvas` is a regular `dependency` of `@siteping/widget` — every
+ * `html2canvas-pro` is a regular `dependency` of `@siteping/widget` — every
  * install gets it. We dynamic-import it so bundlers emit a separate chunk
  * loaded only when `enableScreenshot: true` triggers the first capture;
  * hosts that never enable screenshots pay only the disk-space cost.
+ *
+ * Why the fork rather than html2canvas itself: the original parses only
+ * `rgb()` / `hsl()` and has been unmaintained since 2022. Browsers now hand
+ * back computed colors in whatever space the stylesheet used — `lab()`,
+ * `oklab()`, `oklch()`, `color()` — and Tailwind 4 compiles every opacity
+ * modifier (`bg-white/5`) to exactly those. The original threw on the first
+ * such element and the whole capture was lost; the fork renders them.
  *
  * On capture failure (content-tainted canvas, version mismatch, missing 2D
  * context) we return `null` rather than throwing — the feedback is still
@@ -35,11 +42,15 @@ async function loadHtml2Canvas(): Promise<Html2CanvasFn | null> {
   try {
     // Static dynamic import — bundlers (Vite, webpack, esbuild) resolve this
     // at build time and emit a separate chunk loaded only on first capture.
-    // html2canvas ships as a regular dependency so this resolves on every
+    // html2canvas-pro ships as a regular dependency so this resolves on every
     // install. Earlier attempts to dodge static resolution via magic comments
     // silently broke production: bare specifiers can't be resolved at runtime
     // in browsers without import maps.
-    const mod = (await import("html2canvas")) as { default?: Html2CanvasFn } & Html2CanvasFn;
+    //
+    // Through `unknown` because the module namespace also carries the fork's
+    // named exports (config, validator, monitor), so TypeScript no longer
+    // sees enough overlap with the callable shape we actually consume.
+    const mod = (await import("html2canvas-pro")) as unknown as { default?: Html2CanvasFn } & Html2CanvasFn;
     cachedHtml2Canvas = (mod.default ?? mod) as Html2CanvasFn;
     return cachedHtml2Canvas;
   } catch (err) {
@@ -47,7 +58,7 @@ async function loadHtml2Canvas(): Promise<Html2CanvasFn | null> {
     if (!warnedAboutMissingDep) {
       warnedAboutMissingDep = true;
       console.warn(
-        "[siteping] html2canvas import failed unexpectedly. Capture is disabled for this session — feedbacks are still submitted, just without screenshots. Underlying error:",
+        "[siteping] html2canvas-pro import failed unexpectedly. Capture is disabled for this session — feedbacks are still submitted, just without screenshots. Underlying error:",
         err,
       );
     }
@@ -114,7 +125,7 @@ export async function captureAnnotatedScreenshot(
   const docX = window.scrollX + rect.x;
   const docY = window.scrollY + rect.y;
 
-  // Clamp the padded capture area to the document bounds so html2canvas
+  // Clamp the padded capture area to the document bounds so the engine
   // never renders blank out-of-document margins.
   const docW = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
   const docH = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
