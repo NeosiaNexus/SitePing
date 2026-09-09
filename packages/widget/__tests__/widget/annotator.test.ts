@@ -97,7 +97,7 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
   }),
 }));
 
-// Mock the screenshot module — jsdom can't drive html2canvas. The annotator
+// Mock the screenshot module — jsdom can't drive html2canvas-pro. The annotator
 // only calls `captureAnnotatedScreenshot` when constructed with
 // `enableScreenshot: true`; the capture tests below flip the resolved value.
 const screenshotMocks = vi.hoisted(() => ({
@@ -1564,7 +1564,7 @@ describe("Annotator", () => {
         });
 
         // One capture, both submissions carry the same cached pair — the
-        // user is never punished with a second html2canvas run.
+        // user is never punished with a second html2canvas-pro run.
         expect(screenshotMocks.captureAnnotatedScreenshot).toHaveBeenCalledOnce();
         const second = completeListener.mock.calls[1]![0];
         expect(second.screenshotDataUrl).toBe("data:image/jpeg;base64,CAP");

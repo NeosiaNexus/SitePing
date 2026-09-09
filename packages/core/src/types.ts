@@ -129,12 +129,12 @@ export interface SitepingBaseConfig {
    * Capture a JPEG screenshot of the annotated area on submit. Defaults to
    * `false` — opt-in because:
    *
-   * - it adds runtime weight (~40 KB gzip dynamic chunk for html2canvas,
+   * - it adds runtime weight (~60 KB gzip dynamic chunk for html2canvas-pro,
    *   loaded only on first capture),
    * - it embeds page content in the feedback (privacy/GDPR consideration —
    *   inform end users in your widget host UI when enabling).
    *
-   * `html2canvas` ships as a regular dependency of `@siteping/widget` so the
+   * `html2canvas-pro` ships as a regular dependency of `@siteping/widget` so the
    * dynamic import always resolves; you don't need to install anything extra.
    *
    * **Masking sensitive elements:** add `data-siteping-ignore="true"` to any

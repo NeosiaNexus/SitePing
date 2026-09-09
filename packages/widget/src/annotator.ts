@@ -14,7 +14,7 @@ export interface AnnotationComplete {
   type: FeedbackType;
   message: string;
   /**
-   * Base64 JPEG `data:` URL captured by html2canvas, or null when capture
+   * Base64 JPEG `data:` URL captured by html2canvas-pro, or null when capture
    * is disabled / failed / the peer dep is missing.
    */
   screenshotDataUrl?: string | null | undefined;
@@ -590,7 +590,7 @@ export class Annotator {
     screenshotCache: { value?: AnnotatedScreenshot | null },
   ): Promise<void> {
     // Screenshot capture is the slow part. Capture once and reuse the
-    // cached data URL + region on every retry — re-running html2canvas after
+    // cached data URL + region on every retry — re-running html2canvas-pro after
     // each failed submit would punish the user for a network blip.
     if (screenshotCache.value === undefined) {
       screenshotCache.value = await this.maybeCapture(rectBounds);

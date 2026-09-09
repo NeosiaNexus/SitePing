@@ -48,7 +48,7 @@
     },
     "packages/adapter-kit": {
       "name": "@siteping/adapter-kit",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
@@ -61,7 +61,7 @@
     },
     "packages/adapter-localstorage": {
       "name": "@siteping/adapter-localstorage",
-      "version": "0.5.3",
+      "version": "0.5.4",
       "devDependencies": {
         "@siteping/core": "workspace:*",
       },
@@ -75,7 +75,7 @@
     },
     "packages/adapter-prisma": {
       "name": "@siteping/adapter-prisma",
-      "version": "0.6.4",
+      "version": "0.6.5",
       "dependencies": {
         "zod": "^4.4.3",
       },
@@ -88,7 +88,7 @@
     },
     "packages/cli": {
       "name": "@siteping/cli",
-      "version": "0.5.4",
+      "version": "0.5.5",
       "bin": {
         "siteping": "./dist/index.js",
       },
@@ -105,7 +105,7 @@
     },
     "packages/dashboard": {
       "name": "@siteping/dashboard",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "devDependencies": {
         "@siteping/core": "workspace:*",
         "@size-limit/preset-small-lib": "^12.1.0",
@@ -121,10 +121,10 @@
     },
     "packages/widget": {
       "name": "@siteping/widget",
-      "version": "0.10.7",
+      "version": "0.10.8",
       "dependencies": {
         "@medv/finder": "^4.0.2",
-        "html2canvas": "^1.4.1",
+        "html2canvas-pro": "^2.4.2",
       },
       "devDependencies": {
         "@siteping/core": "workspace:*",
@@ -1019,7 +1019,7 @@
 
     "html-void-elements": ["html-void-elements@3.0.0", "", {}, "sha512-bEqo66MRXsUGxWHV5IP0PUiAWwoEjba4VCzg0LjFJBpchPaTfyfCKTG6bc5F8ucKec3q5y6qOdGyYTSBEvhCrg=="],
 
-    "html2canvas": ["html2canvas@1.4.1", "", { "dependencies": { "css-line-break": "^2.1.0", "text-segmentation": "^1.0.3" } }, "sha512-fPU6BHNpsyIhr8yyMpTLLxAbkaK8ArIBcmZIRiBLiDhjeqvXolaEmDGmELFuX9I4xDcaKKcJl+TKZLqruBbmWA=="],
+    "html2canvas-pro": ["html2canvas-pro@2.4.2", "", { "dependencies": { "css-line-break": "^2.1.0", "text-segmentation": "^1.0.3" } }, "sha512-W0QvhquArW7jnorC66FaCpP1LflcUJUdyLTUD8zAz0ka8kJv/PLW45W+lg5ZonBU1lOtKZU+FOntr+XTu1iPcA=="],
 
     "inline-style-parser": ["inline-style-parser@0.2.7", "", {}, "sha512-Nb2ctOyNR8DqQoR0OwRG95uNWIC0C1lCgf5Naz5H6Ji72KZ8OcFZLz2P5sNgwlyoJ8Yif11oMuYs5pBQa86csA=="],
 

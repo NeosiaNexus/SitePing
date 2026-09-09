@@ -37,7 +37,7 @@ export default defineConfig({
         "**/index.ts",
         "**/icons.ts",
         "**/styles/**",
-        // html2canvas wrapper — the success/downscale paths require a real
+        // html2canvas-pro wrapper — the success/downscale paths require a real
         // browser canvas (jsdom can't drive `getContext('2d').drawImage` or
         // `toDataURL` for image data). Failure-path test lives in
         // `__tests__/widget/screenshot.test.ts`; the happy path is covered
