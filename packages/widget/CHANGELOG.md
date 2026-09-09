@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.9](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.8...widget-v0.10.9) (2026-09-09)
+
+
+### Bug Fixes
+
+* **widget:** capture screenshots on pages using modern CSS colors ([#281](https://github.com/NeosiaNexus/SitePing/issues/281)) ([e4084ff](https://github.com/NeosiaNexus/SitePing/commit/e4084ff1ca57dd2d1752547f2232c957ec578d20))
+
 ## [0.10.8](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.7...widget-v0.10.8) (2026-09-03)
 
 
