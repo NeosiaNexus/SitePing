@@ -73,7 +73,7 @@
   },
   "dependencies": {
     "@medv/finder": "^4.0.2",
-    "html2canvas-pro": "^2.4.2"
+    "html2canvas-pro": "^2.4.3"
   },
   "devDependencies": {
     "@siteping/core": "workspace:*",
