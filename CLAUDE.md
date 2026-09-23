@@ -11,7 +11,7 @@
 - `bun run lint:fix` — biome auto-fix
 - `bun run verify` — build + check + lint + test:run (the full pre-PR gate)
 - `bun run pkg-checks` — publint + attw over published packages (list derived from release-please manifest)
-- `bun run check:consistency` — locale counts, package registration, fix-dts chains (runs in CI)
+- `bun run check:consistency` — locale counts, package registration, fix-dts chains, esbuild override = widget spec (runs in CI)
 - `bun run new:locale <code>` / `bun run new:adapter <name>` — scaffolds (see CONTRIBUTING)
 
 ## Architecture

@@ -29,7 +29,7 @@ bun run lint               # lint with Biome (includes the type-aware rules doma
 bun run lint:fix           # auto-fix lint issues
 bun run verify             # build + check + lint + test:run — the full pre-PR gate
 bun run pkg-checks         # publint + attw on every published package (same script CI runs)
-bun run check:consistency  # locale counts, package registration, fix-dts chains
+bun run check:consistency  # locale counts, package registration, fix-dts chains, esbuild override
 bun run knip               # dead files / exports / dependencies
 bun run new:locale <code>  # scaffold a new built-in locale (see Adding a Locale)
 bun run new:adapter <name> # scaffold a new first-party adapter (see Creating a New Adapter)

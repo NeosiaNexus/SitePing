@@ -14,26 +14,59 @@ updates:
     # bypass the cooldown.
     cooldown:
       default-days: 7
+    # Group membership is NOT "first matching group" (as GitHub's docs say):
+    # dependabot-core assigns each dependency to the MOST SPECIFIC matching
+    # group — exact name 1000, a group without `patterns` 500, a wildcard
+    # like `@vitest/*` ~90. The catch-all groups below have no patterns, so
+    # they beat any wildcard: the job log said "Skipping
+    # @vitest/coverage-istanbul for group 'vitest' - belongs to more specific
+    # group 'dev-dependencies'", whose minor/patch filter then dropped the
+    # major into a lone PR (#285/#288). Lockstep families therefore list
+    # every member by exact name AND are excluded from the catch-alls.
     groups:
       # The coverage provider must ship the same major as vitest itself:
-      # separate major-bump PRs each fail CI alone (#223/#225). No
-      # update-types filter — majors included — so the family always
-      # arrives as one lockstep PR. Listed first: dependabot assigns each
-      # dependency to the first matching group.
+      # separate major-bump PRs each fail CI alone (#223/#225, #285/#288).
+      # No update-types filter — majors included — so the family always
+      # arrives as one lockstep PR.
       vitest:
         patterns:
           - "vitest"
+          - "@vitest/coverage-istanbul"
           - "@vitest/*"
+      # Every @size-limit/* plugin pins size-limit exactly (peer +
+      # dependency): split PRs (#265/#266) each go green alone but leave a
+      # nested duplicate CLI in the lockfile.
+      size-limit:
+        patterns:
+          - "size-limit"
+          - "@size-limit/file"
+          - "@size-limit/*"
+      # Keep `dependency-type`, despite every bun job warning "The
+      # 'dependency-type' option is not supported for the 'bun' package
+      # manager ... will be ignored": that is only a log line.
+      # DependencyGroup#matches_dependency_type? still enforces it for bun,
+      # which is what splits dev from prod — without it both pattern-less
+      # groups would match every dependency and open duplicate PRs.
       dev-dependencies:
         dependency-type: development
         update-types:
           - "minor"
           - "patch"
+        exclude-patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "size-limit"
+          - "@size-limit/*"
       production-dependencies:
         dependency-type: production
         update-types:
           - "minor"
           - "patch"
+        exclude-patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "size-limit"
+          - "@size-limit/*"
     open-pull-requests-limit: 10
 
   - package-ecosystem: github-actions
@@ -45,6 +78,17 @@ updates:
       include: scope
     cooldown:
       default-days: 7
+    groups:
+      # init and analyze run in the same job and refuse to mix versions
+      # ("Loaded a configuration file for version '4.37.3', but running
+      # version '4.38.0'"), so split bumps each fail CodeQL alone: every
+      # trio from 4.37.4 (#257) to 4.38.0 (#289-#291) was superseded
+      # unmerged. No update-types filter, so upload-sarif (scorecard.yml)
+      # and majors move with them as one PR.
+      codeql-action:
+        patterns:
+          - "github/codeql-action"
+          - "github/codeql-action/*"
     open-pull-requests-limit: 5
 
   # The demo image pins its bases by digest (supply-chain: a tag is mutable).

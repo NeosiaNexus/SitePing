@@ -10,7 +10,8 @@
 //      config/manifest, or a manifest package is missing its release.yml
 //      wiring (output + publish job);
 //   4. a published package's build script forgot the fix-dts chain its
-//      declarations need (cli is exempt: it ships no .d.ts).
+//      declarations need (cli is exempt: it ships no .d.ts);
+//   5. the root esbuild override drifted from the widget's esbuild spec.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -101,6 +102,22 @@ for (const pkgPath of Object.keys(manifest)) {
   if (!pkg.scripts?.build?.includes("fix-dts.mjs")) {
     errors.push(`${pkgPath} build script is missing the fix-dts chain (tsup && node ../../scripts/fix-dts.mjs dist)`);
   }
+}
+
+// --- 5. esbuild override ----------------------------------------------------
+
+// The root `overrides.esbuild` is the supply-chain floor for every transitive
+// esbuild (#242), and it wins over packages/widget's own devDependency. When
+// Dependabot bumps only the widget spec (#269), the lockfile cannot move: the
+// bump lands as a no-op and every later bun update job dies on NoChangeError.
+// Keeping the two specs identical makes such a PR fail here instead, so the
+// override is bumped in the same PR.
+const esbuildOverride = JSON.parse(read("package.json")).overrides?.esbuild;
+const widgetEsbuild = JSON.parse(read("packages/widget/package.json")).devDependencies?.esbuild;
+if (esbuildOverride !== widgetEsbuild) {
+  errors.push(
+    `root overrides.esbuild (${esbuildOverride}) must equal packages/widget devDependencies.esbuild (${widgetEsbuild}) — bump both together`,
+  );
 }
 
 // ---------------------------------------------------------------------------

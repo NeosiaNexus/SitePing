@@ -223,7 +223,7 @@ jobs:
         # package can never be silently skipped by this gate.
         run: bun run pkg-checks
 
-      - name: Consistency check (locales, package registration, fix-dts chains)
+      - name: Consistency check (locales, package registration, fix-dts chains, esbuild override)
         run: bun run check:consistency
 
   # peerDependencies promise `react >=18`, but the suite's devDeps pin React
