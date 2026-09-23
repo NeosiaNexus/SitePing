@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.6](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.5...adapter-prisma-v0.6.6) (2026-09-23)
+
+
+### Miscellaneous
+
+* **deps:** bump the production-dependencies group across 1 directory with 6 updates ([#299](https://github.com/NeosiaNexus/SitePing/issues/299)) ([b8b0655](https://github.com/NeosiaNexus/SitePing/commit/b8b06553c7c860c27229f9447f6bd5082b27011e))
+* **deps:** bump the production-dependencies group across 1 directory with 7 updates ([#287](https://github.com/NeosiaNexus/SitePing/issues/287)) ([2d7d264](https://github.com/NeosiaNexus/SitePing/commit/2d7d2646a75276d6c8b53beb9ff070726ebdf5e4))
+
 ## [0.6.5](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.4...adapter-prisma-v0.6.5) (2026-09-03)
 
 
