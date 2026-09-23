@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.6](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.5...cli-v0.5.6) (2026-09-23)
+
+
+### Miscellaneous
+
+* **deps-dev:** bump the dev-dependencies group across 1 directory with 7 updates ([#295](https://github.com/NeosiaNexus/SitePing/issues/295)) ([703b4c6](https://github.com/NeosiaNexus/SitePing/commit/703b4c67a3680a9ab9fc58d73a213dfc8144d9a0))
+
 ## [0.5.5](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.4...cli-v0.5.5) (2026-09-03)
 
 

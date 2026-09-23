@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.10](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.9...widget-v0.10.10) (2026-09-23)
+
+
+### Miscellaneous
+
+* **deps-dev:** bump size-limit to 14.0.0 and replace preset-small-lib with @size-limit/file ([#294](https://github.com/NeosiaNexus/SitePing/issues/294)) ([2c56057](https://github.com/NeosiaNexus/SitePing/commit/2c56057b7d01de65bd446a0029a2377376fd34a9))
+* **deps-dev:** bump the dev-dependencies group with 4 updates ([#284](https://github.com/NeosiaNexus/SitePing/issues/284)) ([b632f09](https://github.com/NeosiaNexus/SitePing/commit/b632f093912de591573a270767654b4c6e613f26))
+* **deps:** bump the production-dependencies group across 1 directory with 6 updates ([#299](https://github.com/NeosiaNexus/SitePing/issues/299)) ([b8b0655](https://github.com/NeosiaNexus/SitePing/commit/b8b06553c7c860c27229f9447f6bd5082b27011e))
+* **deps:** bump the production-dependencies group across 1 directory with 7 updates ([#287](https://github.com/NeosiaNexus/SitePing/issues/287)) ([2d7d264](https://github.com/NeosiaNexus/SitePing/commit/2d7d2646a75276d6c8b53beb9ff070726ebdf5e4))
+
 ## [0.10.9](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.8...widget-v0.10.9) (2026-09-09)
 
 
