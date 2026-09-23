@@ -5,7 +5,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 ## Prerequisites
 
 - [Bun](https://bun.sh/) **1.3.x** — the exact version is pinned in `packageManager` (root `package.json`) and used by CI. Bun 1.4 is known to break the demo build locally (symlinked `.bun` installs rejected by Turbopack — workaround: `bun install --linker=hoisted`); stick to the pinned line.
-- Node.js >= 22.22 for development — the test and size tooling (vitest 5, jsdom 30, size-limit 14) requires it. The published packages still declare `engines.node >= 20`: CI runs the full suite on Node 22 and 24, and the node-environment tests (core, adapters, CLI — what consumers run) on Node 20
+- Node.js ^22.22.2 or >= 24.15 for development — the test and size tooling (vitest 5, jsdom 30, size-limit 14) requires it. The published packages still declare `engines.node >= 20`: CI runs the full suite on Node 22 and 24, and the node-environment tests (core, adapters, CLI — what consumers run) on Node 20
 - For Playwright E2E tests: `bunx playwright install` — the config runs **three engines** (Chromium, Firefox, WebKit)
 
 ## Setup

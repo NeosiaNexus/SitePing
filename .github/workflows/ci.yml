@@ -316,12 +316,12 @@ jobs:
           NODE_MAJOR: ${{ matrix.node-version }}
         run: |
           if [ "$NODE_MAJOR" != "20" ]; then
-            ./node_modules/.bin/vitest run
-            exit 0
+            exec ./node_modules/.bin/vitest run
           fi
+          # Same roots as vitest.config.ts `include`.
           mapfile -t files < <(git grep -L '@vitest-environment jsdom' -- \
-            ':(glob)packages/*/__tests__/**/*.test.ts' \
-            ':(glob)packages/*/__tests__/**/*.test.tsx')
+            ':(glob)packages/**/__tests__/**/*.test.ts' \
+            ':(glob)packages/**/__tests__/**/*.test.tsx')
           echo "Node 20 lane: ${#files[@]} node-environment test files"
           if [ "${#files[@]}" -eq 0 ]; then
             echo "::error::no node-environment test files matched"
