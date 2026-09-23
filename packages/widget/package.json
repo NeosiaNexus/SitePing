@@ -77,14 +77,14 @@
   },
   "devDependencies": {
     "@siteping/core": "workspace:*",
-    "@size-limit/preset-small-lib": "^12.1.0",
+    "@size-limit/file": "^14.0.0",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "size-limit": "^12.1.0"
+    "size-limit": "^14.0.0"
   },
   "peerDependencies": {
     "react": ">=18"
