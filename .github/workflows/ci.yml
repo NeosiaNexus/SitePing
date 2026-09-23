@@ -305,5 +305,26 @@ jobs:
       - name: Build
         run: bun run build
 
+      # Node 20 is past upstream EOL and the test toolchain has left it
+      # (vitest 5, jsdom 30, Babel 8 all declare engines >= 22). The published
+      # packages still promise engines >= 20, so the Node 20 lane keeps the
+      # node-environment files — core, adapters, CLI, SSR guards: what a
+      # consumer actually runs — and skips the jsdom ones, which test browser
+      # code and need the jsdom toolchain (jsdom 30 cannot start on Node 20).
       - name: Unit tests on Node ${{ matrix.node-version }}
-        run: ./node_modules/.bin/vitest run
+        env:
+          NODE_MAJOR: ${{ matrix.node-version }}
+        run: |
+          if [ "$NODE_MAJOR" != "20" ]; then
+            ./node_modules/.bin/vitest run
+            exit 0
+          fi
+          mapfile -t files < <(git grep -L '@vitest-environment jsdom' -- \
+            ':(glob)packages/*/__tests__/**/*.test.ts' \
+            ':(glob)packages/*/__tests__/**/*.test.tsx')
+          echo "Node 20 lane: ${#files[@]} node-environment test files"
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no node-environment test files matched"
+            exit 1
+          fi
+          ./node_modules/.bin/vitest run "${files[@]}"
