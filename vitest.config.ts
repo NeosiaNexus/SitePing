@@ -31,11 +31,15 @@ export default defineConfig({
     coverage: {
       provider: "istanbul",
       reporter: ["text", "lcov", "json-summary"],
-      include: ["packages/*/src/**/*.ts"],
+      // Vitest 5 matches coverage globs exactly (vitest-dev/vitest#9818).
+      // v4 matched with picomatch `contains`, so `*.ts` also caught the
+      // dashboard's `.tsx` components and `icons.ts` excluded `icons.tsx`;
+      // both extensions are now spelled out to keep the same 94-file set.
+      include: ["packages/*/src/**/*.{ts,tsx}"],
       exclude: [
         "**/*.test.ts",
         "**/index.ts",
-        "**/icons.ts",
+        "**/icons.{ts,tsx}",
         "**/styles/**",
         // html2canvas-pro wrapper — the success/downscale paths require a real
         // browser canvas (jsdom can't drive `getContext('2d').drawImage` or
@@ -48,9 +52,9 @@ export default defineConfig({
         lines: 95,
         // Recalibrated for the vitest 4 measurement change: v4 always
         // reports executed files, so the 17 dashboard .tsx components —
-        // silently excluded by the *.ts include glob until then — now
-        // count. Same suite, honest totals: functions 97.7→94.3,
-        // branches 92.3→88.2. Issue #252 tracks covering those components
+        // silently excluded until then — now count (spelled out in
+        // `include` since vitest 5). Same suite, honest totals:
+        // functions 97.7→94.3, branches 92.3→88.2. Issue #252 tracks covering those components
         // and ratcheting these back up (branches toward 92 then 95,
         // functions to 95).
         functions: 94,
