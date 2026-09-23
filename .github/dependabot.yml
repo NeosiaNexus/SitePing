@@ -41,9 +41,12 @@ updates:
           - "size-limit"
           - "@size-limit/file"
           - "@size-limit/*"
-      # bun ignores `dependency-type` (every job warns "The 'dependency-type'
-      # option is not supported for the 'bun' package manager"), yet the
-      # observed dev/prod split is still right — kept until that changes.
+      # Keep `dependency-type`, despite every bun job warning "The
+      # 'dependency-type' option is not supported for the 'bun' package
+      # manager ... will be ignored": that is only a log line.
+      # DependencyGroup#matches_dependency_type? still enforces it for bun,
+      # which is what splits dev from prod — without it both pattern-less
+      # groups would match every dependency and open duplicate PRs.
       dev-dependencies:
         dependency-type: development
         update-types:
