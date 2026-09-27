@@ -166,6 +166,29 @@ describe("downloadFile", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:siteping-export");
     expect(document.querySelector("a[download='feedbacks.csv']")).toBeNull();
   });
+
+  it("keeps the download click from reading as an outside click to a host modal", () => {
+    const outsideClickTargets: EventTarget[] = [];
+    const recordOutsideClick = (event: MouseEvent): void => {
+      if (event.target) outsideClickTargets.push(event.target);
+    };
+    // jsdom does not implement navigation: cancel the anchor's default
+    // action (without stopping propagation) so the real click can dispatch.
+    const cancelNavigation = (event: MouseEvent): void => {
+      event.preventDefault();
+    };
+    window.addEventListener("click", cancelNavigation, true);
+    document.addEventListener("click", recordOutsideClick);
+
+    try {
+      downloadFile("id,message", "feedbacks.csv", "text/csv;charset=utf-8");
+    } finally {
+      document.removeEventListener("click", recordOutsideClick);
+      window.removeEventListener("click", cancelNavigation, true);
+    }
+
+    expect(outsideClickTargets).toEqual([]);
+  });
 });
 
 describe("ExportButton", () => {

@@ -91,6 +91,52 @@ test.describe("Widget over a host modal", () => {
     await expect(page.locator("#host-dialog")).toBeVisible();
   });
 
+  test("clicking a marker tooltip keeps the modal open", async ({ page, browserName }) => {
+    await page.request.post("http://localhost:3999/api/siteping", {
+      data: {
+        projectName: `e2e-modal-${browserName}`,
+        type: "bug",
+        message: "Tooltip over the modal",
+        url: "/modal",
+        viewport: "1280x720",
+        userAgent: "Playwright",
+        authorName: "Test",
+        authorEmail: "test@test.com",
+        annotations: [
+          {
+            anchor: {
+              cssSelector: "#page-content",
+              xpath: "/html/body/p",
+              textSnippet: "Page behind the modal.",
+              elementTag: "P",
+              elementId: "page-content",
+              textPrefix: "",
+              textSuffix: "",
+              fingerprint: "0:0:0",
+              neighborText: "",
+            },
+            rect: { xPct: 0.1, yPct: 0.1, wPct: 0.3, hPct: 0.5 },
+            scrollX: 0,
+            scrollY: 0,
+            viewportW: 1280,
+            viewportH: 720,
+            devicePixelRatio: 1,
+          },
+        ],
+      },
+    });
+    await page.reload();
+    await expect(page.locator("#host-dialog")).toBeVisible();
+
+    await page.locator("#siteping-markers [data-feedback-id]").first().hover();
+    const tooltip = page.locator("#sp-tooltip");
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText("Tooltip over the modal");
+    await tooltip.click();
+
+    await expect(page.locator("#host-dialog")).toBeVisible();
+  });
+
   test("the modal still closes on a genuine outside click", async ({ page }) => {
     await page.mouse.click(40, 40);
     await expect(page.locator("#host-dialog")).toHaveCount(0);

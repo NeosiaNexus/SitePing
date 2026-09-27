@@ -5,8 +5,8 @@ import { HOST_CAPTURE_ISOLATED_EVENTS, HOST_OUTSIDE_INTERACTION_EVENTS } from ".
  * Headless UI, MUI, focus-trap libraries…) without depending on any of them.
  *
  * The widget's surfaces live outside the modal's subtree (the shadow host,
- * and the overlay, toolbar, popup and markers as `<body>` children), so a
- * modal reads every interaction with them as "outside":
+ * and the overlay, toolbar, popup, markers and marker tooltip as `<body>`
+ * children), so a modal reads every interaction with them as "outside":
  *
  * - dismiss-on-outside-interaction layers close on `pointerdown` /
  *   `mousedown` / `click` / `focusin` observed at the document, closing the

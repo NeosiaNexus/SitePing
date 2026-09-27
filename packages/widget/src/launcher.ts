@@ -328,6 +328,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
   liveRegion.setAttribute("aria-atomic", "true");
   liveRegion.style.cssText =
     "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;";
+  // An inert live region is dropped from the accessibility tree, silencing
+  // submission announcements made while a sibling-inerting host modal is open.
+  isolateFromHost(liveRegion);
   document.body.appendChild(liveRegion);
 
   // Components outside Shadow DOM

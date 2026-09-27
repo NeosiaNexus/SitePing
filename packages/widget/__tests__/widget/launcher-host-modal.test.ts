@@ -75,4 +75,40 @@ describe("launcher over a host modal", () => {
     expect(widgetHost?.hasAttribute("inert")).toBe(false);
     instance.destroy();
   });
+
+  it("keeps the submission live region announceable when a modal inerts its siblings", async () => {
+    const instance = launch({ store: emptyStore, projectName: "host-modal", forceShow: true });
+    const liveRegion = document.querySelector('body > [role="status"][aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+
+    liveRegion?.setAttribute("inert", "");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(liveRegion?.hasAttribute("inert")).toBe(false);
+    instance.destroy();
+  });
+
+  it("keeps clicks in a marker tooltip away from the host modal's outside-dismiss listener", () => {
+    const instance = launch({ store: emptyStore, projectName: "host-modal", forceShow: true });
+    const tooltip = document.getElementById("sp-tooltip");
+    expect(tooltip).not.toBeNull();
+    const outsideInteractions: string[] = [];
+    const recordOutsideInteraction = (event: Event): void => {
+      outsideInteractions.push(event.type);
+    };
+    // Capture phase on document, like a dismissable layer registered before the widget.
+    document.addEventListener("pointerdown", recordOutsideInteraction, true);
+    document.addEventListener("click", recordOutsideInteraction);
+
+    try {
+      tooltip?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true }));
+      tooltip?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    } finally {
+      document.removeEventListener("pointerdown", recordOutsideInteraction, true);
+      document.removeEventListener("click", recordOutsideInteraction);
+      instance.destroy();
+    }
+
+    expect(outsideInteractions).toEqual([]);
+  });
 });

@@ -1,5 +1,6 @@
 import type { FeedbackResponse } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
+import { isolateFromHost } from "./host-isolation.js";
 import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -204,6 +205,9 @@ export function downloadFile(content: string, filename: string, mimeType: string
   anchor.href = url;
   anchor.download = filename;
   anchor.style.display = "none";
+  // The synthetic click bubbles like a real one: keep it from reading as an
+  // outside click to a host modal the export was triggered over.
+  isolateFromHost(anchor);
   document.body.appendChild(anchor);
   anchor.click();
   // Clean up after a tick to ensure the download starts
