@@ -29,11 +29,21 @@ import { HOST_CAPTURE_ISOLATED_EVENTS, HOST_OUTSIDE_INTERACTION_EVENTS } from ".
  *    (`preventDefault()`), which Radix, Headless UI and native `<dialog>`
  *    honour before dismissing.
  *
- * Known limit: `mousedown`, `touchstart`, `click` and Escape `keydown` cannot
- * be stopped in the capture phase, because the widget's own listeners (drawing
- * on the overlay, buttons, the annotator's Escape handler on `document`) need
- * them. A host capture-phase listener for those events that ignores
- * `defaultPrevented` still observes them.
+ * Modals that make their outside siblings `inert` (Headless UI, inert-based
+ * focus traps) would leave a surface mounted before the modal opened with no
+ * pointer or focus events at all, so {@link isolateFromHost} also removes an
+ * `inert` attribute set on the surface itself (see {@link keepSurfaceNotInert}).
+ *
+ * Known limits:
+ *
+ * - `mousedown`, `touchstart`, `click` and Escape `keydown` cannot be stopped
+ *   in the capture phase, because the widget's own listeners (drawing on the
+ *   overlay, buttons, the annotator's Escape handler on `document`) need them.
+ *   A host capture-phase listener for those events that ignores
+ *   `defaultPrevented` still observes them.
+ * - A native `<dialog>` opened with `showModal()` makes everything outside it
+ *   inert without any attribute, which no page script can undo: the widget
+ *   stays unusable while such a dialog is open.
  */
 
 /** Surfaces registered through {@link isolateFromHost}. Weak so removed surfaces are collected. */
@@ -64,15 +74,39 @@ const stopAtWidgetSurface = (event: Event): void => {
 };
 
 /**
- * Register `surface` as widget UI and stop its outside-interaction events in
- * the bubble phase so host modals never see them. Listeners registered on
- * `surface` itself (and its descendants) are unaffected.
+ * Keep `surface` interactive when a host modal inerts it. The widget never
+ * sets `inert` on its own surfaces, so any `inert` attribute on one comes from
+ * the host and is removed — immediately and whenever it is set again. Modals
+ * that restore their saved `inert` state on close restore "absent", which is
+ * what the surface already has.
+ *
+ * Only the surface's own attribute is watched: widget surfaces are `<body>`
+ * children, and sibling-inerting modals mark the siblings of the dialog's
+ * ancestor chain, never `<body>` or `<html>` themselves.
+ *
+ * The observer is never disconnected on purpose: the surface holds the only
+ * reference to it, so both are collected together once the surface is gone.
+ */
+function keepSurfaceNotInert(surface: HTMLElement): void {
+  const removeInert = (): void => {
+    if (surface.hasAttribute("inert")) surface.removeAttribute("inert");
+  };
+  removeInert();
+  new MutationObserver(removeInert).observe(surface, { attributes: true, attributeFilter: ["inert"] });
+}
+
+/**
+ * Register `surface` as widget UI: stop its outside-interaction events in the
+ * bubble phase so host modals never see them, and keep it from being made
+ * `inert` by sibling-inerting modals. Listeners registered on `surface` itself
+ * (and its descendants) are unaffected.
  */
 export function isolateFromHost(surface: HTMLElement): void {
   widgetSurfaces.add(surface);
   for (const type of HOST_OUTSIDE_INTERACTION_EVENTS) {
     surface.addEventListener(type, stopAtWidgetSurface);
   }
+  keepSurfaceNotInert(surface);
 }
 
 /**

@@ -73,6 +73,24 @@ test.describe("Widget over a host modal", () => {
     await expect(page.locator("#host-dialog")).toBeVisible();
   });
 
+  test("the widget stays usable when the modal inerts its outside siblings", async ({ page }) => {
+    // Headless UI / inert-based focus traps: every <body> child outside the
+    // dialog's portal — the widget's shadow host included — becomes inert.
+    await page.evaluate(() => {
+      const dialog = document.getElementById("host-dialog");
+      for (const bodyChild of Array.from(document.body.children)) {
+        if (!dialog || !bodyChild.contains(dialog)) bodyChild.setAttribute("inert", "");
+      }
+    });
+    await expect(page.locator("#page-content")).toHaveAttribute("inert", "");
+
+    await page.locator(".sp-fab").click();
+    await page.locator('[data-item-id="chat"]').click();
+
+    await expect(page.locator(".sp-panel.sp-panel--open")).toBeVisible();
+    await expect(page.locator("#host-dialog")).toBeVisible();
+  });
+
   test("the modal still closes on a genuine outside click", async ({ page }) => {
     await page.mouse.click(40, 40);
     await expect(page.locator("#host-dialog")).toHaveCount(0);

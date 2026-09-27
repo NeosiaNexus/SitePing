@@ -308,7 +308,8 @@ export function launch(config: SitepingConfig): SitepingInstance {
   }
 
   // The FAB and panel must stay usable over host modals (see host-isolation.ts).
-  // The host is a <body> child, so it inherits a modal's `pointer-events:none`.
+  // The host is a <body> child, so it inherits a modal's `pointer-events:none`;
+  // `isolateFromHost` also undoes the `inert` sibling-inerting modals apply.
   host.style.pointerEvents = "auto";
   isolateFromHost(host);
   const removeHostIsolationGuard = installHostIsolationGuard();
@@ -721,7 +722,6 @@ export function launch(config: SitepingConfig): SitepingInstance {
       pendingOpen = false;
       teardownNavigation?.();
       focusTracker.destroy();
-      removeHostIsolationGuard();
       unsubAnnotation();
       unsubToggle();
       fab.destroy();
@@ -737,6 +737,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
       publicBus.removeAll();
       liveRegion.remove();
       host.remove();
+      // Last: tearing down the annotator and its popup moves focus (e.g. from
+      // the popup textarea back to the pre-annotation element), and a host
+      // modal's capture-phase focus trap must not read that as outside focus.
+      removeHostIsolationGuard();
       instance = null;
     },
     open: () => {

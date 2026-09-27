@@ -68,6 +68,42 @@ describe("host isolation", () => {
     });
   });
 
+  describe("sibling-inerting modals", () => {
+    /** Let pending MutationObserver callbacks run. */
+    const flushMutationObservers = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it("removes inert from a widget surface every time a host modal sets it", async () => {
+      surface.setAttribute("inert", "");
+      await flushMutationObservers();
+
+      expect(surface.hasAttribute("inert")).toBe(false);
+
+      surface.setAttribute("inert", "");
+      await flushMutationObservers();
+
+      expect(surface.hasAttribute("inert")).toBe(false);
+    });
+
+    it("clears an inert attribute already present when the surface is registered", () => {
+      const inertSurface = document.createElement("div");
+      inertSurface.setAttribute("inert", "");
+      document.body.appendChild(inertSurface);
+
+      isolateFromHost(inertSurface);
+
+      expect(inertSurface.hasAttribute("inert")).toBe(false);
+    });
+
+    it("leaves the modal's inerting of host elements in place", async () => {
+      hostInput.setAttribute("inert", "");
+      surface.setAttribute("inert", "");
+      await flushMutationObservers();
+
+      expect(hostInput.hasAttribute("inert")).toBe(true);
+      expect(surface.hasAttribute("inert")).toBe(false);
+    });
+  });
+
   describe("focus guard", () => {
     it("keeps host focusout handlers running when focus moves into a masked host element", () => {
       installGuard();
