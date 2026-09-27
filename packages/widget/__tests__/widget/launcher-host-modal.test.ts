@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import type { SitepingStore } from "@siteping/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { MemoryStore } from "@siteping/adapter-memory";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { launch } from "../../src/launcher.js";
 import { mockMatchMedia } from "../helpers.js";
 
@@ -12,20 +12,17 @@ mockMatchMedia(false);
 // focus-trapping modal: it listens for focus changes on `document` in the
 // capture phase and would react to any focus leaving for the widget.
 
-/** Minimal in-memory store: the widget only needs empty reads here. */
-const emptyStore = {
-  createFeedback: async () => ({}),
-  getFeedbacks: async () => ({ feedbacks: [], total: 0 }),
-  getFeedback: async () => null,
-  updateFeedback: async () => ({}),
-  deleteFeedback: async () => undefined,
-  deleteAllFeedbacks: async () => undefined,
-} as unknown as SitepingStore;
-
 /** Let the right-click annotation settle into its open comment popup. */
 const waitForPopupOpen = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 100));
 
 describe("launcher over a host modal", () => {
+  /** Real store adapter: each test starts from an empty feedback collection. */
+  let store: MemoryStore;
+
+  beforeEach(() => {
+    store = new MemoryStore();
+  });
+
   afterEach(() => {
     document.body.innerHTML = "";
   });
@@ -35,7 +32,7 @@ describe("launcher over a host modal", () => {
     document.body.appendChild(hostField);
     hostField.focus();
     const instance = launch({
-      store: emptyStore,
+      store,
       projectName: "host-modal",
       forceShow: true,
       enableRightClickComment: true,
@@ -66,7 +63,7 @@ describe("launcher over a host modal", () => {
   });
 
   it("keeps the widget interactive when a modal opened later inerts its siblings", async () => {
-    const instance = launch({ store: emptyStore, projectName: "host-modal", forceShow: true });
+    const instance = launch({ store, projectName: "host-modal", forceShow: true });
     const widgetHost = document.querySelector("siteping-widget");
 
     widgetHost?.setAttribute("inert", "");
@@ -77,7 +74,7 @@ describe("launcher over a host modal", () => {
   });
 
   it("keeps the submission live region announceable when a modal inerts its siblings", async () => {
-    const instance = launch({ store: emptyStore, projectName: "host-modal", forceShow: true });
+    const instance = launch({ store, projectName: "host-modal", forceShow: true });
     const liveRegion = document.querySelector('body > [role="status"][aria-live="polite"]');
     expect(liveRegion).not.toBeNull();
 
@@ -89,7 +86,7 @@ describe("launcher over a host modal", () => {
   });
 
   it("keeps clicks in a marker tooltip away from the host modal's outside-dismiss listener", () => {
-    const instance = launch({ store: emptyStore, projectName: "host-modal", forceShow: true });
+    const instance = launch({ store, projectName: "host-modal", forceShow: true });
     const tooltip = document.getElementById("sp-tooltip");
     expect(tooltip).not.toBeNull();
     const outsideInteractions: string[] = [];
