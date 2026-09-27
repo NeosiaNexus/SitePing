@@ -129,11 +129,15 @@ describe("ApiClient", () => {
    * Node test env has no persistent localStorage — back it with a Map so
    * queueForRetry's fire-and-forget write is observable.
    */
-  function stubLocalStorage(): Map<string, string> {
+  function stubLocalStorage(quotaChars = Number.POSITIVE_INFINITY): Map<string, string> {
     const store = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
+      setItem: (k: string, v: string) => {
+        // Browsers throw QuotaExceededError instead of storing an oversized value.
+        if (v.length > quotaChars) throw new DOMException("quota exceeded", "QuotaExceededError");
+        store.set(k, v);
+      },
       removeItem: (k: string) => void store.delete(k),
       clear: () => store.clear(),
     });
@@ -173,6 +177,58 @@ describe("ApiClient", () => {
     vi.useRealTimers();
 
     expect(readQueue(store)).toHaveLength(1);
+
+    vi.unstubAllGlobals();
+  });
+
+  async function failWithNetworkError(payload: typeof basePayload & Record<string, unknown>): Promise<void> {
+    vi.useFakeTimers();
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+    const promise = client.sendFeedback(payload).catch((error: Error) => error);
+    await drainRetryBackoff();
+    await promise;
+    vi.useRealTimers();
+  }
+
+  const screenshotPayload = {
+    ...basePayload,
+    screenshotDataUrl: `data:image/jpeg;base64,${"A".repeat(4_000)}`,
+    screenshotRegion: { xPct: 0.1, yPct: 0.1, wPct: 0.5, hPct: 0.5 },
+  };
+
+  it("keeps queued feedbacks without their screenshots when the quota is exceeded", async () => {
+    const store = stubLocalStorage(6_000);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError({ ...screenshotPayload, message: "first" });
+    expect(readQueue(store)[0]!.payload.screenshotDataUrl).toBe(screenshotPayload.screenshotDataUrl);
+
+    await failWithNetworkError({ ...screenshotPayload, message: "second" });
+
+    const queue = readQueue(store);
+    expect(queue.map((entry) => entry.payload.message)).toEqual(["first", "second"]);
+    for (const entry of queue) {
+      expect("screenshotDataUrl" in entry.payload).toBe(false);
+      expect("screenshotRegion" in entry.payload).toBe(false);
+      expect(entry.payload.annotations).toEqual(basePayload.annotations);
+    }
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("without their screenshots"));
+
+    vi.unstubAllGlobals();
+  });
+
+  it("drops the oldest queued feedbacks when even the screenshot-free queue exceeds the quota", async () => {
+    const store = stubLocalStorage(Number.POSITIVE_INFINITY);
+    await failWithNetworkError({ ...basePayload, message: "oldest" });
+    const singleEntryLength = store.get("siteping_retry_queue")!.length;
+
+    const quotaStore = stubLocalStorage(singleEntryLength + 50);
+    quotaStore.set("siteping_retry_queue", store.get("siteping_retry_queue")!);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError({ ...screenshotPayload, message: "newest" });
+
+    expect(readQueue(quotaStore).map((entry) => entry.payload.message)).toEqual(["newest"]);
 
     vi.unstubAllGlobals();
   });

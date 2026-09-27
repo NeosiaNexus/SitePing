@@ -213,7 +213,7 @@ export class Annotator {
         transition:all 0.2s ease;
       `;
       setText(cancelBtn, this.t("annotator.cancel"));
-      cancelBtn.addEventListener("click", () => this.deactivate());
+      cancelBtn.addEventListener("click", () => this.cancelSession());
       cancelBtn.addEventListener("mouseenter", () => {
         cancelBtn.style.borderColor = this.colors.typeBug;
         cancelBtn.style.color = this.colors.typeBug;
@@ -278,6 +278,23 @@ export class Annotator {
       : { top: 0, bottom: Math.max(0, viewportHeight - toolbarRect.top) };
   }
 
+  /**
+   * User-initiated end of the session (toolbar Cancel, Escape). Closes an open
+   * comment form first so it is not left floating with nothing behind it — the
+   * popup's own focus restore runs before the annotator hands focus back to the
+   * pre-activation element. While a submission is in flight the popup refuses
+   * to close, and the session stays active too: deactivating here would clear
+   * `isActive` and emit `annotation:end` while the popup still waits on
+   * `feedback:sent`, letting a second annotation overwrite its resolver and
+   * submit handler. The session ends once the pending popup settles.
+   */
+  private cancelSession(): void {
+    if (!this.isActive) return;
+    this.popup.dismiss();
+    if (this.popup.isOpen) return;
+    this.deactivate();
+  }
+
   private deactivate(): void {
     if (!this.isActive) return;
     this.isActive = false;
@@ -316,7 +333,7 @@ export class Annotator {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === "Escape") this.deactivate();
+    if (e.key === "Escape") this.cancelSession();
   };
 
   /**

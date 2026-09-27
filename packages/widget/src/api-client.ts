@@ -179,11 +179,43 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
       }
 
       queue.push({ endpoint, payload });
-      localStorage.setItem(RETRY_QUEUE_KEY, JSON.stringify(queue));
+      if (tryWriteQueue(queue)) return;
+
+      // Quota exceeded: a captured screenshot is a multi-MB base64 data URL
+      // and two of them already overflow the ~5 MB localStorage budget. Drop
+      // the screenshots (the heaviest, least essential part of a replay) so
+      // the message, annotations and diagnostics still survive; if even that
+      // does not fit, give up the oldest entries first.
+      const withoutScreenshots = queue.map(withoutScreenshot);
+      while (withoutScreenshots.length > 0) {
+        if (tryWriteQueue(withoutScreenshots)) {
+          console.warn(
+            `[siteping] retry queue exceeded the localStorage quota — kept ${withoutScreenshots.length} of ${queue.length} queued feedback(s) without their screenshots`,
+          );
+          return;
+        }
+        withoutScreenshots.shift();
+      }
+      console.warn("[siteping] retry queue could not be persisted — localStorage is full or unavailable");
     } catch {
-      // localStorage full or unavailable — silently drop
+      // localStorage unavailable or queue unreadable — nothing to persist into
     }
   });
+}
+
+function tryWriteQueue(queue: RetryEntry[]): boolean {
+  try {
+    localStorage.setItem(RETRY_QUEUE_KEY, JSON.stringify(queue));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Replay copy without the screenshot; its region is meaningless without the image. */
+function withoutScreenshot(entry: RetryEntry): RetryEntry {
+  const { screenshotDataUrl: _screenshotDataUrl, screenshotRegion: _screenshotRegion, ...payload } = entry.payload;
+  return { endpoint: entry.endpoint, payload };
 }
 
 function normalizeName(value: string): string {

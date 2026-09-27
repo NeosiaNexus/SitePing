@@ -137,4 +137,157 @@ describe("draw flow — popup re-entry guards (#196, real Popup)", () => {
     await flush();
     expect(completeListener).toHaveBeenCalledOnce();
   });
+
+  describe("ending the session from outside the popup closes the comment form", () => {
+    function openPopup() {
+      const bus = new EventBus<WidgetEvents>();
+      const annotator = new Annotator(buildThemeColors(), bus, createT("en"));
+      cleanup = () => annotator.destroy();
+      const endListener = vi.fn();
+      bus.on("annotation:end", endListener);
+
+      bus.emit("annotation:start");
+      drag(findOverlay(), 100, 100, 200, 200);
+      return { bus, annotator, endListener };
+    }
+
+    /** Fill the open popup and click Send — the submission then waits on a terminal bus event. */
+    function sendFeedback(message: string) {
+      const dialog = findDialog();
+      dialog.querySelector<HTMLButtonElement>('button[data-type="bug"]')!.click();
+      const textarea = dialog.querySelector("textarea")!;
+      textarea.value = message;
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      Array.from(dialog.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Send"))!
+        .click();
+      return { dialog, textarea };
+    }
+
+    const findDialog = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    const findToolbarCancel = () =>
+      Array.from(document.body.querySelectorAll("button")).find(
+        (button) => button.textContent === "Cancel" && !button.closest('[role="dialog"]'),
+      )!;
+
+    it("toolbar Cancel dismisses the open popup", async () => {
+      const { endListener } = openPopup();
+      await flush();
+      expect(findDialog().style.display).toBe("block");
+
+      findToolbarCancel().click();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(endListener).toHaveBeenCalledOnce();
+      expect(findDialog().style.display).toBe("none");
+    });
+
+    it("Escape outside the textarea dismisses the open popup", async () => {
+      const { endListener } = openPopup();
+      await flush();
+
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(endListener).toHaveBeenCalledOnce();
+      expect(findDialog().style.display).toBe("none");
+    });
+
+    it.each([
+      ["toolbar Cancel", () => findToolbarCancel().click()],
+      ["Escape", () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))],
+    ])("a new annotation started right after %s keeps its popup visible", async (_label, endSession) => {
+      const { bus, annotator } = openPopup();
+      await flush();
+
+      endSession();
+      // Start a new session while the dismissed popup is still fading out
+      bus.emit("annotation:start");
+      drag(findOverlay(), 300, 300, 400, 400);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const dialog = findDialog();
+      expect(dialog.style.display).toBe("block");
+      expect(dialog.querySelector("textarea")!.disabled).toBe(false);
+      expect(annotator.isBusy).toBe(true);
+    });
+
+    it("keeps the popup and its in-flight submission when the toolbar Cancel is hit mid-send", async () => {
+      const { bus } = openPopup();
+      await flush();
+      const dialog = findDialog();
+      dialog.querySelector<HTMLButtonElement>('button[data-type="bug"]')!.click();
+      const textarea = dialog.querySelector("textarea")!;
+      textarea.value = "sending";
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      Array.from(dialog.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Send"))!
+        .click();
+      await flush();
+
+      findToolbarCancel().click();
+      await flush();
+
+      expect(dialog.style.display).toBe("block");
+      expect(textarea.disabled).toBe(true);
+
+      bus.emit("feedback:sent", { id: "f1" } as FeedbackResponse);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(dialog.style.display).toBe("none");
+    });
+
+    it.each([
+      ["toolbar Cancel", () => findToolbarCancel().click()],
+      ["Escape", () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))],
+    ])(
+      "keeps the session active when %s is used mid-send, ending it once feedback is sent",
+      async (_label, endSession) => {
+        const { bus, annotator, endListener } = openPopup();
+        await flush();
+        sendFeedback("sending");
+        await flush();
+
+        endSession();
+        await flush();
+
+        expect(annotator.isBusy).toBe(true);
+        expect(endListener).not.toHaveBeenCalled();
+        expect(findOverlay()).not.toBeNull();
+
+        bus.emit("feedback:sent", { id: "f1" } as FeedbackResponse);
+        await flush();
+
+        expect(annotator.isBusy).toBe(false);
+        expect(endListener).toHaveBeenCalledOnce();
+        expect(findOverlay()).toBeNull();
+      },
+    );
+
+    it("blocks a new instant annotation while a cancelled-mid-send submission is pending", async () => {
+      const { bus, annotator, endListener } = openPopup();
+      const startListener = vi.fn();
+      bus.on("annotation:start", startListener);
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+      await flush();
+      const { textarea } = sendFeedback("first submission");
+      await flush();
+
+      findToolbarCancel().click();
+      await annotator.startInstantAnnotation(50, 50);
+      await flush();
+
+      // The pending popup keeps its form and submission — no second session started.
+      expect(startListener).not.toHaveBeenCalled();
+      expect(textarea.disabled).toBe(true);
+      expect(textarea.value).toBe("first submission");
+
+      bus.emit("feedback:sent", { id: "f1" } as FeedbackResponse);
+      await flush();
+
+      expect(completeListener).toHaveBeenCalledOnce();
+      expect(endListener).toHaveBeenCalledOnce();
+      expect(annotator.isBusy).toBe(false);
+    });
+  });
 });

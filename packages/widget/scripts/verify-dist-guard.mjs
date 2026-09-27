@@ -12,6 +12,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 // esbuild is a transitive dep (via tsup) — hoisted installs expose it at the
@@ -25,7 +26,7 @@ function resolveEsbuild() {
 }
 const esbuild = resolveEsbuild();
 
-const distDir = new URL("../dist", import.meta.url).pathname;
+const distDir = fileURLToPath(new URL("../dist", import.meta.url));
 const LITERAL = "process.env.NODE_ENV";
 
 const jsFiles = readdirSync(distDir).filter((f) => f.endsWith(".js") || f.endsWith(".cjs"));

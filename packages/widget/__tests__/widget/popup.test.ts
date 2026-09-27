@@ -444,6 +444,45 @@ describe("Popup", () => {
         expect(btn.getAttribute("aria-pressed")).toBe("false");
       }
     });
+
+    it("stays visible when re-shown before the previous close transition ends", async () => {
+      vi.useFakeTimers();
+      try {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        const firstSession = popup.show(makeBounds());
+        const cancelButton = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button")).find(
+          (button) => button.textContent === t("popup.cancel"),
+        )!;
+        cancelButton.click();
+        await firstSession;
+
+        // Re-open inside the fade-out window of the dismissed session
+        vi.advanceTimersByTime(100);
+        popup.show(makeBounds());
+        vi.advanceTimersByTime(1000);
+
+        expect(dialog.style.display).toBe("block");
+        expect(popup.isOpen).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("still hides after the close transition when not re-shown", async () => {
+      vi.useFakeTimers();
+      try {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        const session = popup.show(makeBounds());
+        popup.dismiss();
+        await session;
+
+        vi.advanceTimersByTime(1000);
+
+        expect(dialog.style.display).toBe("none");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   // -------------------------------------------------------------------------
