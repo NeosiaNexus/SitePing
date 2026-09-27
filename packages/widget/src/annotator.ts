@@ -4,7 +4,7 @@ import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anch
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { isWidgetChrome } from "./focus-tracker.js";
-import { isolateFromHost } from "./host-isolation.js";
+import { isolateFromHost, registerEscapeLayer } from "./host-isolation.js";
 import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
 import { NO_VIEWPORT_INSETS, type ViewportInsets } from "./popup-placement.js";
@@ -44,6 +44,8 @@ export class Annotator {
   private startY = 0;
   private isDrawing = false;
   private isActive = false;
+  /** Unregisters the session's Escape layer from host isolation; set while active. */
+  private unregisterEscapeLayer: (() => void) | null = null;
   /**
    * True when the current annotation session was triggered by right-click
    * (instant comment) rather than the FAB draw flow. Controls whether the
@@ -251,8 +253,10 @@ export class Annotator {
     // Allow tab-through so keyboard users can reach underlying elements
     this.overlay.setAttribute("tabindex", "0");
 
-    // Escape to cancel
+    // Escape to cancel — declared to host isolation so host modals ignore
+    // that Escape only while this session will consume it.
     document.addEventListener("keydown", this.onKeyDown);
+    this.unregisterEscapeLayer = registerEscapeLayer(document, () => this.isActive);
 
     // Host modals must not read drawing or toolbar clicks as outside interactions.
     isolateFromHost(this.overlay);
@@ -319,6 +323,8 @@ export class Annotator {
 
     document.body.style.overflow = this.savedOverflow;
     document.removeEventListener("keydown", this.onKeyDown);
+    this.unregisterEscapeLayer?.();
+    this.unregisterEscapeLayer = null;
 
     this.overlay?.remove();
     this.toolbar?.remove();

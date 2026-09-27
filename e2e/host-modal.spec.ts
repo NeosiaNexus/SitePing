@@ -79,6 +79,39 @@ test.describe("Widget over a host modal", () => {
     await expect(page.locator("#host-dialog")).toBeVisible();
   });
 
+  test("Escape closes the FAB menu first, then the modal once the widget has nothing to dismiss", async ({ page }) => {
+    const fab = page.locator(".sp-fab");
+    await fab.click();
+    await expect(fab).toHaveAttribute("aria-expanded", "true");
+    // Opening the menu focuses its first item on the next frame; wait for it
+    // so the Escape below comes from the open menu.
+    await expect(page.locator(".sp-radial-item").first()).toBeFocused();
+
+    await page.keyboard.press("Escape");
+
+    await expect(fab).toHaveAttribute("aria-expanded", "false");
+    await expect(fab).toBeFocused();
+    await expect(page.locator("#host-dialog")).toBeVisible();
+
+    await page.keyboard.press("Escape");
+
+    await expect(page.locator("#host-dialog")).toHaveCount(0);
+  });
+
+  test("Escape in the feedback panel closes it without closing the modal", async ({ page }) => {
+    await page.locator(".sp-fab").click();
+    await page.locator('[data-item-id="chat"]').click();
+    const panel = page.locator(".sp-panel.sp-panel--open");
+    // Opening the panel moves focus to its search field on the next frame;
+    // wait for it so the Escape below comes from the open panel.
+    await expect(panel.locator(".sp-search")).toBeFocused();
+
+    await page.keyboard.press("Escape");
+
+    await expect(panel).toHaveCount(0);
+    await expect(page.locator("#host-dialog")).toBeVisible();
+  });
+
   test("Tab in the comment popup moves focus within the popup, not back into the modal", async ({ page }) => {
     await page.locator(".sp-fab").click();
     await page.locator('[data-item-id="annotate"]').click();

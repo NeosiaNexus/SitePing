@@ -1,7 +1,12 @@
 import type { FeedbackType } from "@siteping/core";
 import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
-import { addSurfaceKeydownListener, isolateFromHost, removeSurfaceKeydownListener } from "./host-isolation.js";
+import {
+  addSurfaceKeydownListener,
+  isolateFromHost,
+  registerEscapeLayer,
+  removeSurfaceKeydownListener,
+} from "./host-isolation.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
 import {
@@ -281,6 +286,7 @@ export class Popup {
     this.root.appendChild(this.hint);
     this.root.appendChild(btnRow);
     isolateFromHost(this.root);
+    registerEscapeLayer(this.root, () => this.isOpen);
     document.body.appendChild(this.root);
 
     // Bind every `t()`-derived string into the freshly-built DOM. Kept as a

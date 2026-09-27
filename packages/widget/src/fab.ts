@@ -1,6 +1,7 @@
 import type { SitepingConfig } from "@siteping/core";
 import { parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
+import { registerEscapeLayer } from "./host-isolation.js";
 import { type TFunction, type Translations, tWithParams } from "./i18n/index.js";
 import { ICON_CLOSE, ICON_EDIT, ICON_EYE, ICON_EYE_OFF, ICON_LIST, ICON_SITEPING } from "./icons.js";
 
@@ -130,6 +131,11 @@ export class Fab {
     };
     this.fab.addEventListener("keydown", handleEscape);
     this.radialContainer.addEventListener("keydown", handleEscape);
+    // Host modals ignore that Escape only while the menu is open: once it has
+    // closed and focus is back on the FAB, the next Escape reaches the host.
+    const isMenuOpen = (): boolean => this.isOpen;
+    registerEscapeLayer(this.fab, isMenuOpen);
+    registerEscapeLayer(this.radialContainer, isMenuOpen);
 
     // Arrow key navigation within the radial menu
     this.radialContainer.addEventListener("keydown", (e) => {

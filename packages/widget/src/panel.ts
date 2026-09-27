@@ -13,7 +13,7 @@ import { PAGE_SIZE } from "./constants.js";
 import { el, formatRelativeDate, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
-import { addSurfaceKeydownListener, removeSurfaceKeydownListener } from "./host-isolation.js";
+import { addSurfaceKeydownListener, registerEscapeLayer, removeSurfaceKeydownListener } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import {
   ICON_BUG,
@@ -377,6 +377,7 @@ export class Panel {
     // Keyboard handling: Escape to close + focus trap
     // Registered through host isolation so the focus trap keeps receiving Tab
     // while the guard withholds it from host modals.
+    registerEscapeLayer(shadowRoot, () => this.isOpen);
     addSurfaceKeydownListener(shadowRoot, (ke) => {
       if (ke.key === "Escape" && this.isOpen) {
         // If detail view is open, close it instead
@@ -874,6 +875,7 @@ export class Panel {
         if (closed) return;
         closed = true;
         removeSurfaceKeydownListener(backdrop, onKeydown);
+        unregisterEscapeLayer();
         backdrop.style.opacity = "0";
         dialog.style.transform = "translateY(8px) scale(0.97)";
         setTimeout(() => {
@@ -899,6 +901,7 @@ export class Panel {
         }
       };
       addSurfaceKeydownListener(backdrop, onKeydown);
+      const unregisterEscapeLayer = registerEscapeLayer(backdrop, () => !closed);
 
       cancelBtn.addEventListener("click", () => close(false));
       confirmBtn.addEventListener("click", () => close(true));

@@ -20,6 +20,7 @@ import {
   addSurfaceKeydownListener,
   installHostIsolationGuard,
   isolateFromHost,
+  registerEscapeLayer,
   removeSurfaceKeydownListener,
 } from "./host-isolation.js";
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
@@ -876,6 +877,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
 
     const closeModal = (result: Identity | null) => {
       removeSurfaceKeydownListener(backdrop, onKeydown);
+      unregisterEscapeLayer();
       backdrop.style.opacity = "0";
       modal.style.transform = "translateY(12px) scale(0.97)";
       setTimeout(() => {
@@ -935,6 +937,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
       }
     };
     addSurfaceKeydownListener(backdrop, onKeydown);
+    const unregisterEscapeLayer = registerEscapeLayer(backdrop, () => true);
 
     // Close on backdrop click
     backdrop.addEventListener("click", (e) => {

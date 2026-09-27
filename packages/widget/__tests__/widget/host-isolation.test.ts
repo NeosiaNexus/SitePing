@@ -6,6 +6,7 @@ import {
   installHostIsolationGuard,
   isolateFromHost,
   isWidgetSurface,
+  registerEscapeLayer,
   removeSurfaceKeydownListener,
 } from "../../src/host-isolation.js";
 
@@ -209,15 +210,98 @@ describe("host isolation", () => {
   });
 
   describe("Escape containment", () => {
-    it("marks an Escape keydown from a widget surface as handled before capture-phase host listeners run", () => {
+    const pressEscape = (target: Element): KeyboardEvent => {
+      const escapeKeyDown = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      target.dispatchEvent(escapeKeyDown);
+      return escapeKeyDown;
+    };
+
+    /** Register an Escape layer for the test and unregister it afterwards. */
+    function registerLayer(scope: Node, isOpen: () => boolean): void {
+      cleanups.push(registerEscapeLayer(scope, isOpen));
+    }
+
+    it("marks an Escape keydown from a widget surface with an open layer as handled before capture-phase host listeners run", () => {
       const escapeSeenAsHandled: boolean[] = [];
       listenOnDocument("keydown", (event) => escapeSeenAsHandled.push(event.defaultPrevented), true);
       installGuard();
+      registerLayer(surface, () => true);
 
-      surfaceButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-      hostInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      pressEscape(surfaceButton);
+      pressEscape(hostInput);
 
       expect(escapeSeenAsHandled).toEqual([true, false]);
+    });
+
+    it("lets Escape from an idle widget surface reach host modals unhandled", () => {
+      const escapeSeenAsHandled: boolean[] = [];
+      listenOnDocument("keydown", (event) => escapeSeenAsHandled.push(event.defaultPrevented), true);
+      installGuard();
+      registerLayer(surface, () => false);
+
+      pressEscape(surfaceButton);
+
+      expect(escapeSeenAsHandled).toEqual([false]);
+    });
+
+    it("stops handling Escape once the layer closes, so the next Escape reaches the host", () => {
+      installGuard();
+      let isLayerOpen = true;
+      registerLayer(surface, () => isLayerOpen);
+      surfaceButton.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") isLayerOpen = false;
+      });
+
+      const closingEscape = pressEscape(surfaceButton);
+      const nextEscape = pressEscape(surfaceButton);
+
+      expect(closingEscape.defaultPrevented).toBe(true);
+      expect(nextEscape.defaultPrevented).toBe(false);
+    });
+
+    it("ignores open layers that are not on the Escape's path", () => {
+      installGuard();
+      const otherSurface = document.createElement("div");
+      document.body.appendChild(otherSurface);
+      isolateFromHost(otherSurface);
+      registerLayer(otherSurface, () => true);
+
+      expect(pressEscape(surfaceButton).defaultPrevented).toBe(false);
+    });
+
+    it("honours document-wide layers for Escape from any widget surface, never from host elements", () => {
+      installGuard();
+      registerLayer(document, () => true);
+
+      expect(pressEscape(surfaceButton).defaultPrevented).toBe(true);
+      expect(pressEscape(hostInput).defaultPrevented).toBe(false);
+    });
+
+    it("finds layers registered inside a closed shadow root", () => {
+      installGuard();
+      const shadowHost = document.createElement("div");
+      const shadowRoot = shadowHost.attachShadow({ mode: "closed" });
+      const shadowButton = document.createElement("button");
+      shadowRoot.appendChild(shadowButton);
+      document.body.appendChild(shadowHost);
+      isolateFromHost(shadowHost);
+      registerLayer(shadowRoot, () => true);
+      shadowButton.focus();
+
+      expect(pressEscape(shadowButton).defaultPrevented).toBe(true);
+    });
+
+    it("stops handling Escape for a layer once it is unregistered", () => {
+      installGuard();
+      const unregister = registerEscapeLayer(surface, () => true);
+      unregister();
+
+      expect(pressEscape(surfaceButton).defaultPrevented).toBe(false);
     });
 
     it("still delivers Escape to the widget's own surface and document listeners", () => {

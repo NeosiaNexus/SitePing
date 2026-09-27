@@ -34,10 +34,12 @@ import {
  *    phase — ahead of capture-phase host listeners on `document` — and stops
  *    the events no widget listener consumes (`pointerdown`, `focusin`,
  *    `focusout`), marks an Escape `keydown` from a surface as handled
- *    (`preventDefault()`), which Radix, Headless UI and native `<dialog>`
- *    honour before dismissing, and withholds a Tab `keydown` from a surface
- *    from the host entirely, delivering it itself to the widget's keydown
- *    listeners registered through {@link addSurfaceKeydownListener}.
+ *    (`preventDefault()`) when an open widget layer registered through
+ *    {@link registerEscapeLayer} will consume it — Radix, Headless UI and
+ *    native `<dialog>` honour that before dismissing — and withholds a Tab
+ *    `keydown` from a surface from the host entirely, delivering it itself to
+ *    the widget's keydown listeners registered through
+ *    {@link addSurfaceKeydownListener}.
  *
  * Modals that make their outside siblings `inert` (Headless UI, inert-based
  * focus traps) would leave a surface mounted before the modal opened with no
@@ -73,9 +75,23 @@ export type SurfaceKeydownListener = (event: KeyboardEvent) => void;
 const surfaceKeydownListeners = new WeakMap<Node, Set<SurfaceKeydownListener>>();
 
 /**
- * Shadow roots registered through {@link addSurfaceKeydownListener}, by their
- * host. The widget's shadow root is closed, so `host.shadowRoot` is `null` and
- * this is the only way the guard reaches the element focused inside it.
+ * Reports whether a widget layer is currently open, i.e. whether its Escape
+ * handler will consume the next Escape `keydown` (close the menu, cancel the
+ * annotation, dismiss the modal…).
+ */
+export type EscapeLayerIsOpen = () => boolean;
+
+/**
+ * Open-state predicates registered through {@link registerEscapeLayer}, by the
+ * node the layer's Escape handler listens on. Weak so removed nodes are collected.
+ */
+const escapeLayersByScope = new WeakMap<Node, Set<EscapeLayerIsOpen>>();
+
+/**
+ * Shadow roots registered through {@link addSurfaceKeydownListener} or
+ * {@link registerEscapeLayer}, by their host. The widget's shadow root is
+ * closed, so `host.shadowRoot` is `null` and this is the only way the guard
+ * reaches the element focused inside it.
  */
 const registeredShadowRootsByHost = new WeakMap<Element, ShadowRoot>();
 
@@ -183,6 +199,46 @@ export function removeSurfaceKeydownListener(scope: HTMLElement | ShadowRoot, li
 }
 
 /**
+ * Declare a widget layer that dismisses on Escape, so
+ * {@link installHostIsolationGuard} hides that Escape from host modals only
+ * while the layer will actually consume it.
+ *
+ * Why a registry instead of letting each Escape handler call
+ * `preventDefault()` itself: the widget's handlers listen on its elements, its
+ * shadow root or `document`, so they run after capture-phase host listeners
+ * on `document` (and after bubble-phase ones registered earlier on
+ * `document`) — too late for a host dismissable layer that checks
+ * `defaultPrevented`. The guard runs first, at `window`, and needs to know
+ * *before* dispatch whether a widget layer will take the key; each layer
+ * answers through `isOpen` without the guard depending on any component.
+ *
+ * The guard asks every layer registered on the Escape's innermost target and
+ * its ancestors (crossing shadow boundaries, up to `document`), the same
+ * nodes the event would reach. An idle surface (a closed FAB menu, a closed
+ * panel, a marker) therefore lets Escape through to the host modal.
+ *
+ * @param scope - Node the layer's Escape handler listens on: a widget
+ * element, the widget's shadow root, or `document` for session-wide handlers
+ * (the annotator).
+ * @param isOpen - True while the layer's Escape handler will consume Escape.
+ * Called synchronously at the start of each Escape dispatch, before any
+ * widget handler has run.
+ * @returns Cleanup unregistering the layer.
+ */
+export function registerEscapeLayer(scope: Node, isOpen: EscapeLayerIsOpen): () => void {
+  let layers = escapeLayersByScope.get(scope);
+  if (!layers) {
+    layers = new Set();
+    escapeLayersByScope.set(scope, layers);
+  }
+  layers.add(isOpen);
+  if (scope instanceof ShadowRoot) registeredShadowRootsByHost.set(scope.host, scope);
+  return () => {
+    escapeLayersByScope.get(scope)?.delete(isOpen);
+  };
+}
+
+/**
  * Innermost target of a keyboard event observed at `window`. Events from a
  * closed shadow tree are retargeted to its host there, and keyboard events
  * target the focused element, so descend through each shadow root's
@@ -208,14 +264,37 @@ function innermostKeyboardTarget(event: KeyboardEvent): Node | null {
  * native Tab navigation, which otherwise happens as usual after dispatch.
  */
 function deliverToSurfaceKeydownListeners(event: KeyboardEvent): void {
-  let current = innermostKeyboardTarget(event);
-  while (current) {
-    const listeners = surfaceKeydownListeners.get(current);
+  for (const node of keyboardPropagationPath(event)) {
+    const listeners = surfaceKeydownListeners.get(node);
     if (listeners) {
       for (const listener of [...listeners]) listener(event);
     }
+  }
+}
+
+/**
+ * The event's innermost target and its ancestors, crossing shadow boundaries,
+ * innermost first — the nodes a keyboard event bubbles through up to `document`.
+ */
+function* keyboardPropagationPath(event: KeyboardEvent): Generator<Node> {
+  let current = innermostKeyboardTarget(event);
+  while (current) {
+    yield current;
     current = current instanceof ShadowRoot ? current.host : current.parentNode;
   }
+}
+
+/**
+ * True when a layer registered through {@link registerEscapeLayer} on the
+ * event's propagation path is open, i.e. a widget Escape handler will consume
+ * this Escape.
+ */
+function willWidgetConsumeEscape(event: KeyboardEvent): boolean {
+  for (const node of keyboardPropagationPath(event)) {
+    const layers = escapeLayersByScope.get(node);
+    if (layers && [...layers].some((isOpen) => isOpen())) return true;
+  }
+  return false;
 }
 
 /**
@@ -232,8 +311,12 @@ function deliverToSurfaceKeydownListeners(event: KeyboardEvent): void {
  *   which is why the check uses the strict widget-surface predicate, so
  *   moving between host elements (masked or not) never loses them.
  * - An Escape `keydown` from a widget surface is marked handled with
- *   `preventDefault()`: the widget's own Escape handlers still run, while
- *   dismissable layers that respect `defaultPrevented` keep the modal open.
+ *   `preventDefault()` when an open widget layer on its path (see
+ *   {@link registerEscapeLayer}) will consume it: the widget's own Escape
+ *   handlers still run, while dismissable layers that respect
+ *   `defaultPrevented` keep the modal open. With nothing open to dismiss
+ *   (e.g. focus back on the FAB after Escape closed its menu), Escape passes
+ *   through untouched and closes the host modal as usual.
  * - A Tab `keydown` from a widget surface is stopped, so capture-phase focus
  *   traps on `document` cannot cancel the navigation and pull focus back into
  *   the host dialog. Stopping it at `window` would also starve the widget's
@@ -263,7 +346,7 @@ export function installHostIsolationGuard(ownerDocument: Document = document): (
   const onKeyDown = (event: KeyboardEvent): void => {
     if (!isWidgetSurfaceTarget(event.target)) return;
     if (event.key === "Escape") {
-      event.preventDefault();
+      if (willWidgetConsumeEscape(event)) event.preventDefault();
     } else if (event.key === "Tab") {
       event.stopImmediatePropagation();
       deliverToSurfaceKeydownListeners(event);

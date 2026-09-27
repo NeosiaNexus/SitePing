@@ -4,7 +4,7 @@ import type { SitepingConfig } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { Fab } from "../../src/fab.js";
-import { isolateFromHost } from "../../src/host-isolation.js";
+import { installHostIsolationGuard, isolateFromHost } from "../../src/host-isolation.js";
 import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
 import { createShadowRoot } from "../helpers.js";
 
@@ -241,6 +241,32 @@ describe("Fab", () => {
       btn.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
       expect(btn.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("hides from host modals only the Escape that closes the open menu", () => {
+      isolateFromHost(shadow.host as HTMLElement);
+      const removeGuard = installHostIsolationGuard(document);
+      const hostSawEscapeAsHandled: boolean[] = [];
+      const onHostKeyDown = (event: KeyboardEvent): void => {
+        if (event.key === "Escape") hostSawEscapeAsHandled.push(event.defaultPrevented);
+      };
+      document.addEventListener("keydown", onHostKeyDown, true);
+      const btn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      btn.click(); // open
+      btn.focus();
+
+      const pressEscape = (): void => {
+        btn.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, composed: true }),
+        );
+      };
+      pressEscape(); // closes the menu
+      pressEscape(); // nothing left to dismiss: belongs to the host modal
+
+      document.removeEventListener("keydown", onHostKeyDown, true);
+      removeGuard();
+      expect(btn.getAttribute("aria-expanded")).toBe("false");
+      expect(hostSawEscapeAsHandled).toEqual([true, false]);
     });
   });
 
