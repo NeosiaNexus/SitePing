@@ -148,7 +148,20 @@ describe("draw flow — popup re-entry guards (#196, real Popup)", () => {
 
       bus.emit("annotation:start");
       drag(findOverlay(), 100, 100, 200, 200);
-      return { bus, endListener };
+      return { bus, annotator, endListener };
+    }
+
+    /** Fill the open popup and click Send — the submission then waits on a terminal bus event. */
+    function sendFeedback(message: string) {
+      const dialog = findDialog();
+      dialog.querySelector<HTMLButtonElement>('button[data-type="bug"]')!.click();
+      const textarea = dialog.querySelector("textarea")!;
+      textarea.value = message;
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      Array.from(dialog.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Send"))!
+        .click();
+      return { dialog, textarea };
     }
 
     const findDialog = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!;
@@ -202,6 +215,57 @@ describe("draw flow — popup re-entry guards (#196, real Popup)", () => {
       bus.emit("feedback:sent", { id: "f1" } as FeedbackResponse);
       await new Promise((resolve) => setTimeout(resolve, 300));
       expect(dialog.style.display).toBe("none");
+    });
+
+    it.each([
+      ["toolbar Cancel", () => findToolbarCancel().click()],
+      ["Escape", () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))],
+    ])("keeps the session active when %s is used mid-send, ending it once feedback is sent", async (_label, endSession) => {
+      const { bus, annotator, endListener } = openPopup();
+      await flush();
+      sendFeedback("sending");
+      await flush();
+
+      endSession();
+      await flush();
+
+      expect(annotator.isBusy).toBe(true);
+      expect(endListener).not.toHaveBeenCalled();
+      expect(findOverlay()).not.toBeNull();
+
+      bus.emit("feedback:sent", { id: "f1" } as FeedbackResponse);
+      await flush();
+
+      expect(annotator.isBusy).toBe(false);
+      expect(endListener).toHaveBeenCalledOnce();
+      expect(findOverlay()).toBeNull();
+    });
+
+    it("blocks a new instant annotation while a cancelled-mid-send submission is pending", async () => {
+      const { bus, annotator, endListener } = openPopup();
+      const startListener = vi.fn();
+      bus.on("annotation:start", startListener);
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+      await flush();
+      const { textarea } = sendFeedback("first submission");
+      await flush();
+
+      findToolbarCancel().click();
+      await annotator.startInstantAnnotation(50, 50);
+      await flush();
+
+      // The pending popup keeps its form and submission — no second session started.
+      expect(startListener).not.toHaveBeenCalled();
+      expect(textarea.disabled).toBe(true);
+      expect(textarea.value).toBe("first submission");
+
+      bus.emit("feedback:sent", { id: "f1" } as FeedbackResponse);
+      await flush();
+
+      expect(completeListener).toHaveBeenCalledOnce();
+      expect(endListener).toHaveBeenCalledOnce();
+      expect(annotator.isBusy).toBe(false);
     });
   });
 });
