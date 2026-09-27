@@ -480,6 +480,18 @@ export class Popup {
   }
 
   /**
+   * Close the popup as if the user pressed its Cancel button — used when the
+   * annotation session ends from outside the popup (toolbar Cancel, Escape on
+   * the overlay) so the form is not left floating with nothing behind it.
+   * No-op when the popup is closed or a submission is in flight: abandoning
+   * mid-upload would leak a half-sent feedback, same rule as `cancel()`.
+   */
+  dismiss(): void {
+    if (!this.isOpen) return;
+    this.cancel();
+  }
+
+  /**
    * Swap the submit button's text for a spinner and freeze every other
    * control. Mirrors the panel's resolve/delete buttons (`sp-spinner--sm`)
    * but renders inline because the popup lives outside the Shadow DOM

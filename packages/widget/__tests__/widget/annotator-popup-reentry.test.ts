@@ -137,4 +137,71 @@ describe("draw flow — popup re-entry guards (#196, real Popup)", () => {
     await flush();
     expect(completeListener).toHaveBeenCalledOnce();
   });
+
+  describe("ending the session from outside the popup closes the comment form", () => {
+    function openPopup() {
+      const bus = new EventBus<WidgetEvents>();
+      const annotator = new Annotator(buildThemeColors(), bus, createT("en"));
+      cleanup = () => annotator.destroy();
+      const endListener = vi.fn();
+      bus.on("annotation:end", endListener);
+
+      bus.emit("annotation:start");
+      drag(findOverlay(), 100, 100, 200, 200);
+      return { bus, endListener };
+    }
+
+    const findDialog = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    const findToolbarCancel = () =>
+      Array.from(document.body.querySelectorAll("button")).find(
+        (button) => button.textContent === "Cancel" && !button.closest('[role="dialog"]'),
+      )!;
+
+    it("toolbar Cancel dismisses the open popup", async () => {
+      const { endListener } = openPopup();
+      await flush();
+      expect(findDialog().style.display).toBe("block");
+
+      findToolbarCancel().click();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(endListener).toHaveBeenCalledOnce();
+      expect(findDialog().style.display).toBe("none");
+    });
+
+    it("Escape outside the textarea dismisses the open popup", async () => {
+      const { endListener } = openPopup();
+      await flush();
+
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(endListener).toHaveBeenCalledOnce();
+      expect(findDialog().style.display).toBe("none");
+    });
+
+    it("keeps the popup and its in-flight submission when the toolbar Cancel is hit mid-send", async () => {
+      const { bus } = openPopup();
+      await flush();
+      const dialog = findDialog();
+      dialog.querySelector<HTMLButtonElement>('button[data-type="bug"]')!.click();
+      const textarea = dialog.querySelector("textarea")!;
+      textarea.value = "sending";
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      Array.from(dialog.querySelectorAll("button"))
+        .find((button) => button.textContent?.includes("Send"))!
+        .click();
+      await flush();
+
+      findToolbarCancel().click();
+      await flush();
+
+      expect(dialog.style.display).toBe("block");
+      expect(textarea.disabled).toBe(true);
+
+      bus.emit("feedback:sent", { id: "f1" } as FeedbackResponse);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(dialog.style.display).toBe("none");
+    });
+  });
 });

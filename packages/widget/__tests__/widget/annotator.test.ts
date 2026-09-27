@@ -90,6 +90,11 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
         popupMocks.destroyCount += 1;
         popupMocks.isOpenState = false;
       }),
+      // Real dismiss() only closes an open popup; the real-popup suite
+      // (annotator-popup-reentry.test.ts) pins the user-visible behavior.
+      dismiss: vi.fn().mockImplementation(() => {
+        popupMocks.isOpenState = false;
+      }),
       get isOpen() {
         return popupMocks.isOpenState;
       },

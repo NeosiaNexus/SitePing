@@ -264,6 +264,10 @@ export class Annotator {
 
   private deactivate(): void {
     if (!this.isActive) return;
+    // Ending the session from the toolbar Cancel or Escape must not orphan an
+    // open comment form. Dismissed first so the popup's own focus restore runs
+    // before the annotator hands focus back to the pre-activation element.
+    this.popup.dismiss();
     this.isActive = false;
     this.isDrawing = false;
     this.instantMode = false;
