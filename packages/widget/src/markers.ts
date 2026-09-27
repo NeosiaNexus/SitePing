@@ -4,6 +4,7 @@ import { resolveAnnotation } from "./dom/resolver.js";
 import { classifyVisibility } from "./dom/visibility.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
+import { isolateFromHost } from "./host-isolation.js";
 import { getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { getTypeColor, type ThemeColors } from "./styles/theme.js";
 import type { Tooltip } from "./tooltip.js";
@@ -128,6 +129,7 @@ export class MarkerManager {
       style: `position:absolute;top:0;left:0;pointer-events:none;z-index:${Z_INDEX_MAX - 1};`,
     });
     this.container.id = "siteping-markers";
+    isolateFromHost(this.container);
     document.body.appendChild(this.container);
 
     this.bus.on("annotations:toggle", (visible) => {

@@ -4,6 +4,7 @@ import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anch
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { isWidgetChrome } from "./focus-tracker.js";
+import { isolateFromHost } from "./host-isolation.js";
 import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
 import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screenshot.js";
@@ -145,6 +146,7 @@ export class Annotator {
       style: `
         position:fixed;inset:0;
         z-index:${Z_INDEX_MAX - 1};
+        pointer-events:auto;
         background:rgba(15, 23, 42, 0.04);
         cursor:${drawMode ? "crosshair" : "default"};
       `,
@@ -168,6 +170,7 @@ export class Annotator {
         style: `
           position:fixed;top:0;left:0;right:0;
           z-index:${Z_INDEX_MAX};
+          pointer-events:auto;
           height:52px;
           background:${this.colors.glassBg};
           backdrop-filter:blur(24px);
@@ -250,6 +253,9 @@ export class Annotator {
     // Escape to cancel
     document.addEventListener("keydown", this.onKeyDown);
 
+    // Host modals must not read drawing or toolbar clicks as outside interactions.
+    isolateFromHost(this.overlay);
+    if (this.toolbar) isolateFromHost(this.toolbar);
     document.body.appendChild(this.overlay);
     if (this.toolbar) document.body.appendChild(this.toolbar);
 

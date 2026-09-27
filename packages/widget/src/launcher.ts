@@ -16,6 +16,7 @@ import { NetworkBuffer } from "./diagnostics/network-buffer.js";
 import { EventBus, type WidgetEvents } from "./events.js";
 import { Fab } from "./fab.js";
 import { createFocusTracker } from "./focus-tracker.js";
+import { installHostFocusTrapGuard, isolateFromHost } from "./host-isolation.js";
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
 import { getIdentity, type Identity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
@@ -306,6 +307,11 @@ export function launch(config: SitepingConfig): SitepingInstance {
     shadow.appendChild(style);
   }
 
+  // The FAB and panel must stay usable over host modals (see host-isolation.ts).
+  // The host is a <body> child, so it inherits a modal's `pointer-events:none`.
+  host.style.pointerEvents = "auto";
+  isolateFromHost(host);
+  const removeHostFocusTrapGuard = installHostFocusTrapGuard();
   document.body.appendChild(host);
 
   // Track the last page element the user focused. FAB-launched annotation
@@ -715,6 +721,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       pendingOpen = false;
       teardownNavigation?.();
       focusTracker.destroy();
+      removeHostFocusTrapGuard();
       unsubAnnotation();
       unsubToggle();
       fab.destroy();

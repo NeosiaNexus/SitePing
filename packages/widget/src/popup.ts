@@ -1,6 +1,7 @@
 import type { FeedbackType } from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
+import { isolateFromHost } from "./host-isolation.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
@@ -88,6 +89,7 @@ export class Popup {
       style: `
         position:fixed;
         z-index:${Z_INDEX_MAX};
+        pointer-events:auto;
         width:300px;
         padding:16px;
         border-radius:16px;
@@ -266,6 +268,7 @@ export class Popup {
     this.root.appendChild(this.textarea);
     this.root.appendChild(this.hint);
     this.root.appendChild(btnRow);
+    isolateFromHost(this.root);
     document.body.appendChild(this.root);
 
     // Bind every `t()`-derived string into the freshly-built DOM. Kept as a

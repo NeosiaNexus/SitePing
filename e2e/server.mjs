@@ -1,11 +1,47 @@
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const widgetDistDir = join(__dirname, "../packages/widget/dist");
 const widgetJs = readFileSync(join(widgetDistDir, "index.js"), "utf-8");
+
+// esbuild is a transitive dep (via tsup) — hoisted installs expose it at the
+// root, isolated installs (bun) only next to tsup's real location.
+const require = createRequire(import.meta.url);
+function resolveEsbuild() {
+  try {
+    return require("esbuild");
+  } catch {
+    return createRequire(require.resolve("tsup"))("esbuild");
+  }
+}
+
+/** Host-modal fixture (real Radix Dialog), bundled once at startup. */
+const radixDialogJs = resolveEsbuild().buildSync({
+  entryPoints: [join(__dirname, "fixtures/radix-dialog.tsx")],
+  bundle: true,
+  write: false,
+  format: "esm",
+  jsx: "automatic",
+  define: { "process.env.NODE_ENV": '"production"' },
+}).outputFiles[0].text;
+
+const MODAL_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Siteping E2E host modal</title></head>
+<body style="margin:0;font-family:system-ui">
+  <p id="page-content" style="padding:40px">Page behind the modal.</p>
+  <script>globalThis.process = { env: { NODE_ENV: 'test' } };</script>
+  <script type="module" src="/radix-dialog.js"></script>
+  <script type="module">
+    import { initSiteping } from '/widget.js';
+    window.__siteping = initSiteping({ endpoint: '/api/siteping', projectName: 'PROJECT', forceShow: true });
+  </script>
+</body>
+</html>`;
 
 /** In-memory feedback store */
 let feedbacks = [];
@@ -138,6 +174,20 @@ const HTML = `<!DOCTYPE html>
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost:3999");
+
+  if (url.pathname === "/radix-dialog.js") {
+    res.writeHead(200, { "Content-Type": "application/javascript" });
+    res.end(radixDialogJs);
+    return;
+  }
+
+  // Host page with an open Radix modal — accepts ?project=xxx like "/"
+  if (url.pathname === "/modal") {
+    const project = url.searchParams.get("project") || "e2e-test";
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(MODAL_HTML.replace("'PROJECT'", JSON.stringify(project)));
+    return;
+  }
 
   // Serve widget JS
   if (url.pathname === "/widget.js") {
