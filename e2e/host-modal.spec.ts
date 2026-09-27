@@ -4,6 +4,9 @@ import { expect, test } from "@playwright/test";
 // Real pointer and keyboard input only: Playwright's actionability checks fail
 // when `body { pointer-events: none }` makes a widget surface click-through.
 
+/** English `fab.aria` label: the FAB's accessible name in the default locale. */
+const FAB_ACCESSIBLE_NAME = "Siteping — Feedback menu";
+
 test.beforeEach(async ({ page, browserName }) => {
   const project = `e2e-modal-${browserName}`;
   await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
@@ -73,18 +76,27 @@ test.describe("Widget over a host modal", () => {
     await expect(page.locator("#host-dialog")).toBeVisible();
   });
 
-  test("the widget stays usable when the modal inerts its outside siblings", async ({ page }) => {
+  test("the widget stays usable and accessible when the modal inerts its outside siblings", async ({ page }) => {
     // Headless UI / inert-based focus traps: every <body> child outside the
-    // dialog's portal — the widget's shadow host included — becomes inert.
+    // dialog's portal — the widget's shadow host and live region included —
+    // becomes inert and is hidden from assistive technology.
     await page.evaluate(() => {
       const dialog = document.getElementById("host-dialog");
       for (const bodyChild of Array.from(document.body.children)) {
-        if (!dialog || !bodyChild.contains(dialog)) bodyChild.setAttribute("inert", "");
+        if (dialog && bodyChild.contains(dialog)) continue;
+        bodyChild.setAttribute("inert", "");
+        bodyChild.setAttribute("aria-hidden", "true");
       }
     });
     await expect(page.locator("#page-content")).toHaveAttribute("inert", "");
+    await expect(page.locator("#page-content")).toHaveAttribute("aria-hidden", "true");
 
-    await page.locator(".sp-fab").click();
+    // The FAB stays in the accessibility tree and the live region stays exposed.
+    await expect(page.locator("siteping-widget")).not.toHaveAttribute("aria-hidden", /.*/);
+    await expect(page.locator('[role="status"][aria-live="polite"]')).not.toHaveAttribute("aria-hidden", /.*/);
+    await expect(page.getByRole("button", { name: FAB_ACCESSIBLE_NAME })).toBeVisible();
+
+    await page.getByRole("button", { name: FAB_ACCESSIBLE_NAME }).click();
     await page.locator('[data-item-id="chat"]').click();
 
     await expect(page.locator(".sp-panel.sp-panel--open")).toBeVisible();

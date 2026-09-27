@@ -102,6 +102,51 @@ describe("host isolation", () => {
       expect(hostInput.hasAttribute("inert")).toBe(true);
       expect(surface.hasAttribute("inert")).toBe(false);
     });
+
+    it("removes aria-hidden from a widget surface every time a host modal sets it", async () => {
+      surface.setAttribute("aria-hidden", "true");
+      await flushMutationObservers();
+
+      expect(surface.hasAttribute("aria-hidden")).toBe(false);
+
+      surface.setAttribute("aria-hidden", "true");
+      await flushMutationObservers();
+
+      expect(surface.hasAttribute("aria-hidden")).toBe(false);
+    });
+
+    it("clears inert and aria-hidden already present when the surface is registered", () => {
+      const hiddenSurface = document.createElement("div");
+      hiddenSurface.setAttribute("inert", "");
+      hiddenSurface.setAttribute("aria-hidden", "true");
+      document.body.appendChild(hiddenSurface);
+
+      isolateFromHost(hiddenSurface);
+
+      expect(hiddenSurface.hasAttribute("inert")).toBe(false);
+      expect(hiddenSurface.hasAttribute("aria-hidden")).toBe(false);
+    });
+
+    it("keeps decorative aria-hidden on the surface's descendants", async () => {
+      const decorativeIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      decorativeIcon.setAttribute("aria-hidden", "true");
+      surfaceButton.appendChild(decorativeIcon);
+      await flushMutationObservers();
+
+      decorativeIcon.setAttribute("aria-hidden", "true");
+      await flushMutationObservers();
+
+      expect(decorativeIcon.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("leaves the modal's aria-hidden on host elements in place", async () => {
+      hostInput.setAttribute("aria-hidden", "true");
+      surface.setAttribute("aria-hidden", "true");
+      await flushMutationObservers();
+
+      expect(hostInput.getAttribute("aria-hidden")).toBe("true");
+      expect(surface.hasAttribute("aria-hidden")).toBe(false);
+    });
   });
 
   describe("focus guard", () => {

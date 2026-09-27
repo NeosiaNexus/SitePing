@@ -309,7 +309,8 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // The FAB and panel must stay usable over host modals (see host-isolation.ts).
   // The host is a <body> child, so it inherits a modal's `pointer-events:none`;
-  // `isolateFromHost` also undoes the `inert` sibling-inerting modals apply.
+  // `isolateFromHost` also undoes the `inert` / `aria-hidden` sibling-inerting
+  // modals apply.
   host.style.pointerEvents = "auto";
   isolateFromHost(host);
   const removeHostIsolationGuard = installHostIsolationGuard();
@@ -328,8 +329,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
   liveRegion.setAttribute("aria-atomic", "true");
   liveRegion.style.cssText =
     "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;";
-  // An inert live region is dropped from the accessibility tree, silencing
-  // submission announcements made while a sibling-inerting host modal is open.
+  // An inert or aria-hidden live region is dropped from the accessibility tree,
+  // silencing submission announcements made while a sibling-inerting host
+  // modal is open.
   isolateFromHost(liveRegion);
   document.body.appendChild(liveRegion);
 

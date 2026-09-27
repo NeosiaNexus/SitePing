@@ -42,6 +42,16 @@ export const HOST_CAPTURE_ISOLATED_EVENTS = [
 ] as const satisfies readonly (keyof DocumentEventMap)[];
 
 /**
+ * Attributes a sibling-inerting host modal sets on the `<body>` children
+ * outside its dialog: `inert` removes them from pointer and focus
+ * interaction, `aria-hidden` (e.g. the `aria-hidden` package behind Radix's
+ * `hideOthers`) removes them from the accessibility tree. The widget never
+ * sets either on a registered surface root, so every occurrence there comes
+ * from the host and is removed (see `keepSurfaceExposed` in host-isolation.ts).
+ */
+export const HOST_HIDING_ATTRIBUTES = ["inert", "aria-hidden"] as const satisfies readonly string[];
+
+/**
  * Duration in milliseconds of the annotation popup's close transition. The
  * popup is set to `display: none` only once this fade-out has finished.
  */

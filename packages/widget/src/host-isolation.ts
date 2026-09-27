@@ -1,4 +1,4 @@
-import { HOST_CAPTURE_ISOLATED_EVENTS, HOST_OUTSIDE_INTERACTION_EVENTS } from "./constants.js";
+import { HOST_CAPTURE_ISOLATED_EVENTS, HOST_HIDING_ATTRIBUTES, HOST_OUTSIDE_INTERACTION_EVENTS } from "./constants.js";
 
 /**
  * Keeps the widget usable on top of host modals (Radix / shadcn `Dialog`,
@@ -31,8 +31,12 @@ import { HOST_CAPTURE_ISOLATED_EVENTS, HOST_OUTSIDE_INTERACTION_EVENTS } from ".
  *
  * Modals that make their outside siblings `inert` (Headless UI, inert-based
  * focus traps) would leave a surface mounted before the modal opened with no
- * pointer or focus events at all, so {@link isolateFromHost} also removes an
- * `inert` attribute set on the surface itself (see {@link keepSurfaceNotInert}).
+ * pointer or focus events at all, and modals that also mark them
+ * `aria-hidden="true"` (Radix's `hideOthers`, most sibling-inerting focus
+ * traps) would drop it from the accessibility tree — focus would land on
+ * content screen readers cannot see and live-region announcements would be
+ * silenced. {@link isolateFromHost} therefore removes both attributes when
+ * set on the surface itself (see {@link keepSurfaceExposed}).
  *
  * Known limits:
  *
@@ -74,31 +78,40 @@ const stopAtWidgetSurface = (event: Event): void => {
 };
 
 /**
- * Keep `surface` interactive when a host modal inerts it. The widget never
- * sets `inert` on its own surfaces, so any `inert` attribute on one comes from
- * the host and is removed — immediately and whenever it is set again. Modals
- * that restore their saved `inert` state on close restore "absent", which is
- * what the surface already has.
+ * Keep `surface` interactive and exposed to assistive technology when a host
+ * modal hides it. The widget never sets `inert` or `aria-hidden` on a
+ * registered surface root (only on descendants, e.g. decorative icons, and on
+ * shadow-DOM panels, which are not registered), so any
+ * {@link HOST_HIDING_ATTRIBUTES} attribute on one comes from the host and is
+ * removed — immediately and whenever it is set again. Modals that restore
+ * their saved state on close restore "absent", which is what the surface
+ * already has.
  *
- * Only the surface's own attribute is watched: widget surfaces are `<body>`
- * children, and sibling-inerting modals mark the siblings of the dialog's
- * ancestor chain, never `<body>` or `<html>` themselves.
+ * Only the surface's own attributes are watched: descendants keep their
+ * `aria-hidden`, and widget surfaces are `<body>` children, while
+ * sibling-inerting modals mark the siblings of the dialog's ancestor chain,
+ * never `<body>` or `<html>` themselves.
  *
  * The observer is never disconnected on purpose: the surface holds the only
  * reference to it, so both are collected together once the surface is gone.
  */
-function keepSurfaceNotInert(surface: HTMLElement): void {
-  const removeInert = (): void => {
-    if (surface.hasAttribute("inert")) surface.removeAttribute("inert");
+function keepSurfaceExposed(surface: HTMLElement): void {
+  const removeHostHiding = (): void => {
+    for (const attributeName of HOST_HIDING_ATTRIBUTES) {
+      if (surface.hasAttribute(attributeName)) surface.removeAttribute(attributeName);
+    }
   };
-  removeInert();
-  new MutationObserver(removeInert).observe(surface, { attributes: true, attributeFilter: ["inert"] });
+  removeHostHiding();
+  new MutationObserver(removeHostHiding).observe(surface, {
+    attributes: true,
+    attributeFilter: [...HOST_HIDING_ATTRIBUTES],
+  });
 }
 
 /**
  * Register `surface` as widget UI: stop its outside-interaction events in the
- * bubble phase so host modals never see them, and keep it from being made
- * `inert` by sibling-inerting modals. Listeners registered on `surface` itself
+ * bubble phase so host modals never see them, and keep sibling-inerting
+ * modals from making it `inert` or `aria-hidden`. Listeners registered on `surface` itself
  * (and its descendants) are unaffected.
  */
 export function isolateFromHost(surface: HTMLElement): void {
@@ -106,7 +119,7 @@ export function isolateFromHost(surface: HTMLElement): void {
   for (const type of HOST_OUTSIDE_INTERACTION_EVENTS) {
     surface.addEventListener(type, stopAtWidgetSurface);
   }
-  keepSurfaceNotInert(surface);
+  keepSurfaceExposed(surface);
 }
 
 /**
