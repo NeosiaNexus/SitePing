@@ -6,6 +6,7 @@ import type { EventBus, WidgetEvents } from "./events.js";
 import { isWidgetChrome } from "./focus-tracker.js";
 import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
+import { NO_VIEWPORT_INSETS, type ViewportInsets } from "./popup-placement.js";
 import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screenshot.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -262,6 +263,21 @@ export class Annotator {
     this.overlay.focus({ preventScroll: true });
   }
 
+  /**
+   * Viewport band covered by the toolbar, measured rather than assumed: hosts
+   * may restyle or relocate it (e.g. to the bottom edge while a modal is open).
+   */
+  private toolbarInsets(): ViewportInsets {
+    if (!this.toolbar) return NO_VIEWPORT_INSETS;
+    const toolbarRect = this.toolbar.getBoundingClientRect();
+    if (toolbarRect.height === 0) return NO_VIEWPORT_INSETS;
+    const viewportHeight = window.innerHeight;
+    const sitsInTopHalf = toolbarRect.top + toolbarRect.height / 2 < viewportHeight / 2;
+    return sitsInTopHalf
+      ? { top: Math.max(0, toolbarRect.bottom), bottom: 0 }
+      : { top: 0, bottom: Math.max(0, viewportHeight - toolbarRect.top) };
+  }
+
   private deactivate(): void {
     if (!this.isActive) return;
     this.isActive = false;
@@ -354,8 +370,10 @@ export class Annotator {
     // Submission stays inside the popup so the user gets a visible spinner
     // until the server confirms — see finishDrawing for the rationale.
     const screenshotCache: { value?: AnnotatedScreenshot | null } = {};
-    const result = await this.popup.show(rectBounds, (formResult) =>
-      this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
+    const result = await this.popup.show(
+      rectBounds,
+      (formResult) => this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
+      this.toolbarInsets(),
     );
 
     this.drawingRect?.remove();
@@ -477,8 +495,10 @@ export class Annotator {
     // can see what they're sending feedback about — including while the
     // submit-spinner is running. We only remove it after the popup closes.
     const screenshotCache: { value?: AnnotatedScreenshot | null } = {};
-    const result = await this.popup.show(rectBounds, (formResult) =>
-      this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
+    const result = await this.popup.show(
+      rectBounds,
+      (formResult) => this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
+      this.toolbarInsets(),
     );
 
     this.drawingRect?.remove();
