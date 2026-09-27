@@ -10,7 +10,7 @@ function anchor(top: number, bottom: number, left = 100, right = 400) {
 
 describe("computePopupPosition", () => {
   it("places the popup below the anchor when it fits", () => {
-    expect(computePopupPosition(anchor(100, 200), popup, viewport)).toEqual({ top: 208, left: 100 });
+    expect(computePopupPosition(anchor(100, 200), popup, viewport)).toEqual({ top: 208, left: 100, maxHeight: null });
   });
 
   it("uses the measured height to decide whether the popup fits below", () => {
@@ -35,6 +35,33 @@ describe("computePopupPosition", () => {
   it("clamps inside the usable viewport keeping the bottom actions visible", () => {
     const position = computePopupPosition(anchor(60, 700), popup, viewport, { top: 52, bottom: 0 });
     expect(position.top).toBe(720 - 8 - 260);
+  });
+
+  it("caps the height inside the usable band when the popup is taller than it", () => {
+    // Short viewport: the usable band is 60..392 (332px) but the popup is 400px.
+    const shortViewport = { width: 1280, height: 400 };
+    const tallPopup = { width: 300, height: 400 };
+    const position = computePopupPosition(anchor(60, 380), tallPopup, shortViewport, { top: 52, bottom: 0 });
+    expect(position.top).toBe(52 + 8);
+    expect(position.maxHeight).toBe(400 - 8 - (52 + 8));
+    // The capped bottom edge (where the actions live) stays inside the band.
+    expect(position.top + (position.maxHeight ?? tallPopup.height)).toBeLessThanOrEqual(shortViewport.height - 8);
+  });
+
+  it("does not place the popup below an anchor that lies inside the top toolbar band", () => {
+    // The anchor ends at 20, inside the 52px top toolbar: below would start at
+    // 28, still under the toolbar.
+    const position = computePopupPosition(anchor(0, 20), popup, viewport, { top: 52, bottom: 0 });
+    expect(position.top).toBeGreaterThanOrEqual(52 + 8);
+    expect(position.top + popup.height).toBeLessThanOrEqual(viewport.height - 8);
+  });
+
+  it("does not place the popup above an anchor that lies inside the bottom toolbar band", () => {
+    // The anchor starts at 710, inside the 668..720 bottom toolbar: above would
+    // end at 702, still under the toolbar.
+    const position = computePopupPosition(anchor(710, 715), popup, viewport, { top: 0, bottom: 52 });
+    expect(position.top).toBeGreaterThanOrEqual(8);
+    expect(position.top + popup.height).toBeLessThanOrEqual(viewport.height - 52 - 8);
   });
 
   it("flips to the anchor's right edge when it would overflow horizontally", () => {

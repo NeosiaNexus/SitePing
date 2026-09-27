@@ -36,31 +36,55 @@ interface Rect {
   left: number;
 }
 
+/** Where the popup goes, and how tall it may be when the usable band is too short. */
+export interface PopupPosition {
+  top: number;
+  left: number;
+  /**
+   * Height cap in px the popup must apply — making its content scrollable —
+   * when its measured height exceeds the usable viewport band; `null` when it
+   * fits.
+   */
+  maxHeight: number | null;
+}
+
 /**
  * Position the popup next to `anchor`: below it when it fits, above it
  * otherwise, and as a last resort clamped inside the usable viewport (the
  * viewport minus `insets`), keeping its bottom — where the actions live —
- * visible. Horizontally it aligns with the anchor's left edge and flips to its
- * right edge when it would overflow.
+ * visible. A side is accepted only when the whole popup stays inside the
+ * usable band, so an anchor lying inside a toolbar band never drags the popup
+ * under that toolbar. When the popup is taller than the usable band it fills
+ * the band and reports a `maxHeight`, so its content scrolls instead of the
+ * actions being pushed past the bottom edge. Horizontally it aligns with the
+ * anchor's left edge and flips to its right edge when it would overflow.
  */
 export function computePopupPosition(
   anchor: Rect,
   popup: Size,
   viewport: Size,
   insets: ViewportInsets = NO_VIEWPORT_INSETS,
-): { top: number; left: number } {
+): PopupPosition {
   const minTop = insets.top + POPUP_VIEWPORT_MARGIN_PX;
   const maxBottom = viewport.height - insets.bottom - POPUP_VIEWPORT_MARGIN_PX;
+  const usableHeight = Math.max(0, maxBottom - minTop);
 
   const belowTop = anchor.bottom + POPUP_ANCHOR_GAP_PX;
   const aboveTop = anchor.top - POPUP_ANCHOR_GAP_PX - popup.height;
+  const fitsInsideUsableBand = (candidateTop: number): boolean =>
+    candidateTop >= minTop && candidateTop + popup.height <= maxBottom;
+
   let top: number;
-  if (belowTop + popup.height <= maxBottom) {
+  let maxHeight: number | null = null;
+  if (fitsInsideUsableBand(belowTop)) {
     top = belowTop;
-  } else if (aboveTop >= minTop) {
+  } else if (fitsInsideUsableBand(aboveTop)) {
     top = aboveTop;
+  } else if (popup.height <= usableHeight) {
+    top = maxBottom - popup.height;
   } else {
-    top = Math.max(minTop, maxBottom - popup.height);
+    top = minTop;
+    maxHeight = usableHeight;
   }
 
   let left = anchor.left;
@@ -69,5 +93,5 @@ export function computePopupPosition(
   }
   left = Math.max(POPUP_VIEWPORT_MARGIN_PX, Math.min(left, viewport.width - POPUP_VIEWPORT_MARGIN_PX - popup.width));
 
-  return { top, left };
+  return { top, left, maxHeight };
 }

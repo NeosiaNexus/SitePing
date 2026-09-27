@@ -358,8 +358,12 @@ export class Popup {
 
       // Lay the popup out (still transparent) so placement uses its real size
       // — the height varies with the locale's label lengths and font metrics.
+      // Any height cap from a previous show is dropped first so the natural
+      // height is what gets measured.
       this.root.style.display = "block";
-      const { top, left } = computePopupPosition(
+      this.root.style.maxHeight = "";
+      this.root.style.overflowY = "";
+      const { top, left, maxHeight } = computePopupPosition(
         rectBounds,
         this.measure(),
         { width: window.innerWidth, height: window.innerHeight },
@@ -367,6 +371,14 @@ export class Popup {
       );
       this.root.style.top = `${top}px`;
       this.root.style.left = `${left}px`;
+      if (maxHeight !== null) {
+        // Taller than the usable band (short viewport, high zoom, long
+        // localized labels): cap it, let it scroll, and start scrolled to the
+        // bottom so Cancel/Send stay reachable.
+        this.root.style.maxHeight = `${Math.max(0, maxHeight - this.verticalChromeHeight())}px`;
+        this.root.style.overflowY = "auto";
+        this.root.scrollTop = this.root.scrollHeight;
+      }
 
       // Install focus trap
       this.onKeydownTrap = (e: KeyboardEvent) => {
@@ -414,6 +426,18 @@ export class Popup {
     const width = this.root.offsetWidth;
     const height = this.root.offsetHeight;
     return width > 0 && height > 0 ? { width, height } : POPUP_FALLBACK_SIZE;
+  }
+
+  /**
+   * Vertical padding + border of the popup. The root is `content-box`, so a
+   * `max-height` covering its whole rendered height must exclude them.
+   */
+  private verticalChromeHeight(): number {
+    const computed = window.getComputedStyle(this.root);
+    return [computed.paddingTop, computed.paddingBottom, computed.borderTopWidth, computed.borderBottomWidth].reduce(
+      (total, value) => total + (Number.parseFloat(value) || 0),
+      0,
+    );
   }
 
   private selectType(type: FeedbackType, container: HTMLElement): void {
