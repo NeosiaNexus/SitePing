@@ -1,7 +1,7 @@
 import type { FeedbackType } from "@siteping/core";
 import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
-import { isolateFromHost } from "./host-isolation.js";
+import { addSurfaceKeydownListener, isolateFromHost, removeSurfaceKeydownListener } from "./host-isolation.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
 import {
@@ -408,7 +408,7 @@ export class Popup {
           }
         }
       };
-      this.root.addEventListener("keydown", this.onKeydownTrap);
+      addSurfaceKeydownListener(this.root, this.onKeydownTrap);
 
       // Check prefers-reduced-motion live (not cached at construction time)
       const reduceMotion =
@@ -634,7 +634,7 @@ export class Popup {
   private hideElement(): void {
     // Remove focus trap
     if (this.onKeydownTrap) {
-      this.root.removeEventListener("keydown", this.onKeydownTrap);
+      removeSurfaceKeydownListener(this.root, this.onKeydownTrap);
       this.onKeydownTrap = null;
     }
     // Make sure the submitting decoration doesn't leak into the next show()
@@ -670,7 +670,7 @@ export class Popup {
     this.resolve = null;
     this.onSubmit = null;
     if (this.onKeydownTrap) {
-      this.root.removeEventListener("keydown", this.onKeydownTrap);
+      removeSurfaceKeydownListener(this.root, this.onKeydownTrap);
       this.onKeydownTrap = null;
     }
     this.root.remove();

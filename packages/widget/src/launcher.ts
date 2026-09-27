@@ -16,7 +16,12 @@ import { NetworkBuffer } from "./diagnostics/network-buffer.js";
 import { EventBus, type WidgetEvents } from "./events.js";
 import { Fab } from "./fab.js";
 import { createFocusTracker } from "./focus-tracker.js";
-import { installHostIsolationGuard, isolateFromHost } from "./host-isolation.js";
+import {
+  addSurfaceKeydownListener,
+  installHostIsolationGuard,
+  isolateFromHost,
+  removeSurfaceKeydownListener,
+} from "./host-isolation.js";
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
 import { getIdentity, type Identity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
@@ -870,7 +875,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
     btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:20px;";
 
     const closeModal = (result: Identity | null) => {
-      backdrop.removeEventListener("keydown", onKeydown);
+      removeSurfaceKeydownListener(backdrop, onKeydown);
       backdrop.style.opacity = "0";
       modal.style.transform = "translateY(12px) scale(0.97)";
       setTimeout(() => {
@@ -904,8 +909,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
 
     // Focus trap: cycle Tab/Shift+Tab within the modal
     const focusableSelectors = 'input, button, [tabindex]:not([tabindex="-1"])';
-    const onKeydown = (e: Event) => {
-      const ke = e as KeyboardEvent;
+    const onKeydown = (ke: KeyboardEvent) => {
       if (ke.key === "Escape") {
         closeModal(null);
         return;
@@ -930,7 +934,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
         }
       }
     };
-    backdrop.addEventListener("keydown", onKeydown);
+    addSurfaceKeydownListener(backdrop, onKeydown);
 
     // Close on backdrop click
     backdrop.addEventListener("click", (e) => {

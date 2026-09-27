@@ -18,7 +18,11 @@ import {
  * - focus traps pull focus back on `focusin` / `focusout`, so the comment
  *   textarea cannot keep focus;
  * - dismissable layers close on an Escape `keydown` observed at the document,
- *   so cancelling SitePing would also close the host dialog.
+ *   so cancelling SitePing would also close the host dialog;
+ * - keyboard focus traps (e.g. focus-trap) handle Tab `keydown` on the
+ *   document in the capture phase, cancelling the native Tab navigation and
+ *   moving focus back into the dialog, so the widget's controls could never
+ *   be reached with the keyboard.
  *
  * Two layers of isolation, both scoped to the widget's own surfaces (never to
  * host elements that merely opt out of screenshots with `data-siteping-ignore`):
@@ -29,9 +33,11 @@ import {
  * 2. {@link installHostIsolationGuard} listens on `window` in the capture
  *    phase — ahead of capture-phase host listeners on `document` — and stops
  *    the events no widget listener consumes (`pointerdown`, `focusin`,
- *    `focusout`), and marks an Escape `keydown` from a surface as handled
+ *    `focusout`), marks an Escape `keydown` from a surface as handled
  *    (`preventDefault()`), which Radix, Headless UI and native `<dialog>`
- *    honour before dismissing.
+ *    honour before dismissing, and withholds a Tab `keydown` from a surface
+ *    from the host entirely, delivering it itself to the widget's keydown
+ *    listeners registered through {@link addSurfaceKeydownListener}.
  *
  * Modals that make their outside siblings `inert` (Headless UI, inert-based
  * focus traps) would leave a surface mounted before the modal opened with no
@@ -56,6 +62,22 @@ import {
 
 /** Surfaces registered through {@link isolateFromHost}. Weak so removed surfaces are collected. */
 const widgetSurfaces = new WeakSet<Node>();
+
+/** Keydown listener of a widget element or shadow root that must also receive Tab. */
+export type SurfaceKeydownListener = (event: KeyboardEvent) => void;
+
+/**
+ * Listeners registered through {@link addSurfaceKeydownListener}, by the node
+ * they listen on, in registration order. Weak so removed nodes are collected.
+ */
+const surfaceKeydownListeners = new WeakMap<Node, Set<SurfaceKeydownListener>>();
+
+/**
+ * Shadow roots registered through {@link addSurfaceKeydownListener}, by their
+ * host. The widget's shadow root is closed, so `host.shadowRoot` is `null` and
+ * this is the only way the guard reaches the element focused inside it.
+ */
+const registeredShadowRootsByHost = new WeakMap<Element, ShadowRoot>();
 
 /**
  * True when `node` is, or lives inside, a surface registered through
@@ -127,6 +149,76 @@ export function isolateFromHost(surface: HTMLElement): void {
 }
 
 /**
+ * Add a `keydown` listener to a widget element (or the widget's shadow root)
+ * that keeps receiving Tab while {@link installHostIsolationGuard} withholds
+ * Tab from the host page. The guard stops a Tab `keydown` from a widget
+ * surface at `window`, before it reaches any other listener, and then calls
+ * the listeners registered here for the focused element and its ancestors
+ * itself, innermost first — the order the event would have bubbled in. Every
+ * other key, and Tab without the guard, reaches `listener` through the
+ * regular DOM listener, so it runs exactly once per event either way.
+ *
+ * Use it for every widget listener that handles Tab (focus traps); a plain
+ * `addEventListener("keydown", …)` never sees Tab while the guard is installed.
+ *
+ * @param scope - Widget element or shadow root the listener is attached to.
+ * @param listener - Keydown handler; may call `preventDefault()` to cancel
+ * the native Tab navigation.
+ */
+export function addSurfaceKeydownListener(scope: HTMLElement | ShadowRoot, listener: SurfaceKeydownListener): void {
+  scope.addEventListener("keydown", listener as EventListener);
+  let listeners = surfaceKeydownListeners.get(scope);
+  if (!listeners) {
+    listeners = new Set();
+    surfaceKeydownListeners.set(scope, listeners);
+  }
+  listeners.add(listener);
+  if (scope instanceof ShadowRoot) registeredShadowRootsByHost.set(scope.host, scope);
+}
+
+/** Remove a listener added with {@link addSurfaceKeydownListener}. */
+export function removeSurfaceKeydownListener(scope: HTMLElement | ShadowRoot, listener: SurfaceKeydownListener): void {
+  scope.removeEventListener("keydown", listener as EventListener);
+  surfaceKeydownListeners.get(scope)?.delete(listener);
+}
+
+/**
+ * Innermost target of a keyboard event observed at `window`. Events from a
+ * closed shadow tree are retargeted to its host there, and keyboard events
+ * target the focused element, so descend through each shadow root's
+ * `activeElement` (open, or registered through
+ * {@link addSurfaceKeydownListener}).
+ */
+function innermostKeyboardTarget(event: KeyboardEvent): Node | null {
+  const [outermostVisibleTarget] = event.composedPath();
+  let target: Node | null = outermostVisibleTarget instanceof Node ? outermostVisibleTarget : null;
+  while (target instanceof Element) {
+    const shadowRoot = target.shadowRoot ?? registeredShadowRootsByHost.get(target);
+    const focusedInShadowRoot = shadowRoot?.activeElement;
+    if (!focusedInShadowRoot) break;
+    target = focusedInShadowRoot;
+  }
+  return target;
+}
+
+/**
+ * Call the {@link addSurfaceKeydownListener} listeners of the event's
+ * innermost target and its ancestors (crossing shadow boundaries), innermost
+ * first, with the original event: its `preventDefault()` still cancels the
+ * native Tab navigation, which otherwise happens as usual after dispatch.
+ */
+function deliverToSurfaceKeydownListeners(event: KeyboardEvent): void {
+  let current = innermostKeyboardTarget(event);
+  while (current) {
+    const listeners = surfaceKeydownListeners.get(current);
+    if (listeners) {
+      for (const listener of [...listeners]) listener(event);
+    }
+    current = current instanceof ShadowRoot ? current.host : current.parentNode;
+  }
+}
+
+/**
  * Capture-phase guard on `window`, which runs before any `document` listener
  * (capture or bubble) the host registered:
  *
@@ -142,6 +234,16 @@ export function isolateFromHost(surface: HTMLElement): void {
  * - An Escape `keydown` from a widget surface is marked handled with
  *   `preventDefault()`: the widget's own Escape handlers still run, while
  *   dismissable layers that respect `defaultPrevented` keep the modal open.
+ * - A Tab `keydown` from a widget surface is stopped, so capture-phase focus
+ *   traps on `document` cannot cancel the navigation and pull focus back into
+ *   the host dialog. Stopping it at `window` would also starve the widget's
+ *   own focus traps (they listen on its elements, which run after `document`),
+ *   so the guard delivers the event to the listeners registered through
+ *   {@link addSurfaceKeydownListener} itself. Re-dispatching a copy instead
+ *   would not work: the copy would cross the host's `document` listeners
+ *   again, and an untrusted event never performs the native navigation.
+ *   Trade-off: host keydown listeners (e.g. keyboard-modality detection) do
+ *   not observe Tab pressed inside the widget.
  *
  * @param ownerDocument - Document whose `window` receives the guard; falls
  * back to the document itself when it has no browsing context.
@@ -159,7 +261,13 @@ export function installHostIsolationGuard(ownerDocument: Document = document): (
     }
   };
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && isWidgetSurfaceTarget(event.target)) event.preventDefault();
+    if (!isWidgetSurfaceTarget(event.target)) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+    } else if (event.key === "Tab") {
+      event.stopImmediatePropagation();
+      deliverToSurfaceKeydownListeners(event);
+    }
   };
 
   for (const type of HOST_CAPTURE_ISOLATED_EVENTS) {

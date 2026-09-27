@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installHostIsolationGuard, isolateFromHost, isWidgetSurface } from "../../src/host-isolation.js";
+import {
+  addSurfaceKeydownListener,
+  installHostIsolationGuard,
+  isolateFromHost,
+  isWidgetSurface,
+  removeSurfaceKeydownListener,
+} from "../../src/host-isolation.js";
 
 // Host modals listen on `document`; these tests register such listeners
 // before the guard (the normal ordering when the widget is launched over an
@@ -234,6 +240,87 @@ describe("host isolation", () => {
       surfaceButton.dispatchEvent(keyDown);
 
       expect(keyDown.defaultPrevented).toBe(false);
+    });
+  });
+
+  describe("Tab containment", () => {
+    const pressTab = (target: Element): KeyboardEvent => {
+      const tabKeyDown = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true, composed: true });
+      target.dispatchEvent(tabKeyDown);
+      return tabKeyDown;
+    };
+
+    it("hides Tab from a widget surface from capture-phase host focus traps", () => {
+      const onDocumentKeyDown = vi.fn();
+      listenOnDocument("keydown", onDocumentKeyDown, true);
+      installGuard();
+
+      pressTab(surfaceButton);
+      pressTab(hostInput);
+
+      expect(onDocumentKeyDown).toHaveBeenCalledTimes(1);
+      expect(onDocumentKeyDown.mock.calls[0]?.[0].target).toBe(hostInput);
+    });
+
+    it("delivers Tab once to the widget's surface keydown listeners, innermost first, with the original event", () => {
+      installGuard();
+      const deliveryOrder: string[] = [];
+      const surfaceButtonListener = (event: KeyboardEvent): void => {
+        deliveryOrder.push("button");
+        event.preventDefault();
+      };
+      addSurfaceKeydownListener(surfaceButton, surfaceButtonListener);
+      addSurfaceKeydownListener(surface, () => deliveryOrder.push("surface"));
+      surfaceButton.focus();
+
+      const tabKeyDown = pressTab(surfaceButton);
+
+      expect(deliveryOrder).toEqual(["button", "surface"]);
+      expect(tabKeyDown.defaultPrevented).toBe(true);
+    });
+
+    it("reaches keydown listeners on elements inside a closed shadow root", () => {
+      const onDocumentKeyDown = vi.fn();
+      listenOnDocument("keydown", onDocumentKeyDown, true);
+      installGuard();
+      const shadowHost = document.createElement("div");
+      const shadowRoot = shadowHost.attachShadow({ mode: "closed" });
+      const shadowButton = document.createElement("button");
+      shadowRoot.appendChild(shadowButton);
+      document.body.appendChild(shadowHost);
+      isolateFromHost(shadowHost);
+      const onShadowRootKeyDown = vi.fn();
+      addSurfaceKeydownListener(shadowRoot, onShadowRootKeyDown);
+      shadowButton.focus();
+
+      pressTab(shadowButton);
+
+      expect(onShadowRootKeyDown).toHaveBeenCalledTimes(1);
+      expect(onDocumentKeyDown).not.toHaveBeenCalled();
+    });
+
+    it("keeps delivering other keys and unguarded Tab through the regular listener, once", () => {
+      const onSurfaceKeyDown = vi.fn();
+      addSurfaceKeydownListener(surface, onSurfaceKeyDown);
+      surfaceButton.focus();
+
+      pressTab(surfaceButton);
+      installGuard();
+      surfaceButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+
+      expect(onSurfaceKeyDown.mock.calls.map(([event]) => event.key)).toEqual(["Tab", "Escape"]);
+    });
+
+    it("stops delivering Tab to a listener once it is removed", () => {
+      installGuard();
+      const onSurfaceKeyDown = vi.fn();
+      addSurfaceKeydownListener(surface, onSurfaceKeyDown);
+      removeSurfaceKeydownListener(surface, onSurfaceKeyDown);
+      surfaceButton.focus();
+
+      pressTab(surfaceButton);
+
+      expect(onSurfaceKeyDown).not.toHaveBeenCalled();
     });
   });
 

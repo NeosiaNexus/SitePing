@@ -7,6 +7,9 @@ import { expect, test } from "@playwright/test";
 /** English `fab.aria` label: the FAB's accessible name in the default locale. */
 const FAB_ACCESSIBLE_NAME = "Siteping — Feedback menu";
 
+/** English `popup.cancel` label: the comment popup's Cancel button name in the default locale. */
+const POPUP_CANCEL_ACCESSIBLE_NAME = "Cancel";
+
 test.beforeEach(async ({ page, browserName }) => {
   const project = `e2e-modal-${browserName}`;
   await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
@@ -73,6 +76,65 @@ test.describe("Widget over a host modal", () => {
     await page.keyboard.press("Escape");
 
     await expect(popup).toBeHidden();
+    await expect(page.locator("#host-dialog")).toBeVisible();
+  });
+
+  test("Tab in the comment popup moves focus within the popup, not back into the modal", async ({ page }) => {
+    await page.locator(".sp-fab").click();
+    await page.locator('[data-item-id="annotate"]').click();
+    const dialogBox = (await page.locator("#host-dialog").boundingBox())!;
+    await page.mouse.move(dialogBox.x + 20, dialogBox.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(dialogBox.x + 300, dialogBox.y + 80, { steps: 5 });
+    await page.mouse.up();
+    const popup = page.locator('[role="dialog"][data-siteping-ignore]');
+    // The popup focuses its comment textarea on the next frame; wait for it
+    // so that deferred focus cannot undo the Tab below.
+    await expect(popup.locator("textarea")).toBeFocused();
+
+    await page.keyboard.press("Tab");
+
+    // The popup's Cancel button follows the comment textarea.
+    await expect(popup.getByRole("button", { name: POPUP_CANCEL_ACCESSIBLE_NAME })).toBeFocused();
+    await expect(page.locator("#host-dialog-input")).not.toBeFocused();
+    await expect(page.locator("#host-dialog")).toBeVisible();
+  });
+
+  test("Tab in the feedback panel moves focus within the panel, not back into the modal", async ({ page }) => {
+    await page.locator(".sp-fab").click();
+    await page.locator('[data-item-id="chat"]').click();
+    const panel = page.locator(".sp-panel.sp-panel--open");
+    await expect(panel).toBeVisible();
+    const panelSearch = panel.locator(".sp-search");
+    // Opening the panel moves focus to its search field on the next frame;
+    // wait for it so that deferred focus cannot undo the Tab below.
+    await expect(panelSearch).toBeFocused();
+
+    await page.keyboard.press("Tab");
+
+    await expect(panelSearch).not.toBeFocused();
+    await expect(page.locator("#host-dialog-input")).not.toBeFocused();
+    const focusStaysInPanel = await panel.evaluate((panelElement) =>
+      panelElement.contains((panelElement.getRootNode() as ShadowRoot).activeElement),
+    );
+    expect(focusStaysInPanel).toBe(true);
+    await expect(page.locator("#host-dialog")).toBeVisible();
+  });
+
+  test("Shift+Tab from the FAB reaches its open menu, not the modal", async ({ page }) => {
+    const fab = page.locator(".sp-fab");
+    await fab.click();
+    await expect(fab).toHaveAttribute("aria-expanded", "true");
+    // Opening the menu focuses its first item on the next frame; wait for it
+    // so that deferred focus cannot undo the Shift+Tab below.
+    await expect(page.locator(".sp-radial-item").first()).toBeFocused();
+    await fab.focus();
+
+    await page.keyboard.press("Shift+Tab");
+
+    // The radial menu precedes the FAB, so its last item comes before it.
+    await expect(page.locator('[data-item-id="toggle-annotations"]')).toBeFocused();
+    await expect(page.locator("#host-dialog-input")).not.toBeFocused();
     await expect(page.locator("#host-dialog")).toBeVisible();
   });
 

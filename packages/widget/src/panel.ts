@@ -13,6 +13,7 @@ import { PAGE_SIZE } from "./constants.js";
 import { el, formatRelativeDate, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
+import { addSurfaceKeydownListener, removeSurfaceKeydownListener } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import {
   ICON_BUG,
@@ -374,8 +375,9 @@ export class Panel {
     });
 
     // Keyboard handling: Escape to close + focus trap
-    shadowRoot.addEventListener("keydown", (e) => {
-      const ke = e as KeyboardEvent;
+    // Registered through host isolation so the focus trap keeps receiving Tab
+    // while the guard withholds it from host modals.
+    addSurfaceKeydownListener(shadowRoot, (ke) => {
       if (ke.key === "Escape" && this.isOpen) {
         // If detail view is open, close it instead
         if (this.detail.isVisible) {
@@ -871,7 +873,7 @@ export class Panel {
       const close = (result: boolean) => {
         if (closed) return;
         closed = true;
-        backdrop.removeEventListener("keydown", onKeydown);
+        removeSurfaceKeydownListener(backdrop, onKeydown);
         backdrop.style.opacity = "0";
         dialog.style.transform = "translateY(8px) scale(0.97)";
         setTimeout(() => {
@@ -881,8 +883,7 @@ export class Panel {
       };
 
       // Focus trap: Tab cycles between cancel and confirm
-      const onKeydown = (e: Event) => {
-        const ke = e as KeyboardEvent;
+      const onKeydown = (ke: KeyboardEvent) => {
         if (ke.key === "Escape") {
           close(false);
           return;
@@ -897,7 +898,7 @@ export class Panel {
           }
         }
       };
-      backdrop.addEventListener("keydown", onKeydown);
+      addSurfaceKeydownListener(backdrop, onKeydown);
 
       cancelBtn.addEventListener("click", () => close(false));
       confirmBtn.addEventListener("click", () => close(true));

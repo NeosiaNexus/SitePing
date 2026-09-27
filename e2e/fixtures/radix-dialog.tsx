@@ -4,7 +4,9 @@
 // On top of Radix, the host also dismisses on an outside `click` (bubble phase,
 // like click-away libraries) and on outside `pointerdown` / `focusin` observed
 // in the capture phase (like focus-trap), so the widget is exercised against
-// both listener phases.
+// both listener phases. Like focus-trap, it also traps Tab with a capture-phase
+// `keydown` listener on `document` that cancels the navigation and moves focus
+// back into the dialog when the key is pressed outside it.
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -21,6 +23,13 @@ function HostDialog() {
 
   useEffect(() => {
     if (!open) return;
+    const trapTabInsideDialog = (event: KeyboardEvent): void => {
+      const dialog = document.getElementById("host-dialog");
+      if (event.key !== "Tab" || !dialog || !(event.target instanceof Node) || dialog.contains(event.target)) return;
+      event.preventDefault();
+      document.getElementById("host-dialog-input")?.focus();
+    };
+    document.addEventListener("keydown", trapTabInsideDialog, true);
     const dismissOnOutsideInteraction = (event: Event): void => {
       const dialog = document.getElementById("host-dialog");
       if (dialog && event.target instanceof Node && !dialog.contains(event.target)) setOpen(false);
@@ -29,6 +38,7 @@ function HostDialog() {
       document.addEventListener(type, dismissOnOutsideInteraction, capture);
     }
     return () => {
+      document.removeEventListener("keydown", trapTabInsideDialog, true);
       for (const { type, capture } of EXTRA_DISMISS_LISTENERS) {
         document.removeEventListener(type, dismissOnOutsideInteraction, capture);
       }
