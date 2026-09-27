@@ -193,6 +193,25 @@ describe("draw flow — popup re-entry guards (#196, real Popup)", () => {
       expect(findDialog().style.display).toBe("none");
     });
 
+    it.each([
+      ["toolbar Cancel", () => findToolbarCancel().click()],
+      ["Escape", () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))],
+    ])("a new annotation started right after %s keeps its popup visible", async (_label, endSession) => {
+      const { bus, annotator } = openPopup();
+      await flush();
+
+      endSession();
+      // Start a new session while the dismissed popup is still fading out
+      bus.emit("annotation:start");
+      drag(findOverlay(), 300, 300, 400, 400);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const dialog = findDialog();
+      expect(dialog.style.display).toBe("block");
+      expect(dialog.querySelector("textarea")!.disabled).toBe(false);
+      expect(annotator.isBusy).toBe(true);
+    });
+
     it("keeps the popup and its in-flight submission when the toolbar Cancel is hit mid-send", async () => {
       const { bus } = openPopup();
       await flush();
@@ -220,26 +239,29 @@ describe("draw flow — popup re-entry guards (#196, real Popup)", () => {
     it.each([
       ["toolbar Cancel", () => findToolbarCancel().click()],
       ["Escape", () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))],
-    ])("keeps the session active when %s is used mid-send, ending it once feedback is sent", async (_label, endSession) => {
-      const { bus, annotator, endListener } = openPopup();
-      await flush();
-      sendFeedback("sending");
-      await flush();
+    ])(
+      "keeps the session active when %s is used mid-send, ending it once feedback is sent",
+      async (_label, endSession) => {
+        const { bus, annotator, endListener } = openPopup();
+        await flush();
+        sendFeedback("sending");
+        await flush();
 
-      endSession();
-      await flush();
+        endSession();
+        await flush();
 
-      expect(annotator.isBusy).toBe(true);
-      expect(endListener).not.toHaveBeenCalled();
-      expect(findOverlay()).not.toBeNull();
+        expect(annotator.isBusy).toBe(true);
+        expect(endListener).not.toHaveBeenCalled();
+        expect(findOverlay()).not.toBeNull();
 
-      bus.emit("feedback:sent", { id: "f1" } as FeedbackResponse);
-      await flush();
+        bus.emit("feedback:sent", { id: "f1" } as FeedbackResponse);
+        await flush();
 
-      expect(annotator.isBusy).toBe(false);
-      expect(endListener).toHaveBeenCalledOnce();
-      expect(findOverlay()).toBeNull();
-    });
+        expect(annotator.isBusy).toBe(false);
+        expect(endListener).toHaveBeenCalledOnce();
+        expect(findOverlay()).toBeNull();
+      },
+    );
 
     it("blocks a new instant annotation while a cancelled-mid-send submission is pending", async () => {
       const { bus, annotator, endListener } = openPopup();
