@@ -304,6 +304,64 @@ test.describe("Keyboard-only annotation", () => {
   });
 });
 
+test.describe("Annotation popup placement", () => {
+  /** Popup and toolbar layout boxes, read from style.top + offsetHeight to ignore the entry transform. */
+  async function readLayout(page: Page) {
+    return page.evaluate(() => {
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      const toolbar = Array.from(document.querySelectorAll<HTMLElement>("body > div[data-siteping-ignore]")).find(
+        (candidate) => candidate.querySelector("button")?.textContent === "Cancel",
+      )!;
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const popupTop = Number.parseFloat(dialog.style.top);
+      return {
+        popupTop,
+        popupBottom: popupTop + dialog.offsetHeight,
+        toolbarTop: toolbarRect.top,
+        toolbarBottom: toolbarRect.bottom,
+        viewportHeight: window.innerHeight,
+      };
+    });
+  }
+
+  async function drawRectangle(page: Page, fromY: number, toY: number) {
+    const s = shadow(page);
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="annotate"]');
+    await s.click('[data-item-id="annotate"]');
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
+
+    await page.mouse.move(200, fromY);
+    await page.mouse.down();
+    await page.mouse.move(600, toY, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForSelector("button[data-type='bug']");
+  }
+
+  test("does not flip above the rectangle into the top toolbar", async ({ page }) => {
+    // Too tall to fit the popup below, and "above" lands inside the 52px toolbar band.
+    await drawRectangle(page, 250, 650);
+
+    const layout = await readLayout(page);
+    expect(layout.popupTop).toBeGreaterThanOrEqual(layout.toolbarBottom);
+    expect(layout.popupBottom).toBeLessThanOrEqual(layout.viewportHeight);
+  });
+
+  test("keeps clear of a toolbar the host relocates to the bottom edge", async ({ page }) => {
+    await page.addStyleTag({
+      content:
+        'body > div[data-siteping-ignore][style*="height: 52px"] { top: auto !important; bottom: 0 !important; }',
+    });
+    // Below the rectangle would overlap the relocated toolbar.
+    await drawRectangle(page, 300, 420);
+
+    const layout = await readLayout(page);
+    expect(layout.toolbarTop).toBeGreaterThan(layout.viewportHeight / 2);
+    expect(layout.popupBottom).toBeLessThanOrEqual(layout.toolbarTop);
+    expect(layout.popupTop).toBeGreaterThanOrEqual(0);
+  });
+});
+
 test.describe("Full annotation flow", () => {
   test("draw → popup → submit → marker + API persist", async ({ page }) => {
     const s = shadow(page);

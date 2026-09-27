@@ -159,6 +159,22 @@ describe("Popup", () => {
       expect(dialog.style.top).toBe("540px");
     });
 
+    it("caps its height and scrolls when taller than the usable band, then resets on the next show", () => {
+      // jsdom is 768px tall; reserving 400px at the top and 200px at the
+      // bottom leaves a 152px band, shorter than the 220px fallback popup.
+      popup.show(makeBounds({ top: 450, bottom: 500 }), undefined, { top: 400, bottom: 200 });
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      expect(dialog.style.top).toBe("408px");
+      expect(dialog.style.overflowY).toBe("auto");
+      // The 16px vertical padding is excluded from the content-box cap.
+      expect(Number.parseFloat(dialog.style.maxHeight)).toBeLessThanOrEqual(152 - 32);
+
+      popup.show(makeBounds({ bottom: 200 }));
+      expect(dialog.style.maxHeight).toBe("");
+      expect(dialog.style.overflowY).toBe("");
+    });
+
     it("resolves to null when cancelled (via cancel button)", async () => {
       const promise = popup.show(makeBounds());
 
@@ -442,6 +458,45 @@ describe("Popup", () => {
       const allTypeButtons = dialog.querySelectorAll<HTMLButtonElement>("[data-type]");
       for (const btn of allTypeButtons) {
         expect(btn.getAttribute("aria-pressed")).toBe("false");
+      }
+    });
+
+    it("stays visible when re-shown before the previous close transition ends", async () => {
+      vi.useFakeTimers();
+      try {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        const firstSession = popup.show(makeBounds());
+        const cancelButton = Array.from(dialog.querySelectorAll<HTMLButtonElement>("button")).find(
+          (button) => button.textContent === t("popup.cancel"),
+        )!;
+        cancelButton.click();
+        await firstSession;
+
+        // Re-open inside the fade-out window of the dismissed session
+        vi.advanceTimersByTime(100);
+        popup.show(makeBounds());
+        vi.advanceTimersByTime(1000);
+
+        expect(dialog.style.display).toBe("block");
+        expect(popup.isOpen).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("still hides after the close transition when not re-shown", async () => {
+      vi.useFakeTimers();
+      try {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        const session = popup.show(makeBounds());
+        popup.dismiss();
+        await session;
+
+        vi.advanceTimersByTime(1000);
+
+        expect(dialog.style.display).toBe("none");
+      } finally {
+        vi.useRealTimers();
       }
     });
   });

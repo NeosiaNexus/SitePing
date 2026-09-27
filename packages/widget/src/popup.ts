@@ -1,9 +1,15 @@
 import type { FeedbackType } from "@siteping/core";
-import { Z_INDEX_MAX } from "./constants.js";
+import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
 import { isolateFromHost } from "./host-isolation.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
+import {
+  computePopupPosition,
+  NO_VIEWPORT_INSETS,
+  POPUP_FALLBACK_SIZE,
+  type ViewportInsets,
+} from "./popup-placement.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // Map each feedback type to its translation key, so `refreshLabels()` can
@@ -67,6 +73,12 @@ export class Popup {
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
   private onSubmit: PopupSubmitHandler | null = null;
   private submittingState = false;
+  /**
+   * Pending `display: none` scheduled by `hideElement()` once the fade-out
+   * ends. Cleared by `show()` so a popup reopened inside the transition window
+   * is not hidden by the previous session's timer.
+   */
+  private hideTimeoutId: ReturnType<typeof setTimeout> | null = null;
   /** WAAPI handle for the running spinner — cancelled when submitting ends. */
   private spinnerAnimation: Animation | null = null;
 
@@ -325,9 +337,17 @@ export class Popup {
    * runs — the submit button shows a spinner, every other control is
    * disabled. On success the popup closes; on rejection it restores so the
    * user can retry without re-entering the form.
+   *
+   * `insets` reserves viewport bands the popup must not cover (the
+   * annotation toolbar), so its actions never land behind them.
    */
-  show(rectBounds: DOMRect, onSubmit?: PopupSubmitHandler): Promise<PopupResult | null> {
+  show(
+    rectBounds: DOMRect,
+    onSubmit?: PopupSubmitHandler,
+    insets: ViewportInsets = NO_VIEWPORT_INSETS,
+  ): Promise<PopupResult | null> {
     return new Promise((resolve) => {
+      this.cancelPendingHide();
       this.resolve = resolve;
       this.onSubmit = onSubmit ?? null;
       this.selectedType = null;
@@ -339,33 +359,29 @@ export class Popup {
       // Save focus to restore on close
       this.previouslyFocused = document.activeElement as HTMLElement | null;
 
-      // Position: bottom-left of rect, 8px below
-      const popupH = 220;
-      const popupW = 300;
-      let top = rectBounds.bottom + 8;
-      let left = rectBounds.left;
-
-      // Vertical: prefer below; fall back to above; otherwise clamp inside viewport
-      if (top + popupH > window.innerHeight) {
-        const aboveTop = rectBounds.top - popupH - 8;
-        if (aboveTop >= 8) {
-          top = aboveTop;
-        } else {
-          // Rect is taller than the viewport allows on either side —
-          // clamp to keep the popup fully visible.
-          top = window.innerHeight - popupH - 8;
-        }
-      }
-      // Collision: flip right if not enough space on left
-      if (left + popupW > window.innerWidth) {
-        left = rectBounds.right - popupW;
-      }
-      left = Math.max(8, left);
-      top = Math.max(8, top);
-
+      // Lay the popup out (still transparent) so placement uses its real size
+      // — the height varies with the locale's label lengths and font metrics.
+      // Any height cap from a previous show is dropped first so the natural
+      // height is what gets measured.
+      this.root.style.display = "block";
+      this.root.style.maxHeight = "";
+      this.root.style.overflowY = "";
+      const { top, left, maxHeight } = computePopupPosition(
+        rectBounds,
+        this.measure(),
+        { width: window.innerWidth, height: window.innerHeight },
+        insets,
+      );
       this.root.style.top = `${top}px`;
       this.root.style.left = `${left}px`;
-      this.root.style.display = "block";
+      if (maxHeight !== null) {
+        // Taller than the usable band (short viewport, high zoom, long
+        // localized labels): cap it, let it scroll, and start scrolled to the
+        // bottom so Cancel/Send stay reachable.
+        this.root.style.maxHeight = `${Math.max(0, maxHeight - this.verticalChromeHeight())}px`;
+        this.root.style.overflowY = "auto";
+        this.root.scrollTop = this.root.scrollHeight;
+      }
 
       // Install focus trap
       this.onKeydownTrap = (e: KeyboardEvent) => {
@@ -406,6 +422,25 @@ export class Popup {
         this.textarea.focus();
       });
     });
+  }
+
+  /** Rendered size, ignoring the entry transform; falls back when there is no layout. */
+  private measure(): { width: number; height: number } {
+    const width = this.root.offsetWidth;
+    const height = this.root.offsetHeight;
+    return width > 0 && height > 0 ? { width, height } : POPUP_FALLBACK_SIZE;
+  }
+
+  /**
+   * Vertical padding + border of the popup. The root is `content-box`, so a
+   * `max-height` covering its whole rendered height must exclude them.
+   */
+  private verticalChromeHeight(): number {
+    const computed = window.getComputedStyle(this.root);
+    return [computed.paddingTop, computed.paddingBottom, computed.borderTopWidth, computed.borderBottomWidth].reduce(
+      (total, value) => total + (Number.parseFloat(value) || 0),
+      0,
+    );
   }
 
   private selectType(type: FeedbackType, container: HTMLElement): void {
@@ -480,6 +515,18 @@ export class Popup {
     this.resolve?.(null);
     this.resolve = null;
     this.hideElement();
+  }
+
+  /**
+   * Close the popup as if the user pressed its Cancel button — used when the
+   * annotation session ends from outside the popup (toolbar Cancel, Escape on
+   * the overlay) so the form is not left floating with nothing behind it.
+   * No-op when the popup is closed or a submission is in flight: abandoning
+   * mid-upload would leak a half-sent feedback, same rule as `cancel()`.
+   */
+  dismiss(): void {
+    if (!this.isOpen) return;
+    this.cancel();
   }
 
   /**
@@ -598,9 +645,18 @@ export class Popup {
     // Restore focus to the previously focused element
     this.previouslyFocused?.focus();
     this.previouslyFocused = null;
-    setTimeout(() => {
+    this.cancelPendingHide();
+    this.hideTimeoutId = setTimeout(() => {
+      this.hideTimeoutId = null;
       this.root.style.display = "none";
-    }, 250);
+    }, POPUP_HIDE_TRANSITION_MS);
+  }
+
+  /** Drop a `display: none` still pending from a previous `hideElement()`. */
+  private cancelPendingHide(): void {
+    if (this.hideTimeoutId === null) return;
+    clearTimeout(this.hideTimeoutId);
+    this.hideTimeoutId = null;
   }
 
   destroy(): void {
@@ -609,6 +665,7 @@ export class Popup {
     // whatever it retains: the annotation, the base64 screenshot). Resolving
     // with `null` reads as "cancelled", matching `cancel()`.
     if (this.submittingState) this.exitSubmittingState();
+    this.cancelPendingHide();
     this.resolve?.(null);
     this.resolve = null;
     this.onSubmit = null;

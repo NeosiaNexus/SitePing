@@ -40,3 +40,9 @@ export const HOST_CAPTURE_ISOLATED_EVENTS = [
   "pointerdown",
   "focusin",
 ] as const satisfies readonly (keyof DocumentEventMap)[];
+
+/**
+ * Duration in milliseconds of the annotation popup's close transition. The
+ * popup is set to `display: none` only once this fade-out has finished.
+ */
+export const POPUP_HIDE_TRANSITION_MS = 250;
