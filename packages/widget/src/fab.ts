@@ -110,14 +110,16 @@ export class Fab {
     // single pass so the constructor and `refreshLabels()` never drift.
     this.applyLabels();
 
-    // Close radial menu on click outside.
+    // Close radial menu on click outside. Capture phase: widget surfaces stop
+    // `click` in the bubble phase (host-isolation.ts), and a click on another
+    // surface (marker, popup, overlay) must still close the menu.
     const host = shadowRoot.host;
     this.onDocumentClick = (e: MouseEvent) => {
       if (this.isOpen && !e.composedPath().includes(host)) {
         this.close();
       }
     };
-    document.addEventListener("click", this.onDocumentClick);
+    document.addEventListener("click", this.onDocumentClick, true);
 
     // Escape on FAB or menu container closes the menu
     const handleEscape = (e: KeyboardEvent) => {
@@ -301,7 +303,7 @@ export class Fab {
   }
 
   destroy(): void {
-    document.removeEventListener("click", this.onDocumentClick);
+    document.removeEventListener("click", this.onDocumentClick, true);
     this.root.remove();
   }
 }

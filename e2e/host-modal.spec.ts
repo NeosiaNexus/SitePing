@@ -44,6 +44,35 @@ test.describe("Widget over a host modal", () => {
     await expect(page.locator("#host-dialog")).toBeVisible();
   });
 
+  test("Escape cancels the annotation overlay without closing the modal", async ({ page }) => {
+    await page.locator(".sp-fab").click();
+    await page.locator('[data-item-id="annotate"]').click();
+    const overlay = page.locator('[role="application"][data-siteping-ignore]');
+    await expect(overlay).toBeFocused();
+
+    await page.keyboard.press("Escape");
+
+    await expect(overlay).toHaveCount(0);
+    await expect(page.locator("#host-dialog")).toBeVisible();
+  });
+
+  test("Escape in the comment popup closes it without closing the modal", async ({ page }) => {
+    await page.locator(".sp-fab").click();
+    await page.locator('[data-item-id="annotate"]').click();
+    const dialogBox = (await page.locator("#host-dialog").boundingBox())!;
+    await page.mouse.move(dialogBox.x + 20, dialogBox.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(dialogBox.x + 300, dialogBox.y + 80, { steps: 5 });
+    await page.mouse.up();
+    const popup = page.locator('[role="dialog"][data-siteping-ignore]');
+    await popup.locator("textarea").click();
+
+    await page.keyboard.press("Escape");
+
+    await expect(popup).toBeHidden();
+    await expect(page.locator("#host-dialog")).toBeVisible();
+  });
+
   test("the modal still closes on a genuine outside click", async ({ page }) => {
     await page.mouse.click(40, 40);
     await expect(page.locator("#host-dialog")).toHaveCount(0);

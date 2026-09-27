@@ -168,11 +168,13 @@ export class MarkerManager {
       characterData: false,
     });
 
+    // Capture phase: other widget surfaces (FAB, panel, popup) stop `click` in
+    // the bubble phase (host-isolation.ts) but must still collapse clusters.
     this.onDocumentClickForClusters = (e: MouseEvent) => {
       if (this.container.contains(e.target as Node)) return;
       this.collapseAllClusters();
     };
-    document.addEventListener("click", this.onDocumentClickForClusters);
+    document.addEventListener("click", this.onDocumentClickForClusters, true);
   }
 
   private scheduleReposition(cause: "scroll" | "mutation" | "resize" = "mutation"): void {
@@ -751,7 +753,7 @@ export class MarkerManager {
     }
     if (this.resizeHandler) window.removeEventListener("resize", this.resizeHandler);
     if (this.scrollHandler) window.removeEventListener("scroll", this.scrollHandler, { capture: true });
-    if (this.onDocumentClickForClusters) document.removeEventListener("click", this.onDocumentClickForClusters);
+    if (this.onDocumentClickForClusters) document.removeEventListener("click", this.onDocumentClickForClusters, true);
     this.mutationObserver?.disconnect();
     this.container.remove();
   }

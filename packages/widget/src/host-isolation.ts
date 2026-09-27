@@ -1,4 +1,4 @@
-import { isWidgetChrome } from "./focus-tracker.js";
+import { HOST_CAPTURE_ISOLATED_EVENTS, HOST_OUTSIDE_INTERACTION_EVENTS } from "./constants.js";
 
 /**
  * Keeps the widget usable on top of host modals (Radix / shadcn `Dialog`,
@@ -8,53 +8,120 @@ import { isWidgetChrome } from "./focus-tracker.js";
  * and the overlay, toolbar, popup and markers as `<body>` children), so a
  * modal reads every interaction with them as "outside":
  *
- * - dismiss-on-outside-interaction layers close on `pointerdown` / `focusin`
- *   observed at the document, closing the dialog the user is reporting on;
+ * - dismiss-on-outside-interaction layers close on `pointerdown` /
+ *   `mousedown` / `click` / `focusin` observed at the document, closing the
+ *   dialog the user is reporting on;
  * - focus traps pull focus back on `focusin` / `focusout`, so the comment
- *   textarea cannot keep focus.
+ *   textarea cannot keep focus;
+ * - dismissable layers close on an Escape `keydown` observed at the document,
+ *   so cancelling SitePing would also close the host dialog.
  *
- * Those host listeners sit on the document in the bubble phase. Stopping the
- * widget's own events at its surfaces keeps them from ever reaching the host,
- * while the widget's own listeners — on the surfaces themselves — still run.
+ * Two layers of isolation, both scoped to the widget's own surfaces (never to
+ * host elements that merely opt out of screenshots with `data-siteping-ignore`):
+ *
+ * 1. {@link isolateFromHost} stops every outside-interaction event at the
+ *    surface in the bubble phase, hiding it from bubble-phase document
+ *    listeners while the widget's own surface listeners still run.
+ * 2. {@link installHostIsolationGuard} listens on `window` in the capture
+ *    phase — ahead of capture-phase host listeners on `document` — and stops
+ *    the events no widget listener consumes (`pointerdown`, `focusin`,
+ *    `focusout`), and marks an Escape `keydown` from a surface as handled
+ *    (`preventDefault()`), which Radix, Headless UI and native `<dialog>`
+ *    honour before dismissing.
+ *
+ * Known limit: `mousedown`, `touchstart`, `click` and Escape `keydown` cannot
+ * be stopped in the capture phase, because the widget's own listeners (drawing
+ * on the overlay, buttons, the annotator's Escape handler on `document`) need
+ * them. A host capture-phase listener for those events that ignores
+ * `defaultPrevented` still observes them.
  */
 
-/** Events host modals observe at the document to detect outside interactions. */
-const HOST_OUTSIDE_INTERACTION_EVENTS = ["pointerdown", "mousedown", "touchstart", "focusin", "focusout"] as const;
+/** Surfaces registered through {@link isolateFromHost}. Weak so removed surfaces are collected. */
+const widgetSurfaces = new WeakSet<Node>();
+
+/**
+ * True when `node` is, or lives inside, a surface registered through
+ * {@link isolateFromHost}. Crosses shadow boundaries so nodes inside the
+ * widget's shadow root resolve to the shadow host.
+ *
+ * Deliberately narrower than `isWidgetChrome`: host elements carrying
+ * `data-siteping-ignore="true"` (screenshot masking) are not widget surfaces.
+ */
+export function isWidgetSurface(node: Node): boolean {
+  let current: Node | null = node;
+  while (current) {
+    if (widgetSurfaces.has(current)) return true;
+    current = current instanceof ShadowRoot ? current.host : current.parentNode;
+  }
+  return false;
+}
+
+const isWidgetSurfaceTarget = (target: EventTarget | null): boolean =>
+  target instanceof Node && isWidgetSurface(target);
 
 const stopAtWidgetSurface = (event: Event): void => {
   event.stopPropagation();
 };
 
 /**
- * Stop the widget's pointer and focus events at `surface` so host modals
- * never see them. Listeners registered on `surface` itself are unaffected.
+ * Register `surface` as widget UI and stop its outside-interaction events in
+ * the bubble phase so host modals never see them. Listeners registered on
+ * `surface` itself (and its descendants) are unaffected.
  */
 export function isolateFromHost(surface: HTMLElement): void {
+  widgetSurfaces.add(surface);
   for (const type of HOST_OUTSIDE_INTERACTION_EVENTS) {
     surface.addEventListener(type, stopAtWidgetSurface);
   }
 }
 
 /**
- * Focus leaving a host element fires `focusout` on that element — outside
- * the widget, so `isolateFromHost` cannot stop it — and a trapping modal
- * answers it by pulling focus back into the dialog. Intercept it in the
- * capture phase only when focus is moving into the widget, before any
- * bubble-phase document listener runs. The element keeps the focus it
- * already received natively; only the host's reaction is suppressed.
+ * Capture-phase guard on `window`, which runs before any `document` listener
+ * (capture or bubble) the host registered:
  *
- * Trade-off: host `focusout`/`blur`-style listeners on the element being left
- * (e.g. React `onBlur`) do not fire for that one transition.
+ * - `pointerdown` / `focusin` targeting a widget surface are stopped — no
+ *   widget listener consumes them, so only host reactions are suppressed.
+ * - `focusout` is stopped when focus leaves a widget surface or moves from
+ *   the host page into one. The element keeps the focus it received
+ *   natively; only the trapping modal's "pull focus back" reaction is
+ *   suppressed. Trade-off: host `focusout`-based listeners on the element
+ *   being left (e.g. React `onBlur`) do not fire for that one transition —
+ *   which is why the check uses the strict widget-surface predicate, so
+ *   moving between host elements (masked or not) never loses them.
+ * - An Escape `keydown` from a widget surface is marked handled with
+ *   `preventDefault()`: the widget's own Escape handlers still run, while
+ *   dismissable layers that respect `defaultPrevented` keep the modal open.
  *
- * @returns Cleanup removing the listener.
+ * @param ownerDocument - Document whose `window` receives the guard; falls
+ * back to the document itself when it has no browsing context.
+ * @returns Cleanup removing every guard listener.
  */
-export function installHostFocusTrapGuard(ownerDocument: Document = document): () => void {
+export function installHostIsolationGuard(ownerDocument: Document = document): () => void {
+  const guardTarget: EventTarget = ownerDocument.defaultView ?? ownerDocument;
+
+  const onIsolatedInteraction = (event: Event): void => {
+    if (isWidgetSurfaceTarget(event.target)) event.stopImmediatePropagation();
+  };
   const onFocusOut = (event: FocusEvent): void => {
-    const incomingFocus = event.relatedTarget;
-    if (incomingFocus instanceof Element && isWidgetChrome(incomingFocus)) {
+    if (isWidgetSurfaceTarget(event.target) || isWidgetSurfaceTarget(event.relatedTarget)) {
       event.stopImmediatePropagation();
     }
   };
-  ownerDocument.addEventListener("focusout", onFocusOut, true);
-  return () => ownerDocument.removeEventListener("focusout", onFocusOut, true);
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape" && isWidgetSurfaceTarget(event.target)) event.preventDefault();
+  };
+
+  for (const type of HOST_CAPTURE_ISOLATED_EVENTS) {
+    guardTarget.addEventListener(type, onIsolatedInteraction, true);
+  }
+  guardTarget.addEventListener("focusout", onFocusOut as EventListener, true);
+  guardTarget.addEventListener("keydown", onKeyDown as EventListener, true);
+
+  return () => {
+    for (const type of HOST_CAPTURE_ISOLATED_EVENTS) {
+      guardTarget.removeEventListener(type, onIsolatedInteraction, true);
+    }
+    guardTarget.removeEventListener("focusout", onFocusOut as EventListener, true);
+    guardTarget.removeEventListener("keydown", onKeyDown as EventListener, true);
+  };
 }

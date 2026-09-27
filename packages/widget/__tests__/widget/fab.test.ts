@@ -4,6 +4,7 @@ import type { SitepingConfig } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { Fab } from "../../src/fab.js";
+import { isolateFromHost } from "../../src/host-isolation.js";
 import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
 import { createShadowRoot } from "../helpers.js";
 
@@ -518,7 +519,7 @@ describe("Fab", () => {
 
       fab.destroy();
 
-      expect(removeListenerSpy).toHaveBeenCalledWith("click", expect.any(Function));
+      expect(removeListenerSpy).toHaveBeenCalledWith("click", expect.any(Function), true);
       removeListenerSpy.mockRestore();
     });
   });
@@ -549,6 +550,19 @@ describe("Fab", () => {
       document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
 
       expect(fabBtn.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("closes the menu when another isolated widget surface is clicked", () => {
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      fabBtn.click(); // open
+      const otherSurface = document.createElement("div");
+      document.body.appendChild(otherSurface);
+      isolateFromHost(otherSurface);
+
+      otherSurface.click();
+
+      expect(fabBtn.getAttribute("aria-expanded")).toBe("false");
+      otherSurface.remove();
     });
 
     it("does not close when clicking on a child element of the host (composed path includes host)", () => {
