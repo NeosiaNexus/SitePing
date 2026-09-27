@@ -159,6 +159,22 @@ describe("Popup", () => {
       expect(dialog.style.top).toBe("540px");
     });
 
+    it("caps its height and scrolls when taller than the usable band, then resets on the next show", () => {
+      // jsdom is 768px tall; reserving 400px at the top and 200px at the
+      // bottom leaves a 152px band, shorter than the 220px fallback popup.
+      popup.show(makeBounds({ top: 450, bottom: 500 }), undefined, { top: 400, bottom: 200 });
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      expect(dialog.style.top).toBe("408px");
+      expect(dialog.style.overflowY).toBe("auto");
+      // The 16px vertical padding is excluded from the content-box cap.
+      expect(Number.parseFloat(dialog.style.maxHeight)).toBeLessThanOrEqual(152 - 32);
+
+      popup.show(makeBounds({ bottom: 200 }));
+      expect(dialog.style.maxHeight).toBe("");
+      expect(dialog.style.overflowY).toBe("");
+    });
+
     it("resolves to null when cancelled (via cancel button)", async () => {
       const promise = popup.show(makeBounds());
 
