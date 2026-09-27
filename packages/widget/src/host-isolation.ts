@@ -1,4 +1,8 @@
-import { HOST_CAPTURE_ISOLATED_EVENTS, HOST_HIDING_ATTRIBUTES, HOST_OUTSIDE_INTERACTION_EVENTS } from "./constants.js";
+import {
+  HOST_CAPTURE_ISOLATED_EVENTS,
+  HOST_HIDING_ATTRIBUTES,
+  HOST_OUTSIDE_INTERACTION_EVENTS,
+} from "./constants/host-isolation.js";
 
 /**
  * Keeps the widget usable on top of host modals (Radix / shadcn `Dialog`,
