@@ -172,6 +172,15 @@ const HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost:3999");
 
@@ -183,7 +192,7 @@ const server = createServer((req, res) => {
 
   // Host page with an open Radix modal — accepts ?project=xxx like "/"
   if (url.pathname === "/modal") {
-    const project = url.searchParams.get("project") || "e2e-test";
+    const project = escapeHtml(url.searchParams.get("project") || "e2e-test");
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end(MODAL_HTML.replace("'PROJECT'", JSON.stringify(project)));
     return;
