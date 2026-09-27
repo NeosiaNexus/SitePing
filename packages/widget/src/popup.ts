@@ -1,5 +1,5 @@
 import type { FeedbackType } from "@siteping/core";
-import { Z_INDEX_MAX } from "./constants.js";
+import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
@@ -66,6 +66,12 @@ export class Popup {
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
   private onSubmit: PopupSubmitHandler | null = null;
   private submittingState = false;
+  /**
+   * Pending `display: none` scheduled by `hideElement()` once the fade-out
+   * ends. Cleared by `show()` so a popup reopened inside the transition window
+   * is not hidden by the previous session's timer.
+   */
+  private hideTimeoutId: ReturnType<typeof setTimeout> | null = null;
   /** WAAPI handle for the running spinner — cancelled when submitting ends. */
   private spinnerAnimation: Animation | null = null;
 
@@ -325,6 +331,7 @@ export class Popup {
    */
   show(rectBounds: DOMRect, onSubmit?: PopupSubmitHandler): Promise<PopupResult | null> {
     return new Promise((resolve) => {
+      this.cancelPendingHide();
       this.resolve = resolve;
       this.onSubmit = onSubmit ?? null;
       this.selectedType = null;
@@ -480,6 +487,18 @@ export class Popup {
   }
 
   /**
+   * Close the popup as if the user pressed its Cancel button — used when the
+   * annotation session ends from outside the popup (toolbar Cancel, Escape on
+   * the overlay) so the form is not left floating with nothing behind it.
+   * No-op when the popup is closed or a submission is in flight: abandoning
+   * mid-upload would leak a half-sent feedback, same rule as `cancel()`.
+   */
+  dismiss(): void {
+    if (!this.isOpen) return;
+    this.cancel();
+  }
+
+  /**
    * Swap the submit button's text for a spinner and freeze every other
    * control. Mirrors the panel's resolve/delete buttons (`sp-spinner--sm`)
    * but renders inline because the popup lives outside the Shadow DOM
@@ -595,9 +614,18 @@ export class Popup {
     // Restore focus to the previously focused element
     this.previouslyFocused?.focus();
     this.previouslyFocused = null;
-    setTimeout(() => {
+    this.cancelPendingHide();
+    this.hideTimeoutId = setTimeout(() => {
+      this.hideTimeoutId = null;
       this.root.style.display = "none";
-    }, 250);
+    }, POPUP_HIDE_TRANSITION_MS);
+  }
+
+  /** Drop a `display: none` still pending from a previous `hideElement()`. */
+  private cancelPendingHide(): void {
+    if (this.hideTimeoutId === null) return;
+    clearTimeout(this.hideTimeoutId);
+    this.hideTimeoutId = null;
   }
 
   destroy(): void {
@@ -606,6 +634,7 @@ export class Popup {
     // whatever it retains: the annotation, the base64 screenshot). Resolving
     // with `null` reads as "cancelled", matching `cancel()`.
     if (this.submittingState) this.exitSubmittingState();
+    this.cancelPendingHide();
     this.resolve?.(null);
     this.resolve = null;
     this.onSubmit = null;
