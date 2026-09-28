@@ -114,7 +114,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 ```
 
-Given a `store`, the handler never touches Prisma. `@siteping/adapter-prisma` still declares `@prisma/client` as a required peer dependency, though, so npm, pnpm and Bun install it next to it ([#306](https://github.com/NeosiaNexus/SitePing/issues/306)); a store-only handler package is planned ([#314](https://github.com/NeosiaNexus/SitePing/issues/314)).
+Given a `store`, the handler never touches Prisma. `@siteping/adapter-prisma` still declares `@prisma/client` as a required peer dependency, though, so npm, pnpm and Bun install it anyway ([#306](https://github.com/NeosiaNexus/SitePing/issues/306)); a store-only handler package is planned ([#314](https://github.com/NeosiaNexus/SitePing/issues/314)).
 
 ## Options
 
@@ -163,7 +163,7 @@ The tables carry a few columns of the store's own, never part of the returned re
 
 ### Text search and non-ASCII case
 
-`getFeedbacks({ search })` — the `search` query parameter — matches the message case-insensitively with JavaScript's Unicode-aware `toLowerCase()`, the same folding as every other SitePing store: `échec` finds `Échec` and `äöü` finds `ÄÖÜ`, whatever the database's own rules. That is what `message_search` is for: SQLite's `LIKE` folds only ASCII case, and PostgreSQL's `ILIKE` folds with the column collation / `LC_CTYPE` (ASCII-only under `C`). The store fills `message_search` on insert and matches the lowercased term against it with a plain `LIKE`. Wildcards typed in the search (`%`, `_`, `\`) are matched literally.
+`getFeedbacks({ search })` — the `search` query parameter — matches the message case-insensitively with JavaScript's Unicode-aware `toLowerCase()`, the same folding as the memory and localStorage stores: `échec` finds `Échec` and `äöü` finds `ÄÖÜ`, whatever the database's own rules. That is what `message_search` is for: SQLite's `LIKE` folds only ASCII case, and PostgreSQL's `ILIKE` folds with the column collation / `LC_CTYPE` (ASCII-only under `C`). The store fills `message_search` on insert and matches the lowercased term against it with a plain `LIKE`. Wildcards typed in the search (`%`, `_`, `\`) are matched literally.
 
 Rows without it — inserted by your own code outside the store — fall back to searching `message` with the database's folding (`LIKE` on libSQL, `ILIKE` on PostgreSQL). Backfill them once so every row folds Unicode case:
 

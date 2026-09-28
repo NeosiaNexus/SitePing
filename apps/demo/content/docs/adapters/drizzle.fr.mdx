@@ -114,7 +114,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 ```
 
-Avec un `store`, le handler ne touche jamais à Prisma. `@siteping/adapter-prisma` déclare pourtant `@prisma/client` comme dépendance pair obligatoire : npm, pnpm et Bun l'installent donc à côté ([#306](https://github.com/NeosiaNexus/SitePing/issues/306)) ; un paquet de handler sans ORM est prévu ([#314](https://github.com/NeosiaNexus/SitePing/issues/314)).
+Avec un `store`, le handler ne touche jamais à Prisma. `@siteping/adapter-prisma` déclare pourtant `@prisma/client` en **peer dependency obligatoire** : npm, pnpm et Bun l'installent donc quand même ([#306](https://github.com/NeosiaNexus/SitePing/issues/306)) ; un paquet de handler sans ORM est prévu ([#314](https://github.com/NeosiaNexus/SitePing/issues/314)).
 
 ## Options
 
@@ -163,7 +163,7 @@ Les tables portent quelques colonnes propres au store, jamais présentes dans le
 
 ### Recherche textuelle et casse non ASCII
 
-`getFeedbacks({ search })` — le paramètre de requête `search` — compare le message sans tenir compte de la casse avec le `toLowerCase()` de JavaScript, conscient d'Unicode, comme tous les autres stores SitePing : `échec` trouve `Échec` et `äöü` trouve `ÄÖÜ`, quelles que soient les règles de la base. C'est le rôle de `message_search` : le `LIKE` de SQLite ne replie que la casse ASCII, et l'`ILIKE` de PostgreSQL la replie selon la collation de la colonne / le `LC_CTYPE` (ASCII uniquement sous `C`). Le store remplit `message_search` à l'insertion et y compare le terme en minuscules avec un simple `LIKE`. Les jokers tapés dans la recherche (`%`, `_`, `\`) sont pris littéralement.
+`getFeedbacks({ search })` — le paramètre de requête `search` — compare le message sans tenir compte de la casse avec le `toLowerCase()` de JavaScript, conscient d'Unicode, comme les stores memory et localStorage : `échec` trouve `Échec` et `äöü` trouve `ÄÖÜ`, quelles que soient les règles de la base. C'est le rôle de `message_search` : le `LIKE` de SQLite ne replie que la casse ASCII, et l'`ILIKE` de PostgreSQL la replie selon la collation de la colonne / le `LC_CTYPE` (ASCII uniquement sous `C`). Le store remplit `message_search` à l'insertion et y compare le terme en minuscules avec un simple `LIKE`. Les jokers tapés dans la recherche (`%`, `_`, `\`) sont pris littéralement.
 
 Les lignes qui n'en ont pas — insérées par votre propre code hors du store — se rabattent sur une recherche dans `message` avec le repli de casse de la base (`LIKE` sur libSQL, `ILIKE` sur PostgreSQL). Remplissez-les une fois pour que chaque ligne replie la casse Unicode :
 
