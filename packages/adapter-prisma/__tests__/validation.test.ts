@@ -165,6 +165,24 @@ describe("feedbackCreateSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("accepts negative scroll offsets (window.scrollX on a scrolled dir=rtl page)", () => {
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      annotations: [{ ...validAnnotation, scrollX: -1234.5, scrollY: 150 }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("bounds viewportW/viewportH to the Int column range (a 400, not a DB error)", () => {
+    const withViewport = (viewportW: number, viewportH: number) =>
+      feedbackCreateSchema.safeParse({ ...validPayload, annotations: [{ ...validAnnotation, viewportW, viewportH }] })
+        .success;
+
+    expect(withViewport(2_147_483_647, 2_147_483_647)).toBe(true);
+    expect(withViewport(2_147_483_648, 1080)).toBe(false);
+    expect(withViewport(1920, 2_147_483_648)).toBe(false);
+  });
+
   it("caps anchor elementTag and elementId at the limits the widget captures within", () => {
     const withAnchor = (anchor: Partial<typeof validAnnotation.anchor>) =>
       feedbackCreateSchema.safeParse({

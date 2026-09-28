@@ -41,10 +41,14 @@ const rectSchema = z.object({
 const annotationSchema = z.object({
   anchor: anchorSchema,
   rect: rectSchema,
-  scrollX: z.number().min(0),
-  scrollY: z.number().min(0),
-  viewportW: z.number().int().positive(),
-  viewportH: z.number().int().positive(),
+  // Raw `window.scrollX/Y` — no lower bound: scrollX is negative on a
+  // scrolled `dir="rtl"` page. `z.number()` already rejects NaN/±Infinity.
+  scrollX: z.number(),
+  scrollY: z.number(),
+  // Upper bound = the `Int` (INT4) column max, so oversized input is a 400
+  // here rather than a database error at insert time.
+  viewportW: z.number().int().positive().max(2_147_483_647),
+  viewportH: z.number().int().positive().max(2_147_483_647),
   devicePixelRatio: z.number().positive().default(1),
 });
 
