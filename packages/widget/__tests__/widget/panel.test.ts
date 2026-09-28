@@ -4418,7 +4418,15 @@ describe("Panel", () => {
 
     it("context.refresh() and context.close() do nothing once the panel is destroyed", async () => {
       let ctx: SitepingPanelActionContext | undefined;
-      rebuildWithActions([{ id: "keep", label: "Keep", onAction: (_fb, c) => void (ctx = c) }]);
+      rebuildWithActions([
+        {
+          id: "keep",
+          label: "Keep",
+          onAction: (_fb, c) => {
+            ctx = c;
+          },
+        },
+      ]);
       await openDetail(makeFeedback({ id: "fb-1" }));
       shadow.querySelector<HTMLButtonElement>('[data-action-id="keep"]')!.click();
       await vi.waitFor(() => expect(ctx).toBeDefined());
