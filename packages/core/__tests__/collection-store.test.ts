@@ -195,7 +195,10 @@ describe.each([
     const [a, b] = await seed(store);
     if (!a || !b) throw new Error("fixture");
 
-    await Promise.all([store.deleteFeedback(a.id), store.updateFeedback(b.id, { status: "in_progress", resolvedAt: null })]);
+    await Promise.all([
+      store.deleteFeedback(a.id),
+      store.updateFeedback(b.id, { status: "in_progress", resolvedAt: null }),
+    ]);
 
     const { feedbacks } = await store.getFeedbacks({ projectName: "p" });
     expect(feedbacks.map((f) => [f.clientId, f.status])).toEqual([
