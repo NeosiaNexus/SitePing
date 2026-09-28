@@ -142,15 +142,25 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * The engine implements the whole store contract: clientId dedup (idempotent
  * create), newest-first ordering, the standard filter/pagination pipeline,
  * `StoreNotFoundError` on missing update/delete, project-scoped bulk delete,
- * and `verifyProjectOwnership`. Mutations are serialized per engine, so
- * concurrent calls (e.g. a `Promise.all` bulk delete) never overwrite each
- * other's snapshot; reads are not queued. The snapshot returned by `load` is never
+ * and `verifyProjectOwnership`. The snapshot returned by `load` is never
  * mutated: every write hands `persist` a new array, so a failed write leaves
  * a cached snapshot exactly as it was. When `persist` fails during `createFeedback`
  * and the record carries an inline screenshot, the engine retries once
  * without the screenshot (by far the heaviest field) so the text feedback
  * survives a storage-quota hit; if that also fails, the error propagates —
  * returning the record would claim a success that was never persisted.
+ *
+ * Mutations (`createFeedback`, `updateFeedback`, `deleteFeedback`,
+ * `deleteAllFeedbacks`) run one at a time through a queue owned by the
+ * returned store, so concurrent calls — the widget's `Promise.all` bulk
+ * resolve/delete — never start from the same snapshot and overwrite each
+ * other. A failed mutation rejects with its own error and does not block the
+ * ones queued after it. Reads are not queued: they see the last persisted
+ * snapshot. The guarantee is scoped to one store instance in one JS realm —
+ * two instances over the same storage (two `LocalStorageStore`s on one key,
+ * two browser tabs, several server processes sharing a KV or a file) are not
+ * coordinated; a backend that needs that must bring its own atomic primitive
+ * (a transaction, a compare-and-set).
  *
  * @example
  * ```ts
