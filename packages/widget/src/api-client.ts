@@ -46,6 +46,24 @@ export interface ApiClientAuth {
   headers?: SitepingHeadersOption | undefined;
 }
 
+const MAX_RETRIES = 3;
+const TIMEOUT_MS = 10_000;
+const RETRY_QUEUE_KEY = "siteping_retry_queue";
+const MAX_QUEUE_SIZE = 20;
+
+/**
+ * Settle like `promise`, or reject with `onTimeout()` once `ms` elapse; the
+ * timer is cleared either way. The underlying work is not cancelled — use it
+ * where nothing can abort the call (a store write, a host headers factory).
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(onTimeout()), ms);
+  });
+  return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
+}
+
 /**
  * Build the headers for one request — mirrors the dashboard's
  * `createEndpointSource` semantics: `Content-Type` when the request carries a
@@ -53,49 +71,64 @@ export interface ApiClientAuth {
  * (case-insensitively) so an explicit `Authorization` wins.
  *
  * A function `headers` resolves once per call — retries inside
- * `resilientFetch` reuse the values for the whole retry sequence — up to
- * ~45s worst case with 4 attempts x 10s timeout plus backoff (the dashboard
- * has the same per-request semantics, without retries). A
- * throwing/rejecting factory fails the request like a network error.
+ * `resilientFetch` reuse the values for the whole retry sequence (the
+ * dashboard has the same per-request semantics, without retries). A factory
+ * that throws, rejects, or does not settle within 10 s fails the request
+ * like a network error — nothing may hold a send forever.
  */
 export async function buildRequestHeaders(auth: ApiClientAuth, json: boolean): Promise<Record<string, string>> {
   const defaults: Record<string, string> = {};
   if (json) defaults["Content-Type"] = "application/json";
   if (auth.apiKey) defaults.Authorization = `Bearer ${auth.apiKey}`;
-  const extra = typeof auth.headers === "function" ? await auth.headers() : auth.headers;
+  const extra =
+    typeof auth.headers === "function"
+      ? await withTimeout(
+          Promise.resolve(auth.headers()),
+          TIMEOUT_MS,
+          () => new Error(`headers factory did not settle within ${TIMEOUT_MS / 1000} s`),
+        )
+      : auth.headers;
   return mergeRequestHeaders(defaults, extra);
 }
-
-const MAX_RETRIES = 3;
-const TIMEOUT_MS = 10_000;
-const RETRY_QUEUE_KEY = "siteping_retry_queue";
-const MAX_QUEUE_SIZE = 20;
 
 // ---------------------------------------------------------------------------
 // Core fetch with retry + exponential backoff + jitter
 // ---------------------------------------------------------------------------
 
-async function resilientFetch(url: string, init: RequestInit, retries = MAX_RETRIES): Promise<Response> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
+/**
+ * One HTTP call with retry + exponential backoff + jitter. Each attempt is
+ * aborted after TIMEOUT_MS, and the final response's body is read under that
+ * same abort — through `errorFromResponse` for a non-OK status, `read` for a
+ * 2xx — so a body that stalls after the headers errors instead of hanging
+ * the send. Network failures and 5xx retry; a body failure is final.
+ *
+ * Failures come out typed: a non-OK status as `errorFromResponse` maps it,
+ * anything else (fetch, abort, body read or parse) as a `SitepingNetworkError`.
+ */
+async function resilientFetch<T>(
+  url: string,
+  init: RequestInit,
+  label: string,
+  read: (response: Response) => Promise<T>,
+  retries = MAX_RETRIES,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
     try {
-      const response = await fetch(url, {
-        ...init,
-        signal: controller.signal,
+      const response = await fetch(url, { ...init, signal: controller.signal }).catch((error: unknown) => {
+        if (attempt === retries) throw networkErrorFromException(error, label);
+        return null;
       });
-      clearTimeout(timeout);
-
       // Don't retry client errors (4xx) — only server errors (5xx)
-      if (response.ok || (response.status >= 400 && response.status < 500)) {
-        return response;
+      if (response && (response.ok || (response.status >= 400 && response.status < 500) || attempt === retries)) {
+        if (!response.ok) throw await errorFromResponse(response, label);
+        return await read(response).catch((error: unknown) => {
+          throw networkErrorFromException(error, label);
+        });
       }
-
-      if (attempt === retries) return response;
-    } catch (error) {
+    } finally {
       clearTimeout(timeout);
-      if (attempt === retries) throw error;
     }
 
     // Exponential backoff with jitter: 1s, 2s, 4s + random ±500ms
@@ -103,8 +136,6 @@ async function resilientFetch(url: string, init: RequestInit, retries = MAX_RETR
     const jitter = Math.random() * 1000 - 500;
     await new Promise((r) => setTimeout(r, baseDelay + jitter));
   }
-
-  throw new Error("Max retries exceeded");
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +411,9 @@ async function parseJsonAs<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** DELETE responses carry nothing the client needs. */
+async function ignoreBody(): Promise<void> {}
+
 export class ApiClient implements WidgetClient {
   constructor(
     private readonly endpoint: string,
@@ -387,29 +421,29 @@ export class ApiClient implements WidgetClient {
     private readonly auth: ApiClientAuth = {},
   ) {}
 
+  /** `buildRequestHeaders`, with a failing headers factory normalised to a `SitepingNetworkError`. */
+  private async headers(json: boolean, label: string): Promise<Record<string, string>> {
+    try {
+      return await buildRequestHeaders(this.auth, json);
+    } catch (error) {
+      throw networkErrorFromException(error, label);
+    }
+  }
+
   async sendFeedback(payload: FeedbackPayload): Promise<FeedbackResponse> {
+    const label = "Failed to send feedback";
     // Only put `screenshotRegion` on the wire when a region was actually
     // captured — servers that predate the field would otherwise reject an
     // explicit `screenshotRegion: null` on every legacy capture.
     const { screenshotRegion, ...rest } = payload;
     const body: FeedbackPayload = screenshotRegion ? { ...rest, screenshotRegion } : rest;
     try {
-      let response: Response;
-      try {
-        response = await resilientFetch(this.endpoint, {
-          method: "POST",
-          headers: await buildRequestHeaders(this.auth, true),
-          body: JSON.stringify(body),
-        });
-      } catch (error) {
-        throw networkErrorFromException(error, "Failed to send feedback");
-      }
-
-      if (!response.ok) {
-        throw await errorFromResponse(response, "Failed to send feedback");
-      }
-
-      const created = await parseJsonAs<FeedbackResponse>(response);
+      const created = await resilientFetch(
+        this.endpoint,
+        { method: "POST", headers: await this.headers(true, label), body: JSON.stringify(body) },
+        label,
+        parseJsonAs<FeedbackResponse>,
+      );
       unqueue(body.clientId);
       return created;
     } catch (error) {
@@ -422,79 +456,58 @@ export class ApiClient implements WidgetClient {
   }
 
   async getFeedbacks(projectName: string, options?: GetFeedbacksOptions): Promise<FeedbackResponseList> {
+    const label = "Failed to fetch feedbacks";
     const params = feedbackQueryToSearchParams({ projectName, ...options });
-
-    let response: Response;
-    try {
-      // GET carries no body — only attach headers when auth produced some, so
-      // the no-auth wire shape stays byte-identical to the legacy client.
-      const headers = await buildRequestHeaders(this.auth, false);
-      response = await resilientFetch(withSearchParams(this.endpoint, params), {
-        method: "GET",
-        cache: "no-store",
-        ...(Object.keys(headers).length > 0 ? { headers } : {}),
-      });
-    } catch (error) {
-      throw networkErrorFromException(error, "Failed to fetch feedbacks");
-    }
-
-    if (!response.ok) {
-      throw await errorFromResponse(response, "Failed to fetch feedbacks");
-    }
-
-    return parseJsonAs<FeedbackResponseList>(response);
+    // GET carries no body — only attach headers when auth produced some, so
+    // the no-auth wire shape stays byte-identical to the legacy client.
+    const headers = await this.headers(false, label);
+    return resilientFetch(
+      withSearchParams(this.endpoint, params),
+      { method: "GET", cache: "no-store", ...(Object.keys(headers).length > 0 ? { headers } : {}) },
+      label,
+      parseJsonAs<FeedbackResponseList>,
+    );
   }
 
   async resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse> {
-    let response: Response;
-    try {
-      response = await resilientFetch(this.endpoint, {
+    const label = "Failed to update feedback";
+    return resilientFetch(
+      this.endpoint,
+      {
         method: "PATCH",
-        headers: await buildRequestHeaders(this.auth, true),
+        headers: await this.headers(true, label),
         body: JSON.stringify({ id, projectName: this.projectName, status: resolved ? "resolved" : "open" }),
-      });
-    } catch (error) {
-      throw networkErrorFromException(error, "Failed to update feedback");
-    }
-
-    if (!response.ok) {
-      throw await errorFromResponse(response, "Failed to update feedback");
-    }
-
-    return parseJsonAs<FeedbackResponse>(response);
+      },
+      label,
+      parseJsonAs<FeedbackResponse>,
+    );
   }
 
   async deleteFeedback(id: string): Promise<void> {
-    let response: Response;
-    try {
-      response = await resilientFetch(this.endpoint, {
+    const label = "Failed to delete feedback";
+    await resilientFetch(
+      this.endpoint,
+      {
         method: "DELETE",
-        headers: await buildRequestHeaders(this.auth, true),
+        headers: await this.headers(true, label),
         body: JSON.stringify({ id, projectName: this.projectName }),
-      });
-    } catch (error) {
-      throw networkErrorFromException(error, "Failed to delete feedback");
-    }
-
-    if (!response.ok) {
-      throw await errorFromResponse(response, "Failed to delete feedback");
-    }
+      },
+      label,
+      ignoreBody,
+    );
   }
 
   async deleteAllFeedbacks(projectName: string): Promise<void> {
-    let response: Response;
-    try {
-      response = await resilientFetch(this.endpoint, {
+    const label = "Failed to delete all feedbacks";
+    await resilientFetch(
+      this.endpoint,
+      {
         method: "DELETE",
-        headers: await buildRequestHeaders(this.auth, true),
+        headers: await this.headers(true, label),
         body: JSON.stringify({ projectName, deleteAll: true }),
-      });
-    } catch (error) {
-      throw networkErrorFromException(error, "Failed to delete all feedbacks");
-    }
-
-    if (!response.ok) {
-      throw await errorFromResponse(response, "Failed to delete all feedbacks");
-    }
+      },
+      label,
+      ignoreBody,
+    );
   }
 }

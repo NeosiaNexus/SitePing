@@ -313,9 +313,10 @@ export interface SitepingHttpConfig extends SitepingBaseConfig {
   /**
    * Extra headers for every HTTP-mode request — a static map, or a factory
    * (sync or async) called once per request (e.g. to fetch a fresh session
-   * token). Merged over the widget's generated headers, so an explicit
-   * `Authorization` entry overrides `apiKey`. A throwing/rejecting factory
-   * fails the request like a network error.
+   * token). Merged over the widget's generated headers, case-insensitively,
+   * so an explicit `Authorization` entry overrides `apiKey`. A factory that
+   * throws, rejects, or does not settle within 10 s fails the request like a
+   * network error.
    */
   headers?: SitepingHeadersOption | undefined;
   /** Not available in HTTP mode — use either `endpoint` or `store`, never both. */
@@ -327,7 +328,11 @@ export interface SitepingHttpConfig extends SitepingBaseConfig {
  * browser, no server needed (demos, prototypes, localStorage persistence).
  */
 export interface SitepingStoreConfig extends SitepingBaseConfig {
-  /** Direct store for client-side mode. Bypasses HTTP entirely. */
+  /**
+   * Direct store for client-side mode. Bypasses HTTP entirely. A send stops
+   * waiting on `createFeedback` after 30 s (the call itself cannot be
+   * cancelled), so a network-backed store should bound its own calls.
+   */
   store: SitepingStore;
   /** Not available in store mode — use either `endpoint` or `store`, never both. */
   endpoint?: never;

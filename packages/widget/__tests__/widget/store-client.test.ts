@@ -1,11 +1,12 @@
-import type {
-  AnnotationPayload,
-  FeedbackCreateInput,
-  FeedbackPayload,
-  FeedbackRecord,
-  SitepingStore,
+import {
+  type AnnotationPayload,
+  type FeedbackCreateInput,
+  type FeedbackPayload,
+  type FeedbackRecord,
+  SitepingError,
+  type SitepingStore,
 } from "@siteping/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreClient } from "../../src/store-client.js";
 
 // ---------------------------------------------------------------------------
@@ -128,6 +129,56 @@ describe("StoreClient", () => {
   // -----------------------------------------------------------------------
   // sendFeedback
   // -----------------------------------------------------------------------
+
+  // -----------------------------------------------------------------------
+  // sendFeedback — a write that never settles (#342): SitepingStore takes no
+  // AbortSignal, and the popup holds the user until the send settles.
+  // -----------------------------------------------------------------------
+
+  describe("sendFeedback — bounded wait", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("rejects with a retryable TIMEOUT SitepingError at 30 s, not before, and leaves no timer pending", async () => {
+      vi.useFakeTimers();
+      vi.mocked(store.createFeedback).mockReturnValue(new Promise(() => {}));
+      const settled = vi.fn();
+      const outcome = client.sendFeedback(samplePayload).then(settled, (error: unknown) => {
+        settled();
+        return error;
+      });
+
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      const error = await outcome;
+      expect(error).toBeInstanceOf(SitepingError);
+      expect(error).toMatchObject({ code: "TIMEOUT", retryable: true });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("does not serialize writes: the resend reaches the store while the first write still hangs, with the same clientId", async () => {
+      // The late-write policy: the abandoned write may still land; the resend
+      // from the same popup carries its clientId, so a store that enforces
+      // clientId uniqueness keeps one record. A write chain would instead
+      // never unblock after a write that never settles.
+      vi.useFakeTimers();
+      vi.mocked(store.createFeedback)
+        .mockReturnValueOnce(new Promise(() => {}))
+        .mockResolvedValueOnce(makeFeedbackRecord());
+
+      const first = client.sendFeedback(samplePayload).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await first).toMatchObject({ code: "TIMEOUT" });
+
+      await expect(client.sendFeedback({ ...samplePayload, message: "Edited" })).resolves.toMatchObject({ id: "fb-1" });
+      const calls = vi.mocked(store.createFeedback).mock.calls;
+      expect(calls).toHaveLength(2);
+      expect(calls[1]![0].clientId).toBe(calls[0]![0].clientId);
+    });
+  });
 
   describe("sendFeedback", () => {
     it("calls store.createFeedback with flattened annotations", async () => {

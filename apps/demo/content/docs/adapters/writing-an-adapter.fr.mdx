@@ -177,4 +177,6 @@ import { initSiteping } from "@siteping/widget";
 initSiteping({ store: new MyStore(), projectName: "mon-app" });
 ```
 
+Dans le navigateur, le widget cesse d'attendre `createFeedback` au bout de 30 s et signale une erreur réessayable (code `"TIMEOUT"`), pour que la popup de commentaire ne reste jamais bloquée. Il ne peut pas annuler l'appel — `SitepingStore` ne prend pas de signal d'annulation — donc une écriture tardive peut encore aboutir. Si votre store passe par le réseau, bornez vous-même ses appels, et dédupliquez sur `clientId` : un renvoi depuis la même popup le réutilise.
+
 Si vous en publiez un, [ouvrez une issue](https://github.com/NeosiaNexus/SitePing/issues) — nous le référencerons depuis cette page.

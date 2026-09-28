@@ -1339,6 +1339,109 @@ describe("flushRetryQueue", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Unbounded waits in the send path (#342) — the popup holds the user until a
+// send settles, so every wait needs a bound. Mocked bodies error on abort,
+// like real fetch.
+// ---------------------------------------------------------------------------
+
+describe("ApiClient — bounded waits", () => {
+  const endpoint = "http://localhost/api/siteping";
+  const payload: FeedbackPayload = {
+    projectName: "test",
+    type: "bug",
+    message: "m",
+    url: "https://example.com",
+    viewport: "1x1",
+    userAgent: "t",
+    authorName: "A",
+    authorEmail: "a@b.com",
+    annotations: [],
+    clientId: "c1",
+  };
+
+  /** Headers arrive with `status`, then the body stalls until the request's signal aborts. */
+  function stalledBody(init: RequestInit | undefined, status: number): Response {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"id":'));
+        init?.signal?.addEventListener("abort", () => controller.error(new DOMException("aborted", "AbortError")));
+      },
+    });
+    return new Response(body, { status, headers: { "Content-Type": "application/json" } });
+  }
+
+  /** Start `run` under fake timers; assert it is still pending just before `ms`, and settled at `ms`. */
+  async function settlesAt(run: () => Promise<unknown>, ms: number): Promise<unknown> {
+    const settled = vi.fn();
+    const outcome = run().then(settled, (error: unknown) => {
+      settled();
+      return error;
+    });
+    await vi.advanceTimersByTimeAsync(ms - 1);
+    expect(settled, `still pending at ${ms - 1} ms`).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled, `settled at ${ms} ms`).toHaveBeenCalled();
+    expect(vi.getTimerCount(), "no timer left pending").toBe(0);
+    return outcome;
+  }
+
+  beforeEach(() => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("a 2xx body that stalls after the headers fails the send as a network error at the 10 s attempt bound", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => stalledBody(init, 201));
+
+    const error = await settlesAt(() => new ApiClient(endpoint, "test").sendFeedback(payload), 10_000);
+
+    expect(error).toBeInstanceOf(SitepingNetworkError);
+    // The headers said 201: the POST landed, so it is not re-sent (a queued replay dedupes by clientId).
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it("a 2xx body that stalls on a GET fails it as a network error at the same bound", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => stalledBody(init, 200));
+
+    const error = await settlesAt(() => new ApiClient(endpoint, "test").getFeedbacks("test"), 10_000);
+
+    expect(error).toBeInstanceOf(SitepingNetworkError);
+  });
+
+  it("a non-OK body that stalls still yields the status's typed error at the bound", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => stalledBody(init, 400));
+
+    const error = await settlesAt(() => new ApiClient(endpoint, "test").sendFeedback(payload), 10_000);
+
+    expect(error).toBeInstanceOf(SitepingValidationError);
+    expect((error as Error).message).toBe("Failed to send feedback: 400 Unknown error");
+  });
+
+  it("a headers factory that never settles fails the send as a network error at 10 s, before any fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const client = new ApiClient(endpoint, "test", { headers: () => new Promise(() => {}) });
+
+    const error = await settlesAt(() => client.sendFeedback(payload), 10_000);
+
+    expect(error).toBeInstanceOf(SitepingNetworkError);
+    expect((error as Error).message).toBe("Failed to send feedback: headers factory did not settle within 10 s");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Unparseable stored queue (#344) — written by something other than the
 // widget (DevTools, an extension, other code on the origin). It used to make
 // every readQueue() throw, so the queue stayed disabled on that origin.

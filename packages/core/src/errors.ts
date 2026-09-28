@@ -12,6 +12,9 @@
  *   - HTTP 401 / 403                    → `SitepingAuthError` (not retryable)
  *   - everything else                   → `SitepingError` generic
  *
+ * Store mode (store-client.ts): a `createFeedback` that does not settle in
+ * time → `SitepingError` with code `"TIMEOUT"` (retryable).
+ *
  * `retryable` is meta information surfaced to host apps that want to wire
  * their own retry/queue/backoff strategy — the widget already retries
  * network failures via its built-in retry queue.
@@ -22,7 +25,7 @@
  * literal value; the base class accepts a wider string so userland can
  * extend the hierarchy without colliding with built-ins.
  */
-export type SitepingErrorCode = "NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | (string & {});
+export type SitepingErrorCode = "NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT" | (string & {});
 
 export class SitepingError<TCode extends SitepingErrorCode = SitepingErrorCode> extends Error {
   readonly code: TCode;
