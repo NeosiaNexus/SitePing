@@ -213,15 +213,41 @@ const DISCORD_MARKDOWN = /[\\*_~`|>#[\]()<]/g;
  * An http(s) URL, bare or in Discord's `<url>` link form, which Discord
  * autolinks. Backslash escapes inside it would land in the link (browsers
  * read `\` as `/`), so its characters are not escaped: only `[`, `]`, `(`,
- * `)` are percent-encoded, which keeps the address while making sure no
- * masked link can form wherever Discord ends the autolink. `<https://…>` is
- * never a mention. The capture group makes `split` keep the URLs.
+ * `)` inside the link are percent-encoded, which keeps the address while
+ * making sure no masked link can form (see `discordUrlUnits` for where a
+ * bare link ends). `<https://…>` is never a mention. The capture group makes
+ * `split` keep the URLs.
  */
 const DISCORD_AUTOLINK = /(<https?:\/\/[^\s<>]+>|https?:\/\/[^\s<>]+)/i;
+
+/** Punctuation Discord leaves out of the end of a bare autolink. */
+const DISCORD_LINK_TRAILER = `.,:;"')]`;
 
 const escapeMarkdownChar = (char: string) => char.replace(DISCORD_MARKDOWN, "\\$&");
 const encodeLinkChar = (char: string) =>
   char.replace(/[[\]()]/, (bracket) => `%${bracket.charCodeAt(0).toString(16).toUpperCase()}`);
+const count = (text: string, char: string) => text.split(char).length - 1;
+
+/**
+ * Units for a URL token (see `DISCORD_AUTOLINK`). A bare URL's trailing
+ * `.,:;"')]` is the sentence around it — `(see https://…).` — and Discord
+ * ends the link before it, so it goes out raw: encoded, it would change the
+ * address; escaped, the `\` would. Raw `)` and `]` are harmless because an
+ * unescaped `[` is never sent, so no masked link can start. A `)` or `]`
+ * closing a bracket opened inside the URL stays in it (`…/Mercury_(planet)`).
+ */
+function discordUrlUnits(url: string): string[] {
+  let end = url.length;
+  while (end > 0) {
+    const last = url.charAt(end - 1);
+    if (!DISCORD_LINK_TRAILER.includes(last)) break;
+    const opener = last === ")" ? "(" : last === "]" ? "[" : "";
+    const link = url.slice(0, end);
+    if (opener && count(link, opener) >= count(link, last)) break;
+    end -= 1;
+  }
+  return [...Array.from(url.slice(0, end), encodeLinkChar), ...url.slice(end)];
+}
 
 /**
  * Escape untrusted text for Discord, sized to `max` (see `fitEscaped`).
@@ -234,7 +260,7 @@ function escapeDiscordText(text: string, max: number): string {
   // `split` alternates plain text (even indexes) and URLs (odd indexes).
   const units = text
     .split(DISCORD_AUTOLINK)
-    .flatMap((part, index) => Array.from(part, index % 2 === 1 ? encodeLinkChar : escapeMarkdownChar));
+    .flatMap((part, index) => (index % 2 === 1 ? discordUrlUnits(part) : Array.from(part, escapeMarkdownChar)));
   return fitEscaped(units, max);
 }
 

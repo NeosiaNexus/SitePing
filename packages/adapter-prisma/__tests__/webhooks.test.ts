@@ -153,9 +153,9 @@ describe("buildWebhookPayload — untrusted input", () => {
 
   it("escapes Discord markdown so a visitor can't send a disguised masked link", () => {
     const phish = "[Reset your password](https://evil.example/phish)";
-    // The URL keeps its characters (it stays linkable) but its closing paren
-    // is percent-encoded, so no masked link can form.
-    const escaped = "\\[Reset your password\\]\\(https://evil.example/phish%29";
+    // The URL keeps its characters (it stays linkable); the `[`, `]` and `(`
+    // around it are escaped, so no masked link can form.
+    const escaped = "\\[Reset your password\\]\\(https://evil.example/phish)";
     const payload = buildWebhookPayload("discord", {
       ...FEEDBACK,
       message: `**urgent** ${phish}`,
@@ -173,7 +173,7 @@ describe("buildWebhookPayload — untrusted input", () => {
     expect(embed?.title).toBe("bug — \\_\\_proj\\_\\_");
     expect(embed?.fields.find((f) => f.name === "URL")?.value).toBe(escaped);
     expect(embed?.fields.find((f) => f.name === "Author")?.value).toBe(`${escaped} (alice@example.com)`);
-    expect(embed?.fields.find((f) => f.name === "Viewport")?.value).toBe("\\[x\\]\\(https://e.co%29");
+    expect(embed?.fields.find((f) => f.name === "Viewport")?.value).toBe("\\[x\\]\\(https://e.co)");
   });
 
   it("keeps every Discord value within the API limits, even after escaping", () => {
@@ -219,8 +219,20 @@ describe("buildWebhookPayload — untrusted input", () => {
     it("escapes everything around an http(s) URL", () => {
       expect(urlField("/orders/__draft__")).toBe("/orders/\\_\\_draft\\_\\_");
       expect(urlField("https://ok.example [Reset](https://evil.example)")).toBe(
-        "https://ok.example \\[Reset\\]\\(https://evil.example%29",
+        "https://ok.example \\[Reset\\]\\(https://evil.example)",
       );
+    });
+
+    it("ends a URL where Discord's autolink does, keeping only brackets it opened", () => {
+      // Sentence punctuation after a URL goes out raw: percent-encoded or
+      // backslash-escaped, it would become part of the link's address.
+      expect(description("The button (https://shop.example/cart) is broken.")).toBe(
+        "The button \\(https://shop.example/cart) is broken.",
+      );
+      expect(description("(see https://en.wikipedia.org/wiki/Mercury_(planet)).")).toBe(
+        "\\(see https://en.wikipedia.org/wiki/Mercury_%28planet%29).",
+      );
+      expect(urlField("https://shop.example/list?filter[status]")).toBe("https://shop.example/list?filter%5Bstatus%5D");
     });
 
     it("keeps a URL typed into the message linkable while escaping the text around it", () => {
