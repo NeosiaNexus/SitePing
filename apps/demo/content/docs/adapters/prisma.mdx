@@ -133,7 +133,7 @@ model SitepingAnnotation {
 }
 ```
 
-> `@db.Text` targets PostgreSQL and MySQL. On SQLite, remove those attributes — plain `String` is already unbounded there.
+> `@db.Text` targets PostgreSQL and MySQL. SQLite and CockroachDB reject it, and plain `String` is already unbounded there — `sync` reads your datasource `provider` and leaves `@db.Text` out on those databases. Writing the schema by hand? Drop those attributes yourself.
 
 ## Screenshot storage
 

@@ -15,7 +15,7 @@ import type {
   Schema,
 } from "@mrleebo/prisma-ast";
 import { getSchema, printSchema } from "@mrleebo/prisma-ast";
-import { type FieldDef, type IndexDef, SITEPING_MODELS } from "@siteping/core";
+import { type FieldDef, type IndexDef, SITEPING_MODELS, type SitepingModelName } from "@siteping/core";
 
 const DEFAULT_SCHEMA_PATH = "prisma/schema.prisma";
 
@@ -99,6 +99,7 @@ export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
     }
   }
 
+  const provider = datasourceProvider(schema);
   const addedModels: string[] = [];
   const changes: FieldChange[] = [];
 
@@ -108,7 +109,7 @@ export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
     if (!existingModel) {
       const model: Model = { type: "model", name: modelName, properties: [] };
       for (const [fieldName, fieldDef] of Object.entries(modelDef.fields)) {
-        model.properties.push(buildField(fieldName, fieldDef));
+        model.properties.push(buildField(fieldName, fieldDef, provider));
       }
       if (modelDef.indexes) {
         for (const idx of modelDef.indexes) {
@@ -132,7 +133,7 @@ export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
     const fieldsToUpdate: Array<{ index: number; field: Field }> = [];
 
     for (const [fieldName, fieldDef] of Object.entries(modelDef.fields)) {
-      const expected = buildField(fieldName, fieldDef);
+      const expected = buildField(fieldName, fieldDef, provider);
       const existing = existingFields.get(fieldName);
 
       if (!existing) {
@@ -343,7 +344,41 @@ function formatFieldSignature(def: FieldDef): string {
   return sig;
 }
 
-function buildField(name: string, def: FieldDef): Field {
+// ── Native types per connector ─────────────────────────────────────────
+
+type SitepingFieldDef = {
+  [M in SitepingModelName]: (typeof SITEPING_MODELS)[M]["fields"][keyof (typeof SITEPING_MODELS)[M]["fields"]];
+}[SitepingModelName];
+
+/**
+ * Connectors that accept each native type the Siteping models use — typed
+ * off `SITEPING_MODELS`, so a new `nativeType` there needs an entry here.
+ * SQLite, CockroachDB and MongoDB reject `@db.Text` ("Native type Text is not
+ * supported"); their plain `String` is unbounded already.
+ */
+const NATIVE_TYPE_PROVIDERS: Record<
+  Extract<SitepingFieldDef, { nativeType: string }>["nativeType"],
+  ReadonlySet<string>
+> = {
+  Text: new Set(["postgresql", "postgres", "mysql", "sqlserver"]),
+};
+
+/** The datasource `provider`, or `undefined` when this file declares none. */
+function datasourceProvider(schema: Schema): string | undefined {
+  const datasource = schema.list.find((block) => block.type === "datasource");
+  const provider = datasource?.assignments.find((a) => a.type === "assignment" && a.key === "provider");
+  return provider?.type === "assignment" && typeof provider.value === "string"
+    ? provider.value.replace(/^"|"$/g, "")
+    : undefined;
+}
+
+function supportsNativeType(nativeType: string, provider: string | undefined): boolean {
+  // No datasource to go by: emit it, as sync always has.
+  if (provider === undefined) return true;
+  return NATIVE_TYPE_PROVIDERS[nativeType as keyof typeof NATIVE_TYPE_PROVIDERS]?.has(provider) ?? false;
+}
+
+function buildField(name: string, def: FieldDef, provider: string | undefined): Field {
   const field: Field = {
     type: "field",
     name,
@@ -383,7 +418,7 @@ function buildField(name: string, def: FieldDef): Field {
     });
   }
 
-  if (def.nativeType) {
+  if (def.nativeType && supportsNativeType(def.nativeType, provider)) {
     field.attributes!.push({ type: "attribute", name: def.nativeType, kind: "field", group: "db" });
   }
 

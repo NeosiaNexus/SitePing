@@ -333,6 +333,58 @@ describe("syncPrismaModels", () => {
     expect(output).toMatch(/message\s+String\s+@db\.Text/);
   });
 
+  describe("native types per datasource provider", () => {
+    const schemaFor = (provider: string) => MINIMAL_SCHEMA.replace('"postgresql"', `"${provider}"`);
+
+    it.each(["sqlite", "cockroachdb"])("emits no @db.Text on %s, whose connector rejects it", (provider) => {
+      writeFileSync(schemaPath, schemaFor(provider));
+
+      syncPrismaModels(schemaPath);
+
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).not.toContain("@db.");
+      expect(output).toMatch(/^\s*message\s+String$/m);
+      // …and doesn't then report the fields as outdated forever.
+      expect(syncPrismaModels(schemaPath).changes).toEqual([]);
+    });
+
+    it.each(["postgresql", "mysql", "sqlserver"])("emits @db.Text on %s", (provider) => {
+      writeFileSync(schemaPath, schemaFor(provider));
+
+      syncPrismaModels(schemaPath);
+
+      expect(readFileSync(schemaPath, "utf-8")).toMatch(/^\s*message\s+String\s+@db\.Text$/m);
+    });
+
+    it("removes a @db.Text an earlier sync wrote on SQLite", () => {
+      writeFileSync(
+        schemaPath,
+        SCHEMA_WITH_PARTIAL_MODEL.replace('"postgresql"', '"sqlite"').replace(
+          /message\s+String/,
+          "message String @db.Text",
+        ),
+      );
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toContainEqual({
+        model: "SitepingFeedback",
+        field: "message",
+        action: "updated",
+        detail: "-@db.Text",
+      });
+      expect(readFileSync(schemaPath, "utf-8")).not.toContain("@db.");
+    });
+
+    it("keeps emitting @db.Text when the file declares no datasource", () => {
+      writeFileSync(schemaPath, 'generator client {\n  provider = "prisma-client-js"\n}\n');
+
+      syncPrismaModels(schemaPath);
+
+      expect(readFileSync(schemaPath, "utf-8")).toMatch(/^\s*message\s+String\s+@db\.Text$/m);
+    });
+  });
+
   it("generates correct relation fields", () => {
     writeFileSync(schemaPath, MINIMAL_SCHEMA);
 

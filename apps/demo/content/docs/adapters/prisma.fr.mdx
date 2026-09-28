@@ -133,7 +133,7 @@ model SitepingAnnotation {
 }
 ```
 
-> `@db.Text` cible PostgreSQL et MySQL. Sur SQLite, retirez ces attributs — un `String` simple y est déjà sans limite.
+> `@db.Text` cible PostgreSQL et MySQL. SQLite et CockroachDB le refusent, et un `String` simple y est déjà sans limite — `sync` lit le `provider` de votre datasource et y omet `@db.Text`. Vous écrivez le schéma à la main ? Retirez ces attributs vous-même.
 
 ## Stockage des captures
 
