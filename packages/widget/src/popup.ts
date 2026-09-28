@@ -1,5 +1,5 @@
 import type { FeedbackType } from "@siteping/core";
-import { Z_INDEX_MAX } from "./constants.js";
+import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
@@ -66,6 +66,12 @@ export class Popup {
   private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
   private onSubmit: PopupSubmitHandler | null = null;
   private submittingState = false;
+  /**
+   * Pending `display: none` scheduled by `hideElement()` once the fade-out
+   * ends. Cleared by `show()` so a popup reopened inside the transition window
+   * is not hidden by the previous session's timer.
+   */
+  private hideTimeoutId: ReturnType<typeof setTimeout> | null = null;
   /** WAAPI handle for the running spinner — cancelled when submitting ends. */
   private spinnerAnimation: Animation | null = null;
 
@@ -212,9 +218,6 @@ export class Popup {
         e.preventDefault();
         this.submit();
       }
-      if (e.key === "Escape") {
-        this.cancel();
-      }
     });
 
     // Button row
@@ -229,7 +232,7 @@ export class Popup {
       font-size:13px;font-weight:500;cursor:pointer;
       transition:all 0.2s ease;
     `;
-    this.cancelBtn.addEventListener("click", () => this.cancel());
+    this.cancelBtn.addEventListener("click", () => this.dismiss());
     this.cancelBtn.addEventListener("mouseenter", () => {
       if (this.submittingState) return;
       this.cancelBtn.style.borderColor = this.colors.accent;
@@ -325,6 +328,7 @@ export class Popup {
    */
   show(rectBounds: DOMRect, onSubmit?: PopupSubmitHandler): Promise<PopupResult | null> {
     return new Promise((resolve) => {
+      this.cancelPendingHide();
       this.resolve = resolve;
       this.onSubmit = onSubmit ?? null;
       this.selectedType = null;
@@ -364,8 +368,10 @@ export class Popup {
       this.root.style.left = `${left}px`;
       this.root.style.display = "block";
 
-      // Install focus trap
+      // Install focus trap. Escape cancels from any control, not only the
+      // textarea, and bubbles on so the annotator ends the session too.
       this.onKeydownTrap = (e: KeyboardEvent) => {
+        if (e.key === "Escape") this.dismiss();
         if (e.key === "Tab") {
           const focusableEls = Array.from(
             this.root.querySelectorAll<HTMLElement>(
@@ -472,8 +478,15 @@ export class Popup {
       });
   }
 
-  private cancel(): void {
-    if (this.submittingState) return;
+  /**
+   * Close the popup as cancelled (`show()` resolves null): its Cancel button,
+   * Escape, and the annotation session ending from outside the popup (toolbar
+   * Cancel, Escape). No-op when the popup is already closed, or while a
+   * submission is in flight: abandoning mid-upload would leak a half-sent
+   * feedback.
+   */
+  dismiss(): void {
+    if (this.submittingState || !this.isOpen) return;
     this.resolve?.(null);
     this.resolve = null;
     this.hideElement();
@@ -595,17 +608,27 @@ export class Popup {
     // Restore focus to the previously focused element
     this.previouslyFocused?.focus();
     this.previouslyFocused = null;
-    setTimeout(() => {
+    this.cancelPendingHide();
+    this.hideTimeoutId = setTimeout(() => {
+      this.hideTimeoutId = null;
       this.root.style.display = "none";
-    }, 250);
+    }, POPUP_HIDE_TRANSITION_MS);
+  }
+
+  /** Drop a `display: none` still pending from a previous `hideElement()`. */
+  private cancelPendingHide(): void {
+    if (this.hideTimeoutId === null) return;
+    clearTimeout(this.hideTimeoutId);
+    this.hideTimeoutId = null;
   }
 
   destroy(): void {
     // Settle a pending `show()` promise so it cannot outlive teardown — a
     // `destroy()` mid-submit would otherwise leak the awaiting closure (and
     // whatever it retains: the annotation, the base64 screenshot). Resolving
-    // with `null` reads as "cancelled", matching `cancel()`.
+    // with `null` reads as "cancelled", matching `dismiss()`.
     if (this.submittingState) this.exitSubmittingState();
+    this.cancelPendingHide();
     this.resolve?.(null);
     this.resolve = null;
     this.onSubmit = null;

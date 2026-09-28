@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { POPUP_HIDE_TRANSITION_MS } from "../../src/constants.js";
 import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
 import { Popup } from "../../src/popup.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
@@ -176,6 +177,16 @@ describe("Popup", () => {
 
       const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
       textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+      const result = await promise;
+      expect(result).toBeNull();
+    });
+
+    it("resolves to null when Escape is pressed on a type button", async () => {
+      const promise = popup.show(makeBounds());
+
+      const typeBtn = document.querySelector<HTMLButtonElement>('[data-type="question"]')!;
+      typeBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
       const result = await promise;
       expect(result).toBeNull();
@@ -443,6 +454,91 @@ describe("Popup", () => {
       for (const btn of allTypeButtons) {
         expect(btn.getAttribute("aria-pressed")).toBe("false");
       }
+    });
+
+    describe("pending close transition", () => {
+      const findCancelButton = () =>
+        Array.from(document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')).find(
+          (button) => button.textContent === t("popup.cancel"),
+        )!;
+
+      beforeEach(() => {
+        vi.useFakeTimers();
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it("stays visible when re-shown before the previous close transition ends", async () => {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        const firstSession = popup.show(makeBounds());
+        findCancelButton().click();
+        await firstSession;
+
+        // Re-open inside the fade-out window of the dismissed session
+        vi.advanceTimersByTime(100);
+        popup.show(makeBounds());
+        vi.advanceTimersByTime(1000);
+
+        expect(dialog.style.display).toBe("block");
+        expect(popup.isOpen).toBe(true);
+      });
+
+      it("stays visible when re-shown after Cancel was clicked twice during the fade-out", async () => {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        const firstSession = popup.show(makeBounds());
+        findCancelButton().click();
+        await firstSession;
+
+        // A double-click reaches the fading popup's Cancel again
+        vi.advanceTimersByTime(50);
+        findCancelButton().click();
+        vi.advanceTimersByTime(50);
+        popup.show(makeBounds());
+        vi.advanceTimersByTime(1000);
+
+        expect(dialog.style.display).toBe("block");
+        expect(popup.isOpen).toBe(true);
+      });
+
+      it("a second Cancel during the fade-out does not postpone the hide", async () => {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        const session = popup.show(makeBounds());
+        findCancelButton().click();
+        await session;
+
+        vi.advanceTimersByTime(POPUP_HIDE_TRANSITION_MS - 50);
+        findCancelButton().click();
+        vi.advanceTimersByTime(50);
+
+        expect(dialog.style.display).toBe("none");
+      });
+
+      it("still hides after the close transition when not re-shown", async () => {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        const session = popup.show(makeBounds());
+        popup.dismiss();
+        await session;
+
+        vi.advanceTimersByTime(POPUP_HIDE_TRANSITION_MS);
+
+        expect(dialog.style.display).toBe("none");
+      });
+
+      it("drops a close transition still pending at teardown", async () => {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        const session = popup.show(makeBounds());
+        popup.dismiss();
+        await session;
+
+        popup.destroy();
+        vi.advanceTimersByTime(1000);
+
+        // The pending `display: none` never fires on the detached root
+        expect(dialog.isConnected).toBe(false);
+        expect(dialog.style.display).toBe("block");
+      });
     });
   });
 
