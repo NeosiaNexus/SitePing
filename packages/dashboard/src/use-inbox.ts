@@ -625,7 +625,11 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const epoch = projectEpochRef.current;
       // Captured for undos too: a FAILED undo leaves the status change
       // standing, so the undo affordance must survive the rollback.
-      const undoBefore = { pending: pendingUndoRef.current, record: undoRecordRef.current, entry: undoEntryRef.current };
+      const undoBefore = {
+        pending: pendingUndoRef.current,
+        record: undoRecordRef.current,
+        entry: undoEntryRef.current,
+      };
 
       const previous = record.status;
       const now = new Date();
@@ -732,7 +736,11 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       if (!record) return;
 
       const epoch = projectEpochRef.current;
-      const undoBefore = { pending: pendingUndoRef.current, record: undoRecordRef.current, entry: undoEntryRef.current };
+      const undoBefore = {
+        pending: pendingUndoRef.current,
+        record: undoRecordRef.current,
+        entry: undoEntryRef.current,
+      };
       const deltas: CountDeltas = matchesBase(record)
         ? [
             [record.status, -1],
