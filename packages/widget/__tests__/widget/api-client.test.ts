@@ -1523,6 +1523,21 @@ describe("ApiClient — bounded waits", () => {
     expect((error as Error).message).toBe("Failed to send feedback: headers factory did not settle within 10 s");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("a queued replay that never answers gives up at 10 s and stays queued (the flush holds the cross-tab lock)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    );
+    const queued = JSON.stringify([{ endpoint, payload }]);
+    localStorage.setItem("siteping_retry_queue", queued);
+
+    await settlesAt(() => flushRetryQueue(endpoint), 10_000);
+
+    expect(localStorage.getItem("siteping_retry_queue")).toBe(queued);
+  });
 });
 
 // ---------------------------------------------------------------------------

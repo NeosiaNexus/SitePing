@@ -374,17 +374,25 @@ export async function flushRetryQueue(
       if (toRetry.length > 0) {
         const headers = await buildRequestHeaders(auth, true);
         for (const entry of toRetry) {
+          // Same bound as a live send's attempt: the replay holds the
+          // cross-tab lock, so one that never answers would block every
+          // later queueing on this origin.
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
           try {
             const res = await fetch(endpoint, {
               method: "POST",
               headers,
               body: JSON.stringify(entry.payload),
+              signal: controller.signal,
             });
             if (res.ok) continue;
             if (isTransientStatus(res.status)) failed.push(entry);
             else rejected += 1;
           } catch {
             failed.push(entry);
+          } finally {
+            clearTimeout(timeout);
           }
         }
       }
