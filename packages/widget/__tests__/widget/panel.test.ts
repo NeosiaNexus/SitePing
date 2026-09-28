@@ -4203,4 +4203,41 @@ describe("Panel", () => {
       expect(card).not.toBeNull();
     });
   });
+
+  describe("panelActions plumbing", () => {
+    it("wires panelActions through to the detail view and emits feedback:error on rejection", async () => {
+      // Rebuild the panel with a panelActions option — mirrors the "respects
+      // custom getScope option" harness above, which is the existing pattern
+      // for constructing a Panel with a non-default options bag.
+      panel.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      bus = new EventBus<WidgetEvents>();
+      apiClient = createMockApiClient();
+      markers = createMockMarkers();
+
+      const onAction = vi.fn().mockRejectedValue(new Error("dispatch failed"));
+      const errors: Error[] = [];
+      bus.on("feedback:error", (e) => errors.push(e));
+
+      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+        getScope: () => ({ url: "/", urlPattern: null }),
+        scopeAnnotationsByUrl: true,
+        panelActions: [{ id: "a1", label: "Do it", onAction }],
+      });
+
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+
+      const customBtn = shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!;
+      expect(customBtn).not.toBeNull();
+      customBtn.click();
+
+      await vi.waitFor(() => expect(onAction).toHaveBeenCalled());
+      await vi.waitFor(() => expect(errors[0]?.message).toBe("dispatch failed"));
+    });
+  });
 });

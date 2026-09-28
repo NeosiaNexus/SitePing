@@ -6,6 +6,7 @@ import {
   type FeedbackType,
   isClosedStatus,
   type PageScope,
+  type SitepingPanelAction,
 } from "@siteping/core";
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
 import { SegmentedControl } from "./components/segmented-control.js";
@@ -107,7 +108,11 @@ export class Panel {
     private readonly markers: MarkerManager,
     private readonly t: TFunction,
     private readonly locale: string,
-    pageScopeOptions?: { getScope: () => PageScope; scopeAnnotationsByUrl: boolean },
+    pageScopeOptions?: {
+      getScope: () => PageScope;
+      scopeAnnotationsByUrl: boolean;
+      panelActions?: SitepingPanelAction[] | undefined;
+    },
   ) {
     this.shadowRoot = shadowRoot;
     this.getScope = pageScopeOptions?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
@@ -245,16 +250,18 @@ export class Panel {
             this.markers.pinHighlight(fb);
           }
         },
-        // Minimal stub to satisfy DetailCallbacks — no custom actions are
-        // wired up yet (no panelActions passed as the 5th DetailView arg),
-        // so this is currently unreachable. Full wiring (bus error
-        // emission, panelActions plumbing) lands in a follow-up task.
         onCustomAction: async (action, fb) => {
-          await action.onAction(fb);
+          try {
+            await action.onAction(fb);
+          } catch (error) {
+            this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
+            throw error;
+          }
         },
       },
       this.t,
       locale,
+      pageScopeOptions?.panelActions ?? [],
     );
 
     // --- Keyboard Shortcuts ---

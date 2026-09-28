@@ -368,6 +368,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
         panelInstance = new mod.Panel(shadow, colors, bus, client, config.projectName, markers, t, locale, {
           getScope,
           scopeAnnotationsByUrl,
+          panelActions: config.panelActions,
         });
         return panelInstance;
       });
