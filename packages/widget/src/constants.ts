@@ -1,8 +1,19 @@
 /** Maximum z-index value — ensures the widget renders above all page content. */
 export const Z_INDEX_MAX = 2147483647;
 
-/** Minimum viewport width (px) below which the widget is hidden (mobile). */
-export const MOBILE_BREAKPOINT = 768;
+/**
+ * Default `minViewportWidth` — 0 renders the widget at every width. Phones
+ * get the compact layout (bottom sheets, touch targets) instead of being
+ * skipped; hosts that still want to hide it on small screens set a threshold.
+ */
+export const DEFAULT_MIN_VIEWPORT_WIDTH = 0;
+
+/**
+ * Widest viewport (px) that gets the compact phone layout: the panel, the
+ * feedback form and the identity prompt become bottom sheets. Mirrored by the
+ * `@media (max-width: 640px)` blocks in `styles/mobile.ts`.
+ */
+export const COMPACT_MAX_WIDTH = 640;
 
 /** Default number of feedbacks to fetch per page. */
 export const PAGE_SIZE = 20;

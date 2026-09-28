@@ -60,6 +60,7 @@ export const it: Translations = {
   "annotator.instruction":
     "Disegna un rettangolo sull'area da commentare — oppure premi Invio per commentare l'ultimo elemento attivo",
   "annotator.instantInstruction": "Commenta il punto selezionato",
+  "annotator.touchInstruction": "Tocca un elemento o trascina per selezionare un'area",
   "annotator.cancel": "Annulla",
 
   // Popup

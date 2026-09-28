@@ -38,7 +38,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
 | Option | Type | Default | What it does |
 |---|---|---|---|
 | `forceShow` | `boolean` | `false` | Bypasses the production and viewport guards (never the SSR guard) |
-| `minViewportWidth` | `number` | `768` | Below this width the widget skips with `onSkip("mobile")`. Use `0` to allow any width |
+| `minViewportWidth` | `number` | `0` | Below this width the widget skips with `onSkip("mobile")`. The default renders at every width — phones get the [compact layout](/docs/widget#on-phones-and-tablets) |
 | `position` | `"bottom-right"` \| `"bottom-left"` | `"bottom-right"` | Corner for the floating button |
 | `showAnnotationsToggle` | `boolean` | `true` | Set `false` to remove the marker-visibility toggle from the radial menu |
 

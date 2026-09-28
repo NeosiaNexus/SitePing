@@ -126,24 +126,7 @@ function containsRect(el: Element, rect: DOMRect): boolean {
  * Both ancestor walks climb out of open shadow roots through their hosts.
  */
 export function findAnchorElement(rect: DOMRect, root: Element = document.documentElement): Element {
-  const centerX = rect.x + rect.width / 2;
-  const centerY = rect.y + rect.height / 2;
-
-  // Document hit-testing retargets to the outermost shadow host, so drill
-  // through open roots to the element actually under the point. Only an
-  // element of that root is accepted (slotted content hit-tests to the host
-  // itself), so every step goes strictly deeper; closed roots stay opaque.
-  // The typeof guard stays although lib.dom types it as always-present:
-  // jsdom doesn't implement ShadowRoot.elementFromPoint.
-  let elementAtCenter = document.elementFromPoint(centerX, centerY);
-  let shadowRoot = elementAtCenter?.shadowRoot;
-  while (shadowRoot && typeof shadowRoot.elementFromPoint === "function") {
-    const inner = shadowRoot.elementFromPoint(centerX, centerY);
-    if (!inner || inner.getRootNode() !== shadowRoot) break;
-    elementAtCenter = inner;
-    shadowRoot = inner.shadowRoot;
-  }
-
+  const elementAtCenter = deepElementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
   if (!elementAtCenter || elementAtCenter === root) return document.body;
 
   // Pass 1 — semantic anchor (host-controlled, most stable)
@@ -163,6 +146,27 @@ export function findAnchorElement(rect: DOMRect, root: Element = document.docume
   }
 
   return document.body;
+}
+
+/**
+ * The element under a viewport point, inside open shadow roots too. Document
+ * hit-testing retargets to the outermost shadow host, so drill through open
+ * roots to the element actually under the point. Only an element of that root
+ * is accepted (slotted content hit-tests to the host itself), so every step
+ * goes strictly deeper; closed roots stay opaque.
+ */
+export function deepElementFromPoint(x: number, y: number): Element | null {
+  // The typeof guard stays although lib.dom types it as always-present:
+  // jsdom doesn't implement ShadowRoot.elementFromPoint.
+  let element = document.elementFromPoint(x, y);
+  let shadowRoot = element?.shadowRoot;
+  while (shadowRoot && typeof shadowRoot.elementFromPoint === "function") {
+    const inner = shadowRoot.elementFromPoint(x, y);
+    if (!inner || inner.getRootNode() !== shadowRoot) break;
+    element = inner;
+    shadowRoot = inner.shadowRoot;
+  }
+  return element;
 }
 
 /**

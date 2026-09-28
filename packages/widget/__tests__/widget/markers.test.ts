@@ -7,6 +7,7 @@ import { isolateFromHost } from "../../src/host-isolation.js";
 import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 import type { Tooltip } from "../../src/tooltip.js";
+import { mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mock resolveAnnotation — avoids the full DOM resolution chain in jsdom
@@ -2087,5 +2088,64 @@ describe("MarkerManager", () => {
       // We at least ensure no crash.
       expect(() => m.buildClusters()).not.toThrow();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Touch screens and phones
+// ---------------------------------------------------------------------------
+
+describe("MarkerManager on touch screens", () => {
+  let bus: EventBus<WidgetEvents>;
+  let tooltip: Tooltip;
+  let markers: MarkerManager;
+  const pin = () => document.querySelector<HTMLElement>("#siteping-markers [data-feedback-id]")!;
+
+  beforeEach(() => {
+    bus = new EventBus<WidgetEvents>();
+    tooltip = createMockTooltip();
+    mockState.confidence = 1;
+    mockState.returnNull = false;
+    mockState.rectQueue = [];
+    mockState.nullSchedule = [];
+  });
+
+  afterEach(() => {
+    markers.destroy();
+    Reflect.deleteProperty(window, "matchMedia");
+    mockState.element?.remove();
+    mockState.element = null;
+  });
+
+  it("widens a pin's hit area for fingers without resizing the 26px pin", () => {
+    mockMediaQueries(["(pointer: coarse)"]);
+    markers = new MarkerManager(colors, tooltip, bus, t);
+    markers.render([makeFeedback()]);
+    const hitArea = pin().querySelector<HTMLElement>("span")!;
+    expect(hitArea.style.position).toBe("absolute");
+    expect(hitArea.getAttribute("style")).toContain("-9px");
+    expect(pin().style.width).toBe("26px");
+    expect(pin().textContent).toBe("1");
+  });
+
+  it("adds no hit-area element for a mouse", () => {
+    markers = new MarkerManager(colors, tooltip, bus, t);
+    markers.render([makeFeedback()]);
+    expect(pin().querySelector("span")).toBeNull();
+  });
+
+  it("hides the tooltip when a pin tap opens the phone sheet over the page", () => {
+    mockMediaQueries(PHONE_MEDIA);
+    markers = new MarkerManager(colors, tooltip, bus, t);
+    markers.render([makeFeedback()]);
+    pin().click();
+    expect(tooltip.hide).toHaveBeenCalled();
+  });
+
+  it("keeps the tooltip on wider screens, where the panel sits beside the page", () => {
+    markers = new MarkerManager(colors, tooltip, bus, t);
+    markers.render([makeFeedback()]);
+    pin().click();
+    expect(tooltip.hide).not.toHaveBeenCalled();
   });
 });

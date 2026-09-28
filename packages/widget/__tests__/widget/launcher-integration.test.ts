@@ -2,7 +2,7 @@
 
 import type { FeedbackPayload, FeedbackResponse, SitepingConfig, SitepingHttpConfig } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mockMatchMedia } from "../helpers.js";
+import { mockMatchMedia, mockVisualViewport } from "../helpers.js";
 
 // jsdom does not implement window.matchMedia — provide a stub
 mockMatchMedia(false);
@@ -1012,6 +1012,45 @@ describe("launcher — annotation:complete integration", () => {
       expect(modal.isConnected).toBe(true);
 
       instance.destroy();
+    });
+
+    it("animates in and out through classes the phone stylesheet can restyle as a sheet", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { backdrop, modal, cancelBtn } = await getIdentityModal();
+      expect(backdrop.className).toContain("sp-identity-backdrop");
+      expect(modal.className).toBe("sp-identity-modal");
+      await vi.waitFor(() => expect(backdrop.classList.contains("sp-identity--open")).toBe(true));
+      expect(modal.getAttribute("style")).toBeNull();
+
+      cancelBtn.click();
+      expect(backdrop.classList.contains("sp-identity--open")).toBe(false);
+
+      instance.destroy();
+    });
+
+    it("keeps the sheet above the on-screen keyboard until it closes", async () => {
+      const vv = mockVisualViewport();
+      try {
+        mockGetIdentity.mockReturnValue(null);
+        const instance = launch(defaultConfig());
+        capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+        const { modal, cancelBtn } = await getIdentityModal();
+        expect(modal.style.getPropertyValue("--sp-kb")).toBe("0px");
+        vv.keyboard(320);
+        expect(modal.style.getPropertyValue("--sp-kb")).toBe("320px");
+
+        cancelBtn.click();
+        vv.keyboard(100);
+        expect(modal.style.getPropertyValue("--sp-kb")).toBe("320px");
+
+        instance.destroy();
+      } finally {
+        vv.restore();
+      }
     });
   });
 

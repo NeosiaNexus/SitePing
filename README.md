@@ -20,7 +20,7 @@ Draw rectangles, leave comments, track bugs — directly on the live site.
 [![coverage](https://img.shields.io/codecov/c/github/NeosiaNexus/SitePing?style=flat&colorA=000000&colorB=000000)](https://app.codecov.io/gh/NeosiaNexus/SitePing)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/NeosiaNexus/SitePing?label=scorecard&style=flat&colorA=000000&colorB=000000)](https://scorecard.dev/viewer/?uri=github.com/NeosiaNexus/SitePing)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
-[![Bundle Size](https://img.shields.io/badge/widget-~30%20KB%20gzip%20(ESM)-blue)](./packages/widget/.size-limit.json)
+[![Bundle Size](https://img.shields.io/badge/widget-~33%20KB%20gzip%20(ESM)-blue)](./packages/widget/.size-limit.json)
 
 [**Documentation**](https://siteping.dev/docs) &middot; [Quickstart](https://siteping.dev/docs/quickstart) &middot; [Live Demo](https://siteping.dev/demo) &middot; [Contributing](./CONTRIBUTING.md)
 
@@ -54,7 +54,7 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **Reliability built in** — retry with backoff plus a localStorage queue; a flaky network never loses a comment
 - **Shadow DOM isolation** — widget CSS never leaks into your site, and your site CSS never breaks the widget
 - **Dev-only by default** — auto-hides in production builds unless `forceShow: true`
-- **Lightweight** — ~30 KB gzipped (ESM); the panel, screenshot engine, and non-English locales load on demand
+- **Lightweight** — ~35 KB gzipped (ESM); the panel, screenshot engine, and non-English locales load on demand
 
 ## Quickstart
 

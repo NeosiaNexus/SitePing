@@ -3,7 +3,7 @@ title: Widget
 description: Installer le widget de feedback, comprendre quand il s'affiche, et le piloter depuis votre app.
 ---
 
-Le widget, c'est la partie que vos clients voient : un bouton flottant qui leur permet de dessiner un rectangle sur la page, de taper un commentaire et de l'envoyer — épinglé à l'élément exact.
+Le widget, c'est la partie que vos clients voient : un bouton flottant qui leur permet de dessiner un rectangle sur la page — ou, sur téléphone, de toucher un élément —, de taper un commentaire et de l'envoyer, épinglé à l'élément exact.
 
 ```bash
 npm i @siteping/widget
@@ -18,7 +18,7 @@ const siteping = initSiteping({
 });
 ```
 
-`initSiteping` est l'export runtime principal du package, aux côtés des deux helpers i18n (`registerLocale`, `loadLocale`) et des types TypeScript. Il pèse environ **30 KB gzip** (ESM), charge ses parties lourdes à la demande (panneau, locales, moteur de capture) et s'affiche dans un Shadow DOM fermé — les styles de votre page et ceux du widget ne peuvent jamais se marcher dessus.
+`initSiteping` est l'export runtime principal du package, aux côtés des deux helpers i18n (`registerLocale`, `loadLocale`) et des types TypeScript. Il pèse environ **35 KB gzip** (ESM), charge ses parties lourdes à la demande (panneau, locales, moteur de capture) et s'affiche dans un Shadow DOM fermé — les styles de votre page et ceux du widget ne peuvent jamais se marcher dessus.
 
 ## Quand le widget s'affiche — et quand il ne s'affiche pas
 
@@ -27,8 +27,27 @@ const siteping = initSiteping({
 1. **Rendu côté serveur** — pas de `window` ? Le widget passe son tour avec `onSkip("ssr")`. Jamais contournable.
 2. **Déjà initialisé** — un second appel à `initSiteping()` renvoie l'instance *existante* (un seul widget par page). `destroy()` remet le compteur à zéro.
 3. **Production** — quand `process.env.NODE_ENV === "production"`, le widget passe son tour avec `onSkip("production")`. C'est le comportement « les clients le voient pendant la relecture, les visiteurs jamais ». Contournez-le avec `forceShow: true` pour les environnements de staging ou de preview. À noter : seul `process.env.NODE_ENV` est lu — pas `import.meta.env`.
-4. **Petits écrans** — en dessous de `minViewportWidth` (par défaut **768 px**), il passe son tour avec `onSkip("mobile")`. Également contourné par `forceShow`.
+4. **Largeur minimale (optionnelle)** — en dessous de `minViewportWidth`, il passe son tour avec `onSkip("mobile")`. La valeur par défaut, `0`, l'affiche à toutes les largeurs : les téléphones ont droit à la [mise en page compacte](#sur-téléphone-et-tablette). Également contourné par `forceShow`.
 5. **Validation de la config** — pas d'`endpoint`/`store`, ou pas de `projectName` ? Le widget affiche un `console.error` et ne fait rien. Ce cas-là n'appelle **pas** `onSkip` — regardez la console, pas le callback.
+
+## Sur téléphone et tablette
+
+Le même widget s'adapte à l'écran sur lequel il arrive — il n'y a rien à configurer.
+
+**Écrans tactiles** (toutes tailles) :
+
+- **Touchez un élément pour le commenter**, ou faites glisser pour sélectionner une zone. La barre d'instructions le dit, au lieu de parler de la touche Entrée.
+- Le menu flottant affiche ses libellés (il n'y a pas de survol pour les révéler), et chaque contrôle est dimensionné pour un doigt.
+- Les champs de formulaire utilisent un texte de 16 px : iOS Safari ne zoome donc pas la page quand l'un d'eux prend le focus.
+
+**Téléphones** (fenêtre jusqu'à 640 px de large) :
+
+- Le formulaire de feedback est une **feuille en bas d'écran** qui reste au-dessus du clavier virtuel. S'il devait recouvrir ce que le client vient de sélectionner, la page défile pour garder la sélection visible.
+- Le panneau des feedbacks est une feuille par-dessus la page assombrie — fermez-le avec le ✕, en touchant la page, ou en faisant glisser son en-tête vers le bas. Les filtres tiennent sur une seule ligne défilante, et les menus de type et de tri s'ouvrent en feuilles d'actions.
+- Toucher une épingle sur la page ouvre directement le détail de ce feedback. **Aller à l'annotation** ferme la feuille et fait défiler jusqu'à l'épingle, où que la mise en page de cet écran l'ait placée.
+- La demande de nom et d'e-mail est elle aussi une feuille en bas d'écran.
+
+La mise en page respecte l'encoche et l'indicateur d'accueil quand votre page déclare `viewport-fit=cover` dans sa balise meta viewport. Pour tenir le widget à l'écart des petits écrans, définissez `minViewportWidth` (par exemple `768`).
 
 ## L'instance
 

@@ -6,6 +6,7 @@ import { SORT_CSS } from "../panel-sort.js";
 import { STATS_CSS } from "../panel-stats.js";
 import { SHORTCUTS_CSS } from "../shortcuts.js";
 import { ANIMATION_CSS } from "./animations.js";
+import { MOBILE_CSS } from "./mobile.js";
 import { cssVariables, type ThemeColors } from "./theme.js";
 
 /**
@@ -41,6 +42,8 @@ export function buildStyles(colors: ThemeColors): string {
       /* Identity modal — theme-aware backdrop + panel */
       --sp-identity-bg: ${colors.glassBgHeavy};
       --sp-identity-overlay: ${colors.bg === "#ffffff" ? "rgba(15, 23, 42, 0.2)" : "rgba(0, 0, 0, 0.4)"};
+      /* Phone layout — dims the page behind bottom sheets and the speed dial */
+      --sp-scrim: ${colors.bg === "#ffffff" ? "rgba(15, 23, 42, 0.32)" : "rgba(0, 0, 0, 0.5)"};
     }
 
     *, *::before, *::after {
@@ -205,6 +208,8 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-radial-label {
+      position: absolute;
+      top: 50%;
       white-space: nowrap;
       font-size: 12px;
       font-weight: 500;
@@ -218,14 +223,23 @@ export function buildStyles(colors: ThemeColors): string {
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--sp-glass-border);
       box-shadow: var(--sp-shadow-sm);
-      transform: translateX(4px);
+      transform: translate(4px, -50%);
       transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .sp-radial--bottom-right .sp-radial-label {
+      right: calc(100% + 12px);
+    }
+
+    .sp-radial--bottom-left .sp-radial-label {
+      left: calc(100% + 12px);
+      transform: translate(-4px, -50%);
     }
 
     .sp-radial-item:hover .sp-radial-label,
     .sp-radial-item:focus-visible .sp-radial-label {
       opacity: 1;
-      transform: translateX(0);
+      transform: translate(0, -50%);
     }
 
     /* ============================
@@ -248,13 +262,6 @@ export function buildStyles(colors: ThemeColors): string {
       display: flex;
       flex-direction: column;
       overflow: hidden;
-    }
-
-    @media (max-width: 480px) {
-      .sp-panel {
-        width: 100vw;
-        border-left: none;
-      }
     }
 
     .sp-panel-header {
@@ -905,7 +912,7 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-confirm-dialog {
-      width: 340px;
+      width: min(340px, calc(100vw - 32px));
       padding: 28px;
       border-radius: 20px;
       background: var(--sp-glass-bg-heavy);
@@ -988,6 +995,51 @@ export function buildStyles(colors: ThemeColors): string {
     /* ============================
        Identity Form
        ============================ */
+
+    .sp-identity-backdrop {
+      position: fixed;
+      inset: 0;
+      background: var(--sp-identity-overlay);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: ${Z_INDEX_MAX};
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+
+    .sp-identity-modal {
+      width: 340px;
+      max-width: calc(100vw - 32px);
+      padding: 28px;
+      border-radius: var(--sp-radius-xl);
+      background: var(--sp-identity-bg);
+      backdrop-filter: blur(var(--sp-blur-heavy));
+      -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
+      border: 1px solid var(--sp-glass-border);
+      box-shadow: 0 16px 48px var(--sp-shadow), 0 8px 16px var(--sp-shadow);
+      font-family: var(--sp-font);
+      color: var(--sp-text);
+      transform: translateY(12px) scale(0.97);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .sp-identity--open {
+      opacity: 1;
+    }
+
+    .sp-identity--open .sp-identity-modal {
+      transform: none;
+    }
+
+    .sp-identity-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
 
     .sp-identity-title {
       font-size: 17px;
@@ -1201,5 +1253,6 @@ export function buildStyles(colors: ThemeColors): string {
     ${EXPORT_CSS}
     ${SHORTCUTS_CSS}
     ${DETAIL_CSS}
+    ${MOBILE_CSS}
   `;
 }

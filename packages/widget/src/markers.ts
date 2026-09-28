@@ -8,6 +8,7 @@ import { isolateFromHost } from "./host-isolation.js";
 import { getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { getTypeColor, type ThemeColors } from "./styles/theme.js";
 import type { Tooltip } from "./tooltip.js";
+import { isCoarsePointer, isCompactViewport } from "./viewport.js";
 
 type Annotation = FeedbackResponse["annotations"][number];
 
@@ -597,6 +598,8 @@ export class MarkerManager {
     marker.setAttribute("aria-label", ariaLabel);
     marker.setAttribute("aria-describedby", this.tooltip.tooltipId);
     setText(marker, isResolved ? "\u2713" : String(number));
+    // Fingers need ~44px: widen the hit area, not the 26px pin.
+    if (isCoarsePointer()) marker.appendChild(el("span", { style: "position:absolute;inset:-9px;border-radius:50%;" }));
 
     marker.addEventListener("mouseenter", () => {
       marker.style.transform = "scale(1.2)";
@@ -631,6 +634,9 @@ export class MarkerManager {
 
     const activateMarker = (e: MouseEvent | KeyboardEvent) => {
       if (e instanceof MouseEvent && this.handleClusterClick(marker, e)) return;
+      // Phones: the panel sheet is about to cover the page — a tap's
+      // tooltip would be left floating on top of it.
+      if (isCompactViewport()) this.tooltip.hide();
       this.pinHighlight(feedback);
       this.bus.emit("panel:toggle", true);
       marker.dispatchEvent(

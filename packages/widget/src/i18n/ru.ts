@@ -58,6 +58,7 @@ export const ru: Translations = {
   "annotator.instruction":
     "Выделите область для комментария — или нажмите Enter, чтобы прокомментировать последний активный элемент",
   "annotator.instantInstruction": "Комментарий к выбранной точке",
+  "annotator.touchInstruction": "Коснитесь элемента или проведите пальцем, чтобы выделить область",
   "annotator.cancel": "Отмена",
 
   // Popup

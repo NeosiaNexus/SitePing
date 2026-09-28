@@ -85,3 +85,44 @@ export function mockMatchMedia(matches = false): void {
     })),
   });
 }
+
+/** Media queries the phone layout reads (`viewport.ts`) — pass to `mockMediaQueries`. */
+export const PHONE_MEDIA = ["(max-width: 640px)", "(pointer: coarse)"];
+
+/**
+ * Stub window.matchMedia so exactly the listed queries match. Assigns rather
+ * than redefines: suites install their own (writable, non-configurable) stub.
+ */
+export function mockMediaQueries(matching: readonly string[]): void {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: matching.includes(query),
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia;
+}
+
+/**
+ * Install a fake `window.visualViewport` (jsdom has none). `keyboard(px)`
+ * shrinks it from the bottom the way an on-screen keyboard does and fires
+ * `resize`; `restore()` removes it again.
+ */
+export function mockVisualViewport() {
+  const viewport = Object.assign(new EventTarget(), { height: window.innerHeight, offsetTop: 0 });
+  Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true, writable: true });
+  return {
+    viewport,
+    keyboard(px: number, offsetTop = 0) {
+      viewport.height = window.innerHeight - px - offsetTop;
+      viewport.offsetTop = offsetTop;
+      viewport.dispatchEvent(new Event("resize"));
+    },
+    restore() {
+      Reflect.deleteProperty(window, "visualViewport");
+    },
+  };
+}

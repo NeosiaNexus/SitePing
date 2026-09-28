@@ -59,6 +59,7 @@ export const de: Translations = {
   "annotator.instruction":
     "Zeichne ein Rechteck um den Bereich, den du kommentieren möchtest — oder drücke die Eingabetaste, um das zuletzt fokussierte Element zu kommentieren",
   "annotator.instantInstruction": "Kommentar zur angeklickten Stelle",
+  "annotator.touchInstruction": "Tippe auf ein Element oder ziehe, um einen Bereich auszuwählen",
   "annotator.cancel": "Abbrechen",
 
   // Popup

@@ -8,9 +8,9 @@ description: The questions everyone asks, answered from how the code actually be
 In order of likelihood:
 
 1. **You're in a production build.** The widget skips when `NODE_ENV` is `production` (only `process.env.NODE_ENV` is read). Pass `forceShow: true` on staging, or check with `onSkip`.
-2. **The viewport is under 768 px.** Same fix: `onSkip` tells you, `minViewportWidth: 0` overrides.
-3. **Invalid config** — a missing `endpoint`/`store` or `projectName` logs a `console.error` and mounts nothing. This case does *not* fire `onSkip`, so open the console.
-4. **It's already mounted.** A second `initSiteping()` returns the existing instance instead of a second button.
+2. **Invalid config** — a missing `endpoint`/`store` or `projectName` logs a `console.error` and mounts nothing. This case does *not* fire `onSkip`, so open the console.
+3. **It's already mounted.** A second `initSiteping()` returns the existing instance instead of a second button.
+4. **The viewport is narrower than your `minViewportWidth`.** Only when you set one — by default the widget renders at every width, phones included. `onSkip("mobile")` tells you.
 
 ## Do my clients need an account?
 

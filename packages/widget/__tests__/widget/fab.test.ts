@@ -6,7 +6,7 @@ import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { Fab } from "../../src/fab.js";
 import { installHostIsolationGuard, isolateFromHost } from "../../src/host-isolation.js";
 import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
-import { createShadowRoot } from "../helpers.js";
+import { createShadowRoot, mockMediaQueries } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -805,5 +805,54 @@ describe("Fab", () => {
         expect(toggleBtn.querySelectorAll(".sp-radial-label").length).toBe(1);
       }
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Touch screens and phones
+// ---------------------------------------------------------------------------
+
+describe("Fab on touch screens", () => {
+  let shadow: ShadowRoot;
+  let fab: Fab;
+
+  beforeEach(() => {
+    shadow = createShadowRoot();
+  });
+
+  afterEach(() => {
+    fab.destroy();
+    shadow.host.remove();
+    Reflect.deleteProperty(window, "matchMedia");
+  });
+
+  it("dims the page behind the open speed dial; tapping the scrim closes it", () => {
+    fab = new Fab(shadow, defaultConfig(), new EventBus<WidgetEvents>(), createT("en"));
+    const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+    const scrim = shadow.querySelector<HTMLElement>(".sp-scrim")!;
+    expect(scrim.classList.contains("sp-scrim--open")).toBe(false);
+
+    fabBtn.click();
+    expect(scrim.classList.contains("sp-scrim--open")).toBe(true);
+
+    scrim.click();
+    expect(fabBtn.getAttribute("aria-expanded")).toBe("false");
+    expect(scrim.classList.contains("sp-scrim--open")).toBe(false);
+  });
+
+  it("spaces the finger-sized items further apart", () => {
+    mockMediaQueries(["(pointer: coarse)"]);
+    fab = new Fab(shadow, defaultConfig(), new EventBus<WidgetEvents>(), createT("en"));
+    shadow.querySelector<HTMLButtonElement>(".sp-fab")!.click();
+    const [first, second] = getRadialItems(shadow);
+    expect(first!.style.transform).toBe("translate(0px, -76px) scale(1)");
+    expect(second!.style.transform).toBe("translate(0px, -136px) scale(1)");
+  });
+
+  it("positions menu labels from the stylesheet, not inline styles", () => {
+    fab = new Fab(shadow, defaultConfig(), new EventBus<WidgetEvents>(), createT("en"));
+    for (const label of shadow.querySelectorAll<HTMLElement>(".sp-radial-label")) {
+      expect(label.getAttribute("style")).toBeNull();
+    }
   });
 });

@@ -23,7 +23,8 @@ export type SitepingLocale = BuiltinLocale | (string & {});
 
 /**
  * Reasons reported through `SitepingConfig.onSkip` — production environment,
- * mobile viewport, or server-side rendering (no `window`/`document`).
+ * viewport narrower than `minViewportWidth` (`"mobile"`), or server-side
+ * rendering (no `window`/`document`).
  */
 export type SitepingSkipReason = "production" | "mobile" | "ssr";
 
@@ -187,7 +188,7 @@ export interface SitepingBaseConfig {
   accentColor?: string | undefined;
   /**
    * Render the widget even when it would normally be skipped — this bypasses
-   * BOTH the production-environment guard AND the mobile-viewport guard.
+   * BOTH the production-environment guard AND the `minViewportWidth` guard.
    * It does NOT bypass the SSR guard: without `window`/`document` the widget
    * never renders and `onSkip("ssr")` fires instead.
    * Defaults to false. Use it for dedicated review tools, staging environments,
@@ -196,10 +197,12 @@ export interface SitepingBaseConfig {
   forceShow?: boolean | undefined;
   /**
    * Minimum viewport width (px) at or above which the widget renders. Below it,
-   * the widget is skipped and `onSkip("mobile")` fires. Defaults to `768`.
+   * the widget is skipped and `onSkip("mobile")` fires. Defaults to `0`: the
+   * widget renders at every width, and phones get a compact layout (bottom
+   * sheets, touch-sized controls).
    *
-   * Set lower (e.g. `0`) to allow narrow/mobile viewports, or use `forceShow`
-   * to bypass the viewport check entirely.
+   * Set it (e.g. `768`) to keep the widget off small screens, or use
+   * `forceShow` to bypass the viewport check entirely.
    */
   minViewportWidth?: number | undefined;
   /** Enable debug logging of lifecycle events — defaults to false */
@@ -266,9 +269,9 @@ export interface SitepingBaseConfig {
    * Right-clicks on SitePing's own UI (FAB, panel, markers, popup) are
    * ignored — the native menu is shown as expected.
    *
-   * Note: on Android, `contextmenu` fires on long-press. The widget already
-   * hides below `minViewportWidth` (default 768 px), but tablets above that
-   * threshold will trigger this flow on long-press.
+   * Note: on Android, `contextmenu` fires on long-press — touch users open the
+   * composer by long-pressing, on phones too since the widget renders at every
+   * width by default (see `minViewportWidth`).
    */
   enableRightClickComment?: boolean | undefined;
   /**
@@ -292,7 +295,7 @@ export interface SitepingBaseConfig {
    * sensitive values.
    */
   captureDiagnostics?: boolean | DiagnosticsCaptureOptions | undefined;
-  /** Called when the widget is skipped (production mode, mobile viewport, SSR — no DOM) */
+  /** Called when the widget is skipped (production mode, viewport under `minViewportWidth`, SSR — no DOM) */
   onSkip?: (reason: SitepingSkipReason) => void;
   /**
    * Auto-focus a specific annotation when its ID appears in the URL query

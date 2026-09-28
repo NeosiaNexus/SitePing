@@ -59,6 +59,7 @@ export const pt: Translations = {
   "annotator.instruction":
     "Desenhe um retângulo na área que deseja comentar — ou pressione Enter para comentar o último elemento em foco",
   "annotator.instantInstruction": "Comentar o ponto clicado",
+  "annotator.touchInstruction": "Toque em um elemento ou arraste para selecionar uma área",
   "annotator.cancel": "Cancelar",
 
   // Popup
