@@ -135,11 +135,11 @@ export interface CollectionStoreBackend {
 }
 
 /**
- * A `SitepingStore` with the optional `verifyProjectOwnership` and
- * `createFeedbackIfAbsent` guaranteed — what `createCollectionStore` returns.
+ * A `SitepingStore` with the optional `verifyProjectOwnership` guaranteed —
+ * what `createCollectionStore` returns, which also guarantees
+ * `createFeedbackIfAbsent`.
  */
-export type CollectionStore = SitepingStore &
-  Required<Pick<SitepingStore, "verifyProjectOwnership" | "createFeedbackIfAbsent">>;
+export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "verifyProjectOwnership">>;
 
 /**
  * Build a fully conformant `SitepingStore` on top of a snapshot backend.
@@ -188,7 +188,9 @@ export type CollectionStore = SitepingStore &
  * }
  * ```
  */
-export function createCollectionStore(backend: CollectionStoreBackend): CollectionStore {
+export function createCollectionStore(
+  backend: CollectionStoreBackend,
+): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent">> {
   // Every mutation is a load → modify → persist cycle over the WHOLE
   // snapshot, so two interleaved mutations would start from the same
   // snapshot and the last persist would silently drop the other's change

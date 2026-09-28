@@ -8,6 +8,7 @@ import { describe, expectTypeOf, it } from "vitest";
 import {
   type CLOSED_FEEDBACK_STATUSES,
   type ClosedFeedbackStatus,
+  type CollectionStore,
   createCollectionStore,
   type FeedbackStatus,
   isClosedStatus,
@@ -109,6 +110,10 @@ describe("SitepingStore contract", () => {
     expectTypeOf<SitepingStore["createFeedbackIfAbsent"]>().toEqualTypeOf<
       ((data: FeedbackCreateInput) => Promise<FeedbackCreateOutcome>) | undefined
     >();
+  });
+
+  it("keeps createFeedbackIfAbsent optional on CollectionStore, which hand-built stores may be typed as", () => {
+    expectTypeOf<Omit<CollectionStore, "createFeedbackIfAbsent">>().toExtend<CollectionStore>();
   });
 
   it("keeps verifyProjectOwnership optional for minimal adapters", () => {

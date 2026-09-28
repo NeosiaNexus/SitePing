@@ -51,7 +51,7 @@ C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la 
 | `persist(feedbacks)` | Réécrit l'instantané complet. Levez `StorePersistenceError` quand l'écriture est perdue (quota, stockage désactivé) — ne l'avalez jamais |
 | `generateId()` | Un identifiant unique, utilisé pour les feedbacks comme pour les annotations |
 
-`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` dont `verifyProjectOwnership` et `createFeedbackIfAbsent` sont garantis au lieu d'être optionnels, vous pouvez donc leur déléguer sans vérification préalable.
+`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` dont `verifyProjectOwnership` est garanti au lieu d'être optionnel — avec `createFeedbackIfAbsent` garanti lui aussi, vous pouvez donc déléguer aux deux sans vérification préalable.
 
 **Un `persist` qui échoue laisse votre instantané intact.** Le moteur ne modifie jamais le tableau renvoyé par `load()` — chaque écriture construit un nouveau tableau et le passe à `persist`. Donc si `load()` sert un tableau en cache et que l'écriture lève, aucun enregistrement fantôme ne reste visible, et le réessai du widget avec le même `clientId` est écrit pour de bon au lieu d'être dédupliqué contre quelque chose qui n'a jamais atteint le stockage.
 
