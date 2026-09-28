@@ -389,7 +389,8 @@ export function Features() {
             </div>
             <h3 className="mt-4 text-lg font-semibold text-white">8 languages built in</h3>
             <p className="mt-2 text-sm leading-relaxed text-gray-400">
-              English, French, German, Spanish, Italian, Portuguese, Russian, and Japanese — in the widget and the inbox.
+              English, French, German, Spanish, Italian, Portuguese, Russian, and Japanese — in the widget and the
+              inbox.
             </p>
             <div className="mt-4 rounded-lg border border-gray-800/60 bg-gray-950/80 px-3 py-2">
               <code className="font-mono text-xs text-accent-light">registerLocale(code, translations)</code>
