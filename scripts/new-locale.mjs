@@ -108,7 +108,8 @@ Done${changed.length ? "" : " (nothing to do)"}. Next steps:
   1. Translate the values in packages/widget/src/i18n/${code}.ts (~120 keys)
      and packages/dashboard/src/i18n/${code}.ts (~70 keys). Keep every
      {placeholder} token — a parity test enforces them.
-  2. Update the locale lists/counts in the docs + READMEs
-     (scripts/check-consistency.mjs will point at any stale count).
+  2. Update the locale lists/counts in the docs, READMEs, landing page and
+     demo pickers (scripts/check-consistency.mjs will point at any stale
+     count or picker).
   3. bun run verify
 No test edits needed — the i18n suites iterate BUILTIN_LOCALES.`);

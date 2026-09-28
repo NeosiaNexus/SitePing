@@ -4,8 +4,9 @@
 //   1. a locale exists in core's BUILTIN_LOCALES without its dictionary
 //      file in the widget AND dashboard i18n directories (the TS loader map
 //      already enforces the loader entries at compile time);
-//   2. a doc/README states a "N built-in locales" count that no longer
-//      matches BUILTIN_LOCALES.length;
+//   2. a doc/README/landing page states a "N built-in locales" count that
+//      no longer matches BUILTIN_LOCALES.length, or a demo locale picker
+//      does not offer exactly BUILTIN_LOCALES;
 //   3. a non-private packages/* package is missing from the release-please
 //      config/manifest, or a manifest package is missing its release.yml
 //      wiring (output + publish job);
@@ -48,22 +49,43 @@ for (const code of locales) {
 
 /** Every file that may state a locale count. */
 const localeCountFiles = ["README.md", ...readdirSync(join(root, "packages")).map((p) => `packages/${p}/README.md`)];
-const walk = (dir) =>
+const walk = (dir, ext) =>
   readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith(".mdx") ? [`${dir}/${e.name}`] : [],
+    e.isDirectory() ? walk(`${dir}/${e.name}`, ext) : e.name.endsWith(ext) ? [`${dir}/${e.name}`] : [],
   );
-if (existsSync(join(root, "apps/demo/content/docs"))) {
-  localeCountFiles.push(...walk("apps/demo/content/docs"));
+for (const [dir, ext] of [
+  ["apps/demo/content/docs", ".mdx"],
+  ["apps/demo/src", ".tsx"],
+]) {
+  if (existsSync(join(root, dir))) localeCountFiles.push(...walk(dir, ext));
 }
 
 for (const file of localeCountFiles) {
   if (!existsSync(join(root, file))) continue;
   const content = read(file);
-  // EN docs say "7 built-in locales", FR docs "7 locales intégrées".
-  for (const m of content.matchAll(/(\d+)\s+(?:built-in locales|locales intégrées)/gi)) {
+  // EN docs say "7 built-in locales", FR docs "7 locales intégrées", the
+  // landing page "7 languages built in".
+  for (const m of content.matchAll(/(\d+)\s+(?:built-in locales|locales intégrées|languages built in)/gi)) {
     if (Number(m[1]) !== locales.length) {
       errors.push(`${file} claims "${m[0]}" but BUILTIN_LOCALES has ${locales.length} entries`);
     }
+  }
+}
+
+// The demo's locale pickers are hand-written lists (each option carries its
+// native label), so each must offer exactly the built-in set.
+for (const file of [
+  "apps/demo/src/app/(site)/demo/playground.tsx",
+  "apps/demo/src/app/(site)/demo/inbox/demo-inbox.tsx",
+]) {
+  const list = existsSync(join(root, file)) ? read(file).match(/const LOCALES = \[([\s\S]*?)\] as const;/) : null;
+  if (!list) {
+    errors.push(`Could not find the LOCALES picker list in ${file}`);
+    continue;
+  }
+  const codes = [...list[1].matchAll(/(?:code: |\[)"([a-z-]+)"/g)].map((m) => m[1]);
+  if ([...codes].sort().join() !== [...locales].sort().join()) {
+    errors.push(`${file} offers the locales [${codes.join(", ")}] but BUILTIN_LOCALES is [${locales.join(", ")}]`);
   }
 }
 

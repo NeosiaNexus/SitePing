@@ -252,9 +252,11 @@ automatically (lazy-load, key parity, non-empty values, placeholder parity).
 ### 4. Update the user-facing lists
 
 Update the locale count/list in the docs site (`apps/demo/content/docs/widget/i18n.mdx`
-and `dashboard/index.mdx`, + their `.fr.mdx` twins), the two package READMEs
-and the root README. `bun run check:consistency` (run by CI) points at any
-count you missed.
+and `dashboard/index.mdx`, + their `.fr.mdx` twins), the two package READMEs,
+the root README, the landing page (`apps/demo/src/components/landing/`) and
+the two demo locale pickers (`LOCALES` in `apps/demo/src/app/(site)/demo/`).
+`bun run check:consistency` (run by CI) points at any count you missed and at
+a picker that does not offer the new locale.
 
 > **Custom locales without a PR:** both packages export `registerLocale`,
 > which accepts **partial** dictionaries — end users can override a single
