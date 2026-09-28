@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 import type { FeedbackRecord } from "@siteping/core";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { SitepingInbox } from "../../src/components/inbox.js";
 import type { InboxCustomSourceOptions, SitepingInboxPresentationProps } from "../../src/types.js";
-import { makeDiagnostics, makeRecord, makeSource, REGION } from "../helpers.js";
+import { deferred, makeDiagnostics, makeRecord, makeSource, REGION } from "../helpers.js";
 import { installJsdomStubs } from "../render.js";
 
 beforeAll(() => installJsdomStubs());
@@ -298,6 +298,64 @@ describe("SitepingInbox — keyboard", () => {
     fireEvent.keyDown(listbox, { key: "e" }); // resolves the opened record
     expect(await screen.findByText("Marked as resolved")).toBeTruthy();
     await waitFor(() => expect(listRows()).toHaveLength(2)); // o1 left the open list
+  });
+});
+
+describe("SitepingInbox — toasts with concurrent work", () => {
+  const FAILED = "Something went wrong. Change reverted.";
+
+  async function flush(): Promise<void> {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  it("a failed change doesn't suppress a concurrent change's success toast", async () => {
+    const { source } = renderInbox();
+    const listbox = await ready();
+    await flush();
+    const first = deferred<FeedbackRecord>();
+    const second = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+    fireEvent.keyDown(listbox, { key: "e" }); // o1 in flight — focus moves to o2
+    await waitFor(() => expect(listRows()).toHaveLength(2));
+    fireEvent.keyDown(listbox, { key: "e" }); // o2 in flight
+    await waitFor(() => expect(listRows()).toHaveLength(1));
+
+    await act(async () => {
+      first.reject(new Error("patch failed"));
+    });
+    expect(await screen.findByText(FAILED)).toBeTruthy();
+
+    const o2 = source.records.find((r) => r.id === "o2") as FeedbackRecord;
+    await act(async () => {
+      second.resolve({ ...o2, status: "resolved" });
+    });
+    expect(await screen.findByText("Marked as resolved")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Undo/ })).toBeTruthy();
+  });
+
+  it("a failed refresh during a change neither toasts 'reverted' nor hides the success toast", async () => {
+    const { source } = renderInbox();
+    const listbox = await ready();
+    await flush();
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "e" }); // o1 in flight
+    source.list.mockRejectedValueOnce(new Error("refresh failed"));
+    fireEvent.keyDown(listbox, { key: "r" });
+    await flush();
+    expect(screen.queryByText(FAILED)).toBeNull();
+
+    const o1 = source.records.find((r) => r.id === "o1") as FeedbackRecord;
+    await act(async () => {
+      held.resolve({ ...o1, status: "resolved" });
+    });
+    expect(await screen.findByText("Marked as resolved")).toBeTruthy();
   });
 });
 

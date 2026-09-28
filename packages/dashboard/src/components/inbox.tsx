@@ -45,7 +45,6 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     className,
     deepLinkParam = "siteping",
     emptyState,
-    onError,
   } = props;
 
   // ----- i18n: English renders immediately; other locales upgrade when their chunk lands
@@ -81,39 +80,22 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   const dismissToast = useCallback(() => setToast(null), []);
   const notify = useCallback((message: string) => showToast(message, false), [showToast]);
 
-  // ----- data hook, with mutation failures routed to the toast
-  const mutating = useRef(false);
-  const failed = useRef(false);
-  const handleError = useCallback(
-    (error: Error) => {
-      if (mutating.current && !failed.current) {
-        failed.current = true;
-        showToast(t("inbox.actionFailed"), false);
-      }
-      onError?.(error);
-    },
-    [onError, showToast, t],
-  );
-  // Forward the source-mode options as-is (the union shape must survive —
-  // rebuilding the object field-by-field would mix the modes) and only
-  // override onError with the toast-wiring handler.
-  const state = useSitepingInbox({ ...props, onError: handleError });
+  // ----- data hook. Failure toasts come from each mutation's own rejection
+  // (runMutation), never from onError: onError also fires for loads, and
+  // mutations overlap — shared flags mixed their outcomes up.
+  const state = useSitepingInbox(props);
 
-  /** Run a mutation; returns true when it (and its rollback path) stayed silent. */
+  /** Run a mutation; returns true when it succeeded, toasts the rollback when it didn't. */
   const runMutation = useCallback(
     async (action: () => Promise<void>): Promise<boolean> => {
-      mutating.current = true;
-      failed.current = false;
       try {
         await action();
+        return true;
       } catch {
-        // The hook rolled back; make sure exactly one failure toast shows.
-        if (!failed.current) showToast(t("inbox.actionFailed"), false);
-        failed.current = true;
-      } finally {
-        mutating.current = false;
+        // The hook rolled back and already reported through onError.
+        showToast(t("inbox.actionFailed"), false);
+        return false;
       }
-      return !failed.current;
     },
     [showToast, t],
   );
