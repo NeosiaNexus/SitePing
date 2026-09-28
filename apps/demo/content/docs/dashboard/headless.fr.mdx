@@ -25,7 +25,7 @@ Les options forment une union sur les trois modes de source : fournissez **exact
 | `store` | `SitepingStore` | — | Mode store |
 | `source` | `InboxSource` | — | Source de données entièrement personnalisée ; voir [Sources de données](/fr/docs/dashboard/sources) |
 | `apiKey` | `string` | — | Mode endpoint uniquement. `Authorization: Bearer` sur chaque requête |
-| `headers` | objet ou fonction | — | Mode endpoint uniquement. Un `Authorization` explicite l'emporte sur `apiKey`. Lu en direct — le modifier ne reconstruit pas la source |
+| `headers` | objet ou fonction | — | Mode endpoint uniquement. Un `Authorization` explicite, quelle que soit sa casse, l'emporte sur `apiKey`. Lu en direct — le modifier ne reconstruit pas la source |
 | `pageSize` | `number` | `50` | Borné entre 1 et 100 |
 | `onStatusChange` | `(feedback, previousStatus) => void` | — | Après confirmation du serveur |
 | `onDelete` | `(feedback) => void` | — | Après confirmation du serveur |

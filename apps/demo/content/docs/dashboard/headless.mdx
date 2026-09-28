@@ -25,7 +25,7 @@ The options are a union over the three source modes: supply **exactly one** of `
 | `store` | `SitepingStore` | — | Store mode |
 | `source` | `InboxSource` | — | Fully custom data source; see [Data sources](/docs/dashboard/sources) |
 | `apiKey` | `string` | — | Endpoint mode only. `Authorization: Bearer` on every request |
-| `headers` | object or function | — | Endpoint mode only. An explicit `Authorization` beats `apiKey`. Read live — changing it doesn't rebuild the source |
+| `headers` | object or function | — | Endpoint mode only. An explicit `Authorization`, in any casing, beats `apiKey`. Read live — changing it doesn't rebuild the source |
 | `pageSize` | `number` | `50` | Clamped to 1–100 |
 | `onStatusChange` | `(feedback, previousStatus) => void` | — | After the server confirms |
 | `onDelete` | `(feedback) => void` | — | After the server confirms |

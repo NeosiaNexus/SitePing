@@ -16,6 +16,11 @@ function lastCall(fetchFn: Mock<typeof fetch>): { url: string; init: RequestInit
   return { url, init };
 }
 
+/** The headers of the last request, as fetch sends them (names case-insensitive). */
+function sentHeaders(fetchFn: Mock<typeof fetch>): Headers {
+  return new Headers(lastCall(fetchFn).init.headers);
+}
+
 describe("createEndpointSource — list()", () => {
   it("builds a GET with projectName only and cache:no-store", async () => {
     const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
@@ -70,8 +75,7 @@ describe("createEndpointSource — list()", () => {
     const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
     await source.list({ projectName: "demo" });
-    const headers = lastCall(fetchFn).init.headers as Record<string, string>;
-    expect(headers["Content-Type"]).toBeUndefined();
+    expect(sentHeaders(fetchFn).get("Content-Type")).toBeNull();
   });
 
   it("revives ISO dates on records, including annotations[].createdAt, and blanks clientId", async () => {
@@ -108,16 +112,14 @@ describe("createEndpointSource — auth & headers", () => {
     const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
     const source = createEndpointSource({ endpoint: ENDPOINT, apiKey: "secret-key", fetchFn });
     await source.list({ projectName: "demo" });
-    const headers = lastCall(fetchFn).init.headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer secret-key");
+    expect(sentHeaders(fetchFn).get("Authorization")).toBe("Bearer secret-key");
   });
 
   it("merges a static headers object", async () => {
     const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
     const source = createEndpointSource({ endpoint: ENDPOINT, headers: { "X-Team": "acme" }, fetchFn });
     await source.list({ projectName: "demo" });
-    const headers = lastCall(fetchFn).init.headers as Record<string, string>;
-    expect(headers["X-Team"]).toBe("acme");
+    expect(sentHeaders(fetchFn).get("X-Team")).toBe("acme");
   });
 
   it("supports an async headers function (fresh token per request)", async () => {
@@ -126,14 +128,14 @@ describe("createEndpointSource — auth & headers", () => {
     const source = createEndpointSource({ endpoint: ENDPOINT, headers, fetchFn });
     await source.list({ projectName: "demo" });
     expect(headers).toHaveBeenCalledTimes(1);
-    expect((lastCall(fetchFn).init.headers as Record<string, string>).Authorization).toBe("Bearer async-token");
+    expect(sentHeaders(fetchFn).get("Authorization")).toBe("Bearer async-token");
   });
 
   it("supports a sync headers function", async () => {
     const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
     const source = createEndpointSource({ endpoint: ENDPOINT, headers: () => ({ "X-Sync": "1" }), fetchFn });
     await source.list({ projectName: "demo" });
-    expect((lastCall(fetchFn).init.headers as Record<string, string>)["X-Sync"]).toBe("1");
+    expect(sentHeaders(fetchFn).get("X-Sync")).toBe("1");
   });
 
   it("lets an explicit Authorization header override apiKey", async () => {
@@ -145,7 +147,21 @@ describe("createEndpointSource — auth & headers", () => {
       fetchFn,
     });
     await source.list({ projectName: "demo" });
-    expect((lastCall(fetchFn).init.headers as Record<string, string>).Authorization).toBe("Bearer from-headers");
+    expect(sentHeaders(fetchFn).get("Authorization")).toBe("Bearer from-headers");
+  });
+
+  it("lets an explicit header override the built-ins whatever its casing", async () => {
+    const fetchFn = jsonFetch(makeResponse());
+    const source = createEndpointSource({
+      endpoint: ENDPOINT,
+      apiKey: "KEY",
+      headers: { authorization: "Bearer SESSION", "content-type": "application/merge-patch+json" },
+      fetchFn,
+    });
+    await source.setStatus("fb-resp-1", "demo", "resolved");
+    // Duplicate-cased keys would go out joined ("Bearer KEY, Bearer SESSION").
+    expect(sentHeaders(fetchFn).get("Authorization")).toBe("Bearer SESSION");
+    expect(sentHeaders(fetchFn).get("Content-Type")).toBe("application/merge-patch+json");
   });
 });
 
@@ -158,7 +174,7 @@ describe("createEndpointSource — setStatus() & remove()", () => {
     const { url, init } = lastCall(fetchFn);
     expect(url).toBe(ENDPOINT);
     expect(init.method).toBe("PATCH");
-    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
     expect(JSON.parse(init.body as string)).toEqual({ id: "fb-1", projectName: "demo", status: "resolved" });
     expect(record.status).toBe("resolved");
     expect(record.createdAt).toBeInstanceOf(Date);

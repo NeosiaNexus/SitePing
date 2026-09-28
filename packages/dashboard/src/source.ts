@@ -48,19 +48,21 @@ async function parseJsonAs<T>(response: Response): Promise<T> {
  *
  * Auth: `apiKey` becomes `Authorization: Bearer <apiKey>`; `headers` (static
  * or per-request function, sync or async) are merged on top, so an explicit
- * `Authorization` header wins over `apiKey`.
+ * `Authorization` header (in any casing) wins over `apiKey`.
  */
 export function createEndpointSource(options: EndpointSourceOptions): InboxSource {
   const { endpoint, apiKey, headers, fetchFn } = options;
   // Wrap the global to keep `fetch` bound to globalThis (avoids "Illegal invocation").
   const doFetch: typeof fetch = fetchFn ?? ((input, init) => globalThis.fetch(input, init));
 
-  async function buildHeaders(json: boolean): Promise<Record<string, string>> {
-    const merged: Record<string, string> = {};
-    if (json) merged["Content-Type"] = "application/json";
-    if (apiKey) merged.Authorization = `Bearer ${apiKey}`;
+  async function buildHeaders(json: boolean): Promise<Headers> {
+    const merged = new Headers();
+    if (json) merged.set("Content-Type", "application/json");
+    if (apiKey) merged.set("Authorization", `Bearer ${apiKey}`);
     const extra = typeof headers === "function" ? await headers() : headers;
-    if (extra) Object.assign(merged, extra);
+    // `set` matches names case-insensitively: an explicit `authorization`
+    // replaces the apiKey's instead of going out next to it ("Bearer a, Bearer b").
+    for (const [name, value] of Object.entries(extra ?? {})) merged.set(name, value);
     return merged;
   }
 
