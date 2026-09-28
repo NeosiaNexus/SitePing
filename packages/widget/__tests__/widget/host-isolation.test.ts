@@ -416,6 +416,15 @@ describe("host isolation", () => {
       expect(pointerDownReachesCapturePhase()).toBe(true);
     });
 
+    it("ignores a closed dialog kept rendered under visibility: hidden", () => {
+      const closedDrawer = document.createElement("div");
+      closedDrawer.style.visibility = "hidden";
+      document.body.appendChild(closedDrawer);
+      mountAriaModal(closedDrawer, true);
+
+      expect(pointerDownReachesCapturePhase()).toBe(true);
+    });
+
     it("ignores the widget's own aria-modal surfaces (the comment popup)", () => {
       mountAriaModal(surface, true);
 

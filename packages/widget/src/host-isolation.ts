@@ -117,14 +117,21 @@ export function registerEscapeLayer(scope: Node, isOpen: () => boolean): () => v
 }
 
 /**
- * A host modal is open: an `aria-modal="true"` element is rendered outside
- * the widget, or `<body>` is click-through (how Radix / shadcn modals disable
- * the rest of the page).
+ * A host modal is open: an `aria-modal="true"` element is rendered and visible
+ * outside the widget, or `<body>` is click-through (how Radix / shadcn modals
+ * disable the rest of the page). A `visibility: hidden` element still has
+ * boxes, hence the separate check for closed dialogs kept mounted that way.
  */
 function isHostModalOpen(): boolean {
   if (getComputedStyle(document.body).pointerEvents === "none") return true;
   for (const dialog of document.querySelectorAll('[aria-modal="true"]')) {
-    if (dialog.getClientRects().length > 0 && !isWidgetSurface(dialog)) return true;
+    if (
+      dialog.getClientRects().length > 0 &&
+      getComputedStyle(dialog).visibility === "visible" &&
+      !isWidgetSurface(dialog)
+    ) {
+      return true;
+    }
   }
   return false;
 }
