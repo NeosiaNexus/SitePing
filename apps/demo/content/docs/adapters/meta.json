@@ -1,4 +1,4 @@
 {
   "title": "Adapters",
-  "pages": ["index", "prisma", "memory", "localstorage", "writing-an-adapter"]
+  "pages": ["index", "prisma", "drizzle", "memory", "localstorage", "writing-an-adapter"]
 }

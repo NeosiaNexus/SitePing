@@ -1,0 +1,199 @@
+---
+title: Adapter Drizzle
+description: Un store de production sur PostgreSQL ou Turso / libSQL via Drizzle ORM — des tables qui vivent dans votre schéma, des migrations via drizzle-kit.
+---
+
+`@siteping/adapter-drizzle` est un `SitepingStore` adossé à [Drizzle ORM](https://orm.drizzle.team). Il propose une entrée par famille de base de données :
+
+| Entrée | Base | Drivers |
+|---|---|---|
+| `@siteping/adapter-drizzle/pg` | PostgreSQL | N'importe quel driver PostgreSQL de Drizzle — node-postgres, postgres.js, Neon (serverless et HTTP), Vercel Postgres, Supabase, PGlite… |
+| `@siteping/adapter-drizzle/libsql` | Turso / libSQL | `drizzle-orm/libsql` uniquement — Turso distant, réplicas embarqués, fichiers locaux |
+
+Il exige Node 20+ et `drizzle-orm` 0.45 ou plus récent (sous la 1.0), en dépendance peer :
+
+```bash
+npm i @siteping/adapter-drizzle drizzle-orm
+```
+
+Ajoutez le driver de votre base (`pg`, `postgres`, `@neondatabase/serverless`, `@electric-sql/pglite`, `@libsql/client`…) et `drizzle-kit` pour les migrations.
+
+## 1. Ajouter les tables à votre schéma
+
+L'adapter ne crée jamais de tables à l'exécution : il vous fournit des définitions de tables Drizzle à exporter depuis votre propre schéma, pour que `drizzle-kit` les gère comme n'importe quelle autre table.
+
+```ts
+// db/schema.ts — PostgreSQL
+import { createSitepingPgTables } from "@siteping/adapter-drizzle/pg";
+
+export const { sitepingFeedbacks, sitepingAnnotations } = createSitepingPgTables();
+```
+
+```ts
+// db/schema.ts — Turso / libSQL
+import { createSitepingSqliteTables } from "@siteping/adapter-drizzle/libsql";
+
+export const { sitepingFeedbacks, sitepingAnnotations } = createSitepingSqliteTables();
+```
+
+Générez puis appliquez la migration comme d'habitude, avec un `drizzle.config.ts` qui pointe vers ce schéma (`dialect: "postgresql"` ou `dialect: "turso"`) :
+
+```bash
+npx drizzle-kit generate   # écrit la migration SQL
+npx drizzle-kit migrate    # l'applique — ou `npx drizzle-kit push` pendant le prototypage
+```
+
+### Ce qui est créé
+
+Deux tables, `siteping_feedbacks` et `siteping_annotations` par défaut. Les annotations référencent leur feedback avec `ON DELETE CASCADE`.
+
+| Index | Colonnes |
+|---|---|
+| `<feedbacks>_client_id_key` (unique) | `client_id` — arbitre les soumissions en double |
+| `<feedbacks>_project_status_created_idx` | `project_name`, `status`, `created_at` |
+| `<feedbacks>_project_url_idx` | `project_name`, `url` |
+| `<annotations>_feedback_id_idx` | `feedback_id` |
+
+Les types de colonnes suivent le dialecte : sur PostgreSQL, les champs JSON sont en `jsonb` et les dates en `timestamptz(3)` ; sur libSQL, les champs JSON sont stockés en texte et les dates en millisecondes epoch.
+
+### Noms de tables personnalisés
+
+Passez `{ feedbacks, annotations }` pour renommer les tables (les noms d'index suivent), et donnez **les mêmes tables** au store via l'option `tables` — sinon il interroge les noms par défaut :
+
+```ts
+// db/schema.ts
+export const { sitepingFeedbacks, sitepingAnnotations } = createSitepingPgTables({
+  feedbacks: "client_feedbacks",
+  annotations: "client_feedback_annotations",
+});
+
+// serveur
+const store = createPgSitepingStore(db, { tables: { sitepingFeedbacks, sitepingAnnotations } });
+```
+
+Les valeurs par défaut sont exportées sous `DEFAULT_SITEPING_TABLE_NAMES`.
+
+## 2. Créer le store
+
+```ts
+// PostgreSQL — node-postgres
+import { drizzle } from "drizzle-orm/node-postgres";
+import { createPgSitepingStore } from "@siteping/adapter-drizzle/pg";
+
+export const store = createPgSitepingStore(drizzle(process.env.DATABASE_URL!), {
+  screenshotStorage,
+  logger: console,
+});
+```
+
+Tous les drivers PostgreSQL fonctionnent de la même façon — changez l'import de `drizzle` (`drizzle-orm/neon-http`, `drizzle-orm/postgres-js`, `drizzle-orm/pglite`…). Le store n'ouvre jamais de `db.transaction` interactive : chaque écriture est une seule requête, donc les drivers sans transactions interactives, comme Neon HTTP, sont pleinement pris en charge.
+
+```ts
+// Turso / libSQL
+import { drizzle } from "drizzle-orm/libsql";
+import { createLibSQLSitepingStore } from "@siteping/adapter-drizzle/libsql";
+
+export const store = createLibSQLSitepingStore(
+  drizzle({ connection: { url: process.env.TURSO_DATABASE_URL!, authToken: process.env.TURSO_AUTH_TOKEN } }),
+  { screenshotStorage, logger: console },
+);
+```
+
+## 3. Le servir
+
+Le store ne fait que stocker. Montez-le derrière n'importe quel handler HTTP qui accepte un `store` — `createSitepingHandler({ store })` de `@siteping/server`, ou le [handler de l'adapter Prisma](/fr/docs/adapters/prisma#utiliser-un-store-personnalisé) — pour obtenir la même validation, la même auth et la même redaction :
+
+```ts
+// app/api/siteping/route.ts
+import { createSitepingHandler } from "@siteping/server";
+import { store } from "@/lib/siteping-store";
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  apiKey: process.env.SITEPING_API_KEY,
+});
+```
+
+## Options
+
+Les deux factories acceptent les mêmes options :
+
+| Option | Type | Défaut | Ce qu'elle fait |
+|---|---|---|---|
+| `tables` | `SitepingPgTables` / `SitepingSqliteTables` | tables aux noms par défaut | Les tables de votre schéma — obligatoire si vous les avez [renommées](#noms-de-tables-personnalisés) |
+| `screenshotStorage` | `ScreenshotStorage` | — | Envoie les captures ailleurs et ne stocke que l'URL — voir [les captures](#captures-décran) |
+| `logger` | `{ warn(message, context) }` | aucun — les événements sont ignorés | Les événements dégradés mais non bloquants : un upload échoué (le feedback est enregistré sans sa capture), un nettoyage échoué, des captures en ligne. Le store ne choisit jamais de backend de logs lui-même — passez le logger de votre application, ou `console` |
+| `now` | `() => Date` | l'horloge système | Horloge de `createdAt` à la création et de `updatedAt` aux changements de statut — injectez la vôtre pour les tests ou une source de temps contrôlée |
+
+## Captures d'écran
+
+**Sans `screenshotStorage`**, la data URL base64 de la capture est stockée telle quelle dans `screenshot_url` (avec un avertissement unique au `logger`) — très bien en développement, lourd en production.
+
+**Avec `screenshotStorage`**, `upload(dataUrl, { feedbackId, mimeType })` s'exécute avant l'insertion et seule l'URL renvoyée est stockée :
+
+- `feedbackId` est l'id sous lequel l'enregistrement **sera stocké** — généré côté serveur, nouveau à chaque tentative de création, jamais le `clientId` du client.
+- `mimeType` est le type de média déclaré par la data URL (`image/jpeg`, `image/png`, `image/webp`…), en minuscules, ou `image/jpeg` si elle n'en déclare aucun. Utilisez-le comme `Content-Type` de l'objet.
+- Si `upload` lève, le feedback est quand même enregistré avec `screenshotUrl: null`, et l'échec part au `logger`.
+
+**L'URL renvoyée doit être propre à `feedbackId`.** Nommez les objets d'après lui — jamais d'après un hash du contenu ni un nom fixe. Le store considère chaque URL comme la propriété du seul feedback qui la stocke et peut la passer à `delete` sans se coordonner avec les créations concurrentes ; une URL partagée par plusieurs feedbacks peut faire disparaître un objet qu'un autre feedback référence encore.
+
+**Nettoyage.** Ajoutez un `delete(url)` optionnel et le store supprime les captures dont il n'a plus besoin : sur `deleteFeedback`, sur `deleteAllFeedbacks`, quand une soumission perd la course contre un doublon d'elle-même (elle a envoyé son propre objet, désormais orphelin — supprimé même si la relecture de la soumission gagnante échoue ensuite), et quand une insertion échoue. Avant toute suppression, il vérifie qu'aucun feedback stocké ne référence encore l'URL — une insertion signalée en échec a pu être validée malgré tout — et si cette vérification échoue elle-même, tous les objets sont conservés. Au plus 8 suppressions tournent en même temps, pour qu'une suppression de projet libérant des milliers d'objets ne sature pas votre stockage. Le nettoyage est au mieux : un `delete` qui échoue est journalisé et ne fait jamais échouer l'opération. Les data URLs `data:` en ligne ne sont jamais passées à `delete`.
+
+**Gros projets.** Avec un `delete`, `deleteAllFeedbacks` doit relire les URLs supprimées : il supprime donc le projet par tranches de 500 lignes — chaque tranche de façon atomique, ses captures nettoyées avant la suivante — et aucune réponse du driver ni liste en mémoire ne grossit avec le projet. Si une tranche échoue, l'appel lève `StorePersistenceError` : les tranches précédentes restent supprimées et nettoyées, et relancer l'appel supprime le reste. Sans `delete`, tout le projet part en une seule instruction atomique.
+
+## Garanties de concurrence
+
+- **Les soumissions en double sont atomiques.** Le store implémente `createFeedbackIfAbsent` : l'index unique sur `client_id` et `ON CONFLICT DO NOTHING` arbitrent les soumissions concurrentes d'un même feedback, entre instances du store et entre processus. Un seul appelant obtient `created: true`, donc les hooks et webhooks de création ne partent qu'une fois.
+- **Les annotations arrivent avec leur feedback, ou pas du tout.** Sur PostgreSQL, le feedback et ses annotations sont insérés par une seule requête (une CTE qui modifie les données). Sur libSQL, les écritures en plusieurs requêtes passent par `db.batch`, qui s'exécute en une transaction et ne garde jamais le verrou d'écriture à travers un `await` — votre application peut continuer d'écrire dans la même base en parallèle.
+- **L'ordre est stable.** Les listes arrivent du plus récent au plus ancien. `createdAt` est la valeur de l'horloge à l'insertion, et les feedbacks créés dans la même milliseconde — par une instance du store, par plusieurs processus ou par votre propre code qui insère via les tables exportées — sont ordonnés par un ordinal d'insertion que la base attribue elle-même à chaque insertion : l'identité interne `creation_sequence` sur PostgreSQL, le `rowid` implicite de SQLite sur libSQL. Une insertion plus tardive apparaît toujours en premier, et les pages par offset ne se chevauchent jamais et ne sautent aucune ligne.
+- **`updatedAt` ne précède jamais `createdAt`.** Les changements de statut le bornent en SQL par les dates de la ligne elle-même, ce qui tient entre processus dont les horloges divergent.
+- **Appartenance au projet.** Le store implémente `verifyProjectOwnership`, donc le handler répond `404` à un PATCH/DELETE visant un id d'un autre projet. `@siteping/server` l'exige quand vous utilisez un `access.authorize` limité par projet.
+
+## Colonnes internes et mises à jour
+
+Ces colonnes sont internes au store — jamais présentes dans les enregistrements renvoyés — et ont été ajoutées après la première version des tables. Si vous avez créé vos tables avec une version antérieure, **relancez `drizzle-kit generate`** pour les ajouter (sur libSQL, la même migration supprime la colonne `creation_sequence` et son index créés par les versions antérieures — le `rowid` implicite les remplace) :
+
+| Colonne | Table | Rôle | Lignes existantes |
+|---|---|---|---|
+| `position` | annotations | Entier (défaut `0`) qui garde les annotations de chaque feedback dans l'ordre de soumission — `annotations[0]` est l'ancre principale | Restent à `0` et gardent leur ordre `created_at` |
+| `creation_sequence` | feedbacks (PostgreSQL uniquement) | Départage les égalités de `created_at` : une identité `bigint` que la base attribue à chaque insertion, celles du store comme les vôtres. libSQL n'a pas cette colonne — il ordonne par le `rowid` implicite | Numérotées à l'ajout de la colonne |
+| `message_search` | feedbacks | Texte nullable : le message passé en minuscules en JavaScript, lu par la recherche textuelle | Restent `NULL` — remplissez-les, voir ci-dessous |
+
+### Recherche textuelle et casse non ASCII
+
+`getFeedbacks({ search })` — le paramètre de requête `search` — compare le message sans tenir compte de la casse avec le `toLowerCase()` de JavaScript, conscient d'Unicode, comme tous les autres stores SitePing : `échec` trouve `Échec` et `äöü` trouve `ÄÖÜ`, quelles que soient les règles de la base. C'est le rôle de `message_search` : le `LIKE` de SQLite ne replie que la casse ASCII, et l'`ILIKE` de PostgreSQL la replie selon la collation de la colonne / le `LC_CTYPE` (ASCII uniquement sous `C`). Le store remplit `message_search` à l'insertion et y compare le terme en minuscules avec un simple `LIKE`. Les jokers tapés dans la recherche (`%`, `_`, `\`) sont pris littéralement.
+
+Les lignes qui n'en ont pas — écrites avant la migration, ou insérées par votre propre code hors du store — se rabattent sur une recherche dans `message` avec le repli de casse de la base (`LIKE` sur libSQL, `ILIKE` sur PostgreSQL). Remplissez-les une fois pour que chaque ligne replie la casse Unicode :
+
+```ts
+import { eq, isNull } from "drizzle-orm";
+
+const rows = await db
+  .select({ id: sitepingFeedbacks.id, message: sitepingFeedbacks.message })
+  .from(sitepingFeedbacks)
+  .where(isNull(sitepingFeedbacks.messageSearch));
+
+for (const row of rows) {
+  await db
+    .update(sitepingFeedbacks)
+    .set({ messageSearch: row.message.toLowerCase() })
+    .where(eq(sitepingFeedbacks.id, row.id));
+}
+```
+
+Faites ce remplissage en JavaScript, pas avec le `lower()` de SQL : le `lower()` de la base suit justement les règles de locale que la colonne existe pour éviter.
+
+## Erreurs
+
+- Un échec de la base pendant une écriture (base en lecture seule ou pleine, connexion perdue, requête rejetée…) remonte en `StorePersistenceError`, avec l'erreur du driver en `cause`. Détectez-la avec `isStorePersistence`.
+- `updateFeedback` lit les annotations (immuables) avant de mettre la ligne à jour : aucun appel à la base ne suit la validation de la mise à jour. Une lecture des annotations en échec laisse la ligne intacte, et une mise à jour appliquée n'est jamais signalée en échec à cause d'une lecture qui la suit.
+- `updateFeedback` et `deleteFeedback` sur un id inconnu lèvent `StoreNotFoundError`.
+
+Les deux entrées réexportent `StorePersistenceError`, `isStorePersistence`, `StoreNotFoundError` et `StoreDuplicateError`, pour les attraper sans autre import.
+
+## Limites
+
+- **libSQL uniquement via `drizzle-orm/libsql`.** Les autres drivers SQLite (better-sqlite3, Cloudflare D1) ne sont pas pris en charge.
+- **Un fichier libSQL local partagé par plusieurs processus.** SQLite n'accepte qu'un écrivain à la fois : réglez le délai d'attente du client — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — pour que les écritures concurrentes patientent au lieu d'échouer avec `SQLITE_BUSY`.
+- **Clés étrangères sur libSQL.** Les cascades exigent `PRAGMA foreign_keys = ON`, que libSQL ne garantit pas : le store supprime donc explicitement les annotations avec leur feedback. Les feedbacks que vous supprimez vous-même hors du store demandent le même soin.
+- **La recherche sur les lignes sans `message_search`** replie la casse à la manière de la base (ASCII uniquement sur libSQL, et sur PostgreSQL sous une collation / un `LC_CTYPE` `C`) tant que vous ne les avez pas [remplies](#recherche-textuelle-et-casse-non-ascii).

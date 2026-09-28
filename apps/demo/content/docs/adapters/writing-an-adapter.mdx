@@ -61,7 +61,7 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 
 ## Query backends
 
-For SQL and ORMs, implement the six methods directly — you want your `WHERE` clauses in the database, not a full table load per request. The kit still saves you the input-to-record conversion:
+For SQL and ORMs, implement the six methods directly — you want your `WHERE` clauses in the database, not a full table load per request. The kit still saves you the input-to-record conversion (on PostgreSQL or Turso / libSQL, the first-party [Drizzle adapter](/docs/adapters/drizzle) already does all of this):
 
 ```ts
 import {

@@ -61,7 +61,7 @@ C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la 
 
 ## Backends à requêtes
 
-Pour SQL et les ORM, implémentez les six méthodes directement — vos clauses `WHERE` ont leur place dans la base, pas dans un chargement complet de la table à chaque requête. Le kit vous épargne quand même la conversion entrée → enregistrement :
+Pour SQL et les ORM, implémentez les six méthodes directement — vos clauses `WHERE` ont leur place dans la base, pas dans un chargement complet de la table à chaque requête. Le kit vous épargne quand même la conversion entrée → enregistrement (sur PostgreSQL ou Turso / libSQL, l'[adapter Drizzle](/fr/docs/adapters/drizzle) officiel fait déjà tout cela) :
 
 ```ts
 import {

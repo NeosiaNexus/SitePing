@@ -1,13 +1,14 @@
 ---
 title: Choosing an adapter
-description: Where your feedback lives — Prisma for production, memory for tests and demos, localStorage for client-only setups.
+description: Where your feedback lives — Prisma or Drizzle for production, memory for tests and demos, localStorage for client-only setups.
 ---
 
-An adapter is the storage layer behind SitePing. All three implement the same `SitepingStore` contract (6 methods), so you can swap them without touching the widget.
+An adapter is the storage layer behind SitePing. All four implement the same `SitepingStore` contract (6 methods), so you can swap them without touching the widget.
 
 | Adapter | Where data lives | Use it for |
 |---|---|---|
 | [`@siteping/adapter-prisma`](/docs/adapters/prisma) | Your database, via Prisma | Production — the standard setup |
+| [`@siteping/adapter-drizzle`](/docs/adapters/drizzle) | PostgreSQL or Turso / libSQL, via Drizzle ORM | Production on a Drizzle codebase — tables in your schema, serverless drivers like Neon HTTP |
 | [`@siteping/adapter-memory`](/docs/adapters/memory) | An in-process array | Tests, previews, throwaway demos |
 | [`@siteping/adapter-localstorage`](/docs/adapters/localstorage) | The visitor's browser | Client-side demos and prototypes — no server at all |
 
