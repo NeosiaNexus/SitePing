@@ -11,7 +11,9 @@
 //      wiring (output + publish job);
 //   4. a published package's build script forgot the fix-dts chain its
 //      declarations need (cli is exempt: it ships no .d.ts);
-//   5. the root esbuild override drifted from the widget's esbuild spec.
+//   5. the root esbuild override drifted from the widget's esbuild spec;
+//   6. Node tooling (configs, scripts/, e2e/) takes a filesystem path from a
+//      file URL's .pathname instead of fileURLToPath().
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -121,6 +123,50 @@ if (esbuildOverride !== widgetEsbuild) {
   );
 }
 
+// --- 6. File-URL paths in tooling -------------------------------------------
+
+// A file URL's `.pathname` is not a filesystem path: it stays percent-encoded
+// ("Mes%20projets", "D%C3%A9veloppement") and, on Windows, keeps a slash in
+// front of the drive ("/C:/...", which Node resolves to "C:\C:\..."). Every
+// CI job runs on ubuntu-latest from a plain path, where both give the same
+// string, so nothing else in CI can catch a regression of #334.
+// fileURLToPath() is right on every platform.
+//
+// Scanned: what Node runs as tooling, i.e. the top-level files of the root
+// and of each workspace (configs, presets), their scripts/ dirs, and e2e/.
+// Unit tests are out on purpose: their `vi.mock(new URL(…).pathname)` ids
+// are Vite module ids, not fs paths, and they resolve under jsdom (which every
+// file using them runs in). A relative specifier would be the sturdier form;
+// fileURLToPath() can't be used there, as vi.mock is hoisted above imports.
+// `,?` matches biome's multi-line call form, `\)+` a parenthesised
+// `(new URL(…)).pathname`, `\??` an optional-chained `?.pathname`.
+const FILE_URL_PATHNAME = /import\.meta\.url\s*,?\s*\)+\s*\??\.pathname/g;
+const workspaceDirs = JSON.parse(read("package.json")).workspaces.flatMap((glob) => {
+  if (!glob.endsWith("/*")) return [glob];
+  const parent = glob.slice(0, -2);
+  return readdirSync(join(root, parent), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => `${parent}/${e.name}`);
+});
+const toolingDirs = [".", "scripts", "e2e", ...workspaceDirs, ...workspaceDirs.map((w) => `${w}/scripts`)];
+let toolingFiles = 0;
+
+for (const dir of toolingDirs) {
+  if (!existsSync(join(root, dir))) continue;
+  for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
+    if (!entry.isFile() || !/\.[cm]?[jt]s$/.test(entry.name)) continue;
+    const file = dir === "." ? entry.name : `${dir}/${entry.name}`;
+    const content = read(file);
+    toolingFiles++;
+    for (const m of content.matchAll(FILE_URL_PATHNAME)) {
+      const line = content.slice(0, m.index).split("\n").length;
+      errors.push(
+        `${file}:${line} takes a filesystem path from a file URL's .pathname — use fileURLToPath() (node:url)`,
+      );
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (errors.length > 0) {
@@ -128,4 +174,6 @@ if (errors.length > 0) {
   for (const e of errors) console.error(`  - ${e}`);
   process.exit(1);
 }
-console.log(`check-consistency: OK (${locales.length} locales, ${Object.keys(manifest).length} published packages)`);
+console.log(
+  `check-consistency: OK (${locales.length} locales, ${Object.keys(manifest).length} published packages, ${toolingFiles} tooling files)`,
+);
