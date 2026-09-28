@@ -138,9 +138,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-adapter-prisma:
-    # After the server: adapter-prisma depends on @siteping/server, so a
-    # release that bumps both must never publish a range not yet on npm.
-    needs: [release-please, build, publish-server]
+    needs: [release-please, build]
     if: |
       !failure() && !cancelled() &&
       (needs.release-please.outputs.adapter-release_created == 'true' ||
