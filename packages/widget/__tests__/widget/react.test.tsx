@@ -283,7 +283,7 @@ describe("useSiteping", () => {
 
     const wired = wiredConfig().panelActions ?? [];
     expect(wired).toHaveLength(malformed.length);
-    wired.forEach((action, i) => expect(action).toBe(malformed[i]));
+    for (const [i, action] of wired.entries()) expect(action).toBe(malformed[i]);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(normalizePanelActions(wired)).toEqual([]);
     expect(warn).toHaveBeenCalledTimes(malformed.length);
