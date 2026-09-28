@@ -1,4 +1,6 @@
 import {
+  type CommentCreateInput,
+  type CommentRecord,
   createCollectionStore,
   type FeedbackCreateInput,
   type FeedbackCreateOutcome,
@@ -23,8 +25,8 @@ export { isStorePersistence, StoreDuplicateError, StoreNotFoundError, StorePersi
  * - **Demos** — lightweight store that needs no database or localStorage
  * - **Reference** — simplest possible adapter for contributors to study
  *
- * All store semantics (clientId dedup, filtering, pagination, error
- * contract) come from core's `createCollectionStore` engine — this class
+ * All store semantics (clientId dedup, filtering, pagination, discussion
+ * threads, error contract) come from core's `createCollectionStore` engine — this class
  * only supplies the storage primitives: an array, an id generator.
  *
  * @example
@@ -77,6 +79,14 @@ export class MemoryStore implements SitepingStore {
 
   verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
     return this.engine.verifyProjectOwnership(id, projectName);
+  }
+
+  addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> {
+    return this.engine.addComment(feedbackId, data);
+  }
+
+  deleteComment(feedbackId: string, commentId: string): Promise<void> {
+    return this.engine.deleteComment(feedbackId, commentId);
   }
 
   /** Remove all data from this store instance. */
