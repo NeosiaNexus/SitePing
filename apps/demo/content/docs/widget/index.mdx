@@ -94,6 +94,19 @@ Branch on `error.code`, not `instanceof` — the error classes themselves are no
 
 Feedback has four statuses (`open`, `in_progress`, `resolved`, `wont_fix`). The widget **displays** all four but its own actions are deliberately binary: resolve and reopen. The in-between states belong to your triage workflow in the [dashboard](/docs/dashboard).
 
+## Over your modals
+
+Clients often need to report a problem *inside* a dialog. The widget stays usable on top of an open modal — tested against Radix / shadcn/ui `Dialog`, and built for any modal that works the same way (outside-click dismissal, focus trap, scroll lock, hidden siblings):
+
+- its button, annotation overlay, comment popup and panel stay clickable, even when the modal makes the rest of the page click-through (`body { pointer-events: none }`);
+- drawing, typing, clicking or scrolling in the widget neither closes the modal nor lets it pull the focus back;
+- **Escape** closes the widget's open layer first (menu, panel, comment popup, annotation mode); with nothing open in the widget, it closes your modal as usual;
+- the widget stays exposed to screen readers when the modal hides the rest of the page (`aria-hidden`, `inert`).
+
+Pointer, click, focus and scroll events inside the widget never reach your page's `document` listeners, modal or not. Beyond that, the widget steps in only while a modal is open — a rendered `aria-modal="true"` element, or a click-through `<body>` — so on a page without one, your fields' own focus and blur handlers see every event. While a modal is open, moving the focus from one of its fields into the widget doesn't fire that field's `blur` / `focusout`: that is what keeps the modal's focus trap from pulling the focus back.
+
+Limits: a native `<dialog>` opened with `showModal()` makes everything outside it inert, and no script can undo that — the widget can't be used while such a dialog is open. And a modal that intercepts outside `mousedown`, `click` or Tab keys before they reach the page (capture-phase listeners, as focus-trap does by default) can still get in the widget's way.
+
 ## Reliability details you get for free
 
 - **Retry with backoff** — failed submissions retry 3 times (10 s timeout, exponential backoff with jitter). Server errors and network failures retry; validation errors don't.

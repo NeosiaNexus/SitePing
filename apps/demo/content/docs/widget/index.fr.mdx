@@ -94,6 +94,19 @@ Branchez sur `error.code`, pas sur `instanceof` — les classes d'erreur elles-m
 
 Un feedback a quatre statuts (`open`, `in_progress`, `resolved`, `wont_fix`). Le widget **affiche** les quatre mais ses propres actions sont volontairement binaires : résoudre et rouvrir. Les états intermédiaires appartiennent à votre flux de tri dans le [dashboard](/fr/docs/dashboard).
 
+## Par-dessus vos modales
+
+Vos clients ont souvent besoin de signaler un problème *dans* une boîte de dialogue. Le widget reste utilisable par-dessus une modale ouverte — testé avec le `Dialog` de Radix / shadcn/ui, et conçu pour toute modale qui fonctionne de la même façon (fermeture au clic extérieur, piège à focus, blocage du défilement, masquage du reste de la page) :
+
+- son bouton, son calque d'annotation, sa popup de commentaire et son panneau restent cliquables, même quand la modale rend le reste de la page insensible aux clics (`body { pointer-events: none }`) ;
+- dessiner, taper, cliquer ou faire défiler dans le widget ne ferme pas la modale et ne la laisse pas reprendre le focus ;
+- **Échap** ferme d'abord la couche ouverte du widget (menu, panneau, popup de commentaire, mode annotation) ; quand rien n'est ouvert dans le widget, il ferme votre modale comme d'habitude ;
+- le widget reste exposé aux lecteurs d'écran quand la modale masque le reste de la page (`aria-hidden`, `inert`).
+
+Les événements de pointeur, de clic, de focus et de défilement à l'intérieur du widget n'atteignent jamais les écouteurs `document` de votre page, modale ou non. Au-delà, le widget n'intervient que pendant qu'une modale est ouverte — un élément `aria-modal="true"` affiché, ou un `<body>` insensible aux clics —, donc sur une page sans modale, les gestionnaires de focus et de blur de vos champs voient tous les événements. Pendant qu'une modale est ouverte, passer le focus d'un de ses champs au widget ne déclenche pas le `blur` / `focusout` de ce champ : c'est ce qui empêche le piège à focus de la modale de reprendre le focus.
+
+Limites : un `<dialog>` natif ouvert avec `showModal()` rend inerte tout ce qui est en dehors de lui, et aucun script ne peut l'annuler — le widget est inutilisable tant qu'un tel dialogue est ouvert. Et une modale qui intercepte les `mousedown`, `click` ou touches Tab extérieurs avant qu'ils n'atteignent la page (écouteurs en phase de capture, comme focus-trap par défaut) peut encore gêner le widget.
+
 ## La fiabilité, sans rien faire
 
 - **Réessais avec backoff** — les envois échoués sont retentés 3 fois (timeout de 10 s, backoff exponentiel avec jitter). Les erreurs serveur et les pannes réseau sont retentées, les erreurs de validation non.
