@@ -219,6 +219,22 @@ describe("SitepingInbox — keyboard", () => {
     });
   });
 
+  it("drops a focus the new tab doesn't contain — Enter never opens an invisible drawer", async () => {
+    renderInbox();
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+    fireEvent.keyDown(listbox, { key: "4" }); // Resolved tab — o1 isn't in it
+    await waitFor(() => expect(listRows().map((row) => row.getAttribute("data-status"))).toEqual(["resolved"]));
+
+    const active = listbox.getAttribute("aria-activedescendant");
+    expect(active === null || document.getElementById(active) !== null).toBe(true);
+
+    fireEvent.keyDown(listbox, { key: "Enter" }); // nothing focused: no-op
+    expect(screen.queryByRole("dialog", { name: /Feedback details/ })).toBeNull();
+    fireEvent.keyDown(listbox, { key: "j" }); // navigation still works
+    await waitFor(() => expect(listRows()[0]?.className).toContain("spd-row-focused"));
+  });
+
   it("ignores j/k while the overlay drawer is open (the list is behind the backdrop)", async () => {
     renderInbox();
     const listbox = await ready();

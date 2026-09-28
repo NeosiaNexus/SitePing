@@ -241,6 +241,13 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       setItems(page.feedbacks);
       setTotal(page.total);
       setLoading(false);
+      // A focus left on a row the new list doesn't contain would point
+      // aria-activedescendant at nothing and make Enter open an invisible drawer.
+      const focused = focusedIdRef.current;
+      if (focused !== null && !page.feedbacks.some((f) => f.id === focused)) {
+        focusedIdRef.current = null;
+        setFocusedId(null);
+      }
     } catch (cause) {
       if (token !== tokenRef.current) return;
       const err = toError(cause);
@@ -351,8 +358,11 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   }, []);
 
   const openFeedback = useCallback((id: string) => {
-    const record = itemsRef.current.find((f) => f.id === id) ?? null;
-    if (record) openedCacheRef.current = record;
+    const record =
+      itemsRef.current.find((f) => f.id === id) ?? (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
+    // Nothing to show: opening would render no drawer yet still count as "open".
+    if (!record) return;
+    openedCacheRef.current = record;
     setOpenedId(id);
     setFocusedId(id);
   }, []);

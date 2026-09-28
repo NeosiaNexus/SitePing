@@ -234,6 +234,28 @@ describe("useSitepingInbox — focus", () => {
   });
 });
 
+describe("useSitepingInbox — focus survives only in the list it points into", () => {
+  it("clears focusedId when a new list doesn't contain it, keeps it when it does", async () => {
+    const { result } = await mountDemo();
+    act(() => result.current.focus("r2"));
+    await act(async () => {
+      await result.current.refresh(); // r2 is still there
+    });
+    expect(result.current.focusedId).toBe("r2");
+
+    act(() => result.current.setStatus("resolved"));
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
+    expect(result.current.focusedId).toBeNull();
+  });
+
+  it("openFeedback ignores an id that is neither listed nor cached", async () => {
+    const { result } = await mountDemo();
+    act(() => result.current.openFeedback("ghost"));
+    expect(result.current.openedId).toBeNull();
+    expect(result.current.focusedId).toBeNull();
+  });
+});
+
 describe("useSitepingInbox — changeStatus / undo", () => {
   it("optimistically removes a row that leaves the filter, advances focus, and undo reinserts it", async () => {
     const source = makeSource(demoRecords());
