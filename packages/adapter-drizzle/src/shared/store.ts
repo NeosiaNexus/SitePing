@@ -15,6 +15,7 @@ import {
   type SitepingStore,
   StoreNotFoundError,
   StorePersistenceError,
+  screenshotMimeType,
 } from "@siteping/core";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../constants/deletes.js";
 import { DRIZZLE_STORE_MESSAGE_PREFIX, type DrizzleStoreMutation } from "../constants/errors.js";
@@ -31,7 +32,6 @@ import type {
   FeedbackRow,
   SitepingSqlGateway,
 } from "./gateway.js";
-import { screenshotMimeType } from "./screenshots.js";
 
 /**
  * The store returned by the dialect factories — the full contract, including

@@ -134,7 +134,7 @@ Les deux factories acceptent les mêmes options :
 **Avec `screenshotStorage`**, `upload(dataUrl, { feedbackId, mimeType })` s'exécute avant l'insertion et seule l'URL renvoyée est stockée :
 
 - `feedbackId` est l'id sous lequel l'enregistrement **sera stocké** — généré côté serveur, nouveau à chaque tentative de création, jamais le `clientId` du client.
-- `mimeType` est le type de média déclaré par la data URL (`image/jpeg`, `image/png`, `image/webp`…), en minuscules, ou `image/jpeg` si elle n'en déclare aucun. Utilisez-le comme `Content-Type` de l'objet.
+- `mimeType` est le type de média déclaré par la data URL — `image/jpeg`, `image/png` ou `image/webp`, en minuscules. Tout autre type (un SVG, capable d'exécuter du script quand il est servi en ligne, ou aucun type) est signalé comme `image/jpeg`, le format de capture du widget. Utilisez-le comme `Content-Type` de l'objet.
 - Si `upload` lève, le feedback est quand même enregistré avec `screenshotUrl: null`, et l'échec part au `logger`.
 
 **L'URL renvoyée doit être propre à `feedbackId`.** Nommez les objets d'après lui — jamais d'après un hash du contenu ni un nom fixe. Le store considère chaque URL comme la propriété du seul feedback qui la stocke et peut la passer à `delete` sans se coordonner avec les créations concurrentes ; une URL partagée par plusieurs feedbacks peut faire disparaître un objet qu'un autre feedback référence encore.

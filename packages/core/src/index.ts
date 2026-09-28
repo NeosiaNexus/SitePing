@@ -25,6 +25,7 @@ export type {
 } from "./schema.js";
 export { isRelationField, isScalarField, SITEPING_MODELS } from "./schema.js";
 export type { ScreenshotStorage } from "./screenshot-storage.js";
+export { screenshotMimeType } from "./screenshot-storage.js";
 export type { CollectionStore, CollectionStoreBackend } from "./store-helpers.js";
 export { buildAnnotationRecord, buildFeedbackRecord, createCollectionStore } from "./store-helpers.js";
 export type { AssertEqual, IfEquals, Prettify, Serialized } from "./type-utils.js";

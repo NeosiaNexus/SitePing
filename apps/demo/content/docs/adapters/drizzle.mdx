@@ -134,7 +134,7 @@ Both factories take the same options:
 **With `screenshotStorage`**, `upload(dataUrl, { feedbackId, mimeType })` runs before the insert and only the returned URL is stored:
 
 - `feedbackId` is the id the record **will be stored under** — generated server-side, fresh for every create attempt, never the client's `clientId`.
-- `mimeType` is the media type the data URL declares (`image/jpeg`, `image/png`, `image/webp`…), lowercased, or `image/jpeg` when it declares none. Use it as the object's `Content-Type`.
+- `mimeType` is the media type the data URL declares — `image/jpeg`, `image/png` or `image/webp`, lowercased. Anything else (an SVG, which is script-capable when served inline, or no type at all) is reported as `image/jpeg`, the widget's capture format. Use it as the object's `Content-Type`.
 - If `upload` throws, the feedback is still saved with `screenshotUrl: null`, and the failure goes to the `logger`.
 
 **The returned URL must be unique to `feedbackId`.** Key objects by it — never by a content hash or a fixed name. The store treats each URL as owned by the one feedback that stores it and may pass it to `delete` without coordinating with concurrent creates; a URL shared by several feedbacks can lose an object another feedback still points at.

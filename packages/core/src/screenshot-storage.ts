@@ -73,3 +73,16 @@ export interface ScreenshotStorage {
    */
   delete?: (url: string) => Promise<void>;
 }
+
+/**
+ * MIME type an adapter reports to {@link ScreenshotStorage.upload}: the one
+ * an image data URL declares (`data:image/png;base64,…` → `image/png`),
+ * limited to the JPEG, PNG and WebP the HTTP schema accepts. Stores are
+ * public and may be fed unvalidated data URLs, and an `image/svg+xml` label
+ * would make the stored object script-capable when served inline. Anything
+ * else — including a data URL that declares no type — reports JPEG, the
+ * widget's capture format.
+ */
+export function screenshotMimeType(dataUrl: string): string {
+  return /^data:(image\/(?:jpeg|png|webp))[;,]/i.exec(dataUrl)?.[1]?.toLowerCase() ?? "image/jpeg";
+}

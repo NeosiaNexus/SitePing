@@ -328,7 +328,7 @@ for (const dialect of dialects) {
       expect(deletions).toEqual([created.screenshotUrl]);
     });
 
-    it("uploads each screenshot with the MIME type its data URL declares", async () => {
+    it("uploads each screenshot with the MIME type its data URL declares, JPEG, PNG or WebP only", async () => {
       const { storage, uploads } = recordingStorage();
       const store = database.createStore({ screenshotStorage: storage, logger });
 
@@ -338,6 +338,8 @@ for (const dialect of dialects) {
         SCREENSHOT_DATA_URL,
         "data:IMAGE/PNG;base64,iVBORw0KGgo=",
         "data:;base64,/9j/4AAQ",
+        // The store is public: its callers skip the HTTP schema, and an SVG label is script-capable.
+        "data:image/svg+xml;base64,PHN2Zz4=",
       ]) {
         await store.createFeedback(feedbackInput({ screenshotDataUrl: dataUrl }));
       }
@@ -347,6 +349,7 @@ for (const dialect of dialects) {
         "image/webp",
         "image/jpeg",
         "image/png",
+        "image/jpeg",
         "image/jpeg",
       ]);
     });

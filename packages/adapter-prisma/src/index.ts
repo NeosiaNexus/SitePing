@@ -18,6 +18,7 @@ import {
   type SitepingStore,
   StoreDuplicateError,
   StoreNotFoundError,
+  screenshotMimeType,
   toFeedbackUpdate,
 } from "@siteping/core";
 import {
@@ -230,17 +231,6 @@ function isStoredScreenshotUrl(url: unknown): url is string {
 }
 
 /**
- * MIME type declared by an image data URL (`data:image/png;base64,…` →
- * `image/png`), limited to the JPEG, PNG and WebP the HTTP schema accepts:
- * `PrismaStore` is public and may be fed unvalidated data URLs, and an
- * `image/svg+xml` label would make the stored object script-capable when
- * served inline. Anything else falls back to JPEG, the widget's capture format.
- */
-function dataUrlMimeType(dataUrl: string): string {
-  return /^data:(image\/(?:jpeg|png|webp))[;,]/.exec(dataUrl)?.[1] ?? "image/jpeg";
-}
-
-/**
  * Prisma-backed implementation of `SitepingStore`.
  *
  * Wraps a PrismaClient to satisfy the abstract store interface.
@@ -390,7 +380,7 @@ export class PrismaStore implements SitepingStore {
         // map it to a filesystem path MUST sanitize against path traversal.
         const { url } = await this.screenshotStorage.upload(dataUrl, {
           feedbackId: clientId,
-          mimeType: dataUrlMimeType(dataUrl),
+          mimeType: screenshotMimeType(dataUrl),
         });
         return url;
       } catch (err) {
