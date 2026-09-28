@@ -526,6 +526,29 @@ describe("createS3ObjectStore — credentials without s3:ListBucket", () => {
   });
 });
 
+describe("createFilesystemObjectStore — keys", () => {
+  it.each([
+    "../escaped.jpg",
+    `../siteping-${"a".repeat(32)}.jpg`,
+    `nested/siteping-${"a".repeat(32)}.jpg`,
+    "..",
+    `siteping-${"a".repeat(32)}.jpg.content-type`,
+  ])("refuses the key %s on every operation, before touching the disk", async (key) => {
+    const parent = mkdtempSync(join(tmpdir(), "siteping-traversal-"));
+    temporaryDirectories.push(parent);
+    const directory = join(parent, "screenshots");
+    const objectStore = createFilesystemObjectStore({ directory, publicBaseUrl: PUBLIC_BASE_URL });
+
+    await expect(objectStore.put({ key, bytes: JPEG_BYTES.slice(), contentType: "image/jpeg" })).rejects.toThrow(
+      `refusing key "${key}"`,
+    );
+    await expect(objectStore.get?.(key)).rejects.toThrow("refusing key");
+    await expect(objectStore.remove(key)).rejects.toThrow("refusing key");
+
+    expect(readdirSync(parent)).toEqual([]);
+  });
+});
+
 describe("createS3ObjectStore — uploads", () => {
   it("stores each object with an immutable Cache-Control, left out of the signature like the AWS SDK does", async () => {
     const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };
