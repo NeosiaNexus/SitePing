@@ -1738,6 +1738,50 @@ describe("MarkerManager", () => {
       expect(visibleMarkers("fb-gap")).toHaveLength(1);
       vi.useRealTimers();
     });
+
+    it("(d) a late anchor that lands on another marker joins its cluster", () => {
+      vi.useFakeTimers();
+      // render: fb-a resolves, fb-b's anchor is missing; resize: both resolve at the same rect
+      mockState.nullSchedule = [false, true];
+      markers.render([makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-b" })]);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
+
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(visibleMarkers("fb-b")).toHaveLength(1);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it("(e) a hidden marker never joins a cluster", () => {
+      // fb-a's marker lands at the document origin, where fb-b's hidden placeholder sits
+      mockState.nullSchedule = [false, true];
+      mockState.rectQueue = [{ x: 0, y: 13, w: 13, h: 10 }];
+      markers.render([makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-b" })]);
+
+      expect(visibleMarkers("fb-a")).toHaveLength(1);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
+    });
+
+    it("(f) focusFeedback scrolls to the first visible marker", () => {
+      mockState.nullSchedule = [true, false];
+      const fb = makeFeedback({
+        id: "fb-focus",
+        annotations: [makeAnnotation({ id: "a1" }), makeAnnotation({ id: "a2" })],
+      });
+      markers.render([fb]);
+      const scrollIntoView = vi.fn();
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = scrollIntoView; // jsdom lacks it
+      try {
+        expect(markers.focusFeedback("fb-focus")).toBe(true);
+
+        expect(scrollIntoView.mock.contexts).toEqual(visibleMarkers("fb-focus"));
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
   });
 
   // -------------------------------------------------------------------------
