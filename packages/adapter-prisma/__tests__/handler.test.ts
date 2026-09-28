@@ -131,6 +131,40 @@ describe("createSitepingHandler", () => {
       consoleSpy.mockRestore();
     });
 
+    it("processes a retry afresh after the create for its clientId failed", async () => {
+      // A failed create must leave the in-flight registry: a retry that joined
+      // the settled rejection would answer 500 forever for that clientId.
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      prisma.sitepingFeedback.create.mockRejectedValueOnce({ code: "P1001" });
+      const post = () =>
+        handler.POST(
+          new Request("http://localhost/api/siteping", {
+            method: "POST",
+            body: JSON.stringify(validPayloadNoAnnotations),
+          }),
+        );
+
+      expect((await post()).status).toBe(500);
+      expect((await post()).status).toBe(201);
+      expect(prisma.sitepingFeedback.create).toHaveBeenCalledTimes(2);
+      consoleSpy.mockRestore();
+    });
+
+    it("runs its own replay lookup once an earlier create of the same clientId has settled", async () => {
+      const post = () =>
+        handler.POST(
+          new Request("http://localhost/api/siteping", {
+            method: "POST",
+            body: JSON.stringify(validPayloadNoAnnotations),
+          }),
+        );
+
+      expect((await post()).status).toBe(201);
+      expect((await post()).status).toBe(201);
+      // One replay lookup per request: the second never joined the first's settled outcome.
+      expect(prisma.sitepingFeedback.findUnique).toHaveBeenCalledTimes(2);
+    });
+
     it("does not insert again when the clientId was already stored (replay)", async () => {
       prisma.sitepingFeedback.findUnique.mockResolvedValue({ id: "fb-1", ...validPayloadNoAnnotations });
       const req = new Request("http://localhost/api/siteping", {
