@@ -3,13 +3,13 @@ import { ERROR_MESSAGES } from "../constants.js";
 import type { Pipeline } from "../pipeline.js";
 import { feedbackDeleteSchema } from "../validation.js";
 
-interface DeleteFeedbackDependencies {
+interface DeleteFeedbackDependencies<Principal> {
   store: SitepingStore;
-  pipeline: Pipeline;
+  pipeline: Pipeline<Principal>;
 }
 
 /** `DELETE` — remove one feedback, or every feedback of a project (`deleteAll`). */
-export function deleteFeedbackOperation({ store, pipeline }: DeleteFeedbackDependencies) {
+export function deleteFeedbackOperation<Principal>({ store, pipeline }: DeleteFeedbackDependencies<Principal>) {
   return async (request: Request): Promise<Response> => {
     const entry = await pipeline.enter(request, "DELETE");
     if (!entry.ok) return entry.response;
@@ -20,6 +20,14 @@ export function deleteFeedbackOperation({ store, pipeline }: DeleteFeedbackDepen
     const deletion = payload.value;
 
     try {
+      const refusal = await pipeline.authorize(
+        scope,
+        "deleteAll" in deletion
+          ? { action: "deleteAll", projectName: deletion.projectName }
+          : { action: "delete", projectName: deletion.projectName, feedbackId: deletion.id },
+      );
+      if (refusal) return refusal;
+
       if ("deleteAll" in deletion) {
         await store.deleteAllFeedbacks(deletion.projectName);
         return pipeline.json(scope, { deleted: true });

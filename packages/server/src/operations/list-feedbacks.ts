@@ -3,9 +3,9 @@ import { LIST_QUERY_KEYS } from "../constants.js";
 import type { Pipeline } from "../pipeline.js";
 import { getQuerySchema } from "../validation.js";
 
-interface ListFeedbacksDependencies {
+interface ListFeedbacksDependencies<Principal> {
   store: SitepingStore;
-  pipeline: Pipeline;
+  pipeline: Pipeline<Principal>;
 }
 
 /** Only the query parameters the endpoint understands, as raw strings. */
@@ -20,7 +20,7 @@ function readListQuery(request: Request): Record<string, string> {
 }
 
 /** `GET` — a paginated, filtered page of a project's feedbacks. */
-export function listFeedbacksOperation({ store, pipeline }: ListFeedbacksDependencies) {
+export function listFeedbacksOperation<Principal>({ store, pipeline }: ListFeedbacksDependencies<Principal>) {
   return async (request: Request): Promise<Response> => {
     const entry = await pipeline.enter(request, "GET");
     if (!entry.ok) return entry.response;
@@ -30,13 +30,16 @@ export function listFeedbacksOperation({ store, pipeline }: ListFeedbacksDepende
     if (!query.ok) return query.response;
 
     try {
+      const refusal = await pipeline.authorize(scope, { action: "list", projectName: query.value.projectName });
+      if (refusal) return refusal;
+
       // GET can be public (no apiKey, or "GET" in publicEndpoints for widget
       // hosts) — the scope redacts author emails unless the requester may read them.
       const page = await store.getFeedbacks(query.value);
       return pipeline.json(
         scope,
         { ...page, feedbacks: page.feedbacks.map((feedback) => pipeline.present(scope, feedback)) },
-        { headers: { "Cache-Control": "private, max-age=5" } },
+        { headers: { "Cache-Control": pipeline.listCacheControl } },
       );
     } catch (error) {
       return pipeline.fail(scope, "[siteping] Failed to fetch feedbacks", error);

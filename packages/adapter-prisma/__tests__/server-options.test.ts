@@ -39,6 +39,18 @@ describe("createSitepingHandler — @siteping/server options", () => {
     expect(await (await handler.GET(new Request(LIST))).json()).toEqual({ error: "Run our migration script" });
   });
 
+  it("forwards a custom access policy", async () => {
+    const handler = createSitepingHandler({
+      prisma: fakePrisma(),
+      access: {
+        authenticate: (request) => (request.headers.get("x-session") === "reviewer" ? { id: "reviewer" } : null),
+      },
+    });
+
+    expect((await handler.GET(new Request(LIST))).status).toBe(401);
+    expect((await handler.GET(new Request(LIST, { headers: { "x-session": "reviewer" } }))).status).toBe(200);
+  });
+
   it("forwards the logger", async () => {
     const logger = silentLogger();
     const handler = createSitepingHandler({ prisma: prismaWithoutTable(), logger });

@@ -1,12 +1,31 @@
 import { ERROR_MESSAGES } from "./constants.js";
-import type { SitepingHandlerOptions, SitepingHttpMethod } from "./options.js";
+import type {
+  SitepingAccessControl,
+  SitepingApiKeyHandlerOptions,
+  SitepingAuthorizationContext,
+  SitepingHttpMethod,
+} from "./options.js";
 
 /** Outcome of the access check that opens every request. */
-export type AccessOutcome = { ok: true; canReadAuthorEmail: boolean } | { ok: false; status: 401; error: string };
+export type AccessOutcome<Principal> =
+  | { ok: true; principal: Principal; canReadAuthorEmail: boolean }
+  | { ok: false; status: 401; error: string };
 
-/** The access policy the operations run. */
-export interface AccessGate {
-  authenticate(request: Request, method: SitepingHttpMethod): Promise<AccessOutcome>;
+/** The access policy the operations run, normalised from either option set. */
+export interface AccessGate<Principal> {
+  /**
+   * Whether a successful POST echoes `authorEmail` whatever the requester may
+   * read. Only the `apiKey` policy does: its public POST has always returned
+   * the email to the submitter, who supplied it (or proved ownership of the
+   * record by presenting its clientId).
+   */
+  readonly echoesAuthorEmailOnCreate: boolean;
+  /** Whether POST/PATCH/DELETE must pass the CSRF guards (see `access`). */
+  readonly guardsMutations: boolean;
+  /** `Cache-Control` of the list response. */
+  readonly listCacheControl: string;
+  authenticate(request: Request, method: SitepingHttpMethod): Promise<AccessOutcome<Principal>>;
+  authorize(context: SitepingAuthorizationContext<Principal>): Promise<boolean>;
 }
 
 const textEncoder = new TextEncoder();
@@ -38,7 +57,8 @@ function isProductionEnvironment(): boolean {
 
 /**
  * The shared-secret policy (`apiKey`, `publicEndpoints`,
- * `requireAuthForDestructive`, `redactUnauthenticatedEmails`).
+ * `requireAuthForDestructive`, `redactUnauthenticatedEmails`). It never
+ * resolves a principal.
  *
  * @throws Error in production without `apiKey` while destructive endpoints
  * still require it — the factory refuses an unauthenticated destructive surface.
@@ -49,15 +69,15 @@ export function createApiKeyGate({
   requireAuthForDestructive = true,
   redactUnauthenticatedEmails = true,
 }: Pick<
-  SitepingHandlerOptions,
+  SitepingApiKeyHandlerOptions,
   "apiKey" | "publicEndpoints" | "requireAuthForDestructive" | "redactUnauthenticatedEmails"
->): AccessGate {
+>): AccessGate<null> {
   // Without this guard, anyone could `DELETE { deleteAll: true }` against the API.
   if (!apiKey && requireAuthForDestructive && isProductionEnvironment()) {
     throw new Error(
       "[siteping] createSitepingHandler: apiKey is required in production. " +
-        "Set `apiKey` to enable destructive endpoints, or pass " +
-        "`requireAuthForDestructive: false` if SitePing sits behind your own auth middleware.",
+        "Set `apiKey` to enable destructive endpoints, pass `access` to plug in your own authentication, " +
+        "or pass `requireAuthForDestructive: false` if SitePing sits behind your own auth middleware.",
     );
   }
 
@@ -75,6 +95,10 @@ export function createApiKeyGate({
   };
 
   return {
+    echoesAuthorEmailOnCreate: true,
+    // The key travels in a header a forged cross-site request cannot set.
+    guardsMutations: false,
+    listCacheControl: "private, max-age=5",
     async authenticate(request, method) {
       const canReadAuthorEmail = !redactUnauthenticatedEmails || isBearerAuthenticated(request);
       if (!apiKey) {
@@ -82,10 +106,35 @@ export function createApiKeyGate({
         if (requireAuthForDestructive && (method === "DELETE" || method === "PATCH")) {
           return { ok: false, status: 401, error: ERROR_MESSAGES.apiKeyRequiredForDestructive };
         }
-        return { ok: true, canReadAuthorEmail };
+        return { ok: true, principal: null, canReadAuthorEmail };
       }
-      if (publicMethods?.has(method) || isBearerAuthenticated(request)) return { ok: true, canReadAuthorEmail };
+      if (publicMethods?.has(method) || isBearerAuthenticated(request)) {
+        return { ok: true, principal: null, canReadAuthorEmail };
+      }
       return { ok: false, status: 401, error: ERROR_MESSAGES.unauthorized };
+    },
+    async authorize() {
+      return true;
+    },
+  };
+}
+
+/** A custom `access` policy. */
+export function createAccessGate<Principal>(access: SitepingAccessControl<Principal>): AccessGate<Principal> {
+  return {
+    echoesAuthorEmailOnCreate: false,
+    guardsMutations: true,
+    listCacheControl: "no-store",
+    async authenticate(request) {
+      const principal = await access.authenticate(request);
+      // Fail closed on `undefined` too: `return session?.user` must never let a request in.
+      if (principal === null || principal === undefined) {
+        return { ok: false, status: 401, error: ERROR_MESSAGES.unauthorized };
+      }
+      return { ok: true, principal, canReadAuthorEmail: (await access.canReadAuthorEmail?.(principal)) ?? true };
+    },
+    async authorize(context) {
+      return access.authorize ? access.authorize(context) : true;
     },
   };
 }

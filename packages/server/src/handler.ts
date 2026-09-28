@@ -1,10 +1,16 @@
-import { createApiKeyGate } from "./access.js";
+import { type AccessGate, createAccessGate, createApiKeyGate } from "./access.js";
 import { preflightResponse } from "./cors.js";
 import { createFeedbackOperation } from "./operations/create-feedback.js";
 import { deleteFeedbackOperation } from "./operations/delete-feedback.js";
 import { listFeedbacksOperation } from "./operations/list-feedbacks.js";
 import { updateFeedbackOperation } from "./operations/update-feedback.js";
-import type { SitepingHandler, SitepingHandlerOptions, SitepingLogger } from "./options.js";
+import type {
+  SitepingAccessHandlerOptions,
+  SitepingApiKeyHandlerOptions,
+  SitepingHandler,
+  SitepingHandlerOptions,
+  SitepingLogger,
+} from "./options.js";
 import { createPipeline } from "./pipeline.js";
 import type { WebhookConfig } from "./webhooks.js";
 
@@ -24,8 +30,13 @@ const consoleLogger: SitepingLogger = {
  * The POST endpoint in particular should be rate-limited to prevent abuse, since
  * the widget typically calls it from unauthenticated browser contexts.
  *
- * @throws Error without a `store`, or in production without `apiKey` (see
- * `requireAuthForDestructive`).
+ * Access is either the built-in `apiKey` policy or your own `access` policy
+ * (sessions, JWTs, roles…) — see `SitepingAccessHandlerOptions`.
+ *
+ * @throws Error without a `store`; in production without `apiKey` (see
+ * `requireAuthForDestructive`); or with `access.authorize` over a store
+ * without `verifyProjectOwnership`, since PATCH/DELETE could then reach a
+ * record of a project the caller is not authorized for.
  *
  * @example Next.js App Router — `app/api/siteping/route.ts`
  * ```ts
@@ -38,13 +49,30 @@ const consoleLogger: SitepingLogger = {
  * })
  * ```
  */
-export function createSitepingHandler(options: SitepingHandlerOptions): SitepingHandler {
+export function createSitepingHandler<Principal>(options: SitepingAccessHandlerOptions<Principal>): SitepingHandler;
+export function createSitepingHandler(options: SitepingApiKeyHandlerOptions): SitepingHandler;
+/** Options assembled at runtime, either policy. */
+export function createSitepingHandler<Principal>(options: SitepingHandlerOptions<Principal>): SitepingHandler;
+export function createSitepingHandler<Principal>(options: SitepingHandlerOptions<Principal>): SitepingHandler {
   const { store, allowedOrigins, webhooks, logger = consoleLogger, describeError } = options;
   if (!store) {
     throw new Error("[siteping] createSitepingHandler requires a `store`.");
   }
+  // A custom `authorize` may scope callers to projects, but PATCH/DELETE
+  // address records by id: without the ownership check, the project a caller
+  // claims (and is authorized for) need not be the record's. Fail closed.
+  if (options.access?.authorize && !store.verifyProjectOwnership) {
+    throw new Error(
+      "[siteping] createSitepingHandler: `access.authorize` needs a store implementing `verifyProjectOwnership`. " +
+        "Without it, a caller authorized for one project could PATCH or DELETE another project's feedback by id.",
+    );
+  }
 
-  const pipeline = createPipeline({ gate: createApiKeyGate(options), allowedOrigins, logger, describeError });
+  // The `apiKey` policy never resolves a principal: its scopes carry `null`.
+  const gate = options.access
+    ? createAccessGate(options.access)
+    : (createApiKeyGate(options) as AccessGate<unknown> as AccessGate<Principal>);
+  const pipeline = createPipeline({ gate, allowedOrigins, logger, describeError });
   // Normalised once so every POST skips the allocation; an empty list
   // short-circuits dispatch.
   const webhookList: ReadonlyArray<WebhookConfig> = webhooks

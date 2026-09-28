@@ -1,6 +1,18 @@
 export type { FeedbackRecord, SitepingStore } from "@siteping/core";
 export { createSitepingHandler } from "./handler.js";
-export type { SitepingHandler, SitepingHandlerOptions, SitepingHttpMethod, SitepingLogger } from "./options.js";
+export type {
+  SitepingAccessControl,
+  SitepingAccessHandlerOptions,
+  SitepingAction,
+  SitepingApiKeyHandlerOptions,
+  SitepingAuthorizationContext,
+  SitepingHandler,
+  SitepingHandlerBaseOptions,
+  SitepingHandlerOptions,
+  SitepingHttpMethod,
+  SitepingLogger,
+  SitepingRequestContext,
+} from "./options.js";
 export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput, ValidationIssue } from "./validation.js";
 export {
   feedbackCreateSchema,

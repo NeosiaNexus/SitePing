@@ -3,13 +3,13 @@ import { ERROR_MESSAGES } from "../constants.js";
 import type { Pipeline } from "../pipeline.js";
 import { feedbackPatchSchema } from "../validation.js";
 
-interface UpdateFeedbackDependencies {
+interface UpdateFeedbackDependencies<Principal> {
   store: SitepingStore;
-  pipeline: Pipeline;
+  pipeline: Pipeline<Principal>;
 }
 
 /** `PATCH` — change a feedback's status. */
-export function updateFeedbackOperation({ store, pipeline }: UpdateFeedbackDependencies) {
+export function updateFeedbackOperation<Principal>({ store, pipeline }: UpdateFeedbackDependencies<Principal>) {
   return async (request: Request): Promise<Response> => {
     const entry = await pipeline.enter(request, "PATCH");
     if (!entry.ok) return entry.response;
@@ -20,10 +20,14 @@ export function updateFeedbackOperation({ store, pipeline }: UpdateFeedbackDepen
     const { id, projectName, status } = payload.value;
 
     try {
+      const refusal = await pipeline.authorize(scope, { action: "update", projectName, feedbackId: id });
+      if (refusal) return refusal;
+
       // Verify project ownership before updating. Any store implementing
       // the optional SitepingStore.verifyProjectOwnership gets the check;
       // duck-typing instead of `instanceof` keeps it bundling-safe and
-      // open to third-party adapters.
+      // open to third-party adapters. The handler refuses to start with a
+      // custom `authorize` over a store without it.
       if (store.verifyProjectOwnership && !(await store.verifyProjectOwnership(id, projectName))) {
         return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);
       }

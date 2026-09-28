@@ -9,6 +9,8 @@ export const ERROR_MESSAGES = {
   invalidJson: "Invalid JSON",
   unauthorized: "Unauthorized",
   apiKeyRequiredForDestructive: "apiKey required for destructive operations",
+  forbidden: "Forbidden",
+  unsupportedMediaType: "Content-Type must be application/json",
   feedbackNotFound: "Feedback not found",
   clientIdUsedByAnotherProject: "clientId already used by another project",
   tooManyAnnotations: `Too many annotations (max ${MAX_ANNOTATIONS_PER_FEEDBACK})`,

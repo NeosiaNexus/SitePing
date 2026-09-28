@@ -11,9 +11,9 @@ import type { Pipeline } from "../pipeline.js";
 import { feedbackCreateSchema } from "../validation.js";
 import { dispatchWebhooks, type WebhookConfig } from "../webhooks.js";
 
-interface CreateFeedbackDependencies {
+interface CreateFeedbackDependencies<Principal> {
   store: SitepingStore;
-  pipeline: Pipeline;
+  pipeline: Pipeline<Principal>;
   webhooks: ReadonlyArray<WebhookConfig>;
 }
 
@@ -45,7 +45,11 @@ function toCreateInput(data: FeedbackPayload): FeedbackCreateInput {
 }
 
 /** `POST` — create a feedback, idempotent on `clientId`. */
-export function createFeedbackOperation({ store, pipeline, webhooks }: CreateFeedbackDependencies) {
+export function createFeedbackOperation<Principal>({
+  store,
+  pipeline,
+  webhooks,
+}: CreateFeedbackDependencies<Principal>) {
   /**
    * Creates in flight, keyed by clientId. The widget aborts an attempt after
    * 10 s and resends the same payload, so a retry can reach the server while
@@ -93,18 +97,24 @@ export function createFeedbackOperation({ store, pipeline, webhooks }: CreateFee
     }
     const input = toCreateInput(payload.value);
 
+    let refusal: Response | null;
+    try {
+      refusal = await pipeline.authorize(scope, { action: "create", projectName: input.projectName });
+    } catch (error) {
+      return pipeline.fail(scope, "[siteping] Failed to create feedback", error);
+    }
+    if (refusal) return refusal;
+
     /**
      * Respond to a create that resolved to `feedback`. A clientId is unique
      * across the whole store, so a replay that resolves to another
      * project's record is a boundary violation, not a dedup: refuse it
      * rather than hand that record (email included) to a request scoped to
-     * a different project. Email stays intact otherwise: the requester
-     * supplied it (fresh insert) or proved ownership by presenting the
-     * clientId (replay).
+     * a different project.
      */
     const created = (feedback: FeedbackRecord): Response =>
       feedback.projectName === input.projectName
-        ? pipeline.json(scope, pipeline.present(scope, feedback, true), { status: 201 })
+        ? pipeline.json(scope, pipeline.presentCreated(scope, feedback), { status: 201 })
         : pipeline.error(scope, 409, ERROR_MESSAGES.clientIdUsedByAnotherProject);
 
     // Join an in-flight create of this clientId, or start one. The lookup

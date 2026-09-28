@@ -4,15 +4,86 @@ import type { WebhookConfig } from "./webhooks.js";
 /** HTTP methods served by `createSitepingHandler`. */
 export type SitepingHttpMethod = "GET" | "POST" | "PATCH" | "DELETE" | "OPTIONS";
 
+/** What a request does, as `SitepingAccessControl.authorize` sees it. */
+export type SitepingAction = "create" | "list" | "update" | "delete" | "deleteAll";
+
+/** The request being served, and who sent it. */
+export interface SitepingRequestContext<Principal> {
+  request: Request;
+  /** Whoever `access.authenticate` resolved — always `null` under the `apiKey` policy. */
+  principal: Principal;
+}
+
+/** What `SitepingAccessControl.authorize` decides about. */
+export interface SitepingAuthorizationContext<Principal> extends SitepingRequestContext<Principal> {
+  action: SitepingAction;
+  /** Project the request targets: the body's for writes, the query's for reads. */
+  projectName: string;
+  /** Target record of `update` and `delete`. */
+  feedbackId?: string;
+}
+
+/**
+ * A custom access policy — sessions, JWTs, roles — resolved from the standard
+ * `Request` (a cookie, a header, a proxy identity…), in place of `apiKey`.
+ *
+ * - `authenticate` resolving `null` (or `undefined`) → 401, on every method
+ *   but `OPTIONS`.
+ * - `authorize` resolving `false` → 403. Defaults to allowing every
+ *   authenticated principal. When set, the store must implement
+ *   `verifyProjectOwnership`: PATCH/DELETE address records by id, and the
+ *   check is what binds the authorized `projectName` to the record.
+ * - `canReadAuthorEmail` decides whether responses include `authorEmail`
+ *   (reviewer PII) — the list, the PATCH answer and the POST answer alike.
+ *   Defaults to `true`.
+ *
+ * A throw from any of them answers a logged 500.
+ */
+export interface SitepingAccessControl<Principal> {
+  authenticate(request: Request): Principal | null | undefined | Promise<Principal | null | undefined>;
+  authorize?(context: SitepingAuthorizationContext<Principal>): boolean | Promise<boolean>;
+  canReadAuthorEmail?(principal: Principal): boolean | Promise<boolean>;
+}
+
 /** Where the handler reports unexpected failures. Defaults to `console.error`. */
 export interface SitepingLogger {
   error(message: string, context: Record<string, unknown>): void;
 }
 
-/** Options of `createSitepingHandler`. */
-export interface SitepingHandlerOptions {
+/** Options shared by both access policies. */
+export interface SitepingHandlerBaseOptions {
   /** Persistence backend — any `SitepingStore` (Prisma, Drizzle, memory, your own). */
   store: SitepingStore;
+  /**
+   * Allowed CORS origins (exact match) — when set, only these origins get CORS
+   * headers. When unset, no CORS headers are emitted and browsers block
+   * cross-origin widgets. Under `access`, it also bounds which origins may
+   * send POST/PATCH/DELETE.
+   */
+  allowedOrigins?: ReadonlyArray<string> | undefined;
+  /**
+   * Outgoing webhooks fired after a feedback is successfully persisted.
+   *
+   * Pass a single config or an array — every entry receives a POST with a
+   * type-specific payload (Slack, Discord, or generic JSON). Dispatch is
+   * fire-and-forget: the HTTP response is returned to the widget before
+   * webhook delivery completes, so a slow receiver never blocks the client.
+   * Provide `onError` on each config to observe failures.
+   */
+  webhooks?: WebhookConfig | ReadonlyArray<WebhookConfig>;
+  /** Where unexpected failures are reported. Defaults to `console.error`. */
+  logger?: SitepingLogger;
+  /**
+   * Map an unexpected failure to the `error` string sent to the client.
+   * Return `undefined` for the default (`"Internal server error"`). Store
+   * adapters use it for setup hints (e.g. "table not found, run migrations");
+   * never return the failure's own details, which may leak internals.
+   */
+  describeError?(error: unknown): string | undefined;
+}
+
+/** The built-in shared-secret policy — `adapter-prisma`'s historical behaviour. */
+export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions {
   /**
    * Shared secret expected as `Authorization: Bearer {apiKey}`.
    *
@@ -57,32 +128,40 @@ export interface SitepingHandlerOptions {
    * `clientId` is stripped from responses regardless of this option.
    */
   redactUnauthenticatedEmails?: boolean;
-  /**
-   * Allowed CORS origins (exact match) — when set, only these origins get CORS
-   * headers. When unset, no CORS headers are emitted and browsers block
-   * cross-origin widgets.
-   */
-  allowedOrigins?: ReadonlyArray<string> | undefined;
-  /**
-   * Outgoing webhooks fired after a feedback is successfully persisted.
-   *
-   * Pass a single config or an array — every entry receives a POST with a
-   * type-specific payload (Slack, Discord, or generic JSON). Dispatch is
-   * fire-and-forget: the HTTP response is returned to the widget before
-   * webhook delivery completes, so a slow receiver never blocks the client.
-   * Provide `onError` on each config to observe failures.
-   */
-  webhooks?: WebhookConfig | ReadonlyArray<WebhookConfig>;
-  /** Where unexpected failures are reported. Defaults to `console.error`. */
-  logger?: SitepingLogger;
-  /**
-   * Map an unexpected failure to the `error` string sent to the client.
-   * Return `undefined` for the default (`"Internal server error"`). Store
-   * adapters use it for setup hints (e.g. "table not found, run migrations");
-   * never return the failure's own details, which may leak internals.
-   */
-  describeError?(error: unknown): string | undefined;
+  /** Use either the `apiKey` policy or `access`, never both. */
+  access?: never;
 }
+
+/** A custom access policy (sessions, JWTs, roles) in place of `apiKey`. */
+export interface SitepingAccessHandlerOptions<Principal> extends SitepingHandlerBaseOptions {
+  /**
+   * Who is calling and what they may do — see `SitepingAccessControl`.
+   *
+   * Such a policy may authenticate with cookies, which browsers attach to
+   * forged cross-site requests too, so POST/PATCH/DELETE are guarded against
+   * CSRF before anything else runs: a body that is not `application/json`
+   * answers 415 (only JSON forces a CORS preflight), and with
+   * `allowedOrigins` an `Origin` that is neither listed nor the endpoint's
+   * own answers 403. Requests without an `Origin` (server-to-server, curl)
+   * pass. Behind a proxy that rewrites `request.url`, list your public origin
+   * in `allowedOrigins`. Lists are sent with `Cache-Control: no-store`: they
+   * depend on the principal, which the browser cache cannot tell apart.
+   */
+  access: SitepingAccessControl<Principal>;
+  /** `apiKey` policy only. */
+  apiKey?: never;
+  /** `apiKey` policy only. */
+  publicEndpoints?: never;
+  /** `apiKey` policy only. */
+  requireAuthForDestructive?: never;
+  /** `apiKey` policy only — use `access.canReadAuthorEmail`. */
+  redactUnauthenticatedEmails?: never;
+}
+
+/** Options of `createSitepingHandler`: the `apiKey` policy XOR a custom `access` policy. */
+export type SitepingHandlerOptions<Principal = unknown> =
+  | SitepingApiKeyHandlerOptions
+  | SitepingAccessHandlerOptions<Principal>;
 
 /**
  * Object returned by `createSitepingHandler` — one handler per HTTP method.

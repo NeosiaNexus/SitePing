@@ -20,8 +20,9 @@ import {
 } from "@siteping/core";
 import {
   createSitepingHandler as createServerHandler,
+  type SitepingAccessHandlerOptions,
+  type SitepingApiKeyHandlerOptions,
   type SitepingHandler,
-  type SitepingHandlerOptions as SitepingServerHandlerOptions,
 } from "@siteping/server";
 
 export type { ScreenshotStorage, SitepingStore } from "@siteping/core";
@@ -539,7 +540,8 @@ export class PrismaStore implements SitepingStore {
 // Handler — @siteping/server behind the Prisma store
 // ---------------------------------------------------------------------------
 
-export interface HandlerOptions extends Omit<SitepingServerHandlerOptions, "store"> {
+/** How the handler reaches its data: a Prisma client, or any store. */
+interface PrismaHandlerStoreOptions {
   /** Prisma client — used when `store` is not provided. Wrapped in a `PrismaStore` internally. */
   prisma?: SitepingPrismaClient;
   /** Abstract store — when provided, takes precedence over `prisma`. */
@@ -560,6 +562,14 @@ export interface HandlerOptions extends Omit<SitepingServerHandlerOptions, "stor
    */
   caseInsensitiveSearch?: boolean;
 }
+
+/** Options of `createSitepingHandler` under the `apiKey` policy — every `@siteping/server` option. */
+export interface HandlerOptions extends Omit<SitepingApiKeyHandlerOptions, "store">, PrismaHandlerStoreOptions {}
+
+/** Options of `createSitepingHandler` under a custom `access` policy (see `@siteping/server`). */
+export interface PrismaAccessHandlerOptions<Principal>
+  extends Omit<SitepingAccessHandlerOptions<Principal>, "store">,
+    PrismaHandlerStoreOptions {}
 
 /** Setup hint for Prisma's "table does not exist" error (P2021). */
 function describePrismaError(error: unknown): string | undefined {
@@ -598,14 +608,16 @@ function describePrismaError(error: unknown): string | undefined {
  * export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ store })
  * ```
  */
-export function createSitepingHandler({
+export function createSitepingHandler<Principal>(options: PrismaAccessHandlerOptions<Principal>): SitepingHandler;
+export function createSitepingHandler(options: HandlerOptions): SitepingHandler;
+export function createSitepingHandler<Principal>({
   prisma,
   store: providedStore,
   screenshotStorage,
   caseInsensitiveSearch,
   describeError,
   ...serverOptions
-}: HandlerOptions): SitepingHandler {
+}: HandlerOptions | PrismaAccessHandlerOptions<Principal>): SitepingHandler {
   if (!providedStore && !prisma) {
     throw new Error("[siteping] createSitepingHandler requires either `store` or `prisma`.");
   }
