@@ -356,12 +356,14 @@ function reportError(config: WebhookConfig, err: Error, feedbackId: string): voi
       // and crash the request that already succeeded persisting the
       // feedback. Surface the original error too so it isn't silently lost.
       console.warn(
-        `[siteping] webhook onError() callback threw for feedback ${feedbackId}: ${String(callbackErr)} (original error: ${err.message})`,
+        `[siteping] webhook onError() callback threw for feedback ${feedbackId}: ${String(callbackErr)} (original error: ${loggableMessage(err, config.url)})`,
       );
     }
     return;
   }
-  console.warn(`[siteping] webhook to ${webhookOrigin(config.url)} failed for feedback ${feedbackId}: ${err.message}`);
+  console.warn(
+    `[siteping] webhook to ${webhookOrigin(config.url)} failed for feedback ${feedbackId}: ${loggableMessage(err, config.url)}`,
+  );
 }
 
 /**
@@ -375,6 +377,15 @@ function webhookOrigin(url: string): string {
   } catch {
     return "<invalid URL>";
   }
+}
+
+/**
+ * `err.message` with the webhook URL reduced to its origin. Node's fetch
+ * copies the URL it was given into some errors ("…a URL that includes
+ * credentials: <url>", "Failed to parse URL from <url>").
+ */
+function loggableMessage(err: Error, url: string): string {
+  return url ? err.message.split(url).join(webhookOrigin(url)) : err.message;
 }
 
 /**

@@ -30,6 +30,9 @@ const FEEDBACK: FeedbackRecord = {
   diagnostics: null,
 };
 
+/** Node's fetch, captured before `beforeEach` swaps in the spy. */
+const realFetch = globalThis.fetch;
+
 let fetchSpy: ReturnType<typeof vi.fn>;
 let warnSpy: ReturnType<typeof vi.spyOn>;
 
@@ -345,6 +348,27 @@ describe("dispatchWebhook", () => {
     expect(logged).toContain("https://hooks.slack.com");
     expect(logged).not.toContain("XXXXSECRETTOKEN");
     expect(logged).not.toContain("/services/");
+  });
+
+  it.each([
+    ["with userinfo", "https://user:s3cret@hooks.example.com/hook/TOKEN123", "includes credentials"],
+    ["without a scheme", "hooks.slack.com/services/T0/B0/TOKEN123", "Failed to parse URL"],
+  ])("keeps the credential out of the log when fetch quotes a URL %s", async (_label, url, reason) => {
+    // Node's own fetch copies the URL it was given into these errors, and
+    // throws them before any network access.
+    fetchSpy.mockImplementation(realFetch);
+    const throwingOnError = () => {
+      throw new Error("callback bug");
+    };
+    await dispatchWebhook({ url }, FEEDBACK);
+    await dispatchWebhook({ url, onError: throwingOnError }, FEEDBACK);
+
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    for (const [logged] of warnSpy.mock.calls) {
+      expect(String(logged)).toContain(reason);
+      expect(String(logged)).not.toContain("TOKEN123");
+      expect(String(logged)).not.toContain("s3cret");
+    }
   });
 
   it("aborts the fetch when the per-webhook timeout elapses", async () => {
