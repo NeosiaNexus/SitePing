@@ -75,6 +75,20 @@ describe("PrismaStore — ordering", () => {
   });
 });
 
+describe("PrismaStore — verifyProjectOwnership", () => {
+  it("reads only projectName, never the whole row (inline screenshot, diagnostics)", async () => {
+    const prisma = spyDelegate();
+    prisma.sitepingFeedback.findUnique.mockResolvedValue({ projectName: "p" });
+
+    await expect(new PrismaStore(prisma).verifyProjectOwnership("fb-1", "p")).resolves.toBe(true);
+
+    expect(prisma.sitepingFeedback.findUnique).toHaveBeenCalledWith({
+      where: { id: "fb-1" },
+      select: { projectName: true },
+    });
+  });
+});
+
 describe("PrismaStore — store error translation", () => {
   it("updateFeedback throws StoreNotFoundError (with the Prisma error as cause) on P2025", async () => {
     const prisma = spyDelegate();

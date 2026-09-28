@@ -529,7 +529,9 @@ export class PrismaStore implements SitepingStore {
   async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
     const record = (await this.prisma.sitepingFeedback.findUnique({
       where: { id },
-      // Only need projectName for the check — skip annotations
+      // Only need projectName for the check — not the annotations, nor an
+      // inline screenshot data URL or the diagnostics JSON
+      select: { projectName: true },
     })) as { projectName: string } | null;
     return record !== null && record.projectName === projectName;
   }
