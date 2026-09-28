@@ -922,6 +922,15 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
       page.resolve({ feedbacks: [r0, ...open], total: 4 });
       await refreshing;
     });
+    // Those counts raced the change, so its settling starts a recount: hold it,
+    // or its fresh totals would mask what the rollback did to the counts.
+    const real = source.list.getMockImplementation();
+    if (!real) throw new Error("no list implementation");
+    const recount = deferred<void>();
+    source.list.mockImplementation(async (query) => {
+      if (query.limit === 1) await recount.promise;
+      return real(query);
+    });
     await act(async () => {
       held.reject(new Error("patch failed"));
       await change;
@@ -931,6 +940,11 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
     expect(result.current.items.find((r) => r.id === "r2")?.status).toBe("open");
     expect(result.current.total).toBe(4);
     // The refresh's counts already hold the server's view — the failure must not invert its deltas there.
+    expect(result.current.counts).toMatchObject({ all: 6, open: 3, resolved: 1 });
+    await act(async () => {
+      recount.resolve();
+    });
+    await settle();
     expect(result.current.counts).toMatchObject({ all: 6, open: 3, resolved: 1 });
   });
 });
@@ -985,6 +999,29 @@ describe("useSitepingInbox — a failure on a record the loaded list no longer h
     expect(result.current.total).toBe(4);
     expect(result.current.counts).toMatchObject({ all: 4, open: 4 });
     expect(result.current.opened?.id).toBe("m3");
+  });
+
+  it("a failed change leaves a page 1 refetched meanwhile as the server sent it", async () => {
+    const { source, result } = await mountDrawerOnly("open");
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+    let change!: Promise<unknown>;
+    act(() => {
+      change = result.current.changeStatus("m3", "resolved").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      await result.current.refresh(); // back to page 1: m3 sits on page 2 again
+    });
+    await act(async () => {
+      held.reject(new Error("patch failed"));
+      await change;
+    });
+
+    expect(ids(result.current.items)).toEqual(["m0", "m1"]);
+    expect(result.current.total).toBe(4);
   });
 
   it("a failed undo takes back the row it re-inserted, and the focus with it", async () => {
