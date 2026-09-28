@@ -19,7 +19,7 @@ Le rectangle lui-même est stocké **en pourcentages de la boîte englobante de 
 
 **Se dégrade :** la suppression de l'élément (plus rien à quoi s'ancrer), les réécritures lourdes qui changent d'un coup la balise, le texte et la position, et le contenu à l'intérieur d'un **Shadow DOM**, que le moteur d'ancrage ne traverse pas aujourd'hui (suivi dans [#177](https://github.com/NeosiaNexus/SitePing/issues/177)).
 
-Quand une ancre ne peut pas être résolue lors d'une visite ultérieure, le marqueur est masqué pour cette page plutôt qu'affiché au mauvais endroit — un marqueur manquant est déroutant, un marqueur qui ment est pire. Le feedback lui-même (message, capture, métadonnées) n'est jamais perdu : il reste visible dans le panneau et dans le dashboard.
+Quand une ancre ne peut pas être résolue lors d'une visite ultérieure, son marqueur reste masqué plutôt qu'affiché au mauvais endroit — un marqueur manquant est déroutant, un marqueur qui ment est pire. Les marqueurs se revérifient au défilement, au redimensionnement et aux changements du DOM de la page : un élément rendu tardivement (contenu chargé à la demande ou rendu côté client) obtient son marqueur lors d'une vérification suivante. Chaque annotation d'un feedback a son propre marqueur, si bien qu'une ancre manquante ne masque jamais les autres. Le feedback lui-même (message, capture, métadonnées) n'est jamais perdu : il reste visible dans le panneau et dans le dashboard.
 
 ## Aider les ancres à vous aider
 

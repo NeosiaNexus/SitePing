@@ -19,7 +19,7 @@ Alongside the anchor, each annotation records the capture context (viewport size
 
 **Degrades:** deleting the element (nothing to anchor to), heavy rewrites that change tag, text, and position at once, and content inside **Shadow DOM**, which the anchor engine doesn't pierce today (tracked in [#177](https://github.com/NeosiaNexus/SitePing/issues/177)).
 
-When an anchor can't be resolved on a later visit, the marker is hidden for that page view rather than shown somewhere wrong — a missing marker is confusing, a lying one is worse. The feedback itself (message, screenshot, metadata) is never lost; it's always visible in the panel and the dashboard.
+When an anchor can't be resolved on a later visit, its marker stays hidden rather than shown somewhere wrong — a missing marker is confusing, a lying one is worse. Markers re-check on scroll, resize, and page DOM changes, so an element that renders late (lazy-loaded or client-side content) gets its marker on a later check. Each annotation of a feedback has its own marker, so one missing anchor never hides the others. The feedback itself (message, screenshot, metadata) is never lost; it's always visible in the panel and the dashboard.
 
 ## Helping the anchors help you
 
