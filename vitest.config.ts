@@ -14,13 +14,11 @@ export default defineConfig({
     // These packages export only their built `dist`. Tests that import one
     // (the widget's bulk-action test runs over real stores, adapter-prisma
     // delegates to @siteping/server, adapter-drizzle mounts its store behind
-    // adapter-prisma's handler) resolve it to source like `@siteping/core`,
-    // so they need no prior build and never run a stale copy of the engine
-    // after a core edit.
+    // it) resolve it to source like `@siteping/core`, so they need no prior
+    // build and never run a stale copy of the engine after a core edit.
     alias: {
       "@siteping/adapter-localstorage": source("adapter-localstorage"),
       "@siteping/adapter-memory": source("adapter-memory"),
-      "@siteping/adapter-prisma": source("adapter-prisma"),
       "@siteping/server": source("server"),
     },
   },

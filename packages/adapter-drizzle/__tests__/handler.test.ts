@@ -1,12 +1,12 @@
-import { createSitepingHandler, type SitepingHandler } from "@siteping/adapter-prisma";
+import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLibSQLSitepingStore } from "../src/libsql/index.js";
 import { createPgSitepingStore } from "../src/pg/index.js";
 import type { DrizzleStore } from "../src/shared/store.js";
 import { createLibSQLTestDatabase, createPgTestDatabase } from "./databases.js";
 
-// The documented deployment: the Drizzle store mounted behind adapter-prisma's
-// store-agnostic handler, over the same real engines as the other tests.
+// The documented deployment: the Drizzle store mounted behind @siteping/server's
+// handler, over the same real engines as the other tests.
 
 const ENDPOINT = "http://localhost/api/siteping";
 const WEBHOOK = { url: "https://hooks.example.com/siteping" };

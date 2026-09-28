@@ -26,8 +26,8 @@
       "dependencies": {
         "@siteping/adapter-localstorage": "workspace:*",
         "@siteping/adapter-memory": "workspace:*",
-        "@siteping/adapter-prisma": "workspace:*",
         "@siteping/dashboard": "workspace:*",
+        "@siteping/server": "workspace:*",
         "@siteping/widget": "workspace:*",
         "fumadocs-core": "^16.15.11",
         "fumadocs-mdx": "^15.4.1",
@@ -52,8 +52,8 @@
       "devDependencies": {
         "@electric-sql/pglite": "^0.5.8",
         "@libsql/client": "^0.18.0",
-        "@siteping/adapter-prisma": "workspace:*",
         "@siteping/core": "workspace:*",
+        "@siteping/server": "workspace:*",
         "drizzle-kit": "^0.31.11",
         "drizzle-orm": "^0.45.3",
       },
