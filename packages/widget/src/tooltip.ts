@@ -77,8 +77,10 @@ export class Tooltip {
   }
 
   show(feedback: FeedbackResponse, anchorRect: DOMRect): void {
-    if (this.currentFeedbackId === feedback.id) return;
+    // Cancel a pending hide first — the pointer may have left the marker and
+    // come back within HIDE_DELAY, which re-shows the same feedback.
     this.cancelHide();
+    if (this.currentFeedbackId === feedback.id) return;
     this.cancelShow();
 
     this.showTimer = setTimeout(() => {

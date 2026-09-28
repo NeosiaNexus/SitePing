@@ -212,6 +212,21 @@ describe("Tooltip", () => {
     });
   });
 
+  describe("pointer returns to the same marker", () => {
+    it("re-showing the same feedback within the hide delay keeps the tooltip open", () => {
+      const fb = makeFeedback();
+      tooltip.show(fb, makeDOMRect(100, 200, 26, 26));
+      vi.advanceTimersByTime(200);
+
+      tooltip.scheduleHide(); // pointer leaves the marker…
+      vi.advanceTimersByTime(40);
+      tooltip.show(fb, makeDOMRect(100, 200, 26, 26)); // …and returns within 80ms
+      vi.advanceTimersByTime(200);
+
+      expect(document.getElementById("sp-tooltip")!.style.opacity).toBe("1");
+    });
+  });
+
   // -------------------------------------------------------------------------
   // contains
   // -------------------------------------------------------------------------
