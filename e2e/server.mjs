@@ -1,11 +1,49 @@
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const widgetDistDir = join(__dirname, "../packages/widget/dist");
 const widgetJs = readFileSync(join(widgetDistDir, "index.js"), "utf-8");
+
+/**
+ * Host-modal fixture (a real Radix Dialog), bundled once at startup with the
+ * widget's own esbuild — a direct dependency there, pinned to the root
+ * `overrides.esbuild` spec.
+ */
+const esbuild = createRequire(join(__dirname, "../packages/widget/package.json"))("esbuild");
+const radixDialogJs = esbuild.buildSync({
+  entryPoints: [join(__dirname, "fixtures/radix-dialog.tsx")],
+  bundle: true,
+  write: false,
+  format: "esm",
+  jsx: "automatic",
+  define: { "process.env.NODE_ENV": '"production"' },
+}).outputFiles[0].text;
+
+// The page reads ?project=xxx (per-browser isolation, like "/") itself, so
+// nothing from the URL is written into the HTML. ?closedShadow=1 reports
+// NODE_ENV 'production' (forceShow still mounts the widget), so the widget
+// attaches its production closed shadow root instead of the open test one.
+const MODAL_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Siteping E2E host modal</title></head>
+<body style="margin:0;font-family:system-ui">
+  <p id="page-content" style="padding:40px">Page behind the modal.</p>
+  <script>
+    const params = new URLSearchParams(location.search);
+    globalThis.process = { env: { NODE_ENV: params.get("closedShadow") === "1" ? "production" : "test" } };
+  </script>
+  <script type="module" src="/radix-dialog.js"></script>
+  <script type="module">
+    import { initSiteping } from "/widget.js";
+    const projectName = new URLSearchParams(location.search).get("project") || "e2e-test";
+    window.__siteping = initSiteping({ endpoint: "/api/siteping", projectName, forceShow: true });
+  </script>
+</body>
+</html>`;
 
 /** In-memory feedback store */
 let feedbacks = [];
@@ -168,6 +206,19 @@ const PANEL_ACTIONS_CONFIG = `      panelActions: [
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost:3999");
+
+  if (url.pathname === "/radix-dialog.js") {
+    res.writeHead(200, { "Content-Type": "application/javascript" });
+    res.end(radixDialogJs);
+    return;
+  }
+
+  // Host page with an open Radix modal (see MODAL_HTML)
+  if (url.pathname === "/modal") {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(MODAL_HTML);
+    return;
+  }
 
   // Serve widget JS
   if (url.pathname === "/widget.js") {
