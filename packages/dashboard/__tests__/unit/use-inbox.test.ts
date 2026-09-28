@@ -536,6 +536,30 @@ describe("useSitepingInbox — resilience & drawer survival", () => {
     expect(result.current.opened?.status).toBe("resolved");
   });
 
+  it("the opened record tracks an in-flight change (and its rollback) after its row left the list", async () => {
+    const source = makeSource(demoRecords());
+    const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => result.current.openFeedback("r1"));
+    await act(async () => {
+      await result.current.changeStatus("r1", "resolved"); // leaves the open list
+    });
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+    let change!: Promise<unknown>;
+    act(() => {
+      change = result.current.changeStatus("r1", "in_progress").catch((e: unknown) => e);
+    });
+    expect(result.current.opened?.status).toBe("in_progress");
+
+    await act(async () => {
+      held.reject(new Error("patch failed"));
+      await change;
+    });
+    expect(result.current.opened?.status).toBe("resolved");
+  });
+
   it("clears a pending undo when the same feedback is deleted", async () => {
     const source = makeSource(demoRecords());
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source }));

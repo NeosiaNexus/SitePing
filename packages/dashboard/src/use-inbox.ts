@@ -176,6 +176,13 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const [exhausted, setExhausted] = useState(false);
   /** The opened record — kept so the drawer survives its row leaving the filtered list. */
   const openedCacheRef = useRef<FeedbackRecord | null>(null);
+  // State twin: once the row has left the list, a cache write is the only
+  // change `opened` sees — without it the drawer shows a stale status.
+  const [openedCache, setOpenedCache] = useState<FeedbackRecord | null>(null);
+  const commitOpenedCache = useCallback((record: FeedbackRecord | null) => {
+    openedCacheRef.current = record;
+    setOpenedCache(record);
+  }, []);
   /** Full record behind `pendingUndo` — undo must work after the row left the list. */
   const undoRecordRef = useRef<FeedbackRecord | null>(null);
   const commitPendingUndo = useCallback((next: InboxState["pendingUndo"]) => {
@@ -193,9 +200,9 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       setOpenedId(null);
       commitPendingUndo(null);
       undoRecordRef.current = null;
-      openedCacheRef.current = null;
+      commitOpenedCache(null);
     }
-  }, [projects, firstProject, commitPendingUndo]);
+  }, [projects, firstProject, commitPendingUndo, commitOpenedCache]);
 
   // Debounce search → refetch trigger. `search` itself updates synchronously.
   useEffect(() => {
@@ -357,15 +364,19 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     });
   }, []);
 
-  const openFeedback = useCallback((id: string) => {
-    const record =
-      itemsRef.current.find((f) => f.id === id) ?? (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
-    // Nothing to show: opening would render no drawer yet still count as "open".
-    if (!record) return;
-    openedCacheRef.current = record;
-    setOpenedId(id);
-    setFocusedId(id);
-  }, []);
+  const openFeedback = useCallback(
+    (id: string) => {
+      const record =
+        itemsRef.current.find((f) => f.id === id) ??
+        (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
+      // Nothing to show: opening would render no drawer yet still count as "open".
+      if (!record) return;
+      commitOpenedCache(record);
+      setOpenedId(id);
+      setFocusedId(id);
+    },
+    [commitOpenedCache],
+  );
 
   const closeFeedback = useCallback(() => setOpenedId(null), []);
 
@@ -373,8 +384,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     if (openedId === null) return null;
     const inList = items.find((f) => f.id === openedId);
     if (inList) return inList;
-    return openedCacheRef.current?.id === openedId ? openedCacheRef.current : null;
-  }, [items, openedId]);
+    return openedCache?.id === openedId ? openedCache : null;
+  }, [items, openedId, openedCache]);
 
   // -------------------------------------------------------------------------
   // Mutations — optimistic, per-record rollback on error
@@ -517,9 +528,9 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         );
       }
       commitCounts(nextCounts);
-      if (optimistic !== null && openedCacheRef.current === optimistic) openedCacheRef.current = handle.prev;
+      if (optimistic !== null && openedCacheRef.current === optimistic) commitOpenedCache(handle.prev);
     },
-    [placeRecord, commitCounts],
+    [placeRecord, commitCounts, commitOpenedCache],
   );
 
   const applyStatusChange = useCallback(
@@ -560,7 +571,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const { removedAt } = placeRecord(id, optimistic);
       const focusMovedTo =
         wasFocused && removedAt !== -1 ? moveFocusAfterRemoval(itemsRef.current, removedAt) : undefined;
-      if (openedCacheRef.current?.id === id) openedCacheRef.current = optimistic;
+      if (openedCacheRef.current?.id === id) commitOpenedCache(optimistic);
       commitCounts(adjustCounts(countsRef.current, deltas));
       const handle = beginMutation(id, record, deltas);
       if (isUndo) {
@@ -577,7 +588,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         // A later mutation on this feedback owns the row now — don't clobber its optimistic state.
         if (settleMutation(id, handle, true)) {
           commitItems(itemsRef.current.map((f) => (f.id === id ? saved : f)));
-          if (openedCacheRef.current?.id === id) openedCacheRef.current = saved;
+          if (openedCacheRef.current?.id === id) commitOpenedCache(saved);
           if (undoRecordRef.current?.id === id) undoRecordRef.current = saved;
         }
         // `prev` may have been rebased onto an earlier failed change — it is what the server held.
@@ -607,6 +618,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       commitItems,
       commitCounts,
       commitPendingUndo,
+      commitOpenedCache,
     ],
   );
 
@@ -648,7 +660,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         openedIdRef.current = null;
         setOpenedId(null);
       }
-      if (openedCacheRef.current?.id === id) openedCacheRef.current = null;
+      if (openedCacheRef.current?.id === id) commitOpenedCache(null);
       if (pendingUndoRef.current?.id === id) {
         commitPendingUndo(null);
         undoRecordRef.current = null;
@@ -666,7 +678,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
             rollback(id, handle, null, focusMovedTo);
             // Reopen the drawer unless another feedback was opened meanwhile.
             if (wasOpened && openedIdRef.current === null) {
-              openedCacheRef.current = handle.prev;
+              commitOpenedCache(handle.prev);
               openedIdRef.current = id;
               setOpenedId(id);
             }
@@ -690,6 +702,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       rollback,
       commitCounts,
       commitPendingUndo,
+      commitOpenedCache,
     ],
   );
 
@@ -705,9 +718,9 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       setOpenedId(null);
       commitPendingUndo(null);
       undoRecordRef.current = null;
-      openedCacheRef.current = null;
+      commitOpenedCache(null);
     },
-    [commitPendingUndo],
+    [commitPendingUndo, commitOpenedCache],
   );
 
   const setStatus = useCallback((s: InboxStatusFilter) => setStatusFilter(s), []);
