@@ -1,5 +1,12 @@
 import type { AssertEqual, FeedbackPayload, FeedbackStatus, FeedbackType, Prettify } from "@siteping/core";
-import { CONSOLE_DIAGNOSTIC_LEVELS, EMAIL_PATTERN, FEEDBACK_STATUSES, FEEDBACK_TYPES } from "@siteping/core";
+import {
+  ANCHOR_ELEMENT_ID_MAX,
+  ANCHOR_ELEMENT_TAG_MAX,
+  CONSOLE_DIAGNOSTIC_LEVELS,
+  EMAIL_PATTERN,
+  FEEDBACK_STATUSES,
+  FEEDBACK_TYPES,
+} from "@siteping/core";
 import * as zod from "zod";
 
 // Namespace import required: Zod publishes dual CJS/ESM, and bundlers (tsup, vitest) may
@@ -13,8 +20,8 @@ const anchorSchema = z.object({
   cssSelector: z.string().min(1).max(2000),
   xpath: z.string().min(1).max(2000),
   textSnippet: z.string().max(500),
-  elementTag: z.string().min(1),
-  elementId: z.string().optional(),
+  elementTag: z.string().min(1).max(ANCHOR_ELEMENT_TAG_MAX),
+  elementId: z.string().max(ANCHOR_ELEMENT_ID_MAX).optional(),
   textPrefix: z.string().max(200),
   textSuffix: z.string().max(200),
   fingerprint: z.string().max(200),

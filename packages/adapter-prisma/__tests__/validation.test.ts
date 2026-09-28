@@ -1,3 +1,4 @@
+import { ANCHOR_ELEMENT_ID_MAX, ANCHOR_ELEMENT_TAG_MAX } from "@siteping/core";
 import { describe, expect, it } from "vitest";
 import {
   feedbackCreateSchema,
@@ -162,6 +163,20 @@ describe("feedbackCreateSchema", () => {
       annotations: [{ ...validAnnotation, anchor: anchorWithout }],
     });
     expect(result.success).toBe(false);
+  });
+
+  it("caps anchor elementTag and elementId at the limits the widget captures within", () => {
+    const withAnchor = (anchor: Partial<typeof validAnnotation.anchor>) =>
+      feedbackCreateSchema.safeParse({
+        ...validPayload,
+        annotations: [{ ...validAnnotation, anchor: { ...validAnnotation.anchor, ...anchor } }],
+      }).success;
+
+    expect(
+      withAnchor({ elementTag: "X".repeat(ANCHOR_ELEMENT_TAG_MAX), elementId: "i".repeat(ANCHOR_ELEMENT_ID_MAX) }),
+    ).toBe(true);
+    expect(withAnchor({ elementTag: "X".repeat(ANCHOR_ELEMENT_TAG_MAX + 1) })).toBe(false);
+    expect(withAnchor({ elementId: "i".repeat(ANCHOR_ELEMENT_ID_MAX + 1) })).toBe(false);
   });
 
   it("accepts empty strings for text context fields", () => {

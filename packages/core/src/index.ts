@@ -68,6 +68,8 @@ export type {
   SitepingUnsubscribe,
 } from "./types.js";
 export {
+  ANCHOR_ELEMENT_ID_MAX,
+  ANCHOR_ELEMENT_TAG_MAX,
   BUILTIN_LOCALES,
   CLOSED_FEEDBACK_STATUSES,
   CONSOLE_DIAGNOSTIC_LEVELS,
