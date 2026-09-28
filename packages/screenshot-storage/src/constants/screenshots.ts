@@ -110,10 +110,3 @@ export const GENERATED_KEY_SUFFIX_PATTERN = new RegExp(`^${KEY_RANDOM_SOURCE}\\.
 
 /** Shape of a generated key (`<prefix><hex>.<ext>`) — the serve handler refuses anything else. */
 export const GENERATED_KEY_PATTERN = new RegExp(`^${KEY_PREFIX_SOURCE}${KEY_RANDOM_SOURCE}\\.${KEY_EXTENSION_SOURCE}$`);
-
-/**
- * Extra reclaim attempts after an upload with an unknown outcome, in ms from
- * the failure. The immediate reclaim can run before a timed-out upload is
- * committed by the backend; these later attempts catch such late commits.
- */
-export const UNCERTAIN_UPLOAD_RECLAIM_DELAYS_MS: readonly number[] = [5_000, 30_000, 120_000];

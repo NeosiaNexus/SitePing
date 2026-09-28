@@ -25,7 +25,6 @@ export {
 export { createPublicUrlMapping } from "./core/public-url.js";
 export {
   createScreenshotStorage,
-  type ReclaimScheduler,
   type ScreenshotStorageLogger,
   type ScreenshotStorageOptions,
   type UncertainUploadHook,
