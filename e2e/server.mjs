@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scriptSafeJson } from "./script-safe-json.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const widgetDistDir = join(__dirname, "../packages/widget/dist");
@@ -245,7 +246,9 @@ const server = createServer((req, res) => {
   // Serve HTML — accept ?project=xxx for per-browser isolation
   if (url.pathname === "/" || url.pathname === "/index.html") {
     const project = url.searchParams.get("project") || "e2e-test";
-    let html = HTML.replace("projectName: 'e2e-test'", `projectName: '${project}'`);
+    // A replacer function: a string replacement would expand `$'` and the
+    // like in the project name into parts of the page.
+    let html = HTML.replace("projectName: 'e2e-test'", () => `projectName: ${scriptSafeJson(project)}`);
     // ?noForceShow=1 omits forceShow from the init config so the production
     // guard in the real dist bundle is exercised: NODE_ENV is 'test' (set in
     // the page above), so the widget must still mount — see #104.

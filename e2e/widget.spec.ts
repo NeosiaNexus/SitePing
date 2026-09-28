@@ -1266,6 +1266,19 @@ test.describe("Production guard at dist level (#104)", () => {
   });
 });
 
+test.describe("Fixture page", () => {
+  // The server inlines ?project= into the page's init script. It must reach
+  // the widget as data: no `</script>` breakout, no `$'` splicing the rest of
+  // the page in through String#replace.
+  test("inlines ?project= into the init script as data, never markup", async ({ page, browserName }) => {
+    const project = `e2e-${browserName}-$'</script><script>window.__pwned = true</script>\u2028`;
+    const listed = page.waitForRequest((req) => new URL(req.url()).pathname === "/api/siteping");
+    await page.goto(`http://localhost:3999?project=${encodeURIComponent(project)}`);
+    expect(new URL((await listed).url()).searchParams.get("projectName")).toBe(project);
+    expect(await page.evaluate(() => "__pwned" in window)).toBe(false);
+  });
+});
+
 test.describe("Panel actions", () => {
   // Real-browser checks jsdom cannot make: icon inertness (Chromium runs an
   // <img onerror> hoisted out of an <svg> parsed with createContextualFragment),

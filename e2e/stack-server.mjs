@@ -26,6 +26,7 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join, normalize } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { scriptSafeJson } from "./script-safe-json.mjs";
 
 const PORT = 3998;
 const ORIGIN = `http://localhost:${PORT}`;
@@ -91,8 +92,6 @@ function widgetPage(params) {
     identity: { name: "E2E Tester", email: "e2e@example.com" },
     ...(diag ? { captureDiagnostics: { maxConsoleEntries: diag, maxNetworkEntries: diag } } : {}),
   };
-  // Inlined into a <script>: `<` is escaped so a query param can neither
-  // close the element (`</script>`) nor open a `<!--`.
   return `<!DOCTYPE html>
 <html lang="en"${rtl ? ' dir="rtl"' : ""}>
 <head>
@@ -113,7 +112,7 @@ function widgetPage(params) {
   <script>globalThis.process = { env: { NODE_ENV: "test" } };</script>
   <script type="module">
     import { initSiteping } from "/widget.js";
-    window.__siteping = initSiteping(${JSON.stringify(config).replace(/</g, "\\u003c")});
+    window.__siteping = initSiteping(${scriptSafeJson(config)});
   </script>
 </body>
 </html>`;
