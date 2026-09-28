@@ -53,9 +53,26 @@ export interface I18n<T> {
   registerLocale(code: string, translations: Partial<T>): void;
 }
 
-/** Normalise a BCP-47 tag down to the base language used for dictionary lookups. */
+/**
+ * Normalise a locale tag down to the base language used for dictionary
+ * lookups — BCP-47 `fr-FR` and backend-style `fr_FR` both resolve to `fr`.
+ */
 function normaliseLang(locale: string): string {
-  return (locale.split("-")[0] ?? locale).toLowerCase();
+  return (locale.split(/[-_]/)[0] ?? locale).toLowerCase();
+}
+
+/**
+ * `locale` as `Intl` accepts it. Locale options take any string, and a
+ * backend-style tag (`fr_FR` from PHP / WordPress) makes every `Intl`
+ * constructor and `toLocale*` call throw a RangeError: `_` reads as `-`, and
+ * a tag `Intl` still rejects falls back to English, as `createT` does.
+ */
+export function intlLocale(locale: string): string {
+  try {
+    return Intl.getCanonicalLocales(locale.replace(/_/g, "-"))[0] ?? "en";
+  } catch {
+    return "en";
+  }
 }
 
 /**

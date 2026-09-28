@@ -1,6 +1,6 @@
 import type { FeedbackRecord } from "@siteping/core";
 import type { ReactElement } from "react";
-import { formatAbsolute, formatRelativeTime, pathFromUrl } from "../format.js";
+import { formatAbsolute, formatRelativeTime, pathFromUrl, toDateTimeAttr } from "../format.js";
 import { getStatusLabel, getTypeLabel } from "../i18n/index.js";
 import { STATUS_ICONS, useInboxUi } from "./context.js";
 import { CameraIcon } from "./icons.js";
@@ -72,7 +72,7 @@ export function Row({ record, domId, focused, selected, leaving, onSelect, refCa
       ) : null}
       <time
         className="spd-row-time"
-        dateTime={record.createdAt.toISOString()}
+        dateTime={toDateTimeAttr(record.createdAt)}
         title={formatAbsolute(record.createdAt, locale)}
       >
         {formatRelativeTime(record.createdAt, t)}

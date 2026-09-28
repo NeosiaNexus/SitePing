@@ -4,13 +4,14 @@
  * near-identical copies of the same logic. Any adapter that holds an
  * in-memory snapshot of feedbacks can use it.
  *
- * Filtering order matches the historical adapter behaviour:
- *   1. projectName  (always required)
- *   2. type
- *   3. status / statuses  (`statuses` bucket wins when both are set)
- *   4. url
- *   5. urlPattern
- *   6. search       (lowercase substring match on `message`)
+ * A record matches when it passes every active filter (see
+ * {@link matchesFeedbackQuery}):
+ *   - projectName  (always required)
+ *   - type
+ *   - status / statuses  (`statuses` bucket wins when both are set)
+ *   - url
+ *   - urlPattern
+ *   - search       (lowercase substring match on `message`)
  *
  * Pagination goes through `clampPagination`: `limit` capped at 100, `page`
  * 1-based, both clamped up to 1 rather than indexing backwards from the end
@@ -89,6 +90,26 @@ function sortTime(record: FeedbackRecord): number {
 }
 
 /**
+ * Whether one record passes every filter of `query` — the filter half of
+ * {@link applyFeedbackFilters}, exposed so a client holding a single record
+ * (e.g. the dashboard deciding whether an optimistic edit still belongs in
+ * its list) applies exactly the stores' semantics. Pagination is ignored.
+ */
+export function matchesFeedbackQuery(record: FeedbackRecord, query: FeedbackQuery): boolean {
+  const { type, status, statuses, url, urlPattern, search } = query;
+  return (
+    record.projectName === query.projectName &&
+    (!type || record.type === type) &&
+    // `statuses` (bucket / any-of) wins over the exact `status` filter when
+    // both are present; an empty array is treated as absent.
+    (statuses && statuses.length > 0 ? statuses.includes(record.status) : !status || record.status === status) &&
+    (!url || record.url === url) &&
+    (!urlPattern || record.urlPattern === urlPattern) &&
+    (!search || record.message.toLowerCase().includes(search.toLowerCase()))
+  );
+}
+
+/**
  * Apply the standard feedback filter + pagination pipeline against an
  * in-memory snapshot. Used by `MemoryStore.getFeedbacks` and
  * `LocalStorageStore.getFeedbacks` so the two never drift.
@@ -97,23 +118,7 @@ function sortTime(record: FeedbackRecord): number {
  * @param query  Filter and pagination options. `projectName` is required.
  */
 export function applyFeedbackFilters(items: readonly FeedbackRecord[], query: FeedbackQuery): FilterResult {
-  let results: FeedbackRecord[] = items.filter((f) => f.projectName === query.projectName);
-
-  if (query.type) results = results.filter((f) => f.type === query.type);
-  // `statuses` (bucket / any-of) wins over the exact `status` filter when both
-  // are present; an empty array is treated as absent.
-  if (query.statuses && query.statuses.length > 0) {
-    const allowed = query.statuses;
-    results = results.filter((f) => allowed.includes(f.status));
-  } else if (query.status) {
-    results = results.filter((f) => f.status === query.status);
-  }
-  if (query.url) results = results.filter((f) => f.url === query.url);
-  if (query.urlPattern) results = results.filter((f) => f.urlPattern === query.urlPattern);
-  if (query.search) {
-    const s = query.search.toLowerCase();
-    results = results.filter((f) => f.message.toLowerCase().includes(s));
-  }
+  const results = items.filter((f) => matchesFeedbackQuery(f, query));
 
   // Newest first is part of the store contract (PrismaStore orders by
   // createdAt desc) — sort explicitly instead of relying on insertion order.

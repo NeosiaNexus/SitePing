@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 import type { FeedbackRecord } from "@siteping/core";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { SitepingInbox } from "../../src/components/inbox.js";
 import type { InboxCustomSourceOptions, SitepingInboxPresentationProps } from "../../src/types.js";
-import { makeDiagnostics, makeRecord, makeSource, REGION } from "../helpers.js";
+import { deferred, makeDiagnostics, makeRecord, makeSource, REGION } from "../helpers.js";
 import { installJsdomStubs } from "../render.js";
 
 beforeAll(() => installJsdomStubs());
@@ -183,6 +183,33 @@ describe("SitepingInbox — keyboard", () => {
     await waitFor(() => expect(listRows()).toHaveLength(3)); // o1 reinstated
   });
 
+  /** Mount under a backend-style tag Intl rejects, and wait until the French dictionary is in. */
+  async function readyInFrFR(): Promise<HTMLElement> {
+    renderInbox({ locale: "fr_FR" });
+    const listbox = await ready();
+    await screen.findByRole("region", { name: "Boîte de réception des feedbacks" });
+    return listbox;
+  }
+
+  it("renders a backend-style fr_FR tag in French, with a valid lang, and e still toasts", async () => {
+    const listbox = await readyInFrFR();
+    expect(listbox.closest(".spd-root")?.getAttribute("lang")).toBe("fr-FR");
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "e" });
+    expect(await screen.findByText("Marqué comme résolu")).toBeTruthy();
+  });
+
+  it("opening a feedback with diagnostics under fr_FR keeps the inbox mounted", async () => {
+    const listbox = await readyInFrFR();
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "j" }); // o2 carries diagnostics
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    const dialog = await screen.findByRole("dialog", { name: /Détail du feedback/ });
+    const times = dialog.querySelectorAll("time.spd-diag-time");
+    expect(times.length).toBeGreaterThan(0);
+    for (const time of times) expect(time.textContent).toMatch(/\d/);
+  });
+
   it("p marks the focused row in progress and it leaves the open tab", async () => {
     renderInbox();
     const listbox = await ready();
@@ -208,6 +235,22 @@ describe("SitepingInbox — keyboard", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull());
   });
 
+  it("ignores every shortcut but ? and Esc while the shortcuts overlay is open", async () => {
+    const { source } = renderInbox();
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+    fireEvent.keyDown(listbox, { key: "?" });
+    const overlay = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+
+    for (const key of ["e", "j", "4", "u", "r"]) fireEvent.keyDown(overlay, { key });
+    expect(source.setStatus).not.toHaveBeenCalled();
+    expect(listRows()[0]?.className).toContain("spd-row-focused"); // j did not move focus
+    expect(screen.getByRole("radio", { name: /^Open/ }).getAttribute("aria-checked")).toBe("true"); // 4 ignored
+
+    fireEvent.keyDown(overlay, { key: "?" }); // ? still toggles it closed
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull());
+  });
+
   it("number keys switch status tabs (4 → resolved)", async () => {
     renderInbox();
     const listbox = await ready();
@@ -217,6 +260,61 @@ describe("SitepingInbox — keyboard", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]?.getAttribute("data-status")).toBe("resolved");
     });
+  });
+
+  it("drops a focus the new tab doesn't contain — Enter never opens an invisible drawer", async () => {
+    renderInbox();
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+    fireEvent.keyDown(listbox, { key: "4" }); // Resolved tab — o1 isn't in it
+    await waitFor(() => expect(listRows().map((row) => row.getAttribute("data-status"))).toEqual(["resolved"]));
+
+    const active = listbox.getAttribute("aria-activedescendant");
+    expect(active === null || document.getElementById(active) !== null).toBe(true);
+
+    fireEvent.keyDown(listbox, { key: "Enter" }); // nothing focused: no-op
+    expect(screen.queryByRole("dialog", { name: /Feedback details/ })).toBeNull();
+    fireEvent.keyDown(listbox, { key: "j" }); // navigation still works
+    await waitFor(() => expect(listRows()[0]?.className).toContain("spd-row-focused"));
+  });
+
+  it("keeps keyboard focus in the inbox when resolving the last row empties the tab", async () => {
+    const only = makeRecord({ id: "solo", status: "open", message: "The only open one" });
+    renderInbox({}, [only]);
+    const listbox = await ready();
+    listbox.focus();
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "e" }); // last row leaves → empty state replaces the listbox
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+
+    // The focused listbox unmounted: focus must not fall to <body>, or every
+    // shortcut dies until the user clicks back into the inbox.
+    const root = document.querySelector(".spd-root");
+    expect(root?.contains(document.activeElement)).toBe(true);
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "4" }); // shortcuts still work
+    await waitFor(() => expect(listRows().map((row) => row.getAttribute("data-status"))).toEqual(["resolved"]));
+  });
+
+  it("keeps keyboard focus in the inbox when the drawer closes over an emptied tab", async () => {
+    const only = makeRecord({ id: "solo", status: "open", message: "The only open one" });
+    renderInbox({}, [only]);
+    const listbox = await ready();
+    listbox.focus();
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "Enter" }); // overlay drawer takes focus
+    const dialog = await screen.findByRole("dialog", { name: /Feedback details/ });
+    fireEvent.keyDown(dialog, { key: "e" }); // resolved from the drawer → the empty state replaces the listbox
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Feedback details/ })).toBeNull());
+    // No listbox to return to: focus must stay in the inbox, not fall to <body>.
+    const root = document.querySelector(".spd-root");
+    expect(root?.contains(document.activeElement)).toBe(true);
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "4" }); // shortcuts still work
+    await waitFor(() => expect(listRows().map((row) => row.getAttribute("data-status"))).toEqual(["resolved"]));
   });
 
   it("ignores j/k while the overlay drawer is open (the list is behind the backdrop)", async () => {
@@ -239,6 +337,64 @@ describe("SitepingInbox — keyboard", () => {
     fireEvent.keyDown(listbox, { key: "e" }); // resolves the opened record
     expect(await screen.findByText("Marked as resolved")).toBeTruthy();
     await waitFor(() => expect(listRows()).toHaveLength(2)); // o1 left the open list
+  });
+});
+
+describe("SitepingInbox — toasts with concurrent work", () => {
+  const FAILED = "Something went wrong. Change reverted.";
+
+  async function flush(): Promise<void> {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  it("a failed change doesn't suppress a concurrent change's success toast", async () => {
+    const { source } = renderInbox();
+    const listbox = await ready();
+    await flush();
+    const first = deferred<FeedbackRecord>();
+    const second = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+    fireEvent.keyDown(listbox, { key: "e" }); // o1 in flight — focus moves to o2
+    await waitFor(() => expect(listRows()).toHaveLength(2));
+    fireEvent.keyDown(listbox, { key: "e" }); // o2 in flight
+    await waitFor(() => expect(listRows()).toHaveLength(1));
+
+    await act(async () => {
+      first.reject(new Error("patch failed"));
+    });
+    expect(await screen.findByText(FAILED)).toBeTruthy();
+
+    const o2 = source.records.find((r) => r.id === "o2") as FeedbackRecord;
+    await act(async () => {
+      second.resolve({ ...o2, status: "resolved" });
+    });
+    expect(await screen.findByText("Marked as resolved")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Undo/ })).toBeTruthy();
+  });
+
+  it("a failed refresh during a change neither toasts 'reverted' nor hides the success toast", async () => {
+    const { source } = renderInbox();
+    const listbox = await ready();
+    await flush();
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "e" }); // o1 in flight
+    source.list.mockRejectedValueOnce(new Error("refresh failed"));
+    fireEvent.keyDown(listbox, { key: "r" });
+    await flush();
+    expect(screen.queryByText(FAILED)).toBeNull();
+
+    const o1 = source.records.find((r) => r.id === "o1") as FeedbackRecord;
+    await act(async () => {
+      held.resolve({ ...o1, status: "resolved" });
+    });
+    expect(await screen.findByText("Marked as resolved")).toBeTruthy();
   });
 });
 
@@ -346,7 +502,8 @@ describe("SitepingInbox — drawer", () => {
     expect(dialog.tagName).toBe("DIV");
   });
 
-  it("is a non-modal region in side-by-side (wide) mode", async () => {
+  /** Run `body` with a ResizeObserver reporting a wide (side-by-side) container. */
+  async function withWideLayout(body: () => Promise<void>): Promise<void> {
     const original = globalThis.ResizeObserver;
     class WideResizeObserver {
       private readonly cb: ResizeObserverCallback;
@@ -361,15 +518,47 @@ describe("SitepingInbox — drawer", () => {
     }
     globalThis.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
     try {
+      await body();
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
+  }
+
+  it("is a non-modal region in side-by-side (wide) mode", async () => {
+    await withWideLayout(async () => {
       renderInbox();
       const listbox = await ready();
       fireEvent.keyDown(listbox, { key: "j" });
       fireEvent.keyDown(listbox, { key: "Enter" });
       const panel = await screen.findByRole("region", { name: /Feedback details/ });
       expect(panel.getAttribute("aria-modal")).toBeNull();
-    } finally {
-      globalThis.ResizeObserver = original;
-    }
+    });
+  });
+
+  it("returns focus to the list when the side-by-side drawer closes or its record is deleted", async () => {
+    await withWideLayout(async () => {
+      renderInbox();
+      const listbox = await ready();
+      fireEvent.keyDown(listbox, { key: "j" });
+      fireEvent.keyDown(listbox, { key: "Enter" });
+
+      // Clicking inside the panel moves focus there; unmounting it must not drop focus to <body>.
+      const panel = await screen.findByRole("region", { name: /Feedback details/ });
+      const close = within(panel).getByRole("button", { name: "Close details" });
+      close.focus();
+      fireEvent.click(close);
+      await waitFor(() => expect(screen.queryByRole("region", { name: /Feedback details/ })).toBeNull());
+      expect(document.activeElement).toBe(listbox);
+
+      fireEvent.keyDown(listbox, { key: "Enter" }); // reopen o1
+      const reopened = await screen.findByRole("region", { name: /Feedback details/ });
+      fireEvent.click(within(reopened).getByRole("button", { name: "Delete feedback" }));
+      const confirm = within(reopened).getByRole("button", { name: "Delete" });
+      confirm.focus();
+      fireEvent.click(confirm);
+      await waitFor(() => expect(screen.queryByRole("region", { name: /Feedback details/ })).toBeNull());
+      expect(document.activeElement).toBe(listbox);
+    });
   });
 });
 

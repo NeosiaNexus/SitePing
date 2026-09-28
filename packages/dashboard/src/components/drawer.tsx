@@ -1,7 +1,14 @@
 import type { FeedbackRecord, FeedbackStatus } from "@siteping/core";
 import type { ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import { buildDeepLink, formatAbsolute, formatRelativeTime, resolveRecordUrl, shortId } from "../format.js";
+import {
+  buildDeepLink,
+  formatAbsolute,
+  formatRelativeTime,
+  resolveRecordUrl,
+  shortId,
+  toDateTimeAttr,
+} from "../format.js";
 import { getTypeLabel } from "../i18n/index.js";
 import { useInboxUi } from "./context.js";
 import { Diagnostics } from "./diagnostics.js";
@@ -35,7 +42,7 @@ export function Drawer({
   onChangeStatus,
   onDelete,
 }: DrawerProps): ReactElement {
-  const { t, locale } = useInboxUi();
+  const { t, locale, focusList } = useInboxUi();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -45,17 +52,20 @@ export function Drawer({
   // button natively activates it, which would turn the advertised
   // "Enter jumps to the page" into "Enter closes the drawer") and returns to
   // the opener on unmount. Side-by-side mode is a complementary panel: focus
-  // stays in the listbox so j/k/Enter keep working uninterrupted.
+  // stays in the listbox so j/k/Enter keep working uninterrupted — but a click
+  // inside it (close, delete) moves focus there, and unmounting the panel then
+  // drops it to <body>, so it goes back to the listbox.
   useEffect(() => {
-    if (!overlay) return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    panelRef.current?.focus();
+    const previous = overlay && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (overlay) panelRef.current?.focus();
     return () => {
       const active = document.activeElement;
       const leftInside = active === null || active === document.body || panelRef.current?.contains(active) === true;
-      if (leftInside && previous?.isConnected) previous.focus();
+      if (!leftInside) return;
+      if (previous?.isConnected) previous.focus();
+      else focusList();
     };
-  }, [overlay]);
+  }, [overlay, focusList]);
 
   // Focus trap — only in overlay mode; side-by-side keeps the natural tab order.
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
@@ -154,7 +164,7 @@ export function Drawer({
             </dd>
             <dt className="spd-meta-label">{t("drawer.submitted")}</dt>
             <dd className="spd-meta-value">
-              <time dateTime={record.createdAt.toISOString()}>{formatAbsolute(record.createdAt, locale)}</time>
+              <time dateTime={toDateTimeAttr(record.createdAt)}>{formatAbsolute(record.createdAt, locale)}</time>
               {" · "}
               {formatRelativeTime(record.createdAt, t)}
             </dd>

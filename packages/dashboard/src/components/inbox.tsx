@@ -1,4 +1,4 @@
-import type { FeedbackStatus } from "@siteping/core";
+import { type FeedbackStatus, intlLocale } from "@siteping/core";
 import type { CSSProperties, ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useInsertionEffect, useMemo, useRef, useState } from "react";
 import { buildDeepLink } from "../format.js";
@@ -45,7 +45,6 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     className,
     deepLinkParam = "siteping",
     emptyState,
-    onError,
   } = props;
 
   // ----- i18n: English renders immediately; other locales upgrade when their chunk lands
@@ -68,6 +67,8 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     void localeTick; // new identity once the dictionary is registered
     return createT(locale);
   }, [locale, localeTick]);
+  // What every Intl / toLocale* call gets — a tag like "fr_FR" would throw there.
+  const intlTag = intlLocale(locale);
 
   // ----- toast slot (single)
   const toastSeq = useRef(0);
@@ -79,39 +80,22 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   const dismissToast = useCallback(() => setToast(null), []);
   const notify = useCallback((message: string) => showToast(message, false), [showToast]);
 
-  // ----- data hook, with mutation failures routed to the toast
-  const mutating = useRef(false);
-  const failed = useRef(false);
-  const handleError = useCallback(
-    (error: Error) => {
-      if (mutating.current && !failed.current) {
-        failed.current = true;
-        showToast(t("inbox.actionFailed"), false);
-      }
-      onError?.(error);
-    },
-    [onError, showToast, t],
-  );
-  // Forward the source-mode options as-is (the union shape must survive —
-  // rebuilding the object field-by-field would mix the modes) and only
-  // override onError with the toast-wiring handler.
-  const state = useSitepingInbox({ ...props, onError: handleError });
+  // ----- data hook. Failure toasts come from each mutation's own rejection
+  // (runMutation), never from onError: onError also fires for loads, and
+  // mutations overlap — shared flags mixed their outcomes up.
+  const state = useSitepingInbox(props);
 
-  /** Run a mutation; returns true when it (and its rollback path) stayed silent. */
+  /** Run a mutation; returns true when it succeeded, toasts the rollback when it didn't. */
   const runMutation = useCallback(
     async (action: () => Promise<void>): Promise<boolean> => {
-      mutating.current = true;
-      failed.current = false;
       try {
         await action();
+        return true;
       } catch {
-        // The hook rolled back; make sure exactly one failure toast shows.
-        if (!failed.current) showToast(t("inbox.actionFailed"), false);
-        failed.current = true;
-      } finally {
-        mutating.current = false;
+        // The hook rolled back and already reported through onError.
+        showToast(t("inbox.actionFailed"), false);
+        return false;
       }
-      return !failed.current;
     },
     [showToast, t],
   );
@@ -120,11 +104,11 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     async (id: string, status: FeedbackStatus): Promise<void> => {
       const ok = await runMutation(() => state.changeStatus(id, status));
       if (ok) {
-        const label = toastStatusLabel(getStatusLabel(status, t), locale);
+        const label = toastStatusLabel(getStatusLabel(status, t), intlTag);
         showToast(tWithParams(t, "inbox.markedAs", { status: label }), true);
       }
     },
-    [runMutation, state, showToast, t, locale],
+    [runMutation, state, showToast, t, intlTag],
   );
 
   const deleteFeedback = useCallback(
@@ -171,10 +155,36 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     return () => observer.disconnect();
   }, []);
 
-  // ----- return keyboard focus to the listbox (after a drawer/toast unmounts)
+  // ----- return keyboard focus to the listbox (after a drawer/toast unmounts),
+  // or to the root when the pane shows none (empty state, error, skeleton)
   const focusList = useCallback(() => {
-    rootRef.current?.querySelector<HTMLElement>(".spd-list")?.focus();
+    const root = rootRef.current;
+    (root?.querySelector<HTMLElement>(".spd-list") ?? root)?.focus();
   }, []);
+
+  // ----- keep keyboard focus in the inbox when the list pane swaps (the last
+  // row resolved → empty state, a refetch → skeleton): the focused listbox
+  // unmounts, focus falls to <body>, and every shortcut dies until the user
+  // clicks back in. Only reclaimed when focus was ours to begin with.
+  const focusInside = useRef(false);
+  useEffect(() => {
+    const track = (event: Event) => {
+      focusInside.current = rootRef.current?.contains(event.target as Node) ?? false;
+    };
+    document.addEventListener("focusin", track);
+    document.addEventListener("pointerdown", track);
+    return () => {
+      document.removeEventListener("focusin", track);
+      document.removeEventListener("pointerdown", track);
+    };
+  }, []);
+  const pane = state.view === "ready" ? "list" : state.view;
+  useEffect(() => {
+    void pane; // runs on every swap
+    const active = document.activeElement;
+    if (!focusInside.current || (active && active !== document.body && active !== rootRef.current)) return;
+    focusList();
+  }, [pane, focusList]);
 
   // ----- announce the result count whenever a fetch settles (separate from the toast)
   const [resultsMsg, setResultsMsg] = useState("");
@@ -232,6 +242,9 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
         event.preventDefault();
         return;
       }
+      // The cheat sheet is modal: the list behind it must not react. Only "?"
+      // (toggles it closed) gets through; Esc is handled above / by the overlay.
+      if (shortcutsOpen && event.key !== "?") return;
       if (inField) return;
 
       // Overlay mode hides the list behind a backdrop: list navigation is
@@ -314,7 +327,10 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   );
 
   // ----- render
-  const ui = useMemo<InboxUiContextValue>(() => ({ t, locale, notify, focusList }), [t, locale, notify, focusList]);
+  const ui = useMemo<InboxUiContextValue>(
+    () => ({ t, locale: intlTag, notify, focusList }),
+    [t, intlTag, notify, focusList],
+  );
 
   const showSkeleton = state.view === "loading";
   const showError = state.view === "error";
@@ -329,8 +345,10 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
         style={rootStyle}
         data-theme={resolvedTheme}
         data-density={density}
-        lang={locale}
+        lang={intlTag}
         aria-label={t("inbox.regionLabel")}
+        // Focus fallback when the listbox unmounts (see the pane effect above).
+        tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
         <Toolbar state={state} searchRef={searchRef} />

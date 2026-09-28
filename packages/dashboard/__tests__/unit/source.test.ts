@@ -147,6 +147,22 @@ describe("createEndpointSource — auth & headers", () => {
     await source.list({ projectName: "demo" });
     expect((lastCall(fetchFn).init.headers as Record<string, string>).Authorization).toBe("Bearer from-headers");
   });
+
+  it("lets an explicit header override the built-ins whatever its casing", async () => {
+    const fetchFn = jsonFetch(makeResponse());
+    const source = createEndpointSource({
+      endpoint: ENDPOINT,
+      apiKey: "KEY",
+      headers: { authorization: "Bearer SESSION", "content-type": "application/merge-patch+json" },
+      fetchFn,
+    });
+    await source.setStatus("fb-resp-1", "demo", "resolved");
+    // Duplicate-cased keys would go out joined ("Bearer KEY, Bearer SESSION").
+    expect(lastCall(fetchFn).init.headers).toEqual({
+      authorization: "Bearer SESSION",
+      "content-type": "application/merge-patch+json",
+    });
+  });
 });
 
 describe("createEndpointSource — setStatus() & remove()", () => {
