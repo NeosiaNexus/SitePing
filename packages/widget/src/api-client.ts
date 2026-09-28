@@ -193,11 +193,65 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
       }
 
       queue.push({ endpoint, payload });
-      localStorage.setItem(RETRY_QUEUE_KEY, JSON.stringify(queue));
+      if (tryWriteQueue(queue)) return;
+
+      // Quota exceeded: screenshots (base64 JPEG data URLs) dominate each
+      // entry, and up to MAX_QUEUE_SIZE entries share the origin's ~5 MB
+      // localStorage budget with the host page. Shed screenshots (the
+      // heaviest, least essential part of a replay) one at a time, oldest
+      // first like the eviction above, so no more are lost than the quota
+      // requires; the message, annotations and diagnostics still replay.
+      // If even the screenshot-free queue does not fit, evict the oldest
+      // entries.
+      const kept = queue.slice();
+      let stripped = 0;
+      for (const [index, entry] of kept.entries()) {
+        if (!hasScreenshot(entry)) continue;
+        kept[index] = withoutScreenshot(entry);
+        stripped += 1;
+        if (tryWriteQueue(kept)) {
+          console.warn(
+            `[siteping] retry queue exceeded the localStorage quota — dropped the screenshot of ${stripped} of ${queue.length} queued feedback(s)`,
+          );
+          return;
+        }
+      }
+      while (kept.length > 1) {
+        kept.shift();
+        if (tryWriteQueue(kept)) {
+          const dropped = queue.length - kept.length;
+          const lost = queue.slice(dropped).filter(hasScreenshot).length;
+          console.warn(
+            `[siteping] retry queue exceeded the localStorage quota — dropped the ${dropped} oldest of ${queue.length} queued feedback(s)${lost > 0 ? `, and the screenshot of ${lost} of the rest` : ""}`,
+          );
+          return;
+        }
+      }
+      // Every write failed, so the queue already stored is left as it was.
+      console.warn("[siteping] feedback could not be queued for retry — localStorage is full or unavailable");
     } catch {
-      // localStorage full or unavailable — the new entry is dropped
+      // localStorage unavailable — the new entry is dropped
     }
   });
+}
+
+function tryWriteQueue(queue: RetryEntry[]): boolean {
+  try {
+    localStorage.setItem(RETRY_QUEUE_KEY, JSON.stringify(queue));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasScreenshot(entry: RetryEntry): boolean {
+  return entry.payload.screenshotDataUrl != null;
+}
+
+/** Replay copy without the screenshot; its region is meaningless without the image. */
+function withoutScreenshot(entry: RetryEntry): RetryEntry {
+  const { screenshotDataUrl: _screenshotDataUrl, screenshotRegion: _screenshotRegion, ...payload } = entry.payload;
+  return { endpoint: entry.endpoint, payload };
 }
 
 function normalizeName(value: string): string {

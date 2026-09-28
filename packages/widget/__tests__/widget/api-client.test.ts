@@ -129,11 +129,15 @@ describe("ApiClient", () => {
    * Node test env has no persistent localStorage — back it with a Map so
    * queueForRetry's fire-and-forget write is observable.
    */
-  function stubLocalStorage(): Map<string, string> {
+  function stubLocalStorage(quotaChars = Number.POSITIVE_INFINITY): Map<string, string> {
     const store = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
+      setItem: (k: string, v: string) => {
+        // Browsers throw QuotaExceededError instead of storing an oversized value.
+        if (v.length > quotaChars) throw new DOMException("quota exceeded", "QuotaExceededError");
+        store.set(k, v);
+      },
       removeItem: (k: string) => void store.delete(k),
       clear: () => store.clear(),
     });
@@ -173,6 +177,143 @@ describe("ApiClient", () => {
     vi.useRealTimers();
 
     expect(readQueue(store)).toHaveLength(1);
+
+    vi.unstubAllGlobals();
+  });
+
+  async function failWithNetworkError(payload: FeedbackPayload): Promise<void> {
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+    await expectTransientFailure(client, payload);
+  }
+
+  const screenshotPayload = {
+    ...basePayload,
+    screenshotDataUrl: `data:image/jpeg;base64,${"A".repeat(4_000)}`,
+    screenshotRegion: { xPct: 0.1, yPct: 0.1, wPct: 0.5, hPct: 0.5 },
+  };
+
+  const annotation = {
+    anchor: {
+      cssSelector: "#hero",
+      xpath: "/html/body/div[1]",
+      textSnippet: "Hero",
+      elementTag: "DIV",
+      textPrefix: "",
+      textSuffix: "",
+      fingerprint: "1:0:abc",
+      neighborText: "",
+    },
+    rect: { xPct: 0.1, yPct: 0.2, wPct: 0.3, hPct: 0.4 },
+    scrollX: 0,
+    scrollY: 120,
+    viewportW: 1280,
+    viewportH: 800,
+    devicePixelRatio: 2,
+  };
+
+  const withoutScreenshot = ({
+    screenshotDataUrl: _screenshotDataUrl,
+    screenshotRegion: _screenshotRegion,
+    ...rest
+  }: FeedbackPayload): FeedbackPayload => rest;
+
+  it("sheds queued screenshots oldest first, only as many as the quota requires", async () => {
+    const annotated = (message: string, clientId: string): FeedbackPayload => ({
+      ...screenshotPayload,
+      message,
+      clientId,
+      annotations: [annotation],
+    });
+    const first = annotated("first", "cid-1");
+    const second = annotated("second", "cid-2");
+    const third = annotated("third", "cid-3");
+    const twoFull = [
+      { endpoint, payload: first },
+      { endpoint, payload: second },
+    ];
+    // Room for exactly two full entries: the third only fits once the two oldest shed their screenshots.
+    const store = stubLocalStorage(JSON.stringify(twoFull).length);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError(first);
+    await failWithNetworkError(second);
+    expect(readQueue(store)).toEqual(twoFull);
+    expect(warn).not.toHaveBeenCalled();
+
+    await failWithNetworkError(third);
+
+    expect(readQueue(store)).toEqual([
+      { endpoint, payload: withoutScreenshot(first) },
+      { endpoint, payload: withoutScreenshot(second) },
+      { endpoint, payload: third },
+    ]);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[siteping] retry queue exceeded the localStorage quota — dropped the screenshot of 2 of 3 queued feedback(s)",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("drops the oldest queued feedbacks when even the screenshot-free queue exceeds the quota", async () => {
+    const older = [
+      { endpoint, payload: { ...screenshotPayload, message: "oldest" } },
+      { endpoint, payload: { ...screenshotPayload, message: "older" } },
+    ];
+    const newest = { ...screenshotPayload, message: "newest" };
+    const expected = [{ endpoint, payload: withoutScreenshot(newest) }];
+    const store = stubLocalStorage(JSON.stringify(expected).length);
+    store.set("siteping_retry_queue", JSON.stringify(older)); // seeded behind the quota check
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError(newest);
+
+    expect(readQueue(store)).toEqual(expected);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[siteping] retry queue exceeded the localStorage quota — dropped the 2 oldest of 3 queued feedback(s), and the screenshot of 1 of the rest",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("reports evicted text-only feedbacks without blaming screenshots", async () => {
+    // The launcher always sends `screenshotDataUrl: null` when nothing was captured.
+    const textOnly = (message: string): FeedbackPayload => ({ ...basePayload, message, screenshotDataUrl: null });
+    const expected = [
+      { endpoint, payload: textOnly("b") },
+      { endpoint, payload: textOnly("c") },
+    ];
+    const store = stubLocalStorage(JSON.stringify(expected).length);
+    store.set(
+      "siteping_retry_queue",
+      JSON.stringify([
+        { endpoint, payload: textOnly("a") },
+        { endpoint, payload: textOnly("b") },
+      ]),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError(textOnly("c"));
+
+    expect(readQueue(store)).toEqual(expected);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[siteping] retry queue exceeded the localStorage quota — dropped the 1 oldest of 3 queued feedback(s)",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves the stored queue untouched and warns when not even the stripped newest entry fits", async () => {
+    const store = stubLocalStorage(10); // no queue write can fit
+    const previous = JSON.stringify([{ endpoint, payload: { ...basePayload, message: "previous" } }]);
+    store.set("siteping_retry_queue", previous); // seeded behind the quota check
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError({ ...screenshotPayload, message: "newest" });
+
+    expect(store.get("siteping_retry_queue")).toBe(previous);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[siteping] feedback could not be queued for retry — localStorage is full or unavailable",
+    );
 
     vi.unstubAllGlobals();
   });
