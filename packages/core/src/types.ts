@@ -63,14 +63,19 @@ export interface SitepingDeepLinkOptions {
  * ticket, dispatch to a bot, copy a share link — without forking the panel.
  */
 export interface SitepingPanelAction {
-  /** Stable identifier — becomes `data-action-id` on the rendered button. */
+  /** Stable, unique identifier — becomes `data-action-id` on the rendered button. */
   id: string;
   /**
    * Button label. Host-provided verbatim — deliberately NOT routed through
    * the widget i18n system, since hosts localize their own product strings.
    */
   label: string;
-  /** Optional inline SVG markup rendered before the label. */
+  /**
+   * Optional inline SVG markup rendered before the label. It is parsed
+   * inertly and reduced to plain shapes — scripts, event handlers, links,
+   * styles and external references are dropped — but keep it static markup
+   * you control. Markup that is not an `<svg>` is ignored with a warning.
+   */
   icon?: string | undefined;
   /**
    * Per-feedback visibility predicate. Return `false` to omit the button
@@ -298,10 +303,13 @@ export interface SitepingBaseConfig {
    */
   identity?: SitepingIdentity | undefined;
   /**
-   * Host-defined actions rendered in the feedback detail view, after the
-   * built-in Resolve and Delete buttons. See {@link SitepingPanelAction}.
+   * Host-defined actions rendered in the feedback detail view, below the
+   * built-in Resolve and Delete buttons. Read once when the panel loads:
+   * entries without a non-empty `id` and `label` or an `onAction` function,
+   * and entries reusing an earlier `id`, are skipped with a console warning.
+   * See {@link SitepingPanelAction}.
    */
-  panelActions?: SitepingPanelAction[] | undefined;
+  panelActions?: readonly SitepingPanelAction[] | undefined;
 
   // Events
   /** Called when the feedback panel is opened. */

@@ -10,8 +10,9 @@
  */
 
 import { type FeedbackResponse, type FeedbackStatus, isClosedStatus, type SitepingPanelAction } from "@siteping/core";
-import { el, parseSvg, setText } from "./dom-utils.js";
+import { el, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
+import type { PanelActionItem } from "./panel-actions.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -951,7 +952,7 @@ export class DetailView {
     private readonly callbacks: DetailCallbacks,
     t: TFunction,
     locale: string,
-    private readonly customActions: SitepingPanelAction[] = [],
+    private readonly customActions: readonly PanelActionItem[] = [],
   ) {
     this.t = t;
     this.locale = locale;
@@ -1204,13 +1205,13 @@ export class DetailView {
 
     // Host-defined custom actions
     this.customBtns = [];
-    for (const action of this.customActions) {
+    for (const { action, icon } of this.customActions) {
       if (action.visible && !action.visible(feedback)) continue;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "sp-detail-btn-custom";
       btn.setAttribute("data-action-id", action.id);
-      if (action.icon) btn.appendChild(parseSvg(action.icon));
+      if (icon) btn.appendChild(icon.cloneNode(true));
       const span = document.createElement("span");
       setText(span, action.label);
       btn.appendChild(span);
@@ -1541,7 +1542,8 @@ export class DetailView {
     if (this.isProcessing || !this.currentFeedback) return;
     this.isProcessing = true;
 
-    this.setButtonLoading(btn);
+    // Snapshot-and-restore, so the (already sanitized) icon is never re-parsed.
+    const restore = setButtonLoading(btn);
     this.setOtherActionsDisabled(btn, true);
 
     try {
@@ -1553,7 +1555,7 @@ export class DetailView {
       // of outcome.
     } finally {
       this.isProcessing = false;
-      this.restoreCustomBtn(btn, action);
+      restore();
       this.setOtherActionsDisabled(btn, false);
     }
   }
@@ -1562,15 +1564,6 @@ export class DetailView {
     for (const b of [this.resolveBtn, this.deleteBtn, ...this.customBtns]) {
       if (b && b !== except) b.disabled = disabled;
     }
-  }
-
-  private restoreCustomBtn(btn: HTMLButtonElement, action: SitepingPanelAction): void {
-    btn.disabled = false;
-    btn.replaceChildren();
-    if (action.icon) btn.appendChild(parseSvg(action.icon));
-    const span = document.createElement("span");
-    setText(span, action.label);
-    btn.appendChild(span);
   }
 
   private setButtonLoading(btn: HTMLButtonElement): void {

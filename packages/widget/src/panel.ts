@@ -30,6 +30,7 @@ import {
   ICON_UNDO,
 } from "./icons.js";
 import type { MarkerManager } from "./markers.js";
+import { normalizePanelActions } from "./panel-actions.js";
 import { BulkActions } from "./panel-bulk.js";
 import { DetailView } from "./panel-detail.js";
 import { createPageGroupHeader, groupFeedbacksByPage, PanelSortControls, sortFeedbacks } from "./panel-sort.js";
@@ -108,15 +109,15 @@ export class Panel {
     private readonly markers: MarkerManager,
     private readonly t: TFunction,
     private readonly locale: string,
-    pageScopeOptions?: {
+    options?: {
       getScope: () => PageScope;
       scopeAnnotationsByUrl: boolean;
-      panelActions?: SitepingPanelAction[] | undefined;
+      panelActions?: readonly SitepingPanelAction[] | undefined;
     },
   ) {
     this.shadowRoot = shadowRoot;
-    this.getScope = pageScopeOptions?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
-    this.scopeAnnotationsByUrl = pageScopeOptions?.scopeAnnotationsByUrl ?? true;
+    this.getScope = options?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
+    this.scopeAnnotationsByUrl = options?.scopeAnnotationsByUrl ?? true;
 
     this.root = el("div", { class: "sp-panel" });
     this.root.setAttribute("role", "complementary");
@@ -260,7 +261,7 @@ export class Panel {
       },
       this.t,
       locale,
-      pageScopeOptions?.panelActions ?? [],
+      normalizePanelActions(options?.panelActions),
     );
 
     // --- Keyboard Shortcuts ---

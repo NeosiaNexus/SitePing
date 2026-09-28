@@ -3,6 +3,7 @@
 import type { AnnotationResponse, FeedbackResponse, SitepingPanelAction } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
+import { normalizePanelActions } from "../../src/panel-actions.js";
 import { DETAIL_CSS, type DetailCallbacks, DetailView } from "../../src/panel-detail.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
@@ -1229,7 +1230,7 @@ describe("custom panel actions", () => {
       onCustomAction: vi.fn().mockResolvedValue(undefined),
       ...callbacks,
     };
-    const view = new DetailView(buildThemeColors(), cb, createT("en"), "en", actions);
+    const view = new DetailView(buildThemeColors(), cb, createT("en"), "en", normalizePanelActions(actions));
     document.body.appendChild(view.element);
     return { view, cb };
   }
@@ -1272,5 +1273,40 @@ describe("custom panel actions", () => {
     reject(new Error("boom"));
     await vi.waitFor(() => expect(btn?.disabled).toBe(false));
     expect(btn?.textContent).toContain("Send to agent"); // label restored after spinner
+  });
+
+  it("renders the sanitized icon before the label, and restores it after the spinner", async () => {
+    let settle!: () => void;
+    const { view } = buildDetail(
+      [
+        makeAction({
+          icon: '<svg viewBox="0 0 24 24" onload="alert(1)"><path d="M0 0h24"/><script>alert(1)</script></svg>',
+        }),
+      ],
+      { onCustomAction: vi.fn(() => new Promise<void>((r) => (settle = r))) },
+    );
+    view.show(makeFeedback(), 1);
+    const btn = view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!;
+    expect(btn.firstElementChild?.outerHTML).toBe(
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0h24"></path></svg>',
+    );
+
+    btn.click();
+    expect(btn.querySelector("svg")).toBeNull(); // spinner in place of icon + label
+    settle();
+    await vi.waitFor(() => expect(btn.disabled).toBe(false));
+    expect(btn.firstElementChild?.outerHTML).toBe(
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0h24"></path></svg>',
+    );
+    expect(btn.textContent).toBe("Send to agent");
+  });
+
+  it("keeps rendering the label when the icon is not SVG markup", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { view } = buildDetail([makeAction({ icon: "<b>nope</b>" })]);
+    view.show(makeFeedback(), 1);
+    const btn = view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!;
+    expect(btn.querySelector("svg, b")).toBeNull();
+    expect(btn.textContent).toBe("Send to agent");
   });
 });
