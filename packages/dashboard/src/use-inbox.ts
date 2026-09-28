@@ -227,6 +227,59 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const queryBaseRef = useRef(queryBase);
   queryBaseRef.current = queryBase;
 
+  /** Set when a load's counts raced a mutation — recounted once no mutation is pending. */
+  const countsStaleRef = useRef(false);
+  /** A mutation can settle after unmount: its recount must not outlive the component. */
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const loadCountsRef = useRef<(base: typeof queryBase, countsToken: number) => Promise<void>>(async () => {});
+  const recountIfIdle = useCallback(() => {
+    if (!countsStaleRef.current || pendingMutationsRef.current > 0 || !mountedRef.current) return;
+    countsStaleRef.current = false;
+    void loadCountsRef.current(queryBaseRef.current, ++countsTokenRef.current);
+  }, []);
+
+  /**
+   * Tab counts — limit-1 queries per status + all. Best-effort: a failed
+   * count stays undefined (tab shows a placeholder), never fails the list.
+   */
+  const loadCounts = useCallback(
+    async (base: typeof queryBase, countsToken: number): Promise<void> => {
+      const mutationSeq = mutationSeqRef.current;
+      const mutationPending = pendingMutationsRef.current > 0;
+      const totals = await Promise.all(
+        COUNT_KEYS.map((key) =>
+          src
+            .list({ ...base, status: key === "all" ? undefined : key, page: 1, limit: 1 })
+            .then((page) => page.total)
+            .catch(() => undefined),
+        ),
+      );
+      if (countsToken !== countsTokenRef.current || !mountedRef.current) return;
+      const next: InboxState["counts"] = {};
+      COUNT_KEYS.forEach((key, index) => {
+        const value = totals[index];
+        if (typeof value === "number") next[key] = value;
+      });
+      countsGenRef.current += 1;
+      countsRef.current = next;
+      setCounts(next);
+      // A mutation overlapped these queries: they may predate it, and this
+      // commit just replaced its local adjustment — recount once it settled.
+      if (mutationPending || mutationSeqRef.current !== mutationSeq) {
+        countsStaleRef.current = true;
+        recountIfIdle();
+      }
+    },
+    [src, recountIfIdle],
+  );
+  loadCountsRef.current = loadCounts;
+
   const load = useCallback(async (): Promise<void> => {
     const token = ++tokenRef.current;
     const countsToken = ++countsTokenRef.current;
@@ -263,26 +316,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       callbacksRef.current.onError?.(err);
       return;
     }
-    // Tab counts — limit-1 queries per status + all. Best-effort: a failed
-    // count stays undefined (tab shows a placeholder), never fails the list.
-    const totals = await Promise.all(
-      COUNT_KEYS.map((key) =>
-        src
-          .list({ ...queryBase, status: key === "all" ? undefined : key, page: 1, limit: 1 })
-          .then((page) => page.total)
-          .catch(() => undefined),
-      ),
-    );
-    if (countsToken !== countsTokenRef.current) return;
-    const next: InboxState["counts"] = {};
-    COUNT_KEYS.forEach((key, index) => {
-      const value = totals[index];
-      if (typeof value === "number") next[key] = value;
-    });
-    countsGenRef.current += 1;
-    countsRef.current = next;
-    setCounts(next);
-  }, [src, queryBase, status, pageSize]);
+    await loadCounts(queryBase, countsToken);
+  }, [src, queryBase, status, pageSize, loadCounts]);
 
   useEffect(() => {
     void load();
@@ -492,19 +527,23 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
    * pending mutation has built on hands that one its base and deltas instead:
    * that later mutation's success keeps them, its failure reverts both.
    */
-  const settleMutation = useCallback((id: string, handle: InFlight, ok: boolean): boolean => {
-    handle.state = ok ? "ok" : "failed";
-    pendingMutationsRef.current -= 1;
-    if (inFlightRef.current.get(id) === handle) inFlightRef.current.delete(id);
-    let later = handle.next;
-    while (later !== null && later.state === "failed") later = later.next;
-    if (later === null) return true;
-    if (!ok && later.state === "pending") {
-      later.prev = handle.prev;
-      later.undo = [...handle.undo, ...later.undo];
-    }
-    return false;
-  }, []);
+  const settleMutation = useCallback(
+    (id: string, handle: InFlight, ok: boolean): boolean => {
+      handle.state = ok ? "ok" : "failed";
+      pendingMutationsRef.current -= 1;
+      recountIfIdle();
+      if (inFlightRef.current.get(id) === handle) inFlightRef.current.delete(id);
+      let later = handle.next;
+      while (later !== null && later.state === "failed") later = later.next;
+      if (later === null) return true;
+      if (!ok && later.state === "pending") {
+        later.prev = handle.prev;
+        later.undo = [...handle.undo, ...later.undo];
+      }
+      return false;
+    },
+    [recountIfIdle],
+  );
 
   /**
    * Revert a failed mutation for its own record only, against the CURRENT
