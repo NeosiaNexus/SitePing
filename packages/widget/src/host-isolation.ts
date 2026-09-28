@@ -9,10 +9,10 @@
  * into the dialog, cancels wheel scrolling, closes on Escape, and hides its
  * siblings with `inert` / `aria-hidden`.
  *
- * - {@link isolateFromHost} stops those events at the surface in the bubble
- *   phase — document listeners never see the widget's own interactions, while
- *   the widget's listeners on the surface still run — and strips a host-set
- *   `inert` / `aria-hidden` from it.
+ * - {@link isolateFromHost} stops those events as they bubble out of the
+ *   surface — document listeners in the bubble phase never see the widget's
+ *   own interactions, while the widget's listeners on the surface still run —
+ *   and strips a host-set `inert` / `aria-hidden` from it.
  * - {@link installHostIsolationGuard} covers the host listeners that run
  *   before the surface: capture-phase ones on `document`, and the `focusout`
  *   fired on the host element that focus leaves for the widget. It acts only

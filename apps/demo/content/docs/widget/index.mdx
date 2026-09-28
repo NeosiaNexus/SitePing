@@ -103,7 +103,9 @@ Clients often need to report a problem *inside* a dialog. The widget stays usabl
 - **Escape** closes the widget's open layer first (menu, panel, comment popup, annotation mode); with nothing open in the widget, it closes your modal as usual;
 - the widget stays exposed to screen readers when the modal hides the rest of the page (`aria-hidden`, `inert`).
 
-Pointer, click, focus and scroll events inside the widget never reach your page's `document` listeners, modal or not. Beyond that, the widget steps in only while a modal is open — a rendered `aria-modal="true"` element, or a click-through `<body>` — so on a page without one, your fields' own focus and blur handlers see every event. While a modal is open, moving the focus from one of its fields into the widget doesn't fire that field's `blur` / `focusout`: that is what keeps the modal's focus trap from pulling the focus back.
+The widget's own `pointerdown`, `mousedown`, `touchstart`, `touchend`, `click`, `focusin`, `focusout`, `wheel` and `touchmove` events stop at the widget, modal or not: bubble-phase listeners on your page's `document` or `window` never see them. Capture-phase listeners still do, and other events (`pointerup`, `mouseup`, `keydown`…) keep propagating.
+
+Beyond that, the widget steps in only while a modal is open — a visible `aria-modal="true"` element, or a click-through `<body>` — so on a page without one, your fields' own focus and blur handlers see every event. While a modal is open, capture-phase listeners no longer see the widget's `pointerdown` and `focusin` either, and moving the focus from one of the modal's fields into the widget doesn't fire that field's `focusout`, so React's `onBlur` doesn't run; its native `blur` still fires. That is what keeps the modal's focus trap from pulling the focus back.
 
 Limits: a native `<dialog>` opened with `showModal()` makes everything outside it inert, and no script can undo that — the widget can't be used while such a dialog is open. And a modal that intercepts outside `mousedown`, `click` or Tab keys before they reach the page (capture-phase listeners, as focus-trap does by default) can still get in the widget's way.
 
