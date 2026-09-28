@@ -83,8 +83,9 @@ export const CONTENT_TYPE_EXTENSIONS: Readonly<Record<string, string>> = {
 export const SERVED_SCREENSHOT_CONTENT_SECURITY_POLICY = "default-src 'none'; sandbox";
 
 /**
- * `Cache-Control` of screenshots served without an `authorize` callback —
- * objects are immutable (a new key per upload), so any cache may keep them.
+ * `Cache-Control` of screenshots served without an `authorize` callback, and
+ * stored with each S3 object for a public bucket to send — objects are
+ * immutable (a new key per upload), so any cache may keep them.
  */
 export const SERVED_SCREENSHOT_CACHE_CONTROL = "public, max-age=31536000, immutable";
 

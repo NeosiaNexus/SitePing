@@ -526,6 +526,29 @@ describe("createS3ObjectStore — credentials without s3:ListBucket", () => {
   });
 });
 
+describe("createS3ObjectStore — uploads", () => {
+  it("stores each object with an immutable Cache-Control, left out of the signature like the AWS SDK does", async () => {
+    const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };
+    const fake = createFakeS3({ bucket: "screens", region: "auto", ...credentials });
+    const objectStore = createS3ObjectStore({
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      bucket: "screens",
+      publicBaseUrl: "https://screens.example.com",
+      ...credentials,
+      fetch: fake.fetch,
+    });
+
+    await createScreenshotStorage(objectStore).upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+
+    // The fake bucket re-signs every request with the AWS SDK's signer, which never signs Cache-Control
+    // (a proxy may rewrite it), and refuses a mismatch: a stored object proves the signature holds.
+    expect(fake.objects.size).toBe(1);
+    const [put] = fake.requests;
+    expect(put?.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(put?.headers.get("authorization")).toContain("SignedHeaders=content-type;host;");
+  });
+});
+
 describe("createS3ObjectStore — a body cut short", () => {
   /** A 200 or 403 whose body errors mid-read, as when the request timeout fires during the download. */
   function openS3WithBrokenBody(status: number) {

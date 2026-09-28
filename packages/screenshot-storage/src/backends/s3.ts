@@ -1,5 +1,6 @@
 import { HTTP_STATUS_FORBIDDEN, HTTP_STATUS_NOT_FOUND } from "../constants/http.js";
 import { S3_ACCESS_DENIED_ERROR_CODE, S3_DEFAULT_REGION, S3_ERROR_CODE_PATTERN } from "../constants/s3.js";
+import { SERVED_SCREENSHOT_CACHE_CONTROL } from "../constants/screenshots.js";
 import { normalizeBaseUrl } from "../core/base-url.js";
 import { ObjectStoreRequestError, sendBackendRequest } from "../core/http.js";
 import type { ScreenshotObjectStore } from "../core/object-store.js";
@@ -88,6 +89,8 @@ export function createS3ObjectStore({
     options: {
       body?: Uint8Array<ArrayBuffer>;
       headers?: Record<string, string>;
+      /** Sent but left out of the signature, as the AWS SDK does for headers a proxy may rewrite. */
+      unsignedHeaders?: Record<string, string>;
       acceptStatuses?: number[];
       isUpload?: boolean;
     } = {},
@@ -102,7 +105,11 @@ export function createS3ObjectStore({
     return sendBackendRequest({
       backend: "S3",
       url,
-      init: { method, headers, ...(options.body ? { body: options.body } : {}) },
+      init: {
+        method,
+        headers: { ...options.unsignedHeaders, ...headers },
+        ...(options.body ? { body: options.body } : {}),
+      },
       fetch,
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
       ...(options.acceptStatuses ? { acceptStatuses: options.acceptStatuses } : {}),
@@ -115,7 +122,12 @@ export function createS3ObjectStore({
     ...createPublicUrlMapping(publicBaseUrl),
 
     async put({ key, bytes, contentType }) {
-      await send("PUT", key, { body: bytes, headers: { "content-type": contentType }, isUpload: true });
+      await send("PUT", key, {
+        body: bytes,
+        headers: { "content-type": contentType },
+        unsignedHeaders: { "cache-control": SERVED_SCREENSHOT_CACHE_CONTROL },
+        isUpload: true,
+      });
     },
 
     async remove(key) {
