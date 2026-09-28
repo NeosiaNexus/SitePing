@@ -1470,8 +1470,24 @@ describe("Panel", () => {
       });
     });
 
+    it("hides 'Go to annotation' for a feedback from another page (scope: all pages)", async () => {
+      const elsewhere = makeFeedback({ id: "elsewhere", url: "/pricing", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [elsewhere], total: 1 });
+      const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+
+      await panel.open();
+      shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!.click();
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="elsewhere"]')).not.toBeNull());
+      shadow.querySelector<HTMLElement>('[data-feedback-id="elsewhere"]')!.click();
+
+      // Its stored scroll offset and anchor belong to /pricing, not this page.
+      expect(shadow.querySelector(".sp-detail-btn-goto")).toBeNull();
+      scrollSpy.mockRestore();
+    });
+
     it("detail onGoToAnnotation scrolls and pins the highlight", async () => {
-      const fb = makeFeedback({ id: "fb-1", annotations: [annotation] });
+      // url = the current page scope (pathname) — as the launcher stores it
+      const fb = makeFeedback({ id: "fb-1", url: "/", annotations: [annotation] });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
 
       const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});

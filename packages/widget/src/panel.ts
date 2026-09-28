@@ -226,6 +226,9 @@ export class Panel {
             throw error;
           }
         },
+        // Same rule as the page markers: another page's scroll offset and
+        // anchor mean nothing here (reachable via the "all pages" scope).
+        canGoToAnnotation: (fb) => !this.scopeAnnotationsByUrl || fb.url === this.getScope().url,
         onGoToAnnotation: (fb) => {
           if (fb.annotations.length > 0) {
             const ann = fb.annotations[0];
