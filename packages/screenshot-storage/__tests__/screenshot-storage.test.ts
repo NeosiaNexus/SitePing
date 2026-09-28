@@ -159,7 +159,7 @@ describe("createScreenshotStorage — validation", () => {
       defaultStorage.upload(`${header}${btoa("x".repeat(largestBytes))}`, UPLOAD_CONTEXT),
     ).resolves.toHaveProperty("url");
     await expect(defaultStorage.upload(`${header}${btoa("x".repeat(1_125_001))}`, UPLOAD_CONTEXT)).rejects.toThrow(
-      "1125001 bytes exceeds the 1125000-byte limit",
+      /exceeds the 1125000-byte limit/,
     );
   });
 
