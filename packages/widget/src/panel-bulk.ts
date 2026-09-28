@@ -403,12 +403,8 @@ export class BulkActions {
   createCheckbox(feedbackId: string): HTMLElement {
     const wrapper = el("div", { class: "sp-bulk-checkbox" });
     wrapper.setAttribute("role", "checkbox");
-    wrapper.setAttribute("aria-checked", "false");
     wrapper.setAttribute("tabindex", "0");
     wrapper.setAttribute("aria-label", `Select feedback ${feedbackId}`);
-
-    // Render unchecked icon
-    wrapper.appendChild(parseSvg(ICON_CHECKBOX));
 
     // Click handler
     wrapper.addEventListener("click", (e) => {
@@ -426,7 +422,14 @@ export class BulkActions {
     });
 
     this.checkboxMap.set(feedbackId, wrapper);
+    // Re-renders (sort, group, load more) keep the selection — reflect it.
+    this.updateCheckbox(feedbackId);
     return wrapper;
+  }
+
+  /** Whether a feedback is currently selected (for initial card state on render). */
+  isSelected(feedbackId: string): boolean {
+    return this.selected.has(feedbackId);
   }
 
   /**
@@ -437,8 +440,8 @@ export class BulkActions {
     const wrapper = el("div", { class: "sp-bulk-select-all" });
 
     const checkbox = el("div", { class: "sp-bulk-checkbox" });
-    checkbox.appendChild(parseSvg(ICON_CHECKBOX));
     this.selectAllCheckbox = checkbox;
+    this.updateSelectAllCheckbox(feedbackIds.length > 0 && feedbackIds.every((id) => this.selected.has(id)));
 
     const labelEl = el("span");
     setText(labelEl, label);
@@ -587,10 +590,11 @@ export class BulkActions {
     checkbox.appendChild(parseSvg(isChecked ? ICON_CHECKBOX_CHECKED : ICON_CHECKBOX));
   }
 
-  private updateSelectAllCheckbox(): void {
+  private updateSelectAllCheckbox(
+    allSelected = this.selected.size > 0 && this.selected.size === this.checkboxMap.size,
+  ): void {
     if (!this.selectAllCheckbox) return;
 
-    const allSelected = this.selected.size > 0 && this.selected.size === this.checkboxMap.size;
     this.selectAllCheckbox.classList.toggle("sp-bulk-checkbox--checked", allSelected);
     this.selectAllCheckbox.setAttribute("aria-checked", String(allSelected));
 

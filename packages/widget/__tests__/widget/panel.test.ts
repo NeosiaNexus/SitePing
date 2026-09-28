@@ -1649,6 +1649,26 @@ describe("Panel", () => {
       });
     });
 
+    it("selection stays visible on cards after a re-render (group toggle / sort / load more)", async () => {
+      const fb1 = makeFeedback({ id: "fb-1" });
+      const fb2 = makeFeedback({ id: "fb-2" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2], total: 2 });
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!.click();
+
+      // Re-render the list without reloading (selection set is kept)
+      shadow.querySelector<HTMLButtonElement>(".sp-group-toggle")!.click();
+
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+      const checkbox = card.querySelector<HTMLElement>(".sp-bulk-checkbox")!;
+      expect(checkbox.getAttribute("aria-checked")).toBe("true");
+      expect(checkbox.classList.contains("sp-bulk-checkbox--checked")).toBe(true);
+      expect(card.classList.contains("sp-card--selected")).toBe(true);
+      const other = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-2"]')!;
+      expect(other.classList.contains("sp-card--selected")).toBe(false);
+    });
+
     it("bulkResolve emits feedback:error on failure", async () => {
       const fb = makeFeedback({ id: "fb-1" });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });

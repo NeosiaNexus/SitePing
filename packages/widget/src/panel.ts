@@ -682,6 +682,7 @@ export class Panel {
     const card = el("div", {
       class: `sp-card ${isResolved ? "sp-card--resolved" : ""}`,
     });
+    card.classList.toggle("sp-card--selected", this.bulk.isSelected(feedback.id));
     card.setAttribute("role", "listitem");
     card.setAttribute("tabindex", "0");
     card.setAttribute(
