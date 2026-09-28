@@ -1,9 +1,9 @@
 import { HTTP_STATUS_FORBIDDEN, HTTP_STATUS_NOT_FOUND } from "../constants/http.js";
 import { S3_ACCESS_DENIED_ERROR_CODE, S3_DEFAULT_REGION, S3_ERROR_CODE_PATTERN } from "../constants/s3.js";
+import { normalizeBaseUrl } from "../core/base-url.js";
 import { ObjectStoreRequestError, sendBackendRequest } from "../core/http.js";
 import type { ScreenshotObjectStore } from "../core/object-store.js";
 import { createPublicUrlMapping } from "../core/public-url.js";
-import { trimTrailingSlashes } from "../core/trailing-slashes.js";
 import { encodeRfc3986, type SigV4Credentials, sha256Hex, signS3Request } from "./sigv4.js";
 
 export interface S3ObjectStoreOptions extends SigV4Credentials {
@@ -19,6 +19,8 @@ export interface S3ObjectStoreOptions extends SigV4Credentials {
   /**
    * Public URL objects are read from: the bucket's public domain, a CDN in
    * front of it, or `createScreenshotServeHandler` when the bucket is private.
+   * An absolute URL, https in production: the widget's panel only shows
+   * https screenshots.
    */
   publicBaseUrl: string;
   fetch?: typeof fetch;
@@ -73,7 +75,7 @@ export function createS3ObjectStore({
   treatAccessDeniedAsMissing = false,
 }: S3ObjectStoreOptions): ScreenshotObjectStore {
   const credentials: SigV4Credentials = { accessKeyId, secretAccessKey, ...(sessionToken ? { sessionToken } : {}) };
-  const endpointBase = trimTrailingSlashes(endpoint);
+  const endpointBase = normalizeBaseUrl(endpoint, "endpoint");
   // Without ListBucket, S3 hides a missing key behind 403 — see treatAccessDeniedAsMissing.
   const getMissingStatuses = treatAccessDeniedAsMissing
     ? [HTTP_STATUS_NOT_FOUND, HTTP_STATUS_FORBIDDEN]

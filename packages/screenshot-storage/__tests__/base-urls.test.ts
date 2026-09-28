@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCloudflareImagesObjectStore } from "../src/backends/cloudflare-images.js";
 import { createS3ObjectStore } from "../src/backends/s3.js";
 import { createPublicUrlMapping } from "../src/index.js";
@@ -14,6 +14,23 @@ function measure<T>(operation: () => T): { result: T; elapsedMs: number } {
   const result = operation();
   return { result, elapsedMs: performance.now() - startedAt };
 }
+
+const openS3 = (endpoint: string, fetch: typeof globalThis.fetch) =>
+  createS3ObjectStore({
+    endpoint,
+    bucket: "screens",
+    publicBaseUrl: "https://screens.example.com",
+    accessKeyId: "AKIDEXAMPLE",
+    secretAccessKey: "s3-secret",
+    fetch,
+  });
+const openCloudflareImages = (deliveryBaseUrl: string) =>
+  createCloudflareImagesObjectStore({
+    accountId: "account-1",
+    apiToken: "cf-token",
+    accountHash: "hash-1",
+    deliveryBaseUrl,
+  });
 
 describe("createPublicUrlMapping — base URL trailing slashes", () => {
   it.each([
@@ -65,23 +82,6 @@ describe("backend base URLs — trailing slashes", () => {
     };
     return { requestedUrls, recordingFetch };
   };
-  const openS3 = (endpoint: string, fetch: typeof globalThis.fetch) =>
-    createS3ObjectStore({
-      endpoint,
-      bucket: "screens",
-      publicBaseUrl: "https://screens.example.com",
-      accessKeyId: "AKIDEXAMPLE",
-      secretAccessKey: "s3-secret",
-      fetch,
-    });
-  const openCloudflareImages = (deliveryBaseUrl: string) =>
-    createCloudflareImagesObjectStore({
-      accountId: "account-1",
-      apiToken: "cf-token",
-      accountHash: "hash-1",
-      deliveryBaseUrl,
-    });
-
   it("Cloudflare Images delivery URLs ignore trailing slashes of deliveryBaseUrl", () => {
     const objectStore = openCloudflareImages("https://example.com/cdn-cgi/imagedelivery///");
 
@@ -118,5 +118,54 @@ describe("backend base URLs — trailing slashes", () => {
 
     expect(elapsedMs).toBeLessThan(LINEAR_TIME_BUDGET_MS);
     expect(requestedUrls).toEqual([new URL(`${endpoint}/screens/${KEY}`).href]);
+  });
+});
+
+describe("base URLs — validation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    "/api/siteping/screenshots",
+    "app.example.com/screenshots",
+    "ftp://files.example.com/screenshots",
+    "javascript:alert(1)//",
+    "https://cdn.example.com/screens?v=1",
+    "https://cdn.example.com/screens#top",
+  ])("refuses the publicBaseUrl %s, under which keys would not resolve to the object", (publicBaseUrl) => {
+    expect(() => createPublicUrlMapping(publicBaseUrl)).toThrow(
+      `publicBaseUrl must be an absolute http(s) URL without a query or fragment, got "${publicBaseUrl}"`,
+    );
+  });
+
+  it("warns that an http publicBaseUrl hides screenshots from the widget's panel", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    createPublicUrlMapping("http://localhost:3000/api/siteping/screenshots");
+    createPublicUrlMapping("https://app.example.com/api/siteping/screenshots");
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('"http://localhost:3000/api/siteping/screenshots" is not https'),
+    );
+  });
+
+  it("checks the Cloudflare Images deliveryBaseUrl the same way", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(() => openCloudflareImages("/cdn-cgi/imagedelivery")).toThrow(/deliveryBaseUrl must be an absolute/);
+    openCloudflareImages("http://example.com/cdn-cgi/imagedelivery");
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("deliveryBaseUrl"));
+  });
+
+  it("refuses a relative S3 endpoint and accepts a local http one without warning (MinIO)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(() => openS3("account.r2.cloudflarestorage.com", fetch)).toThrow(/endpoint must be an absolute/);
+    expect(() => openS3("http://localhost:9000", fetch)).not.toThrow();
+
+    expect(warn).not.toHaveBeenCalled();
   });
 });
