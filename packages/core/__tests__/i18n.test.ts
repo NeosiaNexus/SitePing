@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { canonicalizeLocale, createI18n, intlLocale } from "../src/i18n.js";
+import { canonicalizeLocale, createI18n, intlLocale, type LocaleLoaders } from "../src/i18n.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -43,17 +43,12 @@ describe("canonicalizeLocale", () => {
 });
 
 describe("createI18n — locale normalisation", () => {
-  const i18n = createI18n<{ hello: string }>(
-    { hello: "Hello" },
-    {
-      de: async () => ({ hello: "Hallo" }),
-      es: async () => ({ hello: "Hola" }),
-      fr: async () => ({ hello: "Bonjour" }),
-      it: async () => ({ hello: "Ciao" }),
-      pt: async () => ({ hello: "Olá" }),
-      ru: async () => ({ hello: "Привет" }),
-    },
-  );
+  // Only French is loaded here. The cast keeps this map from needing an edit
+  // per new built-in locale: the widget and dashboard maps are the exhaustive,
+  // compiler-checked ones.
+  const i18n = createI18n<{ hello: string }>({ hello: "Hello" }, {
+    fr: async () => ({ hello: "Bonjour" }),
+  } as LocaleLoaders<{ hello: string }>);
 
   it("resolves a backend-style fr_FR tag to the built-in French dictionary", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
