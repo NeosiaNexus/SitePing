@@ -65,6 +65,7 @@ body:
       options:
         - "@siteping/widget"
         - "@siteping/dashboard"
+        - "@siteping/server"
         - "@siteping/adapter-prisma"
         - "@siteping/adapter-drizzle"
         - "@siteping/adapter-memory"

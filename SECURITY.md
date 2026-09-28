@@ -45,6 +45,7 @@ This policy applies to all packages in the `@siteping/*` scope:
 
 - `@siteping/widget`
 - `@siteping/dashboard`
+- `@siteping/server`
 - `@siteping/adapter-prisma`
 - `@siteping/adapter-drizzle`
 - `@siteping/adapter-memory`
@@ -54,7 +55,8 @@ This policy applies to all packages in the `@siteping/*` scope:
 
 ## Hardening checklist for self-hosters
 
-- **`apiKey` is required in production.** Starting `createSitepingHandler({ prisma })` with `NODE_ENV=production` and no `apiKey` throws at startup. Destructive endpoints (DELETE, PATCH) refuse to operate without authentication unless you explicitly opt out via `requireAuthForDestructive: false` (only safe behind your own auth middleware).
+- **`apiKey` is required in production.** Starting `createSitepingHandler` (from `@siteping/server` or `@siteping/adapter-prisma`) with `NODE_ENV=production` and neither an `apiKey` nor a custom `access` policy throws at startup. Destructive endpoints (DELETE, PATCH) refuse to operate without authentication unless you explicitly opt out via `requireAuthForDestructive: false` (only safe behind your own auth middleware).
 - **Set `allowedOrigins`.** Without it, no CORS headers are emitted and cross-origin browser requests are blocked. With `allowedOrigins: ["https://your-site.com"]`, only listed origins can call the API.
+- **With a custom `access` policy, set `allowedOrigins` too.** `authenticate` must resolve who is calling — anything falsy answers 401. Such a policy may rely on cookies, which browsers attach to forged requests, so POST/PATCH/DELETE must send `Content-Type: application/json` (415 otherwise), and with `allowedOrigins` a mutation from an origin that is neither listed nor the endpoint's own answers 403. List every origin your widget and dashboard run on, plus your public origin behind a proxy that rewrites the request URL.
 - **Rate-limit POST.** The widget submits from unauthenticated browser contexts. Apply rate limiting at the reverse proxy or middleware layer (Next.js middleware, Nginx, Cloudflare).
 - **Run the CLI doctor.** `npx @siteping/cli doctor` flags missing `apiKey`, missing `allowedOrigins`, and other production red flags.
