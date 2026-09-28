@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  type CommentCreateInput,
   createCollectionStore,
   type FeedbackCreateInput,
   type FeedbackRecord,
+  StoreNotFoundError,
   StorePersistenceError,
 } from "../src/index.js";
 
@@ -20,6 +22,10 @@ function input(clientId: string): FeedbackCreateInput {
     clientId,
     annotations: [],
   };
+}
+
+function comment(clientId: string): CommentCreateInput {
+  return { body: "b", authorName: "a", authorEmail: "", authorRole: "client", clientId };
 }
 
 /**
@@ -122,6 +128,55 @@ describe("createCollectionStore — snapshot immutability", () => {
     await expect(store.deleteFeedback(created.id)).rejects.toThrow(StorePersistenceError);
 
     expect((await store.getFeedbacks({ projectName: "p" })).total).toBe(1);
+  });
+
+  it("a failed addComment leaves no comment behind, so its retry is written for real", async () => {
+    const { store, state } = kvBackend();
+    const created = await store.createFeedback(input("c1"));
+
+    state.failPersist = true;
+    await expect(store.addComment(created.id, comment("k1"))).rejects.toThrow(StorePersistenceError);
+    expect((await store.findByClientId("c1"))?.comments).toEqual([]);
+
+    state.failPersist = false;
+    const written = await store.addComment(created.id, comment("k1"));
+    expect(state.kv[0]?.comments?.map((c) => c.id)).toEqual([written.id]);
+  });
+
+  it("a failed deleteComment keeps the comment", async () => {
+    const { store, state } = kvBackend();
+    const created = await store.createFeedback(input("c1"));
+    const kept = await store.addComment(created.id, comment("k1"));
+
+    state.failPersist = true;
+    await expect(store.deleteComment(created.id, kept.id)).rejects.toThrow(StorePersistenceError);
+
+    expect((await store.findByClientId("c1"))?.comments).toEqual([kept]);
+  });
+});
+
+describe("createCollectionStore — records without a thread", () => {
+  /** A store whose only record was persisted before comments existed: no `comments` key at all. */
+  async function legacyStore() {
+    const { store, state } = kvBackend();
+    const { comments: _, ...legacy } = await store.createFeedback(input("old"));
+    state.kv = [legacy];
+    state.cache = null;
+    return { store, legacy };
+  }
+
+  it("starts the thread on the first comment", async () => {
+    const { store, legacy } = await legacyStore();
+
+    const added = await store.addComment(legacy.id, comment("k1"));
+
+    expect((await store.findByClientId("old"))?.comments).toEqual([added]);
+  });
+
+  it("finds no comment to delete", async () => {
+    const { store, legacy } = await legacyStore();
+
+    await expect(store.deleteComment(legacy.id, "any")).rejects.toThrow(StoreNotFoundError);
   });
 });
 
@@ -245,6 +300,22 @@ describe.each([
 
     expect(failed).toMatchObject({ status: "rejected", reason: expect.any(StorePersistenceError) });
     expect(retried).toMatchObject({ status: "fulfilled", value: { created: true, feedback: { clientId: "a" } } });
+  });
+
+  it("comments racing a status update of their feedback keep every change", async () => {
+    const { store } = arrayBackend(async);
+    const [a] = await seed(store);
+    if (!a) throw new Error("fixture");
+
+    await Promise.all([
+      store.updateFeedback(a.id, { status: "resolved", resolvedAt: new Date() }),
+      store.addComment(a.id, comment("k1")),
+      store.addComment(a.id, comment("k2")),
+    ]);
+
+    const stored = await store.findByClientId("a");
+    expect(stored?.status).toBe("resolved");
+    expect(stored?.comments?.map((c) => c.clientId)).toEqual(["k1", "k2"]);
   });
 
   it("a rejected mutation does not break the queue for the ones after it", async () => {

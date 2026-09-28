@@ -135,6 +135,40 @@ describe("syncPrismaModels", () => {
     expect(output).toContain("cssSelector");
   });
 
+  it("adds the SitepingComment model and the feedback side of its relation", () => {
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+
+    expect(syncPrismaModels(schemaPath).addedModels).toContain("SitepingComment");
+
+    const output = readFileSync(schemaPath, "utf-8");
+    expect(output).toMatch(/^\s*comments\s+SitepingComment\[\]$/m);
+    const model = output.slice(output.indexOf("model SitepingComment"));
+    expect(model).toMatch(
+      /^\s*feedback\s+SitepingFeedback\s+@relation\(fields: \[feedbackId\], references: \[id\], onDelete: Cascade\)$/m,
+    );
+    expect(model).toMatch(/^\s*body\s+String\s+@db\.Text$/m);
+    expect(model).toMatch(/^\s*authorRole\s+String\s+@default\("client"\)$/m);
+    expect(model).toMatch(/^\s*clientId\s+String\s+@unique$/m);
+    expect(model).toContain("@@index([feedbackId, createdAt])");
+  });
+
+  it("upgrades a schema synced before discussion threads, then finds nothing left to do", () => {
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+    syncPrismaModels(schemaPath);
+    const beforeThreads = readFileSync(schemaPath, "utf-8")
+      .replace(/^\s*comments\s+SitepingComment\[\]\r?\n/m, "")
+      .replace(/model SitepingComment \{[^}]*\}\r?\n?/, "");
+    writeFileSync(schemaPath, beforeThreads);
+
+    const result = syncPrismaModels(schemaPath);
+
+    expect(result.addedModels).toEqual(["SitepingComment"]);
+    expect(result.changes).toEqual([
+      { model: "SitepingFeedback", field: "comments", action: "added", detail: "SitepingComment" },
+    ]);
+    expect(syncPrismaModels(schemaPath)).toMatchObject({ addedModels: [], changes: [] });
+  });
+
   it("preserves existing datasource and generator blocks", () => {
     writeFileSync(schemaPath, MINIMAL_SCHEMA);
 
@@ -174,7 +208,7 @@ describe("syncPrismaModels", () => {
 
     const result = syncPrismaModels(schemaPath);
 
-    expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+    expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation", "SitepingComment"]);
     const output = readFileSync(schemaPath, "utf-8");
     expect(output).toContain("model User {");
     expect(output).toContain("enum Role {");
@@ -1097,7 +1131,7 @@ model SitepingFeedback {
 
       const result = syncPrismaModels(mainPath);
 
-      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation", "SitepingComment"]);
       expect(readFileSync(mainPath, "utf-8")).not.toContain("@db.");
     });
 
@@ -1116,7 +1150,11 @@ model SitepingFeedback {
       writeFileSync(single, MINIMAL_SCHEMA);
       writeFileSync(join(tmpDir, "prisma", "old.prisma"), sitepingModels());
 
-      expect(syncPrismaModels(single).addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(syncPrismaModels(single).addedModels).toEqual([
+        "SitepingFeedback",
+        "SitepingAnnotation",
+        "SitepingComment",
+      ]);
     });
 
     it("treats a project root named schema as a single-file schema", () => {
@@ -1134,7 +1172,7 @@ model SitepingFeedback {
 
       const result = syncPrismaModels(rootSchema);
 
-      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation", "SitepingComment"]);
       expect(readFileSync(rootSchema, "utf-8")).toContain("model SitepingFeedback {");
       for (const other of others) expect(readFileSync(other, "utf-8")).toBe(models);
     });
@@ -1151,7 +1189,7 @@ model SitepingFeedback {
 
       const result = syncPrismaModels(mainPath);
 
-      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation", "SitepingComment"]);
       expect(readFileSync(copy, "utf-8")).toBe(models);
     });
   });

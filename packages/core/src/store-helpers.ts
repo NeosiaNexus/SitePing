@@ -7,8 +7,8 @@
  * timestamps), filter/paginate with `applyFeedbackFilters`, and implement
  * the dedup/update/delete choreography of the `SitepingStore` contract.
  *
- * `buildFeedbackRecord` / `buildAnnotationRecord` cover the first part for
- * any adapter. `createCollectionStore` covers all of it: give it `load`,
+ * `buildFeedbackRecord` / `buildAnnotationRecord` / `buildCommentRecord`
+ * cover the first part for any adapter. `createCollectionStore` covers all of it: give it `load`,
  * `persist`, and `generateId`, and it returns a fully conformant
  * `SitepingStore` — writing a new snapshot adapter is ~20 lines plus its
  * storage specifics.
@@ -18,6 +18,8 @@ import { applyFeedbackFilters } from "./filters.js";
 import type {
   AnnotationCreateInput,
   AnnotationRecord,
+  CommentCreateInput,
+  CommentRecord,
   FeedbackCreateInput,
   FeedbackCreateOutcome,
   FeedbackPage,
@@ -26,7 +28,7 @@ import type {
   FeedbackUpdateInput,
   SitepingStore,
 } from "./types.js";
-import { StoreNotFoundError } from "./types.js";
+import { MAX_COMMENTS_PER_FEEDBACK, StoreLimitError, StoreNotFoundError } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Record construction
@@ -66,6 +68,23 @@ export function buildAnnotationRecord(
   };
 }
 
+/** Build a persisted `CommentRecord` from its create input — stamps identity, thread and timestamp. */
+export function buildCommentRecord(
+  input: CommentCreateInput,
+  ctx: { id: string; feedbackId: string; now?: Date },
+): CommentRecord {
+  return {
+    id: ctx.id,
+    feedbackId: ctx.feedbackId,
+    body: input.body,
+    authorName: input.authorName,
+    authorEmail: input.authorEmail,
+    authorRole: input.authorRole,
+    clientId: input.clientId,
+    createdAt: ctx.now ?? new Date(),
+  };
+}
+
 /**
  * Build a persisted `FeedbackRecord` (with its annotations) from a create
  * input — normalizes every optional field to `null` and stamps ids and
@@ -97,6 +116,7 @@ export function buildFeedbackRecord(
     annotations: input.annotations.map((ann) =>
       buildAnnotationRecord(ann, { id: ctx.annotationId(), feedbackId: ctx.id, now }),
     ),
+    comments: [],
     screenshotUrl: input.screenshotDataUrl ?? null,
     screenshotRegion: input.screenshotRegion ?? null,
     diagnostics: input.diagnostics ?? null,
@@ -130,7 +150,7 @@ export interface CollectionStoreBackend {
    * update.
    */
   persist(feedbacks: FeedbackRecord[]): void | Promise<void>;
-  /** Generate a unique id for a new feedback or annotation record. */
+  /** Generate a unique id for a new feedback, annotation or comment record. */
   generateId(): string;
 }
 
@@ -147,8 +167,9 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * The engine implements the whole store contract: clientId dedup (idempotent
  * create, with `createFeedbackIfAbsent` reporting inserts), newest-first
  * ordering, the standard filter/pagination pipeline, `StoreNotFoundError` on
- * missing update/delete, project-scoped bulk delete, and
- * `verifyProjectOwnership`. The snapshot returned by `load` is never
+ * missing update/delete, project-scoped bulk delete,
+ * `verifyProjectOwnership`, and discussion threads (`addComment`,
+ * `deleteComment`) kept on each record. The snapshot returned by `load` is never
  * mutated: every write hands `persist` a new array, so a failed write leaves
  * a cached snapshot exactly as it was. When `persist` fails during `createFeedback`
  * and the record carries an inline screenshot, the engine retries once
@@ -157,7 +178,8 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * returning the record would claim a success that was never persisted.
  *
  * Mutations (`createFeedbackIfAbsent`, `createFeedback`, `updateFeedback`,
- * `deleteFeedback`, `deleteAllFeedbacks`) run one at a time through a queue
+ * `deleteFeedback`, `deleteAllFeedbacks`, `addComment`, `deleteComment`)
+ * run one at a time through a queue
  * owned by the returned store, so concurrent calls — the widget's
  * `Promise.all` bulk resolve/delete — never start from the same snapshot and
  * overwrite each other, and `createFeedbackIfAbsent` reports `created: true`
@@ -190,7 +212,7 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  */
 export function createCollectionStore(
   backend: CollectionStoreBackend,
-): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent">> {
+): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent" | "addComment" | "deleteComment">> {
   // Every mutation is a load → modify → persist cycle over the WHOLE
   // snapshot, so two interleaved mutations would start from the same
   // snapshot and the last persist would silently drop the other's change
@@ -285,5 +307,36 @@ export function createCollectionStore(
       const fb = (await backend.load()).find((f) => f.id === id);
       return fb !== undefined && fb.projectName === projectName;
     },
+
+    addComment: (feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> =>
+      mutate(async (feedbacks) => {
+        // ClientId dedup across every thread — idempotent, like createFeedback
+        const existing = feedbacks.flatMap((f) => f.comments ?? []).find((c) => c.clientId === data.clientId);
+        if (existing) return existing;
+
+        const current = feedbacks.find((f) => f.id === feedbackId);
+        if (!current) throw new StoreNotFoundError();
+        const thread = current.comments ?? [];
+        if (thread.length >= MAX_COMMENTS_PER_FEEDBACK) {
+          throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
+        }
+
+        const comment = buildCommentRecord(data, { id: backend.generateId(), feedbackId });
+        const updated: FeedbackRecord = { ...current, comments: [...thread, comment] };
+        await backend.persist(feedbacks.map((f) => (f === current ? updated : f)));
+        return comment;
+      }),
+
+    deleteComment: (feedbackId: string, commentId: string): Promise<void> =>
+      mutate(async (feedbacks) => {
+        const current = feedbacks.find((f) => f.id === feedbackId);
+        const thread = current?.comments ?? [];
+        // A comment of another thread is "not found" here: the caller was
+        // only authorized for this one.
+        if (!current || !thread.some((c) => c.id === commentId)) throw new StoreNotFoundError();
+
+        const updated: FeedbackRecord = { ...current, comments: thread.filter((c) => c.id !== commentId) };
+        await backend.persist(feedbacks.map((f) => (f === current ? updated : f)));
+      }),
   };
 }

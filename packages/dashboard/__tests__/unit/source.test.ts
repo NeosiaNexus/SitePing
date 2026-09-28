@@ -106,6 +106,25 @@ describe("createEndpointSource — list()", () => {
     expect(record?.clientId).toBe("");
   });
 
+  it("revives each comment's createdAt, blanks its clientId, and keeps a thread-less record as is", async () => {
+    const comment = {
+      id: "c1",
+      feedbackId: "fb-1",
+      body: "Fixed in 1.4",
+      authorName: "Bob",
+      authorEmail: "",
+      authorRole: "team" as const,
+      createdAt: "2026-07-22T08:00:00.000Z",
+    };
+    const fetchFn = jsonFetch({ feedbacks: [makeResponse({ comments: [comment] }), makeResponse()], total: 2 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+
+    const [threaded, threadless] = (await source.list({ projectName: "demo" })).feedbacks;
+
+    expect(threaded?.comments).toEqual([{ ...comment, clientId: "", createdAt: new Date(comment.createdAt) }]);
+    expect(threadless?.comments).toBeUndefined();
+  });
+
   it("keeps a null resolvedAt as null (no Date coercion)", async () => {
     const fetchFn = jsonFetch({ feedbacks: [makeResponse({ resolvedAt: null })], total: 1 });
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
