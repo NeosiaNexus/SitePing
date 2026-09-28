@@ -13,8 +13,12 @@ export const ACTIVE_IMAGE_SUBTYPE_PATTERN = /svg|xml/;
 /** Type and disposition a served object gets when its stored type is not an inert image. */
 export const DOWNLOAD_ONLY_CONTENT_TYPE = "application/octet-stream";
 
-/** Largest decoded screenshot accepted by default, in bytes (matches the server's payload cap). */
-export const DEFAULT_MAX_SCREENSHOT_BYTES = 1_500_000;
+/**
+ * Largest decoded screenshot accepted by default, in bytes: what the largest
+ * data URL the server accepts (1.5M characters, header included) decodes to,
+ * so the storage never refuses a screenshot the server let through.
+ */
+export const DEFAULT_MAX_SCREENSHOT_BYTES = 1_125_000;
 
 /** Prefix of generated object keys; keeps SitePing objects recognizable in a shared bucket. */
 export const DEFAULT_KEY_PREFIX = "siteping-";

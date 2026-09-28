@@ -148,6 +148,21 @@ describe("createScreenshotStorage — validation", () => {
     await expect(storage().upload(exactSize, UPLOAD_CONTEXT)).resolves.toHaveProperty("url");
   });
 
+  it("accepts by default the largest screenshot the server lets through, and nothing larger", async () => {
+    const defaultStorage = createScreenshotStorage(createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL }));
+    const header = "data:image/jpeg;base64,";
+    // The server's cap is 1.5M characters; a base64 payload is a multiple of 4.
+    const largestPayloadLength = Math.floor((1_500_000 - header.length) / 4) * 4;
+    const largestBytes = (largestPayloadLength / 4) * 3;
+
+    await expect(
+      defaultStorage.upload(`${header}${btoa("x".repeat(largestBytes))}`, UPLOAD_CONTEXT),
+    ).resolves.toHaveProperty("url");
+    await expect(defaultStorage.upload(`${header}${btoa("x".repeat(1_125_001))}`, UPLOAD_CONTEXT)).rejects.toThrow(
+      "1125001 bytes exceeds the 1125000-byte limit",
+    );
+  });
+
   it("only deletes keys with the configured prefix and the generated shape", async () => {
     const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
     const storage = createScreenshotStorage(objectStore, { keyPrefix: "team-a-", logger: silentLogger() });

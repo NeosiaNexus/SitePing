@@ -28,7 +28,8 @@ export interface ScreenshotStorageOptions {
    */
   allowedContentTypes?: readonly string[];
   /**
-   * Largest decoded image accepted, in bytes. Defaults to 1.5 MB. Must be a
+   * Largest decoded image accepted, in bytes. Defaults to 1,125,000 (what the
+   * server's 1.5M-character data URL cap decodes to). Must be a
    * positive integer — `NaN`, `Infinity`, `0` or a fraction throw, since they
    * could not enforce a limit.
    */
