@@ -905,6 +905,25 @@ model SitepingFeedback {
     expect(indexChanges.length).toBeGreaterThan(0);
   });
 
+  it.each([
+    ["the fields: keyword form", "@@index([feedbackId])", "@@index(fields: [feedbackId])"],
+    [
+      "a sort order on a column",
+      "@@index([projectName, status, createdAt])",
+      "@@index([projectName, status, createdAt(sort: Desc)])",
+    ],
+  ])("recognizes an existing @@index written with %s", (_label, generated, equivalent) => {
+    // A second @@index on the same columns is a Prisma error (P1012: the
+    // default constraint name "has to be unique"), so none may be appended.
+    const schema = syncedSchema().replace(generated, equivalent);
+    writeFileSync(schemaPath, schema);
+
+    const result = syncPrismaModels(schemaPath);
+
+    expect(result.changes).toEqual([]);
+    expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+  });
+
   // -----------------------------------------------------------------------
   // Default schema path argument
   // -----------------------------------------------------------------------

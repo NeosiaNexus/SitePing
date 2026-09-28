@@ -475,17 +475,21 @@ function buildBlockIndex(idx: IndexDef): Property {
   } as BlockAttribute;
 }
 
+/**
+ * Whether the model already indexes `idx`'s columns — in any spelling Prisma
+ * accepts: `@@index([a, b])`, `@@index(fields: [a, b])`, or with a column
+ * carrying options (`b(sort: Desc)`). A second index on the same columns
+ * would clash on the default constraint name (P1012).
+ */
 function hasBlockIndex(model: Model, idx: IndexDef): boolean {
   const key = idx.fields.join(",");
   return model.properties.some((p) => {
     if (p.type !== "attribute" || (p as BlockAttribute).name !== "index") return false;
-    const attr = p as BlockAttribute;
-    const firstArg = attr.args?.[0];
-    if (firstArg?.type !== "attributeArgument") return false;
-    const val = firstArg.value;
-    if (typeof val === "object" && val !== null && "type" in val && val.type === "array") {
-      return (val as { type: "array"; args: string[] }).args.join(",") === key;
-    }
-    return false;
+    // `args` is absent on a bare `@@index()`, whatever the type says
+    return ((p as BlockAttribute).args ?? []).some((arg) => {
+      const val = isKeyValue(arg.value) ? (arg.value.key === "fields" ? arg.value.value : undefined) : arg.value;
+      if (typeof val !== "object" || val === null || !("type" in val) || val.type !== "array") return false;
+      return val.args.map((col) => (typeof col === "string" ? col : (col as Func).name)).join(",") === key;
+    });
   });
 }
