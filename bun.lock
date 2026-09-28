@@ -100,6 +100,9 @@
       "peerDependencies": {
         "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0",
       },
+      "optionalPeers": [
+        "@prisma/client",
+      ],
     },
     "packages/cli": {
       "name": "@siteping/cli",

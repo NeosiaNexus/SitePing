@@ -14,7 +14,7 @@ The production server adapter for [SitePing](https://github.com/NeosiaNexus/Site
 npm install @siteping/adapter-prisma
 ```
 
-**Peer dependency:** `@prisma/client` ^5 || ^6 || ^7 · Node ≥ 20.
+**Optional peer dependency:** `@prisma/client` ^5 || ^6 || ^7, needed only for the `prisma` option · Node ≥ 20.
 
 ## Quick start
 
