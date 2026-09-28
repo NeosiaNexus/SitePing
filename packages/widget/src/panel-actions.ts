@@ -4,7 +4,7 @@
  * before it touches the DOM.
  */
 
-import type { SitepingPanelAction } from "@siteping/core";
+import type { FeedbackResponse, SitepingPanelAction } from "@siteping/core";
 
 /** A validated action, its icon parsed once and cloned on every render. */
 export interface PanelActionItem {
@@ -62,6 +62,18 @@ export function parseActionIcon(markup: string): SVGSVGElement | null {
   sanitizeIconNode(root);
   root.setAttribute("aria-hidden", "true");
   return document.importNode(root as SVGSVGElement, true);
+}
+
+/**
+ * A detached, deeply frozen copy of a feedback for host callbacks — they can
+ * read everything but never mutate the records the panel renders.
+ * `FeedbackResponse` is JSON by construction (`Serialized<FeedbackRecord>`),
+ * so the round trip is lossless.
+ */
+export function snapshotFeedback(feedback: FeedbackResponse): Readonly<FeedbackResponse> {
+  return JSON.parse(JSON.stringify(feedback), (_key, value: unknown) =>
+    typeof value === "object" && value !== null ? Object.freeze(value) : value,
+  );
 }
 
 /**

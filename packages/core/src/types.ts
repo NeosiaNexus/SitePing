@@ -56,11 +56,26 @@ export interface SitepingDeepLinkOptions {
   param?: string | undefined;
 }
 
+/** Helpers passed to a panel action's `onAction` as its second argument. */
+export interface SitepingPanelActionContext {
+  /**
+   * Re-fetch the panel list and markers, then re-render the detail view with
+   * the updated feedback — or go back to the list when it no longer matches
+   * the panel filters. Call it after your action changed the feedback
+   * server-side (e.g. moved it to `in_progress` once a ticket exists).
+   */
+  refresh: () => Promise<void>;
+  /** Close the feedback panel. */
+  close: () => void;
+}
+
 /**
  * A host-defined action rendered as a button in the feedback detail view.
  *
  * Hosts use this to bridge feedbacks into their own systems — create a
  * ticket, dispatch to a bot, copy a share link — without forking the panel.
+ * Callbacks receive a detached, deeply frozen copy of the feedback: read it
+ * freely, it can never alter what the panel displays.
  */
 export interface SitepingPanelAction {
   /** Stable, unique identifier — becomes `data-action-id` on the rendered button. */
@@ -79,16 +94,17 @@ export interface SitepingPanelAction {
   icon?: string | undefined;
   /**
    * Per-feedback visibility predicate. Return `false` to omit the button
-   * for that feedback. Defaults to always visible.
+   * for that feedback. Defaults to always visible. A throw hides the button
+   * and is reported through `onError`.
    */
-  visible?: ((feedback: FeedbackResponse) => boolean) | undefined;
+  visible?: ((feedback: Readonly<FeedbackResponse>) => boolean) | undefined;
   /**
    * Invoked on click. While a returned promise is pending the detail view's
    * action buttons are disabled and the clicked button shows a spinner.
-   * Rejections are reported through `SitepingConfig.onError` and restore
-   * the buttons; the detail view stays open either way.
+   * Throws and rejections are reported through `onError` and restore the
+   * buttons; the detail view stays open either way.
    */
-  onAction: (feedback: FeedbackResponse) => void | Promise<void>;
+  onAction: (feedback: Readonly<FeedbackResponse>, context: SitepingPanelActionContext) => void | Promise<void>;
 }
 
 /**

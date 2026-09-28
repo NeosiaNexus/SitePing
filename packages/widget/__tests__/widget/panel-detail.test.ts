@@ -1372,6 +1372,34 @@ describe("custom panel actions", () => {
     expect(view.element.querySelector(".sp-detail-message")?.textContent).toBe("Something broken in the page");
   });
 
+  it("hands host callbacks one detached, deeply frozen copy of the feedback", async () => {
+    const fb = makeFeedback({
+      annotations: [makeAnnotation()],
+      diagnostics: {
+        console: [{ level: "error", message: "boom", timestamp: "2024-01-15T10:00:00.000Z" }],
+        network: [],
+      },
+    });
+    const seen: Readonly<FeedbackResponse>[] = [];
+    const { view, cb } = buildDetail([makeAction({ visible: (snap) => seen.push(snap) > 0 })]);
+    view.show(fb, 1);
+    view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!.click();
+    await vi.waitFor(() => expect(cb.onCustomAction).toHaveBeenCalledOnce());
+
+    const [snap] = seen;
+    expect(snap).toEqual(fb);
+    expect(snap).not.toBe(fb);
+    expect(vi.mocked(cb.onCustomAction).mock.calls[0]?.[1]).toBe(snap);
+    expect(Object.isFrozen(snap)).toBe(true);
+    expect(Object.isFrozen(snap?.annotations)).toBe(true);
+    expect(Object.isFrozen(snap?.annotations[0])).toBe(true);
+    expect(Object.isFrozen(snap?.diagnostics?.console[0])).toBe(true);
+    expect(() => {
+      (snap as FeedbackResponse).status = "resolved";
+    }).toThrow(TypeError);
+    expect(fb.status).toBe("open");
+  });
+
   it("renders the sanitized icon before the label, and restores it after the spinner", async () => {
     let settle!: () => void;
     const { view } = buildDetail(

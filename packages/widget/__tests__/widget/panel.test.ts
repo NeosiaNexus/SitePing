@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { FeedbackResponse } from "@siteping/core";
+import type { FeedbackResponse, SitepingPanelAction, SitepingPanelActionContext } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { createT, tWithParams } from "../../src/i18n/index.js";
@@ -4205,36 +4205,40 @@ describe("Panel", () => {
   });
 
   describe("panelActions plumbing", () => {
-    it("wires panelActions through to the detail view and reports a rejection on panel:action-error only", async () => {
-      // Rebuild the panel with a panelActions option — mirrors the "respects
-      // custom getScope option" harness above, which is the existing pattern
-      // for constructing a Panel with a non-default options bag.
+    /** Rebuild the panel with host actions (same harness as the custom getScope test above). */
+    function rebuildWithActions(panelActions: SitepingPanelAction[]): Error[] {
       panel.destroy();
       shadow.host.remove();
       shadow = createShadowRoot();
       bus = new EventBus<WidgetEvents>();
       apiClient = createMockApiClient();
       markers = createMockMarkers();
-
-      const onAction = vi.fn().mockRejectedValue(new Error("dispatch failed"));
       const actionErrors: Error[] = [];
       bus.on("panel:action-error", (e) => actionErrors.push(e));
+      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+        getScope: () => ({ url: "/", urlPattern: null }),
+        scopeAnnotationsByUrl: true,
+        panelActions,
+      });
+      return actionErrors;
+    }
+
+    async function openDetail(fb: FeedbackResponse): Promise<void> {
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      await panel.open();
+      shadow.querySelector<HTMLElement>(`[data-feedback-id="${fb.id}"]`)!.click();
+    }
+
+    const detailEl = () => shadow.querySelector<HTMLElement>(".sp-detail")!;
+
+    it("wires panelActions through to the detail view and reports a rejection on panel:action-error only", async () => {
+      const onAction = vi.fn().mockRejectedValue(new Error("dispatch failed"));
+      const actionErrors = rebuildWithActions([{ id: "a1", label: "Do it", onAction }]);
       // `feedback:error` settles the annotator's pending submission — a host
       // action failure must never be emitted there.
       const feedbackErrors = vi.fn();
       bus.on("feedback:error", feedbackErrors);
-
-      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
-        getScope: () => ({ url: "/", urlPattern: null }),
-        scopeAnnotationsByUrl: true,
-        panelActions: [{ id: "a1", label: "Do it", onAction }],
-      });
-
-      const fb = makeFeedback({ id: "fb-1" });
-      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
-
-      await panel.open();
-      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+      await openDetail(makeFeedback({ id: "fb-1" }));
 
       const customBtn = shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!;
       expect(customBtn).not.toBeNull();
@@ -4247,40 +4251,24 @@ describe("Panel", () => {
     });
 
     it("contains host callbacks that throw synchronously or throw non-Errors", async () => {
-      panel.destroy();
-      shadow.host.remove();
-      shadow = createShadowRoot();
-      bus = new EventBus<WidgetEvents>();
-      apiClient = createMockApiClient();
-      markers = createMockMarkers();
-      const actionErrors: Error[] = [];
-      bus.on("panel:action-error", (e) => actionErrors.push(e));
-
-      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
-        getScope: () => ({ url: "/", urlPattern: null }),
-        scopeAnnotationsByUrl: true,
-        panelActions: [
-          {
-            id: "sync",
-            label: "Sync throw",
-            onAction: () => {
-              throw "not an Error";
-            },
+      const actionErrors = rebuildWithActions([
+        {
+          id: "sync",
+          label: "Sync throw",
+          onAction: () => {
+            throw "not an Error";
           },
-          {
-            id: "hidden",
-            label: "Never shown",
-            onAction: () => {},
-            visible: () => {
-              throw new Error("visible failed");
-            },
+        },
+        {
+          id: "hidden",
+          label: "Never shown",
+          onAction: () => {},
+          visible: () => {
+            throw new Error("visible failed");
           },
-        ],
-      });
-      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
-
-      await panel.open();
-      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+        },
+      ]);
+      await openDetail(makeFeedback({ id: "fb-1" }));
       expect(actionErrors.map((e) => e.message)).toEqual(["visible failed"]);
       expect(shadow.querySelector('[data-action-id="hidden"]')).toBeNull();
 
@@ -4290,6 +4278,86 @@ describe("Panel", () => {
       expect(actionErrors[1]).toBeInstanceOf(Error);
       expect(actionErrors[1]?.message).toBe("not an Error");
       await vi.waitFor(() => expect(btn.disabled).toBe(false));
+    });
+
+    it("context.refresh() reloads the list and re-renders the detail with the updated record", async () => {
+      const fb = makeFeedback({ id: "fb-1", status: "open" });
+      const onAction = vi.fn(async (_fb: Readonly<FeedbackResponse>, ctx: SitepingPanelActionContext) => {
+        // The host moved the feedback forward server-side.
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [{ ...fb, status: "in_progress" }], total: 1 });
+        await ctx.refresh();
+      });
+      rebuildWithActions([{ id: "ticket", label: "Create ticket", onAction }]);
+      await openDetail(fb);
+      apiClient.getFeedbacks.mockClear();
+      markers.render.mockClear();
+
+      shadow.querySelector<HTMLButtonElement>('[data-action-id="ticket"]')!.click();
+
+      await vi.waitFor(() => expect(shadow.querySelector(".sp-detail-status-pill--in-progress")).not.toBeNull());
+      expect(apiClient.getFeedbacks).toHaveBeenCalledOnce();
+      expect(markers.render).toHaveBeenCalledOnce();
+      expect(detailEl().classList.contains("sp-detail--visible")).toBe(true);
+      // The re-rendered view is interactive again once the action settles.
+      await vi.waitFor(() =>
+        expect(shadow.querySelector<HTMLButtonElement>('[data-action-id="ticket"]')!.disabled).toBe(false),
+      );
+    });
+
+    it("context.refresh() goes back to the list when the feedback no longer matches", async () => {
+      rebuildWithActions([
+        {
+          id: "close-it",
+          label: "Close in tracker",
+          onAction: async (_fb, ctx) => {
+            apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+            await ctx.refresh();
+          },
+        },
+      ]);
+      await openDetail(makeFeedback({ id: "fb-1" }));
+
+      shadow.querySelector<HTMLButtonElement>('[data-action-id="close-it"]')!.click();
+
+      await vi.waitFor(() => expect(detailEl().classList.contains("sp-detail--visible")).toBe(false));
+    });
+
+    it("context.refresh() leaves the detail alone once the user moved to another feedback", async () => {
+      const a = makeFeedback({ id: "fb-a" });
+      const b = makeFeedback({ id: "fb-b", message: "second feedback" });
+      let release!: () => void;
+      rebuildWithActions([
+        {
+          id: "slow",
+          label: "Slow",
+          onAction: async (_fb, ctx) => {
+            await new Promise<void>((r) => (release = r));
+            await ctx.refresh();
+          },
+        },
+      ]);
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [a, b], total: 2 });
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-a"]')!.click();
+      shadow.querySelector<HTMLButtonElement>('[data-action-id="slow"]')!.click();
+
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-b"]')!.click();
+      release();
+
+      await vi.waitFor(() => expect(apiClient.getFeedbacks).toHaveBeenCalledTimes(2));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(detailEl().classList.contains("sp-detail--visible")).toBe(true);
+      expect(shadow.querySelector(".sp-detail-message")?.textContent).toBe("second feedback");
+    });
+
+    it("context.close() closes the panel", async () => {
+      rebuildWithActions([{ id: "go", label: "Go", onAction: (_fb, ctx) => ctx.close() }]);
+      await openDetail(makeFeedback({ id: "fb-1" }));
+
+      shadow.querySelector<HTMLButtonElement>('[data-action-id="go"]')!.click();
+
+      await vi.waitFor(() => expect(panel.isCurrentlyOpen).toBe(false));
+      expect(detailEl().classList.contains("sp-detail--visible")).toBe(false);
     });
   });
 });

@@ -68,6 +68,7 @@ export type {
   SitepingInstance,
   SitepingLocale,
   SitepingPanelAction,
+  SitepingPanelActionContext,
   SitepingPosition,
   SitepingPublicEventListener,
   SitepingPublicEvents,

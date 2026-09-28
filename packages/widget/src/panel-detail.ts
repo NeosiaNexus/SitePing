@@ -12,7 +12,7 @@
 import { type FeedbackResponse, type FeedbackStatus, isClosedStatus, type SitepingPanelAction } from "@siteping/core";
 import { el, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
-import type { PanelActionItem } from "./panel-actions.js";
+import { type PanelActionItem, snapshotFeedback } from "./panel-actions.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -949,7 +949,7 @@ export interface DetailCallbacks {
   /** False hides "Go to annotation" (e.g. the feedback belongs to another page). */
   canGoToAnnotation?: (feedback: FeedbackResponse) => boolean;
   /** Runs a host-defined panel action. Never rejects: the panel contains and reports host failures. */
-  onCustomAction: (action: SitepingPanelAction, feedback: FeedbackResponse) => Promise<void>;
+  onCustomAction: (action: SitepingPanelAction, feedback: Readonly<FeedbackResponse>) => Promise<void>;
   /** Reports a host `visible()` predicate that threw — the action is hidden for that feedback. */
   onCustomActionError: (error: unknown) => void;
 }
@@ -1141,6 +1141,11 @@ export class DetailView {
     this.viewToken++;
   }
 
+  /** Id of the feedback on screen, `null` while hidden. */
+  get feedbackId(): string | null {
+    return this.currentFeedback?.id ?? null;
+  }
+
   /** Whether the detail view is currently visible. */
   get isVisible(): boolean {
     return this._isVisible;
@@ -1232,13 +1237,22 @@ export class DetailView {
     actions.appendChild(this.deleteBtn);
     container.appendChild(actions);
 
-    // Host-defined actions get their own wrapping row, so long labels or
-    // several actions never squash Resolve/Delete.
-    const customRow = el("div", { class: "sp-detail-actions sp-detail-actions--custom" });
+    this.buildCustomActions(container, feedback);
+  }
+
+  /**
+   * Host-defined actions (`config.panelActions`) — their own wrapping row, so
+   * long labels or several actions never squash Resolve/Delete.
+   */
+  private buildCustomActions(container: HTMLElement, feedback: FeedbackResponse): void {
     this.customBtns = [];
+    if (this.customActions.length === 0) return;
+    // One frozen copy per render, shared by every host callback of this view.
+    const snapshot = snapshotFeedback(feedback);
+    const row = el("div", { class: "sp-detail-actions sp-detail-actions--custom" });
     for (const { action, icon } of this.customActions) {
       try {
-        if (action.visible && !action.visible(feedback)) continue;
+        if (action.visible && !action.visible(snapshot)) continue;
       } catch (error) {
         this.callbacks.onCustomActionError(error);
         continue;
@@ -1254,11 +1268,11 @@ export class DetailView {
       const span = document.createElement("span");
       setText(span, action.label);
       btn.appendChild(span);
-      btn.addEventListener("click", () => void this.handleCustomAction(action, btn));
+      btn.addEventListener("click", () => void this.handleCustomAction(action, btn, snapshot));
       this.customBtns.push(btn);
-      customRow.appendChild(btn);
+      row.appendChild(btn);
     }
-    if (this.customBtns.length > 0) container.appendChild(customRow);
+    if (this.customBtns.length > 0) container.appendChild(row);
   }
 
   /** Build the metadata grid. */
@@ -1576,8 +1590,12 @@ export class DetailView {
     }
   }
 
-  private async handleCustomAction(action: SitepingPanelAction, btn: HTMLButtonElement): Promise<void> {
-    if (this.isProcessing || !this.currentFeedback) return;
+  private async handleCustomAction(
+    action: SitepingPanelAction,
+    btn: HTMLButtonElement,
+    feedback: Readonly<FeedbackResponse>,
+  ): Promise<void> {
+    if (this.isProcessing) return;
     this.isProcessing = true;
     const token = this.viewToken;
 
@@ -1587,7 +1605,7 @@ export class DetailView {
     this.setActionsDisabled(true, btn);
 
     try {
-      await this.callbacks.onCustomAction(action, this.currentFeedback);
+      await this.callbacks.onCustomAction(action, feedback);
     } finally {
       restore();
       btn.removeAttribute("aria-busy");

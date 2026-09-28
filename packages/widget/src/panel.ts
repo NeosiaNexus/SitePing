@@ -253,7 +253,7 @@ export class Panel {
         },
         onCustomAction: async (action, fb) => {
           try {
-            await action.onAction(fb);
+            await action.onAction(fb, { refresh: () => this.refreshDetail(fb.id), close: () => this.close() });
           } catch (error) {
             this.reportActionError(error);
           }
@@ -1315,6 +1315,21 @@ export class Panel {
    */
   private reportActionError(error: unknown): void {
     this.bus.emit("panel:action-error", error instanceof Error ? error : new Error(String(error)));
+  }
+
+  /**
+   * `refresh()` handed to panel actions: reload the list and markers, then
+   * re-render the detail view with the updated record — or go back to the
+   * list when it no longer matches the filters. Leaves the view alone when
+   * the user has already moved on to another feedback.
+   */
+  private async refreshDetail(feedbackId: string): Promise<void> {
+    await this.refresh();
+    if (this.detail.feedbackId !== feedbackId) return;
+    const index = this.feedbacks.findIndex((f) => f.id === feedbackId);
+    const fresh = this.feedbacks[index];
+    if (fresh) this.detail.show(fresh, index + 1);
+    else this.detail.hide();
   }
 
   /** Refresh the panel after a new feedback is submitted */
