@@ -15,6 +15,20 @@ interface SitepingHealthResponse {
   total?: number;
 }
 
+/**
+ * `<url><endpoint>?projectName=…` — the endpoint is joined onto the URL's own
+ * path (`http://host/base` keeps `/base`, which `new URL(endpoint, url)` would
+ * drop) and `projectName` added to whatever query the endpoint already has.
+ */
+function healthCheckUrl(url: string, endpoint: string): string {
+  const target = new URL(url);
+  const { pathname, searchParams } = new URL(endpoint, "http://endpoint.invalid");
+  target.pathname = target.pathname.replace(/\/+$/, "") + pathname;
+  target.search = searchParams.toString();
+  target.searchParams.set("projectName", "__siteping_health_check__");
+  return target.toString();
+}
+
 export async function doctorCommand(options: DoctorCommandOptions): Promise<void> {
   p.intro("siteping — Network diagnostics");
 
@@ -49,13 +63,12 @@ export async function doctorCommand(options: DoctorCommandOptions): Promise<void
     process.exit(0);
   }
 
-  const projectName = "__siteping_health_check__";
-  const fullUrl = new URL(`${endpoint}?projectName=${encodeURIComponent(projectName)}`, url).toString();
-
   const spinner = p.spinner();
   spinner.start(`Testing connection to ${url}${endpoint}`);
 
   try {
+    // Inside the try: `http://` passes the prefix check but doesn't parse.
+    const fullUrl = healthCheckUrl(url, endpoint);
     const start = performance.now();
     const response = await fetch(fullUrl, {
       signal: AbortSignal.timeout(10_000),
