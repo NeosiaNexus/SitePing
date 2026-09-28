@@ -278,6 +278,24 @@ describe("SitepingInbox — keyboard", () => {
     await waitFor(() => expect(listRows()[0]?.className).toContain("spd-row-focused"));
   });
 
+  it("keeps keyboard focus in the inbox when resolving the last row empties the tab", async () => {
+    const only = makeRecord({ id: "solo", status: "open", message: "The only open one" });
+    renderInbox({}, [only]);
+    const listbox = await ready();
+    listbox.focus();
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "e" }); // last row leaves → empty state replaces the listbox
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+
+    // The focused listbox unmounted: focus must not fall to <body>, or every
+    // shortcut dies until the user clicks back into the inbox.
+    const root = document.querySelector(".spd-root");
+    expect(root?.contains(document.activeElement)).toBe(true);
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "4" }); // shortcuts still work
+    await waitFor(() => expect(listRows().map((row) => row.getAttribute("data-status"))).toEqual(["resolved"]));
+  });
+
   it("ignores j/k while the overlay drawer is open (the list is behind the backdrop)", async () => {
     renderInbox();
     const listbox = await ready();

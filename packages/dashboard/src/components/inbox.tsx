@@ -160,6 +160,30 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     rootRef.current?.querySelector<HTMLElement>(".spd-list")?.focus();
   }, []);
 
+  // ----- keep keyboard focus in the inbox when the list pane swaps (the last
+  // row resolved → empty state, a refetch → skeleton): the focused listbox
+  // unmounts, focus falls to <body>, and every shortcut dies until the user
+  // clicks back in. Only reclaimed when focus was ours to begin with.
+  const focusInside = useRef(false);
+  useEffect(() => {
+    const track = (event: Event) => {
+      focusInside.current = rootRef.current?.contains(event.target as Node) ?? false;
+    };
+    document.addEventListener("focusin", track);
+    document.addEventListener("pointerdown", track);
+    return () => {
+      document.removeEventListener("focusin", track);
+      document.removeEventListener("pointerdown", track);
+    };
+  }, []);
+  const pane = state.view === "ready" ? "list" : state.view;
+  useEffect(() => {
+    const active = document.activeElement;
+    if (!focusInside.current || (active && active !== document.body && active !== rootRef.current)) return;
+    const list = pane === "list" ? rootRef.current?.querySelector<HTMLElement>(".spd-list") : null;
+    (list ?? rootRef.current)?.focus();
+  }, [pane]);
+
   // ----- announce the result count whenever a fetch settles (separate from the toast)
   const [resultsMsg, setResultsMsg] = useState("");
   const wasLoading = useRef(state.loading);
@@ -321,6 +345,8 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
         data-density={density}
         lang={intlTag}
         aria-label={t("inbox.regionLabel")}
+        // Focus fallback when the listbox unmounts (see the pane effect above).
+        tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
         <Toolbar state={state} searchRef={searchRef} />

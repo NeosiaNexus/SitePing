@@ -369,6 +369,11 @@ export const INBOX_CSS = `
 .spd-list { outline: none; transition: opacity 120ms var(--spd-ease); }
 .spd-list[aria-busy="true"] { opacity: 0.6; pointer-events: none; }
 .spd-list:focus-visible { outline: none; }
+/* The root takes focus when the listbox unmounts (empty state, skeleton):
+   no ring after a click, an inset one for keyboard users. Zero specificity
+   so a consumer's className can restyle it. */
+:where(.spd-root:focus:not(:focus-visible)) { outline: none; }
+:where(.spd-root:focus-visible) { outline: 2px solid var(--spd-accent-bright); outline-offset: -2px; }
 
 /* ------------------------------------------------------------------ rows */
 .spd-row {
