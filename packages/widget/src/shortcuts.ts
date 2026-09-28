@@ -395,6 +395,11 @@ export class KeyboardShortcuts {
     if (this.helpVisible) this.hideHelp();
   }
 
+  /** Whether the help overlay is showing (it consumes Escape before the panel). */
+  get isHelpVisible(): boolean {
+    return this.helpVisible;
+  }
+
   /** Show/hide help overlay. */
   toggleHelp(): void {
     if (this.helpVisible) {

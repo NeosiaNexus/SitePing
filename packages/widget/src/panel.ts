@@ -375,10 +375,13 @@ export class Panel {
       open ? this.open() : this.close();
     });
 
-    // Keyboard handling: Escape to close + focus trap
+    // Keyboard handling: Escape to close + focus trap. Nested layers (menus,
+    // confirm dialog) stop Escape before it bubbles here; the help overlay's
+    // handler sits on this same shadow root but runs later, so defer to it.
     shadowRoot.addEventListener("keydown", (e) => {
       const ke = e as KeyboardEvent;
       if (ke.key === "Escape" && this.isOpen) {
+        if (this.shortcuts.isHelpVisible) return;
         // If detail view is open, close it instead
         if (this.detail.isVisible) {
           this.detail.hide();
@@ -901,6 +904,7 @@ export class Panel {
       const onKeydown = (e: Event) => {
         const ke = e as KeyboardEvent;
         if (ke.key === "Escape") {
+          ke.stopPropagation(); // Cancel the dialog only, not the panel
           close(false);
           return;
         }
@@ -1111,6 +1115,7 @@ export class Panel {
 
     this.typeDropdownMenu.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
+        e.stopPropagation(); // Close the menu only, not the panel
         this.closeTypeDropdown();
         this.typeDropdownBtn.focus();
       }

@@ -328,6 +328,7 @@ export class PanelSortControls {
     // Close on Escape
     this.menuEl.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
+        e.stopPropagation(); // Close the menu only, not the panel
         this.closeMenu();
         this.sortBtn.focus();
       }

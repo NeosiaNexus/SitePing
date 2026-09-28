@@ -1112,6 +1112,55 @@ describe("Panel", () => {
 
       expect(preventSpy).toHaveBeenCalled();
     });
+
+    describe("Escape closes only the innermost layer", () => {
+      const escapeOn = (target: EventTarget) =>
+        target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
+      const panelIsOpen = () => shadow.querySelector<HTMLElement>(".sp-panel")!.classList.contains("sp-panel--open");
+
+      beforeEach(async () => {
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
+        await panel.open();
+      });
+
+      it("shortcuts help overlay", () => {
+        shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+        const overlay = shadow.querySelector<HTMLElement>(".sp-shortcuts-overlay")!;
+        expect(overlay.classList.contains("sp-shortcuts-overlay--visible")).toBe(true);
+
+        escapeOn(overlay.querySelector(".sp-shortcuts-close")!);
+
+        expect(overlay.classList.contains("sp-shortcuts-overlay--visible")).toBe(false);
+        expect(panelIsOpen()).toBe(true);
+      });
+
+      it("type dropdown", () => {
+        shadow.querySelector<HTMLButtonElement>(".sp-filter-dropdown-btn")!.click();
+        escapeOn(shadow.querySelector(".sp-filter-dropdown-option")!);
+
+        expect(shadow.querySelector(".sp-filter-dropdown-menu")).toBeNull();
+        expect(panelIsOpen()).toBe(true);
+      });
+
+      it("sort menu", () => {
+        shadow.querySelector<HTMLButtonElement>(".sp-sort-btn")!.click();
+        escapeOn(shadow.querySelector(".sp-sort-option")!);
+
+        expect(shadow.querySelector(".sp-sort-menu")).toBeNull();
+        expect(panelIsOpen()).toBe(true);
+      });
+
+      it("delete-all confirm dialog", async () => {
+        shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!.click();
+        await vi.waitFor(() => expect(shadow.querySelector(".sp-confirm-backdrop")).not.toBeNull());
+
+        escapeOn(shadow.querySelector(".sp-confirm-dialog .sp-btn-ghost")!);
+
+        expect(panelIsOpen()).toBe(true);
+        await new Promise((r) => setTimeout(r, 250));
+        expect(apiClient.deleteAllFeedbacks).not.toHaveBeenCalled();
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
