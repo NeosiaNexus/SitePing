@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import {
   clampPagination,
   type FeedbackCreateInput,
@@ -704,21 +703,31 @@ function preflightAllowedHeaders(request: Request): string {
 // Handler factory
 // ---------------------------------------------------------------------------
 
+const textEncoder = new TextEncoder();
+
 /**
- * Perform a constant-time string comparison to prevent timing attacks on API key validation.
- * Returns `false` immediately when lengths differ (unavoidable length leak), but the
- * byte-level comparison itself is timing-safe.
+ * Constant-time string comparison for API key validation, without
+ * `node:crypto` so the handler runs on any runtime with Web APIs (Node, Bun,
+ * Deno, edge workers). Returns `false` early when lengths differ (an
+ * unavoidable length leak); the byte comparison itself does not short-circuit.
  *
- * Length must be compared in BYTES: `timingSafeEqual` throws on byte-length
- * mismatch, and multi-byte characters make equal `.length` strings differ in
- * bytes — an attacker-controlled `Authorization` header must never turn that
- * into a 500.
+ * Lengths are compared in BYTES: multi-byte characters make strings of equal
+ * `.length` differ in bytes.
  */
 function safeCompare(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+  const bytesA = textEncoder.encode(a);
+  const bytesB = textEncoder.encode(b);
+  if (bytesA.length !== bytesB.length) return false;
+  let difference = 0;
+  for (let index = 0; index < bytesA.length; index++) {
+    difference |= (bytesA[index] ?? 0) ^ (bytesB[index] ?? 0);
+  }
+  return difference === 0;
+}
+
+/** `NODE_ENV === "production"`, tolerating runtimes without `process` (edge workers, Deno). */
+function isProductionEnvironment(): boolean {
+  return typeof process !== "undefined" && process.env?.NODE_ENV === "production";
 }
 
 /**
@@ -782,7 +791,7 @@ export function createSitepingHandler({
 
   // Refuse to expose destructive endpoints publicly in production. Without
   // this guard, anyone could `DELETE { deleteAll: true }` against the API.
-  if (!apiKey && requireAuthForDestructive && process.env.NODE_ENV === "production") {
+  if (!apiKey && requireAuthForDestructive && isProductionEnvironment()) {
     throw new Error(
       "[siteping] adapter-prisma: apiKey is required in production. " +
         "Set `apiKey` to enable destructive endpoints, or pass " +
