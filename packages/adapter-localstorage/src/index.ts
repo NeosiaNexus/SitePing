@@ -4,6 +4,7 @@ import {
   FEEDBACK_STATUSES,
   FEEDBACK_TYPES,
   type FeedbackCreateInput,
+  type FeedbackCreateOutcome,
   type FeedbackPage,
   type FeedbackQuery,
   type FeedbackRecord,
@@ -147,6 +148,10 @@ export class LocalStorageStore implements SitepingStore {
 
   createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
     return this.engine.createFeedback(data);
+  }
+
+  createFeedbackIfAbsent(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome> {
+    return this.engine.createFeedbackIfAbsent(data);
   }
 
   getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {

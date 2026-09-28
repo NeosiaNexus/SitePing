@@ -167,8 +167,8 @@ Two implementation strategies:
   `createCollectionStore({ load, persist, generateId })` from `@siteping/core`
   your three storage primitives and you get the complete store — clientId
   dedup, filtering/pagination, the error contract, `verifyProjectOwnership`,
-  and the screenshot-drop retry on failed persists. `adapter-memory` is the
-  ~80-line reference.
+  `createFeedbackIfAbsent`, and the screenshot-drop retry on failed persists.
+  `adapter-memory` is the ~80-line reference.
 - **Query backends** (SQL, ORMs): implement the 6 methods directly. Use
   `buildFeedbackRecord` / `buildAnnotationRecord` for input→record
   construction, and follow the error contract documented on `SitepingStore`:
@@ -178,7 +178,7 @@ Two implementation strategies:
   `StorePersistenceError`. Optionally implement `verifyProjectOwnership` so
   HTTP handlers can reject cross-project PATCH/DELETE.
 
-Verify with the shared conformance suite (~53 tests — the scaffold pre-wires
+Verify with the shared conformance suite (~56 tests — the scaffold pre-wires
 this file):
 
 ```ts

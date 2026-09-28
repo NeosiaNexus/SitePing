@@ -43,6 +43,7 @@ export type {
   ConsoleDiagnosticLevel,
   DiagnosticsSnapshot,
   FeedbackCreateInput,
+  FeedbackCreateOutcome,
   FeedbackPage,
   FeedbackPayload,
   FeedbackQuery,

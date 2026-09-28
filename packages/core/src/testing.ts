@@ -751,5 +751,43 @@ export function testSitepingStore(
         await expect(store.verifyProjectOwnership("unknown-id", "owner")).resolves.toBe(false);
       });
     });
+
+    // ------------------------------------------------------------------
+    // createFeedbackIfAbsent (optional contract member)
+    // ------------------------------------------------------------------
+
+    describe("createFeedbackIfAbsent", () => {
+      it("reports an insert, then the existing record for the same clientId (when implemented)", async () => {
+        // Optional member — same skip-but-run pattern as verifyProjectOwnership.
+        if (!store.createFeedbackIfAbsent) return;
+
+        const input = createInput({ clientId: "once-id" });
+        const first = await store.createFeedbackIfAbsent(input);
+        const second = await store.createFeedbackIfAbsent(input);
+
+        expect(first.created).toBe(true);
+        expect(second).toEqual({ feedback: expect.objectContaining({ id: first.feedback.id }), created: false });
+        expect((await store.getFeedbacks({ projectName: "test-project" })).total).toBe(1);
+      });
+
+      it("reports exactly one insert when concurrent calls race on the same clientId (when implemented)", async () => {
+        if (!store.createFeedbackIfAbsent) return;
+        const createFeedbackIfAbsent = store.createFeedbackIfAbsent.bind(store);
+
+        const concurrentCallerCount = 5;
+        const input = createInput({ clientId: "race-id" });
+        const outcomes = await Promise.all(
+          Array.from({ length: concurrentCallerCount }, () => createFeedbackIfAbsent(input)),
+        );
+
+        const insertedOutcomes = outcomes.filter((outcome) => outcome.created);
+        expect(insertedOutcomes).toHaveLength(1);
+        const insertedId = insertedOutcomes[0]?.feedback.id;
+        for (const outcome of outcomes) expect(outcome.feedback.id).toBe(insertedId);
+        const { feedbacks, total } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(total).toBe(1);
+        expect(feedbacks[0]?.id).toBe(insertedId);
+      });
+    });
   });
 }

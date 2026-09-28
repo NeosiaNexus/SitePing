@@ -41,7 +41,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 53 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
+That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 56 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
 
 **The three primitives:**
 
@@ -51,13 +51,13 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 | `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
 | `generateId()` | A unique id, used for both feedback and annotation records |
 
-`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional, so you can delegate to it without a null check.
+`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` and `createFeedbackIfAbsent` are guaranteed rather than optional, so you can delegate to them without a null check.
 
 **A failed `persist` leaves your snapshot untouched.** The engine never mutates the array `load()` returned — every write builds a new array and hands it to `persist`. So if `load()` serves a cached array and the write throws, no phantom record stays visible, and the widget's retry of the same `clientId` is written for real instead of being deduplicated against something that never reached storage.
 
 **Quota pressure drops screenshots first.** When `persist` throws during `createFeedback` and the record carries an inline screenshot, the engine clears `screenshotUrl` — by far the heaviest field — and retries once, so the written comment survives a full storage bucket. If that second write also fails, the error propagates: returning the record would claim a success that never happened.
 
-**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `updateFeedback`, `deleteFeedback` and `deleteAllFeedbacks` so each starts from the previous one's result; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
+**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback` and `deleteAllFeedbacks` so each starts from the previous one's result; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
 
 ## Query backends
 
@@ -118,7 +118,7 @@ Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported
 
 ## Project ownership
 
-`verifyProjectOwnership(id, projectName)` is the one optional method. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
+`verifyProjectOwnership(id, projectName)` is optional. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
 
 ```ts
 async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
@@ -131,7 +131,7 @@ Implement it whenever your store serves more than one project. When it's absent,
 
 ## Prove it: the conformance suite
 
-The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 53 tests:
+The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 56 tests:
 
 ```ts
 // __tests__/my-store.test.ts
@@ -157,7 +157,7 @@ testSitepingStore(() => new PostgresStore(db), {
 });
 ```
 
-`verifyProjectOwnership` is covered too: stores that don't implement it skip the assertions, so adding it later is checked automatically with no test changes.
+`verifyProjectOwnership` and `createFeedbackIfAbsent` are covered too: stores that don't implement them skip the assertions, so adding either later is checked automatically with no test changes.
 
 ## Using your adapter
 

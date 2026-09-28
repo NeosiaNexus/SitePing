@@ -17,6 +17,8 @@ import {
 } from "../src/index.js";
 import type {
   AnnotationResponse,
+  FeedbackCreateInput,
+  FeedbackCreateOutcome,
   FeedbackRecord,
   FeedbackResponse,
   FeedbackUpdateInput,
@@ -96,10 +98,17 @@ describe("wire types derived from record types", () => {
 });
 
 describe("SitepingStore contract", () => {
-  it("is satisfied by the collection-store engine, including verifyProjectOwnership", () => {
+  it("is satisfied by the collection-store engine, including both optional members", () => {
     const engine = createCollectionStore({ load: () => [], persist: () => {}, generateId: () => "id" });
     expectTypeOf(engine).toExtend<SitepingStore>();
     expectTypeOf(engine.verifyProjectOwnership).returns.resolves.toEqualTypeOf<boolean>();
+    expectTypeOf(engine.createFeedbackIfAbsent).returns.resolves.toEqualTypeOf<FeedbackCreateOutcome>();
+  });
+
+  it("keeps createFeedbackIfAbsent optional for minimal adapters", () => {
+    expectTypeOf<SitepingStore["createFeedbackIfAbsent"]>().toEqualTypeOf<
+      ((data: FeedbackCreateInput) => Promise<FeedbackCreateOutcome>) | undefined
+    >();
   });
 
   it("keeps verifyProjectOwnership optional for minimal adapters", () => {
