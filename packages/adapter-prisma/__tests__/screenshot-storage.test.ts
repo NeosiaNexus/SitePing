@@ -255,7 +255,7 @@ describe("PrismaStore — screenshot cleanup", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Failed inserts — only discard an upload no stored row references
+// Failed inserts — only a replay's unreferenced upload is discarded
 // ---------------------------------------------------------------------------
 
 describe("PrismaStore — upload cleanup after a failed insert", () => {
@@ -308,15 +308,17 @@ describe("PrismaStore — upload cleanup after a failed insert", () => {
     expect(storage.delete).toHaveBeenCalledWith("https://cdn.example.com/obj-2.jpg");
   });
 
-  it("discards the just-uploaded object when the insert fails for another reason", async () => {
+  it("keeps the object when the insert fails for another reason — a retry elsewhere may be about to reference it", async () => {
+    // With a deterministic key, a retry on another instance rewrites this
+    // object and inserts the row pointing at it after this lookup would run.
     const prisma = fakePrisma();
-    const storage = uniqueKeyStorage();
+    const storage = deterministicStorage();
     const outage = Object.assign(new Error("Can't reach database server"), { code: "P1001" });
     vi.spyOn(prisma.sitepingFeedback, "create").mockRejectedValueOnce(outage);
 
     await expect(new PrismaStore(prisma, { screenshotStorage: storage }).createFeedback(input())).rejects.toBe(outage);
 
-    expect(storage.delete).toHaveBeenCalledWith("https://cdn.example.com/obj-1.jpg");
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 
   it("keeps the object when the reference lookup itself fails (an orphan beats data loss)", async () => {

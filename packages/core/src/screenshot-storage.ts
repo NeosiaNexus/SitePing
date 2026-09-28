@@ -49,11 +49,11 @@ export interface ScreenshotStorage {
   upload(dataUrl: string, ctx: { feedbackId: string; mimeType: string }): Promise<{ url: string }>;
   /**
    * Optional cleanup hook called when the feedback is deleted, and for an
-   * object uploaded by a create whose insert then failed — unless a stored
-   * row references that URL (a deterministic key reused by a replay of a
-   * stored `clientId`), in which case the object is kept. Adapters call
-   * this best-effort and swallow errors — orphaned objects are preferred
-   * over failed deletes.
+   * object uploaded by a create rejected because its `clientId` is already
+   * stored — unless that row references the URL (a deterministic key reused
+   * by the replay), in which case the object is kept. Adapters call this
+   * best-effort and swallow errors — orphaned objects are preferred over
+   * failed deletes.
    */
   delete?: (url: string) => Promise<void>;
 }

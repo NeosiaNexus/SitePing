@@ -280,18 +280,20 @@ export class PrismaStore implements SitepingStore {
     try {
       return await this.insertFeedback(data, screenshotUrl);
     } catch (error) {
-      await this.discardUnreferencedUpload(screenshotUrl, data.clientId);
+      if (isStoreDuplicate(error)) await this.discardUnreferencedUpload(screenshotUrl, data.clientId);
       throw toStoreError(error);
     }
   }
 
   /**
-   * Drop the screenshot uploaded for an insert that failed — unless a stored
-   * row references it. Uploads are keyed on clientId, so with a deterministic
-   * key (`feedback/${feedbackId}.jpg`) a replay of a stored clientId wrote to
-   * the very object the existing row points at: deleting it would strip the
+   * Drop the screenshot uploaded by a replay of a stored clientId — unless the
+   * stored row references it. Uploads are keyed on clientId, so with a
+   * deterministic key (`feedback/${feedbackId}.jpg`) the replay wrote to the
+   * very object the existing row points at: deleting it would strip the
    * surviving feedback of its screenshot. If the lookup itself fails the
-   * object is kept — an orphan beats data loss.
+   * object is kept — an orphan beats data loss. Other insert failures never
+   * get here: with such a key, a retry on another instance may have rewritten
+   * the object and not yet inserted the row that will point at it.
    */
   private async discardUnreferencedUpload(url: string | null, clientId: string): Promise<void> {
     if (!isStoredScreenshotUrl(url) || !this.screenshotStorage?.delete) return;
