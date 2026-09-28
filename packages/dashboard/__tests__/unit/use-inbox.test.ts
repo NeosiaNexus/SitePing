@@ -872,6 +872,8 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
     expect(ids(result.current.items)).toEqual(["r0", "r1", "r2", "r3"]);
     expect(result.current.items.find((r) => r.id === "r2")?.status).toBe("open");
     expect(result.current.total).toBe(4);
+    // The refresh's counts already hold the server's view — the failure must not invert its deltas there.
+    expect(result.current.counts).toMatchObject({ all: 6, open: 3, resolved: 1 });
   });
 });
 
@@ -938,6 +940,9 @@ describe("useSitepingInbox — undo state after a failed mutation", () => {
       makeRecord({ id: "b1", projectName: "B", status: "open" }),
     ]);
     const { result } = renderHook(() => useSitepingInbox({ projects: ["A", "B"], source }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    // "All" tab: the resolved row stays listed, so only the cleared undo stops the undo.
+    act(() => result.current.setStatus("all"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     await settle();
     await act(async () => {
