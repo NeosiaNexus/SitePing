@@ -84,6 +84,7 @@ function createCallbacks(): {
     onDelete: vi.fn<NonNullable<DetailCallbacks["onDelete"]>>().mockResolvedValue(undefined),
     onGoToAnnotation: vi.fn<NonNullable<DetailCallbacks["onGoToAnnotation"]>>(),
     onCustomAction: vi.fn<NonNullable<DetailCallbacks["onCustomAction"]>>().mockResolvedValue(undefined),
+    onCustomActionError: vi.fn<NonNullable<DetailCallbacks["onCustomActionError"]>>(),
   };
 }
 
@@ -1228,6 +1229,7 @@ describe("custom panel actions", () => {
       onDelete: vi.fn().mockResolvedValue(undefined),
       onGoToAnnotation: vi.fn(),
       onCustomAction: vi.fn().mockResolvedValue(undefined),
+      onCustomActionError: vi.fn(),
       ...callbacks,
     };
     const view = new DetailView(buildThemeColors(), cb, createT("en"), "en", normalizePanelActions(actions));
@@ -1260,19 +1262,98 @@ describe("custom panel actions", () => {
     );
   });
 
-  it("disables action buttons while pending and restores them on rejection", async () => {
-    let reject!: (e: Error) => void;
-    const pending = new Promise<void>((_, rej) => {
-      reject = rej;
-    });
-    const { view } = buildDetail([makeAction()], { onCustomAction: vi.fn().mockReturnValue(pending) });
+  /** A controllable onCustomAction: each call stays pending until its `settle` runs. */
+  function deferredActions() {
+    const settles: Array<() => void> = [];
+    const onCustomAction = vi.fn(() => new Promise<void>((resolve) => settles.push(resolve)));
+    return { onCustomAction, settle: (i: number) => settles[i]?.() };
+  }
+
+  function actionButtons(view: DetailView) {
+    const q = (sel: string) => view.element.querySelector<HTMLButtonElement>(sel)!;
+    return {
+      resolve: q(".sp-detail-btn-resolve"),
+      del: q(".sp-detail-btn-delete"),
+      first: q('[data-action-id="send-to-agent"]'),
+      other: q('[data-action-id="other"]'),
+    };
+  }
+
+  it("disables every action while one is pending, keeps it named and busy, then restores them", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view } = buildDetail([makeAction(), makeAction({ id: "other", label: "Other" })], { onCustomAction });
     view.show(makeFeedback(), 1);
-    const btn = view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom");
-    btn?.click();
-    expect(btn?.disabled).toBe(true);
-    reject(new Error("boom"));
-    await vi.waitFor(() => expect(btn?.disabled).toBe(false));
-    expect(btn?.textContent).toContain("Send to agent"); // label restored after spinner
+    const btns = actionButtons(view);
+
+    btns.first.click();
+    expect(btns.first.disabled).toBe(true);
+    expect(btns.first.textContent).toBe(""); // spinner in place of the label…
+    expect(btns.first.getAttribute("aria-label")).toBe("Send to agent"); // …but still named
+    expect(btns.first.getAttribute("aria-busy")).toBe("true");
+    expect([btns.resolve.disabled, btns.del.disabled, btns.other.disabled]).toEqual([true, true, true]);
+
+    btns.other.click(); // ignored while busy
+    expect(onCustomAction).toHaveBeenCalledOnce();
+
+    settle(0);
+    await vi.waitFor(() => expect(btns.first.disabled).toBe(false));
+    expect(btns.first.textContent).toBe("Send to agent");
+    expect(btns.first.hasAttribute("aria-busy")).toBe(false);
+    expect([btns.resolve.disabled, btns.del.disabled, btns.other.disabled]).toEqual([false, false, false]);
+  });
+
+  it("disables host actions while a built-in Resolve is pending", () => {
+    const { view, cb } = buildDetail([makeAction()], { onResolve: vi.fn(() => new Promise<void>(() => {})) });
+    view.show(makeFeedback(), 1);
+    const btns = actionButtons(view);
+
+    btns.resolve.click();
+    expect(cb.onResolve).toHaveBeenCalledOnce();
+    expect(btns.first.disabled).toBe(true);
+  });
+
+  it("an action settling after the view moved on leaves the newer view's buttons alone", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view } = buildDetail([makeAction()], { onCustomAction });
+
+    view.show(makeFeedback({ id: "fb-a" }), 1);
+    actionButtons(view).first.click(); // A pending
+
+    view.show(makeFeedback({ id: "fb-b" }), 2);
+    const b = actionButtons(view);
+    b.first.click(); // B pending
+    expect(onCustomAction).toHaveBeenCalledTimes(2);
+
+    settle(0); // A settles late
+    await Promise.resolve();
+    await Promise.resolve();
+    expect([b.first.disabled, b.resolve.disabled, b.del.disabled]).toEqual([true, true, true]);
+    b.resolve.click(); // B still owns the processing lock
+    expect(onCustomAction).toHaveBeenCalledTimes(2);
+
+    settle(1);
+    await vi.waitFor(() => expect(b.first.disabled).toBe(false));
+    expect([b.resolve.disabled, b.del.disabled]).toEqual([false, false]);
+  });
+
+  it("hides an action whose visible() throws, reports it, and keeps the view alive", () => {
+    const boom = new Error("visible exploded");
+    const { view, cb } = buildDetail([
+      makeAction({
+        visible: () => {
+          throw boom;
+        },
+      }),
+      makeAction({ id: "other", label: "Other" }),
+    ]);
+    view.show(makeFeedback(), 1);
+
+    expect(cb.onCustomActionError).toHaveBeenCalledExactlyOnceWith(boom);
+    const ids = [...view.element.querySelectorAll(".sp-detail-btn-custom")].map((b) =>
+      b.getAttribute("data-action-id"),
+    );
+    expect(ids).toEqual(["other"]);
+    expect(view.element.querySelector(".sp-detail-message")?.textContent).toBe("Something broken in the page");
   });
 
   it("renders the sanitized icon before the label, and restores it after the spinner", async () => {

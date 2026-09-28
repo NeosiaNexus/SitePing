@@ -255,9 +255,10 @@ export class Panel {
           try {
             await action.onAction(fb);
           } catch (error) {
-            this.bus.emit("panel:action-error", error instanceof Error ? error : new Error(String(error)));
+            this.reportActionError(error);
           }
         },
+        onCustomActionError: (error) => this.reportActionError(error),
       },
       this.t,
       locale,
@@ -1306,6 +1307,14 @@ export class Panel {
         { once: true },
       );
     }
+  }
+
+  /**
+   * Host `panelActions` failures go to `config.onError` through their own
+   * event — never `feedback:error`, which settles a pending popup submission.
+   */
+  private reportActionError(error: unknown): void {
+    this.bus.emit("panel:action-error", error instanceof Error ? error : new Error(String(error)));
   }
 
   /** Refresh the panel after a new feedback is submitted */

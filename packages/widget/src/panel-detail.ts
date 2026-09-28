@@ -926,8 +926,10 @@ export interface DetailCallbacks {
   onGoToAnnotation: (feedback: FeedbackResponse) => void;
   /** False hides "Go to annotation" (e.g. the feedback belongs to another page). */
   canGoToAnnotation?: (feedback: FeedbackResponse) => boolean;
-  /** Invoked when a host-defined panel action button is clicked. */
+  /** Runs a host-defined panel action. Never rejects: the panel contains and reports host failures. */
   onCustomAction: (action: SitepingPanelAction, feedback: FeedbackResponse) => Promise<void>;
+  /** Reports a host `visible()` predicate that threw — the action is hidden for that feedback. */
+  onCustomActionError: (error: unknown) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -946,6 +948,8 @@ export class DetailView {
   private deleteBtn: HTMLButtonElement | null = null;
   private customBtns: HTMLButtonElement[] = [];
   private isProcessing = false;
+  /** Bumped by every show()/hide(): a host action settling late must leave the newer view alone. */
+  private viewToken = 0;
 
   constructor(
     private readonly colors: ThemeColors,
@@ -990,6 +994,7 @@ export class DetailView {
   show(feedback: FeedbackResponse, number: number): void {
     this.currentFeedback = feedback;
     this.isProcessing = false;
+    this.viewToken++;
 
     // ---- Update header ----
     const header = this.element.querySelector<HTMLElement>(".sp-detail-header");
@@ -1111,6 +1116,7 @@ export class DetailView {
     this.resolveBtn = null;
     this.deleteBtn = null;
     this.customBtns = [];
+    this.viewToken++;
   }
 
   /** Whether the detail view is currently visible. */
@@ -1206,16 +1212,23 @@ export class DetailView {
     // Host-defined custom actions
     this.customBtns = [];
     for (const { action, icon } of this.customActions) {
-      if (action.visible && !action.visible(feedback)) continue;
+      try {
+        if (action.visible && !action.visible(feedback)) continue;
+      } catch (error) {
+        this.callbacks.onCustomActionError(error);
+        continue;
+      }
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "sp-detail-btn-custom";
       btn.setAttribute("data-action-id", action.id);
+      // Keeps the button named while the spinner replaces its label.
+      btn.setAttribute("aria-label", action.label);
       if (icon) btn.appendChild(icon.cloneNode(true));
       const span = document.createElement("span");
       setText(span, action.label);
       btn.appendChild(span);
-      btn.addEventListener("click", () => this.handleCustomAction(action, btn));
+      btn.addEventListener("click", () => void this.handleCustomAction(action, btn));
       this.customBtns.push(btn);
       actions.appendChild(btn);
     }
@@ -1508,7 +1521,7 @@ export class DetailView {
     this.isProcessing = true;
 
     if (this.resolveBtn) this.setButtonLoading(this.resolveBtn);
-    if (this.deleteBtn) this.deleteBtn.disabled = true;
+    this.setActionsDisabled(true, this.resolveBtn);
 
     try {
       await this.callbacks.onResolve(this.currentFeedback);
@@ -1517,7 +1530,7 @@ export class DetailView {
       // Restore buttons on error
       this.isProcessing = false;
       if (this.resolveBtn) this.restoreResolveBtn(this.currentFeedback);
-      if (this.deleteBtn) this.deleteBtn.disabled = false;
+      this.setActionsDisabled(false, this.resolveBtn);
     }
   }
 
@@ -1526,7 +1539,7 @@ export class DetailView {
     this.isProcessing = true;
 
     if (this.deleteBtn) this.setButtonLoading(this.deleteBtn);
-    if (this.resolveBtn) this.resolveBtn.disabled = true;
+    this.setActionsDisabled(true, this.deleteBtn);
 
     try {
       await this.callbacks.onDelete(this.currentFeedback);
@@ -1534,33 +1547,37 @@ export class DetailView {
     } catch {
       this.isProcessing = false;
       if (this.deleteBtn) this.restoreDeleteBtn();
-      if (this.resolveBtn) this.resolveBtn.disabled = false;
+      this.setActionsDisabled(false, this.deleteBtn);
     }
   }
 
   private async handleCustomAction(action: SitepingPanelAction, btn: HTMLButtonElement): Promise<void> {
     if (this.isProcessing || !this.currentFeedback) return;
     this.isProcessing = true;
+    const token = this.viewToken;
 
     // Snapshot-and-restore, so the (already sanitized) icon is never re-parsed.
     const restore = setButtonLoading(btn);
-    this.setOtherActionsDisabled(btn, true);
+    btn.setAttribute("aria-busy", "true");
+    this.setActionsDisabled(true, btn);
 
     try {
       await this.callbacks.onCustomAction(action, this.currentFeedback);
-    } catch {
-      // Swallowed here — the panel wiring is responsible for surfacing
-      // failures (e.g. via config.onError). Unlike resolve/delete, custom
-      // actions never navigate away, so we always restore below regardless
-      // of outcome.
     } finally {
-      this.isProcessing = false;
       restore();
-      this.setOtherActionsDisabled(btn, false);
+      btn.removeAttribute("aria-busy");
+      // Custom actions never navigate away, so the view is restored whatever
+      // the outcome — unless show()/hide() replaced it meanwhile: the newer
+      // view's buttons and processing state are not ours to touch.
+      if (token === this.viewToken) {
+        this.isProcessing = false;
+        this.setActionsDisabled(false, btn);
+      }
     }
   }
 
-  private setOtherActionsDisabled(except: HTMLButtonElement, disabled: boolean): void {
+  /** Enable/disable every action button of the current view but `except` (it shows its own spinner). */
+  private setActionsDisabled(disabled: boolean, except: HTMLButtonElement | null): void {
     for (const b of [this.resolveBtn, this.deleteBtn, ...this.customBtns]) {
       if (b && b !== except) b.disabled = disabled;
     }

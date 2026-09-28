@@ -4243,6 +4243,53 @@ describe("Panel", () => {
       await vi.waitFor(() => expect(onAction).toHaveBeenCalled());
       await vi.waitFor(() => expect(actionErrors[0]?.message).toBe("dispatch failed"));
       expect(feedbackErrors).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(customBtn.disabled).toBe(false));
+    });
+
+    it("contains host callbacks that throw synchronously or throw non-Errors", async () => {
+      panel.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      bus = new EventBus<WidgetEvents>();
+      apiClient = createMockApiClient();
+      markers = createMockMarkers();
+      const actionErrors: Error[] = [];
+      bus.on("panel:action-error", (e) => actionErrors.push(e));
+
+      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+        getScope: () => ({ url: "/", urlPattern: null }),
+        scopeAnnotationsByUrl: true,
+        panelActions: [
+          {
+            id: "sync",
+            label: "Sync throw",
+            onAction: () => {
+              throw "not an Error";
+            },
+          },
+          {
+            id: "hidden",
+            label: "Never shown",
+            onAction: () => {},
+            visible: () => {
+              throw new Error("visible failed");
+            },
+          },
+        ],
+      });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+      expect(actionErrors.map((e) => e.message)).toEqual(["visible failed"]);
+      expect(shadow.querySelector('[data-action-id="hidden"]')).toBeNull();
+
+      const btn = shadow.querySelector<HTMLButtonElement>('[data-action-id="sync"]')!;
+      btn.click();
+      await vi.waitFor(() => expect(actionErrors).toHaveLength(2));
+      expect(actionErrors[1]).toBeInstanceOf(Error);
+      expect(actionErrors[1]?.message).toBe("not an Error");
+      await vi.waitFor(() => expect(btn.disabled).toBe(false));
     });
   });
 });
