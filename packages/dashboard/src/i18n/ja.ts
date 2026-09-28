@@ -31,7 +31,7 @@ export const ja: Translations = {
   "inbox.undo": "元に戻す",
   "inbox.actionFailed": "問題が発生しました。変更を元に戻しました。",
   "inbox.copied": "コピーしました",
-  "inbox.markedAs": "{status} に変更しました",
+  "inbox.markedAs": "「{status}」に変更しました",
   "inbox.deleted": "フィードバックを削除しました",
 
   // Status labels

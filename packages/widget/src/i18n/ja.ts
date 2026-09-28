@@ -70,10 +70,10 @@ export const ja: Translations = {
   "popup.submit": "送信",
 
   // Identity modal
-  "identity.title": "お名前を教えてください",
+  "identity.title": "お名前とメールアドレスを入力",
   "identity.nameLabel": "名前",
   "identity.namePlaceholder": "お名前",
-  "identity.emailLabel": "メールアドレス（任意）",
+  "identity.emailLabel": "メールアドレス",
   "identity.emailPlaceholder": "your@email.com",
   "identity.cancel": "キャンセル",
   "identity.submit": "続ける",

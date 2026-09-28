@@ -78,6 +78,14 @@ describe("createT", () => {
     expect(t("popup.submit")).toBe("Envoyer");
   });
 
+  // The identity modal requires an email: the Japanese label must not call it
+  // optional (メールアドレス（任意）), as the catalog's first version did.
+  it("returns Japanese translations for 'ja', with a required email label", () => {
+    const t = createT("ja");
+    expect(t("panel.close")).toBe("パネルを閉じる");
+    expect(t("identity.emailLabel")).toBe("メールアドレス");
+  });
+
   it("is case-insensitive on the locale prefix", () => {
     expect(createT("EN")("panel.close")).toBe("Close panel");
     expect(createT("FR-FR")("panel.close")).toBe("Fermer le panneau");
