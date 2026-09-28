@@ -14,6 +14,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const code = process.argv[2];
 if (!code || !/^[a-z]{2,3}$/.test(code)) {
@@ -25,7 +26,7 @@ if (code === "en") {
   process.exit(1);
 }
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 const changed = [];
 
 // --- 1. BUILTIN_LOCALES ------------------------------------------------------
