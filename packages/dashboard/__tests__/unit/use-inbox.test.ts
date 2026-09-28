@@ -899,6 +899,43 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
     expect(result.current.counts).toMatchObject({ all: 6, open: 3, resolved: 1 });
   });
 
+  it("a change made after the latest one failed still chains behind an earlier one in flight", async () => {
+    const { source, result } = await mountDemo();
+    act(() => result.current.setStatus("all"));
+    await waitFor(() => expect(result.current.items).toHaveLength(6));
+    await settle();
+    const heldA = deferred<FeedbackRecord>();
+    const heldB = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => heldA.promise).mockImplementationOnce(() => heldB.promise);
+
+    // e, e (toggles back), B fails, e again (succeeds), then A fails.
+    let a!: Promise<unknown>;
+    let b!: Promise<unknown>;
+    act(() => {
+      a = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    act(() => {
+      b = result.current.changeStatus("r1", "open").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      heldB.reject(new Error("b failed"));
+      await b;
+    });
+    expect(result.current.items.find((r) => r.id === "r1")?.status).toBe("resolved");
+    await act(async () => {
+      await result.current.changeStatus("r1", "open");
+    });
+    await act(async () => {
+      heldA.reject(new Error("a failed"));
+      await a;
+    });
+
+    // The server holds r1 open: A's failure is superseded by the later success.
+    expect(source.records.find((r) => r.id === "r1")?.status).toBe("open");
+    expect(result.current.items.find((r) => r.id === "r1")?.status).toBe("open");
+    expect(result.current.counts).toMatchObject({ all: 6, open: 3, resolved: 1 });
+  });
+
   it("a failed change keeps a refresh that was already in flight when it started", async () => {
     const { source, result } = await mountDemo();
     const r0 = makeRecord({ id: "r0", status: "open", createdAt: new Date("2026-07-20T10:07:00Z") });

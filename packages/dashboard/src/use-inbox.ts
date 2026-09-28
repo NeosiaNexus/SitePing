@@ -45,6 +45,8 @@ interface InFlight {
   listGen: number;
   state: "pending" | "ok" | "failed";
   next: InFlight | null;
+  /** The mutation this one chained behind — the feedback's again if this one fails as the latest. */
+  prior: InFlight | null;
 }
 
 /** Apply deltas to the count keys that are known — unknown (undefined) counts stay unknown. */
@@ -529,6 +531,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   /** Register an optimistic step, chained behind any mutation still pending on the same feedback. */
   const beginMutation = useCallback(
     (id: string, prev: FeedbackRecord, wasListed: boolean, deltas: CountDeltas): InFlight => {
+      const prior = inFlightRef.current.get(id) ?? null;
       const handle: InFlight = {
         prev,
         wasListed,
@@ -536,8 +539,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         listGen: listGenRef.current,
         state: "pending",
         next: null,
+        prior,
       };
-      const prior = inFlightRef.current.get(id);
       if (prior) prior.next = handle;
       inFlightRef.current.set(id, handle);
       pendingMutationsRef.current += 1;
@@ -559,7 +562,15 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       handle.state = ok ? "ok" : "failed";
       pendingMutationsRef.current -= 1;
       recountIfIdle();
-      if (inFlightRef.current.get(id) === handle) inFlightRef.current.delete(id);
+      if (inFlightRef.current.get(id) === handle) {
+        // Failing as the latest hands the feedback back to the nearest earlier
+        // mutation still pending: the rollback shows its optimistic record, so
+        // the next mutation must chain behind it.
+        let prior = ok ? null : handle.prior;
+        while (prior !== null && prior.state !== "pending") prior = prior.prior;
+        if (prior === null) inFlightRef.current.delete(id);
+        else inFlightRef.current.set(id, prior);
+      }
       let later = handle.next;
       while (later !== null && later.state === "failed") later = later.next;
       if (later === null) return true;
