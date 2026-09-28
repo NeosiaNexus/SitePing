@@ -96,11 +96,16 @@ export async function buildRequestHeaders(auth: ApiClientAuth, json: boolean): P
 // ---------------------------------------------------------------------------
 
 /**
- * One HTTP call with retry + exponential backoff + jitter. Each attempt is
- * aborted after TIMEOUT_MS, and the final response's body is read under that
- * same abort — through `errorFromResponse` for a non-OK status, `read` for a
- * 2xx — so a body that stalls after the headers errors instead of hanging
- * the send. Network failures and 5xx retry; a body failure is final.
+ * One HTTP call with retry + exponential backoff + jitter: each attempt is
+ * aborted if its headers take more than TIMEOUT_MS. Network failures and 5xx
+ * retry; the final response is read through `errorFromResponse` for a non-OK
+ * status, `read` for a 2xx.
+ *
+ * With `boundBody` (the send path, #342), the body gets its own TIMEOUT_MS
+ * window under the same abort, so one that stalls after the headers errors
+ * instead of holding the popup forever — a non-OK status still maps to its
+ * typed error, just without the server's detail. Reads leave it unbounded:
+ * a page of inline screenshots can legitimately take longer on a slow link.
  *
  * Failures come out typed: a non-OK status as `errorFromResponse` maps it,
  * anything else (fetch, abort, body read or parse) as a `SitepingNetworkError`.
@@ -110,18 +115,20 @@ async function resilientFetch<T>(
   init: RequestInit,
   label: string,
   read: (response: Response) => Promise<T>,
-  retries = MAX_RETRIES,
+  { boundBody = false } = {},
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    let timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
       const response = await fetch(url, { ...init, signal: controller.signal }).catch((error: unknown) => {
-        if (attempt === retries) throw networkErrorFromException(error, label);
+        if (attempt === MAX_RETRIES) throw networkErrorFromException(error, label);
         return null;
       });
       // Don't retry client errors (4xx) — only server errors (5xx)
-      if (response && (response.ok || (response.status >= 400 && response.status < 500) || attempt === retries)) {
+      if (response && (response.ok || (response.status >= 400 && response.status < 500) || attempt === MAX_RETRIES)) {
+        clearTimeout(timeout);
+        if (boundBody) timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
         if (!response.ok) throw await errorFromResponse(response, label);
         return await read(response).catch((error: unknown) => {
           throw networkErrorFromException(error, label);
@@ -443,6 +450,7 @@ export class ApiClient implements WidgetClient {
         { method: "POST", headers: await this.headers(true, label), body: JSON.stringify(body) },
         label,
         parseJsonAs<FeedbackResponse>,
+        { boundBody: true },
       );
       unqueue(body.clientId);
       return created;

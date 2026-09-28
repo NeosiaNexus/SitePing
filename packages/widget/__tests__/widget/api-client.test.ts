@@ -1373,10 +1373,16 @@ describe("ApiClient — bounded waits", () => {
   /** Start `run` under fake timers; assert it is still pending just before `ms`, and settled at `ms`. */
   async function settlesAt(run: () => Promise<unknown>, ms: number): Promise<unknown> {
     const settled = vi.fn();
-    const outcome = run().then(settled, (error: unknown) => {
-      settled();
-      return error;
-    });
+    const outcome = run().then(
+      (value: unknown) => {
+        settled();
+        return value;
+      },
+      (error: unknown) => {
+        settled();
+        return error;
+      },
+    );
     await vi.advanceTimersByTimeAsync(ms - 1);
     expect(settled, `still pending at ${ms - 1} ms`).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
@@ -1412,12 +1418,24 @@ describe("ApiClient — bounded waits", () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
   });
 
-  it("a 2xx body that stalls on a GET fails it as a network error at the same bound", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => stalledBody(init, 200));
+  it("leaves reads unbounded: a GET body that takes longer than one attempt window still loads", async () => {
+    // A page of inline screenshots can legitimately take > 10 s on a slow
+    // link, and a read holds no popup — only the send path bounds its body.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          setTimeout(() => {
+            controller.enqueue(new TextEncoder().encode(JSON.stringify({ feedbacks: [], total: 0 })));
+            controller.close();
+          }, 15_000);
+        },
+      });
+      return new Response(body, { status: 200 });
+    });
 
-    const error = await settlesAt(() => new ApiClient(endpoint, "test").getFeedbacks("test"), 10_000);
+    const list = await settlesAt(() => new ApiClient(endpoint, "test").getFeedbacks("test"), 15_000);
 
-    expect(error).toBeInstanceOf(SitepingNetworkError);
+    expect(list).toEqual({ feedbacks: [], total: 0 });
   });
 
   it("a non-OK body that stalls still yields the status's typed error at the bound", async () => {
