@@ -20,3 +20,6 @@ export const S3_ACCESS_DENIED_ERROR_CODE = "AccessDenied";
 
 /** Extracts the `<Code>` of an S3 XML error body. */
 export const S3_ERROR_CODE_PATTERN = /<Code>\s*([^<\s]+)\s*<\/Code>/;
+
+/** Extracts the `<Message>` of an S3 XML error body. */
+export const S3_ERROR_MESSAGE_PATTERN = /<Message>([^<]*)<\/Message>/;

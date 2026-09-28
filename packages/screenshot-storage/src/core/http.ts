@@ -5,6 +5,8 @@ import { ScreenshotUploadRejectedError } from "./object-store.js";
 
 /**
  * A backend API call that failed — method, path and status, never credentials.
+ * Its `cause` is the network error, or the backend's error code and message:
+ * never the raw error body, which may echo the signed request.
  * Match it with {@link isObjectStoreRequestError} rather than `instanceof`
  * (CommonJS entry points each bundle their own copy of the class).
  */
@@ -45,6 +47,13 @@ export interface BackendRequest {
   acceptStatuses?: readonly number[];
   /** A 4xx on this call means nothing was stored — report it as a definitive rejection. */
   isUpload?: boolean;
+  /**
+   * The error code and message of a failed response's body, kept as the
+   * failure's `cause`. Never the whole body: S3's `SignatureDoesNotMatch`
+   * echoes the canonical request, whose signed headers carry the session
+   * token of temporary credentials, and the cause reaches server logs.
+   */
+  describeError: (body: string) => string | undefined;
 }
 
 const HTTP_CLIENT_ERROR_MIN = 400; // standard HTTP ranges
@@ -59,6 +68,7 @@ export async function sendBackendRequest({
   timeoutMs = OBJECT_STORE_REQUEST_TIMEOUT_MS,
   acceptStatuses = [],
   isUpload = false,
+  describeError,
 }: BackendRequest): Promise<Response> {
   const method = init.method ?? "GET";
   let response: Response;
@@ -69,7 +79,7 @@ export async function sendBackendRequest({
   }
   if (response.ok || acceptStatuses.includes(response.status)) return response;
   const failure = new ObjectStoreRequestError(backend, method, url.pathname, response.status, {
-    cause: await response.text().catch(() => undefined),
+    cause: describeError(await response.text().catch(() => "")),
   });
   if (isUpload && response.status >= HTTP_CLIENT_ERROR_MIN && response.status < HTTP_SERVER_ERROR_MIN) {
     throw new ScreenshotUploadRejectedError(failure.message, { cause: failure });

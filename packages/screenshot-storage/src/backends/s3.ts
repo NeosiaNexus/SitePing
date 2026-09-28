@@ -1,5 +1,10 @@
 import { HTTP_STATUS_FORBIDDEN, HTTP_STATUS_NOT_FOUND } from "../constants/http.js";
-import { S3_ACCESS_DENIED_ERROR_CODE, S3_DEFAULT_REGION, S3_ERROR_CODE_PATTERN } from "../constants/s3.js";
+import {
+  S3_ACCESS_DENIED_ERROR_CODE,
+  S3_DEFAULT_REGION,
+  S3_ERROR_CODE_PATTERN,
+  S3_ERROR_MESSAGE_PATTERN,
+} from "../constants/s3.js";
 import { SERVED_SCREENSHOT_CACHE_CONTROL } from "../constants/screenshots.js";
 import { normalizeBaseUrl } from "../core/base-url.js";
 import { ObjectStoreRequestError, sendBackendRequest } from "../core/http.js";
@@ -54,6 +59,21 @@ export interface S3ObjectStoreOptions extends SigV4Credentials {
  */
 function isAccessDeniedError(errorBody: string): boolean {
   return S3_ERROR_CODE_PATTERN.exec(errorBody)?.[1] === S3_ACCESS_DENIED_ERROR_CODE;
+}
+
+/**
+ * The `<Code>` and `<Message>` of an S3 error body, and nothing else of it:
+ * a `SignatureDoesNotMatch` body also echoes the canonical request, whose
+ * signed headers include the `x-amz-security-token` of temporary credentials.
+ *
+ * @param errorBody - Raw XML error body of the response.
+ * @returns `Code: Message`, the code alone, or `undefined` for a body without a code.
+ */
+function describeS3Error(errorBody: string): string | undefined {
+  const code = S3_ERROR_CODE_PATTERN.exec(errorBody)?.[1];
+  if (code === undefined) return undefined;
+  const message = S3_ERROR_MESSAGE_PATTERN.exec(errorBody)?.[1]?.trim();
+  return message ? `${code}: ${message}` : code;
 }
 
 /**
@@ -114,6 +134,7 @@ export function createS3ObjectStore({
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
       ...(options.acceptStatuses ? { acceptStatuses: options.acceptStatuses } : {}),
       ...(options.isUpload ? { isUpload: true } : {}),
+      describeError: describeS3Error,
     });
   };
 
@@ -149,7 +170,7 @@ export function createS3ObjectStore({
       if (response.status === HTTP_STATUS_FORBIDDEN) {
         const errorBody = await read(response.text());
         if (isAccessDeniedError(errorBody)) return null;
-        throw failure(errorBody);
+        throw failure(describeS3Error(errorBody));
       }
       return {
         bytes: new Uint8Array(await read(response.arrayBuffer())),

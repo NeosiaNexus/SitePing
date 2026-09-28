@@ -1,6 +1,7 @@
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { inspect } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCloudflareImagesObjectStore } from "../src/backends/cloudflare-images.js";
 import { createFilesystemObjectStore } from "../src/backends/filesystem.js";
@@ -523,6 +524,80 @@ describe("createS3ObjectStore — credentials without s3:ListBucket", () => {
     expect(isObjectStoreRequestError(failure)).toBe(true);
     expect((failure as ObjectStoreRequestError).status).toBe(403);
     expect((failure as ObjectStoreRequestError).cause).toContain("SignatureDoesNotMatch");
+  });
+});
+
+describe("backend requests — error bodies", () => {
+  it("keeps the signed request an S3 error echoes out of every failure it reports", async () => {
+    // S3 answers SignatureDoesNotMatch with the canonical request it computed, whose signed headers
+    // carry the session token of temporary credentials; a failure reaches the server logs, which
+    // print its whole cause chain.
+    const sessionToken = "sts-session-token";
+    const fake = createFakeS3({
+      bucket: "screens",
+      region: "auto",
+      accessKeyId: "AKIDEXAMPLE",
+      secretAccessKey: "s3-secret",
+    });
+    const errorBodies: string[] = [];
+    const openS3 = (treatAccessDeniedAsMissing: boolean) =>
+      createS3ObjectStore({
+        endpoint: "https://account.r2.cloudflarestorage.com",
+        bucket: "screens",
+        publicBaseUrl: PUBLIC_BASE_URL,
+        accessKeyId: "AKIDEXAMPLE",
+        secretAccessKey: "wrong",
+        sessionToken,
+        treatAccessDeniedAsMissing,
+        fetch: async (input, init) => {
+          const response = await fake.fetch(input, init);
+          errorBodies.push(await response.clone().text());
+          return response;
+        },
+      });
+    const key = `siteping-${"a".repeat(32)}.jpg`;
+
+    const failures = [
+      await createScreenshotStorage(openS3(false), { logger: silentLogger() })
+        .upload(JPEG_DATA_URL, UPLOAD_CONTEXT)
+        .catch((error: unknown) => error),
+      await openS3(false)
+        .get?.(key)
+        .catch((error: unknown) => error),
+      await openS3(true)
+        .get?.(key)
+        .catch((error: unknown) => error),
+    ];
+
+    expect(errorBodies).toHaveLength(3);
+    for (const errorBody of errorBodies) expect(errorBody).toContain(`x-amz-security-token:${sessionToken}`);
+    for (const failure of failures) {
+      const logged = inspect(failure, { depth: null });
+      expect(logged).toContain(
+        "SignatureDoesNotMatch: The request signature we calculated does not match the signature you provided.",
+      );
+      expect(logged).not.toContain(sessionToken);
+    }
+  });
+
+  it("reports a Cloudflare Images error by the codes and messages of its errors", async () => {
+    const fake = createFakeCloudflareImages({ accountId: "account-1", apiToken: "cf-token" });
+    const objectStore = createCloudflareImagesObjectStore({
+      accountId: "account-1",
+      apiToken: "revoked-token",
+      accountHash: "hash-1",
+      fetch: fake.fetch,
+    });
+
+    const failure = await createScreenshotStorage(objectStore, { logger: silentLogger() })
+      .upload(JPEG_DATA_URL, UPLOAD_CONTEXT)
+      .catch((error: unknown) => error);
+
+    expect(isScreenshotUploadRejected(failure)).toBe(true);
+    expect((failure as ScreenshotUploadRejectedError).cause).toMatchObject({
+      status: 403,
+      cause: "10000: Authentication error",
+    });
   });
 });
 

@@ -26,6 +26,23 @@ export interface CloudflareImagesObjectStoreOptions {
 }
 
 /**
+ * The `code: message` pairs of a Cloudflare API error body (its `errors`
+ * array), or `undefined` for a body without any.
+ *
+ * @param body - Raw JSON error body of the response.
+ */
+function describeCloudflareError(body: string): string | undefined {
+  try {
+    const { errors } = JSON.parse(body) as { errors?: { code?: unknown; message?: unknown }[] };
+    return Array.isArray(errors) && errors.length > 0
+      ? errors.map(({ code, message }) => `${String(code)}: ${String(message)}`).join("; ")
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Screenshots on Cloudflare Images. Each object is uploaded under its
  * generated key as the custom image id, so the delivery URL is known before
  * the upload completes.
@@ -52,6 +69,7 @@ export function createCloudflareImagesObjectStore({
       fetch,
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
       ...extra,
+      describeError: describeCloudflareError,
     });
 
   return {

@@ -147,7 +147,17 @@ export function createFakeS3({
     requests.push({ method: request.method, url, headers: request.headers });
     const body = new Uint8Array(await request.arrayBuffer());
     if (!(await isAuthentic(request, url, body))) {
-      return new Response("<Error><Code>SignatureDoesNotMatch</Code></Error>", { status: 403 });
+      // Like S3, echo the canonical request it computed: the signed headers, session token included.
+      const canonicalHeaders: string[] = [];
+      request.headers.forEach((value, name) => {
+        if (name !== "authorization") canonicalHeaders.push(`${name}:${value}`);
+      });
+      return new Response(
+        "<Error><Code>SignatureDoesNotMatch</Code><Message>The request signature we calculated does not match " +
+          "the signature you provided. Check your key and signing method.</Message>" +
+          `<CanonicalRequest>${request.method}\n${url.pathname}\n\n${canonicalHeaders.join("\n")}</CanonicalRequest></Error>`,
+        { status: 403 },
+      );
     }
     const prefix = `/${bucket}/`;
     if (!url.pathname.startsWith(prefix)) return new Response(null, { status: 404 });
