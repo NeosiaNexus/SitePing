@@ -589,7 +589,14 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         const saved = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
         // A later mutation on this feedback owns the row now — don't clobber its optimistic state.
         if (settleMutation(id, handle, true)) {
-          commitItems(itemsRef.current.map((f) => (f.id === id ? saved : f)));
+          // Place, not map: a page refetched meanwhile may still hold the
+          // pre-change row, which must leave if the saved status doesn't fit.
+          // An absent row stays out — after a refetch it may sit on a page
+          // not loaded yet, and appending it would misplace it.
+          if (itemsRef.current.some((f) => f.id === id)) {
+            const { removedAt } = placeRecord(id, saved);
+            if (removedAt !== -1 && focusedIdRef.current === id) moveFocusAfterRemoval(itemsRef.current, removedAt);
+          }
           if (openedCacheRef.current?.id === id) commitOpenedCache(saved);
           if (undoRecordRef.current?.id === id) undoRecordRef.current = saved;
         }
@@ -617,7 +624,6 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       beginMutation,
       settleMutation,
       rollback,
-      commitItems,
       commitCounts,
       commitPendingUndo,
       commitOpenedCache,

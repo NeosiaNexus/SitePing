@@ -5,7 +5,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InboxSource } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
-import { deferred, makeRecord, makeSource } from "../helpers.js";
+import { deferred, makeRecord, makeSource, type TestSource } from "../helpers.js";
 
 // Six-record demo project: three open (mixed types), one of each other status.
 function demoRecords(): FeedbackRecord[] {
@@ -773,6 +773,18 @@ async function mountDemo(source = makeSource(demoRecords())) {
   return { source, ...hook };
 }
 
+/** Hold the next setStatus: the source applies it (server state changes) only once the returned gate resolves. */
+function holdNextSetStatus(source: TestSource) {
+  const real = source.setStatus.getMockImplementation();
+  const gate = deferred<void>();
+  source.setStatus.mockImplementationOnce(async (id, projectName, status) => {
+    await gate.promise;
+    if (!real) throw new Error("no setStatus implementation");
+    return real(id, projectName, status);
+  });
+  return gate;
+}
+
 describe("useSitepingInbox — concurrent mutations roll back per record", () => {
   it("a failed change restores only its own row — a concurrent success survives", async () => {
     const { source, result } = await mountDemo();
@@ -967,14 +979,7 @@ describe("useSitepingInbox — loadMore while a mutation is in flight", () => {
 
   it("a duplicate-only page caused by an in-flight removal does not end pagination", async () => {
     const { source, result } = await mountPaged();
-    // Hold the change: the server applies it only once the gate opens.
-    const real = source.setStatus.getMockImplementation();
-    const gate = deferred<void>();
-    source.setStatus.mockImplementationOnce(async (id, projectName, status) => {
-      await gate.promise;
-      if (!real) throw new Error("no setStatus implementation");
-      return real(id, projectName, status);
-    });
+    const gate = holdNextSetStatus(source);
     let change!: Promise<void>;
     act(() => {
       change = result.current.changeStatus("m0", "resolved");
@@ -1002,13 +1007,7 @@ describe("useSitepingInbox — loadMore while a mutation is in flight", () => {
 
   it("does not re-add a row whose removal is still in flight", async () => {
     const { source, result } = await mountPaged();
-    const real = source.setStatus.getMockImplementation();
-    const gate = deferred<void>();
-    source.setStatus.mockImplementationOnce(async (id, projectName, status) => {
-      await gate.promise;
-      if (!real) throw new Error("no setStatus implementation");
-      return real(id, projectName, status);
-    });
+    const gate = holdNextSetStatus(source);
     let change!: Promise<void>;
     act(() => {
       change = result.current.changeStatus("m3", "resolved");
@@ -1032,6 +1031,70 @@ describe("useSitepingInbox — loadMore while a mutation is in flight", () => {
     });
     expect(ids(result.current.items)).toEqual(["m0", "m1", "m2", "m4", "m5"]);
     expect(result.current.hasMore).toBe(false);
+  });
+});
+
+describe("useSitepingInbox — a success landing in a list refetched meanwhile", () => {
+  it("removes the saved record when it no longer matches the refetched list", async () => {
+    const { source, result } = await mountDemo();
+    act(() => result.current.focus("r1"));
+    const gate = holdNextSetStatus(source);
+    let change!: Promise<void>;
+    act(() => {
+      change = result.current.changeStatus("r1", "resolved");
+    });
+    await act(async () => {
+      await result.current.refresh(); // the server still has r1 open
+    });
+    expect(ids(result.current.items)).toEqual(["r1", "r2", "r3"]);
+
+    await act(async () => {
+      gate.resolve();
+      await change;
+    });
+
+    // The Open tab must not show r1 as resolved.
+    expect(ids(result.current.items)).toEqual(["r2", "r3"]);
+    expect(result.current.total).toBe(2);
+    expect(result.current.focusedId).toBe("r2");
+  });
+
+  it("does not append a saved record the refetched page no longer reaches", async () => {
+    const source = makeSource(
+      Array.from({ length: 6 }, (_, i) =>
+        makeRecord({ id: `m${i}`, status: "open", createdAt: new Date(Date.UTC(2026, 6, 20, 10, 10 - i)) }),
+      ),
+    );
+    const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize: 2 }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.setStatus("all"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await settle();
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(ids(result.current.items)).toEqual(["m0", "m1", "m2", "m3"]);
+
+    const gate = holdNextSetStatus(source);
+    let change!: Promise<void>;
+    act(() => {
+      change = result.current.changeStatus("m3", "in_progress"); // stays in the "all" tab
+    });
+    await act(async () => {
+      await result.current.refresh(); // back to page 1: m3 now sits on page 2
+    });
+    await act(async () => {
+      gate.resolve();
+      await change;
+    });
+
+    expect(ids(result.current.items)).toEqual(["m0", "m1"]);
+    expect(result.current.total).toBe(6);
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(ids(result.current.items)).toEqual(["m0", "m1", "m2", "m3"]);
+    expect(result.current.items[3]?.status).toBe("in_progress");
   });
 });
 
