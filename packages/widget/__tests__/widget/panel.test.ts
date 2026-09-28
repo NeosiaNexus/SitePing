@@ -4036,6 +4036,46 @@ describe("Panel", () => {
       shadow.querySelector<HTMLButtonElement>(`[data-status-filter="${tab}"]`)!.click();
     const lastMarkerRender = () => markers.render.mock.calls.at(-1)?.[0];
 
+    it("reuse the list on an unfiltered load of this page, with a single request", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [pageOpen, pageDone], total: 2 });
+      await panel.open();
+
+      expect(apiClient.getFeedbacks).toHaveBeenCalledTimes(1);
+      expect(lastMarkerRender()).toEqual([pageOpen, pageDone]);
+    });
+
+    it("stay project-wide, like the launcher's, when scopeAnnotationsByUrl is false", async () => {
+      panel.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      bus = new EventBus<WidgetEvents>();
+      apiClient = createMockApiClient();
+      markers = createMockMarkers();
+      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+        getScope: () => ({ url: "/", urlPattern: null }),
+        scopeAnnotationsByUrl: false,
+      });
+      const elsewhere = makeFeedback({ id: "fb-elsewhere", url: "/other" });
+      apiClient.getFeedbacks.mockImplementation(async (_project: string, options?: { url?: unknown }) =>
+        options?.url === undefined ? { feedbacks: [pageOpen, elsewhere], total: 2 } : { feedbacks: [pageOpen], total: 1 },
+      );
+
+      // The default "This page" list is narrower than the markers' query
+      await panel.open();
+      expect(apiClient.getFeedbacks.mock.calls.map((call) => call[1])).toEqual([
+        { page: 1, limit: 20, url: "/" },
+        { limit: 20 },
+      ]);
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen, elsewhere]));
+
+      // The "All pages" list is the markers' query: it serves them
+      apiClient.getFeedbacks.mockClear();
+      shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!.click();
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-elsewhere"]')).not.toBeNull());
+      expect(apiClient.getFeedbacks).toHaveBeenCalledTimes(1);
+      expect(lastMarkerRender()).toEqual([pageOpen, elsewhere]);
+    });
+
     it("keep the page's open markers, and the FAB badge they drive, under the Resolved tab", async () => {
       apiClient.getFeedbacks.mockImplementation(async (_project: string, options?: { statuses?: unknown }) =>
         isFiltered(options) ? { feedbacks: [pageDone], total: 1 } : { feedbacks: [pageOpen, pageDone], total: 2 },
