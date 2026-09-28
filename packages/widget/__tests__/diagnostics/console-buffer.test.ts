@@ -117,6 +117,41 @@ describe("ConsoleBuffer", () => {
     buffer.dispose();
   });
 
+  it("does not label a shared, non-circular reference as [Circular]", () => {
+    const buffer = new ConsoleBuffer();
+    const shared = { v: 1 };
+    console.log({ a: shared, b: [shared, { c: shared }] });
+    expect(buffer.getEntries()[0]?.message).toBe('{"a":{"v":1},"b":[{"v":1},{"c":{"v":1}}]}');
+    buffer.dispose();
+  });
+
+  it("bounds the work on a diamond-shaped graph (shared references re-serialized at every use)", () => {
+    // Each level references the level below twice: a full walk reads 2^(depth+1)
+    // properties, synchronously inside the host's console.log.
+    let reads = 0;
+    let node: object = { leaf: 1 };
+    for (let depth = 0; depth < 14; depth++) {
+      const child = node;
+      node = {
+        get a() {
+          reads++;
+          return child;
+        },
+        get b() {
+          reads++;
+          return child;
+        },
+      };
+    }
+    const buffer = new ConsoleBuffer();
+    console.log(node);
+    const message = buffer.getEntries()[0]?.message ?? "";
+    expect(reads).toBeLessThan(1000);
+    expect(message.startsWith('{"a":{"a":{"a":')).toBe(true);
+    expect(message.length).toBeLessThanOrEqual(500);
+    buffer.dispose();
+  });
+
   it("truncates very long messages to roughly 500 chars", () => {
     const buffer = new ConsoleBuffer();
     console.log("x".repeat(2000));

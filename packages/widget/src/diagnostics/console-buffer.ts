@@ -52,17 +52,25 @@ function serializeArg(arg: unknown): string {
     return `${arg.name}: ${arg.message}${arg.stack ? `\n${arg.stack}` : ""}`;
   }
   try {
-    // Replacer drops cycles + functions; functions stringify-default to
-    // undefined and disappear from the output, which is the right call (we
-    // don't want random function bodies in a feedback payload).
-    const seen = new WeakSet<object>();
-    return JSON.stringify(arg, (_key, value: unknown) => {
+    // Replacer marks cycles and replaces functions with a placeholder (we
+    // don't want random function bodies in a feedback payload). Cycles are
+    // detected against the ANCESTOR chain, not every object seen so far: an
+    // object referenced twice side by side (`{ a: s, b: s }`) is shared, not
+    // circular. `this` is the object holding `value`, so ancestors past it
+    // belong to a finished sibling. A shared object is serialized at every
+    // reference, so a node budget keeps a diamond-shaped graph from growing
+    // exponentially — past it, values are pruned, and what was already
+    // emitted fills the MAX_MESSAGE_LENGTH the output is cut to anyway.
+    const ancestors: unknown[] = [];
+    let budget = MAX_MESSAGE_LENGTH;
+    return JSON.stringify(arg, function (this: unknown, _key, value: unknown) {
+      if (--budget < 0) return undefined;
       if (typeof value === "function") return "[Function]";
       if (typeof value === "symbol") return value.toString();
-      if (typeof value === "object" && value !== null) {
-        if (seen.has(value as object)) return "[Circular]";
-        seen.add(value as object);
-      }
+      if (typeof value !== "object" || value === null) return value;
+      while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+      if (ancestors.includes(value)) return "[Circular]";
+      ancestors.push(value);
       return value;
     });
   } catch {
