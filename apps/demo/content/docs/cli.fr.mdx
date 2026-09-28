@@ -86,7 +86,7 @@ Toutes les commandes sont scriptables. `0` signifie succès, `1` que quelque cho
 |---|---|
 | `init` | La génération de route ou la synchronisation du schéma échoue |
 | `sync` | Aucun schéma trouvé, fichier `--schema` absent, ou erreur d'analyse/d'écriture |
-| `status` | Le schéma, la route API, le `package.json` ou la dépendance widget manque |
+| `status` | Le schéma, la route API, le `package.json` ou la dépendance widget manque, ou le schéma est illisible ou invalide |
 | `doctor` | Réponse différente de 200, serveur injoignable, ou timeout |
 
 Deux réserves pour les pipelines CI : `status` sort en `0` (avec une indication de lancer `sync`) quand les champs du schéma ont simplement dérivé, et `doctor` sort en `0` sur toute réponse 200 — y compris une qui ne vient pas d'un handler SitePing (il affiche un avertissement à la place). Ni l'un ni l'autre n'est un garde-fou strict.

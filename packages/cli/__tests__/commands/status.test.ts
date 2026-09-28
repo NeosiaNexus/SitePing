@@ -352,6 +352,23 @@ describe("statusCommand", () => {
       expect(allMessages(logSuccessSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Up to date$/));
     });
 
+    it.each([
+      ["an unparseable schema", (dir: string) => createPrismaSchema(dir, "model Broken {\n  id String @id\n")],
+      ["--schema pointing at a directory", (dir: string) => join(dir, "prisma", "..")],
+    ])("reports %s as an error instead of crashing", (_label, setup) => {
+      mkdirSync(join(tmpDir, "prisma"), { recursive: true });
+      const schemaPath = setup(tmpDir);
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      expect(() => statusCommand({ schema: schemaPath })).not.toThrow();
+
+      expect(allMessages(logErrorSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Cannot read: /));
+      // The remaining checks still run, and the command fails like any other error.
+      expect(allMessages(logSuccessSpy).some((m) => m.includes("API route"))).toBe(true);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
     it("uses --schema flag path when provided", () => {
       const customDir = join(tmpDir, "custom");
       mkdirSync(customDir, { recursive: true });

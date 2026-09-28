@@ -86,7 +86,7 @@ All commands are scriptable. `0` means success, `1` means something needs fixing
 |---|---|
 | `init` | Route generation or schema sync fails |
 | `sync` | No schema found, `--schema` file missing, or parse/write error |
-| `status` | Schema, API route, `package.json`, or the widget dependency is missing |
+| `status` | Schema, API route, `package.json`, or the widget dependency is missing, or the schema can't be read or parsed |
 | `doctor` | Non-200 response, unreachable server, or timeout |
 
 Two caveats for CI pipelines: `status` exits `0` (with a hint to run `sync`) when schema fields merely drift, and `doctor` exits `0` on any 200 response — even one that is not a SitePing handler (it prints a warning instead). Neither is a strict gate.
