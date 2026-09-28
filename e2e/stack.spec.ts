@@ -221,6 +221,7 @@ test.describe("Dashboard inbox against the real handler", () => {
     await expect(rowMessages(page)).toHaveText(["Resolve me"]);
 
     const patched = page.waitForResponse((r) => r.url().startsWith(API) && r.request().method() === "PATCH");
+    const beforeResolve = Date.now();
     await page.locator(".spd-list").focus();
     await page.keyboard.press("j");
     await page.keyboard.press("e");
@@ -230,7 +231,8 @@ test.describe("Dashboard inbox against the real handler", () => {
     const [stored] = await listFeedbacks(request, project);
     expect(stored?.id).toBe(seeded.id);
     expect(stored?.status).toBe("resolved");
-    expect(stored?.resolvedAt).not.toBeNull();
+    // The closure timestamp is derived by the handler, not sent by the dashboard.
+    expect(Date.parse(stored?.resolvedAt ?? "")).toBeGreaterThanOrEqual(beforeResolve);
   });
 
   test("a failed change rolls back only its own row, not a concurrent success", async ({ page, request }, testInfo) => {
