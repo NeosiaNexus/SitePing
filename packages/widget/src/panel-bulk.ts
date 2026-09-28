@@ -621,7 +621,7 @@ export class BulkActions {
     this.isProcessing = true;
 
     const ids = [...this.selected];
-    const restoreResolve = setButtonLoading(this.resolveBtn);
+    setButtonLoading(this.resolveBtn);
     this.deleteBtn.disabled = true;
 
     try {
@@ -629,10 +629,7 @@ export class BulkActions {
     } catch {
       return; // Keep the selection so the user can retry
     } finally {
-      // Success too: reset() re-renders the labels but never re-enables.
-      restoreResolve();
-      this.deleteBtn.disabled = false;
-      this.isProcessing = false;
+      this.endProcessing();
     }
     this.reset();
   }
@@ -642,7 +639,7 @@ export class BulkActions {
     this.isProcessing = true;
 
     const ids = [...this.selected];
-    const restoreDelete = setButtonLoading(this.deleteBtn);
+    setButtonLoading(this.deleteBtn);
     this.resolveBtn.disabled = true;
 
     try {
@@ -650,10 +647,20 @@ export class BulkActions {
     } catch {
       return; // Keep the selection so the user can retry
     } finally {
-      restoreDelete();
-      this.resolveBtn.disabled = false;
-      this.isProcessing = false;
+      this.endProcessing();
     }
     this.reset();
+  }
+
+  /**
+   * Leave the loading state after success and failure alike: re-enable both
+   * buttons (reset() never does) and relabel them from the current selection,
+   * which the panel narrows to the failed items after a partial failure.
+   */
+  private endProcessing(): void {
+    this.isProcessing = false;
+    this.resolveBtn.disabled = false;
+    this.deleteBtn.disabled = false;
+    this.updateButtonLabels();
   }
 }

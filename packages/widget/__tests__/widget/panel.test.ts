@@ -1744,6 +1744,67 @@ describe("Panel", () => {
       });
     });
 
+    it("bulkDelete partial failure still reports the deleted items and reloads", async () => {
+      const fb1 = makeFeedback({ id: "fb-1" });
+      const fb2 = makeFeedback({ id: "fb-2" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2], total: 2 });
+      apiClient.deleteFeedback.mockImplementation((id: string) =>
+        id === "fb-2" ? Promise.reject(new Error("fb-2 failed")) : Promise.resolve(undefined),
+      );
+      const deletedListener = vi.fn();
+      const errorListener = vi.fn();
+      bus.on("feedback:deleted", deletedListener);
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb2], total: 1 });
+
+      const deleteBtn = shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-delete")!;
+      deleteBtn.click();
+
+      await vi.waitFor(() => expect(errorListener).toHaveBeenCalledWith(expect.any(Error)));
+      expect(deletedListener).toHaveBeenCalledWith("fb-1");
+      expect(deletedListener).not.toHaveBeenCalledWith("fb-2");
+      expect(apiClient.getFeedbacks).toHaveBeenCalled();
+
+      // Only the failed item stays selected, ready for a retry.
+      await vi.waitFor(() => expect(deleteBtn.disabled).toBe(false));
+      expect(
+        shadow.querySelector('[data-feedback-id="fb-2"] .sp-bulk-checkbox')!.getAttribute("aria-checked"),
+      ).toBe("true");
+      expect(deleteBtn.textContent).toBe(`${t("bulk.delete")} 1`);
+    });
+
+    it("bulkResolve partial failure still reloads the list", async () => {
+      const fb1 = makeFeedback({ id: "fb-1" });
+      const fb2 = makeFeedback({ id: "fb-2" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2], total: 2 });
+      apiClient.resolveFeedback.mockImplementation((id: string) =>
+        id === "fb-2" ? Promise.reject(new Error("fb-2 failed")) : Promise.resolve(undefined),
+      );
+      const errorListener = vi.fn();
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+      apiClient.getFeedbacks.mockClear();
+
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-resolve")!;
+      resolveBtn.click();
+
+      await vi.waitFor(() => expect(errorListener).toHaveBeenCalledWith(expect.any(Error)));
+      expect(apiClient.getFeedbacks).toHaveBeenCalled();
+
+      await vi.waitFor(() => expect(resolveBtn.disabled).toBe(false));
+      const checked = (id: string) =>
+        shadow.querySelector(`[data-feedback-id="${id}"] .sp-bulk-checkbox`)!.getAttribute("aria-checked");
+      expect(checked("fb-1")).toBe("false");
+      expect(checked("fb-2")).toBe("true");
+      expect(resolveBtn.textContent).toBe(`${t("bulk.resolve")} 1`);
+    });
+
     it("bulkDelete emits feedback:error on failure", async () => {
       const fb = makeFeedback({ id: "fb-1" });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
@@ -1763,6 +1824,11 @@ describe("Panel", () => {
       await vi.waitFor(() => {
         expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
       });
+      // Nothing was deleted: the selection survives the reload for a retry.
+      await vi.waitFor(() => expect(deleteBtn.disabled).toBe(false));
+      expect(
+        shadow.querySelector('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!.getAttribute("aria-checked"),
+      ).toBe("true");
     });
   });
 

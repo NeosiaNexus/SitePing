@@ -794,24 +794,34 @@ export class Panel {
   // ---------------------------------------------------------------------------
 
   private async bulkResolve(ids: string[]): Promise<void> {
-    try {
-      await Promise.all(ids.map((id) => this.client.resolveFeedback(id, true)));
-      await this.loadFeedbacks();
-    } catch (error) {
-      this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
-      throw error;
-    }
+    const results = await Promise.allSettled(ids.map((id) => this.client.resolveFeedback(id, true)));
+    await this.settleBulk(ids, results);
   }
 
   private async bulkDelete(ids: string[]): Promise<void> {
-    try {
-      await Promise.all(ids.map((id) => this.client.deleteFeedback(id)));
-      for (const id of ids) this.bus.emit("feedback:deleted", id);
-      await this.loadFeedbacks();
-    } catch (error) {
-      this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
-      throw error;
-    }
+    const results = await Promise.allSettled(ids.map((id) => this.client.deleteFeedback(id)));
+    ids.forEach((id, i) => {
+      if (results[i]?.status === "fulfilled") this.bus.emit("feedback:deleted", id);
+    });
+    await this.settleBulk(ids, results);
+  }
+
+  /**
+   * Finish a bulk action. Always reload — items that succeeded must leave the
+   * list (and their markers the page) even when another item failed. Then
+   * re-select the failed items the reload still lists, so the user can retry
+   * them, and surface the first failure, rethrown so BulkActions restores its
+   * buttons.
+   */
+  private async settleBulk(ids: string[], results: PromiseSettledResult<unknown>[]): Promise<void> {
+    await this.loadFeedbacks();
+    const failure = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (!failure) return;
+    const listed = new Set(this.feedbacks.map((f) => f.id));
+    this.bulk.selectAll(ids.filter((id, i) => results[i]?.status === "rejected" && listed.has(id)));
+    const error = failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason));
+    this.bus.emit("feedback:error", error);
+    throw error;
   }
 
   // ---------------------------------------------------------------------------
