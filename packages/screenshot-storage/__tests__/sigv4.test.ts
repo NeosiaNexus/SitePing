@@ -5,7 +5,7 @@ import { createS3ObjectStore } from "../src/backends/s3.js";
 import { sha256Hex, signS3Request } from "../src/backends/sigv4.js";
 import { createFakeS3 } from "./fake-backends.js";
 
-// Every case is checked against AWS's own signer (@smithy/signature-v4, used by the AWS SDK).
+// The cases of the first suite are checked against the AWS SDK's own signer (@smithy/signature-v4).
 const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY" };
 const signingDate = new Date("2026-09-27T12:34:56Z");
 
@@ -109,6 +109,86 @@ describe("signS3Request", () => {
       ),
     );
   });
+});
+
+/**
+ * The worked examples of AWS's S3 API reference ("Signature Calculations for the
+ * Authorization Header: Transferring Payload in a Single Chunk"): example keys,
+ * bucket `examplebucket` in us-east-1, signed at 20130524T000000Z. Each expected
+ * signature is AWS's published value, independent of any signer implementation.
+ */
+describe("signS3Request — AWS's published S3 examples", () => {
+  const exampleCredentials = {
+    accessKeyId: "AKIAIOSFODNN7EXAMPLE",
+    secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+  };
+  const exampleDate = new Date("2013-05-24T00:00:00Z");
+  const examples = [
+    {
+      name: "GET Object (a Range header, no body)",
+      method: "GET",
+      url: "https://examplebucket.s3.amazonaws.com/test.txt",
+      headers: { range: "bytes=0-9" },
+      body: "",
+      signedHeaders: "host;range;x-amz-content-sha256;x-amz-date",
+      signature: "f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41",
+    },
+    {
+      name: "PUT Object (a `$` in the key, a body, a Date and a storage class)",
+      method: "PUT",
+      url: "https://examplebucket.s3.amazonaws.com/test$file.text",
+      headers: { date: "Fri, 24 May 2013 00:00:00 GMT", "x-amz-storage-class": "REDUCED_REDUNDANCY" },
+      body: "Welcome to Amazon S3.",
+      signedHeaders: "date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class",
+      signature: "98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd",
+    },
+    {
+      name: "GET Bucket lifecycle (a subresource without a value)",
+      method: "GET",
+      url: "https://examplebucket.s3.amazonaws.com/?lifecycle",
+      headers: {},
+      body: "",
+      signedHeaders: "host;x-amz-content-sha256;x-amz-date",
+      signature: "fea454ca298b7da1c68078a5d1bdbfbbe0d65c699e0f91ac7a200a0136783543",
+    },
+    {
+      name: "GET Bucket, List Objects (sorted query parameters)",
+      method: "GET",
+      url: "https://examplebucket.s3.amazonaws.com/?max-keys=2&prefix=J",
+      headers: {},
+      body: "",
+      signedHeaders: "host;x-amz-content-sha256;x-amz-date",
+      signature: "34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7",
+    },
+  ];
+
+  it("hashes the PUT example's payload as AWS publishes it", async () => {
+    expect(await sha256Hex("Welcome to Amazon S3.")).toBe(
+      "44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072",
+    );
+  });
+
+  for (const example of examples) {
+    it(`produces AWS's signature for ${example.name}`, async () => {
+      const signed = await signS3Request(
+        {
+          method: example.method,
+          url: new URL(example.url),
+          headers: example.headers,
+          payloadHash: await sha256Hex(example.body),
+        },
+        exampleCredentials,
+        "us-east-1",
+        exampleDate,
+      );
+
+      expect(signed["x-amz-date"]).toBe("20130524T000000Z");
+      expect(signed.authorization).toBe(
+        "AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, " +
+          `SignedHeaders=${example.signedHeaders}, Signature=${example.signature}`,
+      );
+    });
+  }
 });
 
 describe("createS3ObjectStore — signing clock", () => {
