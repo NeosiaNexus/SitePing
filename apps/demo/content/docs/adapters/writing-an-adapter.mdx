@@ -147,7 +147,7 @@ The factory runs before each test and may be async, which is where you spin up a
 
 | Option | Default | Set it when |
 |---|---|---|
-| `duplicateBehavior` | `"return"` | Your `createFeedback` throws `StoreDuplicateError` on a repeated `clientId` instead of returning the existing record — pass `"throw"` |
+| `duplicateBehavior` | `"return"` | Your `createFeedback` throws `StoreDuplicateError` on a repeated `clientId` instead of returning the existing record — pass `"throw"`. A store that returns it but throws when it loses a concurrent insert race stays on `"return"` |
 | `caseInsensitiveSearch` | `true` | Your collation makes `search` case-sensitive — pass `false` and the suite only asserts same-case substring matching |
 
 ```ts

@@ -147,7 +147,7 @@ La factory est appelée avant chaque test et peut être asynchrone — c'est là
 
 | Option | Défaut | À régler quand |
 |---|---|---|
-| `duplicateBehavior` | `"return"` | Votre `createFeedback` lève `StoreDuplicateError` sur un `clientId` répété au lieu de renvoyer l'existant — passez `"throw"` |
+| `duplicateBehavior` | `"return"` | Votre `createFeedback` lève `StoreDuplicateError` sur un `clientId` répété au lieu de renvoyer l'existant — passez `"throw"`. Un store qui le renvoie mais lève quand il perd une course d'insertion concurrente reste sur `"return"` |
 | `caseInsensitiveSearch` | `true` | Votre collation rend `search` sensible à la casse — passez `false` et la suite ne teste que la correspondance à casse identique |
 
 ```ts

@@ -89,7 +89,9 @@ export interface StoreConformanceOptions {
   /**
    * How `createFeedback` reacts to a duplicate `clientId` — both are valid
    * per the `SitepingStore` contract:
-   * - `"return"` (default): idempotently return the existing record.
+   * - `"return"` (default): idempotently return the existing record. A
+   *   concurrent create that loses the insert race may still throw
+   *   `StoreDuplicateError`, which the HTTP handler recovers.
    * - `"throw"`: throw `StoreDuplicateError` (matched via `isStoreDuplicate`).
    */
   duplicateBehavior?: "return" | "throw" | undefined;
@@ -673,29 +675,21 @@ export function testSitepingStore(
         expect(feedbacks.map((f) => f.id).sort()).toEqual(created.map((f) => f.id).sort());
       });
 
-      if (duplicateBehavior === "return") {
-        it("concurrent creates with the same clientId all return the one stored record", async () => {
-          const input = createInput({ clientId: "same-id" });
+      it("concurrent creates with the same clientId store one record and hand out only its id", async () => {
+        const input = createInput({ clientId: "same-id" });
 
-          const created = await Promise.all([store.createFeedback(input), store.createFeedback(input)]);
+        const results = await Promise.allSettled([store.createFeedback(input), store.createFeedback(input)]);
 
-          const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
-          expect(feedbacks.map((f) => f.id)).toEqual([created[0]?.id]);
-          expect(created[1]?.id).toBe(created[0]?.id);
-        });
-      } else {
-        it("concurrent creates with the same clientId store it once and reject the rest", async () => {
-          const input = createInput({ clientId: "same-id" });
-
-          const results = await Promise.allSettled([store.createFeedback(input), store.createFeedback(input)]);
-
-          const stored = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.id] : []));
-          expect(stored).toHaveLength(1);
-          for (const r of results) if (r.status === "rejected") expect(r.reason).toSatisfy(isStoreDuplicate);
-          const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
-          expect(feedbacks.map((f) => f.id)).toEqual(stored);
-        });
-      }
+        const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(feedbacks).toHaveLength(1);
+        const returned = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.id] : []));
+        // "return" still lets the caller that loses the insert race throw — the
+        // handler recovers it through findByClientId.
+        if (duplicateBehavior === "throw") expect(returned).toHaveLength(1);
+        else expect(returned.length).toBeGreaterThan(0);
+        for (const id of returned) expect(id).toBe(feedbacks[0]?.id);
+        for (const r of results) if (r.status === "rejected") expect(r.reason).toSatisfy(isStoreDuplicate);
+      });
     });
 
     // ------------------------------------------------------------------
