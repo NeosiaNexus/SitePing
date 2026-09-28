@@ -316,7 +316,9 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       // total can still count them — the local total already accounts for it.
       const racing = mutationPending || mutationSeqRef.current !== mutationSeq;
       const seen = new Set(itemsRef.current.map((f) => f.id));
-      const fresh = page.feedbacks.filter((f) => !seen.has(f.id));
+      // A row with a mutation in flight is that mutation's to place (on
+      // success or rollback) — the page's copy may predate it.
+      const fresh = page.feedbacks.filter((f) => !seen.has(f.id) && !inFlightRef.current.has(f.id));
       // Out of rows only when nothing new came back from a short page, or from
       // any page no racing mutation can explain — a duplicate-only page caused
       // by an in-flight removal must not end pagination for good.

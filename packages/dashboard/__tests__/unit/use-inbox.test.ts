@@ -999,6 +999,40 @@ describe("useSitepingInbox — loadMore while a mutation is in flight", () => {
     expect(ids(result.current.items)).toEqual(["m1", "m2", "m3", "m4", "m5"]);
     expect(result.current.hasMore).toBe(false);
   });
+
+  it("does not re-add a row whose removal is still in flight", async () => {
+    const { source, result } = await mountPaged();
+    const real = source.setStatus.getMockImplementation();
+    const gate = deferred<void>();
+    source.setStatus.mockImplementationOnce(async (id, projectName, status) => {
+      await gate.promise;
+      if (!real) throw new Error("no setStatus implementation");
+      return real(id, projectName, status);
+    });
+    let change!: Promise<void>;
+    act(() => {
+      change = result.current.changeStatus("m3", "resolved");
+    });
+    await act(async () => {
+      await result.current.loadMore(); // server page 2 is still [m2, m3(open)]
+    });
+    expect(ids(result.current.items)).toEqual(["m0", "m1", "m2"]);
+
+    await act(async () => {
+      gate.resolve();
+      await change;
+    });
+    expect(ids(result.current.items)).toEqual(["m0", "m1", "m2"]);
+    expect(result.current.total).toBe(5);
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(ids(result.current.items)).toEqual(["m0", "m1", "m2", "m4", "m5"]);
+    expect(result.current.hasMore).toBe(false);
+  });
 });
 
 describe("useSitepingInbox — re-entering rows respect the whole query", () => {
