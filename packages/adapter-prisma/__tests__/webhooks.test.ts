@@ -192,6 +192,36 @@ describe("buildWebhookPayload — untrusted input", () => {
     expect(value.length).toBeLessThanOrEqual(1024);
     expect(value).toMatch(/^(\\_)+…$/);
   });
+
+  describe("Discord URL field", () => {
+    const urlField = (url: string) =>
+      buildWebhookPayload("discord", { ...FEEDBACK, url }).embeds[0]?.fields.find((f) => f.name === "URL")?.value;
+
+    it("keeps a full page URL linkable — no backslash lands inside Discord's autolink", () => {
+      expect(urlField("https://example.com/docs/some_page_(v2)?q=a*b~c")).toBe(
+        "https://example.com/docs/some_page_%28v2%29?q=a*b~c",
+      );
+    });
+
+    it("percent-encodes brackets and parens so a URL can't smuggle in a masked link", () => {
+      expect(urlField("https://ok.example/[Reset-password](https://evil.example)")).toBe(
+        "https://ok.example/%5BReset-password%5D%28https://evil.example%29",
+      );
+    });
+
+    it("escapes a value that is not a lone http(s) URL", () => {
+      expect(urlField("/orders/__draft__")).toBe("/orders/\\_\\_draft\\_\\_");
+      expect(urlField("https://ok.example [Reset](https://evil.example)")).toBe(
+        "https://ok.example \\[Reset\\]\\(https://evil.example\\)",
+      );
+    });
+
+    it("never cuts a percent-encoding in half when truncating", () => {
+      const value = urlField(`https://example.com/${"(".repeat(2000)}`) ?? "";
+      expect(value.length).toBeLessThanOrEqual(1024);
+      expect(value).toMatch(/^https:\/\/example\.com\/(%28)+…$/);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

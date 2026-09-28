@@ -220,6 +220,24 @@ function escapeDiscordText(text: string, max: number): string {
   return escapeWithin(text, max, (value) => value.replace(DISCORD_MARKDOWN, "\\$&"));
 }
 
+/** A lone http(s) URL — the page scope as a full URL, which Discord autolinks. */
+const LONE_HTTP_URL = /^https?:\/\/[^\s<>]+$/i;
+
+/**
+ * The URL field. A lone http(s) URL is not backslash-escaped: Discord
+ * autolinks it, so the escapes would land in the link (browsers read `\` as
+ * `/`). Only `[`, `]`, `(`, `)` are percent-encoded, which keeps the address
+ * while making sure no masked link can form wherever Discord ends the
+ * autolink. Any other value (a pathname, a slug, attacker text) is escaped
+ * like the rest.
+ */
+function discordUrlValue(url: string): string {
+  if (!LONE_HTTP_URL.test(url)) return escapeDiscordText(url, DISCORD_FIELD_VALUE_MAX);
+  return escapeWithin(url, DISCORD_FIELD_VALUE_MAX, (value) =>
+    value.replace(/[[\]()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`),
+  );
+}
+
 /**
  * Discord message: content fallback + embed for rich rendering. Sent with
  * mention parsing disabled — `content` embeds the author name, and Discord
@@ -239,7 +257,7 @@ function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
         description: escapeDiscordText(feedback.message, 300),
         color: DISCORD_COLORS[feedback.type] ?? DEFAULT_DISCORD_COLOR,
         fields: [
-          { name: "URL", value: escapeDiscordText(feedback.url, DISCORD_FIELD_VALUE_MAX), inline: false },
+          { name: "URL", value: discordUrlValue(feedback.url), inline: false },
           {
             name: "Author",
             value: `${escapeDiscordText(feedback.authorName, authorHalf)} (${escapeDiscordText(feedback.authorEmail, authorHalf)})`,
