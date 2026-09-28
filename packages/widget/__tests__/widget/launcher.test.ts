@@ -97,6 +97,7 @@ vi.mock("../../src/styles/base.js", () => ({
 
 import { adjacentText, neighborText } from "../../src/dom/text-context.js";
 import { launch } from "../../src/launcher.js";
+import { Tooltip } from "../../src/tooltip.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -518,6 +519,24 @@ describe("launch", () => {
       const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
       // French ARIA label
       expect(fabBtn.getAttribute("aria-label")).toContain("Siteping");
+
+      instance.destroy();
+    });
+
+    it("accepts a POSIX-style tag (fr_FR): French strings, and a tag Intl date formatting accepts", async () => {
+      // PHP / WordPress hand out `fr_FR`. Intl rejects it with a RangeError
+      // (crashing the panel list and tooltip dates), and the dictionary
+      // lookup used to miss French.
+      const instance = launch(defaultConfig({ locale: "fr_FR" }));
+      expect(vi.mocked(Tooltip).mock.calls.at(-1)?.[1]).toBe("fr-FR");
+      instance.open();
+
+      const shadow = document.querySelector("siteping-widget")!.shadowRoot!;
+      await vi.waitFor(() => {
+        expect(shadow.querySelector('[role="complementary"]')?.getAttribute("aria-label")).toBe(
+          "Panneau de feedback Siteping",
+        );
+      });
 
       instance.destroy();
     });

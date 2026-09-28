@@ -1,4 +1,5 @@
 import {
+  canonicalizeLocale,
   type DiagnosticsSnapshot,
   type FeedbackPayload,
   IDENTITY_FIELD_MAX_LENGTH,
@@ -194,7 +195,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
     return skippedInstance();
   }
 
-  const locale = config.locale ?? "en";
+  // Canonical once, here: every consumer (dictionary lookup, Intl date
+  // formatting in the panel, tooltip and detail view) gets a tag it accepts.
+  const locale = canonicalizeLocale(config.locale ?? "en");
   // Kick off the locale fetch immediately. English is bundled synchronously
   // and used as the fallback while the chunk is in flight. The launcher
   // awaits `localeReady` before rendering markers and re-localizes the FAB

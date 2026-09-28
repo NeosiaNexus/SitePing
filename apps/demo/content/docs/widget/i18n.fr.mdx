@@ -16,7 +16,7 @@ initSiteping({
 ## Comment la résolution fonctionne
 
 - **L'anglais est embarqué** ; chaque autre locale se charge dans son propre petit chunk, donc vous ne téléchargez que la langue que vous utilisez.
-- Les étiquettes BCP-47 complètes sont les bienvenues — `"fr-CA"` se résout en `fr`, `"pt-BR"` en `pt`.
+- Les étiquettes BCP-47 complètes sont les bienvenues — `"fr-CA"` se résout en `fr`, `"pt-BR"` en `pt` — tout comme les étiquettes de style POSIX que fournissent PHP / WordPress (`"fr_FR"`), pour les libellés comme pour les dates.
 - Une locale inconnue affiche un `console.warn` et retombe sur l'anglais. Rien ne casse.
 - Pendant le chargement d'un chunk de locale, les libellés s'affichent en anglais et se re-localisent dès qu'il arrive ; les marqueurs, eux, attendent les traductions pour que les libellés destinés aux lecteurs d'écran ne soient jamais à moitié traduits.
 

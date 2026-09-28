@@ -11,7 +11,7 @@ export {
   matchesFeedbackQuery,
 } from "./filters.js";
 export type { I18n, LocaleLoaders, TranslateFunction } from "./i18n.js";
-export { createI18n, interpolate, intlLocale, tWithParams } from "./i18n.js";
+export { canonicalizeLocale, createI18n, interpolate, intlLocale, tWithParams } from "./i18n.js";
 export type {
   FieldDef,
   IndexDef,

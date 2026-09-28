@@ -16,7 +16,7 @@ initSiteping({
 ## How resolution works
 
 - **English is bundled**; every other locale loads as its own tiny chunk, so you only download the language you use.
-- Full BCP-47 tags are welcome — `"fr-CA"` resolves to `fr`, `"pt-BR"` to `pt`.
+- Full BCP-47 tags are welcome — `"fr-CA"` resolves to `fr`, `"pt-BR"` to `pt` — and so are the POSIX-style tags PHP / WordPress hand out (`"fr_FR"`), for both the strings and the dates.
 - An unknown locale logs a `console.warn` and falls back to English. Nothing breaks.
 - While a locale chunk is loading, labels render in English and re-localize the moment it lands; markers wait for the translations so screen-reader labels are never half-translated.
 
