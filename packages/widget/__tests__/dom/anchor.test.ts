@@ -365,10 +365,12 @@ describe("findAnchorElement — open shadow roots (#177)", () => {
 
   it("climbs back out through the host when nothing inside contains the rect", () => {
     const { host, shadow, inner } = openComponent();
-    stubBounds(inner, makeDOMRect(60, 60, 10, 10));
+    const leaf = inner.appendChild(document.createElement("span"));
+    stubBounds(leaf, makeDOMRect(60, 60, 10, 10));
+    stubBounds(inner, makeDOMRect(60, 60, 20, 20));
     stubBounds(host, makeDOMRect(0, 0, 400, 400));
     stubElementFromPoint(document, () => host);
-    stubElementFromPoint(shadow, () => inner);
+    stubElementFromPoint(shadow, () => leaf);
 
     expect(findAnchorElement(rect)).toBe(host);
   });
@@ -389,9 +391,12 @@ describe("findAnchorElement — open shadow roots (#177)", () => {
     const { host, shadow } = openComponent();
     stubBounds(host, makeDOMRect(0, 0, 400, 400));
     stubElementFromPoint(document, () => host);
-    stubElementFromPoint(shadow, () => host);
+    // Bounded stub: without the guard the drill would spin on the host forever.
+    let shadowHits = 0;
+    stubElementFromPoint(shadow, () => (++shadowHits > 3 ? null : host));
 
     expect(findAnchorElement(rect)).toBe(host);
+    expect(shadowHits).toBe(1);
   });
 
   it("keeps the host without throwing when ShadowRoot.elementFromPoint is missing", () => {
