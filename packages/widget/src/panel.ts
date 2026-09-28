@@ -1358,6 +1358,9 @@ export class Panel {
   }
 
   destroy(): void {
+    // A panel action's context can outlive the widget: its refresh() and
+    // close() only act on an open panel.
+    this.isOpen = false;
     this.loadController?.abort();
     if (this.searchTimeout) clearTimeout(this.searchTimeout);
     this.listContainer.removeEventListener("click", this.onListClick);

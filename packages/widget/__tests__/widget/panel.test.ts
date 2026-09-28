@@ -4416,6 +4416,26 @@ describe("Panel", () => {
       expect(shadow.querySelector(".sp-detail-message")?.textContent).toBe("second feedback");
     });
 
+    it("context.refresh() and context.close() do nothing once the panel is destroyed", async () => {
+      let ctx: SitepingPanelActionContext | undefined;
+      rebuildWithActions([{ id: "keep", label: "Keep", onAction: (_fb, c) => void (ctx = c) }]);
+      await openDetail(makeFeedback({ id: "fb-1" }));
+      shadow.querySelector<HTMLButtonElement>('[data-action-id="keep"]')!.click();
+      await vi.waitFor(() => expect(ctx).toBeDefined());
+      const closed = vi.fn();
+      bus.on("close", closed);
+
+      panel.destroy();
+      apiClient.getFeedbacks.mockClear();
+      markers.render.mockClear();
+      await ctx?.refresh();
+      ctx?.close();
+
+      expect(apiClient.getFeedbacks).not.toHaveBeenCalled();
+      expect(markers.render).not.toHaveBeenCalled();
+      expect(closed).not.toHaveBeenCalled();
+    });
+
     it("context.close() closes the panel", async () => {
       rebuildWithActions([{ id: "go", label: "Go", onAction: (_fb, ctx) => ctx.close() }]);
       await openDetail(makeFeedback({ id: "fb-1" }));

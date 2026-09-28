@@ -56,7 +56,10 @@ export interface SitepingDeepLinkOptions {
   param?: string | undefined;
 }
 
-/** Helpers passed to a panel action's `onAction` as its second argument. */
+/**
+ * Helpers passed to a panel action's `onAction` as its second argument.
+ * Both do nothing once the widget has been destroyed.
+ */
 export interface SitepingPanelActionContext {
   /**
    * Re-fetch the panel list and markers, then re-render the detail view with
