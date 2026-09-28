@@ -648,36 +648,72 @@ describe("createS3ObjectStore — uploads", () => {
 });
 
 describe("backend requests — timeouts", () => {
-  it("aborts an upload after timeoutMs, reports it without a status and reclaims its key", async () => {
-    const requests: { method: string; path: string }[] = [];
-    const objectStore = createS3ObjectStore({
-      endpoint: "https://account.r2.cloudflarestorage.com",
-      bucket: "screens",
-      publicBaseUrl: "https://screens.example.com",
-      accessKeyId: "AKIDEXAMPLE",
-      secretAccessKey: "s3-secret",
-      timeoutMs: 20,
-      // The PUT never answers, as a stalled backend; the reclaiming DELETE does.
-      fetch: (input, init) => {
+  const TIMEOUT_MS = 20;
+
+  it.each<{
+    backend: string;
+    open: (fetch: typeof globalThis.fetch) => ScreenshotObjectStore;
+    uploadMethod: string;
+    uploadedKey: (request: Request, init?: RequestInit) => string;
+  }>([
+    {
+      backend: "S3",
+      open: (fetch) =>
+        createS3ObjectStore({
+          endpoint: "https://account.r2.cloudflarestorage.com",
+          bucket: "screens",
+          publicBaseUrl: "https://screens.example.com",
+          accessKeyId: "AKIDEXAMPLE",
+          secretAccessKey: "s3-secret",
+          timeoutMs: TIMEOUT_MS,
+          fetch,
+        }),
+      uploadMethod: "PUT",
+      uploadedKey: (request) => new URL(request.url).pathname.split("/").at(-1) ?? "",
+    },
+    {
+      backend: "Cloudflare Images",
+      open: (fetch) =>
+        createCloudflareImagesObjectStore({
+          accountId: "account-1",
+          apiToken: "cf-token",
+          accountHash: "hash-1",
+          timeoutMs: TIMEOUT_MS,
+          fetch,
+        }),
+      uploadMethod: "POST",
+      uploadedKey: (_request, init) => String((init?.body as FormData).get("id")),
+    },
+  ])(
+    "$backend aborts an upload after timeoutMs, reports it without a status and reclaims its key",
+    async ({ open, uploadMethod, uploadedKey }) => {
+      const requests: { method: string; path: string }[] = [];
+      const uploadedKeys: string[] = [];
+      // The upload never answers, as a stalled backend; the reclaiming DELETE does.
+      const objectStore = open((input, init) => {
         const request = new Request(input, init);
         requests.push({ method: request.method, path: new URL(request.url).pathname });
         if (request.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
+        uploadedKeys.push(uploadedKey(request, init));
         return new Promise((_resolve, reject) => {
           request.signal.addEventListener("abort", () => reject(request.signal.reason));
         });
-      },
-    });
+      });
 
-    const failure = await createScreenshotStorage(objectStore, { logger: silentLogger() })
-      .upload(JPEG_DATA_URL, UPLOAD_CONTEXT)
-      .catch((error: unknown) => error);
+      const failure = await createScreenshotStorage(objectStore, { logger: silentLogger() })
+        .upload(JPEG_DATA_URL, UPLOAD_CONTEXT)
+        .catch((error: unknown) => error);
 
-    expect(isObjectStoreRequestError(failure)).toBe(true);
-    expect((failure as ObjectStoreRequestError).status).toBeNull();
-    expect((failure as ObjectStoreRequestError).cause).toMatchObject({ name: "TimeoutError" });
-    expect(requests.map(({ method }) => method)).toEqual(["PUT", "DELETE"]);
-    expect(requests[1]?.path).toBe(requests[0]?.path);
-  });
+      expect(isObjectStoreRequestError(failure)).toBe(true);
+      expect((failure as ObjectStoreRequestError).status).toBeNull();
+      expect((failure as ObjectStoreRequestError).cause).toMatchObject({ name: "TimeoutError" });
+      expect(requests.map(({ method }) => method)).toEqual([uploadMethod, "DELETE"]);
+      expect(uploadedKeys).toEqual([expect.stringMatching(/^siteping-[a-f0-9]{32}\.jpg$/)]);
+      expect(requests[1]?.path.endsWith(`/${uploadedKeys[0]}`)).toBe(true);
+    },
+    // Well under the 5 s default request timeout: a backend that ignored timeoutMs fails here.
+    2_000,
+  );
 });
 
 describe("createS3ObjectStore — a body cut short", () => {
