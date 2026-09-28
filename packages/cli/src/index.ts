@@ -32,7 +32,7 @@ program
 program
   .command("doctor")
   .description("Test the connection to the Siteping API")
-  .option("--url <url>", "Server URL (default: http://localhost:3000)")
+  .option("--url <url>", "Site base URL; a path in it prefixes --endpoint (default: http://localhost:3000)")
   .option("--endpoint <path>", "Endpoint path (default: /api/siteping)")
   .option("--api-key <key>", "Bearer token for endpoints configured with apiKey")
   .action(doctorCommand)

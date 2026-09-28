@@ -76,6 +76,8 @@ npx @siteping/cli doctor --url https://app.example.com --api-key "$SITEPING_API_
 
 `doctor` envoie une requête GET à votre serveur en fonctionnement et vous dit si un handler SitePing a répondu (timeout de 10 secondes). Passez **à la fois** `--url` et `--endpoint` pour l'exécuter sans interaction — celle que vous omettez devient une question. Quand l'endpoint est configuré avec un `apiKey` et que `GET` n'est pas public, passez la clé avec `--api-key` ; sans elle, un `401` s'accompagne d'une indication.
 
+`--url` est l'URL de base de votre site, pas celle de l'endpoint : un chemin qu'elle contient (un `basePath` Next.js, par exemple) se place devant `--endpoint`. Avec `--url https://example.com/app --endpoint /api/siteping`, `doctor` interroge `https://example.com/app/api/siteping`.
+
 Il ne vérifie que la réponse HTTP — il ne lit jamais votre schéma. Pour vérifier le schéma, utilisez `status`.
 
 ## Codes de sortie

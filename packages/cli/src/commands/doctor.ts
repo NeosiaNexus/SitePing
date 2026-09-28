@@ -2,7 +2,7 @@ import { p } from "../prompts.js";
 
 /** Options accepted by the `siteping doctor` subcommand. */
 export interface DoctorCommandOptions {
-  /** Override the development server origin (defaults to prompt / `http://localhost:3000`). */
+  /** Override the site base URL; a path in it prefixes the endpoint (defaults to prompt / `http://localhost:3000`). */
   url?: string;
   /** Override the API endpoint path (defaults to prompt / `/api/siteping`). */
   endpoint?: string;
