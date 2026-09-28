@@ -64,6 +64,17 @@ describe("PrismaStore — pagination clamp", () => {
   });
 });
 
+describe("PrismaStore — ordering", () => {
+  it("breaks createdAt ties by id so pages never overlap or skip rows", async () => {
+    // Rows sharing a createdAt have no defined SQL order: without a unique
+    // tie-breaker, OFFSET pagination can repeat one row and skip another.
+    const prisma = spyDelegate();
+    await new PrismaStore(prisma).getFeedbacks({ projectName: "p", page: 2, limit: 10 });
+    const args = prisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as { orderBy: unknown };
+    expect(args.orderBy).toEqual([{ createdAt: "desc" }, { id: "desc" }]);
+  });
+});
+
 describe("PrismaStore — store error translation", () => {
   it("updateFeedback throws StoreNotFoundError (with the Prisma error as cause) on P2025", async () => {
     const prisma = spyDelegate();

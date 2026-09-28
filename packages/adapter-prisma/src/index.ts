@@ -472,7 +472,9 @@ export class PrismaStore implements SitepingStore {
       this.prisma.sitepingFeedback.findMany({
         where,
         include: INCLUDE_ANNOTATIONS,
-        orderBy: { createdAt: "desc" },
+        // `id` breaks createdAt ties: SQL leaves equal rows unordered, so
+        // OFFSET pages could otherwise repeat one row and skip another.
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip,
         take: limit,
       }),
