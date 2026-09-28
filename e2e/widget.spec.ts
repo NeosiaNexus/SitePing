@@ -579,6 +579,102 @@ test.describe("Full annotation flow", () => {
   });
 });
 
+test.describe("Shadow DOM anchoring (#177)", () => {
+  test("an annotation inside an open web component survives a reload", async ({ page }) => {
+    const s = shadow(page);
+
+    // A web component with an open shadow root, mounted on every navigation,
+    // plus a stored identity so the submit posts without the identity modal.
+    await page.addInitScript(() => {
+      customElements.define(
+        "e2e-card",
+        class extends HTMLElement {
+          constructor() {
+            super();
+            this.attachShadow({ mode: "open" }).innerHTML =
+              '<p id="shadow-target" style="margin:0;padding:32px;background:#fff4e5">Texte rendu dans un web component</p>';
+          }
+        },
+      );
+      document.addEventListener("DOMContentLoaded", () => {
+        const card = document.createElement("e2e-card");
+        card.id = "e2e-component";
+        card.style.cssText = "display:block;margin-bottom:20px";
+        document.getElementById("hero")?.after(card);
+      });
+      localStorage.setItem("siteping_identity", JSON.stringify({ name: "Test User", email: "test@example.com" }));
+    });
+
+    const ready = async () => {
+      await page.waitForFunction(() => {
+        const host = document.querySelector("siteping-widget");
+        return host?.shadowRoot?.querySelector(".sp-fab") !== null && !!document.getElementById("e2e-component");
+      });
+    };
+    await page.reload();
+    await ready();
+
+    // 1. Draw strictly inside the shadow paragraph.
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="annotate"]');
+    await s.click('[data-item-id="annotate"]');
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
+    const box = (await page.locator("#shadow-target").boundingBox())!;
+    await page.mouse.move(box.x + 8, box.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 8, box.y + box.height - 8, { steps: 5 });
+    await page.mouse.up();
+
+    await page.waitForSelector("button[data-type='bug']");
+    await page.click("button[data-type='bug']");
+    await page.fill("textarea", "Le composant est mal aligné");
+    await page.evaluate(() => {
+      for (const b of document.querySelectorAll("button")) {
+        if (b.textContent === "Send") return b.click();
+      }
+    });
+
+    // 2. Capture pierced the boundary: one selector per tree, root-relative XPath.
+    const project = getProject(page);
+    await page.waitForFunction(
+      async (pn) => (await (await fetch(`/api/siteping?projectName=${pn}`)).json()).total >= 1,
+      project,
+      { timeout: 5000 },
+    );
+    const data = await (await page.request.get(`http://localhost:3999/api/siteping?projectName=${project}`)).json();
+    const annotation = data.feedbacks[0].annotations[0];
+    expect(annotation.cssSelector).toBe("#e2e-component >>> #shadow-target");
+    expect(annotation.xpath).toBe(".//p[@id='shadow-target']");
+    expect(annotation.elementTag).toBe("P");
+
+    // 3. After a reload, resolution finds the element inside the shadow root:
+    //    the marker sits on the drawn rect's top-right corner, solid (not
+    //    "approximate").
+    await page.reload();
+    await ready();
+    const marker = page.locator("#siteping-markers [data-feedback-id]");
+    await expect(marker).toBeVisible();
+    const placed = await page.evaluate(() => {
+      const m = document.querySelector<HTMLElement>("#siteping-markers [data-feedback-id]");
+      const r = document.getElementById("e2e-component")?.shadowRoot?.getElementById("shadow-target");
+      const b = r?.getBoundingClientRect();
+      return m && b
+        ? {
+            top: Number.parseFloat(m.style.top),
+            left: Number.parseFloat(m.style.left),
+            expectedTop: b.top + window.scrollY + 8 - 13,
+            expectedLeft: b.right + window.scrollX - 8 - 13,
+            dashed: m.style.borderStyle === "dashed",
+          }
+        : null;
+    });
+    expect(placed).not.toBeNull();
+    expect(Math.abs(placed!.top - placed!.expectedTop)).toBeLessThan(2);
+    expect(Math.abs(placed!.left - placed!.expectedLeft)).toBeLessThan(2);
+    expect(placed!.dashed).toBe(false);
+  });
+});
+
 test.describe("Annotation toggle", () => {
   test("hides and shows markers container", async ({ page }) => {
     const s = shadow(page);
