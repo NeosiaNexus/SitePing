@@ -1118,6 +1118,27 @@ describe("useSitepingInbox — a success landing in a list refetched meanwhile",
     expect(result.current.focusedId).toBe("r2");
   });
 
+  it("adds a saved record the refetched list lacks when it now fits there (e, then 4)", async () => {
+    const { source, result } = await mountDemo();
+    const gate = holdNextSetStatus(source);
+    let change!: Promise<void>;
+    act(() => {
+      change = result.current.changeStatus("r1", "resolved");
+    });
+    act(() => result.current.setStatus("resolved"));
+    // The Resolved tab loads before the server applied the change.
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
+    await settle();
+
+    await act(async () => {
+      gate.resolve();
+      await change;
+    });
+
+    expect(ids(result.current.items)).toEqual(["r1", "r5"]);
+    expect(result.current.total).toBe(2);
+  });
+
   it("does not append a saved record the refetched page no longer reaches", async () => {
     const source = makeSource(
       Array.from({ length: 6 }, (_, i) =>

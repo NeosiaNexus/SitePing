@@ -629,10 +629,16 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         // A later mutation on this feedback owns the row now — don't clobber its optimistic state.
         if (settleMutation(id, handle, true)) {
           // Place, not map: a page refetched meanwhile may still hold the
-          // pre-change row, which must leave if the saved status doesn't fit.
-          // An absent row stays out — after a refetch it may sit on a page
+          // pre-change row, which must leave if the saved status doesn't fit,
+          // or lack it although it now fits. Such a row comes back only inside
+          // the loaded window — older than every loaded row, it sits on a page
           // not loaded yet, and appending it would misplace it.
-          if (itemsRef.current.some((f) => f.id === id)) {
+          const list = itemsRef.current;
+          const createdAt = saved.createdAt.getTime();
+          if (
+            list.some((f) => f.id === id || f.createdAt.getTime() < createdAt) ||
+            (totalRef.current !== null && list.length >= totalRef.current)
+          ) {
             const { removedAt } = placeRecord(id, saved);
             if (removedAt !== -1 && focusedIdRef.current === id) moveFocusAfterRemoval(itemsRef.current, removedAt);
           }
