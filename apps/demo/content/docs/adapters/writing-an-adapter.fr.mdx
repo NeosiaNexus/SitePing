@@ -129,6 +129,10 @@ async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> 
 
 Implémentez-la dès que votre store sert plus d'un projet. En son absence, les handlers sautent la vérification et se fient au seul `id`.
 
+## Effets de création exactement une fois
+
+`createFeedbackIfAbsent(data)` est l'autre méthode optionnelle : un `createFeedback` qui indique aussi si cet appel a inséré l'enregistrement — `{ feedback, created }`. Les handlers de requêtes la préfèrent à `createFeedback` et ne notifient les webhooks que pour `created: true` : deux requêtes qui se disputent le même `clientId` — le widget qui relance une requête expirée, arrivée sur une autre instance du serveur — ne notifient qu'une fois. Implémentez-la si votre `createFeedback` renvoie l'enregistrement existant sur un doublon (`duplicateBehavior: "return"`) ; un store qui lève `StoreDuplicateError` donne déjà ce signal aux handlers et peut s'en passer. La vérification du doublon et l'insertion doivent être atomiques : parmi des appels concurrents avec le même `clientId`, un seul renvoie `created: true`, et tous renvoient cet enregistrement. `createCollectionStore` le garantit au sein d'une instance de store en mettant ses écritures en file ; un stockage partagé par plusieurs processus (ou onglets) nécessite sa propre primitive atomique — contrainte d'unicité, transaction, compare-and-set.
+
 ## La preuve : la suite de conformité
 
 La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — 56 tests :

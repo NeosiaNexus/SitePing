@@ -176,7 +176,9 @@ Two implementation strategies:
   `updateFeedback`/`deleteFeedback` throw `StoreNotFoundError`,
   `deleteAllFeedbacks` is a no-op when empty, every lost write throws
   `StorePersistenceError`. Optionally implement `verifyProjectOwnership` so
-  HTTP handlers can reject cross-project PATCH/DELETE.
+  HTTP handlers can reject cross-project PATCH/DELETE, and
+  `createFeedbackIfAbsent` when `createFeedback` returns the existing record
+  on a duplicate, so webhooks fire once per feedback.
 
 Verify with the shared conformance suite (~56 tests — the scaffold pre-wires
 this file):

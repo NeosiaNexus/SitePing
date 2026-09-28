@@ -553,6 +553,37 @@ describe("createSitepingHandler — webhooks option", () => {
 // ---------------------------------------------------------------------------
 
 describe("createSitepingHandler — webhooks on clientId replays", () => {
+  /**
+   * An idempotent collection store on an async backend (KV, remote storage):
+   * every `load`/`persist` yields, so overlapping requests both pass the
+   * replay check before either insert lands.
+   */
+  function asyncCollectionStore() {
+    let feedbacks: FeedbackRecord[] = [];
+    let seq = 0;
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 1));
+    return createCollectionStore({
+      load: async () => {
+        await tick();
+        return feedbacks;
+      },
+      persist: async (next) => {
+        await tick();
+        feedbacks = next;
+      },
+      generateId: () => `id-${++seq}`,
+    });
+  }
+
+  function postClientId(handler: ReturnType<typeof createSitepingHandler>, clientId: string) {
+    return handler.POST(
+      new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify({ ...validPayloadNoAnnotations, clientId }),
+      }),
+    );
+  }
+
   it("does not dispatch again when a store returns the existing record for a replayed clientId", async () => {
     // Snapshot stores (memory, localStorage, adapter-kit) are idempotent on
     // clientId: a replay resolves like a fresh insert. The handler must still
@@ -585,33 +616,32 @@ describe("createSitepingHandler — webhooks on clientId replays", () => {
   });
 
   it("dispatches once when two POSTs with the same clientId overlap (widget timeout + retry)", async () => {
-    // An async backend (KV, remote storage) lets both requests pass the
-    // replay check before either insert lands; the idempotent store then
-    // resolves the second create like a fresh insert.
-    let feedbacks: FeedbackRecord[] = [];
-    let seq = 0;
-    const tick = () => new Promise((resolve) => setTimeout(resolve, 1));
-    const store = createCollectionStore({
-      load: async () => {
-        await tick();
-        return feedbacks;
-      },
-      persist: async (next) => {
-        await tick();
-        feedbacks = next;
-      },
-      generateId: () => `id-${++seq}`,
-    });
+    // Without `createFeedbackIfAbsent` (a third-party store that doesn't
+    // report its inserts), the idempotent store resolves the second create
+    // like a fresh insert: only the handler's in-flight coalescing tells.
+    const { createFeedbackIfAbsent: _reportsInserts, ...store } = asyncCollectionStore();
     const handler = createSitepingHandler({ store, webhooks: { url: "https://hooks.example.com" } });
-    const post = () =>
-      handler.POST(
-        new Request("http://localhost/api/siteping", {
-          method: "POST",
-          body: JSON.stringify({ ...validPayloadNoAnnotations, clientId: "overlapping" }),
-        }),
-      );
+    const post = () => postClientId(handler, "overlapping");
 
     const [first, second] = await Promise.all([post(), post()]);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(((await first.json()) as { id: string }).id).toBe(((await second.json()) as { id: string }).id);
+
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it("dispatches once when handlers in separate processes race on one clientId (createFeedbackIfAbsent)", async () => {
+    // Two handler instances share nothing in memory, like two server
+    // processes: in-flight coalescing can't join them, so only the store's
+    // own report of which call inserted the record keeps the second request
+    // from notifying.
+    const store = asyncCollectionStore();
+    const handlers = [1, 2].map(() => createSitepingHandler({ store, webhooks: { url: "https://hooks.example.com" } }));
+
+    const [first, second] = await Promise.all(handlers.map((handler) => postClientId(handler, "cross-process")));
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
     expect(((await first.json()) as { id: string }).id).toBe(((await second.json()) as { id: string }).id);

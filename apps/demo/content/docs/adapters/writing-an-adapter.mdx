@@ -129,6 +129,10 @@ async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> 
 
 Implement it whenever your store serves more than one project. When it's absent, handlers skip the check and trust the `id` alone.
 
+## Exactly-once creation effects
+
+`createFeedbackIfAbsent(data)` is the other optional method: `createFeedback` that also returns whether this call inserted the record — `{ feedback, created }`. The request handlers prefer it over `createFeedback`, and notify webhooks only for `created: true`, so two requests racing on the same `clientId` — the widget retrying a request that timed out, landing on another server instance — notify once. Implement it if your `createFeedback` returns the existing record on a duplicate (`duplicateBehavior: "return"`); a store that throws `StoreDuplicateError` already gives the handlers that signal and can leave it out. The dedup check and the insert must be atomic: of concurrent calls with the same `clientId`, exactly one reports `created: true`, and all return that record. `createCollectionStore` guarantees it within one store instance by queueing its writes; storage shared by several processes (or browser tabs) needs an atomic primitive of its own — a unique constraint, a transaction, a compare-and-set.
+
 ## Prove it: the conformance suite
 
 The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 56 tests:

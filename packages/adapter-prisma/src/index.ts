@@ -822,25 +822,19 @@ export function createSitepingHandler({
    * Creates in flight, keyed by clientId. The widget aborts an attempt after
    * 10 s and resends the same payload, so a retry can reach the server while
    * the first attempt is still being processed. With a store that returns the
-   * existing record on a duplicate clientId (memory, localStorage,
-   * `createCollectionStore`), both requests would pass the replay check and
+   * existing record on a duplicate clientId without implementing
+   * `createFeedbackIfAbsent`, both requests would pass the replay check and
    * both "create" — notifying the webhooks twice. A request whose clientId is
-   * in flight shares that outcome instead. Scoped to this handler instance:
-   * across processes, the store's unique constraint (the duplicate path in
-   * POST) still decides.
+   * in flight shares that outcome instead, and never runs a second insert or
+   * upload. Scoped to this handler instance: across processes, the store
+   * decides — `createFeedbackIfAbsent`, or its unique constraint (the
+   * duplicate path in POST).
    */
   const inflightCreates = new Map<string, Promise<{ feedback: FeedbackRecord; inserted: boolean }>>();
 
   /** Replay check + insert for one validated payload; `inserted` is false for a replay. */
   async function createOrReplay(data: FeedbackPayload): Promise<{ feedback: FeedbackRecord; inserted: boolean }> {
-    // Replay detection up front, for every store alike: stores that return
-    // the existing record on a duplicate clientId are indistinguishable
-    // from a fresh insert afterwards, and a replayed submission must not
-    // notify the webhooks a second time.
-    const replayed = await store.findByClientId(data.clientId);
-    if (replayed) return { feedback: replayed, inserted: false };
-
-    const feedback = await store.createFeedback({
+    const input: FeedbackCreateInput = {
       projectName: data.projectName,
       type: data.type,
       message: data.message,
@@ -856,8 +850,23 @@ export function createSitepingHandler({
       screenshotDataUrl: data.screenshotDataUrl ?? null,
       screenshotRegion: data.screenshotRegion ?? null,
       diagnostics: data.diagnostics ?? null,
-    });
-    return { feedback, inserted: true };
+    };
+
+    // The store reports its own inserts: it arbitrates replays and races on
+    // the clientId atomically, across handler instances and processes too.
+    if (store.createFeedbackIfAbsent) {
+      const { feedback, created } = await store.createFeedbackIfAbsent(input);
+      return { feedback, inserted: created };
+    }
+
+    // Otherwise, replay detection up front: stores that return the existing
+    // record on a duplicate clientId are indistinguishable from a fresh
+    // insert afterwards, and a replayed submission must not notify the
+    // webhooks a second time.
+    const replayed = await store.findByClientId(data.clientId);
+    if (replayed) return { feedback: replayed, inserted: false };
+
+    return { feedback: await store.createFeedback(input), inserted: true };
   }
 
   /**
