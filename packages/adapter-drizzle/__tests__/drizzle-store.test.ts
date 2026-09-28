@@ -152,6 +152,11 @@ interface DialectUnderTest {
      * only ASCII case, so libSQL needs no change.
      */
     foldMessageCaseAsciiOnly(): Promise<() => Promise<void>>;
+    /**
+     * Stop enforcing foreign keys, as a libSQL connection without `PRAGMA foreign_keys = ON`
+     * does; resolves to the undo. PostgreSQL always enforces them, so it needs no change.
+     */
+    stopEnforcingForeignKeys(): Promise<() => Promise<void>>;
     /** Make the database reject writes to the feedback table; resolves to the undo. */
     rejectFeedbackWrites(): Promise<() => Promise<void>>;
     reset(): Promise<void>;
@@ -201,6 +206,9 @@ const dialects: DialectUnderTest[] = [
             await alterMessageCollation("default");
           };
         },
+        async stopEnforcingForeignKeys() {
+          return async () => {};
+        },
         async rejectFeedbackWrites() {
           // PGlite is a single session: every later statement runs read-only.
           await database.db.execute(sql`SET default_transaction_read_only = on`);
@@ -246,6 +254,12 @@ const dialects: DialectUnderTest[] = [
         },
         async foldMessageCaseAsciiOnly() {
           return async () => {};
+        },
+        async stopEnforcingForeignKeys() {
+          await database.db.run(sql`PRAGMA foreign_keys = OFF`);
+          return async () => {
+            await database.db.run(sql`PRAGMA foreign_keys = ON`);
+          };
         },
         async rejectFeedbackWrites() {
           const feedbackTable = sql.identifier(getTableName(tables.sitepingFeedbacks));
@@ -677,16 +691,25 @@ for (const dialect of dialects) {
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
-    it("removes the annotations of deleted feedbacks", async () => {
-      const store = database.createStore({ logger });
-      const single = await store.createFeedback(feedbackInput());
-      await store.createFeedback(feedbackInput({ projectName: "bulk" }));
-      await store.createFeedback(feedbackInput({ projectName: "kept" }));
+    it("removes the annotations of deleted feedbacks, even where the database does not enforce foreign keys", async () => {
+      const restoreForeignKeys = await database.stopEnforcingForeignKeys();
+      try {
+        const store = database.createStore({ logger });
+        // A delete hook switches deleteAllFeedbacks to its chunked path.
+        const storeWithDeleteHook = database.createStore({ logger, screenshotStorage: recordingStorage().storage });
+        const single = await store.createFeedback(feedbackInput());
+        await store.createFeedback(feedbackInput({ projectName: "bulk" }));
+        await store.createFeedback(feedbackInput({ projectName: "chunked" }));
+        await store.createFeedback(feedbackInput({ projectName: "kept" }));
 
-      await store.deleteFeedback(single.id);
-      await store.deleteAllFeedbacks("bulk");
+        await store.deleteFeedback(single.id);
+        await store.deleteAllFeedbacks("bulk");
+        await storeWithDeleteHook.deleteAllFeedbacks("chunked");
 
-      expect(await database.countAnnotations()).toBe(1);
+        expect(await database.countAnnotations()).toBe(1);
+      } finally {
+        await restoreForeignKeys();
+      }
     });
 
     describe("when updateFeedback meets a database failure", () => {
