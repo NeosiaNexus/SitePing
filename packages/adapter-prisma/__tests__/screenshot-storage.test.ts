@@ -95,6 +95,18 @@ describe("PrismaStore — screenshot storage", () => {
       expect(created.data.screenshotUrl).toBe("https://cdn.example.com/fb-c1.jpg");
     });
 
+    it.each([
+      ["data:image/png;base64,iVBORw0KGgo", "image/png"],
+      ["data:image/webp;base64,UklGRg", "image/webp"],
+    ])("passes the data URL's own mimeType to upload (%s)", async (dataUrl, mimeType) => {
+      const storage: ScreenshotStorage = { upload: vi.fn().mockResolvedValue({ url: "https://cdn.example.com/x" }) };
+      const store = new PrismaStore(prisma, { screenshotStorage: storage });
+
+      await store.createFeedback(createInput({ screenshotDataUrl: dataUrl, clientId: "c1" }));
+
+      expect(storage.upload).toHaveBeenCalledWith(dataUrl, { feedbackId: "c1", mimeType });
+    });
+
     it("does not call storage when no data URL is sent", async () => {
       const storage: ScreenshotStorage = { upload: vi.fn() };
       const store = new PrismaStore(prisma, { screenshotStorage: storage });
