@@ -150,7 +150,9 @@ describe("buildWebhookPayload — untrusted input", () => {
 
   it("escapes Discord markdown so a visitor can't send a disguised masked link", () => {
     const phish = "[Reset your password](https://evil.example/phish)";
-    const escaped = "\\[Reset your password\\]\\(https://evil.example/phish\\)";
+    // The URL keeps its characters (it stays linkable) but its closing paren
+    // is percent-encoded, so no masked link can form.
+    const escaped = "\\[Reset your password\\]\\(https://evil.example/phish%29";
     const payload = buildWebhookPayload("discord", {
       ...FEEDBACK,
       message: `**urgent** ${phish}`,
@@ -168,7 +170,7 @@ describe("buildWebhookPayload — untrusted input", () => {
     expect(embed?.title).toBe("bug — \\_\\_proj\\_\\_");
     expect(embed?.fields.find((f) => f.name === "URL")?.value).toBe(escaped);
     expect(embed?.fields.find((f) => f.name === "Author")?.value).toBe(`${escaped} (alice@example.com)`);
-    expect(embed?.fields.find((f) => f.name === "Viewport")?.value).toBe("\\[x\\]\\(https://e.co\\)");
+    expect(embed?.fields.find((f) => f.name === "Viewport")?.value).toBe("\\[x\\]\\(https://e.co%29");
   });
 
   it("keeps every Discord value within the API limits, even after escaping", () => {
@@ -193,7 +195,7 @@ describe("buildWebhookPayload — untrusted input", () => {
     expect(value).toMatch(/^(\\_)+…$/);
   });
 
-  describe("Discord URL field", () => {
+  describe("Discord URLs", () => {
     const urlField = (url: string) =>
       buildWebhookPayload("discord", { ...FEEDBACK, url }).embeds[0]?.fields.find((f) => f.name === "URL")?.value;
 
@@ -209,10 +211,18 @@ describe("buildWebhookPayload — untrusted input", () => {
       );
     });
 
-    it("escapes a value that is not a lone http(s) URL", () => {
+    it("escapes everything around an http(s) URL", () => {
       expect(urlField("/orders/__draft__")).toBe("/orders/\\_\\_draft\\_\\_");
       expect(urlField("https://ok.example [Reset](https://evil.example)")).toBe(
-        "https://ok.example \\[Reset\\]\\(https://evil.example\\)",
+        "https://ok.example \\[Reset\\]\\(https://evil.example%29",
+      );
+    });
+
+    it("keeps a URL typed into the message linkable while escaping the text around it", () => {
+      const description = (message: string) =>
+        buildWebhookPayload("discord", { ...FEEDBACK, message }).embeds[0]?.description;
+      expect(description("_Price_ is wrong on https://shop.example/product_42#price_box, please fix")).toBe(
+        "\\_Price\\_ is wrong on https://shop.example/product_42#price_box, please fix",
       );
     });
 

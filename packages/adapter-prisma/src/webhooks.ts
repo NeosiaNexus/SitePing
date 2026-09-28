@@ -120,17 +120,16 @@ function truncate(text: string, max = 300): string {
 }
 
 /**
- * Escape untrusted `text` and truncate it so the ESCAPED result fits `max`.
- * Truncation walks whole characters and escapes each one, so an escape
- * sequence (`&amp;`, `\[`) is never cut in half — and escaping can grow a
- * value several-fold, so sizing the raw text alone would not guarantee fit.
+ * Join escaped `units` (one per source character) and truncate so the ESCAPED
+ * result fits `max`. Truncation drops whole units, so an escape sequence
+ * (`&amp;`, `\[`, `%28`) is never cut in half — and escaping can grow a value
+ * several-fold, so sizing the raw text alone would not guarantee fit.
  */
-function escapeWithin(text: string, max: number, escapeText: (text: string) => string): string {
-  const escaped = escapeText(text);
+function fitEscaped(units: readonly string[], max: number): string {
+  const escaped = units.join("");
   if (escaped.length <= max) return escaped;
   let out = "";
-  for (const char of text) {
-    const unit = escapeText(char);
+  for (const unit of units) {
     if (out.length + unit.length > max - 1) break;
     out += unit;
   }
@@ -161,7 +160,7 @@ function escapeSlackText(text: string): string {
  */
 function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
   const preview = escapeSlackText(truncate(feedback.message));
-  const escapeField = (value: string, max: number) => escapeWithin(value, max, escapeSlackText);
+  const escapeField = (value: string, max: number) => fitEscaped(Array.from(value, escapeSlackText), max);
   // Two halves + "*From:*  ()" stay under the text-object limit.
   const fromHalf = Math.floor((SLACK_TEXT_MAX - 11) / 2);
   const headline = `New ${feedback.type} feedback from ${feedback.authorName}`;
@@ -211,31 +210,31 @@ const DISCORD_FIELD_VALUE_MAX = 1024;
 const DISCORD_MARKDOWN = /[\\*_~`|>#[\]()<]/g;
 
 /**
- * Backslash-escape Discord markdown in untrusted text, sized to `max` (see
- * `escapeWithin`). Feedback text is typed by anonymous visitors: unescaped,
- * `[Reset your password](https://evil.example)` renders as a disguised link —
- * the same threat `escapeSlackText` handles.
+ * An http(s) URL, which Discord autolinks. Backslash escapes inside it would
+ * land in the link (browsers read `\` as `/`), so its characters are not
+ * escaped: only `[`, `]`, `(`, `)` are percent-encoded, which keeps the
+ * address while making sure no masked link can form wherever Discord ends
+ * the autolink. The capture group makes `split` keep the URLs.
  */
-function escapeDiscordText(text: string, max: number): string {
-  return escapeWithin(text, max, (value) => value.replace(DISCORD_MARKDOWN, "\\$&"));
-}
+const DISCORD_AUTOLINK = /(https?:\/\/[^\s<>]+)/i;
 
-/** A lone http(s) URL — the page scope as a full URL, which Discord autolinks. */
-const LONE_HTTP_URL = /^https?:\/\/[^\s<>]+$/i;
+const escapeMarkdownChar = (char: string) => char.replace(DISCORD_MARKDOWN, "\\$&");
+const encodeLinkChar = (char: string) =>
+  char.replace(/[[\]()]/, (bracket) => `%${bracket.charCodeAt(0).toString(16).toUpperCase()}`);
 
 /**
- * The URL field. A lone http(s) URL is not backslash-escaped: Discord
- * autolinks it, so the escapes would land in the link (browsers read `\` as
- * `/`). Only `[`, `]`, `(`, `)` are percent-encoded, which keeps the address
- * while making sure no masked link can form wherever Discord ends the
- * autolink. Any other value (a pathname, a slug, attacker text) is escaped
- * like the rest.
+ * Escape untrusted text for Discord, sized to `max` (see `fitEscaped`).
+ * Feedback text is typed by anonymous visitors: unescaped,
+ * `[Reset your password](https://evil.example)` renders as a disguised link —
+ * the same threat `escapeSlackText` handles. URLs inside the text stay
+ * linkable (see `DISCORD_AUTOLINK`).
  */
-function discordUrlValue(url: string): string {
-  if (!LONE_HTTP_URL.test(url)) return escapeDiscordText(url, DISCORD_FIELD_VALUE_MAX);
-  return escapeWithin(url, DISCORD_FIELD_VALUE_MAX, (value) =>
-    value.replace(/[[\]()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`),
-  );
+function escapeDiscordText(text: string, max: number): string {
+  // `split` alternates plain text (even indexes) and URLs (odd indexes).
+  const units = text
+    .split(DISCORD_AUTOLINK)
+    .flatMap((part, index) => Array.from(part, index % 2 === 1 ? encodeLinkChar : escapeMarkdownChar));
+  return fitEscaped(units, max);
 }
 
 /**
@@ -257,7 +256,7 @@ function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
         description: escapeDiscordText(feedback.message, 300),
         color: DISCORD_COLORS[feedback.type] ?? DEFAULT_DISCORD_COLOR,
         fields: [
-          { name: "URL", value: discordUrlValue(feedback.url), inline: false },
+          { name: "URL", value: escapeDiscordText(feedback.url, DISCORD_FIELD_VALUE_MAX), inline: false },
           {
             name: "Author",
             value: `${escapeDiscordText(feedback.authorName, authorHalf)} (${escapeDiscordText(feedback.authorEmail, authorHalf)})`,
