@@ -60,6 +60,7 @@ export function createSitepingHandler<Principal>(options: SitepingHandlerOptions
     store,
     allowedOrigins,
     webhooks,
+    waitUntil,
     beforeCreate,
     presentFeedback,
     hooks = {},
@@ -98,6 +99,7 @@ export function createSitepingHandler<Principal>(options: SitepingHandlerOptions
       store,
       pipeline,
       webhooks: webhookList,
+      waitUntil,
       beforeCreate,
       // Bound so hooks written as class methods keep their `this`.
       onCreated: hooks.onCreated?.bind(hooks),

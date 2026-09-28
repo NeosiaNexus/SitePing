@@ -16,6 +16,7 @@ interface CreateFeedbackDependencies<Principal> {
   store: SitepingStore;
   pipeline: Pipeline<Principal>;
   webhooks: ReadonlyArray<WebhookConfig>;
+  waitUntil: SitepingHandlerBaseOptions<Principal>["waitUntil"];
   beforeCreate: SitepingHandlerBaseOptions<Principal>["beforeCreate"];
   onCreated: SitepingLifecycleHooks<Principal>["onCreated"];
 }
@@ -54,6 +55,7 @@ export function createFeedbackOperation<Principal>({
   store,
   pipeline,
   webhooks,
+  waitUntil,
   beforeCreate,
   onCreated,
 }: CreateFeedbackDependencies<Principal>) {
@@ -150,10 +152,17 @@ export function createFeedbackOperation<Principal>({
       // Creation side effects run once per insert: never for a replay, and
       // never for a request that joined another one's in-flight create.
       if (owner && inserted && feedback.projectName === input.projectName) {
-        // Fire-and-forget: drop the promise so the widget isn't held back
-        // on slow Slack/Discord/generic receivers. `dispatchWebhooks` traps
-        // its own errors and reports them through `WebhookConfig.onError`.
-        if (webhooks.length > 0) void dispatchWebhooks(webhooks, feedback);
+        // Fire-and-forget: never awaited, so the widget isn't held back on
+        // slow Slack/Discord/generic receivers. `dispatchWebhooks` traps its
+        // own errors and reports them through `WebhookConfig.onError`.
+        if (webhooks.length > 0) {
+          const delivery = dispatchWebhooks(webhooks, feedback);
+          try {
+            waitUntil?.(delivery);
+          } catch (error) {
+            pipeline.logger.error("[siteping] waitUntil failed", { error });
+          }
+        }
         if (onCreated) await pipeline.runHook("onCreated", () => onCreated(feedback, scope.context));
       }
 

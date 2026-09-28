@@ -637,3 +637,71 @@ describe("createSitepingHandler — webhooks on clientId replays", () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Handler integration — deliveries handed to the runtime
+// ---------------------------------------------------------------------------
+
+describe("createSitepingHandler — waitUntil", () => {
+  const post = (handler: ReturnType<typeof createSitepingHandler>) =>
+    handler.POST(
+      new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify(validPayloadNoAnnotations),
+      }),
+    );
+
+  it("hands the pending delivery to waitUntil and answers without waiting for it", async () => {
+    let deliver: (response: Response) => void = () => {};
+    fetchSpy.mockReturnValue(new Promise<Response>((resolve) => (deliver = resolve)));
+    const handedOff: Promise<unknown>[] = [];
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      webhooks: { url: "https://hooks.example.com" },
+      waitUntil: (promise) => handedOff.push(promise),
+    });
+
+    const response = await post(handler);
+
+    expect(response.status).toBe(201);
+    expect(handedOff).toHaveLength(1);
+    let settled = false;
+    void handedOff[0]?.then(() => (settled = true));
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    deliver(new Response("", { status: 200 }));
+    await vi.waitFor(() => expect(settled).toBe(true));
+  });
+
+  it("is not called for a replay, nor without webhooks", async () => {
+    const waitUntil = vi.fn();
+    const store = new MemoryStore();
+    const withWebhooks = createSitepingHandler({ store, webhooks: { url: "https://hooks.example.com" }, waitUntil });
+    const withoutWebhooks = createSitepingHandler({ store: new MemoryStore(), waitUntil });
+
+    await post(withWebhooks);
+    await post(withWebhooks);
+    await post(withoutWebhooks);
+
+    expect(waitUntil).toHaveBeenCalledOnce();
+  });
+
+  it("still answers 201 and delivers when waitUntil throws", async () => {
+    const logger = { error: vi.fn() };
+    const failure = new Error("after() called outside a request scope");
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      webhooks: { url: "https://hooks.example.com" },
+      logger,
+      waitUntil: () => {
+        throw failure;
+      },
+    });
+
+    const response = await post(handler);
+
+    expect(response.status).toBe(201);
+    expect(logger.error).toHaveBeenCalledWith("[siteping] waitUntil failed", { error: failure });
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
+  });
+});

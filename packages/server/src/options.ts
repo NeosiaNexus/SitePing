@@ -97,6 +97,15 @@ export interface SitepingHandlerBaseOptions<Principal> {
    */
   webhooks?: WebhookConfig | ReadonlyArray<WebhookConfig>;
   /**
+   * Hand the webhook deliveries to the runtime, which may otherwise freeze
+   * or cancel them once the response is sent (serverless functions, edge
+   * workers): Next.js `after`, `waitUntil` from `@vercel/functions` or from
+   * `cloudflare:workers` — a standalone function, not an unbound method.
+   * Called once per notified feedback with a promise that never rejects; a
+   * throw is logged and the delivery still runs.
+   */
+  waitUntil?: ((promise: Promise<unknown>) => void) | undefined;
+  /**
    * Rewrite the validated input before it is stored: impose the project or
    * the author from the session, redact secrets from free text, drop fields
    * you do not keep. Runs before `access.authorize`, which sees the effective
