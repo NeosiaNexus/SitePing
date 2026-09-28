@@ -152,7 +152,7 @@ export function describeBackendContract(backend: BackendUnderTest): void {
     });
 
     it.runIf(backend.servedByApp)(
-      "sandboxes what it serves, even an SVG that reached the backend directly",
+      "serves an SVG that reached the backend directly as a sandboxed download, never inline",
       async () => {
         const { objectStore } = await backend.open();
         const legacyKey = `siteping-${"b".repeat(32)}.svg`;
@@ -166,6 +166,8 @@ export function describeBackendContract(backend: BackendUnderTest): void {
         );
 
         expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toBe("application/octet-stream");
+        expect(response.headers.get("content-disposition")).toBe("attachment");
         expect(response.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
         expect(response.headers.get("x-content-type-options")).toBe("nosniff");
       },

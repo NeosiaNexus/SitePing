@@ -186,13 +186,16 @@ describe("createScreenshotStorage — validation", () => {
     },
   );
 
-  it.each(["image/svg+xml", "IMAGE/SVG+XML"])("refuses the active format %s in allowedContentTypes", (contentType) => {
-    expect(() =>
-      createScreenshotStorage(createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL }), {
-        allowedContentTypes: ["image/png", contentType],
-      }),
-    ).toThrow(/active format/);
-  });
+  it.each(["image/svg+xml", "IMAGE/SVG+XML", "image/svg", "image/vnd.example+xml"])(
+    "refuses the active format %s in allowedContentTypes",
+    (contentType) => {
+      expect(() =>
+        createScreenshotStorage(createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL }), {
+          allowedContentTypes: ["image/png", contentType],
+        }),
+      ).toThrow(/active format/);
+    },
+  );
 
   it("accepts uploads of a configured content type written in another case or with spaces", async () => {
     const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
@@ -246,6 +249,32 @@ describe("createScreenshotServeHandler", () => {
     expect(response.headers.get("content-type")).toBe("image/jpeg");
     expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(JPEG_BYTES);
+  });
+
+  it.each(["text/html", "image/svg+xml", "IMAGE/SVG+XML; charset=utf-8", "application/octet-stream", ""])(
+    "serves an object stored as %j as a download, never inline",
+    async (contentType) => {
+      const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
+      const key = `siteping-${"d".repeat(32)}.jpg`;
+      await objectStore.put({ key, bytes: new TextEncoder().encode("<script>alert(1)</script>"), contentType });
+
+      const response = await createScreenshotServeHandler(objectStore).GET(new Request(objectStore.urlFor(key)));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("application/octet-stream");
+      expect(response.headers.get("content-disposition")).toBe("attachment");
+    },
+  );
+
+  it("serves an inert image type inline, without the parameters a backend may add", async () => {
+    const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
+    const key = `siteping-${"e".repeat(32)}.png`;
+    await objectStore.put({ key, bytes: JPEG_BYTES.slice(), contentType: "Image/PNG; charset=binary" });
+
+    const response = await createScreenshotServeHandler(objectStore).GET(new Request(objectStore.urlFor(key)));
+
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("content-disposition")).toBeNull();
   });
 
   it("removes the filesystem content-type sidecar with the screenshot", async () => {

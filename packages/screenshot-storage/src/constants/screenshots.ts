@@ -2,12 +2,16 @@
 export const DEFAULT_ALLOWED_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 /**
- * Image types that are active documents rather than inert pixels: an SVG opened
- * directly runs its scripts with the origin that serves it. `createScreenshotStorage`
- * refuses them in `allowedContentTypes` — `X-Content-Type-Options: nosniff`
- * cannot help, since the declared type is already the active one.
+ * Image subtypes that are documents rather than inert pixels: an SVG (or any
+ * XML-based image) opened directly runs its scripts with the origin that
+ * serves it, and `X-Content-Type-Options: nosniff` cannot help, since the
+ * declared type is already the active one. Matched anywhere in the subtype,
+ * so `image/svg`, `image/svg+xml` and vendor variants are all caught.
  */
-export const ACTIVE_IMAGE_CONTENT_TYPES: readonly string[] = ["image/svg+xml"];
+export const ACTIVE_IMAGE_SUBTYPE_PATTERN = /svg|xml/;
+
+/** Type and disposition a served object gets when its stored type is not an inert image. */
+export const DOWNLOAD_ONLY_CONTENT_TYPE = "application/octet-stream";
 
 /** Largest decoded screenshot accepted by default, in bytes (matches the server's payload cap). */
 export const DEFAULT_MAX_SCREENSHOT_BYTES = 1_500_000;

@@ -22,8 +22,9 @@ export interface ScreenshotStorageOptions {
    * Image types accepted. Defaults to JPEG, PNG and WebP. Entries are
    * case-insensitive and trimmed (`"IMAGE/GIF"` means `image/gif`). Each type must map to
    * a key extension of 1–10 lowercase letters or digits (`image/gif` → `gif`,
-   * `image/x-icon` → `ico`), and active formats (`image/svg+xml`, which can run
-   * scripts when opened directly) are refused; `createScreenshotStorage` throws otherwise.
+   * `image/x-icon` → `ico`), and active formats (`image/svg+xml` or any other
+   * SVG or XML-based type, which can run scripts when opened directly) are
+   * refused; `createScreenshotStorage` throws otherwise.
    */
   allowedContentTypes?: readonly string[];
   /**
