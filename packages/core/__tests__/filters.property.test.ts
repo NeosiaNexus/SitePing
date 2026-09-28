@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { applyFeedbackFilters } from "../src/filters.js";
+import { applyFeedbackFilters, matchesFeedbackQuery } from "../src/filters.js";
 import type { FeedbackQuery, FeedbackRecord, FeedbackStatus, FeedbackType } from "../src/types.js";
 import { FEEDBACK_STATUSES, FEEDBACK_TYPES } from "../src/types.js";
 
@@ -137,6 +137,43 @@ describe("applyFeedbackFilters — filter soundness", () => {
           expect(emptyBucket.feedbacks.map((f) => f.id)).toEqual(exactOnly.feedbacks.map((f) => f.id));
         },
       ),
+    );
+  });
+});
+
+/** Reference model of the filter contract, written out field by field. */
+function satisfies(f: FeedbackRecord, query: FeedbackQuery): boolean {
+  if (f.projectName !== query.projectName) return false;
+  if (query.type && f.type !== query.type) return false;
+  if (query.statuses && query.statuses.length > 0) {
+    if (!query.statuses.includes(f.status)) return false;
+  } else if (query.status && f.status !== query.status) {
+    return false;
+  }
+  if (query.url && f.url !== query.url) return false;
+  if (query.urlPattern && f.urlPattern !== query.urlPattern) return false;
+  if (query.search && !f.message.toLowerCase().includes(query.search.toLowerCase())) return false;
+  return true;
+}
+
+describe("matchesFeedbackQuery — the per-record filter", () => {
+  it("accepts exactly the records that satisfy every active filter", () => {
+    fc.assert(
+      fc.property(itemsArb, filtersArb, (items, filters) => {
+        const accepted = items.map((f) => matchesFeedbackQuery(f, filters));
+        expect(accepted).toEqual(items.map((f) => satisfies(f, filters)));
+      }),
+    );
+  });
+
+  it("decides exactly the match set applyFeedbackFilters returns", () => {
+    fc.assert(
+      fc.property(itemsArb, filtersArb, (items, filters) => {
+        const { feedbacks, total } = applyFeedbackFilters(items, { ...filters, limit: 100 });
+        const matching = items.filter((f) => matchesFeedbackQuery(f, filters));
+        expect(feedbacks).toEqual(matching);
+        expect(total).toBe(matching.length);
+      }),
     );
   });
 });

@@ -8,6 +8,7 @@ export {
   DEFAULT_PAGE_LIMIT,
   isUnreachableOffset,
   MAX_PAGE_LIMIT,
+  matchesFeedbackQuery,
 } from "./filters.js";
 export type { I18n, LocaleLoaders, TranslateFunction } from "./i18n.js";
 export { createI18n, interpolate, tWithParams } from "./i18n.js";
