@@ -17,12 +17,32 @@ Alongside the anchor, each annotation records the capture context (viewport size
 
 **Survives well:** content edits around the element, layout shifts, responsive reflow, other elements being added or removed, most refactors that keep the element recognizable.
 
-**Degrades:** deleting the element (nothing to anchor to), heavy rewrites that change tag, text, and position at once, and content inside **Shadow DOM**, which the anchor engine doesn't pierce today (tracked in [#177](https://github.com/NeosiaNexus/SitePing/issues/177)).
+**Degrades:** deleting the element (nothing to anchor to), heavy rewrites that change tag, text, and position at once, and content inside **closed** shadow roots, which stays out of reach by design ([below](#web-components-and-shadow-dom)).
 
 When an anchor can't be resolved on a later visit, its marker stays hidden rather than shown somewhere wrong — a missing marker is confusing, a lying one is worse. Markers re-check on scroll, resize, and page DOM changes, so an element that renders late (lazy-loaded or client-side content) gets its marker on a later check. Each annotation of a feedback has its own marker, so one missing anchor never hides the others. The feedback itself (message, screenshot, metadata) is never lost; it's always visible in the panel and the dashboard.
+
+## Web components and Shadow DOM
+
+Content inside **open** shadow roots — Lit, Stencil, Shoelace, Ionic, and most design-system components — is anchored like any other element. A CSS selector can't see across a shadow boundary, so SitePing records one selector per tree, from the outermost host inward, joined by ` >>> `:
+
+```text
+#pricing >>> plan-card:nth-of-type(2) >>> .title
+```
+
+That's also the notation Puppeteer accepts for piercing shadow roots, so the selector the dashboard shows and copies stays usable in a test script.
+
+On a later visit, resolution follows that host chain back down: it looks for the element only inside the shadow roots the recorded hosts lead to, never by walking the whole page — and pages without web components pay nothing extra. Two consequences:
+
+- The hosts must still match. Renaming or removing a host element orphans the annotation (the marker hides; the feedback stays in the panel and the dashboard).
+- The XPath fallback doesn't apply inside a shadow tree (XPath can't enter one); the text and structure checks still do.
+
+**Closed** shadow roots are opaque by design — the page itself can't look inside them — so an annotation drawn over one anchors to its host element: the whole component.
+
+One timing caveat: markers re-check their position on scroll, resize, and page-level DOM changes. A component that re-renders only inside its own shadow root signals no DOM change, so a marker on it catches up on the next scroll or resize.
 
 ## Helping the anchors help you
 
 - Stable `id` attributes on key containers make the CSS selector short and durable.
+- Give web-component hosts a stable `id` too: each one starts a segment of every selector inside it.
 - Avoid annotating ephemeral UI (toasts, skeletons) — the element is gone on the next visit by design.
 - On dynamic routes (`/products/42`), use [`getPageScope`](/docs/widget/configuration#page-scoping) with a `urlPattern` so feedback groups by template instead of by individual URL.
