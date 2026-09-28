@@ -356,12 +356,37 @@ describe("DetailView", () => {
       expect(img!.src).toBe("https://cdn.example.com/fb-1.jpg");
     });
 
-    it("does NOT render the screenshot for unsafe schemes (javascript:, data:text/html, http:)", () => {
-      const unsafe = ["javascript:alert(1)", "data:text/html,<script>", "http://insecure.example/x.jpg"];
+    it("does NOT render the screenshot for unsafe schemes (javascript:, data:text/html, non-loopback http:)", () => {
+      const unsafe = [
+        "javascript:alert(1)",
+        "data:text/html,<script>",
+        "http://insecure.example/x.jpg",
+        // Host confusion: none of these is this machine.
+        "http://localhost.evil.com/x.jpg",
+        "http://localhost@evil.com/x.jpg",
+        "http://127.0.0.1.nip.io/x.jpg",
+        "http://10.0.0.1/x.jpg",
+      ];
       for (const url of unsafe) {
         setup.view.show(makeFeedback({ screenshotUrl: url }), 1);
         const img = setup.view.element.querySelector<HTMLImageElement>(".sp-detail-screenshot");
         expect(img, `should reject ${url}`).toBeNull();
+      }
+    });
+
+    it("renders the screenshot for loopback http: URLs (dev object storage such as MinIO)", () => {
+      const allowed = [
+        "http://localhost:9000/feedback-screenshots/abc.jpg?X-Amz-Signature=xyz",
+        "http://127.0.0.1:9000/bucket/key.png",
+        "http://[::1]:9000/bucket/key.png",
+        "http://minio.localhost/bucket/key.png",
+        "http://localhost:9000",
+      ];
+      for (const url of allowed) {
+        setup.view.show(makeFeedback({ screenshotUrl: url }), 1);
+        const img = setup.view.element.querySelector<HTMLImageElement>(".sp-detail-screenshot");
+        expect(img, `should accept ${url}`).not.toBeNull();
+        expect(img!.referrerPolicy).toBe("no-referrer");
       }
     });
 
