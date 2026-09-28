@@ -44,9 +44,12 @@ Instead, please report vulnerabilities through one of these channels:
 This policy applies to all packages in the `@siteping/*` scope:
 
 - `@siteping/widget`
+- `@siteping/dashboard`
 - `@siteping/adapter-prisma`
+- `@siteping/adapter-drizzle`
 - `@siteping/adapter-memory`
 - `@siteping/adapter-localstorage`
+- `@siteping/adapter-kit`
 - `@siteping/cli`
 
 ## Hardening checklist for self-hosters
