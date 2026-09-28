@@ -874,3 +874,83 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
     expect(result.current.total).toBe(4);
   });
 });
+
+describe("useSitepingInbox — undo state after a failed mutation", () => {
+  it("does not restore another project's undo when a mutation fails after a project switch", async () => {
+    const source = makeSource([
+      makeRecord({ id: "a1", projectName: "A", status: "open", createdAt: new Date("2026-07-20T10:02:00Z") }),
+      makeRecord({ id: "a2", projectName: "A", status: "open", createdAt: new Date("2026-07-20T10:01:00Z") }),
+      makeRecord({ id: "b1", projectName: "B", status: "open", createdAt: new Date("2026-07-20T10:00:00Z") }),
+    ]);
+    const { result } = renderHook(() => useSitepingInbox({ projects: ["A", "B"], source }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await settle();
+
+    await act(async () => {
+      await result.current.changeStatus("a1", "resolved");
+    });
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+    let change!: Promise<unknown>;
+    act(() => {
+      change = result.current.changeStatus("a2", "resolved").catch((e: unknown) => e);
+    });
+
+    act(() => result.current.setProject("B"));
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["b1"]));
+    await act(async () => {
+      held.reject(new Error("patch failed"));
+      await change;
+    });
+
+    expect(result.current.pendingUndo).toBeNull();
+    source.setStatus.mockClear();
+    await act(async () => {
+      await result.current.undo();
+    });
+    expect(source.setStatus).not.toHaveBeenCalled();
+    expect(ids(result.current.items)).toEqual(["b1"]);
+  });
+
+  it("keeps a concurrent success's undo when an earlier change fails", async () => {
+    const { source, result } = await mountDemo();
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+
+    let first!: Promise<unknown>;
+    act(() => {
+      first = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      await result.current.changeStatus("r2", "resolved");
+    });
+    await act(async () => {
+      held.reject(new Error("patch failed"));
+      await first;
+    });
+
+    expect(result.current.pendingUndo).toEqual({ id: "r2", previousStatus: "open" });
+  });
+
+  it("drops the undo as soon as the project switches — an undo in the same tick does nothing", async () => {
+    const source = makeSource([
+      makeRecord({ id: "a1", projectName: "A", status: "open" }),
+      makeRecord({ id: "b1", projectName: "B", status: "open" }),
+    ]);
+    const { result } = renderHook(() => useSitepingInbox({ projects: ["A", "B"], source }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await settle();
+    await act(async () => {
+      await result.current.changeStatus("a1", "resolved");
+    });
+    source.setStatus.mockClear();
+
+    await act(async () => {
+      result.current.setProject("B");
+      await result.current.undo();
+    });
+
+    expect(source.setStatus).not.toHaveBeenCalled();
+    expect(result.current.pendingUndo).toBeNull();
+  });
+});

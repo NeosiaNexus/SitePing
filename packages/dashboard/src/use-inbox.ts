@@ -162,24 +162,34 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const countsGenRef = useRef(0);
   /** Latest in-flight mutation per feedback id. */
   const inFlightRef = useRef(new Map<string, InFlight>());
+  /** Bumped on every project switch — a mutation failing after one must not touch the new project's state. */
+  const projectEpochRef = useRef(0);
+  /** Bumped on every `pendingUndo` write — a failed mutation restores the undo only if nothing replaced its own. */
+  const undoGenRef = useRef(0);
   /** Set when a loadMore page returned nothing new — the server has no more rows for us. */
   const [exhausted, setExhausted] = useState(false);
   /** The opened record — kept so the drawer survives its row leaving the filtered list. */
   const openedCacheRef = useRef<FeedbackRecord | null>(null);
   /** Full record behind `pendingUndo` — undo must work after the row left the list. */
   const undoRecordRef = useRef<FeedbackRecord | null>(null);
+  const commitPendingUndo = useCallback((next: InboxState["pendingUndo"]) => {
+    undoGenRef.current += 1;
+    pendingUndoRef.current = next;
+    setPendingUndo(next);
+  }, []);
 
   // Keep the selected project valid when the `projects` prop changes.
   useEffect(() => {
     if (!projects.includes(projectRef.current)) {
+      projectEpochRef.current += 1;
       setProjectState(firstProject);
       setFocusedId(null);
       setOpenedId(null);
-      setPendingUndo(null);
+      commitPendingUndo(null);
       undoRecordRef.current = null;
       openedCacheRef.current = null;
     }
-  }, [projects, firstProject]);
+  }, [projects, firstProject, commitPendingUndo]);
 
   // Debounce search → refetch trigger. `search` itself updates synchronously.
   useEffect(() => {
@@ -367,10 +377,6 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     totalRef.current = nextTotal;
     setTotal(nextTotal);
   }, []);
-  const commitPendingUndo = useCallback((next: InboxState["pendingUndo"]) => {
-    pendingUndoRef.current = next;
-    setPendingUndo(next);
-  }, []);
 
   /** Whether a record belongs in the currently loaded list. */
   const belongsInList = useCallback((record: FeedbackRecord): boolean => {
@@ -477,12 +483,13 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         (undoRecordRef.current?.id === id ? undoRecordRef.current : null) ??
         (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
       if (!record || record.status === nextStatus) {
-        if (isUndo) setPendingUndo(null);
+        if (isUndo) commitPendingUndo(null);
         return;
       }
 
-      // Unconditional: a FAILED undo leaves the status change standing, so
-      // the undo affordance must survive the rollback.
+      const epoch = projectEpochRef.current;
+      // Captured for undos too: a FAILED undo leaves the status change
+      // standing, so the undo affordance must survive the rollback.
       const undoBefore = { pending: pendingUndoRef.current, record: undoRecordRef.current };
 
       const previous = record.status;
@@ -513,6 +520,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         commitPendingUndo({ id, previousStatus: previous });
         undoRecordRef.current = optimistic;
       }
+      const undoGen = undoGenRef.current;
 
       try {
         const saved = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
@@ -525,9 +533,15 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         // `prev` may have been rebased onto an earlier failed change — it is what the server held.
         callbacksRef.current.onStatusChange?.(saved, handle.prev.status);
       } catch (cause) {
-        if (settleMutation(id, handle, false)) rollback(id, handle, optimistic, focusMovedTo);
-        commitPendingUndo(undoBefore.pending);
-        undoRecordRef.current = undoBefore.record;
+        const latest = settleMutation(id, handle, false);
+        // After a project switch the list, counts and undo belong to another project.
+        if (projectEpochRef.current === epoch) {
+          if (latest) rollback(id, handle, optimistic, focusMovedTo);
+          if (undoGenRef.current === undoGen) {
+            commitPendingUndo(undoBefore.pending);
+            undoRecordRef.current = undoBefore.record;
+          }
+        }
         const err = toError(cause);
         callbacksRef.current.onError?.(err);
         throw err;
@@ -563,6 +577,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
       if (!record) return;
 
+      const epoch = projectEpochRef.current;
       const undoBefore = { pending: pendingUndoRef.current, record: undoRecordRef.current };
       const deltas: CountDeltas = [
         [record.status, -1],
@@ -585,23 +600,29 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         commitPendingUndo(null);
         undoRecordRef.current = null;
       }
+      const undoGen = undoGenRef.current;
 
       try {
         await srcRef.current.remove(id, projectRef.current);
         settleMutation(id, handle, true);
         callbacksRef.current.onDelete?.(record);
       } catch (cause) {
-        if (settleMutation(id, handle, false)) {
-          rollback(id, handle, null, focusMovedTo);
-          // Reopen the drawer unless another feedback was opened meanwhile.
-          if (wasOpened && openedIdRef.current === null) {
-            openedCacheRef.current = handle.prev;
-            openedIdRef.current = id;
-            setOpenedId(id);
+        const latest = settleMutation(id, handle, false);
+        if (projectEpochRef.current === epoch) {
+          if (latest) {
+            rollback(id, handle, null, focusMovedTo);
+            // Reopen the drawer unless another feedback was opened meanwhile.
+            if (wasOpened && openedIdRef.current === null) {
+              openedCacheRef.current = handle.prev;
+              openedIdRef.current = id;
+              setOpenedId(id);
+            }
+          }
+          if (undoGenRef.current === undoGen) {
+            commitPendingUndo(undoBefore.pending);
+            undoRecordRef.current = undoBefore.record;
           }
         }
-        commitPendingUndo(undoBefore.pending);
-        undoRecordRef.current = undoBefore.record;
         const err = toError(cause);
         callbacksRef.current.onError?.(err);
         throw err;
@@ -614,14 +635,18 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   // Public setters
   // -------------------------------------------------------------------------
 
-  const setProject = useCallback((p: string) => {
-    setProjectState(p);
-    setFocusedId(null);
-    setOpenedId(null);
-    setPendingUndo(null);
-    undoRecordRef.current = null;
-    openedCacheRef.current = null;
-  }, []);
+  const setProject = useCallback(
+    (p: string) => {
+      projectEpochRef.current += 1;
+      setProjectState(p);
+      setFocusedId(null);
+      setOpenedId(null);
+      commitPendingUndo(null);
+      undoRecordRef.current = null;
+      openedCacheRef.current = null;
+    },
+    [commitPendingUndo],
+  );
 
   const setStatus = useCallback((s: InboxStatusFilter) => setStatusFilter(s), []);
   const setType = useCallback((t: InboxTypeFilter) => setTypeFilter(t), []);
