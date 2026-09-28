@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { ANCHOR_ELEMENT_ID_MAX, ANCHOR_ELEMENT_TAG_MAX } from "@siteping/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateAnchor } from "../../src/dom/anchor.js";
 
@@ -145,6 +146,26 @@ describe("generateAnchor", () => {
 
       const anchor = generateAnchor(element);
       expect(anchor.elementId).toBeUndefined();
+    });
+
+    it("is omitted when longer than the server's cap (a truncated id is wrong data)", () => {
+      const element = document.createElement("div");
+      element.id = "a".repeat(ANCHOR_ELEMENT_ID_MAX + 1);
+      document.body.appendChild(element);
+
+      expect(generateAnchor(element).elementId).toBeUndefined();
+
+      element.id = "a".repeat(ANCHOR_ELEMENT_ID_MAX);
+      expect(generateAnchor(element).elementId).toBe("a".repeat(ANCHOR_ELEMENT_ID_MAX));
+    });
+  });
+
+  describe("elementTag length", () => {
+    it("is capped at the server's limit", () => {
+      const element = document.createElement(`x-${"a".repeat(ANCHOR_ELEMENT_TAG_MAX)}`);
+      document.body.appendChild(element);
+
+      expect(generateAnchor(element).elementTag).toHaveLength(ANCHOR_ELEMENT_TAG_MAX);
     });
   });
 

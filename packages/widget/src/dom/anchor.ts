@@ -1,5 +1,5 @@
 import { finder } from "@medv/finder";
-import type { AnchorData, RectData } from "@siteping/core";
+import { ANCHOR_ELEMENT_ID_MAX, ANCHOR_ELEMENT_TAG_MAX, type AnchorData, type RectData } from "@siteping/core";
 import { generateFingerprint } from "./fingerprint.js";
 import { adjacentText, neighborText } from "./text-context.js";
 import { generateXPath } from "./xpath.js";
@@ -51,8 +51,10 @@ export function generateAnchor(element: Element): AnchorData {
     textSuffix,
     fingerprint,
     neighborText: neighbor,
-    elementTag: element.tagName,
-    elementId: element.id || undefined,
+    elementTag: element.tagName.slice(0, ANCHOR_ELEMENT_TAG_MAX),
+    // Over-long ids are dropped, not truncated: a truncated id matches nothing
+    // (or the wrong element) — the resolver falls back to other strategies.
+    elementId: element.id && element.id.length <= ANCHOR_ELEMENT_ID_MAX ? element.id : undefined,
     anchorKey,
   };
 }

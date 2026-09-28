@@ -1,6 +1,7 @@
-import type { ScreenshotStorage } from "@siteping/core";
+import { type ScreenshotStorage, StoreDuplicateError } from "@siteping/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaStore } from "../src/index.js";
+import { fakePrisma } from "./fake-prisma.js";
 
 const SAMPLE_DATA_URL = "data:image/jpeg;base64,/9j/4AAQ";
 
@@ -92,6 +93,29 @@ describe("PrismaStore — screenshot storage", () => {
       });
       const created = prisma.sitepingFeedback.create.mock.calls[0]?.[0] as { data: { screenshotUrl: string } };
       expect(created.data.screenshotUrl).toBe("https://cdn.example.com/fb-c1.jpg");
+    });
+
+    it.each([
+      ["data:image/png;base64,iVBORw0KGgo", "image/png"],
+      ["data:image/webp;base64,UklGRg", "image/webp"],
+    ])("passes the data URL's own mimeType to upload (%s)", async (dataUrl, mimeType) => {
+      const storage: ScreenshotStorage = { upload: vi.fn().mockResolvedValue({ url: "https://cdn.example.com/x" }) };
+      const store = new PrismaStore(prisma, { screenshotStorage: storage });
+
+      await store.createFeedback(createInput({ screenshotDataUrl: dataUrl, clientId: "c1" }));
+
+      expect(storage.upload).toHaveBeenCalledWith(dataUrl, { feedbackId: "c1", mimeType });
+    });
+
+    it("never forwards a type outside JPEG, PNG and WebP (an SVG label is script-capable)", async () => {
+      // `PrismaStore.createFeedback` is public: its callers skip the HTTP schema.
+      const storage: ScreenshotStorage = { upload: vi.fn().mockResolvedValue({ url: "https://cdn.example.com/x" }) };
+      const store = new PrismaStore(prisma, { screenshotStorage: storage });
+      const dataUrl = "data:image/svg+xml;base64,PHN2Zz4";
+
+      await store.createFeedback(createInput({ screenshotDataUrl: dataUrl, clientId: "c1" }));
+
+      expect(storage.upload).toHaveBeenCalledWith(dataUrl, { feedbackId: "c1", mimeType: "image/jpeg" });
     });
 
     it("does not call storage when no data URL is sent", async () => {
@@ -227,5 +251,85 @@ describe("PrismaStore — screenshot cleanup", () => {
 
     expect(storage.upload).toHaveBeenCalledOnce();
     expect(storage.delete).toHaveBeenCalledWith(REMOTE_URL);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Failed inserts — only a replay's unreferenced upload is discarded
+// ---------------------------------------------------------------------------
+
+describe("PrismaStore — upload cleanup after a failed insert", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  /** The documented storage shape: the object key is derived from `feedbackId` (= clientId). */
+  function deterministicStorage(): ScreenshotStorage & { delete: ReturnType<typeof vi.fn> } {
+    return {
+      upload: vi.fn(async (_dataUrl: string, ctx: { feedbackId: string }) => ({
+        url: `https://cdn.example.com/feedback/${ctx.feedbackId}.jpg`,
+      })),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  /** A storage that mints a fresh object per upload (random / timestamped keys). */
+  function uniqueKeyStorage(): ScreenshotStorage & { delete: ReturnType<typeof vi.fn> } {
+    let seq = 0;
+    return {
+      upload: vi.fn(async () => ({ url: `https://cdn.example.com/obj-${++seq}.jpg` })),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  const input = () => createInput({ screenshotDataUrl: SAMPLE_DATA_URL, clientId: "c1" });
+
+  it("keeps the object on a replay when the key is deterministic — it is the stored row's screenshot", async () => {
+    const prisma = fakePrisma();
+    const storage = deterministicStorage();
+    const store = new PrismaStore(prisma, { screenshotStorage: storage });
+
+    const first = await store.createFeedback(input());
+    await expect(store.createFeedback(input())).rejects.toThrow(StoreDuplicateError);
+
+    expect(storage.delete).not.toHaveBeenCalled();
+    expect((await store.findByClientId("c1"))?.screenshotUrl).toBe(first.screenshotUrl);
+  });
+
+  it("discards the fresh object on a replay when the key is unique per upload", async () => {
+    const prisma = fakePrisma();
+    const storage = uniqueKeyStorage();
+    const store = new PrismaStore(prisma, { screenshotStorage: storage });
+
+    await store.createFeedback(input());
+    await expect(store.createFeedback(input())).rejects.toThrow(StoreDuplicateError);
+
+    expect(storage.delete).toHaveBeenCalledOnce();
+    expect(storage.delete).toHaveBeenCalledWith("https://cdn.example.com/obj-2.jpg");
+  });
+
+  it("keeps the object when the insert fails for another reason — a retry elsewhere may be about to reference it", async () => {
+    // With a deterministic key, a retry on another instance rewrites this
+    // object and inserts the row pointing at it after this lookup would run.
+    const prisma = fakePrisma();
+    const storage = deterministicStorage();
+    const outage = Object.assign(new Error("Can't reach database server"), { code: "P1001" });
+    vi.spyOn(prisma.sitepingFeedback, "create").mockRejectedValueOnce(outage);
+
+    await expect(new PrismaStore(prisma, { screenshotStorage: storage }).createFeedback(input())).rejects.toBe(outage);
+
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps the object when the reference lookup itself fails (an orphan beats data loss)", async () => {
+    const prisma = fakePrisma();
+    const storage = deterministicStorage();
+    const store = new PrismaStore(prisma, { screenshotStorage: storage });
+    await store.createFeedback(input());
+    vi.spyOn(prisma.sitepingFeedback, "findUnique").mockRejectedValueOnce(new Error("connection reset"));
+
+    await expect(store.createFeedback(input())).rejects.toThrow(StoreDuplicateError);
+
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 });

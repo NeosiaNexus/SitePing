@@ -1,5 +1,12 @@
 import type { AssertEqual, FeedbackPayload, FeedbackStatus, FeedbackType, Prettify } from "@siteping/core";
-import { CONSOLE_DIAGNOSTIC_LEVELS, EMAIL_PATTERN, FEEDBACK_STATUSES, FEEDBACK_TYPES } from "@siteping/core";
+import {
+  ANCHOR_ELEMENT_ID_MAX,
+  ANCHOR_ELEMENT_TAG_MAX,
+  CONSOLE_DIAGNOSTIC_LEVELS,
+  EMAIL_PATTERN,
+  FEEDBACK_STATUSES,
+  FEEDBACK_TYPES,
+} from "@siteping/core";
 import * as zod from "zod";
 
 // Namespace import required: Zod publishes dual CJS/ESM, and bundlers (tsup, vitest) may
@@ -13,8 +20,13 @@ const anchorSchema = z.object({
   cssSelector: z.string().min(1).max(2000),
   xpath: z.string().min(1).max(2000),
   textSnippet: z.string().max(500),
-  elementTag: z.string().min(1),
-  elementId: z.string().optional(),
+  elementTag: z.string().min(1).max(ANCHOR_ELEMENT_TAG_MAX),
+  // A resolver hint: an over-long id is dropped, as the widget now does,
+  // rather than failing the whole payload — earlier widgets send it unbounded.
+  elementId: z
+    .string()
+    .transform((id) => (id.length <= ANCHOR_ELEMENT_ID_MAX ? id : undefined))
+    .optional(),
   textPrefix: z.string().max(200),
   textSuffix: z.string().max(200),
   fingerprint: z.string().max(200),
@@ -34,10 +46,14 @@ const rectSchema = z.object({
 const annotationSchema = z.object({
   anchor: anchorSchema,
   rect: rectSchema,
-  scrollX: z.number().min(0),
-  scrollY: z.number().min(0),
-  viewportW: z.number().int().positive(),
-  viewportH: z.number().int().positive(),
+  // Raw `window.scrollX/Y` — no lower bound: scrollX is negative on a
+  // scrolled `dir="rtl"` page. `z.number()` already rejects NaN/±Infinity.
+  scrollX: z.number(),
+  scrollY: z.number(),
+  // Upper bound = the `Int` (INT4) column max, so oversized input is a 400
+  // here rather than a database error at insert time.
+  viewportW: z.number().int().positive().max(2_147_483_647),
+  viewportH: z.number().int().positive().max(2_147_483_647),
   devicePixelRatio: z.number().positive().default(1),
 });
 

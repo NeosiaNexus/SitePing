@@ -416,14 +416,64 @@ describe("CORS", () => {
       expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
 
-    it("sets Vary: Origin header when origin matches", () => {
+    it("sets Vary: Origin header when origin matches", async () => {
       const handler = createSitepingHandler({
         prisma,
         allowedOrigins: [ALLOWED_ORIGIN],
       });
       const res = handler.OPTIONS(optionsRequest({ Origin: ALLOWED_ORIGIN }));
 
-      expect(res.headers.get("Vary")).toBe("Origin");
+      // An allowlisted preflight also varies by the headers it requests.
+      expect(res.headers.get("Vary")).toBe("Origin, Access-Control-Request-Headers");
+      const get = await handler.GET(getRequest("projectName=test", { Origin: ALLOWED_ORIGIN }));
+      expect(get.headers.get("Vary")).toBe("Origin");
+    });
+
+    // With an allowlist, a header-less response is still Origin-dependent: a
+    // shared cache must not serve it to an allowed origin (or vice versa).
+    it("sets Vary: Origin when the Origin is absent or not allowlisted", async () => {
+      const handler = createSitepingHandler({ prisma, allowedOrigins: [ALLOWED_ORIGIN] });
+
+      expect(handler.OPTIONS(optionsRequest()).headers.get("Vary")).toBe("Origin");
+      expect(handler.OPTIONS(optionsRequest({ Origin: "http://evil.com" })).headers.get("Vary")).toBe("Origin");
+      expect((await handler.GET(getRequest("projectName=test"))).headers.get("Vary")).toBe("Origin");
+      const unlisted = await handler.POST(postRequest(validPayloadNoAnnotations, { Origin: "http://evil.com" }));
+      expect(unlisted.headers.get("Vary")).toBe("Origin");
+      expect(unlisted.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+
+    // The widget's `headers` option lets hosts send custom headers (e.g. a
+    // session token); a cross-origin preflight for them must succeed.
+    it("allows the custom headers an allowlisted origin's preflight requests, keeping the defaults", () => {
+      const handler = createSitepingHandler({ prisma, allowedOrigins: [ALLOWED_ORIGIN] });
+      const res = handler.OPTIONS(
+        optionsRequest({ Origin: ALLOWED_ORIGIN, "Access-Control-Request-Headers": "content-type,x-session-token" }),
+      );
+
+      const allowed = (res.headers.get("Access-Control-Allow-Headers") ?? "").split(",").map((h) => h.trim());
+      expect(allowed).toEqual(["Content-Type", "Authorization", "x-session-token"]);
+      expect(res.headers.get("Vary")).toBe("Origin, Access-Control-Request-Headers");
+    });
+
+    it("drops requested header names that are not valid header tokens", () => {
+      const handler = createSitepingHandler({ prisma, allowedOrigins: [ALLOWED_ORIGIN] });
+      const res = handler.OPTIONS(
+        optionsRequest({ Origin: ALLOWED_ORIGIN, "Access-Control-Request-Headers": "x-ok, x(bad), x:bad, , x-tenant" }),
+      );
+      expect(res.headers.get("Access-Control-Allow-Headers")).toBe("Content-Type, Authorization, x-ok, x-tenant");
+    });
+
+    it("never reflects requested headers for an origin outside the allowlist", () => {
+      const handler = createSitepingHandler({ prisma, allowedOrigins: [ALLOWED_ORIGIN] });
+      const res = handler.OPTIONS(
+        optionsRequest({ Origin: "http://evil.com", "Access-Control-Request-Headers": "x-session-token" }),
+      );
+      expect(res.headers.get("Access-Control-Allow-Headers")).toBeNull();
+    });
+
+    it("sends no Vary when allowedOrigins is not configured (responses don't vary by Origin)", () => {
+      const handler = createSitepingHandler({ prisma });
+      expect(handler.OPTIONS(optionsRequest({ Origin: ALLOWED_ORIGIN })).headers.get("Vary")).toBeNull();
     });
   });
 

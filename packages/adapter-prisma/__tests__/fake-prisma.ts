@@ -6,9 +6,10 @@ import type { SitepingPrismaClient } from "../src/index.js";
  * the Prisma semantics the adapter relies on: a unique `clientId` (`P2002`
  * on duplicate), `P2025` on update/delete of a missing row, `contains`
  * (case-sensitive, like Postgres `LIKE`), `{ in }` and `{ not }` filters,
- * `orderBy`, `skip`/`take`, `select`, and Prisma's rejection of a negative
- * `skip`. Lets the published conformance suite run against `PrismaStore`
- * without a database.
+ * `orderBy` (one clause or a list), `skip`/`take`, `select`, and Prisma's
+ * rejection of a negative `skip`. Ids are zero-padded so they sort in creation
+ * order, like the roughly time-ordered cuids the schema defaults to. Lets the
+ * published conformance suite run against `PrismaStore` without a database.
  */
 
 type Where = Record<string, unknown>;
@@ -17,12 +18,27 @@ interface CreateArgs {
   data: Record<string, unknown> & { annotations?: { create: Record<string, unknown>[] } };
 }
 
+type OrderBy = Partial<Record<"createdAt" | "id", "asc" | "desc">>;
+
 interface FindManyArgs {
   where: Where;
-  orderBy?: { createdAt?: "asc" | "desc" };
+  orderBy?: OrderBy | OrderBy[];
   skip?: number;
   take?: number;
   select?: Record<string, boolean>;
+}
+
+/** Compare two rows clause by clause, like SQL `ORDER BY a, b`; 0 on a full tie. */
+function compareRows(a: FeedbackRecord, b: FeedbackRecord, clauses: OrderBy[]): number {
+  for (const clause of clauses) {
+    for (const [key, direction] of Object.entries(clause) as [keyof OrderBy, "asc" | "desc"][]) {
+      const x = a[key];
+      const y = b[key];
+      const cmp = x instanceof Date && y instanceof Date ? x.getTime() - y.getTime() : x < y ? -1 : x > y ? 1 : 0;
+      if (cmp !== 0) return direction === "desc" ? -cmp : cmp;
+    }
+  }
+  return 0;
 }
 
 function prismaError(code: string): Error & { code: string } {
@@ -57,10 +73,10 @@ export class FakeFeedbackDelegate {
   async create({ data }: CreateArgs): Promise<FeedbackRecord> {
     if (this.rows.some((r) => r.clientId === data.clientId)) throw prismaError("P2002");
     const now = new Date();
-    const id = `fb-${++this.seq}`;
+    const id = `fb-${String(++this.seq).padStart(6, "0")}`;
     const annotations = (data.annotations?.create ?? []).map((a) => ({
       ...(a as unknown as FeedbackRecord["annotations"][number]),
-      id: `ann-${++this.seq}`,
+      id: `ann-${String(++this.seq).padStart(6, "0")}`,
       feedbackId: id,
       elementId: (a.elementId as string | undefined) ?? null,
       anchorKey: (a.anchorKey as string | null | undefined) ?? null,
@@ -85,18 +101,25 @@ export class FakeFeedbackDelegate {
   async findMany({ where, orderBy, skip = 0, take, select }: FindManyArgs): Promise<unknown[]> {
     if (skip < 0) throw new Error(`PrismaClientValidationError: Invalid value for argument \`skip\`: ${skip}`);
     let result = this.rows.map((r, index) => ({ r, index })).filter(({ r }) => matches(r, where));
-    if (orderBy?.createdAt === "desc") {
-      // Ties broken by insertion order desc — the most favourable reading of
-      // a real database's unspecified tie order.
-      result.sort((a, b) => b.r.createdAt.getTime() - a.r.createdAt.getTime() || b.index - a.index);
+    if (orderBy) {
+      const clauses = Array.isArray(orderBy) ? orderBy : [orderBy];
+      // Full ties broken by insertion order desc — the most favourable
+      // reading of a real database's unspecified tie order.
+      result.sort((a, b) => compareRows(a.r, b.r, clauses) || b.index - a.index);
     }
     result = result.slice(skip, take === undefined ? undefined : skip + take);
     return result.map(({ r }) => pick(r, select));
   }
 
-  async findUnique({ where }: { where: { id?: string; clientId?: string } }): Promise<FeedbackRecord | null> {
+  async findUnique({
+    where,
+    select,
+  }: {
+    where: { id?: string; clientId?: string };
+    select?: Record<string, boolean>;
+  }): Promise<unknown> {
     const row = this.rows.find((r) => (where.id !== undefined ? r.id === where.id : r.clientId === where.clientId));
-    return row ? structuredClone(row) : null;
+    return row ? pick(row, select) : null;
   }
 
   async update({ where, data }: { where: { id: string }; data: Partial<FeedbackRecord> }): Promise<FeedbackRecord> {

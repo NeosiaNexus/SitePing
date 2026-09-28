@@ -1,3 +1,4 @@
+import { ANCHOR_ELEMENT_ID_MAX, ANCHOR_ELEMENT_TAG_MAX } from "@siteping/core";
 import { describe, expect, it } from "vitest";
 import {
   feedbackCreateSchema,
@@ -162,6 +163,50 @@ describe("feedbackCreateSchema", () => {
       annotations: [{ ...validAnnotation, anchor: anchorWithout }],
     });
     expect(result.success).toBe(false);
+  });
+
+  it("accepts negative scroll offsets (window.scrollX on a scrolled dir=rtl page)", () => {
+    const result = feedbackCreateSchema.safeParse({
+      ...validPayload,
+      annotations: [{ ...validAnnotation, scrollX: -1234.5, scrollY: 150 }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("bounds viewportW/viewportH to the Int column range (a 400, not a DB error)", () => {
+    const withViewport = (viewportW: number, viewportH: number) =>
+      feedbackCreateSchema.safeParse({ ...validPayload, annotations: [{ ...validAnnotation, viewportW, viewportH }] })
+        .success;
+
+    expect(withViewport(2_147_483_647, 2_147_483_647)).toBe(true);
+    expect(withViewport(2_147_483_648, 1080)).toBe(false);
+    expect(withViewport(1920, 2_147_483_648)).toBe(false);
+  });
+
+  describe("anchor elementTag / elementId caps (the limits the widget captures within)", () => {
+    const parseAnchor = (anchor: Partial<typeof validAnnotation.anchor>) =>
+      feedbackCreateSchema.safeParse({
+        ...validPayload,
+        annotations: [{ ...validAnnotation, anchor: { ...validAnnotation.anchor, ...anchor } }],
+      });
+
+    it("accepts both at their cap", () => {
+      const result = parseAnchor({
+        elementTag: "X".repeat(ANCHOR_ELEMENT_TAG_MAX),
+        elementId: "i".repeat(ANCHOR_ELEMENT_ID_MAX),
+      });
+      expect(result.data?.annotations[0]?.anchor.elementId).toBe("i".repeat(ANCHOR_ELEMENT_ID_MAX));
+    });
+
+    it("rejects a longer elementTag", () => {
+      expect(parseAnchor({ elementTag: "X".repeat(ANCHOR_ELEMENT_TAG_MAX + 1) }).success).toBe(false);
+    });
+
+    it("drops a longer elementId instead of rejecting the feedback (widgets before the cap send it unbounded)", () => {
+      const result = parseAnchor({ elementId: "i".repeat(ANCHOR_ELEMENT_ID_MAX + 1) });
+      expect(result.success).toBe(true);
+      expect(result.data?.annotations[0]?.anchor.elementId).toBeUndefined();
+    });
   });
 
   it("accepts empty strings for text context fields", () => {
