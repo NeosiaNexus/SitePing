@@ -59,6 +59,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint garanti */ }
 | `captureDiagnostics` | `boolean` ou objet | `false` | Joint les entrées console récentes (max 50) et les requêtes réseau en échec (max 20, URL enregistrée sans identifiants, query string ni fragment) à chaque feedback. `true` active les deux ; un objet choisit les canaux et des limites plus basses (`maxConsoleEntries` / `maxNetworkEntries` — au-delà, ramenées à 50 / 20, les plafonds du serveur) |
 | `deepLink` | `boolean` ou `{ param?: string }` | `false` | Au premier chargement, met en avant le feedback référencé par `?siteping=<id>` (ou votre paramètre personnalisé). Chargement initial uniquement — pour les changements de route, appelez `focusFeedback()` |
 | `identity` | `{ name, email }` | — | Pré-remplit l'auteur (applis avec SSO) : évite complètement la modale d'identité, jamais persisté dans le localStorage |
+| `panelActions` | tableau | — | Vos propres boutons et liens dans la vue détail d'un feedback — créer un ticket, l'ouvrir dans votre outil de suivi. Voir [Actions du panneau](/fr/docs/widget/panel-actions) |
 
 ## Cadrage par page
 
@@ -75,7 +76,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint garanti */ }
 | Option | Signature | Déclenché quand |
 |---|---|---|
 | `onFeedbackSent` | `(feedback) => void` | Un feedback a été créé avec succès |
-| `onError` | `(error) => void` | Un envoi ou un chargement a échoué — voir [gestion des erreurs](/fr/docs/widget#gérer-les-erreurs) |
+| `onError` | `(error) => void` | Un envoi ou un chargement a échoué, ou une de vos [actions du panneau](/fr/docs/widget/panel-actions#erreurs) a levé une erreur — voir [gestion des erreurs](/fr/docs/widget#gérer-les-erreurs) |
 | `onOpen` / `onClose` | `() => void` | Le panneau s'est ouvert / fermé |
 | `onAnnotationStart` / `onAnnotationEnd` | `() => void` | Une session d'annotation a commencé / s'est terminée — mettez en pause vos bulles de chat ou vos overlays d'analytics ici |
 | `onSkip` | `(reason) => void` | Le widget a décidé de ne pas s'afficher : `"ssr"`, `"production"` ou `"mobile"`. Une config invalide affiche un `console.error` à la place |

@@ -1,4 +1,4 @@
-import { type AssertEqual, hasOwn, type Prettify, type Serialized } from "./type-utils.js";
+import { type AssertEqual, type DeepReadonly, hasOwn, type Prettify, type Serialized } from "./type-utils.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -55,6 +55,99 @@ export interface SitepingDeepLinkOptions {
   /** Query parameter name carrying the feedback id. Defaults to `"siteping"`. */
   param?: string | undefined;
 }
+
+/**
+ * The feedback handed to panel action callbacks: a detached, deeply frozen
+ * copy, typed read-only all the way down. Type your own helpers with it — a
+ * `FeedbackResponse` parameter does not accept the frozen copy.
+ */
+export type SitepingPanelActionFeedback = DeepReadonly<FeedbackResponse>;
+
+/**
+ * Helpers passed to a panel action's `onAction` as its second argument.
+ * Both do nothing once the widget has been destroyed.
+ */
+export interface SitepingPanelActionContext {
+  /**
+   * Re-fetch the panel list and markers, then re-render the detail view with
+   * the updated feedback — or go back to the list when it no longer matches
+   * the panel filters. Call it after your action changed the feedback
+   * server-side (e.g. moved it to `in_progress` once a ticket exists).
+   */
+  refresh: () => Promise<void>;
+  /** Close the feedback panel. */
+  close: () => void;
+}
+
+/**
+ * Fields shared by both kinds of {@link SitepingPanelAction}.
+ *
+ * Do not use this type directly — use {@link SitepingPanelAction}.
+ */
+export interface SitepingPanelActionBase {
+  /** Stable, unique identifier — becomes `data-action-id` on the rendered control. */
+  id: string;
+  /**
+   * Visible label, rendered as plain text. Host-provided verbatim — not
+   * routed through the widget i18n, since hosts localize their own strings.
+   */
+  label: string;
+  /**
+   * Optional inline SVG markup rendered before the label. It is parsed
+   * inertly and reduced to plain shapes — scripts, event handlers, links,
+   * styles and external references are dropped — but keep it static markup
+   * you control. Markup that is not an `<svg>` is ignored with a warning.
+   */
+  icon?: string | undefined;
+  /**
+   * Per-feedback visibility predicate. Return `false` to omit the action
+   * for that feedback. Defaults to always visible. A throw hides the action
+   * and is reported through `onError`.
+   */
+  visible?: ((feedback: SitepingPanelActionFeedback) => boolean) | undefined;
+}
+
+/** A panel action rendered as a button that runs host code. */
+export interface SitepingPanelButtonAction extends SitepingPanelActionBase {
+  /**
+   * Invoked on click. While a returned promise is pending the detail view's
+   * action buttons are disabled and the clicked button shows a spinner —
+   * also after `context.refresh()` re-renders the view, and when the user
+   * comes back to that feedback.
+   * Throws and rejections are reported through `onError` and restore the
+   * buttons; the detail view stays open either way.
+   */
+  onAction: (feedback: SitepingPanelActionFeedback, context: SitepingPanelActionContext) => void | Promise<void>;
+  /** Not available on a button action — use either `onAction` or `href`, never both. */
+  href?: never;
+}
+
+/** A panel action rendered as a link. */
+export interface SitepingPanelLinkAction extends SitepingPanelActionBase {
+  /**
+   * Link target — a URL, or a function building one from the feedback.
+   * Relative URLs resolve against the page. Only `http:`, `https:` and
+   * `mailto:` are rendered: a static `href` with any other scheme
+   * (`javascript:` included) skips the action with a warning; a function
+   * returning one hides the action and is reported through `onError`. Web
+   * links open in a new tab with `rel="noopener noreferrer"`.
+   */
+  href: string | ((feedback: SitepingPanelActionFeedback) => string);
+  /** Not available on a link action — use either `onAction` or `href`, never both. */
+  onAction?: never;
+}
+
+/**
+ * A host-defined action rendered in the feedback detail view, below the
+ * built-in Resolve / Delete buttons: a button running your code
+ * (`onAction`) or a link (`href`) — never both.
+ *
+ * Hosts use this to bridge feedbacks into their own systems — create a
+ * ticket, dispatch to a bot, open the feedback in their tracker — without
+ * forking the panel. Callbacks receive a detached, deeply frozen copy of
+ * the feedback: read it freely, it can never alter what the panel displays.
+ */
+export type SitepingPanelAction = SitepingPanelButtonAction | SitepingPanelLinkAction;
 
 /**
  * Extra request headers for HTTP mode — a static map, or a factory (sync or
@@ -267,6 +360,14 @@ export interface SitepingBaseConfig {
    * future enhancement that propagates identity updates without a remount.
    */
   identity?: SitepingIdentity | undefined;
+  /**
+   * Host-defined actions rendered in the feedback detail view, below the
+   * built-in Resolve and Delete buttons. Read once when the panel loads:
+   * entries without a non-empty `id` and `label`, without exactly one of
+   * `onAction` / `href`, with an unsafe static `href`, or reusing an earlier
+   * `id` are skipped with a console warning. See {@link SitepingPanelAction}.
+   */
+  panelActions?: readonly SitepingPanelAction[] | undefined;
 
   // Events
   /** Called when the feedback panel is opened. */
@@ -285,6 +386,12 @@ export interface SitepingBaseConfig {
    * "SERVER"`) and `error.retryable`. The type is widened to `Error` so
    * direct-store callers can still surface raw errors without breaking the
    * contract.
+   *
+   * Also receives whatever a `panelActions` callback throws or rejects with
+   * (non-`Error` values are wrapped). Those host failures are not API
+   * failures, so they are not emitted on the public `feedback:error` event.
+   * The widget has no UI for them, so they are also always logged with
+   * `console.error`, whether or not `onError` is set.
    */
   onError?: ((error: Error) => void) | undefined;
   /** Called when the user starts drawing an annotation. */

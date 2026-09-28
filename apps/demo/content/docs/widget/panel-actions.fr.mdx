@@ -1,0 +1,100 @@
+---
+title: Actions du panneau
+description: Ajouter vos propres boutons et liens à la vue détail d'un feedback — créer un ticket, confier un feedback à un agent, l'ouvrir dans votre outil de suivi.
+---
+
+`panelActions` ajoute vos propres contrôles à la vue détail d'un feedback, sur une ligne sous **Résoudre** et **Supprimer**. Servez-vous-en pour faire passer un feedback dans les outils que vous utilisez déjà, sans forker le panneau.
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "mon-projet",
+  panelActions: [
+    {
+      id: "create-ticket",
+      label: "Créer un ticket",
+      visible: (feedback) => feedback.type === "bug",
+      onAction: async (feedback, { refresh }) => {
+        await fetch("/api/tickets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ feedbackId: feedback.id, message: feedback.message }),
+        });
+        await refresh(); // votre endpoint a passé le feedback en in_progress — affichez-le
+      },
+    },
+    {
+      id: "github-issue",
+      label: "Ouvrir une issue GitHub",
+      href: (feedback) =>
+        `https://github.com/acme/site/issues/new?title=${encodeURIComponent(feedback.message.slice(0, 80))}`,
+    },
+  ],
+});
+```
+
+## Boutons et liens
+
+Chaque action est **soit** un bouton (`onAction`), **soit** un lien (`href`). TypeScript refuse une action qui a les deux, ou aucun des deux :
+
+| Champ | Type | Ce que ça fait |
+|---|---|---|
+| `id` | `string` | Obligatoire et unique. Exposé en `data-action-id` sur le contrôle |
+| `label` | `string` | Obligatoire. Rendu en texte brut, jamais en HTML. Non traduit par le widget : localisez-le vous-même |
+| `icon` | `string` | Balisage SVG facultatif affiché avant le libellé — voir [Icônes](#icônes) |
+| `visible` | `(feedback) => boolean` | Facultatif. Renvoyez `false` pour masquer l'action sur ce feedback |
+| `onAction` | `(feedback, context) => void \| Promise<void>` | **Bouton.** Exécuté au clic |
+| `href` | `string` ou `(feedback) => string` | **Lien.** Sa cible — uniquement `http:`, `https:` ou `mailto:` |
+
+Les types sont exportés par `@siteping/widget` : `SitepingPanelAction` (l'union), `SitepingPanelButtonAction`, `SitepingPanelLinkAction`, `SitepingPanelActionContext` et `SitepingPanelActionFeedback`.
+
+## Exécution d'une action
+
+Tant que la promesse renvoyée par `onAction` est en attente, le bouton cliqué affiche un spinner et tous les autres boutons de la vue — Résoudre et Supprimer compris — sont désactivés. Le spinner conserve le nom accessible du bouton et pose `aria-busy`. La vue reste verrouillée jusqu'à ce que la promesse aboutisse, même quand `refresh()` la réaffiche ou que l'utilisateur revient sur ce feedback : une action ne s'exécute jamais deux fois en même temps sur le même feedback. La vue détail reste ouverte quelle que soit l'issue.
+
+Le second argument vous donne deux utilitaires :
+
+- `refresh()` recharge la liste et les marqueurs, puis réaffiche la vue détail avec le feedback à jour — ou revient à la liste s'il ne correspond plus aux filtres du panneau. Appelez-le quand votre action a modifié le feedback côté serveur.
+- `close()` ferme le panneau.
+
+Les callbacks reçoivent une **copie gelée** du feedback, typée `SitepingPanelActionFeedback` : en lecture seule à tous les niveaux, tableaux et objets imbriqués compris. Lisez tout ce dont vous avez besoin. Les écritures sont refusées — TypeScript les signale, et à l'exécution elles lèvent une erreur en mode strict (et sont ignorées sans bruit sinon) — et ne pourraient de toute façon pas changer ce qu'affiche le panneau. Typez vos propres fonctions avec `SitepingPanelActionFeedback` : un paramètre `FeedbackResponse` n'accepte pas la copie gelée.
+
+## Liens
+
+Les liens sont de vrais éléments `<a>` : clic molette, « ouvrir dans un nouvel onglet » et lecteurs d'écran se comportent comme on s'y attend. Les liens web s'ouvrent dans un nouvel onglet avec `rel="noopener noreferrer"`, donc la page en recette ne fuit jamais en referrer. Les liens `mailto:` ouvrent le client mail sur place. Les URL relatives sont résolues par rapport à la page courante.
+
+Tout autre schéma — `javascript:`, `data:`, `file:`… — n'est jamais rendu. Un `href` statique écarte l'action avec un avertissement dans la console ; un `href` calculé masque l'action pour ce feedback et est signalé via `onError`.
+
+## Erreurs
+
+Tout ce que `onAction` lève ou rejette, ainsi qu'une fonction `visible` ou `href` qui lève, est toujours journalisé dans la console sous `[siteping] Panel action failed:`, puis part dans [`onError`](/fr/docs/widget#gérer-les-erreurs) si vous en définissez un — les valeurs qui ne sont pas des `Error` sont enveloppées — et les boutons reviennent. Le widget n'a pas d'interface à lui pour ces erreurs : l'entrée de console garantit qu'un bug dans votre handler n'échoue jamais en silence. Ce sont des échecs de votre code, pas de l'API de feedback : ils ne sont donc **pas** émis sur l'événement public `feedback:error`, et ne peuvent jamais être pris pour un envoi échoué dans la popup de commentaire.
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "mon-projet",
+  onError: (error) => showToast(error.message),
+  panelActions: [
+    {
+      id: "send-to-agent",
+      label: "Confier à l'agent",
+      onAction: async (feedback) => {
+        const res = await fetch("/api/agent", { method: "POST", body: JSON.stringify(feedback) });
+        if (!res.ok) throw new Error(`L'agent a refusé la tâche (${res.status})`); // → onError
+      },
+    },
+  ],
+});
+```
+
+## Validation
+
+`panelActions` est lu une seule fois, au chargement du panneau. Une entrée sans `id` ni `label` non vides, sans exactement un de `onAction` / `href`, avec un `href` statique dangereux, ou qui réutilise un `id` précédent est écartée avec un avertissement `[siteping]` dans la console. Les autres actions s'affichent quand même.
+
+## Icônes
+
+`icon` prend du balisage SVG, dessiné en 15 px avant le libellé et masqué des technologies d'assistance (le libellé nomme déjà le contrôle). Le balisage est analysé dans un document inerte et réduit à des formes simples — `path`, `circle`, `rect`, `g`, dégradés, masques de découpe — dont seuls les attributs de géométrie et de peinture sont conservés. Scripts, `foreignObject`, styles, animations, liens, gestionnaires d'événements et toute valeur d'attribut capable de charger une ressource sont supprimés ; les références `url(#id)` internes à l'icône sont conservées. Traitez-le malgré tout comme du balisage statique que vous maîtrisez. Une chaîne qui n'est pas un `<svg>` est ignorée avec un avertissement, et l'action garde son libellé.
+
+## React
+
+Avec [`useSiteping`](/fr/docs/widget#react), `onAction`, `visible` et un `href` fonction sont lus au moment de l'appel : ils peuvent capturer un état frais (un jeton d'authentification, l'utilisateur courant) sans réinitialiser le widget. La liste elle-même — ids, libellés, icônes, `href` statiques — est lue au montage, comme toutes les autres options structurelles.

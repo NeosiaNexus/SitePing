@@ -20,9 +20,52 @@
  * that never import `@siteping/widget/react` don't need React installed.
  */
 
-import type { SitepingConfig, SitepingInstance } from "@siteping/core";
+import type {
+  SitepingConfig,
+  SitepingInstance,
+  SitepingPanelAction,
+  SitepingPanelActionFeedback,
+} from "@siteping/core";
 import { useEffect, useRef, useState } from "react";
 import { initSiteping } from "./index.js";
+
+/**
+ * Stable stand-ins for `config.panelActions`. The list itself — ids, labels,
+ * icons, static hrefs — is read once at mount like every other option, but
+ * each callback (`visible`, `onAction`, a function `href`) resolves the
+ * action with the same id in the latest config at call time, so a handler
+ * closing over fresh state (an auth token, the current user) runs with it.
+ */
+function freshPanelActions(ref: { readonly current: SitepingConfig }): SitepingConfig["panelActions"] {
+  const actions = ref.current.panelActions;
+  if (!Array.isArray(actions)) return actions;
+  return actions.map((initial) => {
+    // Only well-formed entries are wrapped. Anything else goes through
+    // untouched, so the widget still warns about it and skips it.
+    if (typeof initial !== "object" || initial === null) return initial;
+    const latest = (): SitepingPanelAction => ref.current.panelActions?.find((a) => a?.id === initial.id) ?? initial;
+    // Truthiness, as in the widget: a plain-JS `visible` returning `undefined` hides the action.
+    const visible = (fb: SitepingPanelActionFeedback) => {
+      const current = latest().visible;
+      return current ? Boolean(current(fb)) : true;
+    };
+    const { onAction, href } = initial;
+    if (typeof onAction === "function" && href === undefined) {
+      return { ...initial, visible, onAction: (fb, ctx) => (latest().onAction ?? onAction)(fb, ctx) };
+    }
+    if (onAction !== undefined) return initial;
+    if (typeof href === "string") return { ...initial, visible };
+    if (typeof href !== "function") return initial;
+    return {
+      ...initial,
+      visible,
+      href: (fb) => {
+        const current = latest().href ?? href;
+        return typeof current === "function" ? current(fb) : current;
+      },
+    };
+  });
+}
 
 /**
  * Initialise the SitePing widget for the lifetime of the calling component.
@@ -105,6 +148,7 @@ export function useSiteping(config: SitepingConfig): SitepingInstance | null {
       onAnnotationEnd: () => {
         if (mounted) configRef.current.onAnnotationEnd?.();
       },
+      panelActions: freshPanelActions(configRef),
     });
     if (!mounted) {
       // Cleanup already ran (StrictMode dev edge case) — tear down to avoid

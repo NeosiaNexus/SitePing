@@ -265,6 +265,10 @@ export function launch(config: SitepingConfig): SitepingInstance {
   if (config.onClose) bus.on("close", config.onClose);
   if (config.onFeedbackSent) bus.on("feedback:sent", config.onFeedbackSent);
   if (config.onError) bus.on("feedback:error", config.onError);
+  if (config.onError) bus.on("panel:action-error", config.onError);
+  // A failing panel action is a bug in the host's own code, with no widget UI
+  // to show it: always log it, even when onError handles it too.
+  bus.on("panel:action-error", (err) => console.error("[siteping] Panel action failed:", err));
   if (config.onAnnotationStart) bus.on("annotation:start", config.onAnnotationStart);
   if (config.onAnnotationEnd) bus.on("annotation:end", config.onAnnotationEnd);
 
@@ -368,6 +372,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
         panelInstance = new mod.Panel(shadow, colors, bus, client, config.projectName, markers, t, locale, {
           getScope,
           scopeAnnotationsByUrl,
+          panelActions: config.panelActions,
         });
         return panelInstance;
       });

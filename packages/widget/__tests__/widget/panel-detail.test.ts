@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 
-import type { AnnotationResponse, FeedbackResponse } from "@siteping/core";
+import type {
+  AnnotationResponse,
+  FeedbackResponse,
+  SitepingPanelAction,
+  SitepingPanelActionFeedback,
+  SitepingPanelButtonAction,
+  SitepingPanelLinkAction,
+} from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
+import { normalizePanelActions } from "../../src/panel-actions.js";
 import { DETAIL_CSS, type DetailCallbacks, DetailView } from "../../src/panel-detail.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
@@ -82,6 +90,8 @@ function createCallbacks(): {
     onResolve: vi.fn<NonNullable<DetailCallbacks["onResolve"]>>().mockResolvedValue(undefined),
     onDelete: vi.fn<NonNullable<DetailCallbacks["onDelete"]>>().mockResolvedValue(undefined),
     onGoToAnnotation: vi.fn<NonNullable<DetailCallbacks["onGoToAnnotation"]>>(),
+    onCustomAction: vi.fn<NonNullable<DetailCallbacks["onCustomAction"]>>().mockResolvedValue(undefined),
+    onCustomActionError: vi.fn<NonNullable<DetailCallbacks["onCustomActionError"]>>(),
   };
 }
 
@@ -830,7 +840,6 @@ describe("DetailView", () => {
       resolveBtn: HTMLButtonElement | null;
       deleteBtn: HTMLButtonElement | null;
       currentFeedback: FeedbackResponse | null;
-      isProcessing: boolean;
       handleResolve(): Promise<void>;
       handleDelete(): Promise<void>;
       restoreResolveBtn(feedback: FeedbackResponse): void;
@@ -1207,5 +1216,400 @@ describe("DetailView", () => {
         "@supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) { .sp-detail { background: var(--sp-bg); } }",
       );
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Custom panel actions (host-defined buttons via SitepingPanelAction)
+// ---------------------------------------------------------------------------
+
+describe("custom panel actions", () => {
+  function makeAction(overrides: Partial<SitepingPanelButtonAction> = {}): SitepingPanelButtonAction {
+    return { id: "send-to-agent", label: "Send to agent", onAction: vi.fn(), ...overrides };
+  }
+
+  function makeLink(overrides: Partial<SitepingPanelLinkAction> = {}): SitepingPanelLinkAction {
+    return { id: "tracker", label: "Open in tracker", href: "https://tracker.example/new", ...overrides };
+  }
+
+  function buildDetail(actions: SitepingPanelAction[], callbacks: Partial<DetailCallbacks> = {}) {
+    const cb: DetailCallbacks = {
+      onBack: vi.fn(),
+      onResolve: vi.fn().mockResolvedValue(undefined),
+      onDelete: vi.fn().mockResolvedValue(undefined),
+      onGoToAnnotation: vi.fn(),
+      onCustomAction: vi.fn().mockResolvedValue(undefined),
+      onCustomActionError: vi.fn(),
+      ...callbacks,
+    };
+    const view = new DetailView(buildThemeColors(), cb, createT("en"), "en", normalizePanelActions(actions));
+    document.body.appendChild(view.element);
+    return { view, cb };
+  }
+
+  it("renders a button per action with data-action-id", () => {
+    const { view } = buildDetail([makeAction(), makeAction({ id: "other", label: "Other" })]);
+    view.show(makeFeedback(), 1);
+    const btns = view.element.querySelectorAll(".sp-detail-btn-custom");
+    expect(btns).toHaveLength(2);
+    expect(btns[0]?.getAttribute("data-action-id")).toBe("send-to-agent");
+    expect(btns[0]?.textContent).toContain("Send to agent");
+  });
+
+  it("renders host actions in their own row below Resolve/Delete, titled with the full label", () => {
+    const { view } = buildDetail([makeAction(), makeAction({ id: "other", label: "Other" })]);
+    view.show(makeFeedback(), 1);
+    const rows = view.element.querySelectorAll(".sp-detail-actions");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.querySelectorAll(".sp-detail-btn-custom")).toHaveLength(0);
+    expect(rows[1]?.classList.contains("sp-detail-actions--custom")).toBe(true);
+    expect([...(rows[1]?.children ?? [])].map((b) => (b as HTMLElement).title)).toEqual(["Send to agent", "Other"]);
+  });
+
+  it("renders a link action as a real anchor opening a new tab without referrer", () => {
+    const { view } = buildDetail([
+      makeLink(),
+      makeLink({ id: "mail", label: "Email author", href: (fb) => `mailto:${fb.authorEmail}` }),
+      makeLink({ id: "rel", label: "Open in admin", href: (fb) => `/admin/feedback/${fb.id}` }),
+    ]);
+    view.show(makeFeedback(), 1);
+    const [web, mail, rel] = view.element.querySelectorAll<HTMLAnchorElement>("a.sp-detail-btn-custom");
+
+    expect(web?.getAttribute("href")).toBe("https://tracker.example/new");
+    expect(web?.target).toBe("_blank");
+    expect(web?.rel).toBe("noopener noreferrer");
+    expect(web?.dataset.actionId).toBe("tracker");
+    expect(web?.textContent).toBe("Open in tracker");
+
+    expect(mail?.getAttribute("href")).toBe("mailto:test@example.com");
+    expect(mail?.hasAttribute("target")).toBe(false);
+
+    expect(rel?.getAttribute("href")).toBe(`${location.origin}/admin/feedback/fb-1`);
+  });
+
+  it("hides a link whose computed href is not http(s)/mailto and reports it", () => {
+    const { view, cb } = buildDetail([
+      makeLink({ href: () => "javascript:alert(document.cookie)" }),
+      makeLink({ id: "data", href: () => " DATA:text/html,<script>alert(1)</script>" }),
+      makeAction(),
+    ]);
+    view.show(makeFeedback(), 1);
+
+    expect(view.element.querySelector("a")).toBeNull();
+    expect(view.element.querySelectorAll(".sp-detail-btn-custom")).toHaveLength(1);
+    expect(cb.onCustomActionError).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(cb.onCustomActionError).mock.calls[0]?.[0]).toEqual(
+      new Error('[siteping] Panel action "tracker": href must be an http(s) or mailto URL.'),
+    );
+  });
+
+  it("builds a computed href from the frozen snapshot and keeps links clickable while a button action runs", () => {
+    const href = vi.fn((fb: SitepingPanelActionFeedback) => `https://tracker.example/fb/${fb.id}`);
+    const { view } = buildDetail([makeAction(), makeLink({ href })], {
+      onCustomAction: vi.fn(() => new Promise<void>(() => {})),
+    });
+    view.show(makeFeedback(), 1);
+    expect(Object.isFrozen(href.mock.calls[0]?.[0])).toBe(true);
+
+    view.element.querySelector<HTMLButtonElement>("button.sp-detail-btn-custom")!.click();
+    const link = view.element.querySelector<HTMLAnchorElement>("a.sp-detail-btn-custom")!;
+    expect(link.getAttribute("href")).toBe("https://tracker.example/fb/fb-1");
+    expect(link.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("renders no host row when no action is visible for the feedback", () => {
+    const { view } = buildDetail([makeAction({ visible: () => false })]);
+    view.show(makeFeedback(), 1);
+    expect(view.element.querySelectorAll(".sp-detail-actions")).toHaveLength(1);
+  });
+
+  it("omits actions whose visible() returns false", () => {
+    const { view } = buildDetail([makeAction({ visible: (fb) => fb.type === "change" })]);
+    view.show(makeFeedback({ type: "bug" }), 1);
+    expect(view.element.querySelectorAll(".sp-detail-btn-custom")).toHaveLength(0);
+  });
+
+  it("invokes onCustomAction with the action and current feedback on click", async () => {
+    const { view, cb } = buildDetail([makeAction()]);
+    const fb = makeFeedback();
+    view.show(fb, 1);
+    view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")?.click();
+    await vi.waitFor(() =>
+      expect(cb.onCustomAction).toHaveBeenCalledWith(expect.objectContaining({ id: "send-to-agent" }), fb),
+    );
+  });
+
+  /** A controllable onCustomAction: each call stays pending until its `settle` runs. */
+  function deferredActions() {
+    const settles: Array<() => void> = [];
+    const onCustomAction = vi.fn(() => new Promise<void>((resolve) => settles.push(resolve)));
+    return { onCustomAction, settle: (i: number) => settles[i]?.() };
+  }
+
+  function actionButtons(view: DetailView) {
+    const q = (sel: string) => view.element.querySelector<HTMLButtonElement>(sel)!;
+    return {
+      resolve: q(".sp-detail-btn-resolve"),
+      del: q(".sp-detail-btn-delete"),
+      first: q('[data-action-id="send-to-agent"]'),
+      other: q('[data-action-id="other"]'),
+    };
+  }
+
+  it("disables every action while one is pending, keeps it named and busy, then restores them", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view } = buildDetail([makeAction(), makeAction({ id: "other", label: "Other" })], { onCustomAction });
+    view.show(makeFeedback(), 1);
+    const btns = actionButtons(view);
+
+    btns.first.click();
+    expect(btns.first.disabled).toBe(true);
+    expect(btns.first.textContent).toBe(""); // spinner in place of the label…
+    expect(btns.first.getAttribute("aria-label")).toBe("Send to agent"); // …but still named
+    expect(btns.first.getAttribute("aria-busy")).toBe("true");
+    expect([btns.resolve.disabled, btns.del.disabled, btns.other.disabled]).toEqual([true, true, true]);
+
+    btns.other.click(); // ignored while busy
+    expect(onCustomAction).toHaveBeenCalledOnce();
+
+    settle(0);
+    await vi.waitFor(() => expect(btns.first.disabled).toBe(false));
+    expect(btns.first.textContent).toBe("Send to agent");
+    expect(btns.first.hasAttribute("aria-busy")).toBe(false);
+    expect([btns.resolve.disabled, btns.del.disabled, btns.other.disabled]).toEqual([false, false, false]);
+  });
+
+  it("disables host actions while a built-in Resolve is pending", () => {
+    const { view, cb } = buildDetail([makeAction()], { onResolve: vi.fn(() => new Promise<void>(() => {})) });
+    view.show(makeFeedback(), 1);
+    const btns = actionButtons(view);
+
+    btns.resolve.click();
+    expect(cb.onResolve).toHaveBeenCalledOnce();
+    expect(btns.first.disabled).toBe(true);
+  });
+
+  it("an action settling after the view moved on leaves the newer view's buttons alone", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view } = buildDetail([makeAction()], { onCustomAction });
+
+    view.show(makeFeedback({ id: "fb-a" }), 1);
+    actionButtons(view).first.click(); // A pending
+
+    view.show(makeFeedback({ id: "fb-b" }), 2);
+    const b = actionButtons(view);
+    b.first.click(); // B pending
+    expect(onCustomAction).toHaveBeenCalledTimes(2);
+
+    settle(0); // A settles late
+    await Promise.resolve();
+    await Promise.resolve();
+    expect([b.first.disabled, b.resolve.disabled, b.del.disabled]).toEqual([true, true, true]);
+    b.resolve.click(); // B still owns the processing lock
+    expect(onCustomAction).toHaveBeenCalledTimes(2);
+
+    settle(1);
+    await vi.waitFor(() => expect(b.first.disabled).toBe(false));
+    expect([b.resolve.disabled, b.del.disabled]).toEqual([false, false]);
+  });
+
+  it.each([
+    ["Resolve", "resolve"],
+    ["Delete", "del"],
+  ] as const)(
+    "a %s failing after the view moved on leaves the newer view's pending action alone",
+    async (_, builtIn) => {
+      const { onCustomAction, settle } = deferredActions();
+      let reject!: (error: Error) => void;
+      const pending = () => new Promise<void>((_, r) => (reject = r));
+      const { view } = buildDetail([makeAction()], {
+        onCustomAction,
+        onResolve: vi.fn(pending),
+        onDelete: vi.fn(pending),
+      });
+
+      view.show(makeFeedback({ id: "fb-a" }), 1);
+      actionButtons(view)[builtIn].click(); // A's Resolve/Delete pending
+
+      view.show(makeFeedback({ id: "fb-b" }), 2);
+      const b = actionButtons(view);
+      b.first.click(); // B's host action pending
+
+      reject(new Error("network down")); // A fails late
+      await Promise.resolve();
+      await Promise.resolve();
+      expect([b.first.disabled, b.resolve.disabled, b.del.disabled]).toEqual([true, true, true]);
+      b.first.click();
+      expect(onCustomAction).toHaveBeenCalledOnce(); // never dispatched twice
+
+      settle(0);
+      await vi.waitFor(() => expect(b.first.disabled).toBe(false));
+      expect([b.resolve.disabled, b.del.disabled]).toEqual([false, false]);
+    },
+  );
+
+  it("keeps an action pending when its feedback is shown again, until it settles", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view, cb } = buildDetail([makeAction()], { onCustomAction });
+    view.show(makeFeedback({ status: "open" }), 1);
+    actionButtons(view).first.click();
+
+    view.show(makeFeedback({ status: "in_progress" }), 1); // e.g. context.refresh()
+    const again = actionButtons(view);
+    expect([again.first.disabled, again.resolve.disabled, again.del.disabled]).toEqual([true, true, true]);
+    expect(again.first.textContent).toBe("");
+    expect(again.first.getAttribute("aria-busy")).toBe("true");
+    again.first.click();
+    again.resolve.click();
+    expect(onCustomAction).toHaveBeenCalledOnce();
+    expect(cb.onResolve).not.toHaveBeenCalled();
+
+    settle(0);
+    await vi.waitFor(() => expect(again.first.disabled).toBe(false));
+    expect(again.first.textContent).toBe("Send to agent");
+    expect(again.first.hasAttribute("aria-busy")).toBe(false);
+    expect([again.resolve.disabled, again.del.disabled]).toEqual([false, false]);
+  });
+
+  it("locks a feedback again when the user comes back to it while its action runs", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view } = buildDetail([makeAction()], { onCustomAction });
+    view.show(makeFeedback({ id: "fb-a" }), 1);
+    actionButtons(view).first.click();
+
+    view.show(makeFeedback({ id: "fb-b" }), 2);
+    const b = actionButtons(view);
+    expect([b.first.disabled, b.resolve.disabled, b.del.disabled]).toEqual([false, false, false]);
+
+    view.hide();
+    view.show(makeFeedback({ id: "fb-a" }), 1);
+    const a = actionButtons(view);
+    expect([a.first.disabled, a.resolve.disabled, a.del.disabled]).toEqual([true, true, true]);
+    a.first.click();
+    expect(onCustomAction).toHaveBeenCalledOnce();
+
+    settle(0);
+    await vi.waitFor(() => expect(a.first.disabled).toBe(false));
+    expect([a.resolve.disabled, a.del.disabled]).toEqual([false, false]);
+  });
+
+  it("keeps the view locked when the new render no longer shows the pending action", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view } = buildDetail([makeAction({ visible: (fb) => fb.status === "open" })], { onCustomAction });
+    view.show(makeFeedback({ status: "open" }), 1);
+    actionButtons(view).first.click();
+
+    view.show(makeFeedback({ status: "in_progress" }), 1);
+    const { first, resolve, del } = actionButtons(view);
+    expect(first).toBeNull();
+    expect([resolve.disabled, del.disabled]).toEqual([true, true]);
+
+    settle(0);
+    await vi.waitFor(() => expect(resolve.disabled).toBe(false));
+    expect(del.disabled).toBe(false);
+  });
+
+  it("keeps a Resolve busy when its feedback is shown again, and restores that render if it fails", async () => {
+    let reject!: (error: Error) => void;
+    const { view, cb } = buildDetail([makeAction()], {
+      onResolve: vi.fn(() => new Promise<void>((_, r) => (reject = r))),
+    });
+    view.show(makeFeedback(), 1);
+    actionButtons(view).resolve.click();
+
+    view.show(makeFeedback(), 1);
+    const again = actionButtons(view);
+    expect([again.resolve.disabled, again.del.disabled, again.first.disabled]).toEqual([true, true, true]);
+    expect(again.resolve.querySelector(".sp-spinner")).not.toBeNull();
+    again.first.click();
+    expect(cb.onCustomAction).not.toHaveBeenCalled();
+
+    reject(new Error("network down"));
+    await vi.waitFor(() => expect(again.resolve.disabled).toBe(false));
+    expect(again.resolve.textContent).toBe("Resolve");
+    expect([again.del.disabled, again.first.disabled]).toEqual([false, false]);
+  });
+
+  it("hides an action whose visible() throws, reports it, and keeps the view alive", () => {
+    const boom = new Error("visible exploded");
+    const { view, cb } = buildDetail([
+      makeAction({
+        visible: () => {
+          throw boom;
+        },
+      }),
+      makeAction({ id: "other", label: "Other" }),
+    ]);
+    view.show(makeFeedback(), 1);
+
+    expect(cb.onCustomActionError).toHaveBeenCalledExactlyOnceWith(boom);
+    const ids = [...view.element.querySelectorAll(".sp-detail-btn-custom")].map((b) =>
+      b.getAttribute("data-action-id"),
+    );
+    expect(ids).toEqual(["other"]);
+    expect(view.element.querySelector(".sp-detail-message")?.textContent).toBe("Something broken in the page");
+  });
+
+  it("hands host callbacks one detached, deeply frozen copy of the feedback", async () => {
+    const fb = makeFeedback({
+      annotations: [makeAnnotation()],
+      diagnostics: {
+        console: [{ level: "error", message: "boom", timestamp: "2024-01-15T10:00:00.000Z" }],
+        network: [],
+      },
+    });
+    const seen: SitepingPanelActionFeedback[] = [];
+    const { view, cb } = buildDetail([makeAction({ visible: (snap) => seen.push(snap) > 0 })]);
+    view.show(fb, 1);
+    view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!.click();
+    await vi.waitFor(() => expect(cb.onCustomAction).toHaveBeenCalledOnce());
+
+    const [snap] = seen;
+    expect(snap).toEqual(fb);
+    expect(snap).not.toBe(fb);
+    expect(vi.mocked(cb.onCustomAction).mock.calls[0]?.[1]).toBe(snap);
+    expect(Object.isFrozen(snap)).toBe(true);
+    expect(Object.isFrozen(snap?.annotations)).toBe(true);
+    expect(Object.isFrozen(snap?.annotations[0])).toBe(true);
+    expect(Object.isFrozen(snap?.diagnostics?.console[0])).toBe(true);
+    expect(() => {
+      (snap as FeedbackResponse).status = "resolved";
+    }).toThrow(TypeError);
+    expect(fb.status).toBe("open");
+  });
+
+  it("renders the sanitized icon before the label, and restores it after the spinner", async () => {
+    let settle!: () => void;
+    const { view } = buildDetail(
+      [
+        makeAction({
+          icon: '<svg viewBox="0 0 24 24" onload="alert(1)"><path d="M0 0h24"/><script>alert(1)</script></svg>',
+        }),
+      ],
+      { onCustomAction: vi.fn(() => new Promise<void>((r) => (settle = r))) },
+    );
+    view.show(makeFeedback(), 1);
+    const btn = view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!;
+    expect(btn.firstElementChild?.outerHTML).toBe(
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0h24"></path></svg>',
+    );
+
+    btn.click();
+    expect(btn.querySelector("svg")).toBeNull(); // spinner in place of icon + label
+    settle();
+    await vi.waitFor(() => expect(btn.disabled).toBe(false));
+    expect(btn.firstElementChild?.outerHTML).toBe(
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0h24"></path></svg>',
+    );
+    expect(btn.textContent).toBe("Send to agent");
+  });
+
+  it("keeps rendering the label when the icon is not SVG markup", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { view } = buildDetail([makeAction({ icon: "<b>nope</b>" })]);
+    view.show(makeFeedback(), 1);
+    const btn = view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!;
+    expect(btn.querySelector("svg, b")).toBeNull();
+    expect(btn.textContent).toBe("Send to agent");
   });
 });

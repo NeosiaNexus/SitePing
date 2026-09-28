@@ -72,6 +72,13 @@ export interface WidgetEvents {
    * part of `SitepingPublicEvents` — never exposed to consumers.
    */
   "submission:cancelled": [];
+  /**
+   * Internal-only: a host `panelActions` callback threw or rejected. Kept off
+   * `feedback:error` on purpose — the annotator settles its pending popup
+   * submission on that event, so a host failure must never reach it. The
+   * launcher forwards it to `config.onError` only.
+   */
+  "panel:action-error": [Error];
   "annotations:toggle": [boolean];
   "panel:toggle": [boolean];
 }

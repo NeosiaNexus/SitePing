@@ -9,9 +9,16 @@
  * animations, accent gradients, premium micro-interactions.
  */
 
-import { type FeedbackResponse, type FeedbackStatus, isClosedStatus } from "@siteping/core";
+import {
+  type FeedbackResponse,
+  type FeedbackStatus,
+  isClosedStatus,
+  type SitepingPanelActionFeedback,
+  type SitepingPanelButtonAction,
+} from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
+import { type PanelActionItem, safeHref, snapshotFeedback } from "./panel-actions.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -287,7 +294,8 @@ export const DETAIL_CSS = /* css */ `
     gap: 8px;
   }
 
-  .sp-detail-actions button {
+  .sp-detail-actions button,
+  .sp-detail-actions a {
     flex: 1;
     height: 40px;
     padding: 0 16px;
@@ -303,7 +311,8 @@ export const DETAIL_CSS = /* css */ `
     transition: all 0.2s ease;
   }
 
-  .sp-detail-actions button svg {
+  .sp-detail-actions button svg,
+  .sp-detail-actions a svg {
     width: 15px;
     height: 15px;
   }
@@ -357,6 +366,48 @@ export const DETAIL_CSS = /* css */ `
   .sp-detail-btn-delete:active {
     transform: translateY(0) scale(0.98);
     transition-duration: 0.1s;
+  }
+
+  .sp-detail-btn-custom {
+    border: 1.5px solid var(--sp-border);
+    background: var(--sp-glass-bg-heavy);
+    color: var(--sp-text);
+    text-decoration: none;
+  }
+
+  .sp-detail-btn-custom:hover {
+    background: var(--sp-bg-hover);
+    border-color: var(--sp-accent);
+    color: var(--sp-accent);
+    box-shadow: 0 0 16px var(--sp-accent-glow);
+    transform: translateY(-1px);
+  }
+
+  .sp-detail-btn-custom:active {
+    transform: translateY(0) scale(0.98);
+    transition-duration: 0.1s;
+  }
+
+  .sp-detail-actions--custom {
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  /* Content-sized so the row wraps, shrinkable so one long label truncates. */
+  .sp-detail-actions--custom > .sp-detail-btn-custom {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .sp-detail-btn-custom svg {
+    flex-shrink: 0;
+  }
+
+  .sp-detail-btn-custom span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .sp-detail-actions button:disabled {
@@ -561,7 +612,8 @@ export const DETAIL_CSS = /* css */ `
     .sp-detail-btn-goto,
     .sp-detail-btn-resolve,
     .sp-detail-btn-reopen,
-    .sp-detail-btn-delete {
+    .sp-detail-btn-delete,
+    .sp-detail-btn-custom {
       border: 2px solid ButtonText !important;
       background: Canvas !important;
       color: ButtonText !important;
@@ -571,7 +623,8 @@ export const DETAIL_CSS = /* css */ `
     .sp-detail-btn-goto:focus-visible,
     .sp-detail-btn-resolve:focus-visible,
     .sp-detail-btn-reopen:focus-visible,
-    .sp-detail-btn-delete:focus-visible {
+    .sp-detail-btn-delete:focus-visible,
+    .sp-detail-btn-custom:focus-visible {
       outline: 3px solid Highlight !important;
     }
 
@@ -904,6 +957,20 @@ export interface DetailCallbacks {
   onGoToAnnotation: (feedback: FeedbackResponse) => void;
   /** False hides "Go to annotation" (e.g. the feedback belongs to another page). */
   canGoToAnnotation?: (feedback: FeedbackResponse) => boolean;
+  /** Runs a host-defined button action. Never rejects: the panel contains and reports host failures. */
+  onCustomAction: (action: SitepingPanelButtonAction, feedback: SitepingPanelActionFeedback) => Promise<void>;
+  /** Reports a host `visible()`/`href()` that threw or an unsafe computed href — the action is hidden. */
+  onCustomActionError: (error: unknown) => void;
+}
+
+/** An operation in flight on a feedback: a built-in button, or the host action it runs. */
+type PendingOp = "resolve" | "delete" | PanelActionItem;
+
+/** A host control's content: its icon, cloned from the one parsed at load, and its label. */
+function customContent({ action, icon }: PanelActionItem): Node[] {
+  const span = document.createElement("span");
+  setText(span, action.label);
+  return icon ? [icon.cloneNode(true), span] : [span];
 }
 
 // ---------------------------------------------------------------------------
@@ -920,13 +987,20 @@ export class DetailView {
   private readonly locale: string;
   private resolveBtn: HTMLButtonElement | null = null;
   private deleteBtn: HTMLButtonElement | null = null;
-  private isProcessing = false;
+  private customBtns: HTMLButtonElement[] = [];
+  /**
+   * What runs on each feedback. Kept per feedback rather than per render, so
+   * showing that feedback again — a panel action's `refresh()`, or coming
+   * back to it — keeps the view locked until the operation settles.
+   */
+  private readonly pending = new Map<string, PendingOp>();
 
   constructor(
     private readonly colors: ThemeColors,
     private readonly callbacks: DetailCallbacks,
     t: TFunction,
     locale: string,
+    private readonly customActions: readonly PanelActionItem[] = [],
   ) {
     this.t = t;
     this.locale = locale;
@@ -963,7 +1037,6 @@ export class DetailView {
   /** Show the detail view for a specific feedback. */
   show(feedback: FeedbackResponse, number: number): void {
     this.currentFeedback = feedback;
-    this.isProcessing = false;
 
     // ---- Update header ----
     const header = this.element.querySelector<HTMLElement>(".sp-detail-header");
@@ -991,6 +1064,8 @@ export class DetailView {
     // Section 1: Status + Actions
     const statusSection = this.buildSection(sectionIndex++);
     this.buildStatusActions(statusSection, feedback);
+    const op = this.pending.get(feedback.id);
+    if (op) this.lock(op);
     this.content.appendChild(statusSection);
 
     // Section 2: Message
@@ -1084,6 +1159,12 @@ export class DetailView {
     this.currentFeedback = null;
     this.resolveBtn = null;
     this.deleteBtn = null;
+    this.customBtns = [];
+  }
+
+  /** Id of the feedback on screen, `null` while hidden. */
+  get feedbackId(): string | null {
+    return this.currentFeedback?.id ?? null;
   }
 
   /** Whether the detail view is currently visible. */
@@ -1176,6 +1257,57 @@ export class DetailView {
     actions.appendChild(this.resolveBtn);
     actions.appendChild(this.deleteBtn);
     container.appendChild(actions);
+
+    this.buildCustomActions(container, feedback);
+  }
+
+  /**
+   * Host-defined actions (`config.panelActions`) — their own wrapping row, so
+   * long labels or several actions never squash Resolve/Delete.
+   */
+  private buildCustomActions(container: HTMLElement, feedback: FeedbackResponse): void {
+    this.customBtns = [];
+    if (this.customActions.length === 0) return;
+    // One frozen copy per render, shared by every host callback of this view.
+    const snapshot = snapshotFeedback(feedback);
+    const row = el("div", { class: "sp-detail-actions sp-detail-actions--custom" });
+    for (const item of this.customActions) {
+      const { action } = item;
+      let control: HTMLElement;
+      try {
+        if (action.visible && !action.visible(snapshot)) continue;
+        if (action.href === undefined) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          // Keeps the button named while the spinner replaces its label.
+          btn.setAttribute("aria-label", action.label);
+          btn.addEventListener(
+            "click",
+            () => void this.run(item, () => this.callbacks.onCustomAction(action, snapshot)),
+          );
+          this.customBtns.push(btn);
+          control = btn;
+        } else {
+          const href = safeHref(typeof action.href === "function" ? action.href(snapshot) : action.href);
+          if (!href) throw new Error(`[siteping] Panel action "${action.id}": href must be an http(s) or mailto URL.`);
+          const link = document.createElement("a");
+          link.href = href;
+          // Web links open beside the reviewed page, which never leaks as referrer.
+          if (!href.startsWith("mailto:")) link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          control = link;
+        }
+      } catch (error) {
+        this.callbacks.onCustomActionError(error);
+        continue;
+      }
+      control.className = "sp-detail-btn-custom";
+      control.setAttribute("data-action-id", action.id);
+      control.title = action.label; // full label when the row truncates it
+      control.append(...customContent(item));
+      row.appendChild(control);
+    }
+    if (row.childElementCount > 0) container.appendChild(row);
   }
 
   /** Build the metadata grid. */
@@ -1458,38 +1590,65 @@ export class DetailView {
   // Private — Action handlers
   // -----------------------------------------------------------------------
 
-  private async handleResolve(): Promise<void> {
-    if (this.isProcessing || !this.currentFeedback) return;
-    this.isProcessing = true;
+  private handleResolve(): Promise<void> {
+    return this.run("resolve", (feedback) => this.callbacks.onResolve(feedback));
+  }
 
-    if (this.resolveBtn) this.setButtonLoading(this.resolveBtn);
-    if (this.deleteBtn) this.deleteBtn.disabled = true;
+  private handleDelete(): Promise<void> {
+    return this.run("delete", (feedback) => this.callbacks.onDelete(feedback));
+  }
 
+  /**
+   * Run `op` on the feedback on screen, keeping the view locked — on every
+   * render of that feedback — until it settles. A successful Resolve/Delete
+   * hides the view (the panel does); otherwise the view comes back, unless
+   * it moved on to another feedback, whose buttons are not ours to touch.
+   */
+  private async run(op: PendingOp, task: (feedback: FeedbackResponse) => Promise<void>): Promise<void> {
+    const feedback = this.currentFeedback;
+    if (!feedback || this.pending.has(feedback.id)) return;
+    this.pending.set(feedback.id, op);
+    this.lock(op);
     try {
-      await this.callbacks.onResolve(this.currentFeedback);
-      // The parent will call hide() or re-show with updated data
+      await task(feedback);
     } catch {
-      // Restore buttons on error
-      this.isProcessing = false;
-      if (this.resolveBtn) this.restoreResolveBtn(this.currentFeedback);
-      if (this.deleteBtn) this.deleteBtn.disabled = false;
+      // The panel reports built-in failures; host actions never reject.
+    } finally {
+      this.pending.delete(feedback.id);
+      if (this.currentFeedback?.id === feedback.id) this.unlock(op, this.currentFeedback);
     }
   }
 
-  private async handleDelete(): Promise<void> {
-    if (this.isProcessing || !this.currentFeedback) return;
-    this.isProcessing = true;
+  /** `op`'s button shows a spinner and every other action is disabled. */
+  private lock(op: PendingOp): void {
+    this.setActionsDisabled(true);
+    const btn = this.buttonFor(op);
+    if (!btn) return; // a host action this render no longer shows
+    this.setButtonLoading(btn);
+    btn.setAttribute("aria-busy", "true");
+  }
 
-    if (this.deleteBtn) this.setButtonLoading(this.deleteBtn);
-    if (this.resolveBtn) this.resolveBtn.disabled = true;
+  /** Undo {@link lock} on the render of `feedback` that is on screen. */
+  private unlock(op: PendingOp, feedback: FeedbackResponse): void {
+    const btn = this.buttonFor(op);
+    btn?.removeAttribute("aria-busy");
+    if (op === "resolve") this.restoreResolveBtn(feedback);
+    else if (op === "delete") this.restoreDeleteBtn();
+    else btn?.replaceChildren(...customContent(op));
+    this.setActionsDisabled(false);
+  }
 
-    try {
-      await this.callbacks.onDelete(this.currentFeedback);
-      // The parent will call hide() after deletion
-    } catch {
-      this.isProcessing = false;
-      if (this.deleteBtn) this.restoreDeleteBtn();
-      if (this.resolveBtn) this.resolveBtn.disabled = false;
+  /** This render's button for `op`, if it shows one. */
+  private buttonFor(op: PendingOp): HTMLButtonElement | null {
+    if (op === "resolve") return this.resolveBtn;
+    if (op === "delete") return this.deleteBtn;
+    return this.customBtns.find((b) => b.dataset.actionId === op.action.id) ?? null;
+  }
+
+  /** Enable/disable every action button of the current view. */
+  private setActionsDisabled(disabled: boolean): void {
+    for (const b of [this.resolveBtn, this.deleteBtn, ...this.customBtns]) {
+      if (b) b.disabled = disabled;
     }
   }
 

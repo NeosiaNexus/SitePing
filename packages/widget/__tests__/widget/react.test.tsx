@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import type { SitepingConfig, SitepingInstance } from "@siteping/core";
+import type {
+  FeedbackResponse,
+  SitepingConfig,
+  SitepingInstance,
+  SitepingPanelActionFeedback,
+  SitepingPanelButtonAction,
+  SitepingPanelLinkAction,
+} from "@siteping/core";
 import { act, render } from "@testing-library/react";
 import { StrictMode, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
@@ -64,6 +71,7 @@ afterEach(() => {
 });
 
 // Import after mock setup so the alias resolves to our spy.
+import { normalizePanelActions } from "../../src/panel-actions.js";
 import { useSiteping } from "../../src/react.js";
 
 // ---------------------------------------------------------------------------
@@ -208,6 +216,101 @@ describe("useSiteping", () => {
     });
     expect(e1).not.toHaveBeenCalled();
     expect(e2).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps panel action callbacks fresh across rerenders, resolved by id", () => {
+    const fb = { id: "fb-1" } as FeedbackResponse;
+    const ctx = { refresh: vi.fn(), close: vi.fn() };
+    const handlers = () => ({
+      onAction: vi.fn(),
+      visible: vi.fn(() => true),
+      href: vi.fn((f: SitepingPanelActionFeedback) => `https://t.example/${f.id}`),
+    });
+    const first = handlers();
+    const second = { ...handlers(), visible: vi.fn(() => false) };
+    const config = (h: ReturnType<typeof handlers>, withActions = true): SitepingConfig => ({
+      endpoint: "/api",
+      projectName: "p",
+      panelActions: withActions
+        ? [
+            { id: "run", label: "Run", onAction: h.onAction, visible: h.visible },
+            { id: "open", label: "Open", href: h.href },
+            { id: "static", label: "Static", href: "https://static.example" },
+          ]
+        : [],
+    });
+
+    const { rerender } = render(<Probe config={config(first)} />);
+    rerender(<Probe config={config(second)} />);
+    expect(initSpy).toHaveBeenCalledTimes(1);
+
+    const [run, open, fixed] = wiredConfig().panelActions as [
+      SitepingPanelButtonAction,
+      SitepingPanelLinkAction,
+      SitepingPanelLinkAction,
+    ];
+    void run.onAction(fb, ctx);
+    expect(second.onAction).toHaveBeenCalledExactlyOnceWith(fb, ctx);
+    expect(first.onAction).not.toHaveBeenCalled();
+    expect(run.visible?.(fb)).toBe(false);
+    expect(typeof open.href === "function" && open.href(fb)).toBe("https://t.example/fb-1");
+    expect(second.href).toHaveBeenCalledOnce();
+    expect(first.href).not.toHaveBeenCalled();
+    expect(fixed.href).toBe("https://static.example"); // static data stays static
+
+    // An id gone from the latest config falls back to its mount-time action.
+    rerender(<Probe config={config(second, false)} />);
+    void run.onAction(fb, ctx);
+    expect(first.onAction).toHaveBeenCalledOnce();
+  });
+
+  it("hides an action whose visible() returns a falsy non-boolean, like the vanilla widget", () => {
+    const visible = vi.fn<() => unknown>();
+    const panelActions = [
+      { id: "flag", label: "Flag", onAction: () => {}, visible: visible as never },
+      { id: "always", label: "Always", onAction: () => {} },
+    ];
+    render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions }} />);
+
+    const [flag, always] = wiredConfig().panelActions as SitepingPanelButtonAction[];
+    const fb = { id: "fb-1" } as FeedbackResponse;
+    for (const [result, shown] of [
+      [undefined, false],
+      [null, false],
+      [0, false],
+      ["yes", true],
+    ] as const) {
+      visible.mockReturnValue(result);
+      expect(flag?.visible?.(fb)).toBe(shown);
+    }
+    expect(always?.visible?.(fb)).toBe(true);
+  });
+
+  it("hands malformed panelActions to the widget untouched instead of crashing the mount", () => {
+    const first = render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions: [null, "x"] as never }} />);
+    expect(wiredConfig().panelActions).toEqual([null, "x"]);
+    first.unmount();
+    initSpy.mockClear();
+    render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions: { id: "x" } as never }} />);
+    expect(wiredConfig().panelActions).toEqual({ id: "x" });
+  });
+
+  it("leaves malformed panel action entries unwrapped, so the widget still warns about them", () => {
+    const malformed = [
+      { id: "neither", label: "Neither" },
+      { id: "bad", label: "Bad", onAction: "nope" },
+      { id: "both", label: "Both", onAction: () => {}, href: "https://t.example" },
+      { id: "num", label: "Num", href: 42 },
+    ];
+    render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions: malformed as never }} />);
+
+    const wired = wiredConfig().panelActions ?? [];
+    expect(wired).toHaveLength(malformed.length);
+    for (const [i, action] of wired.entries()) expect(action).toBe(malformed[i]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(normalizePanelActions(wired)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(malformed.length);
+    warn.mockRestore();
   });
 
   it("ignores widget callbacks after unmount", () => {

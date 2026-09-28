@@ -1170,6 +1170,134 @@ test.describe("Production guard at dist level (#104)", () => {
   });
 });
 
+test.describe("Panel actions", () => {
+  // Real-browser checks jsdom cannot make: icon inertness (Chromium runs an
+  // <img onerror> hoisted out of an <svg> parsed with createContextualFragment),
+  // link attributes as the browser resolves them, and layout geometry.
+  let feedbackId = "";
+  let external: string[] = [];
+
+  test.beforeEach(async ({ page, browserName }) => {
+    external = [];
+    await page.route(/^https?:\/\/evil\.test\//, (route) => route.abort());
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.protocol.startsWith("http") && url.host !== "localhost:3999") external.push(url.href);
+    });
+    const project = `e2e-${browserName}-actions`;
+    await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
+    const created = await page.request.post("http://localhost:3999/api/siteping", {
+      data: {
+        projectName: project,
+        type: "bug",
+        message: "Panel actions feedback",
+        url: "http://localhost:3999",
+        viewport: "1280x720",
+        userAgent: "Playwright",
+        authorName: "Test",
+        authorEmail: "test@test.com",
+        annotations: [],
+      },
+    });
+    feedbackId = (await created.json()).id;
+    await page.goto(`http://localhost:3999?project=${project}&panelActions=1`);
+    const s = shadow(page);
+    await s.waitFor(".sp-fab");
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="chat"]');
+    await s.click('[data-item-id="chat"]');
+    await s.waitFor(".sp-card");
+    await s.click(".sp-card");
+    await s.waitFor(".sp-detail-actions--custom");
+  });
+
+  test("renders a sanitized icon that never runs nor fetches, and safe links", async ({ page }) => {
+    // Give a hoisted <img src="x"> ample time to 404 and fire onerror, and
+    // the icon's CSS-parsed attributes time to request their resources.
+    await page.waitForTimeout(500);
+    const result = await page.evaluate(() => {
+      const root = document.querySelector("siteping-widget")!.shadowRoot!;
+      const control = (id: string) => root.querySelector<HTMLElement>(`[data-action-id="${id}"]`)!;
+      const link = (id: string) => control(id) as HTMLAnchorElement;
+      return {
+        pwned: (window as { __pwned?: boolean }).__pwned ?? false,
+        imgs: document.querySelectorAll("img").length + root.querySelectorAll("img").length,
+        icon: control("record").querySelector("svg")?.outerHTML,
+        record: control("record").tagName,
+        tracker: {
+          tag: link("tracker").tagName,
+          href: link("tracker").href,
+          target: link("tracker").target,
+          rel: link("tracker").rel,
+        },
+        mail: { href: link("long").href, target: link("long").target },
+      };
+    });
+
+    expect(result.pwned).toBe(false);
+    expect(result.imgs).toBe(0);
+    expect(external).toEqual([]);
+    expect(result.icon).toBe(
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"></path>' +
+        '<rect width="8" height="8"></rect><rect x="8" width="8" height="8"></rect>' +
+        '<rect x="16" width="8" height="8"></rect></svg>',
+    );
+    expect(result.record).toBe("BUTTON");
+    expect(result.tracker).toEqual({
+      tag: "A",
+      href: `https://tracker.example/fb/${feedbackId}`,
+      target: "_blank",
+      rel: "noopener noreferrer",
+    });
+    expect(result.mail).toEqual({ href: "mailto:dev@example.com", target: "" });
+  });
+
+  test("a pending action disables the view and hands the host a frozen feedback", async ({ page }) => {
+    const s = shadow(page);
+    await s.click('[data-action-id="record"]');
+
+    expect(await s.attr('[data-action-id="record"]', "aria-busy")).toBe("true");
+    expect(await s.attr('[data-action-id="record"]', "aria-label")).toBe("Record");
+    expect(await s.attr(".sp-detail-btn-resolve", "disabled")).not.toBeNull();
+    expect(await s.attr(".sp-detail-btn-delete", "disabled")).not.toBeNull();
+    expect(await page.evaluate(() => (window as { __panelActionCalls?: unknown }).__panelActionCalls)).toEqual([
+      { id: feedbackId, frozen: true },
+    ]);
+
+    await page.evaluate(() => (window as { __releasePanelAction?: () => void }).__releasePanelAction?.());
+    await page.waitForFunction(() => {
+      const root = document.querySelector("siteping-widget")!.shadowRoot!;
+      return !root.querySelector<HTMLButtonElement>(".sp-detail-btn-resolve")!.disabled;
+    });
+    expect(await s.attr('[data-action-id="record"]', "aria-busy")).toBeNull();
+    expect(await s.text('[data-action-id="record"]')).toBe("Record");
+  });
+
+  test("host actions wrap and truncate instead of squashing Resolve/Delete", async ({ page }) => {
+    const layout = await page.evaluate(() => {
+      const root = document.querySelector("siteping-widget")!.shadowRoot!;
+      const row = root.querySelector<HTMLElement>(".sp-detail-actions--custom")!;
+      const rowRect = row.getBoundingClientRect();
+      const longLabel = root.querySelector<HTMLElement>('[data-action-id="long"] span')!;
+      return {
+        rowOverflow: row.scrollWidth - row.clientWidth,
+        outside: [...row.children].filter((c) => c.getBoundingClientRect().right > rowRect.right + 0.5).length,
+        lines: new Set([...row.children].map((c) => Math.round(c.getBoundingClientRect().top))).size,
+        truncated: longLabel.scrollWidth > longLabel.clientWidth,
+        textOverflow: getComputedStyle(longLabel).textOverflow,
+        resolveWidth: root.querySelector(".sp-detail-btn-resolve")!.getBoundingClientRect().width,
+      };
+    });
+
+    expect(layout.rowOverflow).toBeLessThanOrEqual(0);
+    expect(layout.outside).toBe(0);
+    expect(layout.lines).toBeGreaterThan(1);
+    expect(layout.truncated).toBe(true);
+    expect(layout.textOverflow).toBe("ellipsis");
+    expect(layout.resolveWidth).toBeGreaterThan(120);
+  });
+});
+
 test.describe("Cleanup", () => {
   test("destroy() removes all injected elements", async ({ page }) => {
     await expect(page.locator("siteping-widget")).toBeAttached();

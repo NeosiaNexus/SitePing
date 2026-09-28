@@ -1,4 +1,4 @@
 {
   "title": "Widget",
-  "pages": ["index", "configuration", "screenshots", "right-click", "i18n", "anchoring"]
+  "pages": ["index", "configuration", "screenshots", "right-click", "panel-actions", "i18n", "anchoring"]
 }
