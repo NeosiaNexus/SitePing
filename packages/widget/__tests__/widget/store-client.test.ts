@@ -213,6 +213,16 @@ describe("StoreClient", () => {
       expect(rows.size).toBe(1);
     });
 
+    it("recognises the duplicate from a store bundled with its own copy of core", async () => {
+      // Every published package bundles core, so an adapter-kit store throws
+      // another StoreDuplicateError class: only its `code` matches.
+      const existing = makeFeedbackRecord();
+      vi.mocked(store.createFeedback).mockRejectedValue(Object.assign(new Error("dup"), { code: "STORE_DUPLICATE" }));
+      vi.mocked(store.findByClientId).mockResolvedValue(existing);
+
+      await expect(client.sendFeedback(samplePayload)).resolves.toMatchObject({ id: existing.id });
+    });
+
     it.each([
       ["no record carries the clientId", null],
       ["the clientId belongs to another project", makeFeedbackRecord({ projectName: "other-project" })],
