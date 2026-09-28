@@ -227,19 +227,24 @@ export function buildWebhookPayload<T extends WebhookType | undefined>(
  */
 export async function dispatchWebhook(config: WebhookConfig, feedback: FeedbackRecord): Promise<void> {
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const body = JSON.stringify(buildWebhookPayload(config.type ?? "generic", feedback));
-
-  // Build merged headers — caller-supplied entries override `Content-Type`
-  // when they explicitly need a different mime (rare for chat webhooks, but
-  // possible for some generic receivers).
-  const headers: Record<string, string> = { "Content-Type": "application/json", ...(config.headers ?? {}) };
-
-  // Use AbortSignal.timeout when available (Node 17.3+, all modern browsers).
-  // Fall back to a manual controller for environments lacking it.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
+  // Payload building stays inside the try: it can throw too (an invalid
+  // `createdAt` makes Discord's `toISOString()` throw a RangeError), and the
+  // handler drops this promise, so a rejection would go unhandled.
   try {
+    const body = JSON.stringify(buildWebhookPayload(config.type ?? "generic", feedback));
+
+    // Build merged headers — caller-supplied entries override `Content-Type`
+    // when they explicitly need a different mime (rare for chat webhooks, but
+    // possible for some generic receivers).
+    const headers: Record<string, string> = { "Content-Type": "application/json", ...(config.headers ?? {}) };
+
+    // Use AbortSignal.timeout when available (Node 17.3+, all modern browsers).
+    // Fall back to a manual controller for environments lacking it.
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+
     const response = await fetch(config.url, {
       method: "POST",
       headers,

@@ -208,6 +208,22 @@ describe("dispatchWebhook", () => {
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain("502");
   });
 
+  it("never rejects when building the payload throws — reports through onError instead", async () => {
+    // Discord's embed timestamp calls toISOString(), which throws a RangeError
+    // on an invalid date. The handler drops this promise (`void`), so a
+    // rejection would be an unhandled rejection (fatal in Node by default).
+    const onError = vi.fn();
+    const broken = { ...FEEDBACK, createdAt: new Date("not a date") };
+    await expect(
+      dispatchWebhook({ url: "https://discord.com/api/webhooks/x", type: "discord", onError }, broken),
+    ).resolves.toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledOnce();
+    const [err, id] = onError.mock.calls[0] as [Error, string];
+    expect(err).toBeInstanceOf(RangeError);
+    expect(id).toBe(FEEDBACK.id);
+  });
+
   it("logs only the webhook origin — the Slack/Discord URL path is the credential", async () => {
     fetchSpy.mockResolvedValueOnce(new Response("", { status: 404 }));
     await dispatchWebhook(
