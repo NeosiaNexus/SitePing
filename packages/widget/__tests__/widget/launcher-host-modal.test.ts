@@ -83,6 +83,8 @@ describe("launcher over a host modal", () => {
     instance = undefined;
     document.body.innerHTML = "";
     document.body.removeAttribute("style");
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it("keeps every body-level widget surface clickable", async () => {
@@ -152,6 +154,20 @@ describe("launcher over a host modal", () => {
 
     expect(pressEscape(overlay).defaultPrevented).toBe(true);
     expect(overlay.isConnected).toBe(false);
+  });
+
+  it("finds the open FAB menu inside the production closed shadow root", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const attachShadow = vi.spyOn(Element.prototype, "attachShadow");
+    instance = launch({ store, projectName: "host-modal", forceShow: true });
+    const closedRoot = attachShadow.mock.results[0]?.value as ShadowRoot;
+    expect(closedRoot.mode).toBe("closed");
+    const fab = closedRoot.querySelector<HTMLButtonElement>(".sp-fab")!;
+    fab.click();
+    fab.focus();
+
+    expect(pressEscape(fab).defaultPrevented).toBe(true);
+    expect(fab.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("hides the Escape that closes the comment popup", async () => {
