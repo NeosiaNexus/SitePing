@@ -1886,9 +1886,8 @@ describe("Panel", () => {
 
       // Only the failed item stays selected, ready for a retry.
       await vi.waitFor(() => expect(deleteBtn.disabled).toBe(false));
-      expect(
-        shadow.querySelector('[data-feedback-id="fb-2"] .sp-bulk-checkbox')!.getAttribute("aria-checked"),
-      ).toBe("true");
+      const checkbox = shadow.querySelector('[data-feedback-id="fb-2"] .sp-bulk-checkbox')!;
+      expect(checkbox.getAttribute("aria-checked")).toBe("true");
       expect(deleteBtn.textContent).toBe(`${t("bulk.delete")} 1`);
     });
 
@@ -1941,9 +1940,8 @@ describe("Panel", () => {
       });
       // Nothing was deleted: the selection survives the reload for a retry.
       await vi.waitFor(() => expect(deleteBtn.disabled).toBe(false));
-      expect(
-        shadow.querySelector('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!.getAttribute("aria-checked"),
-      ).toBe("true");
+      const checkbox = shadow.querySelector('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!;
+      expect(checkbox.getAttribute("aria-checked")).toBe("true");
     });
   });
 
