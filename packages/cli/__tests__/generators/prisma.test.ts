@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -1066,6 +1066,42 @@ model SitepingFeedback {
       writeFileSync(join(tmpDir, "prisma", "old.prisma"), sitepingModels());
 
       expect(syncPrismaModels(single).addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+    });
+
+    it("treats a project root named schema as a single-file schema", () => {
+      // A package root is not a schema folder: another app's schema or a
+      // generated client's copy under it must be neither read nor written.
+      const project = join(tmpDir, "schema");
+      const rootSchema = join(project, "schema.prisma");
+      const others = [join(project, "apps", "admin", "siteping.prisma"), join(project, "node_modules", "x.prisma")];
+      const models = sitepingModels().replace(/^\s*screenshotRegion\s+Json\?\s*\n/m, "");
+      mkdirSync(join(project, "apps", "admin"), { recursive: true });
+      mkdirSync(join(project, "node_modules"));
+      writeFileSync(join(project, "package.json"), "{}");
+      writeFileSync(rootSchema, MINIMAL_SCHEMA);
+      for (const other of others) writeFileSync(other, models);
+
+      const result = syncPrismaModels(rootSchema);
+
+      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(readFileSync(rootSchema, "utf-8")).toContain("model SitepingFeedback {");
+      for (const other of others) expect(readFileSync(other, "utf-8")).toBe(models);
+    });
+
+    it.each([
+      ["node_modules", "client"],
+      [".generated", "client"],
+    ])("ignores .prisma files under %s in a schema folder", (...segments) => {
+      const copy = join(folder, ...segments, "schema.prisma");
+      const models = sitepingModels().replace(/^\s*screenshotRegion\s+Json\?\s*\n/m, "");
+      mkdirSync(dirname(copy), { recursive: true });
+      writeFileSync(mainPath, MINIMAL_SCHEMA);
+      writeFileSync(copy, models);
+
+      const result = syncPrismaModels(mainPath);
+
+      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(readFileSync(copy, "utf-8")).toBe(models);
     });
   });
 

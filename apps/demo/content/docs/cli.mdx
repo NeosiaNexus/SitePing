@@ -99,4 +99,4 @@ When you don't pass `--schema`, the CLI probes three locations in order:
 2. `schema.prisma`
 3. `prisma/schema/schema.prisma`
 
-A schema file inside a `schema/` folder (like `prisma/schema/schema.prisma`) is treated as part of a multi-file schema, as Prisma does: every `.prisma` file in that folder counts. SitePing models are found and updated in whichever file holds them; missing ones are added to the file you pointed at.
+A schema file inside a `schema/` folder (like `prisma/schema/schema.prisma`) is treated as part of a multi-file schema, as Prisma does: every `.prisma` file in that folder and its subfolders counts, except under `node_modules` and hidden folders. SitePing models are found and updated in whichever file holds them; missing ones are added to the file you pointed at. A folder that holds a `package.json` is a project root, never a schema folder, even if it is named `schema`. A multi-file schema folder with any other name isn't detected: the CLI then only sees the file you point it at.

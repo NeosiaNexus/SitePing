@@ -1,6 +1,6 @@
 // Must run before prisma-ast: chevrotain needs Object.groupBy (Node 21+).
 import "../utils/object-group-by-polyfill.js";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import type {
   Attribute,
@@ -100,24 +100,31 @@ interface SchemaFile {
  * The parsed files of the schema at `schemaPath`, that file first. In a
  * multi-file schema folder (`prisma/schema/`, which `findPrismaSchema`
  * detects) Prisma merges every `.prisma` file under it, so a Siteping model in
- * a sibling file has to be found there rather than added again.
+ * a sibling file has to be found there rather than added again. A package
+ * root is never such a folder, even one named `schema`.
  */
 function loadSchemaFiles(schemaPath: string): [SchemaFile, ...SchemaFile[]] {
   const main = { path: schemaPath, schema: parsePrismaSchema(readSchemaSource(schemaPath)) };
-  const folder = dirname(schemaPath);
-  if (basename(folder) !== "schema") return [main];
+  const folder = resolve(dirname(schemaPath));
+  if (basename(folder) !== "schema" || existsSync(join(folder, "package.json"))) return [main];
   const siblings = prismaFilesIn(folder)
-    .filter((path) => resolve(path) !== resolve(schemaPath))
+    .filter((path) => path !== resolve(schemaPath))
     .map((path) => ({ path, schema: parsePrismaSchema(readFileSync(path, "utf-8")) }));
   return [main, ...siblings];
 }
 
-/** Every `.prisma` file under `dir`, subfolders included — as Prisma loads a schema folder. */
+/**
+ * Every `.prisma` file under `dir`, subfolders included — as Prisma loads a
+ * schema folder — except in `node_modules` and hidden folders, where only
+ * generated copies live.
+ */
 function prismaFilesIn(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true })
     .flatMap((entry) => {
       const path = join(dir, entry.name);
-      if (entry.isDirectory()) return prismaFilesIn(path);
+      if (entry.isDirectory()) {
+        return entry.name === "node_modules" || entry.name.startsWith(".") ? [] : prismaFilesIn(path);
+      }
       return extname(entry.name) === ".prisma" ? [path] : [];
     })
     .sort();
@@ -130,7 +137,7 @@ function prismaFilesIn(dir: string): string[] {
  * block's opening `{`, which moves onto its own line as a plain `//` comment:
  * in place it documents nothing, while a `///` there would document the first field.
  */
-export function parsePrismaSchema(source: string): Schema {
+function parsePrismaSchema(source: string): Schema {
   const normalized = source
     .replace(/[ \t]+(?=\r?$)/gm, "")
     .replace(
@@ -191,7 +198,7 @@ function readSchemaSource(schemaPath: string): string {
  * the datasource are looked up there too (and updated in place); missing
  * models are added to `schema`.
  */
-export function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[] = []): SchemaReconciliation {
+function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[]): SchemaReconciliation {
   const existingModelsMap = new Map<string, Model>();
   for (const item of [...siblings, schema].flatMap((file) => file.list)) {
     if (item.type === "model") {
