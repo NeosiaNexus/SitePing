@@ -88,12 +88,60 @@ export type EscapeLayerIsOpen = () => boolean;
 const escapeLayersByScope = new WeakMap<Node, Set<EscapeLayerIsOpen>>();
 
 /**
- * Shadow roots registered through {@link addSurfaceKeydownListener} or
- * {@link registerEscapeLayer}, by their host. The widget's shadow root is
- * closed, so `host.shadowRoot` is `null` and this is the only way the guard
- * reaches the element focused inside it.
+ * Shadow roots containing a scope registered through
+ * {@link addSurfaceKeydownListener} or {@link registerEscapeLayer} (the scope
+ * itself, or the root node of an element scope), by their host. The widget's
+ * shadow root is closed, so `host.shadowRoot` is `null` and this is the only
+ * way the guard reaches the element focused inside it.
  */
 const registeredShadowRootsByHost = new WeakMap<Element, ShadowRoot>();
+
+/**
+ * Element scopes registered while detached (e.g. a dialog whose listeners are
+ * added before it is appended to the shadow root), whose shadow root is not
+ * known yet. {@link resolvePendingScopeShadowRoots} settles them when the
+ * guard handles a key. Weak references so a scope that is never connected is
+ * still collected.
+ */
+const scopesAwaitingRootNode = new Set<WeakRef<Node>>();
+
+/**
+ * Record the shadow root `scope` lives in, if any.
+ *
+ * @returns `false` while `scope` is detached (its root node is neither a
+ * document nor a shadow root), so its shadow root is still unknown.
+ */
+function recordScopeShadowRoot(scope: Node): boolean {
+  const rootNode = scope.getRootNode();
+  if (rootNode instanceof ShadowRoot) {
+    registeredShadowRootsByHost.set(rootNode.host, rootNode);
+    return true;
+  }
+  return rootNode instanceof Document;
+}
+
+/**
+ * Make the shadow root containing a registered `scope` reachable by the
+ * guard: `scope` itself when it is a shadow root, or `scope.getRootNode()`
+ * when that is one (an element inside the closed shadow root, such as the
+ * FAB or the identity dialog). A detached scope is resolved lazily, once it
+ * has been connected, by {@link resolvePendingScopeShadowRoots}.
+ */
+function trackScopeShadowRoot(scope: Node): void {
+  if (!recordScopeShadowRoot(scope)) scopesAwaitingRootNode.add(new WeakRef(scope));
+}
+
+/**
+ * Settle the scopes registered while detached: record the shadow root of
+ * those connected since, and forget those collected or connected outside any
+ * shadow root. Called by the guard before it walks a keyboard event's path.
+ */
+function resolvePendingScopeShadowRoots(): void {
+  for (const scopeReference of scopesAwaitingRootNode) {
+    const scope = scopeReference.deref();
+    if (!scope || recordScopeShadowRoot(scope)) scopesAwaitingRootNode.delete(scopeReference);
+  }
+}
 
 /**
  * True when `node` is, or lives inside, a surface registered through
@@ -178,6 +226,8 @@ export function isolateFromHost(surface: HTMLElement): void {
  * `addEventListener("keydown", …)` never sees Tab while the guard is installed.
  *
  * @param scope - Widget element or shadow root the listener is attached to.
+ * An element inside the widget's closed shadow root makes that root
+ * reachable by the guard, even when registered before being appended to it.
  * @param listener - Keydown handler; may call `preventDefault()` to cancel
  * the native Tab navigation.
  */
@@ -189,7 +239,7 @@ export function addSurfaceKeydownListener(scope: HTMLElement | ShadowRoot, liste
     surfaceKeydownListeners.set(scope, listeners);
   }
   listeners.add(listener);
-  if (scope instanceof ShadowRoot) registeredShadowRootsByHost.set(scope.host, scope);
+  trackScopeShadowRoot(scope);
 }
 
 /** Remove a listener added with {@link addSurfaceKeydownListener}. */
@@ -219,7 +269,9 @@ export function removeSurfaceKeydownListener(scope: HTMLElement | ShadowRoot, li
  *
  * @param scope - Node the layer's Escape handler listens on: a widget
  * element, the widget's shadow root, or `document` for session-wide handlers
- * (the annotator).
+ * (the annotator). An element inside the widget's closed shadow root makes
+ * that root reachable by the guard, even when registered before being
+ * appended to it.
  * @param isOpen - True while the layer's Escape handler will consume Escape.
  * Called synchronously at the start of each Escape dispatch, before any
  * widget handler has run.
@@ -232,7 +284,7 @@ export function registerEscapeLayer(scope: Node, isOpen: EscapeLayerIsOpen): () 
     escapeLayersByScope.set(scope, layers);
   }
   layers.add(isOpen);
-  if (scope instanceof ShadowRoot) registeredShadowRootsByHost.set(scope.host, scope);
+  trackScopeShadowRoot(scope);
   return () => {
     escapeLayersByScope.get(scope)?.delete(isOpen);
   };
@@ -242,8 +294,8 @@ export function registerEscapeLayer(scope: Node, isOpen: EscapeLayerIsOpen): () 
  * Innermost target of a keyboard event observed at `window`. Events from a
  * closed shadow tree are retargeted to its host there, and keyboard events
  * target the focused element, so descend through each shadow root's
- * `activeElement` (open, or registered through
- * {@link addSurfaceKeydownListener}).
+ * `activeElement` (open, or containing a scope registered through
+ * {@link addSurfaceKeydownListener} or {@link registerEscapeLayer}).
  */
 function innermostKeyboardTarget(event: KeyboardEvent): Node | null {
   const [outermostVisibleTarget] = event.composedPath();
@@ -345,6 +397,7 @@ export function installHostIsolationGuard(ownerDocument: Document = document): (
   };
   const onKeyDown = (event: KeyboardEvent): void => {
     if (!isWidgetSurfaceTarget(event.target)) return;
+    if (event.key === "Escape" || event.key === "Tab") resolvePendingScopeShadowRoots();
     if (event.key === "Escape") {
       if (willWidgetConsumeEscape(event)) event.preventDefault();
     } else if (event.key === "Tab") {

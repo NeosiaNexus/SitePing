@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // The widget on top of a host modal (real Radix Dialog, see fixtures/radix-dialog.tsx).
 // Real pointer and keyboard input only: Playwright's actionability checks fail
@@ -10,15 +10,15 @@ const FAB_ACCESSIBLE_NAME = "Siteping — Feedback menu";
 /** English `popup.cancel` label: the comment popup's Cancel button name in the default locale. */
 const POPUP_CANCEL_ACCESSIBLE_NAME = "Cancel";
 
-test.beforeEach(async ({ page, browserName }) => {
-  const project = `e2e-modal-${browserName}`;
-  await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
-  await page.goto(`http://localhost:3999/modal?project=${project}`);
-  await expect(page.locator("#host-dialog")).toBeVisible();
-  await expect(page.locator(".sp-fab")).toBeAttached();
-});
-
 test.describe("Widget over a host modal", () => {
+  test.beforeEach(async ({ page, browserName }) => {
+    const project = `e2e-modal-${browserName}`;
+    await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
+    await page.goto(`http://localhost:3999/modal?project=${project}`);
+    await expect(page.locator("#host-dialog")).toBeVisible();
+    await expect(page.locator(".sp-fab")).toBeAttached();
+  });
+
   test("annotating and typing a comment keeps the modal open and the focus in the popup", async ({ page }) => {
     await page.locator(".sp-fab").click();
     await page.locator('[data-item-id="annotate"]').click();
@@ -246,6 +246,87 @@ test.describe("Widget over a host modal", () => {
 
   test("the modal still closes on a genuine outside click", async ({ page }) => {
     await page.mouse.click(40, 40);
+    await expect(page.locator("#host-dialog")).toHaveCount(0);
+  });
+});
+
+// Production mounts the widget in a closed shadow root: the host-isolation
+// guard cannot see inside it through `composedPath()` or `host.shadowRoot`, and
+// Playwright locators cannot pierce it either. The page reports NODE_ENV
+// 'production' (?closedShadow=1) and an init script keeps a reference to the
+// root for the test's own inspection only — the root stays closed for the
+// widget and the guard.
+test.describe("Widget over a host modal with its production closed shadow root", () => {
+  /** Window property holding the widget's closed shadow root, set by the init script. */
+  const CLOSED_SHADOW_ROOT_PROPERTY = "__sitepingClosedShadowRoot";
+
+  /** State of the FAB menu read from inside the closed shadow root. */
+  interface FabMenuState {
+    expanded: string | null;
+    firstItemFocused: boolean;
+  }
+
+  test.beforeEach(async ({ page, browserName }) => {
+    await page.addInitScript((rootProperty) => {
+      const attachShadow = Element.prototype.attachShadow;
+      Element.prototype.attachShadow = function attachShadowAndKeepWidgetRoot(init) {
+        const shadowRoot = attachShadow.call(this, init);
+        if (this.localName === "siteping-widget") {
+          Object.defineProperty(window, rootProperty, { value: shadowRoot, configurable: true });
+        }
+        return shadowRoot;
+      };
+    }, CLOSED_SHADOW_ROOT_PROPERTY);
+    // Keep the lazily prefetched Panel from ever loading: once loaded it
+    // registers the shadow root itself, which would hide a regression on the
+    // path where only element-scoped layers (the FAB) are registered.
+    await page.route(/\/panel-[A-Za-z0-9]+\.js$/, () => {});
+    const project = `e2e-modal-closed-${browserName}`;
+    await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
+    await page.goto(`http://localhost:3999/modal?project=${project}&closedShadow=1`);
+    await expect(page.locator("#host-dialog")).toBeVisible();
+    const shadowRootMode = await page.evaluate(
+      (rootProperty) => (window as unknown as Record<string, ShadowRoot | undefined>)[rootProperty]?.mode,
+      CLOSED_SHADOW_ROOT_PROPERTY,
+    );
+    expect(shadowRootMode).toBe("closed");
+  });
+
+  /** Center of the FAB in viewport coordinates. */
+  function readFabCenter(page: Page): Promise<{ x: number; y: number } | null> {
+    return page.evaluate((rootProperty) => {
+      const shadowRoot = (window as unknown as Record<string, ShadowRoot | undefined>)[rootProperty];
+      const box = shadowRoot?.querySelector(".sp-fab")?.getBoundingClientRect();
+      return box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null;
+    }, CLOSED_SHADOW_ROOT_PROPERTY);
+  }
+
+  /** Whether the FAB menu is expanded and its first item holds the focus. */
+  function readFabMenuState(page: Page): Promise<FabMenuState> {
+    return page.evaluate((rootProperty) => {
+      const shadowRoot = (window as unknown as Record<string, ShadowRoot | undefined>)[rootProperty];
+      return {
+        expanded: shadowRoot?.querySelector(".sp-fab")?.getAttribute("aria-expanded") ?? null,
+        firstItemFocused: !!shadowRoot && shadowRoot.activeElement === shadowRoot.querySelector(".sp-radial-item"),
+      };
+    }, CLOSED_SHADOW_ROOT_PROPERTY);
+  }
+
+  test("Escape closes the FAB menu first, then the modal, before the Panel has loaded", async ({ page }) => {
+    const fabCenter = await readFabCenter(page);
+    expect(fabCenter).not.toBeNull();
+    await page.mouse.click(fabCenter!.x, fabCenter!.y);
+    // Opening the menu focuses its first item on the next frame; wait for it
+    // so the Escape below comes from the open menu.
+    await expect.poll(() => readFabMenuState(page)).toEqual({ expanded: "true", firstItemFocused: true });
+
+    await page.keyboard.press("Escape");
+
+    await expect.poll(() => readFabMenuState(page)).toEqual({ expanded: "false", firstItemFocused: false });
+    await expect(page.locator("#host-dialog")).toBeVisible();
+
+    await page.keyboard.press("Escape");
+
     await expect(page.locator("#host-dialog")).toHaveCount(0);
   });
 });

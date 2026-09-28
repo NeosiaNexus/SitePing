@@ -46,6 +46,18 @@ describe("host isolation", () => {
     isolateFromHost(surface);
   });
 
+  /**
+   * Mount a widget surface host with an empty closed shadow root (the
+   * production widget's layout), without registering the root with the guard.
+   */
+  function mountClosedShadowSurface(): { shadowRoot: ShadowRoot; shadowHost: HTMLElement } {
+    const shadowHost = document.createElement("div");
+    const shadowRoot = shadowHost.attachShadow({ mode: "closed" });
+    document.body.appendChild(shadowHost);
+    isolateFromHost(shadowHost);
+    return { shadowRoot, shadowHost };
+  }
+
   afterEach(() => {
     for (const cleanup of cleanups.reverse()) cleanup();
     document.body.innerHTML = "";
@@ -296,6 +308,30 @@ describe("host isolation", () => {
       expect(pressEscape(shadowButton).defaultPrevented).toBe(true);
     });
 
+    it("finds layers registered on an element inside a closed shadow root", () => {
+      installGuard();
+      const { shadowRoot } = mountClosedShadowSurface();
+      const layerElement = document.createElement("button");
+      shadowRoot.appendChild(layerElement);
+      registerLayer(layerElement, () => true);
+      layerElement.focus();
+
+      expect(pressEscape(layerElement).defaultPrevented).toBe(true);
+    });
+
+    it("finds layers registered on an element before it is appended to a closed shadow root", () => {
+      installGuard();
+      const { shadowRoot } = mountClosedShadowSurface();
+      const dialog = document.createElement("div");
+      const dialogButton = document.createElement("button");
+      dialog.appendChild(dialogButton);
+      registerLayer(dialog, () => true);
+      shadowRoot.appendChild(dialog);
+      dialogButton.focus();
+
+      expect(pressEscape(dialogButton).defaultPrevented).toBe(true);
+    });
+
     it("stops handling Escape for a layer once it is unregistered", () => {
       installGuard();
       const unregister = registerEscapeLayer(surface, () => true);
@@ -381,6 +417,42 @@ describe("host isolation", () => {
 
       expect(onShadowRootKeyDown).toHaveBeenCalledTimes(1);
       expect(onDocumentKeyDown).not.toHaveBeenCalled();
+    });
+
+    it("reaches keydown listeners registered on an element inside a closed shadow root", () => {
+      const onDocumentKeyDown = vi.fn();
+      listenOnDocument("keydown", onDocumentKeyDown, true);
+      installGuard();
+      const { shadowRoot } = mountClosedShadowSurface();
+      const trapElement = document.createElement("div");
+      const trapButton = document.createElement("button");
+      trapElement.appendChild(trapButton);
+      shadowRoot.appendChild(trapElement);
+      const onTrapKeyDown = vi.fn();
+      addSurfaceKeydownListener(trapElement, onTrapKeyDown);
+      trapButton.focus();
+
+      pressTab(trapButton);
+
+      expect(onTrapKeyDown).toHaveBeenCalledTimes(1);
+      expect(onDocumentKeyDown).not.toHaveBeenCalled();
+    });
+
+    it("reaches keydown listeners registered on an element before it is appended to a closed shadow root", () => {
+      installGuard();
+      const { shadowRoot } = mountClosedShadowSurface();
+      const dialog = document.createElement("div");
+      const dialogButton = document.createElement("button");
+      dialog.appendChild(dialogButton);
+      const onDialogKeyDown = vi.fn((event: KeyboardEvent) => event.preventDefault());
+      addSurfaceKeydownListener(dialog, onDialogKeyDown);
+      shadowRoot.appendChild(dialog);
+      dialogButton.focus();
+
+      const tabKeyDown = pressTab(dialogButton);
+
+      expect(onDialogKeyDown).toHaveBeenCalledTimes(1);
+      expect(tabKeyDown.defaultPrevented).toBe(true);
     });
 
     it("keeps delivering other keys and unguarded Tab through the regular listener, once", () => {

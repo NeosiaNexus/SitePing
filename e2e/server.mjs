@@ -190,11 +190,27 @@ const server = createServer((req, res) => {
     return;
   }
 
-  // Host page with an open Radix modal — accepts ?project=xxx like "/"
+  // Host page with an open Radix modal — accepts ?project=xxx like "/" and
+  // ?closedShadow=1 (see below)
   if (url.pathname === "/modal") {
     const project = escapeHtml(url.searchParams.get("project") || "e2e-test");
+    let html = MODAL_HTML.replace("'PROJECT'", JSON.stringify(project));
+    // ?closedShadow=1 reports NODE_ENV 'production' (forceShow still mounts
+    // the widget) so the widget attaches its production closed shadow root
+    // instead of the open one used under 'test'.
+    if (url.searchParams.get("closedShadow") === "1") {
+      const productionHtml = html.replace("NODE_ENV: 'test'", "NODE_ENV: 'production'");
+      if (productionHtml === html) {
+        // The exact-string replace missed — serving the open-root page would
+        // make the closed-root regression tests vacuous.
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("closedShadow=1: failed to switch the modal page to NODE_ENV 'production'");
+        return;
+      }
+      html = productionHtml;
+    }
     res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(MODAL_HTML.replace("'PROJECT'", JSON.stringify(project)));
+    res.end(html);
     return;
   }
 
