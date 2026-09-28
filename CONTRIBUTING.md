@@ -178,7 +178,7 @@ Two implementation strategies:
   `StorePersistenceError`. Optionally implement `verifyProjectOwnership` so
   HTTP handlers can reject cross-project PATCH/DELETE.
 
-Verify with the shared conformance suite (~51 tests — the scaffold pre-wires
+Verify with the shared conformance suite (~53 tests — the scaffold pre-wires
 this file):
 
 ```ts

@@ -2,7 +2,7 @@
  * Shared conformance test suite for `SitepingStore` implementations.
  *
  * Adapters import this and run it with their store factory to verify they
- * satisfy the full store contract — no need to write the same 40+ tests
+ * satisfy the full store contract — no need to write the same 50+ tests
  * from scratch.
  *
  * @example
@@ -663,6 +663,39 @@ export function testSitepingStore(
         const statusById = Object.fromEntries(feedbacks.map((f) => [f.id, f.status]));
         expect(statusById).toEqual({ [a.id]: "in_progress", [c.id]: "wont_fix" });
       });
+
+      it("concurrent creates with distinct clientIds all persist", async () => {
+        const created = await Promise.all(
+          Array.from({ length: 4 }, () => store.createFeedback(createInput({ annotations: [] }))),
+        );
+
+        const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(feedbacks.map((f) => f.id).sort()).toEqual(created.map((f) => f.id).sort());
+      });
+
+      if (duplicateBehavior === "return") {
+        it("concurrent creates with the same clientId all return the one stored record", async () => {
+          const input = createInput({ clientId: "same-id" });
+
+          const created = await Promise.all([store.createFeedback(input), store.createFeedback(input)]);
+
+          const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+          expect(feedbacks.map((f) => f.id)).toEqual([created[0]?.id]);
+          expect(created[1]?.id).toBe(created[0]?.id);
+        });
+      } else {
+        it("concurrent creates with the same clientId store it once and reject the rest", async () => {
+          const input = createInput({ clientId: "same-id" });
+
+          const results = await Promise.allSettled([store.createFeedback(input), store.createFeedback(input)]);
+
+          const stored = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.id] : []));
+          expect(stored).toHaveLength(1);
+          for (const r of results) if (r.status === "rejected") expect(r.reason).toSatisfy(isStoreDuplicate);
+          const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+          expect(feedbacks.map((f) => f.id)).toEqual(stored);
+        });
+      }
     });
 
     // ------------------------------------------------------------------

@@ -167,7 +167,7 @@ writeFileSync(
   `import { testSitepingStore } from "@siteping/core/testing";
 import { ${className} } from "../src/index.js";
 
-// The shared conformance suite (~51 tests) verifies the full SitepingStore
+// The shared conformance suite (~53 tests) verifies the full SitepingStore
 // contract. Options: { duplicateBehavior: "return" | "throw",
 // caseInsensitiveSearch: boolean } for backends whose contract legitimately
 // varies.

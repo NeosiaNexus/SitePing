@@ -41,7 +41,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 51 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
+That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 53 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
 
 **The three primitives:**
 
@@ -131,7 +131,7 @@ Implement it whenever your store serves more than one project. When it's absent,
 
 ## Prove it: the conformance suite
 
-The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 51 tests:
+The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 53 tests:
 
 ```ts
 // __tests__/my-store.test.ts
@@ -140,6 +140,8 @@ import { MyStore } from "../src/index.js";
 
 testSitepingStore(() => new MyStore());
 ```
+
+Besides one call at a time, it fires updates, deletes and creates together in a `Promise.all` — the way the widget's bulk actions do — and checks that every write landed.
 
 The factory runs before each test and may be async, which is where you spin up a transaction or a fresh schema. Two knobs cover contract variations that are legitimately backend-specific:
 

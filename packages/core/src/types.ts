@@ -533,6 +533,11 @@ export interface FeedbackQuery {
   statuses?: readonly FeedbackStatus[] | undefined;
   search?: string | undefined;
   page?: number | undefined;
+  /**
+   * Page size. Defaults to `DEFAULT_PAGE_LIMIT` (50) and is capped at
+   * `MAX_PAGE_LIMIT` (100) — `clampPagination` implements both, and the
+   * conformance suite checks them.
+   */
   limit?: number | undefined;
   /**
    * Filter to feedbacks created on this exact URL (path). Used by the panel's
