@@ -101,11 +101,11 @@ export const store = createLibSQLSitepingStore(
 
 ## 3. Serve it
 
-The store is storage only. Mount it behind any HTTP handler that accepts a `store` — `createSitepingHandler({ store })` from `@siteping/server`, or the [Prisma adapter's handler](/docs/adapters/prisma#using-a-custom-store) — to get the same validation, auth and redaction:
+The store is storage only. Mount it behind `createSitepingHandler({ store })` from `@siteping/adapter-prisma` — the handler takes any store ([using a custom store](/docs/adapters/prisma#using-a-custom-store)) — to get the same validation, auth, CORS, redaction and webhooks:
 
 ```ts
 // app/api/siteping/route.ts
-import { createSitepingHandler } from "@siteping/server";
+import { createSitepingHandler } from "@siteping/adapter-prisma";
 import { store } from "@/lib/siteping-store";
 
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
@@ -113,6 +113,8 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   apiKey: process.env.SITEPING_API_KEY,
 });
 ```
+
+Given a `store`, the handler never touches Prisma. `@siteping/adapter-prisma` still declares `@prisma/client` as a required peer dependency, though, so npm, pnpm and Bun install it next to it ([#306](https://github.com/NeosiaNexus/SitePing/issues/306)); a store-only handler package is planned ([#314](https://github.com/NeosiaNexus/SitePing/issues/314)).
 
 ## Options
 
@@ -143,27 +145,27 @@ Both factories take the same options:
 
 ## Concurrency guarantees
 
-- **Duplicate submissions are atomic.** The store implements `createFeedbackIfAbsent`: the unique `client_id` index plus `ON CONFLICT DO NOTHING` arbitrate concurrent submissions of the same feedback, across store instances and processes. Exactly one caller gets `created: true`, so creation hooks and webhooks fire once.
+- **Duplicate submissions are atomic.** The store implements `createFeedbackIfAbsent`: the unique `client_id` index plus `ON CONFLICT DO NOTHING` arbitrate concurrent submissions of the same feedback, across store instances and processes. Exactly one caller gets `created: true`, so the handler notifies your webhooks once, whichever server instance each request reached.
 - **Annotations land with their feedback, or not at all.** On PostgreSQL the feedback and its annotations are inserted by one statement (a data-modifying CTE). On libSQL, multi-statement writes go through `db.batch`, which runs as one transaction and never holds the write lock across an `await` — your application can keep writing to the same database concurrently.
 - **Ordering is stable.** Lists come back newest first. `createdAt` is the clock value at insert time, and rows created in the same millisecond — by one store instance, several processes, or your own code inserting through the exported tables — are ordered by an insertion ordinal the database itself assigns on every insert: the internal `creation_sequence` identity on PostgreSQL, SQLite's implicit `rowid` on libSQL. A later insert always lists first, and offset pages never overlap or skip rows.
 - **`updatedAt` never precedes `createdAt`.** Status updates clamp it in SQL against the row's own timestamps, which holds across processes whose clocks disagree.
-- **Project ownership.** The store implements `verifyProjectOwnership`, so the handler answers `404` to a PATCH/DELETE addressing an id from another project. `@siteping/server` requires it when you use a project-scoped `access.authorize`.
+- **Project ownership.** The store implements `verifyProjectOwnership`, so the handler answers `404` to a PATCH/DELETE addressing an id from another project.
 
-## Internal columns and upgrades
+## Internal columns
 
-These columns are internal to the store — never part of the returned records — and were added after the first version of the tables. If you created your tables with an earlier version, **run `drizzle-kit generate` again** to add them (on libSQL, the same migration drops the `creation_sequence` column and its index that earlier versions created — the implicit `rowid` replaces them):
+The tables carry a few columns of the store's own, never part of the returned records:
 
-| Column | Table | Purpose | Existing rows |
-|---|---|---|---|
-| `position` | annotations | Integer (default `0`) keeping each feedback's annotations in submission order — `annotations[0]` is the primary anchor | Stay `0` and keep their `created_at` order |
-| `creation_sequence` | feedbacks (PostgreSQL only) | Breaks `created_at` ties: a `bigint` identity the database assigns on every insert, the store's or yours. libSQL has no such column — it orders by the implicit `rowid` | Numbered when the column is added |
-| `message_search` | feedbacks | Nullable text: the message lowercased in JavaScript, read by the text search | Stay `NULL` — backfill them, see below |
+| Column | Table | Purpose |
+|---|---|---|
+| `position` | annotations | Integer (default `0`) keeping each feedback's annotations in submission order — `annotations[0]` is the primary anchor |
+| `creation_sequence` | feedbacks (PostgreSQL only) | Breaks `created_at` ties: a `bigint` identity the database assigns on every insert, the store's or yours. libSQL has no such column — it orders by the implicit `rowid` |
+| `message_search` | feedbacks | Nullable text: the message lowercased in JavaScript, read by the text search — see below |
 
 ### Text search and non-ASCII case
 
 `getFeedbacks({ search })` — the `search` query parameter — matches the message case-insensitively with JavaScript's Unicode-aware `toLowerCase()`, the same folding as every other SitePing store: `échec` finds `Échec` and `äöü` finds `ÄÖÜ`, whatever the database's own rules. That is what `message_search` is for: SQLite's `LIKE` folds only ASCII case, and PostgreSQL's `ILIKE` folds with the column collation / `LC_CTYPE` (ASCII-only under `C`). The store fills `message_search` on insert and matches the lowercased term against it with a plain `LIKE`. Wildcards typed in the search (`%`, `_`, `\`) are matched literally.
 
-Rows without it — written before the migration, or inserted by your own code outside the store — fall back to searching `message` with the database's folding (`LIKE` on libSQL, `ILIKE` on PostgreSQL). Backfill them once so every row folds Unicode case:
+Rows without it — inserted by your own code outside the store — fall back to searching `message` with the database's folding (`LIKE` on libSQL, `ILIKE` on PostgreSQL). Backfill them once so every row folds Unicode case:
 
 ```ts
 import { eq, isNull } from "drizzle-orm";
@@ -193,6 +195,7 @@ Both entries re-export `StorePersistenceError`, `isStorePersistence`, `StoreNotF
 
 ## Limitations
 
+- **PostgreSQL and libSQL only.** There is no MySQL entry yet.
 - **libSQL only through `drizzle-orm/libsql`.** Other SQLite drivers (better-sqlite3, Cloudflare D1) are not supported.
 - **One local libSQL file shared by several processes.** SQLite runs one writer at a time: set the client's busy timeout — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — so concurrent writes queue instead of failing with `SQLITE_BUSY`.
 - **Foreign keys on libSQL.** Cascades need `PRAGMA foreign_keys = ON`, which libSQL does not guarantee, so the store deletes annotations explicitly alongside their feedback. Feedbacks you delete yourself outside the store need the same care.

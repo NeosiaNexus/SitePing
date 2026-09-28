@@ -41,8 +41,8 @@ export function createSitepingSqliteTables(names: SitepingTableNames = DEFAULT_S
       // `message` lowercased in JavaScript (`String.prototype.toLowerCase`, Unicode-aware), the
       // column the text search reads: SQLite's LIKE folds only ASCII case, so `Échec` would not
       // match `échec`. The store fills it on insert (a feedback's message never changes); rows
-      // written before this column existed, or by the host application, stay NULL and the search
-      // falls back to `message` with ASCII-only folding. Internal — never part of the feedback record.
+      // written by the host application stay NULL and the search falls back to `message` with
+      // ASCII-only folding. Internal — never part of the feedback record.
       messageSearch: text("message_search"),
     },
     (table) => [
@@ -79,8 +79,8 @@ export function createSitepingSqliteTables(names: SitepingTableNames = DEFAULT_S
       viewportH: integer("viewport_h").notNull(),
       devicePixelRatio: real("device_pixel_ratio").notNull().default(1),
       // Submission index within the feedback: `annotations[0]` is the primary anchor, and
-      // every annotation of a feedback shares one `createdAt`. Rows written before this
-      // column existed default to 0 and keep their `createdAt` order.
+      // every annotation of a feedback shares one `createdAt`. Rows the host application
+      // inserts without it default to 0 and keep their `createdAt` order.
       position: integer("position").notNull().default(0),
       createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     },

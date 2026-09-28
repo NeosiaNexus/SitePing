@@ -29,11 +29,11 @@ import { createPgSitepingStore } from "@siteping/adapter-drizzle/pg";
 const store = createPgSitepingStore(drizzle(process.env.DATABASE_URL!), { logger: console });
 ```
 
-Turso / libSQL: same shape with `createSitepingSqliteTables` and `createLibSQLSitepingStore` from `@siteping/adapter-drizzle/libsql`. Serve the store with `createSitepingHandler({ store })`.
+Turso / libSQL: same shape with `createSitepingSqliteTables` and `createLibSQLSitepingStore` from `@siteping/adapter-drizzle/libsql`. Serve the store with `createSitepingHandler({ store })` from `@siteping/adapter-prisma`.
 
 ## Documentation
 
-Schema setup and migrations (including the internal `position`, `creation_sequence` (PostgreSQL) and `message_search` columns and their backfill), options, the screenshot storage contract, concurrency guarantees and limitations: **[siteping.dev/docs/adapters/drizzle](https://siteping.dev/docs/adapters/drizzle)**.
+Schema setup and migrations, serving the store, options, the screenshot storage contract, concurrency guarantees and limitations: **[siteping.dev/docs/adapters/drizzle](https://siteping.dev/docs/adapters/drizzle)**.
 
 ## License
 

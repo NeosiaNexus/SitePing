@@ -101,11 +101,11 @@ export const store = createLibSQLSitepingStore(
 
 ## 3. Le servir
 
-Le store ne fait que stocker. Montez-le derrière n'importe quel handler HTTP qui accepte un `store` — `createSitepingHandler({ store })` de `@siteping/server`, ou le [handler de l'adapter Prisma](/fr/docs/adapters/prisma#utiliser-un-store-personnalisé) — pour obtenir la même validation, la même auth et la même redaction :
+Le store ne fait que stocker. Montez-le derrière `createSitepingHandler({ store })` de `@siteping/adapter-prisma` — le handler accepte n'importe quel store ([utiliser un store personnalisé](/fr/docs/adapters/prisma#utiliser-un-store-personnalisé)) — pour obtenir la même validation, la même auth, le même CORS, la même redaction et les mêmes webhooks :
 
 ```ts
 // app/api/siteping/route.ts
-import { createSitepingHandler } from "@siteping/server";
+import { createSitepingHandler } from "@siteping/adapter-prisma";
 import { store } from "@/lib/siteping-store";
 
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
@@ -113,6 +113,8 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   apiKey: process.env.SITEPING_API_KEY,
 });
 ```
+
+Avec un `store`, le handler ne touche jamais à Prisma. `@siteping/adapter-prisma` déclare pourtant `@prisma/client` comme dépendance pair obligatoire : npm, pnpm et Bun l'installent donc à côté ([#306](https://github.com/NeosiaNexus/SitePing/issues/306)) ; un paquet de handler sans ORM est prévu ([#314](https://github.com/NeosiaNexus/SitePing/issues/314)).
 
 ## Options
 
@@ -143,27 +145,27 @@ Les deux factories acceptent les mêmes options :
 
 ## Garanties de concurrence
 
-- **Les soumissions en double sont atomiques.** Le store implémente `createFeedbackIfAbsent` : l'index unique sur `client_id` et `ON CONFLICT DO NOTHING` arbitrent les soumissions concurrentes d'un même feedback, entre instances du store et entre processus. Un seul appelant obtient `created: true`, donc les hooks et webhooks de création ne partent qu'une fois.
+- **Les soumissions en double sont atomiques.** Le store implémente `createFeedbackIfAbsent` : l'index unique sur `client_id` et `ON CONFLICT DO NOTHING` arbitrent les soumissions concurrentes d'un même feedback, entre instances du store et entre processus. Un seul appelant obtient `created: true`, donc le handler ne notifie vos webhooks qu'une fois, quelle que soit l'instance du serveur atteinte par chaque requête.
 - **Les annotations arrivent avec leur feedback, ou pas du tout.** Sur PostgreSQL, le feedback et ses annotations sont insérés par une seule requête (une CTE qui modifie les données). Sur libSQL, les écritures en plusieurs requêtes passent par `db.batch`, qui s'exécute en une transaction et ne garde jamais le verrou d'écriture à travers un `await` — votre application peut continuer d'écrire dans la même base en parallèle.
 - **L'ordre est stable.** Les listes arrivent du plus récent au plus ancien. `createdAt` est la valeur de l'horloge à l'insertion, et les feedbacks créés dans la même milliseconde — par une instance du store, par plusieurs processus ou par votre propre code qui insère via les tables exportées — sont ordonnés par un ordinal d'insertion que la base attribue elle-même à chaque insertion : l'identité interne `creation_sequence` sur PostgreSQL, le `rowid` implicite de SQLite sur libSQL. Une insertion plus tardive apparaît toujours en premier, et les pages par offset ne se chevauchent jamais et ne sautent aucune ligne.
 - **`updatedAt` ne précède jamais `createdAt`.** Les changements de statut le bornent en SQL par les dates de la ligne elle-même, ce qui tient entre processus dont les horloges divergent.
-- **Appartenance au projet.** Le store implémente `verifyProjectOwnership`, donc le handler répond `404` à un PATCH/DELETE visant un id d'un autre projet. `@siteping/server` l'exige quand vous utilisez un `access.authorize` limité par projet.
+- **Appartenance au projet.** Le store implémente `verifyProjectOwnership`, donc le handler répond `404` à un PATCH/DELETE visant un id d'un autre projet.
 
-## Colonnes internes et mises à jour
+## Colonnes internes
 
-Ces colonnes sont internes au store — jamais présentes dans les enregistrements renvoyés — et ont été ajoutées après la première version des tables. Si vous avez créé vos tables avec une version antérieure, **relancez `drizzle-kit generate`** pour les ajouter (sur libSQL, la même migration supprime la colonne `creation_sequence` et son index créés par les versions antérieures — le `rowid` implicite les remplace) :
+Les tables portent quelques colonnes propres au store, jamais présentes dans les enregistrements renvoyés :
 
-| Colonne | Table | Rôle | Lignes existantes |
-|---|---|---|---|
-| `position` | annotations | Entier (défaut `0`) qui garde les annotations de chaque feedback dans l'ordre de soumission — `annotations[0]` est l'ancre principale | Restent à `0` et gardent leur ordre `created_at` |
-| `creation_sequence` | feedbacks (PostgreSQL uniquement) | Départage les égalités de `created_at` : une identité `bigint` que la base attribue à chaque insertion, celles du store comme les vôtres. libSQL n'a pas cette colonne — il ordonne par le `rowid` implicite | Numérotées à l'ajout de la colonne |
-| `message_search` | feedbacks | Texte nullable : le message passé en minuscules en JavaScript, lu par la recherche textuelle | Restent `NULL` — remplissez-les, voir ci-dessous |
+| Colonne | Table | Rôle |
+|---|---|---|
+| `position` | annotations | Entier (défaut `0`) qui garde les annotations de chaque feedback dans l'ordre de soumission — `annotations[0]` est l'ancre principale |
+| `creation_sequence` | feedbacks (PostgreSQL uniquement) | Départage les égalités de `created_at` : une identité `bigint` que la base attribue à chaque insertion, celles du store comme les vôtres. libSQL n'a pas cette colonne — il ordonne par le `rowid` implicite |
+| `message_search` | feedbacks | Texte nullable : le message passé en minuscules en JavaScript, lu par la recherche textuelle — voir ci-dessous |
 
 ### Recherche textuelle et casse non ASCII
 
 `getFeedbacks({ search })` — le paramètre de requête `search` — compare le message sans tenir compte de la casse avec le `toLowerCase()` de JavaScript, conscient d'Unicode, comme tous les autres stores SitePing : `échec` trouve `Échec` et `äöü` trouve `ÄÖÜ`, quelles que soient les règles de la base. C'est le rôle de `message_search` : le `LIKE` de SQLite ne replie que la casse ASCII, et l'`ILIKE` de PostgreSQL la replie selon la collation de la colonne / le `LC_CTYPE` (ASCII uniquement sous `C`). Le store remplit `message_search` à l'insertion et y compare le terme en minuscules avec un simple `LIKE`. Les jokers tapés dans la recherche (`%`, `_`, `\`) sont pris littéralement.
 
-Les lignes qui n'en ont pas — écrites avant la migration, ou insérées par votre propre code hors du store — se rabattent sur une recherche dans `message` avec le repli de casse de la base (`LIKE` sur libSQL, `ILIKE` sur PostgreSQL). Remplissez-les une fois pour que chaque ligne replie la casse Unicode :
+Les lignes qui n'en ont pas — insérées par votre propre code hors du store — se rabattent sur une recherche dans `message` avec le repli de casse de la base (`LIKE` sur libSQL, `ILIKE` sur PostgreSQL). Remplissez-les une fois pour que chaque ligne replie la casse Unicode :
 
 ```ts
 import { eq, isNull } from "drizzle-orm";
@@ -193,6 +195,7 @@ Les deux entrées réexportent `StorePersistenceError`, `isStorePersistence`, `S
 
 ## Limites
 
+- **PostgreSQL et libSQL uniquement.** Il n'y a pas encore d'entrée MySQL.
 - **libSQL uniquement via `drizzle-orm/libsql`.** Les autres drivers SQLite (better-sqlite3, Cloudflare D1) ne sont pas pris en charge.
 - **Un fichier libSQL local partagé par plusieurs processus.** SQLite n'accepte qu'un écrivain à la fois : réglez le délai d'attente du client — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — pour que les écritures concurrentes patientent au lieu d'échouer avec `SQLITE_BUSY`.
 - **Clés étrangères sur libSQL.** Les cascades exigent `PRAGMA foreign_keys = ON`, que libSQL ne garantit pas : le store supprime donc explicitement les annotations avec leur feedback. Les feedbacks que vous supprimez vous-même hors du store demandent le même soin.

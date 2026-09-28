@@ -23,10 +23,10 @@ export const FOLDED_TEXT_LIKE_OPERATOR = "LIKE" satisfies LikeOperator;
 
 /**
  * Case-insensitive substring operator per dialect, used only as the fallback
- * for rows without `message_search` (written before the column existed, or by
- * the host application). PostgreSQL's LIKE is case-sensitive, so it needs
- * ILIKE, which folds case with the column's collation / the database's
- * `LC_CTYPE` (ASCII-only under `C`). SQLite's LIKE folds only ASCII case.
+ * for rows without `message_search` (written by the host application).
+ * PostgreSQL's LIKE is case-sensitive, so it needs ILIKE, which folds case
+ * with the column's collation / the database's `LC_CTYPE` (ASCII-only under
+ * `C`). SQLite's LIKE folds only ASCII case.
  */
 export const CASE_INSENSITIVE_LIKE_OPERATOR = {
   postgres: "ILIKE",

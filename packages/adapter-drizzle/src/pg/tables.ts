@@ -51,9 +51,8 @@ export function createSitepingPgTables(names: SitepingTableNames = DEFAULT_SITEP
       // `message` lowercased in JavaScript (`String.prototype.toLowerCase`, Unicode-aware), the
       // column the text search reads: `ILIKE` folds case with the collation / `LC_CTYPE`, so under
       // `C` `Échec` would not match `échec`. The store fills it on insert (a feedback's message
-      // never changes); rows written before this column existed, or by the host application,
-      // stay NULL and the search falls back to `message ILIKE`. Internal — never part of the
-      // feedback record.
+      // never changes); rows written by the host application stay NULL and the search falls
+      // back to `message ILIKE`. Internal — never part of the feedback record.
       messageSearch: text("message_search"),
     },
     (table) => [
@@ -90,8 +89,8 @@ export function createSitepingPgTables(names: SitepingTableNames = DEFAULT_SITEP
       viewportH: integer("viewport_h").notNull(),
       devicePixelRatio: doublePrecision("device_pixel_ratio").notNull().default(1),
       // Submission index within the feedback: `annotations[0]` is the primary anchor, and
-      // every annotation of a feedback shares one `createdAt`. Rows written before this
-      // column existed default to 0 and keep their `createdAt` order.
+      // every annotation of a feedback shares one `createdAt`. Rows the host application
+      // inserts without it default to 0 and keep their `createdAt` order.
       position: integer("position").notNull().default(0),
       createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
     },
