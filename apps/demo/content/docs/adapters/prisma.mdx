@@ -98,19 +98,35 @@ model SitepingAnnotation {
 
 ## Screenshot storage
 
-By default, screenshots are stored inline as `data:` URLs in the `screenshotUrl` column — fine for trying things out, heavy for a real database. For production, plug in a `ScreenshotStorage`:
+By default, screenshots are stored inline as `data:` URLs in the `screenshotUrl` column — fine for trying things out, heavy for a real database. For production, plug in a `ScreenshotStorage`. [`@siteping/screenshot-storage`](/docs/adapters/screenshot-storage) provides one for Cloudflare R2, AWS S3 and other S3-compatible buckets, Cloudflare Images, your disk or your database:
+
+```ts
+import { createScreenshotStorage } from "@siteping/screenshot-storage";
+import { createS3ObjectStore } from "@siteping/screenshot-storage/s3";
+
+createSitepingHandler({
+  prisma,
+  screenshotStorage: createScreenshotStorage(
+    createS3ObjectStore({ endpoint, bucket, accessKeyId, secretAccessKey, publicBaseUrl }),
+  ),
+});
+```
+
+Or write your own:
 
 ```ts
 createSitepingHandler({
   prisma,
   screenshotStorage: {
-    async upload(dataUrl, { feedbackId, mimeType }) {
-      const url = await uploadToS3(dataUrl, `siteping/${feedbackId}.jpg`, mimeType);
+    async upload(dataUrl, { mimeType }) {
+      const url = await uploadToS3(dataUrl, `siteping/${crypto.randomUUID()}`, mimeType);
       return { url };
     },
   },
 });
 ```
+
+Give every upload a URL no other upload gets: a fresh random key, never one derived from `feedbackId` — here it is the client's `clientId`, which every retry resends — nor from the image's content.
 
 If an upload fails, the feedback is still saved (with `screenshotUrl: null`) and a warning is logged — a broken bucket never loses a client's comment.
 
@@ -118,7 +134,7 @@ Return an `https:` URL: the widget's detail view only renders `https:` images, p
 
 Add an optional `delete(url)` and the adapter calls it when a feedback is deleted — single `DELETE` and `deleteAll` alike — so nothing is left behind in your bucket. It is best-effort: a failing `delete` is logged and never fails the deletion (an orphaned object beats a row that refuses to go away). Inline `data:` URLs are never passed to it.
 
-It is also called when a create is rejected because its `clientId` is already stored (a retry racing the first attempt), to drop the screenshot that attempt uploaded — unless the stored feedback points at that same URL. That happens when your key is derived from `feedbackId`: the upload rewrote the stored feedback's own object, so it is kept. A screenshot whose insert failed for any other reason stays in your bucket, since a retry on another instance may be about to reference it.
+It is also called when a create is rejected because its `clientId` is already stored (a retry racing the first attempt), to drop the screenshot that attempt uploaded — unless the stored feedback points at that same URL. That happens with a key derived from `feedbackId`: the replay rewrote the stored feedback's own object, so it is kept — and replaced its image, which a random key avoids. A screenshot whose insert failed for any other reason stays in your bucket, since a retry on another instance may be about to reference it.
 
 ## Using a custom store
 

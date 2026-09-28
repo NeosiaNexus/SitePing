@@ -1,0 +1,138 @@
+{
+  "name": "@siteping/screenshot-storage",
+  "version": "0.0.0",
+  "description": "Screenshot storage for Siteping — Cloudflare Images, any S3-compatible bucket, your database (Drizzle: PostgreSQL, Turso/libSQL), the local filesystem, memory, or your own backend",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./memory": {
+      "import": {
+        "types": "./dist/memory.d.ts",
+        "default": "./dist/memory.js"
+      },
+      "require": {
+        "types": "./dist/memory.d.cts",
+        "default": "./dist/memory.cjs"
+      }
+    },
+    "./filesystem": {
+      "import": {
+        "types": "./dist/filesystem.d.ts",
+        "default": "./dist/filesystem.js"
+      },
+      "require": {
+        "types": "./dist/filesystem.d.cts",
+        "default": "./dist/filesystem.cjs"
+      }
+    },
+    "./cloudflare-images": {
+      "import": {
+        "types": "./dist/cloudflare-images.d.ts",
+        "default": "./dist/cloudflare-images.js"
+      },
+      "require": {
+        "types": "./dist/cloudflare-images.d.cts",
+        "default": "./dist/cloudflare-images.cjs"
+      }
+    },
+    "./s3": {
+      "import": {
+        "types": "./dist/s3.d.ts",
+        "default": "./dist/s3.js"
+      },
+      "require": {
+        "types": "./dist/s3.d.cts",
+        "default": "./dist/s3.cjs"
+      }
+    },
+    "./drizzle-pg": {
+      "import": {
+        "types": "./dist/drizzle-pg.d.ts",
+        "default": "./dist/drizzle-pg.js"
+      },
+      "require": {
+        "types": "./dist/drizzle-pg.d.cts",
+        "default": "./dist/drizzle-pg.cjs"
+      }
+    },
+    "./drizzle-libsql": {
+      "import": {
+        "types": "./dist/drizzle-libsql.d.ts",
+        "default": "./dist/drizzle-libsql.js"
+      },
+      "require": {
+        "types": "./dist/drizzle-libsql.d.cts",
+        "default": "./dist/drizzle-libsql.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsup && node ../../scripts/fix-dts.mjs dist",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "siteping",
+    "screenshot",
+    "storage",
+    "cloudflare-images",
+    "s3",
+    "r2",
+    "filesystem",
+    "typescript",
+    "drizzle",
+    "postgres",
+    "turso",
+    "libsql"
+  ],
+  "author": "neosianexus",
+  "license": "MIT",
+  "homepage": "https://siteping.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NeosiaNexus/SitePing.git",
+    "directory": "packages/screenshot-storage"
+  },
+  "bugs": {
+    "url": "https://github.com/NeosiaNexus/SitePing/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "drizzle-orm": ">=0.45.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-orm": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@aws-crypto/sha256-js": "^5.2.0",
+    "@electric-sql/pglite": "^0.5.8",
+    "@libsql/client": "^0.18.0",
+    "@siteping/core": "workspace:*",
+    "@smithy/signature-v4": "^5.7.4",
+    "drizzle-kit": "^0.31.11",
+    "drizzle-orm": "^0.45.3"
+  }
+}

@@ -10,6 +10,7 @@ packages/adapter-memory/ @NeosiaNexus
 packages/adapter-localstorage/ @NeosiaNexus
 packages/adapter-kit/ @NeosiaNexus
 packages/server/    @NeosiaNexus
+packages/screenshot-storage/ @NeosiaNexus
 packages/cli/       @NeosiaNexus
 packages/core/      @NeosiaNexus
 

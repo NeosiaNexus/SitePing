@@ -40,4 +40,4 @@ Screenshot capture is best-effort by design: if the rendering engine fails to lo
 
 ## Where the image goes
 
-By default the JPEG travels inline (a `data:` URL, capped at 1.5 MB) and is stored as-is by the adapter. That's fine to start; for production volume, configure a [`screenshotStorage`](/docs/adapters/prisma#screenshot-storage) on the server adapter to upload images to S3/R2/GCS and store only the URL.
+By default the JPEG travels inline (a `data:` URL, capped at 1.5 MB) and is stored as-is by the adapter. That's fine to start; for production volume, give your store a `screenshotStorage`: images then go to Cloudflare R2, AWS S3, Cloudflare Images, your database or your disk, and the feedback keeps only their URL. [`@siteping/screenshot-storage`](/docs/adapters/screenshot-storage) provides one ready to use.

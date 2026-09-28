@@ -59,7 +59,8 @@
     "@siteping/server": "workspace:^"
   },
   "devDependencies": {
-    "@siteping/core": "workspace:*"
+    "@siteping/core": "workspace:*",
+    "@siteping/screenshot-storage": "workspace:*"
   },
   "peerDependencies": {
     "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0"

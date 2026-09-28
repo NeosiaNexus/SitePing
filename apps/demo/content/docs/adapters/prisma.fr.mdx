@@ -98,19 +98,35 @@ model SitepingAnnotation {
 
 ## Stockage des captures
 
-Par défaut, les captures sont stockées en ligne sous forme d'URL `data:` dans la colonne `screenshotUrl` — parfait pour essayer, lourd pour une vraie base. En production, branchez un `ScreenshotStorage` :
+Par défaut, les captures sont stockées en ligne sous forme d'URL `data:` dans la colonne `screenshotUrl` — parfait pour essayer, lourd pour une vraie base. En production, branchez un `ScreenshotStorage`. [`@siteping/screenshot-storage`](/fr/docs/adapters/screenshot-storage) en fournit un pour Cloudflare R2, AWS S3 et les autres buckets compatibles S3, Cloudflare Images, votre disque ou votre base de données :
+
+```ts
+import { createScreenshotStorage } from "@siteping/screenshot-storage";
+import { createS3ObjectStore } from "@siteping/screenshot-storage/s3";
+
+createSitepingHandler({
+  prisma,
+  screenshotStorage: createScreenshotStorage(
+    createS3ObjectStore({ endpoint, bucket, accessKeyId, secretAccessKey, publicBaseUrl }),
+  ),
+});
+```
+
+Ou écrivez le vôtre :
 
 ```ts
 createSitepingHandler({
   prisma,
   screenshotStorage: {
-    async upload(dataUrl, { feedbackId, mimeType }) {
-      const url = await uploadToS3(dataUrl, `siteping/${feedbackId}.jpg`, mimeType);
+    async upload(dataUrl, { mimeType }) {
+      const url = await uploadToS3(dataUrl, `siteping/${crypto.randomUUID()}`, mimeType);
       return { url };
     },
   },
 });
 ```
+
+Donnez à chaque envoi une URL qu'aucun autre envoi n'obtient : une clé aléatoire neuve, jamais dérivée de `feedbackId` — ici c'est le `clientId` du client, que chaque nouvel essai renvoie — ni du contenu de l'image.
 
 Si un envoi échoue, le feedback est quand même enregistré (avec `screenshotUrl: null`) et un avertissement est journalisé — un bucket cassé ne fait jamais perdre le commentaire d'un client.
 
@@ -118,7 +134,7 @@ Renvoyez une URL `https:` : la vue détail du widget n'affiche que les images `h
 
 Ajoutez un `delete(url)` optionnel et l'adapter l'appelle à la suppression d'un feedback — `DELETE` unitaire comme `deleteAll` — pour ne rien laisser traîner dans votre bucket. C'est du meilleur effort : un `delete` qui échoue est journalisé et ne fait jamais échouer la suppression (un objet orphelin vaut mieux qu'une ligne qui refuse de partir). Les URL `data:` en ligne ne lui sont jamais passées.
 
-Il est aussi appelé quand une création est refusée parce que son `clientId` est déjà enregistré (un nouvel essai en concurrence avec le premier), pour supprimer la capture envoyée par cette tentative — sauf si le feedback enregistré pointe vers cette même URL. C'est le cas quand votre clé dérive de `feedbackId` : l'envoi a réécrit l'objet du feedback enregistré, qui est donc conservé. Une capture dont l'insertion a échoué pour une autre raison reste dans votre bucket, car un nouvel essai sur une autre instance peut être sur le point de la référencer.
+Il est aussi appelé quand une création est refusée parce que son `clientId` est déjà enregistré (un nouvel essai en concurrence avec le premier), pour supprimer la capture envoyée par cette tentative — sauf si le feedback enregistré pointe vers cette même URL. C'est le cas avec une clé dérivée de `feedbackId` : le nouvel essai a réécrit l'objet du feedback enregistré, qui est donc conservé — et a remplacé son image, ce qu'une clé aléatoire évite. Une capture dont l'insertion a échoué pour une autre raison reste dans votre bucket, car un nouvel essai sur une autre instance peut être sur le point de la référencer.
 
 ## Utiliser un store personnalisé
 

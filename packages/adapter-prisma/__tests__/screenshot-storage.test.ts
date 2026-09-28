@@ -1,4 +1,6 @@
 import { type ScreenshotStorage, StoreDuplicateError } from "@siteping/core";
+import { createScreenshotStorage } from "@siteping/screenshot-storage";
+import { createMemoryObjectStore } from "@siteping/screenshot-storage/memory";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaStore } from "../src/index.js";
 import { fakePrisma } from "./fake-prisma.js";
@@ -331,5 +333,59 @@ describe("PrismaStore — upload cleanup after a failed insert", () => {
     await expect(store.createFeedback(input())).rejects.toThrow(StoreDuplicateError);
 
     expect(storage.delete).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// End to end with @siteping/screenshot-storage, whose keys are random per upload
+// ---------------------------------------------------------------------------
+
+describe("PrismaStore — with @siteping/screenshot-storage", () => {
+  /** An 8-byte PNG signature: a valid base64 image data URL. */
+  const PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgo=";
+
+  function open() {
+    const objectStore = createMemoryObjectStore({ publicBaseUrl: "https://app.example.com/api/siteping/screenshots" });
+    const screenshotStorage = createScreenshotStorage(objectStore, { logger: { warn: vi.fn() } });
+    return { objectStore, store: new PrismaStore(fakePrisma(), { screenshotStorage }) };
+  }
+
+  it("stores the object under a key the clientId never enters, and removes it with the feedback", async () => {
+    const { objectStore, store } = open();
+
+    const record = await store.createFeedback(createInput({ screenshotDataUrl: PNG_DATA_URL, clientId: "client-1" }));
+    const key = objectStore.keyFromUrl(record.screenshotUrl ?? "");
+
+    expect(key).toMatch(/^siteping-[a-f0-9]{32}\.png$/);
+    expect(objectStore.keys()).toEqual([key]);
+
+    await store.deleteFeedback(record.id);
+    expect(objectStore.keys()).toEqual([]);
+  });
+
+  it("keeps the stored submission's object and removes only the other's when two submissions of one clientId race", async () => {
+    const { objectStore, store } = open();
+    const input = () => createInput({ screenshotDataUrl: PNG_DATA_URL, clientId: "client-1" });
+
+    const [first, second] = await Promise.allSettled([store.createFeedback(input()), store.createFeedback(input())]);
+    const results = [first, second];
+    const stored = results.find((result) => result.status === "fulfilled");
+    const refused = results.find((result) => result.status === "rejected");
+
+    expect(refused?.reason).toBeInstanceOf(StoreDuplicateError);
+    const storedUrl = stored?.status === "fulfilled" ? stored.value.screenshotUrl : null;
+    expect((await store.findByClientId("client-1"))?.screenshotUrl).toBe(storedUrl);
+    expect(objectStore.keys()).toEqual([objectStore.keyFromUrl(storedUrl ?? "")]);
+  });
+
+  it("removes every object of a project with deleteAllFeedbacks", async () => {
+    const { objectStore, store } = open();
+    await store.createFeedback(createInput({ screenshotDataUrl: PNG_DATA_URL, clientId: "client-1" }));
+    await store.createFeedback(createInput({ screenshotDataUrl: PNG_DATA_URL, clientId: "client-2" }));
+    expect(objectStore.keys()).toHaveLength(2);
+
+    await store.deleteAllFeedbacks("test");
+
+    expect(objectStore.keys()).toEqual([]);
   });
 });
