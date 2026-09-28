@@ -90,6 +90,42 @@ describe("LocalStorageStore specific", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Concurrency — the widget's bulk actions fire every mutation at once
+  // -----------------------------------------------------------------------
+
+  describe("concurrent mutations", () => {
+    async function seed() {
+      const created = [];
+      for (const clientId of ["a", "b", "c"]) created.push(await store.createFeedback({ ...input, clientId }));
+      return created;
+    }
+
+    it("a concurrent bulk delete removes every record from localStorage", async () => {
+      const created = await seed();
+
+      await Promise.all(created.map((f) => store.deleteFeedback(f.id)));
+
+      expect(JSON.parse(localStorage.getItem("test_feedbacks")!)).toEqual([]);
+    });
+
+    it("a concurrent bulk resolve persists every status change", async () => {
+      const created = await seed();
+
+      await Promise.all(created.map((f) => store.updateFeedback(f.id, { status: "resolved", resolvedAt: new Date() })));
+
+      const store2 = new LocalStorageStore({ key: "test_feedbacks" });
+      const { feedbacks } = await store2.getFeedbacks({ projectName: "test-project" });
+      expect(feedbacks.map((f) => f.status)).toEqual(["resolved", "resolved", "resolved"]);
+    });
+
+    it("concurrent creates are all persisted", async () => {
+      await Promise.all([store.createFeedback(input), store.createFeedback({ ...input, clientId: "c2" })]);
+
+      expect(JSON.parse(localStorage.getItem("test_feedbacks")!)).toHaveLength(2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Date round-trip
   // -----------------------------------------------------------------------
 

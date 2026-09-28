@@ -142,7 +142,9 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * The engine implements the whole store contract: clientId dedup (idempotent
  * create), newest-first ordering, the standard filter/pagination pipeline,
  * `StoreNotFoundError` on missing update/delete, project-scoped bulk delete,
- * and `verifyProjectOwnership`. The snapshot returned by `load` is never
+ * and `verifyProjectOwnership`. Mutations are serialized per engine, so
+ * concurrent calls (e.g. a `Promise.all` bulk delete) never overwrite each
+ * other's snapshot; reads are not queued. The snapshot returned by `load` is never
  * mutated: every write hands `persist` a new array, so a failed write leaves
  * a cached snapshot exactly as it was. When `persist` fails during `createFeedback`
  * and the record carries an inline screenshot, the engine retries once
@@ -167,6 +169,26 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * ```
  */
 export function createCollectionStore(backend: CollectionStoreBackend): CollectionStore {
+  // Every mutation is a load → modify → persist cycle over the WHOLE
+  // snapshot, so two interleaved mutations would start from the same
+  // snapshot and the last persist would silently drop the other's change
+  // (the widget's bulk resolve/delete fires them all with `Promise.all`).
+  // Mutations therefore run one at a time through this queue; `tail` never
+  // rejects, so a failed mutation doesn't stall the ones queued after it.
+  let tail: Promise<unknown> = Promise.resolve();
+  function mutate<T>(mutation: (feedbacks: FeedbackRecord[]) => Promise<T>): Promise<T> {
+    const result = tail.then(() => {
+      // A sync snapshot goes to the mutation without an `await`, so on a sync
+      // backend (memory, localStorage) load → persist is one uninterrupted
+      // step: a write outside the queue, like `MemoryStore.clear()`, can't
+      // land in between and be undone by a persist of the older snapshot.
+      const loaded = backend.load();
+      return Array.isArray(loaded) ? mutation(loaded) : loaded.then(mutation);
+    });
+    tail = result.catch(() => {});
+    return result;
+  }
+
   // Every mutation below builds a NEW array for `persist` instead of editing
   // the loaded one in place. A backend whose `load()` serves a live cache (an
   // in-memory array, a KV read-through) would otherwise see the change before
@@ -174,28 +196,27 @@ export function createCollectionStore(backend: CollectionStoreBackend): Collecti
   // stays visible, and the widget's retry of the same clientId dedups against
   // it instead of being written for real.
   return {
-    async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
-      const feedbacks = await backend.load();
+    createFeedback: (data: FeedbackCreateInput): Promise<FeedbackRecord> =>
+      mutate(async (feedbacks) => {
+        // ClientId dedup — idempotent
+        const existing = feedbacks.find((f) => f.clientId === data.clientId);
+        if (existing) return existing;
 
-      // ClientId dedup — idempotent
-      const existing = feedbacks.find((f) => f.clientId === data.clientId);
-      if (existing) return existing;
+        const record = buildFeedbackRecord(data, {
+          id: backend.generateId(),
+          annotationId: () => backend.generateId(),
+        });
 
-      const record = buildFeedbackRecord(data, {
-        id: backend.generateId(),
-        annotationId: () => backend.generateId(),
-      });
-
-      const next = [record, ...feedbacks];
-      try {
-        await backend.persist(next);
-      } catch (err) {
-        if (!record.screenshotUrl) throw err;
-        record.screenshotUrl = null;
-        await backend.persist(next);
-      }
-      return record;
-    },
+        const next = [record, ...feedbacks];
+        try {
+          await backend.persist(next);
+        } catch (err) {
+          if (!record.screenshotUrl) throw err;
+          record.screenshotUrl = null;
+          await backend.persist(next);
+        }
+        return record;
+      }),
 
     async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
       return applyFeedbackFilters(await backend.load(), query);
@@ -205,32 +226,32 @@ export function createCollectionStore(backend: CollectionStoreBackend): Collecti
       return (await backend.load()).find((f) => f.clientId === clientId) ?? null;
     },
 
-    async updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
-      const feedbacks = await backend.load();
-      const current = feedbacks.find((f) => f.id === id);
-      if (!current) throw new StoreNotFoundError();
+    updateFeedback: (id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> =>
+      mutate(async (feedbacks) => {
+        const current = feedbacks.find((f) => f.id === id);
+        if (!current) throw new StoreNotFoundError();
 
-      const updated: FeedbackRecord = {
-        ...current,
-        status: data.status,
-        resolvedAt: data.resolvedAt,
-        updatedAt: new Date(),
-      };
-      await backend.persist(feedbacks.map((f) => (f === current ? updated : f)));
-      return updated;
-    },
+        const updated: FeedbackRecord = {
+          ...current,
+          status: data.status,
+          resolvedAt: data.resolvedAt,
+          updatedAt: new Date(),
+        };
+        await backend.persist(feedbacks.map((f) => (f === current ? updated : f)));
+        return updated;
+      }),
 
-    async deleteFeedback(id: string): Promise<void> {
-      const feedbacks = await backend.load();
-      if (!feedbacks.some((f) => f.id === id)) throw new StoreNotFoundError();
+    deleteFeedback: (id: string): Promise<void> =>
+      mutate(async (feedbacks) => {
+        if (!feedbacks.some((f) => f.id === id)) throw new StoreNotFoundError();
 
-      await backend.persist(feedbacks.filter((f) => f.id !== id));
-    },
+        await backend.persist(feedbacks.filter((f) => f.id !== id));
+      }),
 
-    async deleteAllFeedbacks(projectName: string): Promise<void> {
-      const feedbacks = await backend.load();
-      await backend.persist(feedbacks.filter((f) => f.projectName !== projectName));
-    },
+    deleteAllFeedbacks: (projectName: string): Promise<void> =>
+      mutate(async (feedbacks) => {
+        await backend.persist(feedbacks.filter((f) => f.projectName !== projectName));
+      }),
 
     async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
       const fb = (await backend.load()).find((f) => f.id === id);
