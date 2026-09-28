@@ -2459,6 +2459,89 @@ describe("Panel", () => {
       expect(card.scrollIntoView).toHaveBeenCalled();
       expect(card.classList.contains("sp-anim-flash")).toBe(true);
     });
+
+    describe("while the list loads", () => {
+      const scrollIntoView = vi.fn();
+      const findCard = (id: string) => shadow.querySelector<HTMLElement>(`[data-feedback-id="${id}"]`);
+      /** What markers.ts does on a marker click: open the panel, then ask it to reveal the card. */
+      const clickMarker = (feedbackId: string) => {
+        bus.emit("panel:toggle", true);
+        document.dispatchEvent(new CustomEvent("sp-marker-click", { detail: { feedbackId } }));
+      };
+      const deferLoad = () => {
+        let resolve!: (value: { feedbacks: FeedbackResponse[]; total: number }) => void;
+        apiClient.getFeedbacks.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+        return resolve;
+      };
+
+      const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+      beforeEach(() => {
+        scrollIntoView.mockClear();
+        Element.prototype.scrollIntoView = scrollIntoView; // jsdom lacks it
+      });
+
+      afterEach(() => {
+        Element.prototype.scrollIntoView = originalScrollIntoView;
+      });
+
+      it("a marker click that opens the panel flashes its card once the list has rendered", async () => {
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-marker" })], total: 1 });
+
+        clickMarker("fb-marker");
+
+        await vi.waitFor(() => expect(findCard("fb-marker")).not.toBeNull());
+        const card = findCard("fb-marker")!;
+        expect(card.classList.contains("sp-anim-flash")).toBe(true);
+        expect(scrollIntoView.mock.contexts).toContain(card);
+      });
+
+      it("a marker click that re-opens the panel flashes the reloaded card, not the one it replaces", async () => {
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-marker" })], total: 1 });
+        await panel.open();
+        panel.close();
+        const staleCard = findCard("fb-marker")!;
+
+        clickMarker("fb-marker");
+
+        expect(staleCard.classList.contains("sp-anim-flash")).toBe(false);
+        await vi.waitFor(() => expect(findCard("fb-marker")).not.toBe(staleCard));
+        expect(findCard("fb-marker")!.classList.contains("sp-anim-flash")).toBe(true);
+      });
+
+      it("drops the marker click when the panel closes before the list renders", async () => {
+        const resolveLoad = deferLoad();
+        clickMarker("fb-marker");
+        panel.close();
+
+        resolveLoad({ feedbacks: [makeFeedback({ id: "fb-marker" })], total: 1 });
+
+        await vi.waitFor(() => expect(findCard("fb-marker")).not.toBeNull());
+        expect(findCard("fb-marker")!.classList.contains("sp-anim-flash")).toBe(false);
+        expect(scrollIntoView).not.toHaveBeenCalled();
+      });
+
+      it("drops the marker click once a load renders without its card", async () => {
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-a" })], total: 1 });
+        await panel.open();
+
+        const resolveReload = deferLoad();
+        const reloading = panel.refresh();
+        document.dispatchEvent(new CustomEvent("sp-marker-click", { detail: { feedbackId: "fb-b" } }));
+        resolveReload({ feedbacks: [makeFeedback({ id: "fb-a" })], total: 1 });
+        await reloading;
+
+        // A later load that does list it must not flash it out of the blue
+        apiClient.getFeedbacks.mockResolvedValue({
+          feedbacks: [makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-b" })],
+          total: 2,
+        });
+        await panel.refresh();
+
+        expect(findCard("fb-b")!.classList.contains("sp-anim-flash")).toBe(false);
+        expect(scrollIntoView).not.toHaveBeenCalled();
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
