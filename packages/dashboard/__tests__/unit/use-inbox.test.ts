@@ -936,6 +936,81 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
     expect(result.current.counts).toMatchObject({ all: 6, open: 3, resolved: 1 });
   });
 
+  it("an earlier failure never rebases onto a change started after a later success", async () => {
+    const { source, result } = await mountDemo();
+    act(() => result.current.setStatus("all"));
+    await waitFor(() => expect(result.current.items).toHaveLength(6));
+    await settle();
+    const heldA = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => heldA.promise);
+
+    let a!: Promise<unknown>;
+    act(() => {
+      a = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      await result.current.changeStatus("r1", "open");
+    });
+    const heldD = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => heldD.promise);
+    let d!: Promise<unknown>;
+    act(() => {
+      d = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      heldA.reject(new Error("a failed"));
+      await a;
+    });
+    await act(async () => {
+      heldD.reject(new Error("d failed"));
+      await d;
+    });
+
+    expect(result.current.items.find((r) => r.id === "r1")?.status).toBe("open");
+    expect(result.current.counts).toMatchObject({ all: 6, open: 3, resolved: 1 });
+  });
+
+  it("leaves no settled mutation behind to hide its row from loadMore", async () => {
+    const source = makeSource([
+      makeRecord({ id: "q", status: "resolved", createdAt: new Date("2026-07-20T10:09:00Z") }),
+      makeRecord({ id: "p", status: "open", createdAt: new Date("2026-07-20T10:08:00Z") }),
+    ]);
+    const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize: 1 }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.setStatus("all"));
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["q"]));
+    await settle();
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(ids(result.current.items)).toEqual(["q", "p"]);
+
+    // Z, A, B on p: A fails (rebased onto B), B fails as the latest, then Z fails.
+    const held = [deferred<FeedbackRecord>(), deferred<FeedbackRecord>(), deferred<FeedbackRecord>()] as const;
+    for (const gate of held) source.setStatus.mockImplementationOnce(() => gate.promise);
+    const runs: Promise<unknown>[] = [];
+    for (const next of ["resolved", "open", "resolved"] as const) {
+      act(() => {
+        runs.push(result.current.changeStatus("p", next).catch((e: unknown) => e));
+      });
+    }
+    for (const index of [1, 2, 0]) {
+      await act(async () => {
+        held[index]?.reject(new Error("patch failed"));
+        await runs[index];
+      });
+    }
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(ids(result.current.items)).toEqual(["q", "p"]);
+    expect(result.current.hasMore).toBe(false);
+  });
+
   it("a failed change keeps a refresh that was already in flight when it started", async () => {
     const { source, result } = await mountDemo();
     const r0 = makeRecord({ id: "r0", status: "open", createdAt: new Date("2026-07-20T10:07:00Z") });
