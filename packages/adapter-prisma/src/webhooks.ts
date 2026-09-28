@@ -273,7 +273,20 @@ function reportError(config: WebhookConfig, err: Error, feedbackId: string): voi
     }
     return;
   }
-  console.warn(`[siteping] webhook to ${config.url} failed for feedback ${feedbackId}: ${err.message}`);
+  console.warn(`[siteping] webhook to ${webhookOrigin(config.url)} failed for feedback ${feedbackId}: ${err.message}`);
+}
+
+/**
+ * The part of a webhook URL that is safe to log. Slack and Discord embed the
+ * credential in the path (`hooks.slack.com/services/T…/B…/<token>`), and any
+ * URL may carry userinfo — only the origin identifies the target harmlessly.
+ */
+function webhookOrigin(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "<invalid URL>";
+  }
 }
 
 /**

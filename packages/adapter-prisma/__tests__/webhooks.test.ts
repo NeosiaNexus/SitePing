@@ -208,6 +208,19 @@ describe("dispatchWebhook", () => {
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain("502");
   });
 
+  it("logs only the webhook origin — the Slack/Discord URL path is the credential", async () => {
+    fetchSpy.mockResolvedValueOnce(new Response("", { status: 404 }));
+    await dispatchWebhook(
+      { url: "https://hooks.slack.com/services/T0000/B0000/XXXXSECRETTOKEN", type: "slack" },
+      FEEDBACK,
+    );
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const logged = String(warnSpy.mock.calls[0]?.[0]);
+    expect(logged).toContain("https://hooks.slack.com");
+    expect(logged).not.toContain("XXXXSECRETTOKEN");
+    expect(logged).not.toContain("/services/");
+  });
+
   it("aborts the fetch when the per-webhook timeout elapses", async () => {
     // Spy on fetch so we observe the signal and never resolve.
     let abortReason: unknown;
