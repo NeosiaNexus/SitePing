@@ -667,7 +667,7 @@ model SitepingFeedback {
   });
 
   // -----------------------------------------------------------------------
-  // User-owned parts of a Siteping field (@map, @ignore, relation name, comment)
+  // User-owned parts of a Siteping field (@map, relation name, comment)
   // -----------------------------------------------------------------------
 
   describe("user-owned field parts", () => {
@@ -681,11 +681,11 @@ model SitepingFeedback {
       expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
     });
 
-    it("keeps @map, @ignore and the trailing comment when rewriting a drifted field", () => {
+    it("keeps @map and the trailing comment when rewriting a drifted field", () => {
       // message lost its @db.Text — the rewrite restores it and nothing else.
       const schema = syncedSchema().replace(
         /^(\s*)message\s+String\s+@db\.Text$/m,
-        '$1message String @map("body") @ignore // client text',
+        '$1message String @map("body") // client text',
       );
       writeFileSync(schemaPath, schema);
 
@@ -695,8 +695,22 @@ model SitepingFeedback {
         { model: "SitepingFeedback", field: "message", action: "updated", detail: "+@db.Text" },
       ]);
       expect(readFileSync(schemaPath, "utf-8")).toMatch(
-        /^\s*message\s+String\s+@db\.Text @map\("body"\) @ignore \/\/ client text$/m,
+        /^\s*message\s+String\s+@db\.Text @map\("body"\) \/\/ client text$/m,
       );
+    });
+
+    it("removes an @ignore from a Siteping field", () => {
+      // @ignore drops the field from Prisma Client, but the adapter writes
+      // every Siteping column: each feedback submission would fail.
+      const synced = syncedSchema();
+      writeFileSync(schemaPath, synced.replace(/^(\s*url\s+String)$/m, "$1 @ignore"));
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([
+        { model: "SitepingFeedback", field: "url", action: "updated", detail: "-@ignore" },
+      ]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(synced);
     });
 
     it("keeps a named relation on both sides", () => {

@@ -301,16 +301,15 @@ function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[]): S
 }
 
 // ── User-owned parts of a Siteping field ───────────────────────────────
-// The column name (`@map`), `@ignore`, the relation name, constraint names
-// (`map:` arguments) and the field's comment belong to the user: they're never
+// The column name (`@map`), the relation name, constraint names (`map:`
+// arguments) and the field's comment belong to the user: they're never
 // compared, and a rewrite carries them over. Dropping a `@map` makes
 // `prisma db push` rename/drop the column; dropping a relation name on one
-// side only leaves the schema invalid.
-
-const USER_OWNED_ATTRIBUTES: ReadonlySet<string> = new Set(["map", "ignore"]);
+// side only leaves the schema invalid. `@ignore` is drift, not the user's:
+// it hides the field from Prisma Client, and the adapter writes every column.
 
 function isUserOwnedAttribute(attr: Attribute): boolean {
-  return !attr.group && USER_OWNED_ATTRIBUTES.has(attr.name);
+  return !attr.group && attr.name === "map";
 }
 
 function isRelation(attr: Attribute): boolean {
