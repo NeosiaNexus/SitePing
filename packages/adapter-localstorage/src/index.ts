@@ -1,6 +1,8 @@
 import {
   type AnnotationRecord,
   createCollectionStore,
+  FEEDBACK_STATUSES,
+  FEEDBACK_TYPES,
   type FeedbackCreateInput,
   type FeedbackPage,
   type FeedbackQuery,
@@ -39,12 +41,12 @@ export interface LocalStorageStoreOptions {
  *
  * Unreadable data is never silently destroyed. Records are revived leniently
  * (a missing `annotations` list becomes `[]`), and an entry that can't be
- * revived at all (not an object, no string `id`) is skipped without hiding
- * the others. When the stored blob was not fully readable — unparsable JSON,
- * not an array, or skipped entries — the next write first copies the raw
- * blob to `<key>.corrupt` (e.g. `siteping_feedbacks.corrupt`, replacing any
- * earlier backup) and only then overwrites `<key>`; if the backup can't be
- * written, that write throws `StorePersistenceError` and `<key>` is left as is.
+ * revived (see `isRevivable`) is skipped without hiding the others. Before
+ * the next write replaces `<key>`, whatever was skipped — those entries, or
+ * the whole raw blob when it isn't a JSON array — is appended to the JSON
+ * array under `<key>.corrupt` (e.g. `siteping_feedbacks.corrupt`), next to
+ * any earlier backup; if that copy can't be written, the write throws
+ * `StorePersistenceError` and `<key>` is left as is.
  *
  * @example
  * ```ts
@@ -62,11 +64,11 @@ export interface LocalStorageStoreOptions {
 export class LocalStorageStore implements SitepingStore {
   private readonly key: string;
   /**
-   * The raw blob the last `load()` could not fully read (unparsable, not an
-   * array, or with entries it had to skip) — backed up by the next `persist`
-   * before it is overwritten. `null` when everything was read.
+   * What the last `load()` could not read — skipped entries, or the whole raw
+   * blob when it isn't a JSON array — backed up by the next `persist` before
+   * `<key>` is overwritten. Empty when everything was read.
    */
-  private unreadBlob: string | null = null;
+  private unread: unknown[] = [];
 
   private readonly engine = createCollectionStore({
     load: () => this.load(),
@@ -85,7 +87,7 @@ export class LocalStorageStore implements SitepingStore {
   // ---------------------------------------------------------------------------
 
   private load(): FeedbackRecord[] {
-    this.unreadBlob = null;
+    this.unread = [];
     let raw: string | null;
     try {
       raw = localStorage.getItem(this.key);
@@ -94,8 +96,8 @@ export class LocalStorageStore implements SitepingStore {
     }
     if (!raw) return [];
 
-    const { records, complete } = readBlob(raw);
-    if (!complete) this.unreadBlob = raw;
+    const { records, unread } = readBlob(raw);
+    this.unread = unread;
     return records;
   }
 
@@ -105,17 +107,30 @@ export class LocalStorageStore implements SitepingStore {
    * write fails. Centralized here so no mutating method can accidentally
    * report a phantom success on a lost write.
    *
-   * When the blob being replaced wasn't fully readable, it is first copied to
-   * `<key>.corrupt`; if that copy fails, the write fails with it.
+   * What `load()` couldn't read is first backed up to `<key>.corrupt`; if
+   * that copy fails, the write fails with it.
    */
   private persist(feedbacks: FeedbackRecord[]): void {
     try {
-      if (this.unreadBlob !== null) localStorage.setItem(`${this.key}.corrupt`, this.unreadBlob);
+      if (this.unread.length > 0) this.backUp(this.unread);
       localStorage.setItem(this.key, JSON.stringify(feedbacks));
     } catch (cause) {
       throw new StorePersistenceError(undefined, { cause });
     }
-    this.unreadBlob = null;
+    this.unread = [];
+  }
+
+  /**
+   * Append `entries` to the JSON array under `<key>.corrupt`. Entries already
+   * there are skipped: a write that fails after its backup landed leaves them
+   * in `<key>`, so the next write backs up the same ones again.
+   */
+  private backUp(entries: unknown[]): void {
+    const backupKey = `${this.key}.corrupt`;
+    const saved = readBackup(localStorage.getItem(backupKey));
+    const known = new Set(saved.map((entry) => JSON.stringify(entry)));
+    const added = entries.filter((entry) => !known.has(JSON.stringify(entry)));
+    if (added.length > 0) localStorage.setItem(backupKey, JSON.stringify([...saved, ...added]));
   }
 
   private generateId(): string {
@@ -158,9 +173,17 @@ export class LocalStorageStore implements SitepingStore {
     return this.engine.verifyProjectOwnership(id, projectName);
   }
 
-  /** Remove all data from localStorage for this store key. */
+  /**
+   * Remove all data from localStorage for this store key (a `<key>.corrupt`
+   * backup is kept). Throws `StorePersistenceError` when storage is
+   * unavailable — server-side, or access revoked.
+   */
   clear(): void {
-    localStorage.removeItem(this.key);
+    try {
+      localStorage.removeItem(this.key);
+    } catch (cause) {
+      throw new StorePersistenceError(undefined, { cause });
+    }
   }
 }
 
@@ -186,35 +209,80 @@ type StoredAnnotation = Omit<Serialized<AnnotationRecord>, LegacyAnnotationKey> 
 type StoredFeedback = Omit<Serialized<FeedbackRecord>, LegacyFeedbackKey | "annotations"> &
   Partial<Pick<Serialized<FeedbackRecord>, LegacyFeedbackKey>> & { annotations?: StoredAnnotation[] | null };
 
+/** String fields every published release has written on every record. */
+const REQUIRED_STRING_KEYS = [
+  "id",
+  "projectName",
+  "message",
+  "url",
+  "viewport",
+  "userAgent",
+  "authorName",
+  "authorEmail",
+  "clientId",
+] as const;
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/**
- * Whether an entry can be revived without losing data: an object with a
- * string `id` whose `annotations`, if present, is a list of objects.
- */
-function isRevivable(entry: unknown): entry is StoredFeedback {
-  if (!isObject(entry) || typeof entry.id !== "string") return false;
-  const { annotations } = entry;
-  return annotations == null || (Array.isArray(annotations) && annotations.every(isObject));
+/** An ISO string that revives to a valid `Date` — serializing an Invalid Date throws. */
+function isDateString(value: unknown): boolean {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
 /**
- * Parse a stored blob into the records it can revive. `complete` is false
- * when anything was left behind — the blob is unparsable, not an array, or
- * had entries `isRevivable` rejected.
+ * Whether an entry revives into a record every reader can use: the fields
+ * the filter pipeline, the widget and the dashboard dereference are present
+ * and well-typed, and every date parses. Missing `annotations` and the
+ * legacy nullable fields are back-filled by `reviveFeedback`.
  */
-function readBlob(raw: string): { records: FeedbackRecord[]; complete: boolean } {
+function isRevivable(entry: unknown): entry is StoredFeedback {
+  if (!isObject(entry)) return false;
+  const { type, status, createdAt, updatedAt, resolvedAt, annotations } = entry;
+  return (
+    REQUIRED_STRING_KEYS.every((key) => typeof entry[key] === "string") &&
+    FEEDBACK_TYPES.some((known) => known === type) &&
+    FEEDBACK_STATUSES.some((known) => known === status) &&
+    isDateString(createdAt) &&
+    isDateString(updatedAt) &&
+    (resolvedAt == null || isDateString(resolvedAt)) &&
+    (annotations == null ||
+      (Array.isArray(annotations) && annotations.every((a) => isObject(a) && isDateString(a.createdAt))))
+  );
+}
+
+/**
+ * Parse a stored blob into the records it can revive and what it can't: the
+ * rejected entries, or the whole raw blob when it isn't a JSON array.
+ */
+function readBlob(raw: string): { records: FeedbackRecord[]; unread: unknown[] } {
   let data: unknown;
   try {
     data = JSON.parse(raw);
   } catch {
-    return { records: [], complete: false };
+    return { records: [], unread: [raw] };
   }
-  if (!Array.isArray(data)) return { records: [], complete: false };
-  const records = data.filter(isRevivable).map(reviveFeedback);
-  return { records, complete: records.length === data.length };
+  if (!Array.isArray(data)) return { records: [], unread: [raw] };
+
+  const records: FeedbackRecord[] = [];
+  const unread: unknown[] = [];
+  for (const entry of data) {
+    if (isRevivable(entry)) records.push(reviveFeedback(entry));
+    else unread.push(entry);
+  }
+  return { records, unread };
+}
+
+/** The entries of an existing backup — anything that isn't a JSON array is kept as one entry. */
+function readBackup(raw: string | null): unknown[] {
+  if (raw === null) return [];
+  try {
+    const data: unknown = JSON.parse(raw);
+    return Array.isArray(data) ? data : [raw];
+  } catch {
+    return [raw];
+  }
 }
 
 function reviveAnnotation(raw: StoredAnnotation): AnnotationRecord {

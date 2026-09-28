@@ -274,18 +274,15 @@ describe("LocalStorageStore specific", () => {
   // -----------------------------------------------------------------------
 
   describe("unreadable stored data", () => {
-    /**
-     * Two valid records written by the store, plus one raw entry appended —
-     * `makeExtra` gets a stored record to derive it from. Returns the blob.
-     */
-    async function seedWith(makeExtra: (stored: Record<string, unknown>) => unknown): Promise<string> {
+    /** Two valid records written by the store, plus `makeExtra(copy of one of them)` appended raw. */
+    async function seedWith(makeExtra: (stored: Record<string, unknown>) => unknown): Promise<void> {
       await store.createFeedback({ ...input, clientId: "v1" });
       await store.createFeedback({ ...input, clientId: "v2" });
       const raw = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<Record<string, unknown>>;
-      const blob = JSON.stringify([...raw, makeExtra({ ...raw[0]! })]);
-      localStorage.setItem("test_feedbacks", blob);
-      return blob;
+      localStorage.setItem("test_feedbacks", JSON.stringify([...raw, makeExtra({ ...raw[0]! })]));
     }
+
+    const backup = () => JSON.parse(localStorage.getItem("test_feedbacks.corrupt")!) as unknown[];
 
     it("a record without annotations is revived with an empty list instead of hiding every record", async () => {
       await seedWith(({ annotations: _, ...stored }) => ({ ...stored, id: "no-annotations", clientId: "legacy" }));
@@ -296,39 +293,87 @@ describe("LocalStorageStore specific", () => {
       expect(feedbacks.find((f) => f.id === "no-annotations")?.annotations).toEqual([]);
     });
 
-    it("an entry that can't be revived is skipped without hiding the valid ones", async () => {
-      await seedWith(() => ({ message: "no id" }));
+    it.each<[string, (stored: Record<string, unknown>) => unknown]>([
+      ["not an object", () => 42],
+      ["no id", ({ id: _, ...stored }) => stored],
+      ["no message", ({ message: _, ...stored }) => ({ ...stored, id: "x" })],
+      ["an unknown type", (stored) => ({ ...stored, id: "x", type: "praise" })],
+      ["an unknown status", (stored) => ({ ...stored, id: "x", status: "done" })],
+      ["an unparsable createdAt", (stored) => ({ ...stored, id: "x", createdAt: "yesterday" })],
+      ["an unparsable resolvedAt", (stored) => ({ ...stored, id: "x", resolvedAt: "soon" })],
+      ["an annotation without a date", (stored) => ({ ...stored, id: "x", annotations: [{}] })],
+    ])("skips an entry with %s without hiding the valid ones", async (_label, makeExtra) => {
+      await seedWith(makeExtra);
 
-      const { total } = await store.getFeedbacks({ projectName: "test-project" });
+      // A search dereferences every record's `message` — a revived entry
+      // without one used to throw here.
+      const { total } = await store.getFeedbacks({ projectName: "test-project", search: "test" });
 
       expect(total).toBe(2);
     });
 
-    it("a write after a skipped entry keeps every valid record and backs up the raw blob", async () => {
-      const blob = await seedWith(() => 42);
+    it("a write after a skipped entry keeps every valid record and backs up only that entry", async () => {
+      await seedWith(() => 42);
 
       await store.createFeedback({ ...input, clientId: "new" });
 
       const stored = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<{ clientId: string }>;
       expect(stored.map((f) => f.clientId).sort()).toEqual(["new", "v1", "v2"]);
-      expect(localStorage.getItem("test_feedbacks.corrupt")).toBe(blob);
+      expect(backup()).toEqual([42]);
     });
 
-    it("an unparsable blob is backed up before the next write replaces it", async () => {
+    it("an unparsable blob is backed up whole before the next write replaces it", async () => {
       localStorage.setItem("test_feedbacks", "not-valid-json");
 
       await store.createFeedback(input);
 
-      expect(localStorage.getItem("test_feedbacks.corrupt")).toBe("not-valid-json");
+      expect(backup()).toEqual(["not-valid-json"]);
       expect(JSON.parse(localStorage.getItem("test_feedbacks")!)).toHaveLength(1);
     });
 
-    it("a non-array blob is backed up before the next write replaces it", async () => {
+    it("a non-array blob is backed up whole before the next write replaces it", async () => {
       localStorage.setItem("test_feedbacks", '{"not":"an array"}');
 
       await store.deleteAllFeedbacks("test-project");
 
-      expect(localStorage.getItem("test_feedbacks.corrupt")).toBe('{"not":"an array"}');
+      expect(backup()).toEqual(['{"not":"an array"}']);
+    });
+
+    it("a later backup is appended to the earlier one instead of replacing it", async () => {
+      localStorage.setItem("test_feedbacks", "first-broken");
+      await store.createFeedback(input);
+
+      localStorage.setItem("test_feedbacks", "second-broken");
+      await store.createFeedback({ ...input, clientId: "c2" });
+
+      expect(backup()).toEqual(["first-broken", "second-broken"]);
+    });
+
+    it("an existing backup that isn't a JSON array is kept as its first entry", async () => {
+      localStorage.setItem("test_feedbacks.corrupt", "hand-written");
+      localStorage.setItem("test_feedbacks", "not-valid-json");
+
+      await store.createFeedback(input);
+
+      expect(backup()).toEqual(["hand-written", "not-valid-json"]);
+    });
+
+    it("a write retried after its backup landed backs each entry up once", async () => {
+      localStorage.setItem("test_feedbacks", "not-valid-json");
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+        if (key === "test_feedbacks") throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+        original.call(this, key, value);
+      };
+      try {
+        await expect(store.createFeedback(input)).rejects.toBeInstanceOf(StorePersistenceError);
+      } finally {
+        Storage.prototype.setItem = original;
+      }
+
+      await store.createFeedback(input);
+
+      expect(backup()).toEqual(["not-valid-json"]);
     });
 
     it("refuses the write (StorePersistenceError) when the backup can't be saved", async () => {
@@ -444,6 +489,18 @@ describe("LocalStorageStore specific", () => {
       await store.createFeedback(input);
       store.clear();
       expect(localStorage.getItem("test_feedbacks")).toBeNull();
+    });
+
+    it("clear() reports a storage failure as StorePersistenceError", () => {
+      const original = Storage.prototype.removeItem;
+      Storage.prototype.removeItem = () => {
+        throw new DOMException("The operation is insecure.", "SecurityError");
+      };
+      try {
+        expect(() => store.clear()).toThrow(StorePersistenceError);
+      } finally {
+        Storage.prototype.removeItem = original;
+      }
     });
 
     it("multiple stores with different keys are isolated", async () => {
