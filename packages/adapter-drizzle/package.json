@@ -78,6 +78,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@libsql/client": "^0.18.0",
+    "@siteping/adapter-prisma": "workspace:*",
     "@siteping/core": "workspace:*",
     "drizzle-kit": "^0.31.11",
     "drizzle-orm": "^0.45.3"
