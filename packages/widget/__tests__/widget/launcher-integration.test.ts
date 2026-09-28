@@ -1419,19 +1419,27 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
 
-    it("forwards panel action failures to onError but not to the public feedback:error event", () => {
-      const onError = vi.fn();
-      const instance = launch(defaultConfig({ onError }));
+    it.each([
+      ["with", vi.fn()],
+      ["without", undefined],
+    ])("logs panel action failures %s onError and never emits them on feedback:error", (_, onError) => {
+      // A host bug in onAction has no widget UI to surface it: the console
+      // always shows it, even when onError is set (the React hook always
+      // sets one).
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      const instance = launch(defaultConfig(onError ? { onError } : {}));
       const publicFeedbackError = vi.fn();
       instance.on("feedback:error", publicFeedbackError);
 
       const error = new Error("ticket creation failed");
       capturedBus!.emit("panel:action-error", error);
 
-      expect(onError).toHaveBeenCalledExactlyOnceWith(error);
+      expect(consoleError).toHaveBeenCalledExactlyOnceWith("[siteping] Panel action failed:", error);
+      if (onError) expect(onError).toHaveBeenCalledExactlyOnceWith(error);
       expect(publicFeedbackError).not.toHaveBeenCalled();
 
       instance.destroy();
+      consoleError.mockRestore();
     });
 
     it("non-Error rejections from sendFeedback are wrapped into Error instances", async () => {

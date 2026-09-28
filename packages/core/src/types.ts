@@ -378,6 +378,8 @@ export interface SitepingBaseConfig {
    * Also receives whatever a `panelActions` callback throws or rejects with
    * (non-`Error` values are wrapped). Those host failures are not API
    * failures, so they are not emitted on the public `feedback:error` event.
+   * The widget has no UI for them, so they are also always logged with
+   * `console.error`, whether or not `onError` is set.
    */
   onError?: ((error: Error) => void) | undefined;
   /** Called when the user starts drawing an annotation. */

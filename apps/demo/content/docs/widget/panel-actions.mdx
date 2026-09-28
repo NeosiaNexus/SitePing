@@ -67,7 +67,7 @@ Any other scheme — `javascript:`, `data:`, `file:`… — is never rendered. A
 
 ## Errors
 
-Whatever `onAction` throws or rejects with, and a `visible` or `href` function that throws, goes to [`onError`](/docs/widget#handling-errors) — non-`Error` values are wrapped — and the buttons come back. These are failures of your code, not of the feedback API, so they are **not** emitted on the public `feedback:error` event, and they can never be mistaken for a failed submission in the comment popup.
+Whatever `onAction` throws or rejects with, and a `visible` or `href` function that throws, is always logged to the console as `[siteping] Panel action failed:`, then goes to [`onError`](/docs/widget#handling-errors) when you set one — non-`Error` values are wrapped — and the buttons come back. The widget has no UI of its own for these errors, so the console entry makes sure a bug in your handler never fails silently. These are failures of your code, not of the feedback API, so they are **not** emitted on the public `feedback:error` event, and they can never be mistaken for a failed submission in the comment popup.
 
 ```ts
 initSiteping({

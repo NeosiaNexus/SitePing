@@ -67,7 +67,7 @@ Tout autre schéma — `javascript:`, `data:`, `file:`… — n'est jamais rendu
 
 ## Erreurs
 
-Tout ce que `onAction` lève ou rejette, ainsi qu'une fonction `visible` ou `href` qui lève, part dans [`onError`](/fr/docs/widget#gérer-les-erreurs) — les valeurs qui ne sont pas des `Error` sont enveloppées — et les boutons reviennent. Ce sont des échecs de votre code, pas de l'API de feedback : ils ne sont donc **pas** émis sur l'événement public `feedback:error`, et ne peuvent jamais être pris pour un envoi échoué dans la popup de commentaire.
+Tout ce que `onAction` lève ou rejette, ainsi qu'une fonction `visible` ou `href` qui lève, est toujours journalisé dans la console sous `[siteping] Panel action failed:`, puis part dans [`onError`](/fr/docs/widget#gérer-les-erreurs) si vous en définissez un — les valeurs qui ne sont pas des `Error` sont enveloppées — et les boutons reviennent. Le widget n'a pas d'interface à lui pour ces erreurs : l'entrée de console garantit qu'un bug dans votre handler n'échoue jamais en silence. Ce sont des échecs de votre code, pas de l'API de feedback : ils ne sont donc **pas** émis sur l'événement public `feedback:error`, et ne peuvent jamais être pris pour un envoi échoué dans la popup de commentaire.
 
 ```ts
 initSiteping({
