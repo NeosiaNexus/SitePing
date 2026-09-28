@@ -123,6 +123,16 @@
       "contributions": [
         "ideas"
       ]
+    },
+    {
+      "login": "guidomodarelli",
+      "name": "Guido Modarelli",
+      "avatar_url": "https://avatars.githubusercontent.com/u/38738725?v=4",
+      "profile": "https://github.com/guidomodarelli",
+      "contributions": [
+        "code",
+        "platform"
+      ]
     }
   ],
   "commitType": "docs"
