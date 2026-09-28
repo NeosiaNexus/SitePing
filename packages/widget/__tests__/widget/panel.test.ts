@@ -4057,7 +4057,9 @@ describe("Panel", () => {
       });
       const elsewhere = makeFeedback({ id: "fb-elsewhere", url: "/other" });
       apiClient.getFeedbacks.mockImplementation(async (_project: string, options?: { url?: unknown }) =>
-        options?.url === undefined ? { feedbacks: [pageOpen, elsewhere], total: 2 } : { feedbacks: [pageOpen], total: 1 },
+        options?.url === undefined
+          ? { feedbacks: [pageOpen, elsewhere], total: 2 }
+          : { feedbacks: [pageOpen], total: 1 },
       );
 
       // The default "This page" list is narrower than the markers' query
