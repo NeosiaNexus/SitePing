@@ -76,6 +76,18 @@ describe("generateRoute", () => {
     expect(second.path).toBe(first.path);
   });
 
+  it.each(["js", "jsx", "tsx"])("treats an existing route.%s as the route", (ext) => {
+    // A route.ts beside it would make Next.js fail with "Duplicate page detected".
+    const routeDir = join(tmpDir, "app", "api", "siteping");
+    mkdirSync(routeDir, { recursive: true });
+    writeFileSync(join(routeDir, `route.${ext}`), "export const GET = () => {};");
+
+    const result = generateRoute(tmpDir);
+
+    expect(result).toEqual({ created: false, path: join(routeDir, `route.${ext}`) });
+    expect(existsSync(join(routeDir, "route.ts"))).toBe(false);
+  });
+
   // -------------------------------------------------------------------------
   // Generated content
   // -------------------------------------------------------------------------
