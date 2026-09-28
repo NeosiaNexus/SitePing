@@ -211,7 +211,29 @@ describe("DetailView", () => {
       setup.view.show(makeFeedback({ type: "question" }), 1);
       const badge = setup.view.element.querySelector<HTMLElement>(".sp-badge");
       expect(badge).not.toBeNull();
-      expect(badge!.textContent).toBe("question");
+      expect(badge!.textContent).toBe("Question");
+    });
+
+    it("localises the type badge and dates with the active (non-fr) locale", () => {
+      const de = createView("de");
+      const fb = makeFeedback({ type: "bug", status: "resolved", resolvedAt: "2024-02-01T12:00:00.000Z" });
+      de.view.show(fb, 1);
+      const expectedDate = (iso: string) =>
+        new Date(iso).toLocaleString("de", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+      expect(de.view.element.querySelector(".sp-detail-header .sp-badge")!.textContent).toBe("Fehler");
+      expect(de.view.element.textContent).toContain(expectedDate(fb.createdAt));
+      expect(de.view.element.querySelector(".sp-detail-meta-value--secondary")!.textContent).toBe(
+        expectedDate("2024-02-01T12:00:00.000Z"),
+      );
+      de.view.destroy();
+      de.host.remove();
     });
 
     it("replaces title/badge on subsequent show() calls", () => {
@@ -223,7 +245,7 @@ describe("DetailView", () => {
       expect(titles.length).toBe(1);
       expect(badges.length).toBe(1);
       expect(titles[0]!.textContent).toBe("Feedback #2");
-      expect(badges[0]!.textContent).toBe("change");
+      expect(badges[0]!.textContent).toBe("Change");
     });
 
     it("makes the view visible (aria-hidden=false, --visible class)", async () => {
