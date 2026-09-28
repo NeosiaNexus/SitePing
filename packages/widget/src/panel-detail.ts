@@ -9,7 +9,7 @@
  * animations, accent gradients, premium micro-interactions.
  */
 
-import { type FeedbackResponse, type FeedbackStatus, isClosedStatus } from "@siteping/core";
+import { type FeedbackResponse, type FeedbackStatus, isClosedStatus, type SitepingPanelAction } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
@@ -359,6 +359,25 @@ export const DETAIL_CSS = /* css */ `
     transition-duration: 0.1s;
   }
 
+  .sp-detail-btn-custom {
+    border: 1.5px solid var(--sp-border);
+    background: var(--sp-glass-bg-heavy);
+    color: var(--sp-text);
+  }
+
+  .sp-detail-btn-custom:hover {
+    background: var(--sp-bg-hover);
+    border-color: var(--sp-accent);
+    color: var(--sp-accent);
+    box-shadow: 0 0 16px var(--sp-accent-glow);
+    transform: translateY(-1px);
+  }
+
+  .sp-detail-btn-custom:active {
+    transform: translateY(0) scale(0.98);
+    transition-duration: 0.1s;
+  }
+
   .sp-detail-actions button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -561,7 +580,8 @@ export const DETAIL_CSS = /* css */ `
     .sp-detail-btn-goto,
     .sp-detail-btn-resolve,
     .sp-detail-btn-reopen,
-    .sp-detail-btn-delete {
+    .sp-detail-btn-delete,
+    .sp-detail-btn-custom {
       border: 2px solid ButtonText !important;
       background: Canvas !important;
       color: ButtonText !important;
@@ -571,7 +591,8 @@ export const DETAIL_CSS = /* css */ `
     .sp-detail-btn-goto:focus-visible,
     .sp-detail-btn-resolve:focus-visible,
     .sp-detail-btn-reopen:focus-visible,
-    .sp-detail-btn-delete:focus-visible {
+    .sp-detail-btn-delete:focus-visible,
+    .sp-detail-btn-custom:focus-visible {
       outline: 3px solid Highlight !important;
     }
 
@@ -904,6 +925,8 @@ export interface DetailCallbacks {
   onGoToAnnotation: (feedback: FeedbackResponse) => void;
   /** False hides "Go to annotation" (e.g. the feedback belongs to another page). */
   canGoToAnnotation?: (feedback: FeedbackResponse) => boolean;
+  /** Invoked when a host-defined panel action button is clicked. */
+  onCustomAction: (action: SitepingPanelAction, feedback: FeedbackResponse) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -920,6 +943,7 @@ export class DetailView {
   private readonly locale: string;
   private resolveBtn: HTMLButtonElement | null = null;
   private deleteBtn: HTMLButtonElement | null = null;
+  private customBtns: HTMLButtonElement[] = [];
   private isProcessing = false;
 
   constructor(
@@ -927,6 +951,7 @@ export class DetailView {
     private readonly callbacks: DetailCallbacks,
     t: TFunction,
     locale: string,
+    private readonly customActions: SitepingPanelAction[] = [],
   ) {
     this.t = t;
     this.locale = locale;
@@ -1084,6 +1109,7 @@ export class DetailView {
     this.currentFeedback = null;
     this.resolveBtn = null;
     this.deleteBtn = null;
+    this.customBtns = [];
   }
 
   /** Whether the detail view is currently visible. */
@@ -1175,6 +1201,24 @@ export class DetailView {
 
     actions.appendChild(this.resolveBtn);
     actions.appendChild(this.deleteBtn);
+
+    // Host-defined custom actions
+    this.customBtns = [];
+    for (const action of this.customActions) {
+      if (action.visible && !action.visible(feedback)) continue;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "sp-detail-btn-custom";
+      btn.setAttribute("data-action-id", action.id);
+      if (action.icon) btn.appendChild(parseSvg(action.icon));
+      const span = document.createElement("span");
+      setText(span, action.label);
+      btn.appendChild(span);
+      btn.addEventListener("click", () => this.handleCustomAction(action, btn));
+      this.customBtns.push(btn);
+      actions.appendChild(btn);
+    }
+
     container.appendChild(actions);
   }
 
@@ -1491,6 +1535,42 @@ export class DetailView {
       if (this.deleteBtn) this.restoreDeleteBtn();
       if (this.resolveBtn) this.resolveBtn.disabled = false;
     }
+  }
+
+  private async handleCustomAction(action: SitepingPanelAction, btn: HTMLButtonElement): Promise<void> {
+    if (this.isProcessing || !this.currentFeedback) return;
+    this.isProcessing = true;
+
+    this.setButtonLoading(btn);
+    this.setOtherActionsDisabled(btn, true);
+
+    try {
+      await this.callbacks.onCustomAction(action, this.currentFeedback);
+    } catch {
+      // Swallowed here — the panel wiring is responsible for surfacing
+      // failures (e.g. via config.onError). Unlike resolve/delete, custom
+      // actions never navigate away, so we always restore below regardless
+      // of outcome.
+    } finally {
+      this.isProcessing = false;
+      this.restoreCustomBtn(btn, action);
+      this.setOtherActionsDisabled(btn, false);
+    }
+  }
+
+  private setOtherActionsDisabled(except: HTMLButtonElement, disabled: boolean): void {
+    for (const b of [this.resolveBtn, this.deleteBtn, ...this.customBtns]) {
+      if (b && b !== except) b.disabled = disabled;
+    }
+  }
+
+  private restoreCustomBtn(btn: HTMLButtonElement, action: SitepingPanelAction): void {
+    btn.disabled = false;
+    btn.replaceChildren();
+    if (action.icon) btn.appendChild(parseSvg(action.icon));
+    const span = document.createElement("span");
+    setText(span, action.label);
+    btn.appendChild(span);
   }
 
   private setButtonLoading(btn: HTMLButtonElement): void {

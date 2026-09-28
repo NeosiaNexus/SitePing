@@ -245,6 +245,13 @@ export class Panel {
             this.markers.pinHighlight(fb);
           }
         },
+        // Minimal stub to satisfy DetailCallbacks — no custom actions are
+        // wired up yet (no panelActions passed as the 5th DetailView arg),
+        // so this is currently unreachable. Full wiring (bus error
+        // emission, panelActions plumbing) lands in a follow-up task.
+        onCustomAction: async (action, fb) => {
+          await action.onAction(fb);
+        },
       },
       this.t,
       locale,

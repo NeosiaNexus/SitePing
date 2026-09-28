@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { AnnotationResponse, FeedbackResponse } from "@siteping/core";
+import type { AnnotationResponse, FeedbackResponse, SitepingPanelAction } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
 import { DETAIL_CSS, type DetailCallbacks, DetailView } from "../../src/panel-detail.js";
@@ -82,6 +82,7 @@ function createCallbacks(): {
     onResolve: vi.fn<NonNullable<DetailCallbacks["onResolve"]>>().mockResolvedValue(undefined),
     onDelete: vi.fn<NonNullable<DetailCallbacks["onDelete"]>>().mockResolvedValue(undefined),
     onGoToAnnotation: vi.fn<NonNullable<DetailCallbacks["onGoToAnnotation"]>>(),
+    onCustomAction: vi.fn<NonNullable<DetailCallbacks["onCustomAction"]>>().mockResolvedValue(undefined),
   };
 }
 
@@ -1207,5 +1208,69 @@ describe("DetailView", () => {
         "@supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) { .sp-detail { background: var(--sp-bg); } }",
       );
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Custom panel actions (host-defined buttons via SitepingPanelAction)
+// ---------------------------------------------------------------------------
+
+describe("custom panel actions", () => {
+  function makeAction(overrides: Partial<SitepingPanelAction> = {}): SitepingPanelAction {
+    return { id: "send-to-agent", label: "Send to agent", onAction: vi.fn(), ...overrides };
+  }
+
+  function buildDetail(actions: SitepingPanelAction[], callbacks: Partial<DetailCallbacks> = {}) {
+    const cb: DetailCallbacks = {
+      onBack: vi.fn(),
+      onResolve: vi.fn().mockResolvedValue(undefined),
+      onDelete: vi.fn().mockResolvedValue(undefined),
+      onGoToAnnotation: vi.fn(),
+      onCustomAction: vi.fn().mockResolvedValue(undefined),
+      ...callbacks,
+    };
+    const view = new DetailView(buildThemeColors(), cb, createT("en"), "en", actions);
+    document.body.appendChild(view.element);
+    return { view, cb };
+  }
+
+  it("renders a button per action with data-action-id", () => {
+    const { view } = buildDetail([makeAction(), makeAction({ id: "other", label: "Other" })]);
+    view.show(makeFeedback(), 1);
+    const btns = view.element.querySelectorAll(".sp-detail-btn-custom");
+    expect(btns).toHaveLength(2);
+    expect(btns[0]?.getAttribute("data-action-id")).toBe("send-to-agent");
+    expect(btns[0]?.textContent).toContain("Send to agent");
+  });
+
+  it("omits actions whose visible() returns false", () => {
+    const { view } = buildDetail([makeAction({ visible: (fb) => fb.type === "change" })]);
+    view.show(makeFeedback({ type: "bug" }), 1);
+    expect(view.element.querySelectorAll(".sp-detail-btn-custom")).toHaveLength(0);
+  });
+
+  it("invokes onCustomAction with the action and current feedback on click", async () => {
+    const { view, cb } = buildDetail([makeAction()]);
+    const fb = makeFeedback();
+    view.show(fb, 1);
+    view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")?.click();
+    await vi.waitFor(() =>
+      expect(cb.onCustomAction).toHaveBeenCalledWith(expect.objectContaining({ id: "send-to-agent" }), fb),
+    );
+  });
+
+  it("disables action buttons while pending and restores them on rejection", async () => {
+    let reject!: (e: Error) => void;
+    const pending = new Promise<void>((_, rej) => {
+      reject = rej;
+    });
+    const { view } = buildDetail([makeAction()], { onCustomAction: vi.fn().mockReturnValue(pending) });
+    view.show(makeFeedback(), 1);
+    const btn = view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom");
+    btn?.click();
+    expect(btn?.disabled).toBe(true);
+    reject(new Error("boom"));
+    await vi.waitFor(() => expect(btn?.disabled).toBe(false));
+    expect(btn?.textContent).toContain("Send to agent"); // label restored after spinner
   });
 });
