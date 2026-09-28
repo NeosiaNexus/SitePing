@@ -270,6 +270,92 @@ describe("LocalStorageStore specific", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Unreadable data — never hidden wholesale, never silently overwritten
+  // -----------------------------------------------------------------------
+
+  describe("unreadable stored data", () => {
+    /**
+     * Two valid records written by the store, plus one raw entry appended —
+     * `makeExtra` gets a stored record to derive it from. Returns the blob.
+     */
+    async function seedWith(makeExtra: (stored: Record<string, unknown>) => unknown): Promise<string> {
+      await store.createFeedback({ ...input, clientId: "v1" });
+      await store.createFeedback({ ...input, clientId: "v2" });
+      const raw = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<Record<string, unknown>>;
+      const blob = JSON.stringify([...raw, makeExtra({ ...raw[0]! })]);
+      localStorage.setItem("test_feedbacks", blob);
+      return blob;
+    }
+
+    it("a record without annotations is revived with an empty list instead of hiding every record", async () => {
+      await seedWith(({ annotations: _, ...stored }) => ({ ...stored, id: "no-annotations", clientId: "legacy" }));
+
+      const { feedbacks, total } = await store.getFeedbacks({ projectName: "test-project" });
+
+      expect(total).toBe(3);
+      expect(feedbacks.find((f) => f.id === "no-annotations")?.annotations).toEqual([]);
+    });
+
+    it("an entry that can't be revived is skipped without hiding the valid ones", async () => {
+      await seedWith(() => ({ message: "no id" }));
+
+      const { total } = await store.getFeedbacks({ projectName: "test-project" });
+
+      expect(total).toBe(2);
+    });
+
+    it("a write after a skipped entry keeps every valid record and backs up the raw blob", async () => {
+      const blob = await seedWith(() => 42);
+
+      await store.createFeedback({ ...input, clientId: "new" });
+
+      const stored = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<{ clientId: string }>;
+      expect(stored.map((f) => f.clientId).sort()).toEqual(["new", "v1", "v2"]);
+      expect(localStorage.getItem("test_feedbacks.corrupt")).toBe(blob);
+    });
+
+    it("an unparsable blob is backed up before the next write replaces it", async () => {
+      localStorage.setItem("test_feedbacks", "not-valid-json");
+
+      await store.createFeedback(input);
+
+      expect(localStorage.getItem("test_feedbacks.corrupt")).toBe("not-valid-json");
+      expect(JSON.parse(localStorage.getItem("test_feedbacks")!)).toHaveLength(1);
+    });
+
+    it("a non-array blob is backed up before the next write replaces it", async () => {
+      localStorage.setItem("test_feedbacks", '{"not":"an array"}');
+
+      await store.deleteAllFeedbacks("test-project");
+
+      expect(localStorage.getItem("test_feedbacks.corrupt")).toBe('{"not":"an array"}');
+    });
+
+    it("refuses the write (StorePersistenceError) when the backup can't be saved", async () => {
+      localStorage.setItem("test_feedbacks", "not-valid-json");
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+        if (key.endsWith(".corrupt")) throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+        original.call(this, key, value);
+      };
+      try {
+        await expect(store.createFeedback(input)).rejects.toBeInstanceOf(StorePersistenceError);
+      } finally {
+        Storage.prototype.setItem = original;
+      }
+
+      expect(localStorage.getItem("test_feedbacks")).toBe("not-valid-json");
+    });
+
+    it("writes no backup when everything was readable", async () => {
+      await store.createFeedback(input);
+      await store.createFeedback({ ...input, clientId: "c2" });
+
+      expect(localStorage.getItem("test_feedbacks.corrupt")).toBeNull();
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Edge cases
   // -----------------------------------------------------------------------
 

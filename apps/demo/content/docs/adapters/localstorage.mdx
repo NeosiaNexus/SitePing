@@ -28,7 +28,7 @@ initSiteping({
 ## Behavior notes
 
 - **Data stays on one machine.** Each visitor sees only their own feedback — by design. It never leaves the browser.
-- **Corrupted data never crashes.** If the stored JSON can't be parsed, reads return an empty list; note the corrupted blob is then overwritten by the next successful write.
+- **Corrupted data never crashes — and is never silently lost.** A record missing its `annotations` reads with an empty list, and an entry that can't be read at all is skipped without hiding the others; stored JSON that can't be parsed reads as an empty list. Before the next write replaces a blob that wasn't fully readable, the raw blob is copied to `<key>.corrupt` (e.g. `siteping_feedbacks.corrupt`); if that copy can't be saved, the write fails with a `StorePersistenceError` instead.
 - **Quota pressure drops screenshots first.** If a write exceeds the browser's storage quota (~5 MB per origin), the adapter retries once without the screenshot before giving up with a `StorePersistenceError` — the comment survives even when the image can't.
 - **Bulk actions are safe within one tab.** The store applies its writes one at a time, so selecting several feedbacks and resolving or deleting them together changes every one of them. The guarantee stops at the instance: two tabs — or two `LocalStorageStore`s on the same `key` — each rewrite the whole array, and the last write wins.
 - **Dates survive the round-trip** — `createdAt` and friends come back as real `Date` objects, not strings.

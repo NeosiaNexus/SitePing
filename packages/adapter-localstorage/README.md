@@ -26,7 +26,7 @@ initSiteping({
 });
 ```
 
-Each visitor sees only their own feedback — data never leaves their browser. Corrupted stored data degrades to an empty list instead of crashing, quota pressure drops the screenshot before ever dropping the comment, and dates come back as real `Date` objects.
+Each visitor sees only their own feedback — data never leaves their browser. Corrupted stored data never crashes and is backed up to `<key>.corrupt` instead of being overwritten, quota pressure drops the screenshot before ever dropping the comment, and dates come back as real `Date` objects.
 
 ## License
 
