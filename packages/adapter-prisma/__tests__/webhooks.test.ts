@@ -115,6 +115,23 @@ describe("buildWebhookPayload — untrusted input", () => {
     expect(mrkdwn).toContain("*URL:* /orders?a=1&amp;b=2");
   });
 
+  it("keeps escaped Slack mrkdwn fields within Block Kit's 3000-char text limit", () => {
+    // A valid 2000-char URL full of `&` grows past 3000 chars once `&` → `&amp;`.
+    const url = `https://example.com/?${"a=1&".repeat(494)}`;
+    expect(url.length).toBeLessThanOrEqual(2000);
+    const payload = buildWebhookPayload("slack", { ...FEEDBACK, url, authorName: "&".repeat(3000) });
+    const context = payload.blocks.find((b) => b.type === "context") as {
+      elements: ReadonlyArray<{ text: string }>;
+    };
+
+    for (const { text } of context.elements) {
+      expect(text.length).toBeLessThanOrEqual(3000);
+      // Truncation never splits an entity (`&am…`).
+      expect(text.replace(/&(amp|lt|gt);/g, "")).not.toContain("&");
+    }
+    expect(context.elements.find((e) => e.text.startsWith("*URL:*"))?.text.endsWith("…")).toBe(true);
+  });
+
   it("keeps the plain_text header raw (Slack renders it verbatim) but within the 150-char Block Kit limit", () => {
     const payload = buildWebhookPayload("slack", { ...FEEDBACK, authorName: "Tom & Jerry <3" });
     const header = payload.blocks[0] as { type: "header"; text: { text: string } };

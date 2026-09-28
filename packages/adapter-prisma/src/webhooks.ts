@@ -119,8 +119,29 @@ function truncate(text: string, max = 300): string {
   return `${text.slice(0, max - 1)}…`;
 }
 
+/**
+ * Escape untrusted `text` and truncate it so the ESCAPED result fits `max`.
+ * Truncation walks whole characters and escapes each one, so an escape
+ * sequence (`&amp;`, `\[`) is never cut in half — and escaping can grow a
+ * value several-fold, so sizing the raw text alone would not guarantee fit.
+ */
+function escapeWithin(text: string, max: number, escapeText: (text: string) => string): string {
+  const escaped = escapeText(text);
+  if (escaped.length <= max) return escaped;
+  let out = "";
+  for (const char of text) {
+    const unit = escapeText(char);
+    if (out.length + unit.length > max - 1) break;
+    out += unit;
+  }
+  return `${out}…`;
+}
+
 /** Block Kit caps `header` text at 150 characters — longer payloads are rejected outright. */
 const SLACK_HEADER_MAX = 150;
+
+/** Block Kit caps each `mrkdwn` text object at 3000 characters — also a whole-message rejection. */
+const SLACK_TEXT_MAX = 3000;
 
 /**
  * Escape the three characters Slack parses as control characters in message
@@ -140,7 +161,9 @@ function escapeSlackText(text: string): string {
  */
 function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
   const preview = escapeSlackText(truncate(feedback.message));
-  const author = escapeSlackText(feedback.authorName);
+  const escapeField = (value: string, max: number) => escapeWithin(value, max, escapeSlackText);
+  // Two halves + "*From:*  ()" stay under the text-object limit.
+  const fromHalf = Math.floor((SLACK_TEXT_MAX - 11) / 2);
   const headline = `New ${feedback.type} feedback from ${feedback.authorName}`;
   return {
     text: `${escapeSlackText(headline)}: ${preview}`,
@@ -156,10 +179,13 @@ function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
       {
         type: "context",
         elements: [
-          { type: "mrkdwn", text: `*Project:* ${escapeSlackText(feedback.projectName)}` },
+          { type: "mrkdwn", text: `*Project:* ${escapeField(feedback.projectName, SLACK_TEXT_MAX - 11)}` },
           { type: "mrkdwn", text: `*Type:* ${feedback.type}` },
-          { type: "mrkdwn", text: `*URL:* ${escapeSlackText(feedback.url)}` },
-          { type: "mrkdwn", text: `*From:* ${author} (${escapeSlackText(feedback.authorEmail)})` },
+          { type: "mrkdwn", text: `*URL:* ${escapeField(feedback.url, SLACK_TEXT_MAX - 7)}` },
+          {
+            type: "mrkdwn",
+            text: `*From:* ${escapeField(feedback.authorName, fromHalf)} (${escapeField(feedback.authorEmail, fromHalf)})`,
+          },
         ],
       },
     ],
@@ -185,22 +211,13 @@ const DISCORD_FIELD_VALUE_MAX = 1024;
 const DISCORD_MARKDOWN = /[\\*_~`|>#[\]()<]/g;
 
 /**
- * Backslash-escape Discord markdown in untrusted text, truncated so the
- * ESCAPED result fits `max`. Truncation walks whole characters and their
- * escapes, so an escape is never cut in half. Feedback text is typed by
- * anonymous visitors: unescaped, `[Reset your password](https://evil.example)`
- * renders as a disguised link — the same threat `escapeSlackText` handles.
+ * Backslash-escape Discord markdown in untrusted text, sized to `max` (see
+ * `escapeWithin`). Feedback text is typed by anonymous visitors: unescaped,
+ * `[Reset your password](https://evil.example)` renders as a disguised link —
+ * the same threat `escapeSlackText` handles.
  */
 function escapeDiscordText(text: string, max: number): string {
-  const escaped = text.replace(DISCORD_MARKDOWN, "\\$&");
-  if (escaped.length <= max) return escaped;
-  let out = "";
-  for (const char of text) {
-    const unit = char.replace(DISCORD_MARKDOWN, "\\$&");
-    if (out.length + unit.length > max - 1) break;
-    out += unit;
-  }
-  return `${out}…`;
+  return escapeWithin(text, max, (value) => value.replace(DISCORD_MARKDOWN, "\\$&"));
 }
 
 /**
