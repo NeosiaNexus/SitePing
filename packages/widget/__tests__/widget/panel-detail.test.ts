@@ -34,10 +34,11 @@ function makeAnnotation(overrides: Partial<AnnotationResponse> = {}): Annotation
     fingerprint: "0:0:0",
     neighborText: "",
     anchorKey: null,
-    xPct: 12.345,
-    yPct: 67.891,
-    wPct: 23.456,
-    hPct: 45.678,
+    // Rect fields are fractions of the anchor box (0..1), as stored.
+    xPct: 0.12345,
+    yPct: 0.67891,
+    wPct: 0.23456,
+    hPct: 0.45678,
     scrollX: 100,
     scrollY: 200,
     viewportW: 1920,
@@ -474,17 +475,18 @@ describe("DetailView", () => {
       expect(setup.view.element.textContent).toContain("<DIV>");
     });
 
-    it("renders position row including width/height when wPct or hPct > 0", () => {
-      const ann = makeAnnotation({ xPct: 1.0, yPct: 2.0, wPct: 3.0, hPct: 4.0 });
+    it("renders position row as percentages of the stored fractions, with width/height", () => {
+      const ann = makeAnnotation({ xPct: 0.5, yPct: 0.25, wPct: 0.1, hPct: 0.2 });
       setup.view.show(makeFeedback({ annotations: [ann] }), 1);
-      // Position row includes "1.0%, 2.0% (3.0% × 4.0%)"
-      const txt = setup.view.element.textContent ?? "";
-      expect(txt).toMatch(/1\.0%.*2\.0%/);
-      expect(txt).toMatch(/3\.0%.*4\.0%/);
+      const positionRow = Array.from(setup.view.element.querySelectorAll(".sp-detail-annotation-row")).find((row) =>
+        row.textContent?.includes("Position"),
+      );
+      const value = positionRow!.querySelector(".sp-detail-annotation-value")!;
+      expect(value.textContent).toBe("50.0%, 25.0% (10.0% \u00d7 20.0%)");
     });
 
     it("renders position row without size when wPct and hPct are zero", () => {
-      const ann = makeAnnotation({ xPct: 5.5, yPct: 6.6, wPct: 0, hPct: 0 });
+      const ann = makeAnnotation({ xPct: 0.055, yPct: 0.066, wPct: 0, hPct: 0 });
       setup.view.show(makeFeedback({ annotations: [ann] }), 1);
       const positionRow = Array.from(setup.view.element.querySelectorAll(".sp-detail-annotation-row")).find((row) =>
         row.textContent?.includes("Position"),

@@ -1283,10 +1283,12 @@ export class DetailView {
     // Position
     this.addAnnotationRow(info, ICON_MAP_PIN, this.t("detail.position"), () => {
       const value = el("span", { class: "sp-detail-annotation-value" });
+      // Rect fields are stored as fractions (0..1) of the anchor box.
+      const pct = (fraction: number) => `${(fraction * 100).toFixed(1)}%`;
       setText(
         value,
-        `${ann.xPct.toFixed(1)}%, ${ann.yPct.toFixed(1)}%` +
-          (ann.wPct > 0 || ann.hPct > 0 ? ` (${ann.wPct.toFixed(1)}% \u00d7 ${ann.hPct.toFixed(1)}%)` : ""),
+        `${pct(ann.xPct)}, ${pct(ann.yPct)}` +
+          (ann.wPct > 0 || ann.hPct > 0 ? ` (${pct(ann.wPct)} \u00d7 ${pct(ann.hPct)})` : ""),
       );
       return value;
     });
