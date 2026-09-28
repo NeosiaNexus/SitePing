@@ -8,6 +8,7 @@ import type {
 } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
+import { installHostIsolationGuard, isolateFromHost } from "../../src/host-isolation.js";
 import { createT, tWithParams } from "../../src/i18n/index.js";
 import { Panel } from "../../src/panel.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
@@ -1087,6 +1088,34 @@ describe("Panel", () => {
       shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
       expect(root.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("over a host modal, hides the Escape that closes the panel, not the next one", async () => {
+      isolateFromHost(shadow.host as HTMLElement);
+      const removeGuard = installHostIsolationGuard();
+      document.body.style.pointerEvents = "none"; // a Radix modal is open
+      await panel.open();
+      const closeBtn = shadow.querySelector<HTMLButtonElement>(".sp-panel-close")!;
+      closeBtn.focus();
+      const escapeIsHandled = (): boolean => {
+        const escapeKeyDown = new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        });
+        closeBtn.dispatchEvent(escapeKeyDown);
+        return escapeKeyDown.defaultPrevented;
+      };
+
+      try {
+        expect(escapeIsHandled()).toBe(true);
+        expect(shadow.querySelector(".sp-panel--open")).toBeNull();
+        expect(escapeIsHandled()).toBe(false);
+      } finally {
+        document.body.removeAttribute("style");
+        removeGuard();
+      }
     });
 
     it("Tab at last focusable wraps to first", async () => {

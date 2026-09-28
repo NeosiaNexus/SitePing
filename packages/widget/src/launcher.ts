@@ -18,6 +18,7 @@ import { NetworkBuffer } from "./diagnostics/network-buffer.js";
 import { EventBus, type WidgetEvents } from "./events.js";
 import { Fab } from "./fab.js";
 import { createFocusTracker } from "./focus-tracker.js";
+import { installHostIsolationGuard, isolateFromHost, registerEscapeLayer } from "./host-isolation.js";
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
 import { getIdentity, type Identity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
@@ -297,7 +298,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   // Create host element + Shadow DOM
   const host = document.createElement("siteping-widget");
-  host.style.cssText = `position:fixed;z-index:${Z_INDEX_MAX};`;
+  // `pointer-events:auto`: a <body> child inherits a host modal's
+  // `body { pointer-events: none }` (see host-isolation.ts).
+  host.style.cssText = `position:fixed;z-index:${Z_INDEX_MAX};pointer-events:auto;`;
   // Use open mode only for testing — closed in production for CSS isolation.
   // Shadow DOM mode is determined by environment, never by public config.
   const shadowMode = readNodeEnv() === "test" ? ("open" as const) : ("closed" as const);
@@ -315,6 +318,8 @@ export function launch(config: SitepingConfig): SitepingInstance {
     shadow.appendChild(style);
   }
 
+  isolateFromHost(host, shadow);
+  const removeHostIsolationGuard = installHostIsolationGuard();
   document.body.appendChild(host);
 
   // Track the last page element the user focused. FAB-launched annotation
@@ -333,6 +338,8 @@ export function launch(config: SitepingConfig): SitepingInstance {
   liveRegion.setAttribute("data-siteping-ignore", "true");
   liveRegion.style.cssText =
     "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;";
+  // A host modal's `aria-hidden` / `inert` would silence the announcements.
+  isolateFromHost(liveRegion);
   document.body.appendChild(liveRegion);
 
   // Components outside Shadow DOM
@@ -738,6 +745,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
       publicBus.removeAll();
       liveRegion.remove();
       host.remove();
+      // Last: the teardown above moves focus out of the widget (popup focus
+      // restore), which a host modal's focus trap must not see either.
+      removeHostIsolationGuard();
       if (instance === self) instance = null;
     },
     open: () => {
@@ -866,6 +876,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
 
     const closeModal = (result: Identity | null) => {
       backdrop.removeEventListener("keydown", onKeydown);
+      unregisterEscapeLayer();
       backdrop.style.opacity = "0";
       modal.style.transform = "translateY(12px) scale(0.97)";
       setTimeout(() => {
@@ -934,6 +945,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
       }
     };
     backdrop.addEventListener("keydown", onKeydown);
+    const unregisterEscapeLayer = registerEscapeLayer(backdrop, () => true);
 
     // Close on backdrop click
     backdrop.addEventListener("click", (e) => {

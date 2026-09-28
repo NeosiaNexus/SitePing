@@ -478,4 +478,42 @@ describe("Tooltip", () => {
       expect(el.textContent).toContain("second");
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Host modal isolation
+  // -------------------------------------------------------------------------
+
+  describe("over a host modal", () => {
+    it("keeps pointer and click interactions in the tooltip away from outside-dismiss listeners", () => {
+      const outsideInteractions: string[] = [];
+      const recordOutsideInteraction = (event: Event): void => {
+        outsideInteractions.push(event.type);
+      };
+      const interactionTypes = ["pointerdown", "mousedown", "click"] as const;
+      for (const type of interactionTypes) document.addEventListener(type, recordOutsideInteraction);
+      const hostButton = document.createElement("button");
+      document.body.appendChild(hostButton);
+
+      try {
+        tooltip.show(makeFeedback({ message: "Selectable preview" }), makeDOMRect(100, 100, 20, 20));
+        vi.advanceTimersByTime(200);
+        const tooltipText = Array.from(document.querySelectorAll("#sp-tooltip div")).find(
+          (element) => element.textContent === "Selectable preview",
+        );
+        expect(tooltipText).toBeDefined();
+
+        for (const type of interactionTypes) {
+          tooltipText?.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+        }
+        expect(outsideInteractions).toEqual([]);
+
+        // The same listeners still see a genuine outside interaction.
+        hostButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(outsideInteractions).toEqual(["click"]);
+      } finally {
+        for (const type of interactionTypes) document.removeEventListener(type, recordOutsideInteraction);
+        hostButton.remove();
+      }
+    });
+  });
 });

@@ -4,6 +4,7 @@ import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anch
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { deepFocusTarget, isWidgetChrome } from "./focus-tracker.js";
+import { isolateFromHost, registerEscapeLayer } from "./host-isolation.js";
 import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
 import { NO_VIEWPORT_INSETS, type ViewportInsets } from "./popup-placement.js";
@@ -99,6 +100,11 @@ export class Annotator {
    * than leaving the awaiting closure hung past teardown.
    */
   private rejectPendingSubmission: ((reason: Error) => void) | null = null;
+  /**
+   * The session's Escape handler listens on `document` and also ends a
+   * session from its comment popup: one layer covers overlay, toolbar and popup.
+   */
+  private readonly unregisterEscapeLayer = registerEscapeLayer(document, () => this.isActive);
 
   constructor(
     private readonly colors: ThemeColors,
@@ -180,6 +186,7 @@ export class Annotator {
       style: `
         position:fixed;inset:0;
         z-index:${Z_INDEX_MAX - 1};
+        pointer-events:auto;
         background:rgba(15, 23, 42, 0.04);
         cursor:${drawMode ? "crosshair" : "default"};
       `,
@@ -203,6 +210,7 @@ export class Annotator {
         style: `
           position:fixed;top:0;left:0;right:0;
           z-index:${Z_INDEX_MAX};
+          pointer-events:auto;
           height:52px;
           background:${this.colors.glassBg};
           backdrop-filter:blur(24px);
@@ -285,6 +293,8 @@ export class Annotator {
     // Escape to cancel
     document.addEventListener("keydown", this.onKeyDown);
 
+    isolateFromHost(this.overlay);
+    if (this.toolbar) isolateFromHost(this.toolbar);
     document.body.appendChild(this.overlay);
     if (this.toolbar) document.body.appendChild(this.toolbar);
 
@@ -734,6 +744,7 @@ export class Annotator {
   }
   destroy(): void {
     this.deactivate();
+    this.unregisterEscapeLayer();
     // Settle an in-flight submission BEFORE tearing down the popup, so the
     // `runSubmission` promise cannot outlive teardown. The launcher's
     // `destroy()` also calls `bus.removeAll()`, which would otherwise strip

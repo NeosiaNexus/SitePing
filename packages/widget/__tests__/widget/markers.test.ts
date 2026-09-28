@@ -3,6 +3,7 @@
 import type { AnnotationResponse, FeedbackResponse } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
+import { isolateFromHost } from "../../src/host-isolation.js";
 import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 import type { Tooltip } from "../../src/tooltip.js";
@@ -485,6 +486,33 @@ describe("MarkerManager", () => {
       if (badge) {
         expect(badge.style.display).not.toBe("none");
       }
+    });
+
+    it("clicking another widget surface collapses an expanded cluster", () => {
+      markers.render([makeFeedback({ id: "fb-s1" }), makeFeedback({ id: "fb-s2" })]);
+      document.querySelector<HTMLElement>('[data-feedback-id="fb-s1"]')!.click();
+      const badge = document.querySelector<HTMLElement>(".sp-cluster-badge")!;
+      expect(badge.style.display).toBe("none");
+      // e.g. the FAB's shadow host, which stops `click` before the document
+      const otherSurface = document.createElement("div");
+      document.body.appendChild(otherSurface);
+      isolateFromHost(otherSurface);
+
+      otherSurface.click();
+
+      expect(badge.style.display).toBe("flex");
+      otherSurface.remove();
+    });
+
+    it("keeps marker clicks away from host document listeners", () => {
+      markers.render([makeFeedback({ id: "fb-h1" })]);
+      const onHostClick = vi.fn();
+      document.addEventListener("click", onHostClick);
+
+      document.querySelector<HTMLElement>('[data-feedback-id="fb-h1"]')!.click();
+      document.removeEventListener("click", onHostClick);
+
+      expect(onHostClick).not.toHaveBeenCalled();
     });
 
     it("expanded cluster hides badges, collapsed shows them", () => {

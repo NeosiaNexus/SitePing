@@ -616,6 +616,31 @@ describe("Popup", () => {
       expect(dialog.hasAttribute("inert")).toBe(false);
     });
 
+    it("keeps its own fade-out inert, but drops a host modal's inert on the open popup", async () => {
+      const flushMutationObservers = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+      const dialog = findDialog();
+      popup.show(makeBounds());
+      dialog.setAttribute("inert", ""); // a sibling-inerting host modal
+      await flushMutationObservers();
+      expect(dialog.hasAttribute("inert")).toBe(false);
+
+      findCancelButton().click();
+      await flushMutationObservers();
+
+      expect(dialog.hasAttribute("inert")).toBe(true);
+    });
+
+    it("stays clickable when a host modal makes <body> click-through", () => {
+      document.body.style.pointerEvents = "none";
+      try {
+        popup.show(makeBounds());
+
+        expect(getComputedStyle(findDialog()).pointerEvents).toBe("auto");
+      } finally {
+        document.body.removeAttribute("style");
+      }
+    });
+
     it("stays closed when cancelled before show()'s first frame", async () => {
       const previous = document.body.appendChild(document.createElement("button"));
       try {

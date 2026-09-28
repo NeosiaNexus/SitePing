@@ -14,6 +14,7 @@ import { PAGE_SIZE } from "./constants.js";
 import { el, formatRelativeDate, onClickOutside, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
+import { registerEscapeLayer } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import {
   ICON_BUG,
@@ -398,6 +399,7 @@ export class Panel {
     // Keyboard handling: Escape to close + focus trap. Nested layers (menus,
     // confirm dialog) stop Escape before it bubbles here; the help overlay's
     // handler sits on this same shadow root but runs later, so defer to it.
+    registerEscapeLayer(shadowRoot, () => this.isOpen);
     shadowRoot.addEventListener("keydown", (e) => {
       const ke = e as KeyboardEvent;
       if (ke.key === "Escape" && this.isOpen) {

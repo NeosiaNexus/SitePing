@@ -1,6 +1,7 @@
 import type { FeedbackType } from "@siteping/core";
 import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
 import { el, parseSvg, setText } from "./dom-utils.js";
+import { isolateFromHost, setSurfaceInert } from "./host-isolation.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
 import {
@@ -117,6 +118,7 @@ export class Popup {
       style: `
         position:fixed;
         z-index:${Z_INDEX_MAX};
+        pointer-events:auto;
         width:300px;
         padding:16px;
         border-radius:16px;
@@ -292,6 +294,7 @@ export class Popup {
     this.root.appendChild(this.textarea);
     this.root.appendChild(this.hint);
     this.root.appendChild(btnRow);
+    isolateFromHost(this.root);
     document.body.appendChild(this.root);
 
     // Bind every `t()`-derived string into the freshly-built DOM. Kept as a
@@ -374,7 +377,7 @@ export class Popup {
       // — it varies with the locale's label lengths, font metrics and the
       // host's box-sizing. Any height cap from a previous show is dropped
       // first so the natural height is what gets measured.
-      this.root.removeAttribute("inert");
+      setSurfaceInert(this.root, false);
       this.root.style.display = "block";
       this.root.style.maxHeight = "";
       this.root.style.overflowY = "";
@@ -655,7 +658,7 @@ export class Popup {
     // popup sits above the overlay and the page, and would take the next
     // drag, click or Shift+Tab. The attribute, not the property, so jsdom
     // (which does not implement `inert`) can observe it.
-    this.root.toggleAttribute("inert", true);
+    setSurfaceInert(this.root, true);
     if (prefersReducedMotion()) {
       this.root.style.display = "none";
       return;
