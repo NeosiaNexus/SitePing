@@ -89,8 +89,9 @@ for (const file of localeDocFiles) {
     }
   }
   // Locale codes (`fr`) or English names (French) chained by list separators
-  // form a locale list. A list that names both fr and ru enumerates the
-  // built-in locales, so it must name every one of them.
+  // form a locale list. A list that names most built-in locales enumerates
+  // them, so it must name every one; a shorter one ("`fr` and `ru`") is an
+  // example.
   for (const name of [(code) => code, (code) => englishName.of(code)]) {
     const mentions = locales
       .flatMap((code) =>
@@ -103,7 +104,7 @@ for (const file of localeDocFiles) {
       else lists.push({ index, codes: new Set([code]) });
     }
     for (const { index, codes } of lists) {
-      if (!codes.has("fr") || !codes.has("ru")) continue;
+      if (codes.size * 2 <= locales.length) continue;
       const missing = locales.filter((code) => !codes.has(code));
       if (missing.length > 0) {
         const line = content.slice(0, index).split("\n").length;
