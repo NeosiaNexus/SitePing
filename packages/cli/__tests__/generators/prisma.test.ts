@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -99,6 +99,13 @@ describe("syncPrismaModels", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  /** A freshly synced (up-to-date) schema — the baseline drift tests edit. */
+  function syncedSchema(): string {
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+    syncPrismaModels(schemaPath);
+    return readFileSync(schemaPath, "utf-8");
+  }
+
   // -----------------------------------------------------------------------
   // Error handling
   // -----------------------------------------------------------------------
@@ -146,6 +153,41 @@ describe("syncPrismaModels", () => {
 
     const output = readFileSync(schemaPath, "utf-8");
     expect(output).toMatch(/^datasource db/);
+  });
+
+  // -----------------------------------------------------------------------
+  // Valid schemas prisma-ast's grammar trips on
+  // -----------------------------------------------------------------------
+
+  it.each([
+    ["a trailing space after {", "{ \n"],
+    ["a trailing tab after {", "{\t\n"],
+    ["a trailing space after { with CRLF line endings", "{ \r\n"],
+    ["a comment after {", "{ // note\n"],
+    ["a comment right after {", "{// note\n"],
+  ])("parses block headers with %s", (_label, opening) => {
+    const schema = `${MINIMAL_SCHEMA}\nmodel User {\n  id String @id\n}\n\nenum Role {\n  ADMIN\n}\n`.replace(
+      /\{\n/g,
+      opening,
+    );
+    writeFileSync(schemaPath, schema);
+
+    const result = syncPrismaModels(schemaPath);
+
+    expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+    const output = readFileSync(schemaPath, "utf-8");
+    expect(output).toContain("model User {");
+    expect(output).toContain("enum Role {");
+    if (opening.includes("note")) expect(output).toMatch(/model User \{\r?\n\s*\/\/ note\r?\n/);
+  });
+
+  it("keeps a /// comment after { from becoming the first field's documentation", () => {
+    // In place it documents nothing; on its own line it would document `id`.
+    writeFileSync(schemaPath, `${MINIMAL_SCHEMA}\nmodel User { /// note\n  id String @id\n}\n`);
+
+    syncPrismaModels(schemaPath);
+
+    expect(readFileSync(schemaPath, "utf-8")).toMatch(/model User \{\n\s*\/\/ note\n\s*id\s/);
   });
 
   // -----------------------------------------------------------------------
@@ -324,6 +366,58 @@ describe("syncPrismaModels", () => {
 
     // After sync, the field should have @db.Text
     expect(output).toMatch(/message\s+String\s+@db\.Text/);
+  });
+
+  describe("native types per datasource provider", () => {
+    const schemaFor = (provider: string) => MINIMAL_SCHEMA.replace('"postgresql"', `"${provider}"`);
+
+    it.each(["sqlite", "cockroachdb"])("emits no @db.Text on %s, whose connector rejects it", (provider) => {
+      writeFileSync(schemaPath, schemaFor(provider));
+
+      syncPrismaModels(schemaPath);
+
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).not.toContain("@db.");
+      expect(output).toMatch(/^\s*message\s+String$/m);
+      // …and doesn't then report the fields as outdated forever.
+      expect(syncPrismaModels(schemaPath).changes).toEqual([]);
+    });
+
+    it.each(["postgresql", "mysql", "sqlserver"])("emits @db.Text on %s", (provider) => {
+      writeFileSync(schemaPath, schemaFor(provider));
+
+      syncPrismaModels(schemaPath);
+
+      expect(readFileSync(schemaPath, "utf-8")).toMatch(/^\s*message\s+String\s+@db\.Text$/m);
+    });
+
+    it("removes a @db.Text an earlier sync wrote on SQLite", () => {
+      writeFileSync(
+        schemaPath,
+        SCHEMA_WITH_PARTIAL_MODEL.replace('"postgresql"', '"sqlite"').replace(
+          /message\s+String/,
+          "message String @db.Text",
+        ),
+      );
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toContainEqual({
+        model: "SitepingFeedback",
+        field: "message",
+        action: "updated",
+        detail: "-@db.Text",
+      });
+      expect(readFileSync(schemaPath, "utf-8")).not.toContain("@db.");
+    });
+
+    it("keeps emitting @db.Text when the file declares no datasource", () => {
+      writeFileSync(schemaPath, 'generator client {\n  provider = "prisma-client-js"\n}\n');
+
+      syncPrismaModels(schemaPath);
+
+      expect(readFileSync(schemaPath, "utf-8")).toMatch(/^\s*message\s+String\s+@db\.Text$/m);
+    });
   });
 
   it("generates correct relation fields", () => {
@@ -573,6 +667,235 @@ model SitepingFeedback {
   });
 
   // -----------------------------------------------------------------------
+  // User-owned parts of a Siteping field (@map, relation name, comment)
+  // -----------------------------------------------------------------------
+
+  describe("user-owned field parts", () => {
+    it("does not count a @map column name as drift", () => {
+      const schema = syncedSchema().replace(/^(\s*projectName\s+String)$/m, '$1 @map("project_name")');
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+    });
+
+    it("keeps @map and the trailing comment when rewriting a drifted field", () => {
+      // message lost its @db.Text — the rewrite restores it and nothing else.
+      const schema = syncedSchema().replace(
+        /^(\s*)message\s+String\s+@db\.Text$/m,
+        '$1message String @map("body") // client text',
+      );
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([
+        { model: "SitepingFeedback", field: "message", action: "updated", detail: "+@db.Text" },
+      ]);
+      expect(readFileSync(schemaPath, "utf-8")).toMatch(
+        /^\s*message\s+String\s+@db\.Text @map\("body"\) \/\/ client text$/m,
+      );
+    });
+
+    it("removes an @ignore from a Siteping field", () => {
+      // @ignore drops the field from Prisma Client, but the adapter writes
+      // every Siteping column: each feedback submission would fail.
+      const synced = syncedSchema();
+      writeFileSync(schemaPath, synced.replace(/^(\s*url\s+String)$/m, "$1 @ignore"));
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([
+        { model: "SitepingFeedback", field: "url", action: "updated", detail: "-@ignore" },
+      ]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(synced);
+    });
+
+    it("keeps a named relation on both sides", () => {
+      // Stripping the name from one side only leaves Prisma with "missing an
+      // opposite relation field" — the schema must come back untouched.
+      const schema = syncedSchema()
+        .replace(/^(\s*annotations\s+SitepingAnnotation\[\])$/m, '$1 @relation("FbAnn")')
+        .replace("@relation(fields:", '@relation("FbAnn", fields:');
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+    });
+
+    it("keeps the relation name when rewriting a drifted relation field", () => {
+      const schema = syncedSchema()
+        .replace(/^(\s*)annotations\s+SitepingAnnotation\[\]$/m, '$1annotations SitepingAnnotation @relation("FbAnn")')
+        .replace(
+          /feedback(\s+)SitepingFeedback @relation\(fields:/,
+          'feedback$1SitepingFeedback? @relation(name: "FbAnn", fields:',
+        );
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes.map((c) => `${c.model}.${c.field}`)).toEqual([
+        "SitepingFeedback.annotations",
+        "SitepingAnnotation.feedback",
+      ]);
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).toMatch(/^\s*annotations\s+SitepingAnnotation\[\]\s+@relation\("FbAnn"\)$/m);
+      expect(output).toMatch(
+        /^\s*feedback\s+SitepingFeedback\s+@relation\(name: "FbAnn", fields: \[feedbackId\], references: \[id\], onDelete: Cascade\)$/m,
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Attribute arguments (onDelete, @default value, …)
+  // -----------------------------------------------------------------------
+
+  describe("attribute arguments", () => {
+    it("restores a removed onDelete: Cascade", () => {
+      // Without the cascade, deleting a feedback that has annotations fails
+      // with a foreign-key error in the Prisma adapter.
+      writeFileSync(schemaPath, syncedSchema().replace(", onDelete: Cascade", ""));
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([
+        {
+          model: "SitepingAnnotation",
+          field: "feedback",
+          action: "updated",
+          detail:
+            "@relation(fields: [feedbackId], references: [id]) → @relation(fields: [feedbackId], onDelete: Cascade, references: [id])",
+        },
+      ]);
+      expect(readFileSync(schemaPath, "utf-8")).toContain(
+        "@relation(fields: [feedbackId], references: [id], onDelete: Cascade)",
+      );
+    });
+
+    it("restores a changed @default value", () => {
+      writeFileSync(schemaPath, syncedSchema().replace("@default(cuid())", "@default(uuid())"));
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([
+        {
+          model: "SitepingFeedback",
+          field: "id",
+          action: "updated",
+          detail: "@default(uuid()) → @default(cuid())",
+        },
+      ]);
+      expect(readFileSync(schemaPath, "utf-8")).not.toContain("uuid()");
+    });
+
+    it("treats equivalent spellings and constraint names as up to date", () => {
+      // Reordered keyed args, `1.0` for `1`, and `map:` constraint names (the
+      // user's database naming, like `@map`) are not drift.
+      const schema = syncedSchema()
+        .replace(
+          "@relation(fields: [feedbackId], references: [id], onDelete: Cascade)",
+          '@relation(onDelete: Cascade, references: [id], fields: [feedbackId], map: "fk_annotation_feedback")',
+        )
+        .replace("@default(1)", "@default(1.0)")
+        .replace("@id @default(cuid())", '@id(map: "pk_feedback") @default(cuid())');
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+    });
+
+    it("keeps a map: constraint name when rewriting the attribute", () => {
+      writeFileSync(
+        schemaPath,
+        syncedSchema().replace(
+          "@relation(fields: [feedbackId], references: [id], onDelete: Cascade)",
+          '@relation(fields: [feedbackId], references: [id], map: "fk_annotation_feedback")',
+        ),
+      );
+
+      syncPrismaModels(schemaPath);
+
+      expect(readFileSync(schemaPath, "utf-8")).toContain(
+        '@relation(fields: [feedbackId], references: [id], onDelete: Cascade, map: "fk_annotation_feedback")',
+      );
+    });
+
+    it("leaves an onUpdate on the relation alone", () => {
+      // Siteping never sets it (its ids never change), and SQL Server may need
+      // `NoAction` there to break a cycle of cascade paths.
+      const schema = syncedSchema().replace("onDelete: Cascade)", "onDelete: Cascade, onUpdate: NoAction)");
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+    });
+
+    it("keeps onUpdate and a map: constraint name, in order, when rewriting the relation", () => {
+      writeFileSync(
+        schemaPath,
+        syncedSchema().replace(
+          "@relation(fields: [feedbackId], references: [id], onDelete: Cascade)",
+          '@relation(fields: [feedbackId], references: [id], onUpdate: NoAction, map: "fk_annotation_feedback")',
+        ),
+      );
+
+      syncPrismaModels(schemaPath);
+
+      expect(readFileSync(schemaPath, "utf-8")).toContain(
+        '@relation(fields: [feedbackId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_annotation_feedback")',
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // `///` doc comments (Prisma documentation — must stay directly above)
+  // -----------------------------------------------------------------------
+
+  describe("/// doc comments", () => {
+    it("keeps a /// doc directly above its model or enum", () => {
+      // A blank line in between detaches the doc (DMMF loses it), so the
+      // attached docs must stay attached — and a detached one detached.
+      writeFileSync(
+        schemaPath,
+        SCHEMA_WITH_PARTIAL_MODEL.replace("model SitepingFeedback {", "/// Feedback inbox\nmodel SitepingFeedback {") +
+          "\n/// Roles\nenum Role {\n  ADMIN\n}\n\n/// Not attached\n\nmodel Other {\n  id String @id\n}\n",
+      );
+
+      syncPrismaModels(schemaPath);
+
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).toContain("/// Feedback inbox\nmodel SitepingFeedback {");
+      expect(output).toContain("/// Roles\nenum Role {");
+      expect(output).toContain("/// Not attached\n\nmodel Other {");
+    });
+
+    it("inserts new fields above the comments documenting createdAt", () => {
+      writeFileSync(
+        schemaPath,
+        SCHEMA_WITH_PARTIAL_MODEL.replace(
+          /^(\s*)createdAt/m,
+          "$1// Set by the database\n$1/// When the feedback was filed\n$1createdAt",
+        ),
+      );
+
+      syncPrismaModels(schemaPath);
+
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).toMatch(/\/\/ Set by the database\n\s*\/\/\/ When the feedback was filed\n\s*createdAt\s/);
+      // The new fields land above the comment run, not between it and createdAt.
+      expect(output.indexOf("clientId")).toBeLessThan(output.indexOf("// Set by the database"));
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Edge case: model exists but has no createdAt field
   // -----------------------------------------------------------------------
 
@@ -697,6 +1020,140 @@ model SitepingFeedback {
     // The @@index() with no args is unrecognized, so the proper indexes should be added.
     const indexChanges = result.changes.filter((c) => c.field.startsWith("@@index"));
     expect(indexChanges.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["the fields: keyword form", "@@index([feedbackId])", "@@index(fields: [feedbackId])"],
+    [
+      "a sort order on a column",
+      "@@index([projectName, status, createdAt])",
+      "@@index([projectName, status, createdAt(sort: Desc)])",
+    ],
+  ])("recognizes an existing @@index written with %s", (_label, generated, equivalent) => {
+    // A second @@index on the same columns is a Prisma error (P1012: the
+    // default constraint name "has to be unique"), so none may be appended.
+    const schema = syncedSchema().replace(generated, equivalent);
+    writeFileSync(schemaPath, schema);
+
+    const result = syncPrismaModels(schemaPath);
+
+    expect(result.changes).toEqual([]);
+    expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+  });
+
+  // -----------------------------------------------------------------------
+  // Multi-file schema folder (prisma/schema/*.prisma)
+  // -----------------------------------------------------------------------
+
+  describe("multi-file schema folder", () => {
+    let folder: string;
+    let mainPath: string;
+    let sitepingPath: string;
+
+    beforeEach(() => {
+      folder = join(tmpDir, "prisma", "schema");
+      mkdirSync(folder, { recursive: true });
+      mainPath = join(folder, "schema.prisma");
+      sitepingPath = join(folder, "siteping.prisma");
+    });
+
+    /** The two Siteping models as `sync` writes them, without the datasource/generator. */
+    function sitepingModels(): string {
+      const synced = syncedSchema();
+      return synced.slice(synced.indexOf("model SitepingFeedback"));
+    }
+
+    it("finds the Siteping models in a sibling file instead of adding them again", () => {
+      const models = sitepingModels();
+      writeFileSync(mainPath, MINIMAL_SCHEMA);
+      writeFileSync(sitepingPath, models);
+
+      const result = syncPrismaModels(mainPath);
+
+      expect(result.addedModels).toEqual([]);
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(mainPath, "utf-8")).toBe(MINIMAL_SCHEMA);
+      expect(readFileSync(sitepingPath, "utf-8")).toBe(models);
+    });
+
+    it("updates a drifted model in the file that holds it", () => {
+      writeFileSync(mainPath, MINIMAL_SCHEMA);
+      writeFileSync(sitepingPath, sitepingModels().replace(/^\s*screenshotRegion\s+Json\?\s*\n/m, ""));
+
+      const result = syncPrismaModels(mainPath);
+
+      expect(result.changes).toEqual([
+        { model: "SitepingFeedback", field: "screenshotRegion", action: "added", detail: "Json?" },
+      ]);
+      expect(readFileSync(mainPath, "utf-8")).toBe(MINIMAL_SCHEMA);
+      expect(readFileSync(sitepingPath, "utf-8")).toMatch(/screenshotRegion\s+Json\?/);
+      expect(readFileSync(sitepingPath, "utf-8").match(/model SitepingFeedback/g)).toHaveLength(1);
+    });
+
+    it("reads the datasource provider from a sibling file", () => {
+      writeFileSync(mainPath, 'generator client {\n  provider = "prisma-client-js"\n}\n');
+      mkdirSync(join(folder, "db"));
+      writeFileSync(join(folder, "db", "datasource.prisma"), 'datasource db {\n  provider = "sqlite"\n}\n');
+
+      const result = syncPrismaModels(mainPath);
+
+      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(readFileSync(mainPath, "utf-8")).not.toContain("@db.");
+    });
+
+    it("names the file that fails to parse", () => {
+      const broken = join(folder, "broken.prisma");
+      writeFileSync(mainPath, MINIMAL_SCHEMA);
+      writeFileSync(broken, "model Broken {\n  id String @id\n");
+
+      expect(() => syncPrismaModels(mainPath)).toThrow(`${broken}: Expecting`);
+      expect(readFileSync(mainPath, "utf-8")).toBe(MINIMAL_SCHEMA);
+    });
+
+    it("leaves sibling .prisma files alone outside a schema folder", () => {
+      // prisma/schema.prisma is a single-file schema — Prisma ignores its neighbours.
+      const single = join(tmpDir, "prisma", "schema.prisma");
+      writeFileSync(single, MINIMAL_SCHEMA);
+      writeFileSync(join(tmpDir, "prisma", "old.prisma"), sitepingModels());
+
+      expect(syncPrismaModels(single).addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+    });
+
+    it("treats a project root named schema as a single-file schema", () => {
+      // A package root is not a schema folder: another app's schema or a
+      // generated client's copy under it must be neither read nor written.
+      const project = join(tmpDir, "schema");
+      const rootSchema = join(project, "schema.prisma");
+      const others = [join(project, "apps", "admin", "siteping.prisma"), join(project, "node_modules", "x.prisma")];
+      const models = sitepingModels().replace(/^\s*screenshotRegion\s+Json\?\s*\n/m, "");
+      mkdirSync(join(project, "apps", "admin"), { recursive: true });
+      mkdirSync(join(project, "node_modules"));
+      writeFileSync(join(project, "package.json"), "{}");
+      writeFileSync(rootSchema, MINIMAL_SCHEMA);
+      for (const other of others) writeFileSync(other, models);
+
+      const result = syncPrismaModels(rootSchema);
+
+      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(readFileSync(rootSchema, "utf-8")).toContain("model SitepingFeedback {");
+      for (const other of others) expect(readFileSync(other, "utf-8")).toBe(models);
+    });
+
+    it.each([
+      ["node_modules", "client"],
+      [".generated", "client"],
+    ])("ignores .prisma files under %s in a schema folder", (...segments) => {
+      const copy = join(folder, ...segments, "schema.prisma");
+      const models = sitepingModels().replace(/^\s*screenshotRegion\s+Json\?\s*\n/m, "");
+      mkdirSync(dirname(copy), { recursive: true });
+      writeFileSync(mainPath, MINIMAL_SCHEMA);
+      writeFileSync(copy, models);
+
+      const result = syncPrismaModels(mainPath);
+
+      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(readFileSync(copy, "utf-8")).toBe(models);
+    });
   });
 
   // -----------------------------------------------------------------------

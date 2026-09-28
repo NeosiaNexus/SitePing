@@ -336,6 +336,68 @@ describe("statusCommand", () => {
       expect(warnings.some((m) => m.includes("Prisma schema"))).toBe(true);
     });
 
+    it("parses a valid schema with a trailing space or a comment after {", () => {
+      createPrismaSchema(
+        tmpDir,
+        FULL_SCHEMA.replace("model SitepingFeedback {", "model SitepingFeedback { ").replace(
+          "model SitepingAnnotation {",
+          "model SitepingAnnotation { // anchors",
+        ),
+      );
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      expect(allMessages(logSuccessSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Up to date$/));
+    });
+
+    it.each([
+      ["an unparseable schema", (dir: string) => createPrismaSchema(dir, "model Broken {\n  id String @id\n")],
+      ["--schema pointing at a directory", (dir: string) => join(dir, "prisma", "..")],
+    ])("reports %s as an error instead of crashing", (_label, setup) => {
+      mkdirSync(join(tmpDir, "prisma"), { recursive: true });
+      const schemaPath = setup(tmpDir);
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      expect(() => statusCommand({ schema: schemaPath })).not.toThrow();
+
+      expect(allMessages(logErrorSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Cannot read: /));
+      // The remaining checks still run, and the command fails like any other error.
+      expect(allMessages(logSuccessSpy).some((m) => m.includes("API route"))).toBe(true);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("finds the Siteping models in a sibling file of a prisma/schema/ folder", () => {
+      const folder = join(tmpDir, "prisma", "schema");
+      mkdirSync(folder, { recursive: true });
+      const [head, models] = FULL_SCHEMA.split(/(?=model SitepingFeedback)/);
+      writeFileSync(join(folder, "schema.prisma"), head ?? "");
+      writeFileSync(join(folder, "siteping.prisma"), models ?? "");
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      expect(allMessages(logSuccessSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Up to date$/));
+    });
+
+    it("names the sibling file of a prisma/schema/ folder that fails to parse", () => {
+      const folder = join(tmpDir, "prisma", "schema");
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, "schema.prisma"), FULL_SCHEMA);
+      writeFileSync(join(folder, "broken.prisma"), "model Broken {\n  id String @id\n");
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      expect(allMessages(logErrorSpy)).toContainEqual(
+        expect.stringMatching(/^Prisma schema\s+Cannot read: \S+[/\\]broken\.prisma: Expecting/),
+      );
+    });
+
     it("uses --schema flag path when provided", () => {
       const customDir = join(tmpDir, "custom");
       mkdirSync(customDir, { recursive: true });
@@ -374,6 +436,18 @@ describe("statusCommand", () => {
       expect(allMessages(logSuccessSpy).some((m) => m.startsWith("Prisma schema"))).toBe(false);
     });
 
+    it("reports a removed onDelete: Cascade instead of 'Up to date'", () => {
+      createPrismaSchema(tmpDir, FULL_SCHEMA.replace(", onDelete: Cascade", ""));
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      const schemaLine = allMessages(logWarnSpy).find((m) => m.startsWith("Prisma schema"));
+      expect(schemaLine).toContain("SitepingAnnotation.feedback");
+      expect(allMessages(logSuccessSpy).some((m) => m.startsWith("Prisma schema"))).toBe(false);
+    });
+
     it("leaves the schema file untouched", () => {
       const schemaPath = createPrismaSchema(tmpDir, DRIFTED_SCHEMA);
       createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
@@ -406,6 +480,32 @@ describe("statusCommand", () => {
 
       const successes = allMessages(logSuccessSpy);
       expect(successes.some((m) => m.includes("API route"))).toBe(true);
+    });
+
+    it("reports success when the API route is a JavaScript file", () => {
+      createPackageJson(tmpDir);
+      const routeDir = join(tmpDir, "app", "api", "siteping");
+      mkdirSync(routeDir, { recursive: true });
+      writeFileSync(join(routeDir, "route.js"), "export const GET = () => {};");
+
+      statusCommand({});
+
+      expect(allMessages(logSuccessSpy)).toContainEqual(
+        expect.stringMatching(/^API route\s+app\/api\/siteping\/route\.js$/),
+      );
+    });
+
+    it("reports a src/app route as not found when app/ exists (Next.js ignores src/app)", () => {
+      createPackageJson(tmpDir);
+      mkdirSync(join(tmpDir, "app"), { recursive: true });
+      const routeDir = join(tmpDir, "src", "app", "api", "siteping");
+      mkdirSync(routeDir, { recursive: true });
+      writeFileSync(join(routeDir, "route.ts"), "export const GET = () => {};");
+
+      statusCommand({});
+
+      expect(allMessages(logErrorSpy)).toContainEqual(expect.stringMatching(/^API route\s+Not found$/));
+      expect(allMessages(logSuccessSpy).some((m) => m.includes("API route"))).toBe(false);
     });
 
     it("reports error when no API route is found", () => {

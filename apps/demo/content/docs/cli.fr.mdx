@@ -20,7 +20,7 @@ npx @siteping/cli init
 `init` vous guide à travers deux confirmations :
 
 1. **Synchroniser les modèles Prisma** — si un schéma est trouvé (voir [détection du schéma](#détection-du-schéma)), il propose d'ajouter les modèles `SitepingFeedback` et `SitepingAnnotation`.
-2. **Générer la route API** — propose de créer une route Next.js App Router qui sert le widget. Le fichier va dans `app/api/siteping/route.ts`, ou `src/app/api/siteping/route.ts` si votre projet utilise une arborescence `src/`. Une route existante n'est jamais écrasée.
+2. **Générer la route API** — propose de créer une route Next.js App Router qui sert le widget. Le fichier va dans `app/api/siteping/route.ts`, ou `src/app/api/siteping/route.ts` si votre projet utilise une arborescence `src/`. Si `app/` et `src/app/` existent tous les deux, `app/` l'emporte — Next.js ignore alors lui-même `src/app/`. Une route existante — `route.ts`, `.tsx`, `.js` ou `.jsx` — n'est jamais écrasée.
 
 La route générée importe deux choses que vous devez fournir vous-même — le CLI n'installe rien :
 
@@ -42,12 +42,12 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 
 - crée les deux modèles s'ils sont absents,
 - ajoute les champs et blocs `@@index` manquants,
-- réécrit les champs SitePing dont le type ou les attributs ont dérivé de la forme attendue,
+- réécrit les champs SitePing dont le type ou les attributs ont dérivé de la forme attendue — en gardant ce qui vous appartient (noms de colonne `@map`, noms de relation, `onUpdate` d'une relation, commentaires) ; un `@ignore` compte comme une dérive, car l'adapter écrit toutes les colonnes SitePing,
 - **ne touche jamais aux champs que vous avez ajoutés vous-même.**
 
 Quand quelque chose a changé, il vous rappelle de lancer `npx prisma db push`. Le lancer deux fois de suite ne fait rien.
 
-> **Committez avant de le lancer.** `sync` réimprime tout le fichier de schéma, donc le formatage (lignes vides après les commentaires, alignement des colonnes) est normalisé y compris sur vos propres modèles. Un diff git propre rend les changements faciles à relire.
+> **Committez avant de le lancer.** `sync` réimprime tout le fichier de schéma, donc le formatage (lignes vides après les commentaires `//`, alignement des colonnes) est normalisé y compris sur vos propres modèles — les commentaires de documentation `///` restent attachés à ce qu'ils documentent. Un diff git propre rend les changements faciles à relire.
 
 ## `status` — rapport de santé du projet
 
@@ -60,8 +60,8 @@ npx @siteping/cli status --schema prisma/schema.prisma
 
 | Vérification | Ce qu'elle regarde |
 |---|---|
-| Schéma Prisma | Les deux modèles présents, chaque champ à jour — exactement le diff qu'applique `sync`, donc type, optionalité, attributs (`@unique`, `@db.Text`, …) et blocs `@@index` comptent tous |
-| Route API | `app/api/siteping/route.ts` ou `src/app/api/siteping/route.ts` existe |
+| Schéma Prisma | Les deux modèles présents, chaque champ à jour — exactement le diff qu'applique `sync`, donc type, optionalité, attributs et leurs arguments (`@unique`, `@db.Text`, `onDelete: Cascade`, …) et blocs `@@index` comptent tous |
+| Route API | `api/siteping/route.ts` (ou `.tsx`, `.js`, `.jsx`) existe dans le répertoire app que sert Next.js — `app/`, ou `src/app/` en l'absence de `app/` |
 | Package | `@siteping/widget` listé dans votre `package.json` |
 | Intégration du widget | `initSiteping` référencé quelque part dans `src/`, `app/` ou `pages/` |
 
@@ -76,6 +76,8 @@ npx @siteping/cli doctor --url https://app.example.com --api-key "$SITEPING_API_
 
 `doctor` envoie une requête GET à votre serveur en fonctionnement et vous dit si un handler SitePing a répondu (timeout de 10 secondes). Passez **à la fois** `--url` et `--endpoint` pour l'exécuter sans interaction — celle que vous omettez devient une question. Quand l'endpoint est configuré avec un `apiKey` et que `GET` n'est pas public, passez la clé avec `--api-key` ; sans elle, un `401` s'accompagne d'une indication.
 
+`--url` est l'URL de base de votre site, pas celle de l'endpoint : un chemin qu'elle contient (un `basePath` Next.js, par exemple) se place devant `--endpoint`. Avec `--url https://example.com/app --endpoint /api/siteping`, `doctor` interroge `https://example.com/app/api/siteping`.
+
 Il ne vérifie que la réponse HTTP — il ne lit jamais votre schéma. Pour vérifier le schéma, utilisez `status`.
 
 ## Codes de sortie
@@ -86,7 +88,7 @@ Toutes les commandes sont scriptables. `0` signifie succès, `1` que quelque cho
 |---|---|
 | `init` | La génération de route ou la synchronisation du schéma échoue |
 | `sync` | Aucun schéma trouvé, fichier `--schema` absent, ou erreur d'analyse/d'écriture |
-| `status` | Le schéma, la route API, le `package.json` ou la dépendance widget manque |
+| `status` | Le schéma, la route API, le `package.json` ou la dépendance widget manque, ou le schéma est illisible ou invalide |
 | `doctor` | Réponse différente de 200, serveur injoignable, ou timeout |
 
 Deux réserves pour les pipelines CI : `status` sort en `0` (avec une indication de lancer `sync`) quand les champs du schéma ont simplement dérivé, et `doctor` sort en `0` sur toute réponse 200 — y compris une qui ne vient pas d'un handler SitePing (il affiche un avertissement à la place). Ni l'un ni l'autre n'est un garde-fou strict.
@@ -98,3 +100,5 @@ Quand vous ne passez pas `--schema`, le CLI teste trois emplacements dans l'ordr
 1. `prisma/schema.prisma`
 2. `schema.prisma`
 3. `prisma/schema/schema.prisma`
+
+Un fichier de schéma situé dans un dossier `schema/` (comme `prisma/schema/schema.prisma`) est traité comme une partie d'un schéma multi-fichiers, comme le fait Prisma : chaque fichier `.prisma` de ce dossier et de ses sous-dossiers compte, sauf sous `node_modules` et dans les dossiers cachés. Les modèles SitePing sont trouvés et mis à jour dans le fichier qui les contient ; ceux qui manquent sont ajoutés au fichier indiqué. Un dossier qui contient un `package.json` est la racine d'un projet, jamais un dossier de schéma, même s'il s'appelle `schema`. Un dossier de schéma multi-fichiers portant un autre nom n'est pas détecté : le CLI ne voit alors que le fichier que vous lui indiquez.

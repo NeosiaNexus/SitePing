@@ -317,6 +317,39 @@ describe("doctorCommand", () => {
       const calledUrl = fetchFn.mock.calls[0]?.[0];
       expect(calledUrl).toBe("http://localhost:3000/api/siteping?projectName=__siteping_health_check__");
     });
+
+    it.each([
+      ["keeps the base path of --url", "http://host/base", "/api/siteping", "http://host/base/api/siteping?"],
+      [
+        "joins a trailing-slash --url without a double slash",
+        "http://host/",
+        "/api/siteping",
+        "http://host/api/siteping?",
+      ],
+      [
+        "appends projectName to an endpoint that has a query",
+        "http://localhost:3000",
+        "/api/siteping?x=1",
+        "http://localhost:3000/api/siteping?x=1&",
+      ],
+    ])("%s", async (_label, url, endpoint, expectedPrefix) => {
+      const fetchFn = mockFetchOk({ total: 0 });
+      vi.stubGlobal("fetch", fetchFn);
+
+      await doctorCommand({ url, endpoint });
+
+      expect(fetchFn.mock.calls[0]?.[0]).toBe(`${expectedPrefix}projectName=__siteping_health_check__`);
+    });
+
+    it("exits(1) with an error for a URL that passes the prefix check but doesn't parse", async () => {
+      vi.stubGlobal("fetch", mockFetchOk({ total: 0 }));
+
+      const err = await doctorCommand({ url: "http://", endpoint: "/api/siteping" }).catch((e) => e);
+
+      expect(err).toBeInstanceOf(ExitError);
+      expect((err as ExitError).code).toBe(1);
+      expect(p.log.error).toHaveBeenCalledWith(expect.stringContaining("Invalid URL"));
+    });
   });
 
   // -------------------------------------------------------------------------

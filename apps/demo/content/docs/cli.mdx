@@ -20,7 +20,7 @@ npx @siteping/cli init
 `init` walks you through two confirmations:
 
 1. **Sync Prisma models** — if a schema is found (see [schema detection](#schema-detection)), it offers to add the `SitepingFeedback` and `SitepingAnnotation` models.
-2. **Generate the API route** — offers to create a Next.js App Router route that serves the widget. The file goes to `app/api/siteping/route.ts`, or `src/app/api/siteping/route.ts` when your project uses a `src/` layout. An existing route is never overwritten.
+2. **Generate the API route** — offers to create a Next.js App Router route that serves the widget. The file goes to `app/api/siteping/route.ts`, or `src/app/api/siteping/route.ts` when your project uses a `src/` layout. If both `app/` and `src/app/` exist, `app/` wins — Next.js itself ignores `src/app/` then. An existing route — `route.ts`, `.tsx`, `.js` or `.jsx` — is never overwritten.
 
 The generated route imports two things you need to provide yourself — the CLI installs nothing:
 
@@ -42,12 +42,12 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 
 - creates the two models if they are missing,
 - adds any missing fields and `@@index` blocks,
-- rewrites SitePing fields whose type or attributes drifted from the expected shape,
+- rewrites SitePing fields whose type or attributes drifted from the expected shape — keeping the parts that are yours (`@map` column names, relation names, a relation's `onUpdate`, comments); an `@ignore` counts as drift, since the adapter writes every SitePing column,
 - **never touches fields you added yourself.**
 
 When something changed, it reminds you to run `npx prisma db push`. Running it twice in a row is a no-op.
 
-> **Commit before you run it.** `sync` re-prints the whole schema file, so formatting (blank lines after comments, column alignment) is normalized across your own models too. A clean git diff makes the changes easy to review.
+> **Commit before you run it.** `sync` re-prints the whole schema file, so formatting (blank lines after `//` comments, column alignment) is normalized across your own models too — `///` doc comments stay attached to what they document. A clean git diff makes the changes easy to review.
 
 ## `status` — project health report
 
@@ -60,8 +60,8 @@ npx @siteping/cli status --schema prisma/schema.prisma
 
 | Check | What it looks at |
 |---|---|
-| Prisma schema | Both models present, every field up to date — the exact diff `sync` applies, so type, optionality, attributes (`@unique`, `@db.Text`, …) and `@@index` blocks all count |
-| API route | `app/api/siteping/route.ts` or `src/app/api/siteping/route.ts` exists |
+| Prisma schema | Both models present, every field up to date — the exact diff `sync` applies, so type, optionality, attributes and their arguments (`@unique`, `@db.Text`, `onDelete: Cascade`, …) and `@@index` blocks all count |
+| API route | `api/siteping/route.ts` (or `.tsx`, `.js`, `.jsx`) exists in the app directory Next.js serves — `app/`, or `src/app/` when there is no `app/` |
 | Package | `@siteping/widget` listed in your `package.json` |
 | Widget integration | `initSiteping` referenced somewhere in `src/`, `app/`, or `pages/` |
 
@@ -76,6 +76,8 @@ npx @siteping/cli doctor --url https://app.example.com --api-key "$SITEPING_API_
 
 `doctor` sends one GET request to your running server and tells you whether a SitePing handler answered (10-second timeout). Pass **both** `--url` and `--endpoint` to run it non-interactively — either one you omit becomes a prompt. When the endpoint is configured with an `apiKey` and `GET` is not public, pass the key with `--api-key`; without it, a `401` comes with a hint.
 
+`--url` is your site's base URL, not the endpoint's: a path in it (a Next.js `basePath`, for example) goes in front of `--endpoint`. With `--url https://example.com/app --endpoint /api/siteping`, `doctor` requests `https://example.com/app/api/siteping`.
+
 It checks the HTTP response only — it never reads your schema. For schema verification, use `status`.
 
 ## Exit codes
@@ -86,7 +88,7 @@ All commands are scriptable. `0` means success, `1` means something needs fixing
 |---|---|
 | `init` | Route generation or schema sync fails |
 | `sync` | No schema found, `--schema` file missing, or parse/write error |
-| `status` | Schema, API route, `package.json`, or the widget dependency is missing |
+| `status` | Schema, API route, `package.json`, or the widget dependency is missing, or the schema can't be read or parsed |
 | `doctor` | Non-200 response, unreachable server, or timeout |
 
 Two caveats for CI pipelines: `status` exits `0` (with a hint to run `sync`) when schema fields merely drift, and `doctor` exits `0` on any 200 response — even one that is not a SitePing handler (it prints a warning instead). Neither is a strict gate.
@@ -98,3 +100,5 @@ When you don't pass `--schema`, the CLI probes three locations in order:
 1. `prisma/schema.prisma`
 2. `schema.prisma`
 3. `prisma/schema/schema.prisma`
+
+A schema file inside a `schema/` folder (like `prisma/schema/schema.prisma`) is treated as part of a multi-file schema, as Prisma does: every `.prisma` file in that folder and its subfolders counts, except under `node_modules` and hidden folders. SitePing models are found and updated in whichever file holds them; missing ones are added to the file you pointed at. A folder that holds a `package.json` is a project root, never a schema folder, even if it is named `schema`. A multi-file schema folder with any other name isn't detected: the CLI then only sees the file you point it at.

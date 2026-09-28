@@ -3,19 +3,17 @@ import "../utils/object-group-by-polyfill.js";
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import * as p from "@clack/prompts";
-import { getSchema } from "@mrleebo/prisma-ast";
 import { hasOwn } from "@siteping/core";
-import { reconcileSitepingModels } from "../generators/prisma.js";
+import { diffPrismaSchema, type SchemaReconciliation } from "../generators/prisma.js";
+import { findAppDir, findRouteFile } from "../generators/route.js";
 import { findPrismaSchema } from "../utils/find-schema.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
+/** The route in the app directory Next.js actually serves — the one `init` writes to. */
 function findApiRoute(cwd: string): string | null {
-  const candidates = [
-    join(cwd, "app", "api", "siteping", "route.ts"),
-    join(cwd, "src", "app", "api", "siteping", "route.ts"),
-  ];
-  return candidates.find((c) => existsSync(c)) ?? null;
+  const appDir = findAppDir(cwd);
+  return appDir ? findRouteFile(appDir) : null;
 }
 
 /**
@@ -92,6 +90,8 @@ function searchInDir(dir: string, extensions: ReadonlyArray<string>, patterns: R
 interface SchemaCheckResult {
   found: boolean;
   path: string | null;
+  /** Why the schema file exists but couldn't be read or parsed. */
+  error?: string;
   missingModels: string[];
   missingFields: string[];
   outdatedFields: string[];
@@ -108,7 +108,23 @@ function checkSchema(schemaPath: string | null): SchemaCheckResult {
     return { found: false, path: null, missingModels: [], missingFields: [], outdatedFields: [] };
   }
 
-  const { addedModels, changes } = reconcileSitepingModels(getSchema(readFileSync(schemaPath, "utf-8")));
+  let reconciliation: SchemaReconciliation;
+  try {
+    reconciliation = diffPrismaSchema(schemaPath);
+  } catch (error) {
+    // A directory (EISDIR) or a schema that doesn't parse: a failed check,
+    // reported like the others (as sync and init do), not a stack trace.
+    const [firstLine = ""] = (error instanceof Error ? error.message : String(error)).split("\n");
+    return {
+      found: true,
+      path: schemaPath,
+      error: firstLine,
+      missingModels: [],
+      missingFields: [],
+      outdatedFields: [],
+    };
+  }
+  const { addedModels, changes } = reconciliation;
 
   return {
     found: true,
@@ -144,6 +160,8 @@ export function statusCommand(options: StatusCommandOptions): void {
 
   if (!schemaResult.found) {
     p.log.error(`${pad("Prisma schema", 25)}Not found`);
+  } else if (schemaResult.error !== undefined) {
+    p.log.error(`${pad("Prisma schema", 25)}Cannot read: ${schemaResult.error}`);
   } else {
     const issues = [
       ...schemaResult.missingModels.map((m) => `model ${m}`),
@@ -194,7 +212,7 @@ export function statusCommand(options: StatusCommandOptions): void {
   }
 
   // Outro
-  const hasError = !schemaResult.found || !routePath || !pkg || !widgetVersion;
+  const hasError = !schemaResult.found || schemaResult.error !== undefined || !routePath || !pkg || !widgetVersion;
   const hasWarning =
     schemaResult.missingModels.length > 0 ||
     schemaResult.missingFields.length > 0 ||
