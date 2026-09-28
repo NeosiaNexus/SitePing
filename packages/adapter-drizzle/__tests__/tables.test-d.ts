@@ -1,7 +1,7 @@
 import type { AnnotationRecord, FeedbackRecord } from "@siteping/core";
 import { expectTypeOf, test } from "vitest";
-import type { SitepingSqliteTables } from "../src/libsql/index.js";
-import type { SitepingPgTables } from "../src/pg/index.js";
+import type { LibSQLSitepingStoreOptions, SitepingSqliteTables } from "../src/libsql/index.js";
+import type { PgSitepingStoreOptions, SitepingPgTables } from "../src/pg/index.js";
 
 // Rows read back from either dialect must be exactly the core records, so a
 // field added to the store contract cannot ship without its column. The tables
@@ -28,4 +28,11 @@ test("SQLite / libSQL tables match the core records", () => {
   expectTypeOf<FeedbackSelect["messageSearch"]>().toEqualTypeOf<string | null>();
   expectTypeOf<Omit<AnnotationSelect, "position">>().toEqualTypeOf<AnnotationRecord>();
   expectTypeOf<AnnotationSelect["position"]>().toEqualTypeOf<number>();
+});
+
+test("store options accept an explicit undefined, like every other optional option", () => {
+  // Under exactOptionalPropertyTypes, spreading an optional `tables` from a
+  // caller's own options object must type-check.
+  expectTypeOf<{ tables: undefined }>().toExtend<PgSitepingStoreOptions>();
+  expectTypeOf<{ tables: undefined }>().toExtend<LibSQLSitepingStoreOptions>();
 });

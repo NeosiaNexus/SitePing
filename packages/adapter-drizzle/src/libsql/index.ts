@@ -23,7 +23,7 @@ export type AnyLibSQLDatabase = LibSQLDatabase<any>;
 
 export interface LibSQLSitepingStoreOptions extends DrizzleStoreOptions {
   /** Tables built with `createSitepingSqliteTables` — pass them when you customized the names. */
-  tables?: SitepingSqliteTables;
+  tables?: SitepingSqliteTables | undefined;
 }
 
 function createLibSQLGateway(

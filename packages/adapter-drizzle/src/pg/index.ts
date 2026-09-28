@@ -32,7 +32,7 @@ export type AnyPgDatabase = PgDatabase<PgQueryResultHKT, any, any>;
 
 export interface PgSitepingStoreOptions extends DrizzleStoreOptions {
   /** Tables built with `createSitepingPgTables` — pass them when you customized the names. */
-  tables?: SitepingPgTables;
+  tables?: SitepingPgTables | undefined;
 }
 
 /**
