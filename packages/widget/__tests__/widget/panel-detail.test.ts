@@ -366,6 +366,9 @@ describe("DetailView", () => {
         "http://localhost@evil.com/x.jpg",
         "http://127.0.0.1.nip.io/x.jpg",
         "http://10.0.0.1/x.jpg",
+        // A loopback host under another scheme: only http: is let through.
+        "ftp://localhost/x.jpg",
+        "javascript://localhost/%0aalert(1)",
       ];
       for (const url of unsafe) {
         setup.view.show(makeFeedback({ screenshotUrl: url }), 1);
