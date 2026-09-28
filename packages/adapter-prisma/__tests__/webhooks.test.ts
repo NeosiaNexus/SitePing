@@ -374,12 +374,13 @@ describe("dispatchWebhook", () => {
   ])("keeps the credential out of the log when fetch quotes a URL %s", async (_label, url, reason) => {
     // Node's own fetch copies the URL it was given into these errors, and
     // throws them before any network access.
+    // An onError that rethrows carries the same message into its warning.
     fetchSpy.mockImplementation(realFetch);
-    const throwingOnError = () => {
-      throw new Error("callback bug");
+    const rethrowingOnError = (err: Error) => {
+      throw err;
     };
     await dispatchWebhook({ url }, FEEDBACK);
-    await dispatchWebhook({ url, onError: throwingOnError }, FEEDBACK);
+    await dispatchWebhook({ url, onError: rethrowingOnError }, FEEDBACK);
 
     expect(warnSpy).toHaveBeenCalledTimes(2);
     for (const [logged] of warnSpy.mock.calls) {

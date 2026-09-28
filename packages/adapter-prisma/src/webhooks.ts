@@ -382,14 +382,16 @@ function reportError(config: WebhookConfig, err: Error, feedbackId: string): voi
       // Defense-in-depth: a thrown user callback must not bubble back up
       // and crash the request that already succeeded persisting the
       // feedback. Surface the original error too so it isn't silently lost.
-      console.warn(
-        `[siteping] webhook onError() callback threw for feedback ${feedbackId}: ${String(callbackErr)} (original error: ${loggableMessage(err, config.url)})`,
+      warnWithoutUrl(
+        config.url,
+        `webhook onError() callback threw for feedback ${feedbackId}: ${String(callbackErr)} (original error: ${err.message})`,
       );
     }
     return;
   }
-  console.warn(
-    `[siteping] webhook to ${webhookOrigin(config.url)} failed for feedback ${feedbackId}: ${loggableMessage(err, config.url)}`,
+  warnWithoutUrl(
+    config.url,
+    `webhook to ${webhookOrigin(config.url)} failed for feedback ${feedbackId}: ${err.message}`,
   );
 }
 
@@ -407,12 +409,13 @@ function webhookOrigin(url: string): string {
 }
 
 /**
- * `err.message` with the webhook URL reduced to its origin. Node's fetch
- * copies the URL it was given into some errors ("…a URL that includes
- * credentials: <url>", "Failed to parse URL from <url>").
+ * `console.warn` with every copy of the webhook URL reduced to its origin.
+ * Node's fetch copies the URL it was given into some errors ("…a URL that
+ * includes credentials: <url>", "Failed to parse URL from <url>"), and an
+ * `onError` that rethrows or wraps one carries it into its own error.
  */
-function loggableMessage(err: Error, url: string): string {
-  return url ? err.message.split(url).join(webhookOrigin(url)) : err.message;
+function warnWithoutUrl(url: string, message: string): void {
+  console.warn(`[siteping] ${url ? message.split(url).join(webhookOrigin(url)) : message}`);
 }
 
 /**
