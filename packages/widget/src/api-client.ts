@@ -6,6 +6,7 @@ import {
   type FeedbackResponseList,
   feedbackQueryToSearchParams,
   hasOwn,
+  mergeRequestHeaders,
   networkErrorFromException,
   type Prettify,
   SitepingError,
@@ -48,8 +49,8 @@ export interface ApiClientAuth {
 /**
  * Build the headers for one request — mirrors the dashboard's
  * `createEndpointSource` semantics: `Content-Type` when the request carries a
- * JSON body, then `Bearer` from `apiKey`, then `headers` merged on top so an
- * explicit `Authorization` wins.
+ * JSON body, then `Bearer` from `apiKey`, then `headers` merged on top
+ * (case-insensitively) so an explicit `Authorization` wins.
  *
  * A function `headers` resolves once per call — retries inside
  * `resilientFetch` reuse the values for the whole retry sequence — up to
@@ -58,12 +59,11 @@ export interface ApiClientAuth {
  * throwing/rejecting factory fails the request like a network error.
  */
 export async function buildRequestHeaders(auth: ApiClientAuth, json: boolean): Promise<Record<string, string>> {
-  const merged: Record<string, string> = {};
-  if (json) merged["Content-Type"] = "application/json";
-  if (auth.apiKey) merged.Authorization = `Bearer ${auth.apiKey}`;
+  const defaults: Record<string, string> = {};
+  if (json) defaults["Content-Type"] = "application/json";
+  if (auth.apiKey) defaults.Authorization = `Bearer ${auth.apiKey}`;
   const extra = typeof auth.headers === "function" ? await auth.headers() : auth.headers;
-  if (extra) Object.assign(merged, extra);
-  return merged;
+  return mergeRequestHeaders(defaults, extra);
 }
 
 const MAX_RETRIES = 3;

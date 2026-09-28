@@ -672,6 +672,20 @@ describe("ApiClient — auth & headers", () => {
     expect(lastHeaders().Authorization).toBe("Bearer from-headers");
   });
 
+  it("lets an explicit authorization header override apiKey whatever its casing", async () => {
+    // Header names are case-insensitive: a plain object merge sent both
+    // entries, which fetch combines into "Bearer k, Basic xyz".
+    const client = new ApiClient(endpoint, "test", { apiKey: "k", headers: { authorization: "Basic xyz" } });
+    await client.sendFeedback(payload);
+    expect(new Headers(lastHeaders()).get("Authorization")).toBe("Basic xyz");
+  });
+
+  it("lets a lowercase content-type replace the JSON default instead of combining with it", async () => {
+    const client = new ApiClient(endpoint, "test", { headers: { "content-type": "application/vnd.api+json" } });
+    await client.sendFeedback(payload);
+    expect(new Headers(lastHeaders()).get("Content-Type")).toBe("application/vnd.api+json");
+  });
+
   it("fails the request like a network error when the headers factory throws", async () => {
     const client = new ApiClient(endpoint, "test", {
       headers: () => {
