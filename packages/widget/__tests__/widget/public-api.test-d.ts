@@ -12,7 +12,15 @@ import type {
 } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
 import type { GetFeedbacksOptions } from "../../src/api-client.js";
-import { initSiteping, registerLocale, type Translations } from "../../src/index.js";
+import {
+  initSiteping,
+  registerLocale,
+  type SitepingPanelAction,
+  type SitepingPanelActionContext,
+  type SitepingPanelButtonAction,
+  type SitepingPanelLinkAction,
+  type Translations,
+} from "../../src/index.js";
 
 declare const store: SitepingStore;
 declare const instance: SitepingInstance;
@@ -26,6 +34,63 @@ describe("initSiteping config modes", () => {
   it("rejects mixed modes", () => {
     // @ts-expect-error — endpoint and store are mutually exclusive
     initSiteping({ projectName: "p", endpoint: "/api", store });
+  });
+});
+
+describe("panelActions", () => {
+  it("accepts button and link actions in both modes", () => {
+    expectTypeOf(initSiteping).toBeCallableWith({
+      projectName: "p",
+      endpoint: "/api/siteping",
+      panelActions: [
+        { id: "sync", label: "Sync", onAction: () => {} },
+        { id: "async", label: "Async", onAction: async () => {}, icon: "<svg/>", visible: () => true },
+        { id: "static", label: "Tracker", href: "https://tracker.example" },
+        { id: "computed", label: "Mail", href: (fb) => `mailto:${fb.authorEmail}` },
+      ],
+    });
+    expectTypeOf(initSiteping).toBeCallableWith({ projectName: "p", store, panelActions: [] });
+  });
+
+  it("is a button XOR a link", () => {
+    expectTypeOf<SitepingPanelAction>().toEqualTypeOf<SitepingPanelButtonAction | SitepingPanelLinkAction>();
+    // @ts-expect-error — onAction and href are mutually exclusive
+    const both: SitepingPanelAction = { id: "x", label: "X", onAction: () => {}, href: "https://x.example" };
+    // @ts-expect-error — one of onAction / href is required
+    const neither: SitepingPanelAction = { id: "x", label: "X" };
+    void [both, neither];
+  });
+
+  it("hands callbacks a read-only feedback and the context", () => {
+    expectTypeOf<Parameters<SitepingPanelButtonAction["onAction"]>>().toEqualTypeOf<
+      [Readonly<FeedbackResponse>, SitepingPanelActionContext]
+    >();
+    expectTypeOf<ReturnType<SitepingPanelButtonAction["onAction"]>>().toEqualTypeOf<void | Promise<void>>();
+    expectTypeOf<SitepingPanelActionContext>().toEqualTypeOf<{ refresh: () => Promise<void>; close: () => void }>();
+    expectTypeOf<SitepingPanelLinkAction["href"]>().toEqualTypeOf<
+      string | ((feedback: Readonly<FeedbackResponse>) => string)
+    >();
+  });
+
+  it("still accepts handlers written against FeedbackResponse", () => {
+    const createTicket = (_fb: FeedbackResponse): Promise<void> => Promise.resolve();
+    expectTypeOf(initSiteping).toBeCallableWith({
+      projectName: "p",
+      endpoint: "/api",
+      panelActions: [{ id: "t", label: "Ticket", onAction: createTicket, visible: (fb: FeedbackResponse) => !!fb }],
+    });
+  });
+
+  it("rejects writes to the feedback", () => {
+    const action: SitepingPanelButtonAction = {
+      id: "x",
+      label: "X",
+      onAction: (fb) => {
+        // @ts-expect-error — the snapshot is read-only
+        fb.status = "resolved";
+      },
+    };
+    void action;
   });
 });
 

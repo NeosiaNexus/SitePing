@@ -68,7 +68,6 @@ export type {
   SitepingInstance,
   SitepingLocale,
   SitepingPanelAction,
-  SitepingPanelActionBase,
   SitepingPanelActionContext,
   SitepingPanelButtonAction,
   SitepingPanelLinkAction,
