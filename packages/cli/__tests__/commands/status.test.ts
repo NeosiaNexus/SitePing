@@ -374,6 +374,18 @@ describe("statusCommand", () => {
       expect(allMessages(logSuccessSpy).some((m) => m.startsWith("Prisma schema"))).toBe(false);
     });
 
+    it("reports a removed onDelete: Cascade instead of 'Up to date'", () => {
+      createPrismaSchema(tmpDir, FULL_SCHEMA.replace(", onDelete: Cascade", ""));
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      const schemaLine = allMessages(logWarnSpy).find((m) => m.startsWith("Prisma schema"));
+      expect(schemaLine).toContain("SitepingAnnotation.feedback");
+      expect(allMessages(logSuccessSpy).some((m) => m.startsWith("Prisma schema"))).toBe(false);
+    });
+
     it("leaves the schema file untouched", () => {
       const schemaPath = createPrismaSchema(tmpDir, DRIFTED_SCHEMA);
       createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });

@@ -60,7 +60,7 @@ npx @siteping/cli status --schema prisma/schema.prisma
 
 | Check | What it looks at |
 |---|---|
-| Prisma schema | Both models present, every field up to date — the exact diff `sync` applies, so type, optionality, attributes (`@unique`, `@db.Text`, …) and `@@index` blocks all count |
+| Prisma schema | Both models present, every field up to date — the exact diff `sync` applies, so type, optionality, attributes and their arguments (`@unique`, `@db.Text`, `onDelete: Cascade`, …) and `@@index` blocks all count |
 | API route | `app/api/siteping/route.ts` or `src/app/api/siteping/route.ts` exists |
 | Package | `@siteping/widget` listed in your `package.json` |
 | Widget integration | `initSiteping` referenced somewhere in `src/`, `app/`, or `pages/` |

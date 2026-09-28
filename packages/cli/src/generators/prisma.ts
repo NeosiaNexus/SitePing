@@ -6,9 +6,12 @@ import type {
   AttributeArgument,
   BlockAttribute,
   Field,
+  Func,
   KeyValue,
   Model,
+  ObjectValue,
   Property,
+  RelationArray,
   Schema,
 } from "@mrleebo/prisma-ast";
 import { getSchema, printSchema } from "@mrleebo/prisma-ast";
@@ -85,8 +88,8 @@ function readSchemaSource(schemaPath: string): string {
  * updating the AST in place, and report what had to change. This is the one
  * definition of "up to date" — `sync` writes the reconciled schema back,
  * `status` only reads the report — so both commands agree on type,
- * optionality, cardinality, attributes (`@unique`, `@db.Text`, `@default`,
- * `@updatedAt`, `@relation`) and `@@index` blocks.
+ * optionality, cardinality, attributes and their arguments (`@unique`,
+ * `@db.Text`, `@default(…)`, `@updatedAt`, `@relation(…)`) and `@@index` blocks.
  */
 export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
   const existingModelsMap = new Map<string, Model>();
@@ -188,10 +191,11 @@ export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
 }
 
 // ── User-owned parts of a Siteping field ───────────────────────────────
-// The column name (`@map`), `@ignore`, the relation name and the field's
-// comment belong to the user: they're never compared, and a rewrite carries
-// them over. Dropping a `@map` makes `prisma db push` rename/drop the column;
-// dropping a relation name on one side only leaves the schema invalid.
+// The column name (`@map`), `@ignore`, the relation name, constraint names
+// (`map:` arguments) and the field's comment belong to the user: they're never
+// compared, and a rewrite carries them over. Dropping a `@map` makes
+// `prisma db push` rename/drop the column; dropping a relation name on one
+// side only leaves the schema invalid.
 
 const USER_OWNED_ATTRIBUTES: ReadonlySet<string> = new Set(["map", "ignore"]);
 
@@ -207,9 +211,15 @@ function isKeyValue(value: unknown): value is KeyValue {
   return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "keyValue";
 }
 
-/** `@relation("Name", …)` or `@relation(name: "Name", …)`. */
-function isRelationNameArg(arg: AttributeArgument): boolean {
-  return typeof arg.value === "string" || (isKeyValue(arg.value) && arg.value.key === "name");
+/** `map: "…"` — a database constraint name (`@id(map: …)`, `@relation(…, map: …)`). */
+function isConstraintName(arg: AttributeArgument): boolean {
+  return isKeyValue(arg.value) && arg.value.key === "map";
+}
+
+/** A constraint name, or the relation name: `@relation("Name", …)` / `@relation(name: "Name", …)`. */
+function isUserOwnedArg(attr: Attribute, arg: AttributeArgument): boolean {
+  if (isConstraintName(arg)) return true;
+  return isRelation(attr) && (typeof arg.value === "string" || (isKeyValue(arg.value) && arg.value.key === "name"));
 }
 
 /**
@@ -219,25 +229,71 @@ function isRelationNameArg(arg: AttributeArgument): boolean {
  */
 function sitepingAttributes(field: Field): Attribute[] {
   return (field.attributes ?? []).filter(
-    (attr) => !isUserOwnedAttribute(attr) && !(isRelation(attr) && (attr.args ?? []).every(isRelationNameArg)),
+    (attr) =>
+      !isUserOwnedAttribute(attr) && !(isRelation(attr) && (attr.args ?? []).every((arg) => isUserOwnedArg(attr, arg))),
   );
 }
 
 /** `expected`, carrying over the user-owned parts of the field it replaces. */
 function withUserOwnedParts(expected: Field, existing: Field): Field {
   const existingAttrs = existing.attributes ?? [];
-  const relationName = existingAttrs.find(isRelation)?.args?.filter(isRelationNameArg) ?? [];
-  const attributes = (expected.attributes ?? []).map((attr) =>
-    isRelation(attr) ? { ...attr, args: [...relationName, ...(attr.args ?? [])] } : attr,
-  );
-  if (relationName.length > 0 && !attributes.some(isRelation)) {
-    attributes.push({ type: "attribute", name: "relation", kind: "field", args: relationName });
+  const ownedArgs = (attr: Attribute): AttributeArgument[] => {
+    const same = existingAttrs.find((a) => a.name === attr.name && a.group === attr.group);
+    return same?.args?.filter((arg) => isUserOwnedArg(same, arg)) ?? [];
+  };
+  const attributes = (expected.attributes ?? []).map((attr) => {
+    const owned = ownedArgs(attr);
+    if (owned.length === 0) return attr;
+    // The relation name leads (`@relation("Name", …)`), constraint names trail.
+    const args = [
+      ...owned.filter((a) => !isConstraintName(a)),
+      ...(attr.args ?? []),
+      ...owned.filter(isConstraintName),
+    ];
+    return { ...attr, args };
+  });
+  const relation = existingAttrs.find(isRelation);
+  if (relation && !attributes.some(isRelation) && ownedArgs(relation).length > 0) {
+    attributes.push({ type: "attribute", name: "relation", kind: "field", args: ownedArgs(relation) });
   }
   attributes.push(...existingAttrs.filter(isUserOwnedAttribute));
   return { ...expected, attributes, ...(existing.comment ? { comment: existing.comment } : {}) };
 }
 
-const attrKey = (a: { group?: string; name: string }) => (a.group ? `${a.group}.${a.name}` : a.name);
+/** Canonical text of an attribute argument value: `cuid()`, `[feedbackId]`, `1.0` → `1`. */
+function printValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(printValue).join(", ")}]`;
+  if (typeof value === "object" && value !== null) {
+    const v = value as Func | RelationArray | KeyValue | ObjectValue;
+    switch (v.type) {
+      case "array":
+        return `[${v.args.map(printValue).join(", ")}]`;
+      case "function":
+        return `${v.name}(${(v.params ?? []).map(printValue).join(", ")})`;
+      case "keyValue":
+        return `${v.key}: ${printValue(v.value)}`;
+      case "object":
+        return `{ ${v.properties.map(printValue).join(", ")} }`;
+    }
+  }
+  // prisma-ast hands numbers over as their source text
+  if (typeof value === "string" && /^-?\d+(\.\d+)?$/.test(value)) return String(Number(value));
+  return String(value);
+}
+
+/**
+ * Canonical form of a Siteping-owned attribute — name plus arguments, so a
+ * removed `onDelete: Cascade` or a `@default(uuid())` counts as drift. User-owned
+ * arguments are left out; keyed arguments are order-insensitive, so they're sorted.
+ */
+function attrKey(attr: Attribute): string {
+  const name = attr.group ? `${attr.group}.${attr.name}` : attr.name;
+  const args = (attr.args ?? []).filter((arg) => !isUserOwnedArg(attr, arg));
+  const positional = args.filter((arg) => !isKeyValue(arg.value)).map((arg) => printValue(arg.value));
+  const keyed = args.filter((arg) => isKeyValue(arg.value)).map((arg) => printValue(arg.value));
+  const printed = [...positional, ...keyed.sort()];
+  return printed.length > 0 ? `${name}(${printed.join(", ")})` : name;
+}
 
 /** Check if two fields have the same type, optionality, and Siteping-owned attributes. */
 function fieldsMatch(existing: Field, expected: Field): boolean {
@@ -263,13 +319,18 @@ function describeChange(existing: Field, expected: Field): string {
     parts.push(expected.optional ? "required \u2192 optional" : "optional \u2192 required");
   }
 
-  const existingAttrs = new Set(sitepingAttributes(existing).map(attrKey));
-  const expectedAttrs = new Set(sitepingAttributes(expected).map(attrKey));
-  for (const attr of expectedAttrs) {
-    if (!existingAttrs.has(attr)) parts.push(`+@${attr}`);
+  const existingAttrs = sitepingAttributes(existing).map(attrKey);
+  const expectedAttrs = sitepingAttributes(expected).map(attrKey);
+  const nameOf = (key: string) => key.split("(")[0];
+  const removed = existingAttrs.filter((key) => !expectedAttrs.includes(key));
+  for (const key of expectedAttrs) {
+    if (existingAttrs.includes(key)) continue;
+    // Same attribute, different arguments: one change, not a -/+ pair.
+    const was = removed.find((old) => nameOf(old) === nameOf(key));
+    parts.push(was ? `@${was} → @${key}` : `+@${key}`);
   }
-  for (const attr of existingAttrs) {
-    if (!expectedAttrs.has(attr)) parts.push(`-@${attr}`);
+  for (const key of removed) {
+    if (!expectedAttrs.some((k) => nameOf(k) === nameOf(key))) parts.push(`-@${key}`);
   }
 
   return parts.join(", ") || "attributes changed";

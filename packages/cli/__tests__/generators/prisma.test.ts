@@ -99,6 +99,13 @@ describe("syncPrismaModels", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  /** A freshly synced (up-to-date) schema — the baseline drift tests edit. */
+  function syncedSchema(): string {
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+    syncPrismaModels(schemaPath);
+    return readFileSync(schemaPath, "utf-8");
+  }
+
   // -----------------------------------------------------------------------
   // Error handling
   // -----------------------------------------------------------------------
@@ -577,13 +584,6 @@ model SitepingFeedback {
   // -----------------------------------------------------------------------
 
   describe("user-owned field parts", () => {
-    /** A freshly synced (up-to-date) schema — the baseline each test edits. */
-    function syncedSchema(): string {
-      writeFileSync(schemaPath, MINIMAL_SCHEMA);
-      syncPrismaModels(schemaPath);
-      return readFileSync(schemaPath, "utf-8");
-    }
-
     it("does not count a @map column name as drift", () => {
       const schema = syncedSchema().replace(/^(\s*projectName\s+String)$/m, '$1 @map("project_name")');
       writeFileSync(schemaPath, schema);
@@ -645,6 +645,83 @@ model SitepingFeedback {
       expect(output).toMatch(/^\s*annotations\s+SitepingAnnotation\[\]\s+@relation\("FbAnn"\)$/m);
       expect(output).toMatch(
         /^\s*feedback\s+SitepingFeedback\s+@relation\(name: "FbAnn", fields: \[feedbackId\], references: \[id\], onDelete: Cascade\)$/m,
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Attribute arguments (onDelete, @default value, …)
+  // -----------------------------------------------------------------------
+
+  describe("attribute arguments", () => {
+    it("restores a removed onDelete: Cascade", () => {
+      // Without the cascade, deleting a feedback that has annotations fails
+      // with a foreign-key error in the Prisma adapter.
+      writeFileSync(schemaPath, syncedSchema().replace(", onDelete: Cascade", ""));
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([
+        {
+          model: "SitepingAnnotation",
+          field: "feedback",
+          action: "updated",
+          detail:
+            "@relation(fields: [feedbackId], references: [id]) → @relation(fields: [feedbackId], onDelete: Cascade, references: [id])",
+        },
+      ]);
+      expect(readFileSync(schemaPath, "utf-8")).toContain(
+        "@relation(fields: [feedbackId], references: [id], onDelete: Cascade)",
+      );
+    });
+
+    it("restores a changed @default value", () => {
+      writeFileSync(schemaPath, syncedSchema().replace("@default(cuid())", "@default(uuid())"));
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([
+        {
+          model: "SitepingFeedback",
+          field: "id",
+          action: "updated",
+          detail: "@default(uuid()) → @default(cuid())",
+        },
+      ]);
+      expect(readFileSync(schemaPath, "utf-8")).not.toContain("uuid()");
+    });
+
+    it("treats equivalent spellings and constraint names as up to date", () => {
+      // Reordered keyed args, `1.0` for `1`, and `map:` constraint names (the
+      // user's database naming, like `@map`) are not drift.
+      const schema = syncedSchema()
+        .replace(
+          "@relation(fields: [feedbackId], references: [id], onDelete: Cascade)",
+          '@relation(onDelete: Cascade, references: [id], fields: [feedbackId], map: "fk_annotation_feedback")',
+        )
+        .replace("@default(1)", "@default(1.0)")
+        .replace("@id @default(cuid())", '@id(map: "pk_feedback") @default(cuid())');
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+    });
+
+    it("keeps a map: constraint name when rewriting the attribute", () => {
+      writeFileSync(
+        schemaPath,
+        syncedSchema().replace(
+          "@relation(fields: [feedbackId], references: [id], onDelete: Cascade)",
+          '@relation(fields: [feedbackId], references: [id], map: "fk_annotation_feedback")',
+        ),
+      );
+
+      syncPrismaModels(schemaPath);
+
+      expect(readFileSync(schemaPath, "utf-8")).toContain(
+        '@relation(fields: [feedbackId], references: [id], onDelete: Cascade, map: "fk_annotation_feedback")',
       );
     });
   });

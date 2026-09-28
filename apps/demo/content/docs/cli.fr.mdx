@@ -60,7 +60,7 @@ npx @siteping/cli status --schema prisma/schema.prisma
 
 | Vérification | Ce qu'elle regarde |
 |---|---|
-| Schéma Prisma | Les deux modèles présents, chaque champ à jour — exactement le diff qu'applique `sync`, donc type, optionalité, attributs (`@unique`, `@db.Text`, …) et blocs `@@index` comptent tous |
+| Schéma Prisma | Les deux modèles présents, chaque champ à jour — exactement le diff qu'applique `sync`, donc type, optionalité, attributs et leurs arguments (`@unique`, `@db.Text`, `onDelete: Cascade`, …) et blocs `@@index` comptent tous |
 | Route API | `app/api/siteping/route.ts` ou `src/app/api/siteping/route.ts` existe |
 | Package | `@siteping/widget` listé dans votre `package.json` |
 | Intégration du widget | `initSiteping` référencé quelque part dans `src/`, `app/` ou `pages/` |
