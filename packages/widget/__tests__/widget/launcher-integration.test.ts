@@ -869,6 +869,30 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
 
+    it("over a host modal, hides the Escape that cancels the prompt", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      document.body.style.pointerEvents = "none"; // a Radix modal is open
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+      const { nameInput } = await getIdentityModal();
+      nameInput.focus();
+      const escapeKeyDown = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+
+      try {
+        nameInput.dispatchEvent(escapeKeyDown);
+      } finally {
+        document.body.removeAttribute("style");
+        instance.destroy();
+      }
+
+      expect(escapeKeyDown.defaultPrevented).toBe(true);
+    });
+
     it("Tab key on the last focusable element wraps focus to the first", async () => {
       mockGetIdentity.mockReturnValue(null);
       const instance = launch(defaultConfig());

@@ -1,6 +1,7 @@
 import type { SitepingConfig } from "@siteping/core";
 import { parseSvg, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
+import { registerEscapeLayer } from "./host-isolation.js";
 import { type TFunction, type Translations, tWithParams } from "./i18n/index.js";
 import { ICON_CLOSE, ICON_EDIT, ICON_EYE, ICON_EYE_OFF, ICON_LIST, ICON_SITEPING } from "./icons.js";
 
@@ -110,14 +111,16 @@ export class Fab {
     // single pass so the constructor and `refreshLabels()` never drift.
     this.applyLabels();
 
-    // Close radial menu on click outside.
+    // Close radial menu on click outside. Capture phase: the widget's other
+    // surfaces (markers, popup, overlay) stop `click` from bubbling to the
+    // document (host-isolation.ts), and clicking them must still close it.
     const host = shadowRoot.host;
     this.onDocumentClick = (e: MouseEvent) => {
       if (this.isOpen && !e.composedPath().includes(host)) {
         this.close();
       }
     };
-    document.addEventListener("click", this.onDocumentClick);
+    document.addEventListener("click", this.onDocumentClick, true);
 
     // Escape on FAB or menu container closes the menu
     const handleEscape = (e: KeyboardEvent) => {
@@ -128,6 +131,7 @@ export class Fab {
     };
     this.fab.addEventListener("keydown", handleEscape);
     this.radialContainer.addEventListener("keydown", handleEscape);
+    registerEscapeLayer(this.root, () => this.isOpen);
 
     // Arrow key navigation within the radial menu
     this.radialContainer.addEventListener("keydown", (e) => {
@@ -301,7 +305,7 @@ export class Fab {
   }
 
   destroy(): void {
-    document.removeEventListener("click", this.onDocumentClick);
+    document.removeEventListener("click", this.onDocumentClick, true);
     this.root.remove();
   }
 }

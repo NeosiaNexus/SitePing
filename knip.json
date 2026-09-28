@@ -4,7 +4,7 @@
   "ignoreDependencies": ["publint", "@arethetypeswrong/cli"],
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mjs", "e2e/**/*.spec.ts", "tsup.preset.ts", "e2e/server.mjs"],
+      "entry": ["scripts/*.mjs", "e2e/**/*.spec.ts", "tsup.preset.ts", "e2e/server.mjs", "e2e/fixtures/*.tsx"],
       "project": ["scripts/**", "e2e/**", "*.ts"]
     },
     "packages/*": {

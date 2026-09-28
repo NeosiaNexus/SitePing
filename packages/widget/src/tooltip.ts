@@ -1,6 +1,7 @@
 import type { FeedbackResponse } from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
 import { el, formatRelativeDate, setText } from "./dom-utils.js";
+import { isolateFromHost } from "./host-isolation.js";
 import { createT, getTypeLabel } from "./i18n/index.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
@@ -73,6 +74,7 @@ export class Tooltip {
 
     this.root.addEventListener("mouseenter", () => this.cancelHide());
     this.root.addEventListener("mouseleave", () => this.scheduleHide());
+    isolateFromHost(this.root);
     document.body.appendChild(this.root);
   }
 

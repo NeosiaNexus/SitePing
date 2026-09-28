@@ -4,6 +4,7 @@ import type { SitepingConfig } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { Fab } from "../../src/fab.js";
+import { installHostIsolationGuard, isolateFromHost } from "../../src/host-isolation.js";
 import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
 import { createShadowRoot } from "../helpers.js";
 
@@ -240,6 +241,37 @@ describe("Fab", () => {
       btn.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
       expect(btn.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("over a host modal, hides only the Escape that closes the open menu", () => {
+      isolateFromHost(shadow.host as HTMLElement);
+      const removeGuard = installHostIsolationGuard();
+      document.body.style.pointerEvents = "none"; // a Radix modal is open
+      const hostSawEscapeAsHandled: boolean[] = [];
+      const onHostKeyDown = (event: KeyboardEvent): void => {
+        if (event.key === "Escape") hostSawEscapeAsHandled.push(event.defaultPrevented);
+      };
+      document.addEventListener("keydown", onHostKeyDown, true);
+      const btn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      btn.click(); // open
+      btn.focus();
+      const pressEscape = (): void => {
+        btn.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, composed: true }),
+        );
+      };
+
+      try {
+        pressEscape(); // closes the menu
+        pressEscape(); // nothing left to close: the host modal's
+      } finally {
+        document.removeEventListener("keydown", onHostKeyDown, true);
+        document.body.removeAttribute("style");
+        removeGuard();
+      }
+
+      expect(btn.getAttribute("aria-expanded")).toBe("false");
+      expect(hostSawEscapeAsHandled).toEqual([true, false]);
     });
   });
 
@@ -518,7 +550,7 @@ describe("Fab", () => {
 
       fab.destroy();
 
-      expect(removeListenerSpy).toHaveBeenCalledWith("click", expect.any(Function));
+      expect(removeListenerSpy).toHaveBeenCalledWith("click", expect.any(Function), true);
       removeListenerSpy.mockRestore();
     });
   });
@@ -549,6 +581,19 @@ describe("Fab", () => {
       document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
 
       expect(fabBtn.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("closes the menu when another widget surface is clicked", () => {
+      const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      fabBtn.click(); // open
+      const otherSurface = document.createElement("div");
+      document.body.appendChild(otherSurface);
+      isolateFromHost(otherSurface);
+
+      otherSurface.click();
+
+      expect(fabBtn.getAttribute("aria-expanded")).toBe("false");
+      otherSurface.remove();
     });
 
     it("does not close when clicking on a child element of the host (composed path includes host)", () => {
