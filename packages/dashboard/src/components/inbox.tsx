@@ -155,9 +155,11 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     return () => observer.disconnect();
   }, []);
 
-  // ----- return keyboard focus to the listbox (after a drawer/toast unmounts)
+  // ----- return keyboard focus to the listbox (after a drawer/toast unmounts),
+  // or to the root when the pane shows none (empty state, error, skeleton)
   const focusList = useCallback(() => {
-    rootRef.current?.querySelector<HTMLElement>(".spd-list")?.focus();
+    const root = rootRef.current;
+    (root?.querySelector<HTMLElement>(".spd-list") ?? root)?.focus();
   }, []);
 
   // ----- keep keyboard focus in the inbox when the list pane swaps (the last
@@ -178,11 +180,11 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   }, []);
   const pane = state.view === "ready" ? "list" : state.view;
   useEffect(() => {
+    void pane; // runs on every swap
     const active = document.activeElement;
     if (!focusInside.current || (active && active !== document.body && active !== rootRef.current)) return;
-    const list = pane === "list" ? rootRef.current?.querySelector<HTMLElement>(".spd-list") : null;
-    (list ?? rootRef.current)?.focus();
-  }, [pane]);
+    focusList();
+  }, [pane, focusList]);
 
   // ----- announce the result count whenever a fetch settles (separate from the toast)
   const [resultsMsg, setResultsMsg] = useState("");

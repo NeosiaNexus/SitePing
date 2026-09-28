@@ -296,6 +296,27 @@ describe("SitepingInbox — keyboard", () => {
     await waitFor(() => expect(listRows().map((row) => row.getAttribute("data-status"))).toEqual(["resolved"]));
   });
 
+  it("keeps keyboard focus in the inbox when the drawer closes over an emptied tab", async () => {
+    const only = makeRecord({ id: "solo", status: "open", message: "The only open one" });
+    renderInbox({}, [only]);
+    const listbox = await ready();
+    listbox.focus();
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "Enter" }); // overlay drawer takes focus
+    const dialog = await screen.findByRole("dialog", { name: /Feedback details/ });
+    fireEvent.keyDown(dialog, { key: "e" }); // resolved from the drawer → the empty state replaces the listbox
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Feedback details/ })).toBeNull());
+    // No listbox to return to: focus must stay in the inbox, not fall to <body>.
+    const root = document.querySelector(".spd-root");
+    expect(root?.contains(document.activeElement)).toBe(true);
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "4" }); // shortcuts still work
+    await waitFor(() => expect(listRows().map((row) => row.getAttribute("data-status"))).toEqual(["resolved"]));
+  });
+
   it("ignores j/k while the overlay drawer is open (the list is behind the backdrop)", async () => {
     renderInbox();
     const listbox = await ready();
