@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import type { AnnotationResponse, FeedbackResponse, SitepingPanelAction } from "@siteping/core";
+import type {
+  AnnotationResponse,
+  FeedbackResponse,
+  SitepingPanelAction,
+  SitepingPanelButtonAction,
+  SitepingPanelLinkAction,
+} from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
 import { normalizePanelActions } from "../../src/panel-actions.js";
@@ -1218,8 +1224,12 @@ describe("DetailView", () => {
 // ---------------------------------------------------------------------------
 
 describe("custom panel actions", () => {
-  function makeAction(overrides: Partial<SitepingPanelAction> = {}): SitepingPanelAction {
+  function makeAction(overrides: Partial<SitepingPanelButtonAction> = {}): SitepingPanelButtonAction {
     return { id: "send-to-agent", label: "Send to agent", onAction: vi.fn(), ...overrides };
+  }
+
+  function makeLink(overrides: Partial<SitepingPanelLinkAction> = {}): SitepingPanelLinkAction {
+    return { id: "tracker", label: "Open in tracker", href: "https://tracker.example/new", ...overrides };
   }
 
   function buildDetail(actions: SitepingPanelAction[], callbacks: Partial<DetailCallbacks> = {}) {
@@ -1254,6 +1264,57 @@ describe("custom panel actions", () => {
     expect(rows[0]?.querySelectorAll(".sp-detail-btn-custom")).toHaveLength(0);
     expect(rows[1]?.classList.contains("sp-detail-actions--custom")).toBe(true);
     expect([...(rows[1]?.children ?? [])].map((b) => (b as HTMLElement).title)).toEqual(["Send to agent", "Other"]);
+  });
+
+  it("renders a link action as a real anchor opening a new tab without referrer", () => {
+    const { view } = buildDetail([
+      makeLink(),
+      makeLink({ id: "mail", label: "Email author", href: (fb) => `mailto:${fb.authorEmail}` }),
+      makeLink({ id: "rel", label: "Open in admin", href: (fb) => `/admin/feedback/${fb.id}` }),
+    ]);
+    view.show(makeFeedback(), 1);
+    const [web, mail, rel] = view.element.querySelectorAll<HTMLAnchorElement>("a.sp-detail-btn-custom");
+
+    expect(web?.getAttribute("href")).toBe("https://tracker.example/new");
+    expect(web?.target).toBe("_blank");
+    expect(web?.rel).toBe("noopener noreferrer");
+    expect(web?.dataset.actionId).toBe("tracker");
+    expect(web?.textContent).toBe("Open in tracker");
+
+    expect(mail?.getAttribute("href")).toBe("mailto:test@example.com");
+    expect(mail?.hasAttribute("target")).toBe(false);
+
+    expect(rel?.getAttribute("href")).toBe(`${location.origin}/admin/feedback/fb-1`);
+  });
+
+  it("hides a link whose computed href is not http(s)/mailto and reports it", () => {
+    const { view, cb } = buildDetail([
+      makeLink({ href: () => "javascript:alert(document.cookie)" }),
+      makeLink({ id: "data", href: () => " DATA:text/html,<script>alert(1)</script>" }),
+      makeAction(),
+    ]);
+    view.show(makeFeedback(), 1);
+
+    expect(view.element.querySelector("a")).toBeNull();
+    expect(view.element.querySelectorAll(".sp-detail-btn-custom")).toHaveLength(1);
+    expect(cb.onCustomActionError).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(cb.onCustomActionError).mock.calls[0]?.[0]).toEqual(
+      new Error('[siteping] Panel action "tracker": href must be an http(s) or mailto URL.'),
+    );
+  });
+
+  it("builds a computed href from the frozen snapshot and keeps links clickable while a button action runs", () => {
+    const href = vi.fn((fb: Readonly<FeedbackResponse>) => `https://tracker.example/fb/${fb.id}`);
+    const { view } = buildDetail([makeAction(), makeLink({ href })], {
+      onCustomAction: vi.fn(() => new Promise<void>(() => {})),
+    });
+    view.show(makeFeedback(), 1);
+    expect(Object.isFrozen(href.mock.calls[0]?.[0])).toBe(true);
+
+    view.element.querySelector<HTMLButtonElement>("button.sp-detail-btn-custom")!.click();
+    const link = view.element.querySelector<HTMLAnchorElement>("a.sp-detail-btn-custom")!;
+    expect(link.getAttribute("href")).toBe("https://tracker.example/fb/fb-1");
+    expect(link.hasAttribute("disabled")).toBe(false);
   });
 
   it("renders no host row when no action is visible for the feedback", () => {

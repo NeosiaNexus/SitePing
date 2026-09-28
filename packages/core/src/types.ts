@@ -70,19 +70,16 @@ export interface SitepingPanelActionContext {
 }
 
 /**
- * A host-defined action rendered as a button in the feedback detail view.
+ * Fields shared by both kinds of {@link SitepingPanelAction}.
  *
- * Hosts use this to bridge feedbacks into their own systems — create a
- * ticket, dispatch to a bot, copy a share link — without forking the panel.
- * Callbacks receive a detached, deeply frozen copy of the feedback: read it
- * freely, it can never alter what the panel displays.
+ * Do not use this type directly — use {@link SitepingPanelAction}.
  */
-export interface SitepingPanelAction {
-  /** Stable, unique identifier — becomes `data-action-id` on the rendered button. */
+export interface SitepingPanelActionBase {
+  /** Stable, unique identifier — becomes `data-action-id` on the rendered control. */
   id: string;
   /**
-   * Button label. Host-provided verbatim — deliberately NOT routed through
-   * the widget i18n system, since hosts localize their own product strings.
+   * Visible label, rendered as plain text. Host-provided verbatim — not
+   * routed through the widget i18n, since hosts localize their own strings.
    */
   label: string;
   /**
@@ -93,11 +90,15 @@ export interface SitepingPanelAction {
    */
   icon?: string | undefined;
   /**
-   * Per-feedback visibility predicate. Return `false` to omit the button
-   * for that feedback. Defaults to always visible. A throw hides the button
+   * Per-feedback visibility predicate. Return `false` to omit the action
+   * for that feedback. Defaults to always visible. A throw hides the action
    * and is reported through `onError`.
    */
   visible?: ((feedback: Readonly<FeedbackResponse>) => boolean) | undefined;
+}
+
+/** A panel action rendered as a button that runs host code. */
+export interface SitepingPanelButtonAction extends SitepingPanelActionBase {
   /**
    * Invoked on click. While a returned promise is pending the detail view's
    * action buttons are disabled and the clicked button shows a spinner.
@@ -105,7 +106,36 @@ export interface SitepingPanelAction {
    * buttons; the detail view stays open either way.
    */
   onAction: (feedback: Readonly<FeedbackResponse>, context: SitepingPanelActionContext) => void | Promise<void>;
+  /** Not available on a button action — use either `onAction` or `href`, never both. */
+  href?: never;
 }
+
+/** A panel action rendered as a link. */
+export interface SitepingPanelLinkAction extends SitepingPanelActionBase {
+  /**
+   * Link target — a URL, or a function building one from the feedback.
+   * Relative URLs resolve against the page. Only `http:`, `https:` and
+   * `mailto:` are rendered: a static `href` with any other scheme
+   * (`javascript:` included) skips the action with a warning; a function
+   * returning one hides the action and is reported through `onError`. Web
+   * links open in a new tab with `rel="noopener noreferrer"`.
+   */
+  href: string | ((feedback: Readonly<FeedbackResponse>) => string);
+  /** Not available on a link action — use either `onAction` or `href`, never both. */
+  onAction?: never;
+}
+
+/**
+ * A host-defined action rendered in the feedback detail view, below the
+ * built-in Resolve / Delete buttons: a button running your code
+ * (`onAction`) or a link (`href`) — never both.
+ *
+ * Hosts use this to bridge feedbacks into their own systems — create a
+ * ticket, dispatch to a bot, open the feedback in their tracker — without
+ * forking the panel. Callbacks receive a detached, deeply frozen copy of
+ * the feedback: read it freely, it can never alter what the panel displays.
+ */
+export type SitepingPanelAction = SitepingPanelButtonAction | SitepingPanelLinkAction;
 
 /**
  * Extra request headers for HTTP mode — a static map, or a factory (sync or
@@ -321,9 +351,9 @@ export interface SitepingBaseConfig {
   /**
    * Host-defined actions rendered in the feedback detail view, below the
    * built-in Resolve and Delete buttons. Read once when the panel loads:
-   * entries without a non-empty `id` and `label` or an `onAction` function,
-   * and entries reusing an earlier `id`, are skipped with a console warning.
-   * See {@link SitepingPanelAction}.
+   * entries without a non-empty `id` and `label`, without exactly one of
+   * `onAction` / `href`, with an unsafe static `href`, or reusing an earlier
+   * `id` are skipped with a console warning. See {@link SitepingPanelAction}.
    */
   panelActions?: readonly SitepingPanelAction[] | undefined;
 

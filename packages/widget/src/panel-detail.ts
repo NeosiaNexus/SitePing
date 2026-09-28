@@ -9,10 +9,15 @@
  * animations, accent gradients, premium micro-interactions.
  */
 
-import { type FeedbackResponse, type FeedbackStatus, isClosedStatus, type SitepingPanelAction } from "@siteping/core";
+import {
+  type FeedbackResponse,
+  type FeedbackStatus,
+  isClosedStatus,
+  type SitepingPanelButtonAction,
+} from "@siteping/core";
 import { el, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
-import { type PanelActionItem, snapshotFeedback } from "./panel-actions.js";
+import { type PanelActionItem, safeHref, snapshotFeedback } from "./panel-actions.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -288,7 +293,8 @@ export const DETAIL_CSS = /* css */ `
     gap: 8px;
   }
 
-  .sp-detail-actions button {
+  .sp-detail-actions button,
+  .sp-detail-actions a {
     flex: 1;
     height: 40px;
     padding: 0 16px;
@@ -304,7 +310,8 @@ export const DETAIL_CSS = /* css */ `
     transition: all 0.2s ease;
   }
 
-  .sp-detail-actions button svg {
+  .sp-detail-actions button svg,
+  .sp-detail-actions a svg {
     width: 15px;
     height: 15px;
   }
@@ -364,6 +371,7 @@ export const DETAIL_CSS = /* css */ `
     border: 1.5px solid var(--sp-border);
     background: var(--sp-glass-bg-heavy);
     color: var(--sp-text);
+    text-decoration: none;
   }
 
   .sp-detail-btn-custom:hover {
@@ -948,9 +956,9 @@ export interface DetailCallbacks {
   onGoToAnnotation: (feedback: FeedbackResponse) => void;
   /** False hides "Go to annotation" (e.g. the feedback belongs to another page). */
   canGoToAnnotation?: (feedback: FeedbackResponse) => boolean;
-  /** Runs a host-defined panel action. Never rejects: the panel contains and reports host failures. */
-  onCustomAction: (action: SitepingPanelAction, feedback: Readonly<FeedbackResponse>) => Promise<void>;
-  /** Reports a host `visible()` predicate that threw — the action is hidden for that feedback. */
+  /** Runs a host-defined button action. Never rejects: the panel contains and reports host failures. */
+  onCustomAction: (action: SitepingPanelButtonAction, feedback: Readonly<FeedbackResponse>) => Promise<void>;
+  /** Reports a host `visible()`/`href()` that threw or an unsafe computed href — the action is hidden. */
   onCustomActionError: (error: unknown) => void;
 }
 
@@ -1251,28 +1259,41 @@ export class DetailView {
     const snapshot = snapshotFeedback(feedback);
     const row = el("div", { class: "sp-detail-actions sp-detail-actions--custom" });
     for (const { action, icon } of this.customActions) {
+      let control: HTMLElement;
       try {
         if (action.visible && !action.visible(snapshot)) continue;
+        if (action.href === undefined) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          // Keeps the button named while the spinner replaces its label.
+          btn.setAttribute("aria-label", action.label);
+          btn.addEventListener("click", () => void this.handleCustomAction(action, btn, snapshot));
+          this.customBtns.push(btn);
+          control = btn;
+        } else {
+          const href = safeHref(typeof action.href === "function" ? action.href(snapshot) : action.href);
+          if (!href) throw new Error(`[siteping] Panel action "${action.id}": href must be an http(s) or mailto URL.`);
+          const link = document.createElement("a");
+          link.href = href;
+          // Web links open beside the reviewed page, which never leaks as referrer.
+          if (!href.startsWith("mailto:")) link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          control = link;
+        }
       } catch (error) {
         this.callbacks.onCustomActionError(error);
         continue;
       }
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "sp-detail-btn-custom";
-      btn.setAttribute("data-action-id", action.id);
-      // Keeps the button named while the spinner replaces its label.
-      btn.setAttribute("aria-label", action.label);
-      btn.title = action.label; // full label when the row truncates it
-      if (icon) btn.appendChild(icon.cloneNode(true));
+      control.className = "sp-detail-btn-custom";
+      control.setAttribute("data-action-id", action.id);
+      control.title = action.label; // full label when the row truncates it
+      if (icon) control.appendChild(icon.cloneNode(true));
       const span = document.createElement("span");
       setText(span, action.label);
-      btn.appendChild(span);
-      btn.addEventListener("click", () => void this.handleCustomAction(action, btn, snapshot));
-      this.customBtns.push(btn);
-      row.appendChild(btn);
+      control.appendChild(span);
+      row.appendChild(control);
     }
-    if (this.customBtns.length > 0) container.appendChild(row);
+    if (row.childElementCount > 0) container.appendChild(row);
   }
 
   /** Build the metadata grid. */
@@ -1591,7 +1612,7 @@ export class DetailView {
   }
 
   private async handleCustomAction(
-    action: SitepingPanelAction,
+    action: SitepingPanelButtonAction,
     btn: HTMLButtonElement,
     feedback: Readonly<FeedbackResponse>,
   ): Promise<void> {

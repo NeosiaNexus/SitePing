@@ -2,7 +2,7 @@
 
 import type { SitepingPanelAction } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { normalizePanelActions, parseActionIcon } from "../../src/panel-actions.js";
+import { normalizePanelActions, parseActionIcon, safeHref } from "../../src/panel-actions.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -51,6 +51,33 @@ describe("parseActionIcon", () => {
   });
 });
 
+describe("safeHref", () => {
+  it("keeps http(s) and mailto URLs, resolving relative ones against the page", () => {
+    expect(safeHref("https://tracker.example/new?x=1")).toBe("https://tracker.example/new?x=1");
+    expect(safeHref("http://intranet.local/ticket")).toBe("http://intranet.local/ticket");
+    expect(safeHref("mailto:dev@example.com?subject=Bug")).toBe("mailto:dev@example.com?subject=Bug");
+    expect(safeHref("/admin/feedback/1")).toBe(`${location.origin}/admin/feedback/1`);
+  });
+
+  it("rejects every other scheme, however it is disguised", () => {
+    for (const href of [
+      "javascript:alert(1)",
+      "JavaScript:alert(1)",
+      "  javascript:alert(1)",
+      "java\tscript:alert(1)",
+      "java\nscript:alert(1)",
+      "\u0001javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "vbscript:msgbox(1)",
+      "file:///etc/passwd",
+      "blob:https://example.com/uuid",
+      "http://[",
+    ]) {
+      expect(safeHref(href), href).toBeNull();
+    }
+  });
+});
+
 describe("normalizePanelActions", () => {
   const onAction = () => {};
 
@@ -68,18 +95,23 @@ describe("normalizePanelActions", () => {
       { id: "", label: "No id", onAction },
       { id: "no-label", label: "", onAction },
       { id: "no-handler", label: "Nothing to run" } as never,
+      { id: "both", label: "Both", onAction, href: "https://x.example" } as never,
+      { id: "js", label: "Script link", href: "javascript:alert(1)" },
       { id: "ticket", label: "Duplicate", onAction },
       { id: "agent", label: "Send to agent", onAction },
+      { id: "tracker", label: "Open in tracker", href: (fb) => `https://x.example/${fb.id}` },
     ]);
 
-    expect(items.map((i) => i.action.id)).toEqual(["ticket", "agent"]);
+    expect(items.map((i) => i.action.id)).toEqual(["ticket", "agent", "tracker"]);
     expect(items[0]?.action).toBe(valid);
     expect(warn.mock.calls.map(([message]) => message)).toEqual([
       "[siteping] panelActions[1] ignored: it needs a non-empty string `id` and `label`.",
       "[siteping] panelActions[2] ignored: it needs a non-empty string `id` and `label`.",
       "[siteping] panelActions[3] ignored: it needs a non-empty string `id` and `label`.",
-      '[siteping] panelActions[4] ("no-handler") ignored: `onAction` must be a function.',
-      '[siteping] panelActions[5] ignored: duplicate id "ticket".',
+      '[siteping] panelActions[4] ("no-handler") ignored: it needs either an `onAction` function or an `href`, not both.',
+      '[siteping] panelActions[5] ("both") ignored: it needs either an `onAction` function or an `href`, not both.',
+      '[siteping] panelActions[6] ("js") ignored: `href` must be an http(s) or mailto URL.',
+      '[siteping] panelActions[7] ignored: duplicate id "ticket".',
     ]);
   });
 

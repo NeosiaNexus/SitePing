@@ -1,7 +1,7 @@
 /**
- * Host-defined panel actions (`config.panelActions`) — validation and inert
- * icon parsing. Everything a host hands the detail view goes through here
- * before it touches the DOM.
+ * Host-defined panel actions (`config.panelActions`) — validation, inert
+ * icon parsing, URL and feedback sanitising. Everything a host hands the
+ * detail view goes through here before it touches the DOM.
  */
 
 import type { FeedbackResponse, SitepingPanelAction } from "@siteping/core";
@@ -65,6 +65,20 @@ export function parseActionIcon(markup: string): SVGSVGElement | null {
 }
 
 /**
+ * `href` resolved against the page, or `null` unless it is http(s) or
+ * mailto — `javascript:`, `data:` and friends never reach an anchor. The
+ * URL parser normalizes case, whitespace and control characters first.
+ */
+export function safeHref(href: string): string | null {
+  try {
+    const url = new URL(href, document.baseURI);
+    return /^(https?|mailto):$/.test(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A detached, deeply frozen copy of a feedback for host callbacks — they can
  * read everything but never mutate the records the panel renders.
  * `FeedbackResponse` is JSON by construction (`Serialized<FeedbackRecord>`),
@@ -76,11 +90,16 @@ export function snapshotFeedback(feedback: FeedbackResponse): Readonly<FeedbackR
   );
 }
 
+const isButton = (a: Partial<SitepingPanelAction>) => typeof a.onAction === "function" && a.href === undefined;
+const isLink = (a: Partial<SitepingPanelAction>) =>
+  (typeof a.href === "string" || typeof a.href === "function") && a.onAction === undefined;
+
 /**
  * Validate `config.panelActions` once. Entries without a non-empty string
- * `id` and `label`, without an `onAction` function, or reusing an earlier id
- * are skipped with a console warning. An icon that is not SVG markup is
- * dropped with a warning — the action keeps its label.
+ * `id` and `label`, without exactly one of an `onAction` function or an
+ * `href` (string or function), with a static `href` that `safeHref` rejects,
+ * or reusing an earlier id are skipped with a console warning. An icon that
+ * is not SVG markup is dropped with a warning — the action keeps its label.
  */
 export function normalizePanelActions(actions: readonly SitepingPanelAction[] | undefined): PanelActionItem[] {
   const items: PanelActionItem[] = [];
@@ -91,8 +110,10 @@ export function normalizePanelActions(actions: readonly SitepingPanelAction[] | 
     const id = action?.id;
     if (typeof id !== "string" || !id || typeof action?.label !== "string" || !action.label) {
       console.warn(`${where} ignored: it needs a non-empty string \`id\` and \`label\`.`);
-    } else if (typeof action.onAction !== "function") {
-      console.warn(`${where} ("${id}") ignored: \`onAction\` must be a function.`);
+    } else if (!isButton(action) && !isLink(action)) {
+      console.warn(`${where} ("${id}") ignored: it needs either an \`onAction\` function or an \`href\`, not both.`);
+    } else if (typeof action.href === "string" && !safeHref(action.href)) {
+      console.warn(`${where} ("${id}") ignored: \`href\` must be an http(s) or mailto URL.`);
     } else if (ids.has(id)) {
       console.warn(`${where} ignored: duplicate id "${id}".`);
     } else {
