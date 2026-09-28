@@ -2,7 +2,7 @@
  * Shared conformance test suite for `SitepingStore` implementations.
  *
  * Adapters import this and run it with their store factory to verify they
- * satisfy the full store contract — no need to write the same 40+ tests
+ * satisfy the full store contract — no need to write the same 50+ tests
  * from scratch.
  *
  * @example
@@ -16,7 +16,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DiagnosticsSnapshot, FeedbackCreateInput, SitepingStore } from "./types.js";
-import { isStoreDuplicate, StoreNotFoundError } from "./types.js";
+import { isStoreDuplicate, isStoreNotFound } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Test fixture
@@ -89,7 +89,9 @@ export interface StoreConformanceOptions {
   /**
    * How `createFeedback` reacts to a duplicate `clientId` — both are valid
    * per the `SitepingStore` contract:
-   * - `"return"` (default): idempotently return the existing record.
+   * - `"return"` (default): idempotently return the existing record. A
+   *   concurrent create that loses the insert race may still throw
+   *   `StoreDuplicateError`, which the HTTP handler recovers.
    * - `"throw"`: throw `StoreDuplicateError` (matched via `isStoreDuplicate`).
    */
   duplicateBehavior?: "return" | "throw" | undefined;
@@ -460,6 +462,15 @@ export function testSitepingStore(
         expect(result.total).toBe(105);
         expect(result.feedbacks).toHaveLength(100);
       });
+
+      it("defaults to a page of 50 when limit is omitted", async () => {
+        for (let i = 0; i < 51; i++) {
+          await store.createFeedback(createInput({ annotations: [] }));
+        }
+        const result = await store.getFeedbacks({ projectName: "test-project" });
+        expect(result.total).toBe(51);
+        expect(result.feedbacks).toHaveLength(50);
+      });
     });
 
     // ------------------------------------------------------------------
@@ -476,6 +487,54 @@ export function testSitepingStore(
 
       it("returns null when not found", async () => {
         expect(await store.findByClientId("nope")).toBeNull();
+      });
+    });
+
+    // ------------------------------------------------------------------
+    // Round-trip — what a later read returns, not just the write's result
+    // ------------------------------------------------------------------
+
+    describe("persisted round-trip", () => {
+      /** The record as `findByClientId` and `getFeedbacks` return it. */
+      async function reread(clientId: string) {
+        const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+        return [await store.findByClientId(clientId), feedbacks.find((f) => f.clientId === clientId)];
+      }
+
+      it("annotations, screenshotRegion and diagnostics survive a re-read", async () => {
+        const screenshotRegion = { xPct: 0.1234, yPct: 0.5678, wPct: 0.25, hPct: 0.125 };
+        const diagnostics: DiagnosticsSnapshot = {
+          console: [{ level: "warn", timestamp: "2026-01-01T00:00:00.000Z", message: "slow" }],
+          network: [],
+        };
+        const created = await store.createFeedback(
+          createInput({ clientId: "round-trip", screenshotRegion, diagnostics }),
+        );
+
+        for (const record of await reread("round-trip")) {
+          expect(record?.id).toBe(created.id);
+          expect(record?.annotations).toEqual(created.annotations);
+          expect(record?.screenshotRegion).toEqual(screenshotRegion);
+          expect(record?.diagnostics).toEqual(diagnostics);
+        }
+      });
+
+      it("an update's status and resolvedAt are visible on re-read", async () => {
+        const created = await store.createFeedback(createInput({ clientId: "update-me" }));
+        const resolvedAt = new Date("2026-01-15T10:00:00.000Z");
+
+        await store.updateFeedback(created.id, { status: "resolved", resolvedAt });
+        for (const record of await reread("update-me")) {
+          expect(record?.status).toBe("resolved");
+          expect(record?.resolvedAt).toEqual(resolvedAt);
+          expect(record?.annotations).toEqual(created.annotations);
+        }
+
+        await store.updateFeedback(created.id, { status: "open", resolvedAt: null });
+        for (const record of await reread("update-me")) {
+          expect(record?.status).toBe("open");
+          expect(record?.resolvedAt).toBeNull();
+        }
       });
     });
 
@@ -512,8 +571,8 @@ export function testSitepingStore(
       });
 
       it("throws StoreNotFoundError for unknown id", async () => {
-        await expect(store.updateFeedback("unknown", { status: "resolved", resolvedAt: new Date() })).rejects.toThrow(
-          StoreNotFoundError,
+        await expect(store.updateFeedback("unknown", { status: "resolved", resolvedAt: new Date() })).rejects.toSatisfy(
+          isStoreNotFound,
         );
       });
 
@@ -544,7 +603,92 @@ export function testSitepingStore(
       });
 
       it("throws StoreNotFoundError for unknown id", async () => {
-        await expect(store.deleteFeedback("unknown")).rejects.toThrow(StoreNotFoundError);
+        await expect(store.deleteFeedback("unknown")).rejects.toSatisfy(isStoreNotFound);
+      });
+
+      it("removes only the target from a multi-record set", async () => {
+        const a = await store.createFeedback(createInput());
+        const b = await store.createFeedback(createInput());
+        const c = await store.createFeedback(createInput());
+
+        await store.deleteFeedback(b.id);
+
+        const { feedbacks, total } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(total).toBe(2);
+        expect(feedbacks.map((f) => f.id).sort()).toEqual([a.id, c.id].sort());
+      });
+    });
+
+    // ------------------------------------------------------------------
+    // Concurrent mutations — the widget's bulk actions use Promise.all
+    // ------------------------------------------------------------------
+
+    describe("concurrent mutations", () => {
+      async function createMany(count: number) {
+        const created = [];
+        for (let i = 0; i < count; i++) created.push(await store.createFeedback(createInput({ annotations: [] })));
+        return created;
+      }
+
+      it("concurrent updates all apply", async () => {
+        const created = await createMany(4);
+
+        await Promise.all(
+          created.map((f) => store.updateFeedback(f.id, { status: "resolved", resolvedAt: new Date() })),
+        );
+
+        const { total } = await store.getFeedbacks({ projectName: "test-project", status: "resolved" });
+        expect(total).toBe(4);
+      });
+
+      it("concurrent deletes all apply", async () => {
+        const [kept, ...doomed] = await createMany(4);
+
+        await Promise.all(doomed.map((f) => store.deleteFeedback(f.id)));
+
+        const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(feedbacks.map((f) => f.id)).toEqual([kept?.id]);
+      });
+
+      it("concurrent updates and deletes on different records all apply", async () => {
+        const [a, b, c, d] = await createMany(4);
+        if (!a || !b || !c || !d) throw new Error("fixture");
+
+        await Promise.all([
+          store.updateFeedback(a.id, { status: "in_progress", resolvedAt: null }),
+          store.deleteFeedback(b.id),
+          store.updateFeedback(c.id, { status: "wont_fix", resolvedAt: new Date() }),
+          store.deleteFeedback(d.id),
+        ]);
+
+        const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+        const statusById = Object.fromEntries(feedbacks.map((f) => [f.id, f.status]));
+        expect(statusById).toEqual({ [a.id]: "in_progress", [c.id]: "wont_fix" });
+      });
+
+      it("concurrent creates with distinct clientIds all persist", async () => {
+        const created = await Promise.all(
+          Array.from({ length: 4 }, () => store.createFeedback(createInput({ annotations: [] }))),
+        );
+
+        const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(feedbacks.map((f) => f.id).sort()).toEqual(created.map((f) => f.id).sort());
+      });
+
+      it("concurrent creates with the same clientId store one record and hand out only its id", async () => {
+        const input = createInput({ clientId: "same-id" });
+
+        const results = await Promise.allSettled([store.createFeedback(input), store.createFeedback(input)]);
+
+        const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(feedbacks).toHaveLength(1);
+        const returned = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.id] : []));
+        // "return" still lets the caller that loses the insert race throw — the
+        // handler recovers it through findByClientId.
+        if (duplicateBehavior === "throw") expect(returned).toHaveLength(1);
+        else expect(returned.length).toBeGreaterThan(0);
+        for (const id of returned) expect(id).toBe(feedbacks[0]?.id);
+        for (const r of results) if (r.status === "rejected") expect(r.reason).toSatisfy(isStoreDuplicate);
       });
     });
 

@@ -41,13 +41,13 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les 44 tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
+C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les 53 tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
 
 **Les trois primitives :**
 
 | Fonction | Contrat |
 |---|---|
-| `load()` | Renvoie l'instantané complet des enregistrements. Synchrone ou asynchrone — le moteur l'attend dans les deux cas |
+| `load()` | Renvoie l'instantané complet des enregistrements. Synchrone ou asynchrone. Quand `load` et `persist` sont tous deux synchrones, chaque écriture va du chargement à la persistance d'un seul tenant : rien d'autre dans le même processus JavaScript ne peut écrire entre les deux. Un backend asynchrone n'est sérialisé que vis-à-vis de la file du store |
 | `persist(feedbacks)` | Réécrit l'instantané complet. Levez `StorePersistenceError` quand l'écriture est perdue (quota, stockage désactivé) — ne l'avalez jamais |
 | `generateId()` | Un identifiant unique, utilisé pour les feedbacks comme pour les annotations |
 
@@ -56,6 +56,8 @@ C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la 
 **Un `persist` qui échoue laisse votre instantané intact.** Le moteur ne modifie jamais le tableau renvoyé par `load()` — chaque écriture construit un nouveau tableau et le passe à `persist`. Donc si `load()` sert un tableau en cache et que l'écriture lève, aucun enregistrement fantôme ne reste visible, et le réessai du widget avec le même `clientId` est écrit pour de bon au lieu d'être dédupliqué contre quelque chose qui n'a jamais atteint le stockage.
 
 **Sous pression de quota, les captures sautent en premier.** Quand `persist` lève pendant `createFeedback` et que l'enregistrement porte une capture d'écran en ligne, le moteur vide `screenshotUrl` — de loin le champ le plus lourd — et réessaie une fois, pour que le commentaire écrit survive à un espace de stockage plein. Si cette seconde écriture échoue aussi, l'erreur remonte : renvoyer l'enregistrement annoncerait une réussite qui n'a jamais eu lieu.
+
+**Les mutations s'exécutent une par une.** Chaque écriture charge l'instantané complet, le modifie et le réécrit : deux écritures qui se chevauchent partiraient du même instantané, et la dernière annulerait l'autre en silence — exactement ce que déclencheraient la résolution et la suppression en masse du widget (un `Promise.all` sur la sélection). Le moteur met en file `createFeedback`, `updateFeedback`, `deleteFeedback` et `deleteAllFeedbacks`, pour que chacune parte du résultat de la précédente ; une mutation qui échoue est rejetée avec sa propre erreur et ne bloque jamais celles qui suivent. `load` et `persist` doivent en revanche toujours aboutir : un appel qui ne se résout jamais bloque toutes les écritures suivantes sur ce store, donnez donc un délai d'expiration aux primitives qui passent par le réseau. Les lectures ne passent pas par la file. La file vit dans l'instance du store, dans un seul processus JavaScript : deux instances sur le même stockage — deux onglets, plusieurs processus serveur partageant un KV ou un fichier — ne sont pas coordonnées. Si votre backend est partagé de cette façon, il lui faut sa propre primitive atomique (une transaction, un compare-and-set).
 
 ## Backends à requêtes
 
@@ -129,7 +131,7 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 
 ## La preuve : la suite de conformité
 
-La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — 44 tests :
+La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — 53 tests :
 
 ```ts
 // __tests__/my-store.test.ts
@@ -139,11 +141,13 @@ import { MyStore } from "../src/index.js";
 testSitepingStore(() => new MyStore());
 ```
 
+En plus des appels un par un, elle lance ensemble des mises à jour, des suppressions et des créations dans un `Promise.all` — comme le font les actions en masse du widget — et vérifie que chaque écriture a abouti.
+
 La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Deux réglages couvrent les variations de contrat légitimement propres au backend :
 
 | Option | Défaut | À régler quand |
 |---|---|---|
-| `duplicateBehavior` | `"return"` | Votre `createFeedback` lève `StoreDuplicateError` sur un `clientId` répété au lieu de renvoyer l'existant — passez `"throw"` |
+| `duplicateBehavior` | `"return"` | Votre `createFeedback` lève `StoreDuplicateError` sur un `clientId` répété au lieu de renvoyer l'existant — passez `"throw"`. Un store qui le renvoie mais lève quand il perd une course d'insertion concurrente reste sur `"return"` |
 | `caseInsensitiveSearch` | `true` | Votre collation rend `search` sensible à la casse — passez `false` et la suite ne teste que la correspondance à casse identique |
 
 ```ts

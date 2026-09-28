@@ -124,3 +124,129 @@ describe("createCollectionStore — snapshot immutability", () => {
     expect((await store.getFeedbacks({ projectName: "p" })).total).toBe(1);
   });
 });
+
+/**
+ * Plain array backend, sync (memory-style) or async (every `load`/`persist`
+ * yields a macrotask, like a remote KV) — concurrent callers must get the
+ * same outcome as sequential ones on both.
+ */
+function arrayBackend(async: boolean) {
+  const state = { rows: [] as FeedbackRecord[], seq: 0, failNextPersist: false };
+  const write = (next: FeedbackRecord[]) => {
+    if (state.failNextPersist) {
+      state.failNextPersist = false;
+      throw new StorePersistenceError("write failed");
+    }
+    state.rows = next;
+  };
+  const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const generateId = () => `id-${++state.seq}`;
+  const store = async
+    ? createCollectionStore({
+        load: async () => {
+          await tick();
+          return state.rows;
+        },
+        persist: async (next) => {
+          await tick();
+          write(next);
+        },
+        generateId,
+      })
+    : createCollectionStore({
+        load: () => state.rows,
+        persist: write,
+        generateId,
+      });
+  return { store, state };
+}
+
+describe.each([
+  ["sync", false],
+  ["async", true],
+])("createCollectionStore — concurrent mutations (%s backend)", (_label, async) => {
+  async function seed(store: ReturnType<typeof arrayBackend>["store"]): Promise<FeedbackRecord[]> {
+    const created: FeedbackRecord[] = [];
+    for (const clientId of ["a", "b", "c"]) created.push(await store.createFeedback(input(clientId)));
+    return created;
+  }
+
+  it("concurrent deletes all apply (bulk delete)", async () => {
+    const { store } = arrayBackend(async);
+    const created = await seed(store);
+
+    await Promise.all(created.map((f) => store.deleteFeedback(f.id)));
+
+    expect((await store.getFeedbacks({ projectName: "p" })).total).toBe(0);
+  });
+
+  it("concurrent updates all apply (bulk resolve)", async () => {
+    const { store } = arrayBackend(async);
+    const created = await seed(store);
+
+    await Promise.all(created.map((f) => store.updateFeedback(f.id, { status: "resolved", resolvedAt: new Date() })));
+
+    const { feedbacks } = await store.getFeedbacks({ projectName: "p" });
+    expect(feedbacks.map((f) => f.status)).toEqual(["resolved", "resolved", "resolved"]);
+  });
+
+  it("a delete racing an update of another record keeps both changes", async () => {
+    const { store } = arrayBackend(async);
+    const [a, b] = await seed(store);
+    if (!a || !b) throw new Error("fixture");
+
+    await Promise.all([
+      store.deleteFeedback(a.id),
+      store.updateFeedback(b.id, { status: "in_progress", resolvedAt: null }),
+    ]);
+
+    const { feedbacks } = await store.getFeedbacks({ projectName: "p" });
+    expect(feedbacks.map((f) => [f.clientId, f.status])).toEqual([
+      ["c", "open"],
+      ["b", "in_progress"],
+    ]);
+  });
+
+  it("concurrent creates are all persisted", async () => {
+    const { store, state } = arrayBackend(async);
+
+    const records = await Promise.all([store.createFeedback(input("a")), store.createFeedback(input("b"))]);
+
+    expect(state.rows.map((f) => f.id).sort()).toEqual(records.map((r) => r.id).sort());
+  });
+
+  it("concurrent creates with the same clientId dedup to a single record", async () => {
+    const { store, state } = arrayBackend(async);
+
+    const [first, second] = await Promise.all([store.createFeedback(input("a")), store.createFeedback(input("a"))]);
+
+    expect(second.id).toBe(first.id);
+    expect(state.rows).toHaveLength(1);
+  });
+
+  it("a rejected mutation does not break the queue for the ones after it", async () => {
+    const { store } = arrayBackend(async);
+    const a = await store.createFeedback(input("a"));
+
+    const results = await Promise.allSettled([
+      store.deleteFeedback("missing"),
+      store.deleteFeedback(a.id),
+      store.createFeedback(input("b")),
+    ]);
+
+    expect(results.map((r) => r.status)).toEqual(["rejected", "fulfilled", "fulfilled"]);
+    const { feedbacks } = await store.getFeedbacks({ projectName: "p" });
+    expect(feedbacks.map((f) => f.clientId)).toEqual(["b"]);
+  });
+
+  it("a failed persist rejects only its own caller, with its own error", async () => {
+    const { store, state } = arrayBackend(async);
+    state.failNextPersist = true;
+
+    const results = await Promise.allSettled([store.createFeedback(input("a")), store.createFeedback(input("a"))]);
+
+    expect(results[0]).toMatchObject({ status: "rejected", reason: expect.any(StorePersistenceError) });
+    expect(results[1]).toMatchObject({ status: "fulfilled", value: { clientId: "a" } });
+    expect(state.rows.map((f) => f.clientId)).toEqual(["a"]);
+  });
+});

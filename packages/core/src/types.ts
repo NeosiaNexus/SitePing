@@ -533,6 +533,11 @@ export interface FeedbackQuery {
   statuses?: readonly FeedbackStatus[] | undefined;
   search?: string | undefined;
   page?: number | undefined;
+  /**
+   * Page size. Defaults to `DEFAULT_PAGE_LIMIT` (50) and is capped at
+   * `MAX_PAGE_LIMIT` (100) — `clampPagination` implements both, and the
+   * conformance suite checks them.
+   */
   limit?: number | undefined;
   /**
    * Filter to feedbacks created on this exact URL (path). Used by the panel's
@@ -693,18 +698,28 @@ function hasErrorCode<C extends string>(error: unknown, code: C): error is Coded
   return hasOwn(error, "code") && error.code === code;
 }
 
-/** Type guard — works for `StoreNotFoundError` and ORM-specific equivalents (e.g. Prisma P2025). */
-export function isStoreNotFound(error: unknown): error is StoreNotFoundError | CodedError<"P2025"> {
+/**
+ * Type guard — works for `StoreNotFoundError` and ORM-specific equivalents
+ * (e.g. Prisma P2025). Matches on the stable `code` too, for the same
+ * cross-bundle reason as {@link isStorePersistence}.
+ */
+export function isStoreNotFound(error: unknown): error is StoreNotFoundError | CodedError<"STORE_NOT_FOUND" | "P2025"> {
   if (error instanceof StoreNotFoundError) return true;
-  // Backwards compat: Prisma's P2025
-  return hasErrorCode(error, "P2025");
+  // Another bundle's copy of core, or Prisma's P2025 (backwards compat)
+  return hasErrorCode(error, "STORE_NOT_FOUND") || hasErrorCode(error, "P2025");
 }
 
-/** Type guard — works for `StoreDuplicateError` and ORM-specific equivalents (e.g. Prisma P2002). */
-export function isStoreDuplicate(error: unknown): error is StoreDuplicateError | CodedError<"P2002"> {
+/**
+ * Type guard — works for `StoreDuplicateError` and ORM-specific equivalents
+ * (e.g. Prisma P2002). Matches on the stable `code` too, for the same
+ * cross-bundle reason as {@link isStorePersistence}.
+ */
+export function isStoreDuplicate(
+  error: unknown,
+): error is StoreDuplicateError | CodedError<"STORE_DUPLICATE" | "P2002"> {
   if (error instanceof StoreDuplicateError) return true;
-  // Backwards compat: Prisma's P2002
-  return hasErrorCode(error, "P2002");
+  // Another bundle's copy of core, or Prisma's P2002 (backwards compat)
+  return hasErrorCode(error, "STORE_DUPLICATE") || hasErrorCode(error, "P2002");
 }
 
 /**

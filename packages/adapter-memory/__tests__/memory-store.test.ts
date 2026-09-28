@@ -134,3 +134,69 @@ describe("MemoryStore specific", () => {
     expect(resolved.resolvedAt).toEqual(closedAt);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Concurrency — the widget's bulk actions fire every mutation at once
+// ---------------------------------------------------------------------------
+
+describe("MemoryStore concurrency", () => {
+  function input(clientId: string) {
+    return {
+      projectName: "a",
+      type: "bug" as const,
+      message: "test",
+      status: "open" as const,
+      url: "https://example.com",
+      viewport: "1920x1080",
+      userAgent: "test",
+      authorName: "Alice",
+      authorEmail: "a@t.com",
+      clientId,
+      annotations: [],
+    };
+  }
+
+  async function seed(store: MemoryStore) {
+    const created = [];
+    for (const clientId of ["a", "b", "c"]) created.push(await store.createFeedback(input(clientId)));
+    return created;
+  }
+
+  it("a concurrent bulk delete removes every record", async () => {
+    const store = new MemoryStore();
+    const created = await seed(store);
+
+    await Promise.all(created.map((f) => store.deleteFeedback(f.id)));
+
+    expect((await store.getFeedbacks({ projectName: "a" })).total).toBe(0);
+  });
+
+  it("a concurrent bulk resolve resolves every record", async () => {
+    const store = new MemoryStore();
+    const created = await seed(store);
+
+    await Promise.all(created.map((f) => store.updateFeedback(f.id, { status: "resolved", resolvedAt: new Date() })));
+
+    const { feedbacks } = await store.getFeedbacks({ projectName: "a", status: "resolved" });
+    expect(feedbacks).toHaveLength(3);
+  });
+
+  it("clear() while a write is pending never brings the cleared records back", async () => {
+    // Call clear() at every point of the pending write's lifetime.
+    for (let ticks = 0; ticks < 6; ticks++) {
+      const store = new MemoryStore();
+      await seed(store);
+
+      const pending = store.createFeedback(input("late"));
+      for (let i = 0; i < ticks; i++) await Promise.resolve();
+      store.clear();
+      await pending;
+
+      const { feedbacks } = await store.getFeedbacks({ projectName: "a" });
+      expect(
+        feedbacks.filter((f) => f.clientId !== "late"),
+        `clear() after ${ticks} tick(s)`,
+      ).toEqual([]);
+    }
+  });
+});

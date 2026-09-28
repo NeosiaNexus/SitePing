@@ -1,3 +1,4 @@
+import { buildFeedbackRecord, type SitepingStore } from "@siteping/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSitepingHandler } from "../src/index.js";
 import { validAnnotation, validPayloadNoAnnotations } from "./fixtures.js";
@@ -712,5 +713,86 @@ describe("createSitepingHandler", () => {
       expect(body.authorEmail).toBe("");
       expect("clientId" in body).toBe(false);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Store errors from another bundle's copy of core — every published package
+// bundles its own core, so e.g. an adapter-kit-built store throws error
+// classes this handler's `instanceof` checks don't know.
+// ---------------------------------------------------------------------------
+
+type StoreErrorCode = "STORE_NOT_FOUND" | "STORE_DUPLICATE";
+
+/** Same `code` as core's store errors, different class identity. */
+class ForeignStoreError extends Error {
+  constructor(readonly code: StoreErrorCode) {
+    super(code);
+  }
+}
+
+describe.each<[string, (code: StoreErrorCode) => unknown]>([
+  ["an Error class from another copy of core", (code) => new ForeignStoreError(code)],
+  ["a plain { code } object", (code) => ({ code })],
+])("createSitepingHandler — store errors thrown as %s", (_label, storeError) => {
+  /** A third-party store without the optional `verifyProjectOwnership`. */
+  function foreignStore(overrides: Partial<SitepingStore>): SitepingStore {
+    return {
+      createFeedback: vi.fn(),
+      getFeedbacks: vi.fn(),
+      findByClientId: vi.fn().mockResolvedValue(null),
+      updateFeedback: vi.fn(),
+      deleteFeedback: vi.fn(),
+      deleteAllFeedbacks: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it("PATCH of an unknown id returns 404", async () => {
+    const store = foreignStore({ updateFeedback: vi.fn().mockRejectedValue(storeError("STORE_NOT_FOUND")) });
+    const handler = createSitepingHandler({ store, requireAuthForDestructive: false });
+
+    const res = await handler.PATCH(
+      new Request("http://localhost/api/siteping", {
+        method: "PATCH",
+        body: JSON.stringify({ id: "missing", projectName: "test-project", status: "resolved" }),
+      }),
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("DELETE of an unknown id returns 404", async () => {
+    const store = foreignStore({ deleteFeedback: vi.fn().mockRejectedValue(storeError("STORE_NOT_FOUND")) });
+    const handler = createSitepingHandler({ store, requireAuthForDestructive: false });
+
+    const res = await handler.DELETE(
+      new Request("http://localhost/api/siteping", {
+        method: "DELETE",
+        body: JSON.stringify({ id: "missing", projectName: "test-project" }),
+      }),
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("POST that loses the clientId race returns the existing record", async () => {
+    const existing = buildFeedbackRecord(
+      { ...validPayloadNoAnnotations, status: "open", annotations: [] },
+      { id: "fb-existing", annotationId: () => "ann" },
+    );
+    const store = foreignStore({
+      // Not there at the replay check, inserted by the racing request right after.
+      findByClientId: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(existing),
+      createFeedback: vi.fn().mockRejectedValue(storeError("STORE_DUPLICATE")),
+    });
+    const handler = createSitepingHandler({ store });
+
+    const res = await handler.POST(
+      new Request("http://localhost/api/siteping", { method: "POST", body: JSON.stringify(validPayloadNoAnnotations) }),
+    );
+
+    expect(res.status).toBe(201);
+    expect((await res.json()).id).toBe("fb-existing");
   });
 });

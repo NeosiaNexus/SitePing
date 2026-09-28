@@ -41,13 +41,13 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 44 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
+That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 53 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
 
 **The three primitives:**
 
 | Function | Contract |
 |---|---|
-| `load()` | Return the current full snapshot of records. Sync or async — the engine awaits it either way |
+| `load()` | Return the current full snapshot of records. Sync or async. When `load` and `persist` are both sync, each write runs from load to persist in one step, so nothing else in the same JavaScript process can write in between; an async backend is only serialized against the store's own queue |
 | `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
 | `generateId()` | A unique id, used for both feedback and annotation records |
 
@@ -56,6 +56,8 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 **A failed `persist` leaves your snapshot untouched.** The engine never mutates the array `load()` returned — every write builds a new array and hands it to `persist`. So if `load()` serves a cached array and the write throws, no phantom record stays visible, and the widget's retry of the same `clientId` is written for real instead of being deduplicated against something that never reached storage.
 
 **Quota pressure drops screenshots first.** When `persist` throws during `createFeedback` and the record carries an inline screenshot, the engine clears `screenshotUrl` — by far the heaviest field — and retries once, so the written comment survives a full storage bucket. If that second write also fails, the error propagates: returning the record would claim a success that never happened.
+
+**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `updateFeedback`, `deleteFeedback` and `deleteAllFeedbacks` so each starts from the previous one's result; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
 
 ## Query backends
 
@@ -129,7 +131,7 @@ Implement it whenever your store serves more than one project. When it's absent,
 
 ## Prove it: the conformance suite
 
-The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 44 tests:
+The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 53 tests:
 
 ```ts
 // __tests__/my-store.test.ts
@@ -139,11 +141,13 @@ import { MyStore } from "../src/index.js";
 testSitepingStore(() => new MyStore());
 ```
 
+Besides one call at a time, it fires updates, deletes and creates together in a `Promise.all` — the way the widget's bulk actions do — and checks that every write landed.
+
 The factory runs before each test and may be async, which is where you spin up a transaction or a fresh schema. Two knobs cover contract variations that are legitimately backend-specific:
 
 | Option | Default | Set it when |
 |---|---|---|
-| `duplicateBehavior` | `"return"` | Your `createFeedback` throws `StoreDuplicateError` on a repeated `clientId` instead of returning the existing record — pass `"throw"` |
+| `duplicateBehavior` | `"return"` | Your `createFeedback` throws `StoreDuplicateError` on a repeated `clientId` instead of returning the existing record — pass `"throw"`. A store that returns it but throws when it loses a concurrent insert race stays on `"return"` |
 | `caseInsensitiveSearch` | `true` | Your collation makes `search` case-sensitive — pass `false` and the suite only asserts same-case substring matching |
 
 ```ts
