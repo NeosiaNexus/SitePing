@@ -753,8 +753,57 @@ describe("launcher — annotation:complete integration", () => {
       await new Promise((r) => setTimeout(r, 50));
       expect(emailInput.style.borderColor).toBeTruthy();
       expect(emailInput.style.borderColor).not.toBe("");
+      expect(emailInput.getAttribute("aria-invalid")).toBe("true");
+      expect(nameInput.hasAttribute("aria-invalid")).toBe(false);
       expect(mockSendFeedback).not.toHaveBeenCalled();
       expect(modal.isConnected).toBe(true);
+
+      // A fixed field drops its error state; the next rejection marks the field at fault.
+      nameInput.value = "N".repeat(201);
+      emailInput.value = "alice@example.com";
+      submitBtn.click();
+      expect(emailInput.hasAttribute("aria-invalid")).toBe(false);
+      expect(emailInput.style.borderColor).toBe("");
+      expect(nameInput.getAttribute("aria-invalid")).toBe("true");
+      expect(modal.isConnected).toBe(true);
+
+      instance.destroy();
+    });
+
+    it("caps both inputs at the server's 200-char limit", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { nameInput, emailInput } = await getIdentityModal();
+      expect(nameInput.maxLength).toBe(200);
+      expect(emailInput.maxLength).toBe(200);
+
+      instance.destroy();
+    });
+
+    it.each([
+      ["name", "N".repeat(201), "alice@example.com"],
+      ["email", "Alice", `${"a".repeat(64)}@${"b".repeat(60)}.${"c".repeat(60)}.${"d".repeat(60)}.com`],
+    ])("rejects a %s longer than the server accepts instead of persisting it", async (field, name, email) => {
+      // A persisted 201-char value is replayed on every submission — each one
+      // a 400 from adapter-prisma (authorName / authorEmail max 200).
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      const { nameInput, emailInput, submitBtn, modal } = await getIdentityModal();
+      nameInput.value = name;
+      emailInput.value = email;
+      submitBtn.click();
+
+      await new Promise((r) => setTimeout(r, 350));
+      expect(mockSaveIdentity).not.toHaveBeenCalled();
+      expect(mockSendFeedback).not.toHaveBeenCalled();
+      expect(modal.isConnected).toBe(true);
+      const [rejected, accepted] = field === "name" ? [nameInput, emailInput] : [emailInput, nameInput];
+      expect(rejected.getAttribute("aria-invalid")).toBe("true");
+      expect(accepted.hasAttribute("aria-invalid")).toBe(false);
 
       instance.destroy();
     });

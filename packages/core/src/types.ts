@@ -43,6 +43,13 @@ export interface SitepingIdentity {
   email: string;
 }
 
+/**
+ * Max length of an identity's `name` and `email` — the HTTP schema's
+ * `authorName` / `authorEmail` cap. The widget's modal enforces it so a value
+ * it persists is never a 400 on every later submission.
+ */
+export const IDENTITY_FIELD_MAX_LENGTH = 200;
+
 /** Deep-link configuration — controls how a feedback id is read from the URL. */
 export interface SitepingDeepLinkOptions {
   /** Query parameter name carrying the feedback id. Defaults to `"siteping"`. */

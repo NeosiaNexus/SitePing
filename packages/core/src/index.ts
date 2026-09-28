@@ -85,6 +85,7 @@ export {
   FEEDBACK_STATUSES,
   FEEDBACK_TYPES,
   flattenAnnotation,
+  IDENTITY_FIELD_MAX_LENGTH,
   isClosedStatus,
   isStoreDuplicate,
   isStoreNotFound,
