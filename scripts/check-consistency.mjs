@@ -68,7 +68,7 @@ for (const [dir, ext] of [
 }
 
 const englishName = new Intl.DisplayNames(["en"], { type: "language" });
-const hasWord = (text, word) => new RegExp(`\\b${word}\\b`).test(text);
+const wordRe = (word) => new RegExp(`\\b${word}\\b`);
 
 for (const file of localeDocFiles) {
   if (!existsSync(join(root, file))) continue;
@@ -85,10 +85,11 @@ for (const file of localeDocFiles) {
   // must name every one of them.
   for (const { 0: paragraph, index } of content.matchAll(/.*\S.*(?:\n.*\S.*)*/g)) {
     for (const name of [(code) => code, (code) => englishName.of(code)]) {
-      if (!hasWord(paragraph, name("fr")) || !hasWord(paragraph, name("ru"))) continue;
-      const missing = locales.filter((code) => !hasWord(paragraph, name(code)));
+      const ru = paragraph.search(wordRe(name("ru")));
+      if (ru < 0 || !wordRe(name("fr")).test(paragraph)) continue;
+      const missing = locales.filter((code) => !wordRe(name(code)).test(paragraph));
       if (missing.length > 0) {
-        const line = content.slice(0, index).split("\n").length;
+        const line = content.slice(0, index + ru).split("\n").length;
         errors.push(`${file}:${line} lists the built-in locales without ${missing.map(name).join(", ")}`);
       }
     }
