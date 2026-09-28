@@ -29,7 +29,8 @@ bun run lint               # lint with Biome (includes the type-aware rules doma
 bun run lint:fix           # auto-fix lint issues
 bun run verify             # build + check + lint + test:run — the full pre-PR gate
 bun run pkg-checks         # publint + attw on every published package (same script CI runs)
-bun run check:consistency  # locale counts, package registration, fix-dts chains, esbuild override, fileURLToPath in tooling
+bun run check:consistency  # locale counts, package registration, fix-dts chains, esbuild override, fileURLToPath in tooling,
+                           # no @prisma/client import in adapter-prisma, workspace dependencies pinned before publish
 bun run knip               # dead files / exports / dependencies
 bun run new:locale <code>  # scaffold a new built-in locale (see Adding a Locale)
 bun run new:adapter <name> # scaffold a new first-party adapter (see Creating a New Adapter)
@@ -144,7 +145,11 @@ is the smallest). The pieces that matter:
    placeholder version `"0.0.0"` (the post-release npm check knows to skip it).
 5. **Wire `.github/workflows/release.yml`** (4 spots — copy an existing
    publish job): the `release_created` output, the build-artifact path, the
-   publish job itself, and the `verify-publish` needs list.
+   publish job itself, and the `verify-publish` needs list. A package that
+   depends on another published workspace package (`workspace:^`) also needs
+   a step pinning that range before `npm publish` (`npm pkg set`, as in
+   `publish-adapter-prisma`), and its publish job must list the dependency's
+   publish job in `needs` (`check:consistency` fails if either is missing).
 6. **Verify** — `bun install`, then `bun run verify && bun run pkg-checks && bun run check:consistency`.
 
 The publint/attw gates and pkg-pr-new previews derive their package list from
