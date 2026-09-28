@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import type { SitepingConfig, SitepingInstance } from "@siteping/core";
+import type {
+  FeedbackResponse,
+  SitepingConfig,
+  SitepingInstance,
+  SitepingPanelButtonAction,
+  SitepingPanelLinkAction,
+} from "@siteping/core";
 import { act, render } from "@testing-library/react";
 import { StrictMode, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
@@ -208,6 +214,61 @@ describe("useSiteping", () => {
     });
     expect(e1).not.toHaveBeenCalled();
     expect(e2).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps panel action callbacks fresh across rerenders, resolved by id", () => {
+    const fb = { id: "fb-1" } as FeedbackResponse;
+    const ctx = { refresh: vi.fn(), close: vi.fn() };
+    const handlers = () => ({
+      onAction: vi.fn(),
+      visible: vi.fn(() => true),
+      href: vi.fn((f: Readonly<FeedbackResponse>) => `https://t.example/${f.id}`),
+    });
+    const first = handlers();
+    const second = { ...handlers(), visible: vi.fn(() => false) };
+    const config = (h: ReturnType<typeof handlers>, withActions = true): SitepingConfig => ({
+      endpoint: "/api",
+      projectName: "p",
+      panelActions: withActions
+        ? [
+            { id: "run", label: "Run", onAction: h.onAction, visible: h.visible },
+            { id: "open", label: "Open", href: h.href },
+            { id: "static", label: "Static", href: "https://static.example" },
+          ]
+        : [],
+    });
+
+    const { rerender } = render(<Probe config={config(first)} />);
+    rerender(<Probe config={config(second)} />);
+    expect(initSpy).toHaveBeenCalledTimes(1);
+
+    const [run, open, fixed] = wiredConfig().panelActions as [
+      SitepingPanelButtonAction,
+      SitepingPanelLinkAction,
+      SitepingPanelLinkAction,
+    ];
+    void run.onAction(fb, ctx);
+    expect(second.onAction).toHaveBeenCalledExactlyOnceWith(fb, ctx);
+    expect(first.onAction).not.toHaveBeenCalled();
+    expect(run.visible?.(fb)).toBe(false);
+    expect(typeof open.href === "function" && open.href(fb)).toBe("https://t.example/fb-1");
+    expect(second.href).toHaveBeenCalledOnce();
+    expect(first.href).not.toHaveBeenCalled();
+    expect(fixed.href).toBe("https://static.example"); // static data stays static
+
+    // An id gone from the latest config falls back to its mount-time action.
+    rerender(<Probe config={config(second, false)} />);
+    void run.onAction(fb, ctx);
+    expect(first.onAction).toHaveBeenCalledOnce();
+  });
+
+  it("hands malformed panelActions to the widget untouched instead of crashing the mount", () => {
+    const first = render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions: [null, "x"] as never }} />);
+    expect(wiredConfig().panelActions).toEqual([null, "x"]);
+    first.unmount();
+    initSpy.mockClear();
+    render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions: { id: "x" } as never }} />);
+    expect(wiredConfig().panelActions).toEqual({ id: "x" });
   });
 
   it("ignores widget callbacks after unmount", () => {

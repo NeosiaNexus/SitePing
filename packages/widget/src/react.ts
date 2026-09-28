@@ -20,9 +20,41 @@
  * that never import `@siteping/widget/react` don't need React installed.
  */
 
-import type { SitepingConfig, SitepingInstance } from "@siteping/core";
+import type { FeedbackResponse, SitepingConfig, SitepingInstance, SitepingPanelAction } from "@siteping/core";
 import { useEffect, useRef, useState } from "react";
 import { initSiteping } from "./index.js";
+
+/**
+ * Stable stand-ins for `config.panelActions`. The list itself — ids, labels,
+ * icons, static hrefs — is read once at mount like every other option, but
+ * each callback (`visible`, `onAction`, a function `href`) resolves the
+ * action with the same id in the latest config at call time, so a handler
+ * closing over fresh state (an auth token, the current user) runs with it.
+ */
+function freshPanelActions(ref: { readonly current: SitepingConfig }): SitepingConfig["panelActions"] {
+  const actions = ref.current.panelActions;
+  if (!Array.isArray(actions)) return actions;
+  return actions.map((initial) => {
+    // Malformed entries go through untouched — the widget warns and skips them.
+    if (typeof initial !== "object" || initial === null) return initial;
+    const latest = (): SitepingPanelAction => ref.current.panelActions?.find((a) => a?.id === initial.id) ?? initial;
+    const visible = (fb: Readonly<FeedbackResponse>) => latest().visible?.(fb) ?? true;
+    if (initial.href === undefined) {
+      const { onAction } = initial;
+      return { ...initial, visible, onAction: (fb, ctx) => (latest().onAction ?? onAction)(fb, ctx) };
+    }
+    const { href } = initial;
+    if (typeof href !== "function") return { ...initial, visible };
+    return {
+      ...initial,
+      visible,
+      href: (fb) => {
+        const current = latest().href ?? href;
+        return typeof current === "function" ? current(fb) : current;
+      },
+    };
+  });
+}
 
 /**
  * Initialise the SitePing widget for the lifetime of the calling component.
@@ -105,6 +137,7 @@ export function useSiteping(config: SitepingConfig): SitepingInstance | null {
       onAnnotationEnd: () => {
         if (mounted) configRef.current.onAnnotationEnd?.();
       },
+      panelActions: freshPanelActions(configRef),
     });
     if (!mounted) {
       // Cleanup already ran (StrictMode dev edge case) — tear down to avoid
