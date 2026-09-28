@@ -1,11 +1,11 @@
 import {
   type AnnotationPayload,
   type FeedbackPayload,
+  type RectData,
   SitepingAuthError,
   type SitepingError,
   SitepingNetworkError,
   SitepingValidationError,
-  type RectData,
 } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
