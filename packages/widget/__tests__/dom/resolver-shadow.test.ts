@@ -193,6 +193,25 @@ describe("anchorKey through shadow roots", () => {
     const result = resolveAnchor(anchor);
     expect(result?.element).toBe(target);
   });
+
+  it("falls back to a key on the light-DOM host when the component's internals change", () => {
+    // A design-system button: its label is slotted light DOM, so the inner
+    // control has no text of its own.
+    const shadow = component('<button class="base"><slot></slot></button>', {
+      id: "buy",
+      "data-feedback-anchor": "checkout.cta",
+    });
+    shadow.host.textContent = "Buy now";
+    const anchor = generateAnchor(inner(shadow, "button"));
+    expect(anchor.anchorKey).toBe("checkout.cta");
+
+    // The library's next major renders a link instead: nothing inside the
+    // component matches any more, only the host still carries the key.
+    shadow.innerHTML = '<a class="base"><slot></slot></a>';
+    const result = resolveAnchor(anchor);
+    expect(result?.element).toBe(shadow.host);
+    expect(result?.strategy).toBe("anchorKey");
+  });
 });
 
 describe("closed roots and broken chains", () => {
