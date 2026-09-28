@@ -11,6 +11,7 @@ import {
   SitepingError,
   type SitepingHeadersOption,
   SitepingNetworkError,
+  withSearchParams,
 } from "@siteping/core";
 import type { Identity } from "./identity.js";
 
@@ -337,7 +338,7 @@ export class ApiClient implements WidgetClient {
       // GET carries no body — only attach headers when auth produced some, so
       // the no-auth wire shape stays byte-identical to the legacy client.
       const headers = await buildRequestHeaders(this.auth, false);
-      response = await resilientFetch(`${this.endpoint}?${params.toString()}`, {
+      response = await resilientFetch(withSearchParams(this.endpoint, params), {
         method: "GET",
         cache: "no-store",
         ...(Object.keys(headers).length > 0 ? { headers } : {}),

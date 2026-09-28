@@ -461,6 +461,17 @@ describe("ApiClient", () => {
     expect(calledUrl).toContain("limit=10");
   });
 
+  it.each([
+    ["/api/siteping?tenant=acme", "/api/siteping?tenant=acme&projectName=test-project&limit=10"],
+    ["/api/siteping?", "/api/siteping?projectName=test-project&limit=10"],
+    ["/api/siteping#top", "/api/siteping?projectName=test-project&limit=10#top"],
+  ])("appends GET params to an endpoint that already has a query or hash (%s)", async (withQuery, expected) => {
+    // `${endpoint}?${params}` produced "?tenant=acme?projectName=…" — a 400.
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
+    await new ApiClient(withQuery, "test").getFeedbacks("test-project", { limit: 10 });
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(expected);
+  });
+
   it("sends GET with the full set of optional query params (page/status/search)", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
 

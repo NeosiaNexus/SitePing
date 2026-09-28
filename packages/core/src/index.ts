@@ -96,4 +96,4 @@ export {
   StorePersistenceError,
   toFeedbackUpdate,
 } from "./types.js";
-export { errorFromResponse, feedbackQueryToSearchParams, networkErrorFromException } from "./wire.js";
+export { errorFromResponse, feedbackQueryToSearchParams, networkErrorFromException, withSearchParams } from "./wire.js";

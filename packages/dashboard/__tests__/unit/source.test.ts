@@ -66,6 +66,17 @@ describe("createEndpointSource — list()", () => {
     expect([...params.keys()]).toEqual(["projectName"]);
   });
 
+  it("keeps a query string already on the endpoint (appends with &)", async () => {
+    // `${endpoint}?${params}` produced "?tenant=acme?projectName=…" — a 400.
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({ endpoint: `${ENDPOINT}?tenant=acme`, fetchFn });
+    await source.list({ projectName: "demo" });
+
+    const params = new URL(lastCall(fetchFn).url).searchParams;
+    expect(params.get("tenant")).toBe("acme");
+    expect(params.get("projectName")).toBe("demo");
+  });
+
   it("sends no Content-Type on GET", async () => {
     const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
