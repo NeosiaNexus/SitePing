@@ -978,7 +978,7 @@ export class DetailView {
   private deleteBtn: HTMLButtonElement | null = null;
   private customBtns: HTMLButtonElement[] = [];
   private isProcessing = false;
-  /** Bumped by every show()/hide(): a host action settling late must leave the newer view alone. */
+  /** Bumped by every show()/hide(): an action settling late must leave the newer view alone. */
   private viewToken = 0;
 
   constructor(
@@ -1579,6 +1579,7 @@ export class DetailView {
   private async handleResolve(): Promise<void> {
     if (this.isProcessing || !this.currentFeedback) return;
     this.isProcessing = true;
+    const token = this.viewToken;
 
     if (this.resolveBtn) this.setButtonLoading(this.resolveBtn);
     this.setActionsDisabled(true, this.resolveBtn);
@@ -1587,7 +1588,9 @@ export class DetailView {
       await this.callbacks.onResolve(this.currentFeedback);
       // The parent will call hide() or re-show with updated data
     } catch {
-      // Restore buttons on error
+      // Restore buttons on error — unless show()/hide() replaced the view
+      // meanwhile: the newer view's buttons and processing state are not ours.
+      if (token !== this.viewToken) return;
       this.isProcessing = false;
       if (this.resolveBtn) this.restoreResolveBtn(this.currentFeedback);
       this.setActionsDisabled(false, this.resolveBtn);
@@ -1597,6 +1600,7 @@ export class DetailView {
   private async handleDelete(): Promise<void> {
     if (this.isProcessing || !this.currentFeedback) return;
     this.isProcessing = true;
+    const token = this.viewToken;
 
     if (this.deleteBtn) this.setButtonLoading(this.deleteBtn);
     this.setActionsDisabled(true, this.deleteBtn);
@@ -1605,6 +1609,7 @@ export class DetailView {
       await this.callbacks.onDelete(this.currentFeedback);
       // The parent will call hide() after deletion
     } catch {
+      if (token !== this.viewToken) return;
       this.isProcessing = false;
       if (this.deleteBtn) this.restoreDeleteBtn();
       this.setActionsDisabled(false, this.deleteBtn);

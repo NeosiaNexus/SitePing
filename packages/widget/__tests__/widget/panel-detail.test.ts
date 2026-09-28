@@ -1413,6 +1413,41 @@ describe("custom panel actions", () => {
     expect([b.resolve.disabled, b.del.disabled]).toEqual([false, false]);
   });
 
+  it.each([
+    ["Resolve", "resolve"],
+    ["Delete", "del"],
+  ] as const)(
+    "a %s failing after the view moved on leaves the newer view's pending action alone",
+    async (_, builtIn) => {
+      const { onCustomAction, settle } = deferredActions();
+      let reject!: (error: Error) => void;
+      const pending = () => new Promise<void>((_, r) => (reject = r));
+      const { view } = buildDetail([makeAction()], {
+        onCustomAction,
+        onResolve: vi.fn(pending),
+        onDelete: vi.fn(pending),
+      });
+
+      view.show(makeFeedback({ id: "fb-a" }), 1);
+      actionButtons(view)[builtIn].click(); // A's Resolve/Delete pending
+
+      view.show(makeFeedback({ id: "fb-b" }), 2);
+      const b = actionButtons(view);
+      b.first.click(); // B's host action pending
+
+      reject(new Error("network down")); // A fails late
+      await Promise.resolve();
+      await Promise.resolve();
+      expect([b.first.disabled, b.resolve.disabled, b.del.disabled]).toEqual([true, true, true]);
+      b.first.click();
+      expect(onCustomAction).toHaveBeenCalledOnce(); // never dispatched twice
+
+      settle(0);
+      await vi.waitFor(() => expect(b.first.disabled).toBe(false));
+      expect([b.resolve.disabled, b.del.disabled]).toEqual([false, false]);
+    },
+  );
+
   it("hides an action whose visible() throws, reports it, and keeps the view alive", () => {
     const boom = new Error("visible exploded");
     const { view, cb } = buildDetail([
