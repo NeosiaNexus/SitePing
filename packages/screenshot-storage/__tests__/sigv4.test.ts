@@ -160,6 +160,16 @@ describe("signS3Request — AWS's published S3 examples", () => {
       signedHeaders: "host;x-amz-content-sha256;x-amz-date",
       signature: "34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7",
     },
+    {
+      // The canonical query is sorted, so the order the URL lists them in cannot change the signature.
+      name: "GET Bucket, List Objects with its query parameters out of order",
+      method: "GET",
+      url: "https://examplebucket.s3.amazonaws.com/?prefix=J&max-keys=2",
+      headers: {},
+      body: "",
+      signedHeaders: "host;x-amz-content-sha256;x-amz-date",
+      signature: "34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7",
+    },
   ];
 
   it("hashes the PUT example's payload as AWS publishes it", async () => {
