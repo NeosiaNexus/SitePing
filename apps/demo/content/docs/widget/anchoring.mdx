@@ -38,7 +38,10 @@ On a later visit, resolution follows that host chain back down: it looks for the
 
 **Closed** shadow roots are opaque by design — the page itself can't look inside them — so an annotation drawn over one anchors to its host element: the whole component.
 
-One timing caveat: markers re-check their position on scroll, resize, and page-level DOM changes. A component that re-renders only inside its own shadow root signals no DOM change, so a marker on it catches up on the next scroll or resize.
+Two timing caveats:
+
+- Markers re-check their position on scroll, resize, and page-level DOM changes. A component that re-renders only inside its own shadow root signals no DOM change, so a marker on it catches up on the next scroll or resize.
+- Markers are placed when the page's feedback loads. A component that isn't rendered yet at that moment — defined late, or a lazy-loaded build (Stencil, Ionic) that fills its shadow root a little later — has nothing to anchor to, so, like any content that shows up later, its marker appears the next time feedback loads: when the panel opens, on SPA navigation, or when you call `siteping.refresh()` (for instance once `customElements.whenDefined()` resolves).
 
 ## Helping the anchors help you
 

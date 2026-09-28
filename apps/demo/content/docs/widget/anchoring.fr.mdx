@@ -38,7 +38,10 @@ Lors d'une visite ultérieure, la résolution redescend cette chaîne d'hôtes :
 
 Les shadow roots **fermés** sont opaques par conception — la page elle-même ne peut pas regarder à l'intérieur — donc une annotation dessinée dessus s'ancre à son élément hôte : le composant entier.
 
-Une réserve de timing : les marqueurs revérifient leur position au défilement, au redimensionnement et aux changements du DOM de la page. Un composant qui ne se re-rend qu'à l'intérieur de son propre shadow root ne signale aucun changement du DOM ; un marqueur posé dessus se recale au défilement ou au redimensionnement suivant.
+Deux réserves de timing :
+
+- Les marqueurs revérifient leur position au défilement, au redimensionnement et aux changements du DOM de la page. Un composant qui ne se re-rend qu'à l'intérieur de son propre shadow root ne signale aucun changement du DOM ; un marqueur posé dessus se recale au défilement ou au redimensionnement suivant.
+- Les marqueurs sont placés au chargement des feedbacks de la page. Un composant qui n'est pas encore rendu à ce moment-là — défini tardivement, ou un build chargé à la demande (Stencil, Ionic) qui remplit son shadow root un peu plus tard — n'offre encore rien à quoi s'ancrer : comme tout contenu qui apparaît après coup, son marqueur s'affiche au prochain chargement des feedbacks, à l'ouverture du panneau, lors d'une navigation SPA, ou quand vous appelez `siteping.refresh()` (par exemple une fois `customElements.whenDefined()` résolu).
 
 ## Aider les ancres à vous aider
 
