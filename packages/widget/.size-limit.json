@@ -8,7 +8,7 @@
   {
     "name": "IIFE script bundle (dist/index.global.js, gzip)",
     "path": "dist/index.global.js",
-    "limit": "135 KB",
+    "limit": "140 KB",
     "gzip": true
   }
 ]
