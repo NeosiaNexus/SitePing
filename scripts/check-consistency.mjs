@@ -135,9 +135,12 @@ if (esbuildOverride !== widgetEsbuild) {
 // Scanned: what Node runs as tooling, i.e. the top-level files of the root
 // and of each workspace (configs, presets), their scripts/ dirs, and e2e/.
 // Unit tests are out on purpose: their `vi.mock(new URL(…).pathname)` ids
-// have the same flaw, but vi.mock is hoisted above the imports, so the fix
-// there is a relative specifier, not fileURLToPath(): a separate change.
-const FILE_URL_PATHNAME = /import\.meta\.url\s*,?\s*\)\s*\.pathname/g; // `,?`: biome's multi-line call form
+// are Vite module ids, not fs paths, and they resolve under jsdom (which every
+// file using them runs in). A relative specifier would be the sturdier form;
+// fileURLToPath() can't be used there, as vi.mock is hoisted above imports.
+// `,?` matches biome's multi-line call form, `\)+` a parenthesised
+// `(new URL(…)).pathname`, `\??` an optional-chained `?.pathname`.
+const FILE_URL_PATHNAME = /import\.meta\.url\s*,?\s*\)+\s*\??\.pathname/g;
 const workspaceDirs = JSON.parse(read("package.json")).workspaces.flatMap((glob) => {
   if (!glob.endsWith("/*")) return [glob];
   const parent = glob.slice(0, -2);
