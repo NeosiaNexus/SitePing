@@ -37,9 +37,17 @@ export interface NetworkEntry {
   timestamp: string;
 }
 
-function truncateUrl(url: string): string {
-  if (url.length <= MAX_URL_LENGTH) return url;
-  return `${url.slice(0, MAX_URL_LENGTH - 1)}…`;
+/**
+ * The URL as recorded: query string and hash dropped — they routinely carry
+ * secrets (`?api_key=…`, OAuth `#access_token=…`) and the docs promise query
+ * strings never leave the browser — then capped to the schema's length.
+ */
+function recordableUrl(input: unknown): string {
+  const url = urlString(input);
+  const cut = url.search(/[?#]/);
+  const bare = cut === -1 ? url : url.slice(0, cut);
+  if (bare.length <= MAX_URL_LENGTH) return bare;
+  return `${bare.slice(0, MAX_URL_LENGTH - 1)}…`;
 }
 
 function urlString(input: unknown): string {
@@ -112,7 +120,7 @@ export class NetworkBuffer {
     const wrapped: typeof fetch = async (input, init) => {
       const startedAt = new Date();
       const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-      const url = truncateUrl(urlString(input));
+      const url = recordableUrl(input);
       const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
 
       try {
@@ -162,7 +170,7 @@ export class NetworkBuffer {
       try {
         meta.set(this, {
           method: method.toUpperCase(),
-          url: truncateUrl(urlString(url)),
+          url: recordableUrl(url),
           startedAt: new Date(),
           t0: typeof performance !== "undefined" ? performance.now() : Date.now(),
         });

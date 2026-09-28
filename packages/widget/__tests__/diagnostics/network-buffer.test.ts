@@ -106,6 +106,16 @@ describe("NetworkBuffer — fetch", () => {
     buffer.dispose();
   });
 
+  it("records fetch URLs without their query string or hash (tokens never leave the browser)", async () => {
+    fetchSpy.mockResolvedValue(new Response("", { status: 401 }));
+    const buffer = new NetworkBuffer();
+    await fetch("/api/items?api_key=SECRET&token=abc#access_token=xyz");
+    await fetch(new Request("https://example.com/api/me?session=s3cr3t"));
+    const urls = buffer.getEntries().map((e) => e.url);
+    expect(urls).toEqual(["/api/items", "https://example.com/api/me"]);
+    buffer.dispose();
+  });
+
   it("dispose restores the original fetch", () => {
     const buffer = new NetworkBuffer();
     expect(globalThis.fetch).not.toBe(fetchSpy);
@@ -148,6 +158,17 @@ describe("NetworkBuffer — XHR", () => {
     const entries = buffer.getEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ method: "GET", url: "/xhr-bad", status: 502 });
+    buffer.dispose();
+  });
+
+  it("records XHR URLs without their query string or hash", () => {
+    const buffer = new NetworkBuffer();
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "/xhr-bad?api_key=SECRET#frag");
+    xhr.send();
+    Object.defineProperty(xhr, "status", { value: 500, configurable: true });
+    xhr.dispatchEvent(new Event("loadend"));
+    expect(buffer.getEntries()[0]?.url).toBe("/xhr-bad");
     buffer.dispose();
   });
 

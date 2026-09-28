@@ -186,8 +186,9 @@ export interface SitepingBaseConfig {
    *
    * **Privacy considerations:** console messages may contain anything the
    * host page logs, including user data. Failed network requests record the
-   * URL (with query string) but never the response body. Inform end users
-   * before enabling in environments where they might log sensitive values.
+   * URL without its query string or hash, and never the response body.
+   * Inform end users before enabling in environments where they might log
+   * sensitive values.
    */
   captureDiagnostics?: boolean | DiagnosticsCaptureOptions | undefined;
   /** Called when the widget is skipped (production mode, mobile viewport, SSR — no DOM) */
