@@ -230,11 +230,13 @@ function isStoredScreenshotUrl(url: unknown): url is string {
 
 /**
  * MIME type declared by an image data URL (`data:image/png;base64,…` →
- * `image/png`) — the schema accepts JPEG, PNG and WebP. Falls back to JPEG,
- * the widget's capture format, for anything unparseable.
+ * `image/png`), limited to the JPEG, PNG and WebP the HTTP schema accepts:
+ * `PrismaStore` is public and may be fed unvalidated data URLs, and an
+ * `image/svg+xml` label would make the stored object script-capable when
+ * served inline. Anything else falls back to JPEG, the widget's capture format.
  */
 function dataUrlMimeType(dataUrl: string): string {
-  return /^data:(image\/[\w.+-]+)[;,]/.exec(dataUrl)?.[1] ?? "image/jpeg";
+  return /^data:(image\/(?:jpeg|png|webp))[;,]/.exec(dataUrl)?.[1] ?? "image/jpeg";
 }
 
 /**

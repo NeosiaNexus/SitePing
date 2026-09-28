@@ -107,6 +107,17 @@ describe("PrismaStore — screenshot storage", () => {
       expect(storage.upload).toHaveBeenCalledWith(dataUrl, { feedbackId: "c1", mimeType });
     });
 
+    it("never forwards a type outside JPEG, PNG and WebP (an SVG label is script-capable)", async () => {
+      // `PrismaStore.createFeedback` is public: its callers skip the HTTP schema.
+      const storage: ScreenshotStorage = { upload: vi.fn().mockResolvedValue({ url: "https://cdn.example.com/x" }) };
+      const store = new PrismaStore(prisma, { screenshotStorage: storage });
+      const dataUrl = "data:image/svg+xml;base64,PHN2Zz4";
+
+      await store.createFeedback(createInput({ screenshotDataUrl: dataUrl, clientId: "c1" }));
+
+      expect(storage.upload).toHaveBeenCalledWith(dataUrl, { feedbackId: "c1", mimeType: "image/jpeg" });
+    });
+
     it("does not call storage when no data URL is sent", async () => {
       const storage: ScreenshotStorage = { upload: vi.fn() };
       const store = new PrismaStore(prisma, { screenshotStorage: storage });
