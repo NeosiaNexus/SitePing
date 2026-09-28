@@ -101,7 +101,9 @@ export interface SitepingPanelActionBase {
 export interface SitepingPanelButtonAction extends SitepingPanelActionBase {
   /**
    * Invoked on click. While a returned promise is pending the detail view's
-   * action buttons are disabled and the clicked button shows a spinner.
+   * action buttons are disabled and the clicked button shows a spinner —
+   * also after `context.refresh()` re-renders the view, and when the user
+   * comes back to that feedback.
    * Throws and rejections are reported through `onError` and restore the
    * buttons; the detail view stays open either way.
    */

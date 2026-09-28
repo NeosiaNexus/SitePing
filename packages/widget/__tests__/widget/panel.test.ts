@@ -4304,6 +4304,40 @@ describe("Panel", () => {
       );
     });
 
+    it("context.refresh() keeps the view locked while the action is still running", async () => {
+      const fb = makeFeedback({ id: "fb-1", status: "open" });
+      let finish!: () => void;
+      const hostWork = new Promise<void>((r) => (finish = r));
+      const onAction = vi.fn(async (_fb: Readonly<FeedbackResponse>, ctx: SitepingPanelActionContext) => {
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [{ ...fb, status: "in_progress" }], total: 1 });
+        await ctx.refresh();
+        await hostWork; // the host keeps working after the refresh
+      });
+      rebuildWithActions([{ id: "ticket", label: "Create ticket", onAction }]);
+      await openDetail(fb);
+
+      shadow.querySelector<HTMLButtonElement>('[data-action-id="ticket"]')!.click();
+      await vi.waitFor(() => expect(shadow.querySelector(".sp-detail-status-pill--in-progress")).not.toBeNull());
+
+      const ticket = shadow.querySelector<HTMLButtonElement>('[data-action-id="ticket"]')!;
+      const resolve = shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-resolve")!;
+      const del = shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-delete")!;
+      expect([ticket.disabled, resolve.disabled, del.disabled]).toEqual([true, true, true]);
+      expect(ticket.getAttribute("aria-busy")).toBe("true");
+      ticket.click();
+      resolve.click();
+      del.click();
+      expect(onAction).toHaveBeenCalledOnce();
+      expect(apiClient.resolveFeedback).not.toHaveBeenCalled();
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalled();
+
+      finish();
+      await vi.waitFor(() => expect(ticket.disabled).toBe(false));
+      expect(ticket.hasAttribute("aria-busy")).toBe(false);
+      expect(ticket.textContent).toBe("Create ticket");
+      expect([resolve.disabled, del.disabled]).toEqual([false, false]);
+    });
+
     it("context.refresh() keeps the pages added by Load more, so a record from page 2 stays open", async () => {
       // 21 records: page 1 holds 20, "Load more" brings the last one.
       let records = Array.from({ length: 21 }, (_, i) => makeFeedback({ id: `fb-${i}` }));

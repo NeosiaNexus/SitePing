@@ -15,7 +15,7 @@ import {
   isClosedStatus,
   type SitepingPanelButtonAction,
 } from "@siteping/core";
-import { el, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
+import { el, parseSvg, setText } from "./dom-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { type PanelActionItem, safeHref, snapshotFeedback } from "./panel-actions.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
@@ -962,6 +962,16 @@ export interface DetailCallbacks {
   onCustomActionError: (error: unknown) => void;
 }
 
+/** An operation in flight on a feedback: a built-in button, or the host action it runs. */
+type PendingOp = "resolve" | "delete" | PanelActionItem;
+
+/** A host control's content: its icon, cloned from the one parsed at load, and its label. */
+function customContent({ action, icon }: PanelActionItem): Node[] {
+  const span = document.createElement("span");
+  setText(span, action.label);
+  return icon ? [icon.cloneNode(true), span] : [span];
+}
+
 // ---------------------------------------------------------------------------
 // DetailView Class
 // ---------------------------------------------------------------------------
@@ -977,9 +987,12 @@ export class DetailView {
   private resolveBtn: HTMLButtonElement | null = null;
   private deleteBtn: HTMLButtonElement | null = null;
   private customBtns: HTMLButtonElement[] = [];
-  private isProcessing = false;
-  /** Bumped by every show()/hide(): an action settling late must leave the newer view alone. */
-  private viewToken = 0;
+  /**
+   * What runs on each feedback. Kept per feedback rather than per render, so
+   * showing that feedback again — a panel action's `refresh()`, or coming
+   * back to it — keeps the view locked until the operation settles.
+   */
+  private readonly pending = new Map<string, PendingOp>();
 
   constructor(
     private readonly colors: ThemeColors,
@@ -1023,8 +1036,6 @@ export class DetailView {
   /** Show the detail view for a specific feedback. */
   show(feedback: FeedbackResponse, number: number): void {
     this.currentFeedback = feedback;
-    this.isProcessing = false;
-    this.viewToken++;
 
     // ---- Update header ----
     const header = this.element.querySelector<HTMLElement>(".sp-detail-header");
@@ -1052,6 +1063,8 @@ export class DetailView {
     // Section 1: Status + Actions
     const statusSection = this.buildSection(sectionIndex++);
     this.buildStatusActions(statusSection, feedback);
+    const op = this.pending.get(feedback.id);
+    if (op) this.lock(op);
     this.content.appendChild(statusSection);
 
     // Section 2: Message
@@ -1146,7 +1159,6 @@ export class DetailView {
     this.resolveBtn = null;
     this.deleteBtn = null;
     this.customBtns = [];
-    this.viewToken++;
   }
 
   /** Id of the feedback on screen, `null` while hidden. */
@@ -1258,7 +1270,8 @@ export class DetailView {
     // One frozen copy per render, shared by every host callback of this view.
     const snapshot = snapshotFeedback(feedback);
     const row = el("div", { class: "sp-detail-actions sp-detail-actions--custom" });
-    for (const { action, icon } of this.customActions) {
+    for (const item of this.customActions) {
+      const { action } = item;
       let control: HTMLElement;
       try {
         if (action.visible && !action.visible(snapshot)) continue;
@@ -1267,7 +1280,10 @@ export class DetailView {
           btn.type = "button";
           // Keeps the button named while the spinner replaces its label.
           btn.setAttribute("aria-label", action.label);
-          btn.addEventListener("click", () => void this.handleCustomAction(action, btn, snapshot));
+          btn.addEventListener(
+            "click",
+            () => void this.run(item, () => this.callbacks.onCustomAction(action, snapshot)),
+          );
           this.customBtns.push(btn);
           control = btn;
         } else {
@@ -1287,10 +1303,7 @@ export class DetailView {
       control.className = "sp-detail-btn-custom";
       control.setAttribute("data-action-id", action.id);
       control.title = action.label; // full label when the row truncates it
-      if (icon) control.appendChild(icon.cloneNode(true));
-      const span = document.createElement("span");
-      setText(span, action.label);
-      control.appendChild(span);
+      control.append(...customContent(item));
       row.appendChild(control);
     }
     if (row.childElementCount > 0) container.appendChild(row);
@@ -1576,79 +1589,65 @@ export class DetailView {
   // Private — Action handlers
   // -----------------------------------------------------------------------
 
-  private async handleResolve(): Promise<void> {
-    if (this.isProcessing || !this.currentFeedback) return;
-    this.isProcessing = true;
-    const token = this.viewToken;
-
-    if (this.resolveBtn) this.setButtonLoading(this.resolveBtn);
-    this.setActionsDisabled(true, this.resolveBtn);
-
-    try {
-      await this.callbacks.onResolve(this.currentFeedback);
-      // The parent will call hide() or re-show with updated data
-    } catch {
-      // Restore buttons on error — unless show()/hide() replaced the view
-      // meanwhile: the newer view's buttons and processing state are not ours.
-      if (token !== this.viewToken) return;
-      this.isProcessing = false;
-      if (this.resolveBtn) this.restoreResolveBtn(this.currentFeedback);
-      this.setActionsDisabled(false, this.resolveBtn);
-    }
+  private handleResolve(): Promise<void> {
+    return this.run("resolve", (feedback) => this.callbacks.onResolve(feedback));
   }
 
-  private async handleDelete(): Promise<void> {
-    if (this.isProcessing || !this.currentFeedback) return;
-    this.isProcessing = true;
-    const token = this.viewToken;
-
-    if (this.deleteBtn) this.setButtonLoading(this.deleteBtn);
-    this.setActionsDisabled(true, this.deleteBtn);
-
-    try {
-      await this.callbacks.onDelete(this.currentFeedback);
-      // The parent will call hide() after deletion
-    } catch {
-      if (token !== this.viewToken) return;
-      this.isProcessing = false;
-      if (this.deleteBtn) this.restoreDeleteBtn();
-      this.setActionsDisabled(false, this.deleteBtn);
-    }
+  private handleDelete(): Promise<void> {
+    return this.run("delete", (feedback) => this.callbacks.onDelete(feedback));
   }
 
-  private async handleCustomAction(
-    action: SitepingPanelButtonAction,
-    btn: HTMLButtonElement,
-    feedback: Readonly<FeedbackResponse>,
-  ): Promise<void> {
-    if (this.isProcessing) return;
-    this.isProcessing = true;
-    const token = this.viewToken;
-
-    // Snapshot-and-restore, so the (already sanitized) icon is never re-parsed.
-    const restore = setButtonLoading(btn);
-    btn.setAttribute("aria-busy", "true");
-    this.setActionsDisabled(true, btn);
-
+  /**
+   * Run `op` on the feedback on screen, keeping the view locked — on every
+   * render of that feedback — until it settles. A successful Resolve/Delete
+   * hides the view (the panel does); otherwise the view comes back, unless
+   * it moved on to another feedback, whose buttons are not ours to touch.
+   */
+  private async run(op: PendingOp, task: (feedback: FeedbackResponse) => Promise<void>): Promise<void> {
+    const feedback = this.currentFeedback;
+    if (!feedback || this.pending.has(feedback.id)) return;
+    this.pending.set(feedback.id, op);
+    this.lock(op);
     try {
-      await this.callbacks.onCustomAction(action, feedback);
+      await task(feedback);
+    } catch {
+      // The panel reports built-in failures; host actions never reject.
     } finally {
-      restore();
-      btn.removeAttribute("aria-busy");
-      // Custom actions never navigate away, so the view is restored whatever
-      // the outcome — unless show()/hide() replaced it meanwhile: the newer
-      // view's buttons and processing state are not ours to touch.
-      if (token === this.viewToken) {
-        this.isProcessing = false;
-        this.setActionsDisabled(false, btn);
-      }
+      this.pending.delete(feedback.id);
+      if (this.currentFeedback?.id === feedback.id) this.unlock(op, this.currentFeedback);
     }
   }
 
-  /** Enable/disable every action button of the current view but `except` (it shows its own spinner). */
-  private setActionsDisabled(disabled: boolean, except: HTMLButtonElement | null): void {
+  /** `op`'s button shows a spinner and every other action is disabled. */
+  private lock(op: PendingOp): void {
+    this.setActionsDisabled(true);
+    const btn = this.buttonFor(op);
+    if (!btn) return; // a host action this render no longer shows
+    this.setButtonLoading(btn);
+    btn.setAttribute("aria-busy", "true");
+  }
+
+  /** Undo {@link lock} on the render of `feedback` that is on screen. */
+  private unlock(op: PendingOp, feedback: FeedbackResponse): void {
+    const btn = this.buttonFor(op);
+    btn?.removeAttribute("aria-busy");
+    if (op === "resolve") this.restoreResolveBtn(feedback);
+    else if (op === "delete") this.restoreDeleteBtn();
+    else btn?.replaceChildren(...customContent(op));
+    this.setActionsDisabled(false);
+  }
+
+  /** This render's button for `op`, if it shows one. */
+  private buttonFor(op: PendingOp): HTMLButtonElement | null {
+    if (op === "resolve") return this.resolveBtn;
+    if (op === "delete") return this.deleteBtn;
+    return this.customBtns.find((b) => b.dataset.actionId === op.action.id) ?? null;
+  }
+
+  /** Enable/disable every action button of the current view. */
+  private setActionsDisabled(disabled: boolean): void {
     for (const b of [this.resolveBtn, this.deleteBtn, ...this.customBtns]) {
-      if (b && b !== except) b.disabled = disabled;
+      if (b) b.disabled = disabled;
     }
   }
 

@@ -839,7 +839,6 @@ describe("DetailView", () => {
       resolveBtn: HTMLButtonElement | null;
       deleteBtn: HTMLButtonElement | null;
       currentFeedback: FeedbackResponse | null;
-      isProcessing: boolean;
       handleResolve(): Promise<void>;
       handleDelete(): Promise<void>;
       restoreResolveBtn(feedback: FeedbackResponse): void;
@@ -1447,6 +1446,88 @@ describe("custom panel actions", () => {
       expect([b.resolve.disabled, b.del.disabled]).toEqual([false, false]);
     },
   );
+
+  it("keeps an action pending when its feedback is shown again, until it settles", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view, cb } = buildDetail([makeAction()], { onCustomAction });
+    view.show(makeFeedback({ status: "open" }), 1);
+    actionButtons(view).first.click();
+
+    view.show(makeFeedback({ status: "in_progress" }), 1); // e.g. context.refresh()
+    const again = actionButtons(view);
+    expect([again.first.disabled, again.resolve.disabled, again.del.disabled]).toEqual([true, true, true]);
+    expect(again.first.textContent).toBe("");
+    expect(again.first.getAttribute("aria-busy")).toBe("true");
+    again.first.click();
+    again.resolve.click();
+    expect(onCustomAction).toHaveBeenCalledOnce();
+    expect(cb.onResolve).not.toHaveBeenCalled();
+
+    settle(0);
+    await vi.waitFor(() => expect(again.first.disabled).toBe(false));
+    expect(again.first.textContent).toBe("Send to agent");
+    expect(again.first.hasAttribute("aria-busy")).toBe(false);
+    expect([again.resolve.disabled, again.del.disabled]).toEqual([false, false]);
+  });
+
+  it("locks a feedback again when the user comes back to it while its action runs", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view } = buildDetail([makeAction()], { onCustomAction });
+    view.show(makeFeedback({ id: "fb-a" }), 1);
+    actionButtons(view).first.click();
+
+    view.show(makeFeedback({ id: "fb-b" }), 2);
+    const b = actionButtons(view);
+    expect([b.first.disabled, b.resolve.disabled, b.del.disabled]).toEqual([false, false, false]);
+
+    view.hide();
+    view.show(makeFeedback({ id: "fb-a" }), 1);
+    const a = actionButtons(view);
+    expect([a.first.disabled, a.resolve.disabled, a.del.disabled]).toEqual([true, true, true]);
+    a.first.click();
+    expect(onCustomAction).toHaveBeenCalledOnce();
+
+    settle(0);
+    await vi.waitFor(() => expect(a.first.disabled).toBe(false));
+    expect([a.resolve.disabled, a.del.disabled]).toEqual([false, false]);
+  });
+
+  it("keeps the view locked when the new render no longer shows the pending action", async () => {
+    const { onCustomAction, settle } = deferredActions();
+    const { view } = buildDetail([makeAction({ visible: (fb) => fb.status === "open" })], { onCustomAction });
+    view.show(makeFeedback({ status: "open" }), 1);
+    actionButtons(view).first.click();
+
+    view.show(makeFeedback({ status: "in_progress" }), 1);
+    const { first, resolve, del } = actionButtons(view);
+    expect(first).toBeNull();
+    expect([resolve.disabled, del.disabled]).toEqual([true, true]);
+
+    settle(0);
+    await vi.waitFor(() => expect(resolve.disabled).toBe(false));
+    expect(del.disabled).toBe(false);
+  });
+
+  it("keeps a Resolve busy when its feedback is shown again, and restores that render if it fails", async () => {
+    let reject!: (error: Error) => void;
+    const { view, cb } = buildDetail([makeAction()], {
+      onResolve: vi.fn(() => new Promise<void>((_, r) => (reject = r))),
+    });
+    view.show(makeFeedback(), 1);
+    actionButtons(view).resolve.click();
+
+    view.show(makeFeedback(), 1);
+    const again = actionButtons(view);
+    expect([again.resolve.disabled, again.del.disabled, again.first.disabled]).toEqual([true, true, true]);
+    expect(again.resolve.querySelector(".sp-spinner")).not.toBeNull();
+    again.first.click();
+    expect(cb.onCustomAction).not.toHaveBeenCalled();
+
+    reject(new Error("network down"));
+    await vi.waitFor(() => expect(again.resolve.disabled).toBe(false));
+    expect(again.resolve.textContent).toBe("Resolve");
+    expect([again.del.disabled, again.first.disabled]).toEqual([false, false]);
+  });
 
   it("hides an action whose visible() throws, reports it, and keeps the view alive", () => {
     const boom = new Error("visible exploded");

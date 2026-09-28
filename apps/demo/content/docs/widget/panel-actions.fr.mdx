@@ -50,7 +50,7 @@ Les types sont exportés par `@siteping/widget` : `SitepingPanelAction` (l'union
 
 ## Exécution d'une action
 
-Tant que la promesse renvoyée par `onAction` est en attente, le bouton cliqué affiche un spinner et tous les autres boutons de la vue — Résoudre et Supprimer compris — sont désactivés. Le spinner conserve le nom accessible du bouton et pose `aria-busy`. La vue détail reste ouverte quelle que soit l'issue.
+Tant que la promesse renvoyée par `onAction` est en attente, le bouton cliqué affiche un spinner et tous les autres boutons de la vue — Résoudre et Supprimer compris — sont désactivés. Le spinner conserve le nom accessible du bouton et pose `aria-busy`. La vue reste verrouillée jusqu'à ce que la promesse aboutisse, même quand `refresh()` la réaffiche ou que l'utilisateur revient sur ce feedback : une action ne s'exécute jamais deux fois en même temps sur le même feedback. La vue détail reste ouverte quelle que soit l'issue.
 
 Le second argument vous donne deux utilitaires :
 

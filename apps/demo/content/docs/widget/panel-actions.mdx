@@ -50,7 +50,7 @@ The types are exported from `@siteping/widget`: `SitepingPanelAction` (the union
 
 ## Running an action
 
-While the promise returned by `onAction` is pending, the clicked button shows a spinner and every other button of the view — Resolve and Delete included — is disabled. The spinner keeps the button's accessible name and sets `aria-busy`. The detail view stays open whatever the outcome.
+While the promise returned by `onAction` is pending, the clicked button shows a spinner and every other button of the view — Resolve and Delete included — is disabled. The spinner keeps the button's accessible name and sets `aria-busy`. The view stays locked until the promise settles, even when `refresh()` re-renders it or the user comes back to that feedback, so an action never runs twice at once on the same feedback. The detail view stays open whatever the outcome.
 
 The second argument gives you two helpers:
 
