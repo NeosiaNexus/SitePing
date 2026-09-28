@@ -55,14 +55,21 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
   // Wrap the global to keep `fetch` bound to globalThis (avoids "Illegal invocation").
   const doFetch: typeof fetch = fetchFn ?? ((input, init) => globalThis.fetch(input, init));
 
-  async function buildHeaders(json: boolean): Promise<Headers> {
-    const merged = new Headers();
-    if (json) merged.set("Content-Type", "application/json");
-    if (apiKey) merged.set("Authorization", `Bearer ${apiKey}`);
+  async function buildHeaders(json: boolean): Promise<Record<string, string>> {
+    const merged: Record<string, string> = {};
+    if (json) merged["Content-Type"] = "application/json";
+    if (apiKey) merged.Authorization = `Bearer ${apiKey}`;
     const extra = typeof headers === "function" ? await headers() : headers;
-    // `set` matches names case-insensitively: an explicit `authorization`
-    // replaces the apiKey's instead of going out next to it ("Bearer a, Bearer b").
-    for (const [name, value] of Object.entries(extra ?? {})) merged.set(name, value);
+    // Header names are case-insensitive: drop a built-in the caller overrides
+    // under another casing, or fetch sends both joined ("Bearer a, Bearer b").
+    // A plain object, not `Headers`: a `fetchFn` wrapper may spread or index it.
+    for (const [name, value] of Object.entries(extra ?? {})) {
+      const lower = name.toLowerCase();
+      for (const key of Object.keys(merged)) {
+        if (key.toLowerCase() === lower) delete merged[key];
+      }
+      merged[name] = value;
+    }
     return merged;
   }
 

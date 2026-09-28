@@ -459,9 +459,9 @@ describe("useSitepingInbox — source selection", () => {
     expect(fetchSpy).toHaveBeenCalled();
     expect(headers).toHaveBeenCalled();
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
-    const sent = new Headers(init.headers);
-    expect(sent.get("Authorization")).toBe("Bearer k");
-    expect(sent.get("X-From")).toBe("fn");
+    const sent = init.headers as Record<string, string>;
+    expect(sent.Authorization).toBe("Bearer k");
+    expect(sent["X-From"]).toBe("fn");
     fetchSpy.mockRestore();
   });
 
@@ -475,7 +475,7 @@ describe("useSitepingInbox — source selection", () => {
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
-    expect(new Headers(init.headers).get("X-Team")).toBe("acme");
+    expect((init.headers as Record<string, string>)["X-Team"]).toBe("acme");
     fetchSpy.mockRestore();
   });
 });
