@@ -149,4 +149,8 @@ describe("@siteping/server outside Node", () => {
   it("starts without an apiKey where there is no process.env to read", () => {
     expect(() => server.createSitepingHandler({ store: arrayStore() })).not.toThrow();
   });
+
+  it("exports only the handler and webhook dispatch as values: schemas and payload builders stay internal", () => {
+    expect(Object.keys(server).sort()).toEqual(["createSitepingHandler", "dispatchWebhook", "dispatchWebhooks"]);
+  });
 });

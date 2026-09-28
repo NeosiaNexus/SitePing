@@ -17,13 +17,6 @@ export type {
   SitepingRequestContext,
 } from "./options.js";
 export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput, ValidationIssue } from "./validation.js";
-export {
-  feedbackCreateSchema,
-  feedbackDeleteSchema,
-  feedbackPatchSchema,
-  formatValidationErrors,
-  getQuerySchema,
-} from "./validation.js";
 export type {
   DiscordWebhookPayload,
   GenericWebhookPayload,
@@ -32,4 +25,4 @@ export type {
   WebhookPayloadMap,
   WebhookType,
 } from "./webhooks.js";
-export { buildWebhookPayload, dispatchWebhook, dispatchWebhooks } from "./webhooks.js";
+export { dispatchWebhook, dispatchWebhooks } from "./webhooks.js";
