@@ -383,6 +383,21 @@ describe("statusCommand", () => {
       expect(allMessages(logSuccessSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Up to date$/));
     });
 
+    it("names the sibling file of a prisma/schema/ folder that fails to parse", () => {
+      const folder = join(tmpDir, "prisma", "schema");
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, "schema.prisma"), FULL_SCHEMA);
+      writeFileSync(join(folder, "broken.prisma"), "model Broken {\n  id String @id\n");
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      expect(allMessages(logErrorSpy)).toContainEqual(
+        expect.stringMatching(/^Prisma schema\s+Cannot read: \S+[/\\]broken\.prisma: Expecting/),
+      );
+    });
+
     it("uses --schema flag path when provided", () => {
       const customDir = join(tmpDir, "custom");
       mkdirSync(customDir, { recursive: true });

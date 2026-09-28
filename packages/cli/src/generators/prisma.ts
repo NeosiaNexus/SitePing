@@ -104,12 +104,12 @@ interface SchemaFile {
  * root is never such a folder, even one named `schema`.
  */
 function loadSchemaFiles(schemaPath: string): [SchemaFile, ...SchemaFile[]] {
-  const main = { path: schemaPath, schema: parsePrismaSchema(readSchemaSource(schemaPath)) };
+  const main = { path: schemaPath, schema: parsePrismaSchema(schemaPath, readSchemaSource(schemaPath)) };
   const folder = resolve(dirname(schemaPath));
   if (basename(folder) !== "schema" || existsSync(join(folder, "package.json"))) return [main];
   const siblings = prismaFilesIn(folder)
     .filter((path) => path !== resolve(schemaPath))
-    .map((path) => ({ path, schema: parsePrismaSchema(readFileSync(path, "utf-8")) }));
+    .map((path) => ({ path, schema: parsePrismaSchema(path, readFileSync(path, "utf-8")) }));
   return [main, ...siblings];
 }
 
@@ -136,15 +136,20 @@ function prismaFilesIn(dir: string): string[] {
  * (harmless to strip — Prisma strings are single-line), and a comment after a
  * block's opening `{`, which moves onto its own line as a plain `//` comment:
  * in place it documents nothing, while a `///` there would document the first field.
+ * A parse error names the file at `path`: a schema folder has several.
  */
-function parsePrismaSchema(source: string): Schema {
+function parsePrismaSchema(path: string, source: string): Schema {
   const normalized = source
     .replace(/[ \t]+(?=\r?$)/gm, "")
     .replace(
       /^([ \t]*(?:model|view|type|enum|datasource|generator)[ \t]+\w+[ \t]*\{)[ \t]*\/{2,}(.*)$/gm,
       "$1\n  //$2",
     );
-  return getSchema(normalized);
+  try {
+    return getSchema(normalized);
+  } catch (error) {
+    throw new Error(`${path}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
 }
 
 /** Private-use sentinel: can't occur in a schema, survives printSchema() verbatim. */

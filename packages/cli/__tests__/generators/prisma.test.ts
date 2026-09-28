@@ -1101,6 +1101,15 @@ model SitepingFeedback {
       expect(readFileSync(mainPath, "utf-8")).not.toContain("@db.");
     });
 
+    it("names the file that fails to parse", () => {
+      const broken = join(folder, "broken.prisma");
+      writeFileSync(mainPath, MINIMAL_SCHEMA);
+      writeFileSync(broken, "model Broken {\n  id String @id\n");
+
+      expect(() => syncPrismaModels(mainPath)).toThrow(`${broken}: Expecting`);
+      expect(readFileSync(mainPath, "utf-8")).toBe(MINIMAL_SCHEMA);
+    });
+
     it("leaves sibling .prisma files alone outside a schema folder", () => {
       // prisma/schema.prisma is a single-file schema — Prisma ignores its neighbours.
       const single = join(tmpDir, "prisma", "schema.prisma");
