@@ -336,6 +336,22 @@ describe("statusCommand", () => {
       expect(warnings.some((m) => m.includes("Prisma schema"))).toBe(true);
     });
 
+    it("parses a valid schema with a trailing space or a comment after {", () => {
+      createPrismaSchema(
+        tmpDir,
+        FULL_SCHEMA.replace("model SitepingFeedback {", "model SitepingFeedback { ").replace(
+          "model SitepingAnnotation {",
+          "model SitepingAnnotation { // anchors",
+        ),
+      );
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      expect(allMessages(logSuccessSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Up to date$/));
+    });
+
     it("uses --schema flag path when provided", () => {
       const customDir = join(tmpDir, "custom");
       mkdirSync(customDir, { recursive: true });

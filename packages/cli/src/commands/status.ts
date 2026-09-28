@@ -3,9 +3,8 @@ import "../utils/object-group-by-polyfill.js";
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import * as p from "@clack/prompts";
-import { getSchema } from "@mrleebo/prisma-ast";
 import { hasOwn } from "@siteping/core";
-import { reconcileSitepingModels } from "../generators/prisma.js";
+import { parsePrismaSchema, reconcileSitepingModels } from "../generators/prisma.js";
 import { findPrismaSchema } from "../utils/find-schema.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -108,7 +107,7 @@ function checkSchema(schemaPath: string | null): SchemaCheckResult {
     return { found: false, path: null, missingModels: [], missingFields: [], outdatedFields: [] };
   }
 
-  const { addedModels, changes } = reconcileSitepingModels(getSchema(readFileSync(schemaPath, "utf-8")));
+  const { addedModels, changes } = reconcileSitepingModels(parsePrismaSchema(readFileSync(schemaPath, "utf-8")));
 
   return {
     found: true,

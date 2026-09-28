@@ -156,6 +156,41 @@ describe("syncPrismaModels", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Valid schemas prisma-ast's grammar trips on
+  // -----------------------------------------------------------------------
+
+  it.each([
+    ["a trailing space after {", "{ \n"],
+    ["a trailing tab after {", "{\t\n"],
+    ["a trailing space after { with CRLF line endings", "{ \r\n"],
+    ["a comment after {", "{ // note\n"],
+    ["a comment right after {", "{// note\n"],
+  ])("parses block headers with %s", (_label, opening) => {
+    const schema = `${MINIMAL_SCHEMA}\nmodel User {\n  id String @id\n}\n\nenum Role {\n  ADMIN\n}\n`.replace(
+      /\{\n/g,
+      opening,
+    );
+    writeFileSync(schemaPath, schema);
+
+    const result = syncPrismaModels(schemaPath);
+
+    expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+    const output = readFileSync(schemaPath, "utf-8");
+    expect(output).toContain("model User {");
+    expect(output).toContain("enum Role {");
+    if (opening.includes("note")) expect(output).toMatch(/model User \{\r?\n\s*\/\/ note\r?\n/);
+  });
+
+  it("keeps a /// comment after { from becoming the first field's documentation", () => {
+    // In place it documents nothing; on its own line it would document `id`.
+    writeFileSync(schemaPath, `${MINIMAL_SCHEMA}\nmodel User { /// note\n  id String @id\n}\n`);
+
+    syncPrismaModels(schemaPath);
+
+    expect(readFileSync(schemaPath, "utf-8")).toMatch(/model User \{\n\s*\/\/ note\n\s*id\s/);
+  });
+
+  // -----------------------------------------------------------------------
   // Adding models alongside existing models
   // -----------------------------------------------------------------------
 

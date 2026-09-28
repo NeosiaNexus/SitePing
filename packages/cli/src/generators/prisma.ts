@@ -46,7 +46,7 @@ export interface SyncResult extends SchemaReconciliation {
  * - User-added fields outside Siteping's definition are left untouched
  */
 export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): SyncResult {
-  const schema = getSchema(readSchemaSource(schemaPath));
+  const schema = parsePrismaSchema(readSchemaSource(schemaPath));
   const { addedModels, changes } = reconcileSitepingModels(schema);
 
   if (addedModels.length > 0 || changes.length > 0) {
@@ -65,6 +65,23 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
   }
 
   return { schemaPath, addedModels, changes };
+}
+
+/**
+ * Parse a schema, smoothing over two spots where prisma-ast's grammar is
+ * stricter than Prisma's ("Expecting --> LineBreak"): trailing spaces/tabs
+ * (harmless to strip — Prisma strings are single-line), and a comment after a
+ * block's opening `{`, which moves onto its own line as a plain `//` comment:
+ * in place it documents nothing, while a `///` there would document the first field.
+ */
+export function parsePrismaSchema(source: string): Schema {
+  const normalized = source
+    .replace(/[ \t]+(?=\r?$)/gm, "")
+    .replace(
+      /^([ \t]*(?:model|view|type|enum|datasource|generator)[ \t]+\w+[ \t]*\{)[ \t]*\/{2,}(.*)$/gm,
+      "$1\n  //$2",
+    );
+  return getSchema(normalized);
 }
 
 /** Private-use sentinel: can't occur in a schema, survives printSchema() verbatim. */
