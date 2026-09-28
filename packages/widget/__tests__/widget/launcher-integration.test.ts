@@ -1428,18 +1428,20 @@ describe("launcher — annotation:complete integration", () => {
       // sets one).
       const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
       const instance = launch(defaultConfig(onError ? { onError } : {}));
-      const publicFeedbackError = vi.fn();
-      instance.on("feedback:error", publicFeedbackError);
+      try {
+        const publicFeedbackError = vi.fn();
+        instance.on("feedback:error", publicFeedbackError);
 
-      const error = new Error("ticket creation failed");
-      capturedBus!.emit("panel:action-error", error);
+        const error = new Error("ticket creation failed");
+        capturedBus!.emit("panel:action-error", error);
 
-      expect(consoleError).toHaveBeenCalledExactlyOnceWith("[siteping] Panel action failed:", error);
-      if (onError) expect(onError).toHaveBeenCalledExactlyOnceWith(error);
-      expect(publicFeedbackError).not.toHaveBeenCalled();
-
-      instance.destroy();
-      consoleError.mockRestore();
+        expect(consoleError).toHaveBeenCalledExactlyOnceWith("[siteping] Panel action failed:", error);
+        if (onError) expect(onError).toHaveBeenCalledExactlyOnceWith(error);
+        expect(publicFeedbackError).not.toHaveBeenCalled();
+      } finally {
+        instance.destroy();
+        consoleError.mockRestore();
+      }
     });
 
     it("non-Error rejections from sendFeedback are wrapped into Error instances", async () => {
