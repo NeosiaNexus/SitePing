@@ -113,11 +113,38 @@ describe("base URLs — validation", () => {
     "javascript:alert(1)//",
     "https://cdn.example.com/screens?v=1",
     "https://cdn.example.com/screens#top",
+    "https://cdn.example.com/screens?",
+    "https://cdn.example.com/screens#",
   ])("refuses the publicBaseUrl %s, under which keys would not resolve to the object", (publicBaseUrl) => {
     expect(() => createPublicUrlMapping(publicBaseUrl)).toThrow(
       `publicBaseUrl must be an absolute http(s) URL without a query or fragment, got "${publicBaseUrl}"`,
     );
   });
+
+  it.each([
+    "https://uploader:s3cr3t@cdn.example.com/screens",
+    "https://:s3cr3t@cdn.example.com/screens",
+    "https://uploader@cdn.example.com/screens",
+  ])("refuses the publicBaseUrl %s, whose credentials every screenshot URL would carry", (publicBaseUrl) => {
+    // The whole message: the refused value, which holds the password, is not echoed.
+    expect(() => createPublicUrlMapping(publicBaseUrl)).toThrow(
+      /^\[siteping\] publicBaseUrl must not contain credentials \(user:password@\)$/,
+    );
+  });
+
+  it.each(["https:cdn.example.com/screens", "HTTPS://CDN.Example.COM/screens/"])(
+    "builds https:// URLs from the publicBaseUrl %s, as the widget's panel requires",
+    (publicBaseUrl) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const mapping = createPublicUrlMapping(publicBaseUrl);
+
+      const url = mapping.urlFor(KEY);
+
+      expect(url).toBe(`https://cdn.example.com/screens/${KEY}`);
+      expect(mapping.keyFromUrl(url)).toBe(KEY);
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
 
   it("warns that an http publicBaseUrl hides screenshots from the widget's panel", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

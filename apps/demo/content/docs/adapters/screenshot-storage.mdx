@@ -201,7 +201,7 @@ Migrate the table with `drizzle-kit` like the rest of your schema, and serve it 
 | `logger` | `console.warn` | Receives the degraded-but-handled cases: a refused delete, a failed reclaim, a failing `onUncertainUpload` |
 | `onUncertainUpload` | — | `(key) => void \| Promise<void>`: see below |
 
-The factories throw on a configuration that could not work: an unsafe `keyPrefix`, a `maxBytes` that is not a positive integer, or a `publicBaseUrl`, `endpoint` or `deliveryBaseUrl` that is not an absolute http(s) URL. A `publicBaseUrl` or `deliveryBaseUrl` that is not https is accepted with a warning: the widget's panel only shows https screenshots (the dashboard shows them all), so `http://localhost` is fine for development only.
+The factories throw on a configuration that could not work: an unsafe `keyPrefix`, a `maxBytes` that is not a positive integer, or a `publicBaseUrl`, `endpoint` or `deliveryBaseUrl` that is not an absolute http(s) URL, or that carries credentials, a query or a fragment. A `publicBaseUrl` or `deliveryBaseUrl` that is not https is accepted with a warning: the widget's panel only shows https screenshots (the dashboard shows them all), so `http://localhost` is fine for development only.
 
 ## What `delete` removes
 

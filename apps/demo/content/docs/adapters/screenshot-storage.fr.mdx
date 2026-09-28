@@ -201,7 +201,7 @@ Migrez la table avec `drizzle-kit` comme le reste de votre schéma, et servez-la
 | `logger` | `console.warn` | Reçoit les cas dégradés mais gérés : une suppression refusée, une récupération qui échoue, un `onUncertainUpload` qui échoue |
 | `onUncertainUpload` | — | `(key) => void \| Promise<void>` : voir plus bas |
 
-Les factories lèvent une erreur sur une configuration qui ne pourrait pas fonctionner : un `keyPrefix` dangereux, un `maxBytes` qui n'est pas un entier positif, ou un `publicBaseUrl`, `endpoint` ou `deliveryBaseUrl` qui n'est pas une URL http(s) absolue. Un `publicBaseUrl` ou `deliveryBaseUrl` qui n'est pas en https est accepté avec un avertissement : le panneau du widget n'affiche que les captures en https (le dashboard les affiche toutes), donc `http://localhost` ne convient qu'au développement.
+Les factories lèvent une erreur sur une configuration qui ne pourrait pas fonctionner : un `keyPrefix` dangereux, un `maxBytes` qui n'est pas un entier positif, ou un `publicBaseUrl`, `endpoint` ou `deliveryBaseUrl` qui n'est pas une URL http(s) absolue, ou qui contient des identifiants, une query string ou un fragment. Un `publicBaseUrl` ou `deliveryBaseUrl` qui n'est pas en https est accepté avec un avertissement : le panneau du widget n'affiche que les captures en https (le dashboard les affiche toutes), donc `http://localhost` ne convient qu'au développement.
 
 ## Ce que supprime `delete`
 
