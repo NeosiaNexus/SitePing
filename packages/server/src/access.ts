@@ -5,6 +5,7 @@ import type {
   SitepingAuthorizationContext,
   SitepingHttpMethod,
   SitepingPrincipal,
+  SitepingRequestContext,
 } from "./options.js";
 
 /** Outcome of the access check that opens every request. */
@@ -27,6 +28,12 @@ export interface AccessGate<Principal> {
   readonly listCacheControl: string;
   authenticate(request: Request, method: SitepingHttpMethod): Promise<AccessOutcome<Principal>>;
   authorize(context: SitepingAuthorizationContext<Principal>): Promise<boolean>;
+  /**
+   * Whether an authenticated caller's comment keeps the `team` role it asks
+   * for. Asked only when a comment does, so a GET never runs the policy's
+   * callback for it.
+   */
+  canCommentAsTeam(context: SitepingRequestContext<Principal>, canReadAuthorEmail: boolean): Promise<boolean>;
 }
 
 const textEncoder = new TextEncoder();
@@ -117,6 +124,10 @@ export function createApiKeyGate({
     async authorize() {
       return true;
     },
+    // The key proves the caller is the project side; a public POST does not.
+    async canCommentAsTeam({ request }) {
+      return isBearerAuthenticated(request);
+    },
   };
 }
 
@@ -139,6 +150,9 @@ export function createAccessGate<Principal extends SitepingPrincipal>(
     },
     async authorize(context) {
       return access.authorize ? access.authorize(context) : true;
+    },
+    async canCommentAsTeam({ principal }, canReadAuthorEmail) {
+      return access.canCommentAsTeam ? access.canCommentAsTeam(principal) : canReadAuthorEmail;
     },
   };
 }
