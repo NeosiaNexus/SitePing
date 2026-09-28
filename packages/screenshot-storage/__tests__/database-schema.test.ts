@@ -1,10 +1,10 @@
 import { getTableConfig as getPgTableConfig } from "drizzle-orm/pg-core";
 import { getTableConfig as getSqliteTableConfig } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
-import { formatUnexpectedBinaryColumnDataMessage, SCREENSHOTS_TABLE_COLUMNS } from "../src/constants/database.js";
-import { toBytes } from "../src/core/binary.js";
 import { createSitepingScreenshotsSqliteTable } from "../src/backends/drizzle-libsql.js";
 import { createSitepingScreenshotsPgTable } from "../src/backends/drizzle-pg.js";
+import { formatUnexpectedBinaryColumnDataMessage, SCREENSHOTS_TABLE_COLUMNS } from "../src/constants/database.js";
+import { toBytes } from "../src/core/binary.js";
 
 describe("screenshots table schema", () => {
   it("creates the same columns in every Drizzle dialect", () => {
