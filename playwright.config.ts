@@ -15,9 +15,18 @@ export default defineConfig({
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
-  webServer: {
-    command: "node e2e/server.mjs",
-    port: 3999,
-    reuseExistingServer: false,
-  },
+  webServer: [
+    // Fake in-memory API — widget.spec.ts
+    {
+      command: "node e2e/server.mjs",
+      port: 3999,
+      reuseExistingServer: false,
+    },
+    // Real createSitepingHandler + MemoryStore, widget + dashboard — stack.spec.ts
+    {
+      command: "node e2e/stack-server.mjs",
+      port: 3998,
+      reuseExistingServer: false,
+    },
+  ],
 });
