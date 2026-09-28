@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createCloudflareImagesObjectStore } from "../src/cloudflare-images/index.js";
+import { createCloudflareImagesObjectStore } from "../src/backends/cloudflare-images.js";
 import { createPublicUrlMapping } from "../src/index.js";
-import { createS3ObjectStore } from "../src/s3/index.js";
+import { createS3ObjectStore } from "../src/backends/s3.js";
 
 const KEY = "siteping-0123456789abcdef.jpg";
 /** Long run of `/` — quadratic for a backtracking `/\/+$/`, linear for the scan. */

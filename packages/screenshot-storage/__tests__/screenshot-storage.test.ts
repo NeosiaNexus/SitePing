@@ -2,8 +2,8 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCloudflareImagesObjectStore } from "../src/cloudflare-images/index.js";
-import { createFilesystemObjectStore } from "../src/filesystem/index.js";
+import { createCloudflareImagesObjectStore } from "../src/backends/cloudflare-images.js";
+import { createFilesystemObjectStore } from "../src/backends/filesystem.js";
 import {
   createScreenshotServeHandler,
   createScreenshotStorage,
@@ -14,8 +14,8 @@ import {
   type ScreenshotObjectStore,
   ScreenshotUploadRejectedError,
 } from "../src/index.js";
-import { createMemoryObjectStore } from "../src/memory/index.js";
-import { createS3ObjectStore } from "../src/s3/index.js";
+import { createMemoryObjectStore } from "../src/backends/memory.js";
+import { createS3ObjectStore } from "../src/backends/s3.js";
 import {
   type BackendUnderTest,
   describeBackendContract,

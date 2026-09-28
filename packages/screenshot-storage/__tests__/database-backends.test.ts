@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll } from "vitest";
-import { createLibSQLScreenshotObjectStore } from "../src/drizzle-libsql/index.js";
-import { createPgScreenshotObjectStore } from "../src/drizzle-pg/index.js";
+import { createLibSQLScreenshotObjectStore } from "../src/backends/drizzle-libsql.js";
+import { createPgScreenshotObjectStore } from "../src/backends/drizzle-pg.js";
 import { describeBackendContract, PUBLIC_BASE_URL } from "./backend-contract.js";
 import { createLibSQLScreenshotsDatabase, createPgScreenshotsDatabase } from "./databases.js";
 

@@ -3,8 +3,8 @@ import { getTableConfig as getSqliteTableConfig } from "drizzle-orm/sqlite-core"
 import { describe, expect, it } from "vitest";
 import { formatUnexpectedBinaryColumnDataMessage, SCREENSHOTS_TABLE_COLUMNS } from "../src/constants/database.js";
 import { toBytes } from "../src/core/binary.js";
-import { createSitepingScreenshotsSqliteTable } from "../src/drizzle-libsql/index.js";
-import { createSitepingScreenshotsPgTable } from "../src/drizzle-pg/index.js";
+import { createSitepingScreenshotsSqliteTable } from "../src/backends/drizzle-libsql.js";
+import { createSitepingScreenshotsPgTable } from "../src/backends/drizzle-pg.js";
 
 describe("screenshots table schema", () => {
   it("creates the same columns in every Drizzle dialect", () => {

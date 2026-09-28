@@ -3,8 +3,8 @@ import { createClient } from "@libsql/client";
 import { pushSchema, pushSQLiteSchema } from "drizzle-kit/api";
 import { drizzle as drizzleLibSQL } from "drizzle-orm/libsql";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
-import { createSitepingScreenshotsSqliteTable } from "../src/drizzle-libsql/index.js";
-import { createSitepingScreenshotsPgTable } from "../src/drizzle-pg/index.js";
+import { createSitepingScreenshotsSqliteTable } from "../src/backends/drizzle-libsql.js";
+import { createSitepingScreenshotsPgTable } from "../src/backends/drizzle-pg.js";
 
 /**
  * Real database engines, in process — PGlite (PostgreSQL in WASM) and an

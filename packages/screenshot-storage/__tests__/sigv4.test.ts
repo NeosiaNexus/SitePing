@@ -1,8 +1,8 @@
 import { Sha256 } from "@aws-crypto/sha256-js";
 import { SignatureV4 } from "@smithy/signature-v4";
 import { describe, expect, it } from "vitest";
-import { createS3ObjectStore } from "../src/s3/index.js";
-import { sha256Hex, signS3Request } from "../src/s3/sigv4.js";
+import { createS3ObjectStore } from "../src/backends/s3.js";
+import { sha256Hex, signS3Request } from "../src/backends/sigv4.js";
 import { createFakeS3 } from "./fake-backends.js";
 
 // Every case is checked against AWS's own signer (@smithy/signature-v4, used by the AWS SDK).

@@ -17,17 +17,17 @@ export default defineConfig([
     clean: false,
     entry: {
       index: "src/index.ts",
-      memory: "src/memory/index.ts",
-      "cloudflare-images": "src/cloudflare-images/index.ts",
-      s3: "src/s3/index.ts",
-      "drizzle-pg": "src/drizzle-pg/index.ts",
-      "drizzle-libsql": "src/drizzle-libsql/index.ts",
+      memory: "src/backends/memory.ts",
+      "cloudflare-images": "src/backends/cloudflare-images.ts",
+      s3: "src/backends/s3.ts",
+      "drizzle-pg": "src/backends/drizzle-pg.ts",
+      "drizzle-libsql": "src/backends/drizzle-libsql.ts",
     },
     external: [/^drizzle-orm(\/|$)/],
   }),
   sitepingLibrary({
     platform: "node",
     clean: false,
-    entry: { filesystem: "src/filesystem/index.ts" },
+    entry: { filesystem: "src/backends/filesystem.ts" },
   }),
 ]);
