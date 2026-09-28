@@ -158,7 +158,7 @@ describe("ApiClient", () => {
         annotation({ xPct: -0.006, yPct: 1.64, wPct: 0.196, hPct: 0.33 }), // below a short body
         annotation({ xPct: -0.05, yPct: 0.5, wPct: 0.3, hPct: 0.75 }), // overhangs left and bottom
         annotation({ xPct: -0.4, yPct: -0.4, wPct: 4, hPct: 3 }), // larger than the anchor
-        annotation({ xPct: 0.1, yPct: 0.2, wPct: 0.5, hPct: 0.25 }), // inside
+        annotation({ xPct: 0.1, yPct: 0.2, wPct: 0.3, hPct: 0.4 }), // inside
       ],
     };
 
@@ -169,7 +169,7 @@ describe("ApiClient", () => {
       { xPct: 0, yPct: 1, wPct: expect.closeTo(0.19), hPct: 0 },
       { xPct: 0, yPct: 0.5, wPct: expect.closeTo(0.25), hPct: 0.5 },
       { xPct: 0, yPct: 0, wPct: 1, hPct: 1 },
-      { xPct: 0.1, yPct: 0.2, wPct: 0.5, hPct: 0.25 }, // exactly as drawn
+      { xPct: 0.1, yPct: 0.2, wPct: 0.3, hPct: 0.4 }, // exactly as drawn, no float drift
     ]);
     // The caller's payload is not rewritten.
     expect(payload.annotations[0]!.rect.yPct).toBe(1.64);
