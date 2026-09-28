@@ -306,6 +306,16 @@ describe("StoreClient", () => {
       expect("clientId" in response).toBe(false);
     });
 
+    it("stores a rect drawn past its anchor as drawn: no server schema, and markers extrapolate", async () => {
+      vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord());
+      const rect = { xPct: -0.006, yPct: 1.64, wPct: 0.196, hPct: 0.33 };
+
+      await client.sendFeedback({ ...samplePayload, annotations: [{ ...sampleAnnotation, rect }] });
+      const input = vi.mocked(store.createFeedback).mock.calls[0]![0] as FeedbackCreateInput;
+
+      expect(input.annotations[0]).toMatchObject(rect);
+    });
+
     it("forwards screenshotRegion to store.createFeedback", async () => {
       vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord());
       const region = { xPct: 0.25, yPct: 0.1, wPct: 0.5, hPct: 0.4 };

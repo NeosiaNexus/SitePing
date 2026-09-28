@@ -75,7 +75,7 @@ function containsRect(el: Element, rect: DOMRect): boolean {
  *    instead of stretching to the width of `<main>` or `<body>`.
  * 2. Smallest ancestor that contains the rect (legacy behavior).
  * 3. `document.body` fallback — it may not contain the rect (a short body, its
- *    default margin), which `rectToPercentages` clips to.
+ *    default margin); the HTTP client clips the rect for the server schema.
  */
 export function findAnchorElement(rect: DOMRect, root: Element = document.documentElement): Element {
   const centerX = rect.x + rect.width / 2;
@@ -103,25 +103,19 @@ export function findAnchorElement(rect: DOMRect, root: Element = document.docume
   return document.body;
 }
 
-const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
-
 /**
  * Convert absolute rectangle coordinates to percentages
  * relative to an anchor element's bounding box.
- *
- * The rect is intersected with the anchor bounds first: the server schema
- * rejects any field outside [0, 1], and the `document.body` fallback may not
- * contain a rect drawn in blank page space. A rect fully outside collapses
- * onto the nearest edge (zero width/height) rather than losing the feedback.
  */
 export function rectToPercentages(rect: DOMRect, anchorBounds: DOMRect): RectData {
   // Guard against zero-dimension anchors (collapsed/hidden elements)
   if (anchorBounds.width <= 0 || anchorBounds.height <= 0) {
     return { xPct: 0, yPct: 0, wPct: 1, hPct: 1 };
   }
-  const x0 = clamp01((rect.x - anchorBounds.x) / anchorBounds.width);
-  const y0 = clamp01((rect.y - anchorBounds.y) / anchorBounds.height);
-  const x1 = clamp01((rect.x + rect.width - anchorBounds.x) / anchorBounds.width);
-  const y1 = clamp01((rect.y + rect.height - anchorBounds.y) / anchorBounds.height);
-  return { xPct: x0, yPct: y0, wPct: x1 - x0, hPct: y1 - y0 };
+  return {
+    xPct: (rect.x - anchorBounds.x) / anchorBounds.width,
+    yPct: (rect.y - anchorBounds.y) / anchorBounds.height,
+    wPct: rect.width / anchorBounds.width,
+    hPct: rect.height / anchorBounds.height,
+  };
 }

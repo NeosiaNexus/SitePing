@@ -1,9 +1,11 @@
 import {
+  type AnnotationPayload,
   type FeedbackPayload,
   SitepingAuthError,
   type SitepingError,
   SitepingNetworkError,
   SitepingValidationError,
+  type RectData,
 } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
@@ -123,6 +125,54 @@ describe("ApiClient", () => {
     await client.sendFeedback(basePayload);
 
     expect("screenshotRegion" in lastPostBody()).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // Annotation rects — the server schema rejects any field outside [0, 1],
+  // and the body fallback anchor may not contain the drawn rect.
+  // -------------------------------------------------------------------------
+
+  it("clips annotation rects drawn past their anchor to [0, 1] on the wire, leaving the payload as drawn", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 201 }));
+    const annotation = (rect: RectData): AnnotationPayload => ({
+      anchor: {
+        cssSelector: "body",
+        xpath: "/html/body",
+        textSnippet: "",
+        elementTag: "BODY",
+        textPrefix: "",
+        textSuffix: "",
+        fingerprint: "0:0:",
+        neighborText: "",
+      },
+      rect,
+      scrollX: 0,
+      scrollY: 0,
+      viewportW: 1024,
+      viewportH: 768,
+      devicePixelRatio: 1,
+    });
+    const payload = {
+      ...basePayload,
+      annotations: [
+        annotation({ xPct: -0.006, yPct: 1.64, wPct: 0.196, hPct: 0.33 }), // below a short body
+        annotation({ xPct: -0.05, yPct: 0.5, wPct: 0.3, hPct: 0.75 }), // overhangs left and bottom
+        annotation({ xPct: -0.4, yPct: -0.4, wPct: 4, hPct: 3 }), // larger than the anchor
+        annotation({ xPct: 0.1, yPct: 0.2, wPct: 0.5, hPct: 0.25 }), // inside
+      ],
+    };
+
+    await client.sendFeedback(payload);
+
+    const rects = (lastPostBody().annotations as AnnotationPayload[]).map((a) => a.rect);
+    expect(rects).toEqual([
+      { xPct: 0, yPct: 1, wPct: expect.closeTo(0.19), hPct: 0 },
+      { xPct: 0, yPct: 0.5, wPct: expect.closeTo(0.25), hPct: 0.5 },
+      { xPct: 0, yPct: 0, wPct: 1, hPct: 1 },
+      { xPct: 0.1, yPct: 0.2, wPct: 0.5, hPct: 0.25 }, // exactly as drawn
+    ]);
+    // The caller's payload is not rewritten.
+    expect(payload.annotations[0]!.rect.yPct).toBe(1.64);
   });
 
   /**

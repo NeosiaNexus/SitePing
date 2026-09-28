@@ -1,4 +1,5 @@
 import {
+  type AnnotationPayload,
   errorFromResponse,
   type FeedbackPayload,
   type FeedbackQuery,
@@ -413,6 +414,27 @@ export async function flushRetryQueue(
 // API client
 // ---------------------------------------------------------------------------
 
+/** The span `[start, start + size]` intersected with [0, 1], as `[start, size]`; one already inside comes back as is. */
+function clipSpan(start: number, size: number): [number, number] {
+  const from = Math.min(1, Math.max(0, start));
+  const trimmed = size - (from - start);
+  return [from, Math.max(0, from + trimmed <= 1 ? trimmed : 1 - from)];
+}
+
+/**
+ * The annotation with its rect intersected with the anchor box: the server
+ * schema rejects any rect field outside [0, 1], and the `document.body`
+ * fallback anchor may not contain a rect drawn in blank page space (a short
+ * body, its default margin). A rect fully outside collapses onto the nearest
+ * edge rather than losing the feedback. Store mode has no such schema and
+ * keeps the rect as drawn — markers extrapolate past the anchor box.
+ */
+function clipRectToAnchor(annotation: AnnotationPayload): AnnotationPayload {
+  const [xPct, wPct] = clipSpan(annotation.rect.xPct, annotation.rect.wPct);
+  const [yPct, hPct] = clipSpan(annotation.rect.yPct, annotation.rect.hPct);
+  return { ...annotation, rect: { xPct, yPct, wPct, hPct } };
+}
+
 /** Parse a JSON body and assert its TypeScript shape — server-side Zod is the source of truth. */
 async function parseJsonAs<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
@@ -443,7 +465,8 @@ export class ApiClient implements WidgetClient {
     // captured — servers that predate the field would otherwise reject an
     // explicit `screenshotRegion: null` on every legacy capture.
     const { screenshotRegion, ...rest } = payload;
-    const body: FeedbackPayload = screenshotRegion ? { ...rest, screenshotRegion } : rest;
+    const wire = { ...rest, annotations: rest.annotations.map(clipRectToAnchor) };
+    const body: FeedbackPayload = screenshotRegion ? { ...wire, screenshotRegion } : wire;
     try {
       const created = await resilientFetch(
         this.endpoint,

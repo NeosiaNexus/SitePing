@@ -111,32 +111,31 @@ describe("rectToPercentages", () => {
     expect(result).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
   });
 
-  it("rect fully outside the anchor collapses onto the nearest edge", () => {
+  // A rect outside its anchor keeps its drawn geometry: store mode stores it
+  // as is and markers extrapolate past the anchor box. Only the HTTP client
+  // clips it, for the server schema (api-client.test.ts).
+  it("negative percentages when rect is outside anchor bounds", () => {
     const anchor = makeDOMRect(200, 200, 100, 100);
     // Rect is 50px to the left and 30px above the anchor
     const rect = makeDOMRect(150, 170, 30, 20);
 
-    // Negative percentages would be rejected by the server schema.
     const result = rectToPercentages(rect, anchor);
-    expect(result).toEqual({ xPct: 0, yPct: 0, wPct: 0, hPct: 0 });
+    expect(result.xPct).toBeCloseTo(-0.5); // (150−200)/100
+    expect(result.yPct).toBeCloseTo(-0.3); // (170−200)/100
+    expect(result.wPct).toBeCloseTo(0.3);
+    expect(result.hPct).toBeCloseTo(0.2);
   });
 
-  it("rect larger than the anchor is clipped to the full anchor", () => {
+  it("percentages > 1 when rect is larger than anchor", () => {
     const anchor = makeDOMRect(100, 100, 50, 50);
     // Rect starts before anchor and is much larger
     const rect = makeDOMRect(80, 80, 200, 150);
 
     const result = rectToPercentages(rect, anchor);
-    expect(result).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
-  });
-
-  it("rect overhanging the anchor keeps only the part inside it", () => {
-    // Overhangs on the left and at the bottom.
-    const result = rectToPercentages(makeDOMRect(-10, 50, 60, 100), makeDOMRect(0, 0, 200, 100));
-    expect(result.xPct).toBe(0);
-    expect(result.yPct).toBeCloseTo(0.5);
-    expect(result.wPct).toBeCloseTo(0.25); // visible part: 0..50
-    expect(result.hPct).toBeCloseTo(0.5); // visible part: 50..100
+    expect(result.xPct).toBeCloseTo(-0.4); // (80−100)/50
+    expect(result.yPct).toBeCloseTo(-0.4); // (80−100)/50
+    expect(result.wPct).toBeCloseTo(4.0); // 200/50
+    expect(result.hPct).toBeCloseTo(3.0); // 150/50
   });
 
   it("anchor at origin with unit dimensions gives identity values", () => {
@@ -193,10 +192,10 @@ describe("findAnchorElement", () => {
     expect(result).toBe(document.body);
   });
 
-  it("a rect drawn in the blank area below a short body still yields percentages in [0, 1]", () => {
+  it("a rect drawn in the blank area below a short body keeps its geometry against the body fallback", () => {
     // Body 300px tall with the default 8px margin; the drag lands below it, so
-    // the body fallback does not contain the rect — the server schema would
-    // reject the unclipped yPct of 1.64 and lose the whole feedback.
+    // the body fallback does not contain the rect. Store mode renders it back
+    // where it was drawn; the HTTP client clips it for the server schema.
     stubElementFromPoint(() => document.documentElement);
     stubBounds(document.body, makeDOMRect(8, 8, 1008, 300));
     try {
@@ -205,10 +204,10 @@ describe("findAnchorElement", () => {
       expect(anchor).toBe(document.body);
 
       const rect = rectToPercentages(drawn, anchor.getBoundingClientRect());
-      for (const value of Object.values(rect)) {
-        expect(value).toBeGreaterThanOrEqual(0);
-        expect(value).toBeLessThanOrEqual(1);
-      }
+      expect(rect.xPct).toBeCloseTo(-6 / 1008);
+      expect(rect.yPct).toBeCloseTo(492 / 300);
+      expect(rect.wPct).toBeCloseTo(198 / 1008);
+      expect(rect.hPct).toBeCloseTo(100 / 300);
     } finally {
       delete (document.body as { getBoundingClientRect?: unknown }).getBoundingClientRect;
     }
