@@ -268,6 +268,8 @@ export class Panel {
           const fb = this.getFocusedFeedback();
           if (fb) this.bulk.toggle(fb.id);
         },
+        // The detail view covers the whole list (and would hide the help overlay).
+        isSuspended: () => this.detail.isVisible,
       },
       this.t,
     );

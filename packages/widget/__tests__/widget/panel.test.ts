@@ -1539,6 +1539,59 @@ describe("Panel", () => {
       });
     });
 
+    it("D deletes the card that has DOM focus, not the last J/K target", async () => {
+      const fbs = ["fb-a", "fb-b", "fb-c"].map((id) => makeFeedback({ id }));
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: fbs, total: 3 });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      stubScrollOnCards(shadow);
+
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true })); // highlights fb-a
+      const cardC = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-c"]')!;
+      cardC.focus(); // Tab / click moves real focus elsewhere
+      cardC.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true, composed: true }));
+
+      await vi.waitFor(() => expect(apiClient.deleteFeedback).toHaveBeenCalled());
+      expect(apiClient.deleteFeedback).toHaveBeenCalledWith("fb-c");
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalledWith("fb-a");
+    });
+
+    it("single-key shortcuts are ignored inside the delete-all confirm dialog", async () => {
+      const fb = makeFeedback({ id: "fb-a" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      stubScrollOnCards(shadow);
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+
+      shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!.click();
+      await vi.waitFor(() => expect(shadow.querySelector(".sp-confirm-backdrop")).not.toBeNull());
+      const cancelBtn = shadow.querySelector<HTMLButtonElement>(".sp-confirm-dialog .sp-btn-ghost")!;
+      cancelBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true, composed: true }));
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalled();
+    });
+
+    it("single-key shortcuts are ignored while the detail view covers the list", async () => {
+      const fbs = ["fb-a", "fb-b"].map((id) => makeFeedback({ id }));
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: fbs, total: 2 });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      stubScrollOnCards(shadow);
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true })); // highlights fb-a
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-b"]')!.click(); // detail for fb-b
+
+      const backBtn = shadow.querySelector<HTMLButtonElement>(".sp-detail-back")!;
+      backBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true, composed: true }));
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalled();
+    });
+
     it("F key focuses search input", async () => {
       await panel.open();
 

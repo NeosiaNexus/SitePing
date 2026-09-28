@@ -28,6 +28,7 @@ function createCallbacks(): {
     onDelete: vi.fn<NonNullable<ShortcutCallbacks["onDelete"]>>(),
     onFocusSearch: vi.fn<NonNullable<ShortcutCallbacks["onFocusSearch"]>>(),
     onToggleSelect: vi.fn<NonNullable<ShortcutCallbacks["onToggleSelect"]>>(),
+    isSuspended: vi.fn<NonNullable<ShortcutCallbacks["isSuspended"]>>().mockReturnValue(false),
   };
 }
 
