@@ -47,7 +47,7 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 
 When something changed, it reminds you to run `npx prisma db push`. Running it twice in a row is a no-op.
 
-> **Commit before you run it.** `sync` re-prints the whole schema file, so formatting (blank lines after comments, column alignment) is normalized across your own models too. A clean git diff makes the changes easy to review.
+> **Commit before you run it.** `sync` re-prints the whole schema file, so formatting (blank lines after `//` comments, column alignment) is normalized across your own models too — `///` doc comments stay attached to what they document. A clean git diff makes the changes easy to review.
 
 ## `status` — project health report
 

@@ -52,7 +52,7 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
   if (addedModels.length > 0 || changes.length > 0) {
     // prisma-ast's printSchema() unconditionally prepends a newline, and prints
     // blank lines as os.EOL ("\r\n" on Windows) -- strip both forms (#98)
-    const output = printSchema(schema).replace(/^(\r?\n)+/, "");
+    const output = printPreservingDocs(schema).replace(/^(\r?\n)+/, "");
     try {
       writeFileSync(schemaPath, output, "utf-8");
     } catch (error) {
@@ -65,6 +65,29 @@ export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): Sync
   }
 
   return { schemaPath, addedModels, changes };
+}
+
+/** Private-use sentinel: can't occur in a schema, survives printSchema() verbatim. */
+const ATTACHED_DOC = "\uE000";
+
+/**
+ * printSchema(), keeping `///` doc comments on their block. It opens every
+ * block with a blank line, which detaches a doc from the model/enum below it
+ * (Prisma then drops the documentation). The docs that sit directly on a
+ * block are marked and the gap closed after printing; a doc the user had
+ * already separated by a blank line stays separated.
+ */
+function printPreservingDocs(schema: Schema): string {
+  const list = schema.list.map((block, i) => {
+    const next = schema.list[i + 1];
+    const attached = next !== undefined && next.type !== "comment" && next.type !== "break";
+    return block.type === "comment" && block.text.startsWith("///") && attached
+      ? { ...block, text: block.text + ATTACHED_DOC }
+      : block;
+  });
+  return printSchema({ ...schema, list })
+    .replace(new RegExp(`${ATTACHED_DOC}(\\r?\\n)(?:[ \\t]*\\r?\\n)+`, "g"), "$1")
+    .replaceAll(ATTACHED_DOC, "");
 }
 
 /**
@@ -160,12 +183,14 @@ export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
       existingModel.properties[index] = field;
     }
 
-    // Insert new fields before createdAt (or at end)
+    // Insert new fields before createdAt (or at end) — above the comments
+    // right over createdAt, which would otherwise document the new field
     if (fieldsToAdd.length > 0) {
-      const createdAtIdx = existingModel.properties.findIndex(
+      let createdAtIdx = existingModel.properties.findIndex(
         (p) => p.type === "field" && (p as Field).name === "createdAt",
       );
       if (createdAtIdx >= 0) {
+        while (existingModel.properties[createdAtIdx - 1]?.type === "comment") createdAtIdx--;
         existingModel.properties.splice(createdAtIdx, 0, ...fieldsToAdd);
       } else {
         existingModel.properties.push(...fieldsToAdd);

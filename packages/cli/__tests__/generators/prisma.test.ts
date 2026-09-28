@@ -779,6 +779,46 @@ model SitepingFeedback {
   });
 
   // -----------------------------------------------------------------------
+  // `///` doc comments (Prisma documentation — must stay directly above)
+  // -----------------------------------------------------------------------
+
+  describe("/// doc comments", () => {
+    it("keeps a /// doc directly above its model or enum", () => {
+      // A blank line in between detaches the doc (DMMF loses it), so the
+      // attached docs must stay attached — and a detached one detached.
+      writeFileSync(
+        schemaPath,
+        SCHEMA_WITH_PARTIAL_MODEL.replace("model SitepingFeedback {", "/// Feedback inbox\nmodel SitepingFeedback {") +
+          "\n/// Roles\nenum Role {\n  ADMIN\n}\n\n/// Not attached\n\nmodel Other {\n  id String @id\n}\n",
+      );
+
+      syncPrismaModels(schemaPath);
+
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).toContain("/// Feedback inbox\nmodel SitepingFeedback {");
+      expect(output).toContain("/// Roles\nenum Role {");
+      expect(output).toContain("/// Not attached\n\nmodel Other {");
+    });
+
+    it("inserts new fields above the comments documenting createdAt", () => {
+      writeFileSync(
+        schemaPath,
+        SCHEMA_WITH_PARTIAL_MODEL.replace(
+          /^(\s*)createdAt/m,
+          "$1// Set by the database\n$1/// When the feedback was filed\n$1createdAt",
+        ),
+      );
+
+      syncPrismaModels(schemaPath);
+
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).toMatch(/\/\/ Set by the database\n\s*\/\/\/ When the feedback was filed\n\s*createdAt\s/);
+      // The new fields land above the comment run, not between it and createdAt.
+      expect(output.indexOf("clientId")).toBeLessThan(output.indexOf("// Set by the database"));
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Edge case: model exists but has no createdAt field
   // -----------------------------------------------------------------------
 

@@ -47,7 +47,7 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 
 Quand quelque chose a changé, il vous rappelle de lancer `npx prisma db push`. Le lancer deux fois de suite ne fait rien.
 
-> **Committez avant de le lancer.** `sync` réimprime tout le fichier de schéma, donc le formatage (lignes vides après les commentaires, alignement des colonnes) est normalisé y compris sur vos propres modèles. Un diff git propre rend les changements faciles à relire.
+> **Committez avant de le lancer.** `sync` réimprime tout le fichier de schéma, donc le formatage (lignes vides après les commentaires `//`, alignement des colonnes) est normalisé y compris sur vos propres modèles — les commentaires de documentation `///` restent attachés à ce qu'ils documentent. Un diff git propre rend les changements faciles à relire.
 
 ## `status` — rapport de santé du projet
 
