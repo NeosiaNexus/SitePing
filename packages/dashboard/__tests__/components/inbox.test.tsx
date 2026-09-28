@@ -235,6 +235,22 @@ describe("SitepingInbox — keyboard", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull());
   });
 
+  it("ignores every shortcut but ? and Esc while the shortcuts overlay is open", async () => {
+    const { source } = renderInbox();
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+    fireEvent.keyDown(listbox, { key: "?" });
+    const overlay = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+
+    for (const key of ["e", "j", "4", "u", "r"]) fireEvent.keyDown(overlay, { key });
+    expect(source.setStatus).not.toHaveBeenCalled();
+    expect(listRows()[0]?.className).toContain("spd-row-focused"); // j did not move focus
+    expect(screen.getByRole("radio", { name: /^Open/ }).getAttribute("aria-checked")).toBe("true"); // 4 ignored
+
+    fireEvent.keyDown(overlay, { key: "?" }); // ? still toggles it closed
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull());
+  });
+
   it("number keys switch status tabs (4 → resolved)", async () => {
     renderInbox();
     const listbox = await ready();

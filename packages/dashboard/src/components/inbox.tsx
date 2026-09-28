@@ -234,6 +234,9 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
         event.preventDefault();
         return;
       }
+      // The cheat sheet is modal: the list behind it must not react. Only "?"
+      // (toggles it closed) gets through; Esc is handled above / by the overlay.
+      if (shortcutsOpen && event.key !== "?") return;
       if (inField) return;
 
       // Overlay mode hides the list behind a backdrop: list navigation is
