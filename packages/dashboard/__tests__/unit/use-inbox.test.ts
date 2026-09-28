@@ -248,11 +248,14 @@ describe("useSitepingInbox — focus survives only in the list it points into", 
     expect(result.current.focusedId).toBeNull();
   });
 
-  it("openFeedback ignores an id that is neither listed nor cached", async () => {
+  it("openFeedback on an id not loaded yet opens it once its record loads (e.g. from a URL)", async () => {
     const { result } = await mountDemo();
-    act(() => result.current.openFeedback("ghost"));
-    expect(result.current.openedId).toBeNull();
-    expect(result.current.focusedId).toBeNull();
+    act(() => result.current.openFeedback("r5")); // resolved: not on the Open tab
+    expect(result.current.openedId).toBe("r5");
+    expect(result.current.opened).toBeNull();
+
+    act(() => result.current.setStatus("resolved"));
+    await waitFor(() => expect(result.current.opened?.id).toBe("r5"));
   });
 });
 

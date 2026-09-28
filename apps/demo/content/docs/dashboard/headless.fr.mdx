@@ -39,7 +39,7 @@ Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOpt
 
 **Filtres** — `project`/`setProject`, `status`/`setStatus` (démarre sur `"open"`), `type`/`setType`, `search`/`setSearch`. La recherche met l'état à jour instantanément et temporise le rechargement de 250 ms ; les requêtes sont nettoyées et plafonnées à 200 caractères.
 
-**Focus et tiroir** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (le feedback ouvert — il reste disponible même si un filtre retire sa ligne), `openFeedback(id)`, `closeFeedback()`. `openFeedback` ouvre une ligne chargée ou le feedback déjà ouvert, et ignore tout autre id : pour en ouvrir un depuis une URL, attendez qu'il figure dans `items`.
+**Focus et tiroir** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (le feedback ouvert — il reste disponible même si un filtre retire sa ligne), `openFeedback(id)`, `closeFeedback()`.
 
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
 

@@ -426,12 +426,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
   const openFeedback = useCallback(
     (id: string) => {
-      const record =
-        itemsRef.current.find((f) => f.id === id) ??
-        (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
-      // Nothing to show: opening would render no drawer yet still count as "open".
-      if (!record) return;
-      commitOpenedCache(record);
+      const record = itemsRef.current.find((f) => f.id === id);
+      if (record) commitOpenedCache(record);
       setOpenedId(id);
       setFocusedId(id);
     },
