@@ -107,6 +107,30 @@ describe("createSitepingHandler", () => {
       expect(res.status).toBe(201);
     });
 
+    it("answers a CORS-enabled JSON 500 when the duplicate-race lookup itself fails", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const origin = "https://app.example.com";
+      const corsHandler = createSitepingHandler({ prisma, allowedOrigins: [origin] });
+      // Replay check sees nothing, the insert collides, then the re-lookup fails.
+      prisma.sitepingFeedback.findUnique
+        .mockResolvedValueOnce(null)
+        .mockRejectedValueOnce(new Error("connection reset"));
+      prisma.sitepingFeedback.create.mockRejectedValue({ code: "P2002" });
+
+      const res = await corsHandler.POST(
+        new Request("http://localhost/api/siteping", {
+          method: "POST",
+          headers: { Origin: origin },
+          body: JSON.stringify(validPayloadNoAnnotations),
+        }),
+      );
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "Internal server error" });
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+      consoleSpy.mockRestore();
+    });
+
     it("does not insert again when the clientId was already stored (replay)", async () => {
       prisma.sitepingFeedback.findUnique.mockResolvedValue({ id: "fb-1", ...validPayloadNoAnnotations });
       const req = new Request("http://localhost/api/siteping", {

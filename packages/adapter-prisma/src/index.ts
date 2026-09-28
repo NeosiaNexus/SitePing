@@ -897,8 +897,15 @@ export function createSitepingHandler({
       } catch (error) {
         // Unique-constraint race: the same clientId landed between the replay
         // check above and the insert. The presenter still owns the record.
+        // A failing lookup falls through to the JSON 500 below — this catch
+        // must not throw, or the request loses its response and CORS headers.
         if (isStoreDuplicate(error)) {
-          const existing = await store.findByClientId(data.clientId);
+          let existing: FeedbackRecord | null = null;
+          try {
+            existing = await store.findByClientId(data.clientId);
+          } catch (lookupError) {
+            console.error("[siteping] Failed to look up the duplicate clientId:", lookupError);
+          }
           if (existing) return created(existing);
         }
 
