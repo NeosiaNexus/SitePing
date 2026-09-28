@@ -484,7 +484,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     }
     submitting = true;
     try {
-      const { annotation, type, message, screenshotDataUrl, screenshotRegion } = data;
+      const { annotation, type, message, clientId, screenshotDataUrl, screenshotRegion } = data;
 
       // Ensure identity — config wins (host-provided), then localStorage,
       // then prompt the user as a last resort. Host-provided identity is
@@ -502,15 +502,6 @@ export function launch(config: SitepingConfig): SitepingInstance {
         }
         saveIdentity(identity);
       }
-
-      // crypto.randomUUID() throws in non-secure contexts (plain HTTP)
-      const clientId = (() => {
-        try {
-          return crypto.randomUUID();
-        } catch {
-          return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        }
-      })();
 
       // Use scope.url as the single source of truth — same identifier the
       // panel filter and marker filter use. If we stored full URLs here while

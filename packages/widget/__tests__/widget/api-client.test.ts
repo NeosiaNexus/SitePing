@@ -256,10 +256,10 @@ describe("ApiClient", () => {
 
   it("drops the oldest queued feedbacks when even the screenshot-free queue exceeds the quota", async () => {
     const older = [
-      { endpoint, payload: { ...screenshotPayload, message: "oldest" } },
-      { endpoint, payload: { ...screenshotPayload, message: "older" } },
+      { endpoint, payload: { ...screenshotPayload, message: "oldest", clientId: "cid-1" } },
+      { endpoint, payload: { ...screenshotPayload, message: "older", clientId: "cid-2" } },
     ];
-    const newest = { ...screenshotPayload, message: "newest" };
+    const newest = { ...screenshotPayload, message: "newest", clientId: "cid-3" };
     const expected = [{ endpoint, payload: withoutScreenshot(newest) }];
     const store = stubLocalStorage(JSON.stringify(expected).length);
     store.set("siteping_retry_queue", JSON.stringify(older)); // seeded behind the quota check
@@ -277,7 +277,12 @@ describe("ApiClient", () => {
 
   it("reports evicted text-only feedbacks without blaming screenshots", async () => {
     // The launcher always sends `screenshotDataUrl: null` when nothing was captured.
-    const textOnly = (message: string): FeedbackPayload => ({ ...basePayload, message, screenshotDataUrl: null });
+    const textOnly = (message: string): FeedbackPayload => ({
+      ...basePayload,
+      message,
+      clientId: `cid-${message}`,
+      screenshotDataUrl: null,
+    });
     const expected = [
       { endpoint, payload: textOnly("b") },
       { endpoint, payload: textOnly("c") },
@@ -304,7 +309,9 @@ describe("ApiClient", () => {
 
   it("leaves the stored queue untouched and warns when not even the stripped newest entry fits", async () => {
     const store = stubLocalStorage(10); // no queue write can fit
-    const previous = JSON.stringify([{ endpoint, payload: { ...basePayload, message: "previous" } }]);
+    const previous = JSON.stringify([
+      { endpoint, payload: { ...basePayload, message: "previous", clientId: "cid-0" } },
+    ]);
     store.set("siteping_retry_queue", previous); // seeded behind the quota check
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -1529,6 +1536,84 @@ describe("queueForRetry (via sendFeedback)", () => {
     expect(parsed).toHaveLength(2);
     expect(parsed[0].payload.message).toBe("existing");
     expect(parsed[1].payload.message).toBe("new");
+  });
+
+  it("a failed resend of the same clientId replaces its queued entry (latest edit is replayed)", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "first attempt",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "same-session",
+    };
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify([{ endpoint, payload }]));
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+
+    const client = new ApiClient(endpoint, "test");
+    await expectTransientFailure(client, { ...payload, message: "edited resend" });
+
+    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0]?.[1];
+    if (savedValue === undefined) throw new Error("expected the retry queue to be written to localStorage");
+    const parsed = JSON.parse(savedValue);
+    // Two entries would replay the stale first attempt, and the server's
+    // clientId dedupe would then discard the edit.
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].payload.message).toBe("edited resend");
+  });
+
+  it("a successful resend removes the queued attempt with the same clientId (and only that one)", async () => {
+    const queued = (clientId: string) => ({
+      endpoint,
+      payload: {
+        projectName: "test",
+        type: "bug" as const,
+        message: `queued ${clientId}`,
+        url: "https://example.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId,
+      },
+    });
+    localStorage.setItem("siteping_retry_queue", JSON.stringify([queued("same-session"), queued("other")]));
+    vi.mocked(localStorage.setItem).mockClear();
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ id: "fb-1" }), { status: 201 }));
+
+    await new ApiClient(endpoint, "test").sendFeedback({ ...queued("same-session").payload, message: "resent" });
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the fire-and-forget queue write settle
+
+    // Left queued, the next page load would re-POST it only to be deduped.
+    expect(JSON.parse(localStorage.getItem("siteping_retry_queue") ?? "[]")).toEqual([queued("other")]);
+  });
+
+  it("a successful send of the last queued clientId removes the queue key", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "only one",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "same-session",
+    };
+    localStorage.setItem("siteping_retry_queue", JSON.stringify([{ endpoint, payload }]));
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ id: "fb-1" }), { status: 201 }));
+
+    await new ApiClient(endpoint, "test").sendFeedback(payload);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+    expect(localStorage.getItem("siteping_retry_queue")).toBeNull();
   });
 
   it("drops the oldest entry when the queue exceeds MAX_QUEUE_SIZE (20)", async () => {

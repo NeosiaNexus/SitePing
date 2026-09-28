@@ -165,6 +165,7 @@ function makeAnnotationCompleteData() {
     },
     type: "bug",
     message: "Test annotation message",
+    clientId: "client-1",
   };
 }
 
@@ -991,43 +992,23 @@ describe("launcher — annotation:complete integration", () => {
   });
 
   // -------------------------------------------------------------------------
-  // crypto.randomUUID failure fallback (line 207-208)
+  // clientId — minted per popup session by the annotator (see annotator tests)
   // -------------------------------------------------------------------------
 
-  describe("clientId fallback", () => {
-    it("falls back to Date.now()-based id when crypto.randomUUID throws", async () => {
-      const origRandomUUID = (globalThis.crypto as Crypto & { randomUUID: () => string }).randomUUID;
-      Object.defineProperty(globalThis.crypto, "randomUUID", {
-        value: () => {
-          throw new Error("Insecure context");
-        },
-        writable: true,
-        configurable: true,
+  describe("clientId", () => {
+    it("posts the clientId the annotator minted for the popup session", async () => {
+      mockSendFeedback.mockResolvedValue(makeFeedbackResponse());
+      const instance = launch(defaultConfig());
+
+      capturedBus!.emit("annotation:complete", { ...makeAnnotationCompleteData(), clientId: "session-42" });
+      await vi.waitFor(() => {
+        expect(mockSendFeedback).toHaveBeenCalledOnce();
       });
 
-      try {
-        const response = makeFeedbackResponse();
-        mockSendFeedback.mockResolvedValue(response);
-
-        const instance = launch(defaultConfig());
-        capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
-
-        await vi.waitFor(() => {
-          expect(mockSendFeedback).toHaveBeenCalledOnce();
-        });
-
-        const payload = mockSendFeedback.mock.calls[0]![0];
-        // Fallback format: "<timestamp>-<random>"
-        expect(payload.clientId).toMatch(/^\d+-[a-z0-9]+$/);
-
-        instance.destroy();
-      } finally {
-        Object.defineProperty(globalThis.crypto, "randomUUID", {
-          value: origRandomUUID,
-          writable: true,
-          configurable: true,
-        });
-      }
+      // A launcher-minted id would differ on every resend from the same popup,
+      // and the retry queue would later replay a duplicate (#307).
+      expect(mockSendFeedback.mock.calls[0]![0].clientId).toBe("session-42");
+      instance.destroy();
     });
   });
 

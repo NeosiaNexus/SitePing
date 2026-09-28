@@ -185,7 +185,10 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
   // Fire-and-forget — we don't want to block the caller on the lock
   void withRetryLock(() => {
     try {
-      const queue = readQueue();
+      // A resend from the same popup reuses its clientId: replace the earlier
+      // attempt so the replay carries the latest edit (the server's clientId
+      // dedupe would otherwise keep the stale first one).
+      const queue = readQueue().filter((entry) => entry.payload.clientId !== payload.clientId);
 
       // Cap queue size to prevent unbounded localStorage growth
       if (queue.length >= MAX_QUEUE_SIZE) {
@@ -231,6 +234,25 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
       console.warn("[siteping] feedback could not be queued for retry — localStorage is full or unavailable");
     } catch {
       // localStorage unavailable — the new entry is dropped
+    }
+  });
+}
+
+/**
+ * Drop the queued attempt of a feedback that has just landed (a resend from
+ * the same popup, same clientId), so the next page load does not re-POST a
+ * payload of up to ~1.5 MB only for the server to dedupe it.
+ */
+function unqueue(clientId: string): void {
+  void withRetryLock(() => {
+    try {
+      const queue = readQueue();
+      const remaining = queue.filter((entry) => entry.payload.clientId !== clientId);
+      if (remaining.length === queue.length) return;
+      if (remaining.length > 0) localStorage.setItem(RETRY_QUEUE_KEY, JSON.stringify(remaining));
+      else localStorage.removeItem(RETRY_QUEUE_KEY);
+    } catch {
+      // localStorage unavailable — a replay of the queued copy is deduped server-side
     }
   });
 }
@@ -387,7 +409,9 @@ export class ApiClient implements WidgetClient {
         throw await errorFromResponse(response, "Failed to send feedback");
       }
 
-      return parseJsonAs<FeedbackResponse>(response);
+      const created = await parseJsonAs<FeedbackResponse>(response);
+      unqueue(body.clientId);
+      return created;
     } catch (error) {
       // Queue the wire shape (region stripped when absent) so a later
       // flushRetryQueue replays exactly what a fresh POST would send — but
