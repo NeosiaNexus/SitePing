@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { createClient } from "@libsql/client";
 import { pushSchema, pushSQLiteSchema } from "drizzle-kit/api";
@@ -12,11 +9,12 @@ import { type AnyLibSQLDatabase, createSitepingSqliteTables } from "../src/libsq
 import { type AnyPgDatabase, createSitepingPgTables } from "../src/pg/index.js";
 
 /**
- * Real database engines for the tests — no mocks: PGlite is PostgreSQL
- * compiled to WASM, and libSQL runs on a temporary file (an in-memory libSQL
- * database is per-connection, and transactions open a new connection).
- * Tables are created by drizzle-kit from the adapter's own table
- * definitions, so the schema under test is exactly what users migrate.
+ * Real database engines for the tests, in process — no mocks, no network:
+ * PGlite is PostgreSQL compiled to WASM, and libSQL runs an in-memory
+ * database (one connection, which `@libsql/client` shares between calls and
+ * an interactive transaction would hold until it settles). Tables are
+ * created by drizzle-kit from the adapter's own table definitions, so the
+ * schema under test is exactly what users migrate.
  */
 
 export interface TestDatabase<Database> {
@@ -57,8 +55,7 @@ export async function createPgTestDatabase(names?: SitepingTableNames): Promise<
 }
 
 export async function createLibSQLTestDatabase(names?: SitepingTableNames): Promise<TestDatabase<AnyLibSQLDatabase>> {
-  const directory = mkdtempSync(join(tmpdir(), "siteping-libsql-"));
-  const client = createClient({ url: `file:${join(directory, "siteping.db")}` });
+  const client = createClient({ url: ":memory:" });
   const db = drizzleLibSQL(client);
   const tables = createSitepingSqliteTables(names);
   const { apply } = await pushSQLiteSchema(tables, db);
@@ -75,13 +72,6 @@ export async function createLibSQLTestDatabase(names?: SitepingTableNames): Prom
       drizzleLibSQL({ client: interceptDriverCalls(client, LIBSQL_RESULT_METHODS, intercept) }),
     async close() {
       client.close();
-      try {
-        rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-      } catch (cleanupError) {
-        // On Windows the native libSQL client can keep the file handle open
-        // past close(); the OS temp directory reclaims the leftover file.
-        console.warn(`libSQL test database left at ${directory}:`, cleanupError);
-      }
     },
   };
 }
