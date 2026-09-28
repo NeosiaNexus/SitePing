@@ -21,7 +21,7 @@ import { prisma } from "@/lib/prisma";
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ prisma });
 ```
 
-Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …) can mount the same handlers on a single endpoint and dispatch by method.
+This is [`@siteping/server`](/docs/server)'s handler with a Prisma store built in: the same HTTP surface, security model and [mounting recipes](/docs/server#mounting) for Hono, Express and other frameworks.
 
 ## Options
 
@@ -29,49 +29,10 @@ Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …)
 |---|---|---|---|
 | `prisma` | `SitepingPrismaClient` | — | Your Prisma client. Required unless you pass `store` |
 | `store` | `SitepingStore` | — | Use any store instead of Prisma (takes precedence) |
-| `apiKey` | `string` | — | Enables Bearer auth. Requests send `Authorization: Bearer <key>` |
-| `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` when `apiKey` is set | Methods that skip auth. **Passing a value replaces the default** — include `"POST"` yourself or the widget can no longer submit |
-| `requireAuthForDestructive` | `boolean` | `true` | Without an `apiKey`, PATCH and DELETE answer `401`. In `NODE_ENV=production` the factory refuses to start without an `apiKey` |
-| `redactUnauthenticatedEmails` | `boolean` | `true` | See [what responses expose](#what-responses-expose) |
-| `allowedOrigins` | `string[]` | — | Exact-match CORS allowlist. **No wildcard support** — `["*"]` matches nothing; unset means no CORS headers at all. Listed origins may send `Content-Type`, `Authorization`, and any custom header their preflight asks for (e.g. from the widget's `headers` option) |
 | `screenshotStorage` | `ScreenshotStorage` | — | Upload screenshots somewhere real instead of inlining data URLs. Ignored when you pass a custom `store` |
 | `caseInsensitiveSearch` | `boolean` | auto-detected | Detected from the Prisma provider (on for PostgreSQL, MongoDB, CockroachDB). Only applies when `prisma` is given |
-| `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Fire on each new feedback — see [webhooks](#webhooks) |
 
-## The security model, honestly
-
-- **Reads are public by default.** Without an `apiKey`, anyone who knows the URL can list feedbacks (with emails redacted — see below).
-- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key.
-- `OPTIONS` is always public — preflights must work.
-
-### What responses expose
-
-- `clientId` is stripped from **every** response.
-- `authorEmail` is blanked unless the request carries a valid `Authorization: Bearer` header. The one exception: a successful `POST` echoes the email back to its author.
-
-## HTTP reference
-
-One endpoint, five methods. All bodies are JSON.
-
-| Method | Purpose | Success |
-|---|---|---|
-| `POST` | Create feedback (widget submissions) | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks twice); a `clientId` already used by **another** project is refused with `409` |
-| `GET` | List feedbacks | `200` + `{ feedbacks, total }`, with `Cache-Control: private, max-age=5` |
-| `PATCH` | Change a status | `200` + updated record |
-| `DELETE` | Delete one or all | `200` + `{ deleted: true }` |
-| `OPTIONS` | CORS preflight | `204` |
-
-**GET query parameters:** `projectName` (required), `page` (default 1), `limit` (default 50, max 100), `type`, `status`, `statuses` (comma-separated list, max 4 — e.g. `statuses=open,in_progress`), `search`, `url`, `urlPattern`.
-
-**PATCH body:** `{ id, projectName, status }` — all three required. `status` is one of `open`, `in_progress`, `resolved`, `wont_fix`. The server derives `resolvedAt` automatically: set when the status is closed (`resolved`/`wont_fix`), cleared otherwise.
-
-**DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
-
-**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`; unknown id → `404`; `clientId` owned by another project → `409 { error }`; missing table → `500` with a hint to run `npx prisma db push`; anything else → `500 { error: "Internal server error" }`.
-
-### Validation limits worth knowing
-
-`message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
+Every [`@siteping/server` option](/docs/server#options) works too — `apiKey`, `allowedOrigins`, `webhooks`, `access`, hooks… The one addition: when the table is missing, the `500` tells you to run `npx prisma db push` (a `describeError` you pass takes precedence).
 
 ## Database schema
 
@@ -159,29 +120,8 @@ Add an optional `delete(url)` and the adapter calls it when a feedback is delete
 
 It is also called when a create is rejected because its `clientId` is already stored (a retry racing the first attempt), to drop the screenshot that attempt uploaded — unless the stored feedback points at that same URL. That happens when your key is derived from `feedbackId`: the upload rewrote the stored feedback's own object, so it is kept. A screenshot whose insert failed for any other reason stays in your bucket, since a retry on another instance may be about to reference it.
 
-## Webhooks
-
-Get pinged on every new feedback:
-
-```ts
-createSitepingHandler({
-  prisma,
-  webhooks: [
-    { url: process.env.SLACK_WEBHOOK_URL!, type: "slack" },
-    { url: "https://my-api.dev/hooks/siteping", type: "generic", headers: { "x-secret": "…" } },
-  ],
-});
-```
-
-`type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the record as JSON with the author's email unredacted, so treat generic webhook targets as trusted; `clientId` is stripped like everywhere else). Each call has a 5-second timeout, failures never block the submission, and an optional `onError(err, feedbackId)` lets you log them. A replayed `clientId` never fires them again, and two overlapping submissions of the same `clientId` (the widget retrying a request that timed out) notify once when they reach the same server process. Across several instances only the store can tell them apart: Prisma's `@unique` on `clientId` does, and so does the unique index of the [Drizzle store](/docs/adapters/drizzle). The memory and localStorage stores, like any store built on `createCollectionStore`, deduplicate only within one store instance, and a custom store that returns the existing record on a duplicate may notify twice unless it implements `createFeedbackIfAbsent` atomically — see [Writing an adapter](/docs/adapters/writing-an-adapter#exactly-once-creation-effects).
-
-Feedback text is typed by anonymous visitors, so the chat payloads are hardened: Slack text is escaped (a comment containing `<!channel>` is shown literally, never as a notification) and Discord messages are sent with mention parsing disabled (`allowed_mentions: { parse: [] }`) and their markdown escaped (a `[Reset your password](https://…)` masked link is shown as typed, never as a disguised link) — a public form can't be used to ping your whole server or phish it. Long values are truncated to Slack's and Discord's size limits (after escaping), so a 2000-character page URL never gets the whole notification rejected.
-
 ## Using a custom store
 
-`createSitepingHandler({ store })` mounts any `SitepingStore` (the memory adapter, or your own) behind the same HTTP surface — same validation, auth, and redaction.
+Not on Prisma? Mount your store with [`@siteping/server`](/docs/server) directly — same handler, nothing Prisma-related to install. `createSitepingHandler({ store })` keeps working here too: `@prisma/client` is an optional peer dependency, installed only when you pass `prisma`.
 
-Two caveats, straight from the source:
-
-- The cross-project ownership check on PATCH/DELETE runs for every store that implements the optional `verifyProjectOwnership` — the memory and localStorage adapters and anything built on `createCollectionStore` do. A hand-written store that omits it skips the check: any caller who knows a feedback `id` can then modify it regardless of `projectName`, so either implement the method (see [writing an adapter](/docs/adapters/writing-an-adapter#project-ownership)) or put the endpoint behind an `apiKey`.
-- `screenshotStorage` and `caseInsensitiveSearch` only apply to the built-in Prisma path; with a custom store, handle screenshots inside your store.
+`screenshotStorage` and `caseInsensitiveSearch` only apply to the built-in Prisma path; with a custom store, handle screenshots inside your store.

@@ -168,8 +168,8 @@ testSitepingStore(() => new PostgresStore(db), {
 Nothing else changes. Server-side, hand it to the request handlers; client-side, hand it straight to the widget or the inbox:
 
 ```ts
-// Server — the request handlers accept any SitepingStore, Prisma or not
-import { createSitepingHandler } from "@siteping/adapter-prisma";
+// Server — the request handlers accept any SitepingStore
+import { createSitepingHandler } from "@siteping/server";
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ store: new MyStore() });
 
 // Browser — client-side mode, no server at all

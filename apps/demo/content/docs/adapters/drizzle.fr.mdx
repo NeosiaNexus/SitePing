@@ -101,11 +101,11 @@ export const store = createLibSQLSitepingStore(
 
 ## 3. Le servir
 
-Le store ne fait que stocker. Montez-le derrière `createSitepingHandler({ store })` de `@siteping/adapter-prisma` — le handler accepte n'importe quel store ([utiliser un store personnalisé](/fr/docs/adapters/prisma#utiliser-un-store-personnalisé)) — pour obtenir la même validation, la même auth, le même CORS, la même redaction et les mêmes webhooks :
+Le store ne fait que stocker. Montez-le derrière `createSitepingHandler({ store })` de [`@siteping/server`](/fr/docs/server) pour obtenir la validation, l'auth, le CORS, la redaction et les webhooks :
 
 ```ts
 // app/api/siteping/route.ts
-import { createSitepingHandler } from "@siteping/adapter-prisma";
+import { createSitepingHandler } from "@siteping/server";
 import { store } from "@/lib/siteping-store";
 
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
@@ -113,8 +113,6 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   apiKey: process.env.SITEPING_API_KEY,
 });
 ```
-
-Avec un `store`, le handler ne touche jamais à Prisma. `@siteping/adapter-prisma` déclare pourtant `@prisma/client` en **peer dependency obligatoire** : npm, pnpm et Bun l'installent donc quand même ([#306](https://github.com/NeosiaNexus/SitePing/issues/306)) ; un paquet de handler sans ORM est prévu ([#314](https://github.com/NeosiaNexus/SitePing/issues/314)).
 
 ## Options
 

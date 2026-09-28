@@ -32,7 +32,7 @@ The comment, its type and status, the page (the URL **path** only by default —
 
 ## Can anyone read my feedback API?
 
-Reads are public by default, with author emails redacted for unauthenticated callers, and `clientId` never exposed. Destructive calls (status changes, deletes) require an `apiKey` out of the box — and in production the server adapter refuses to start without one. [Details](/docs/adapters/prisma#the-security-model-honestly).
+Reads are public by default, with author emails redacted for unauthenticated callers, and `clientId` never exposed. Destructive calls (status changes, deletes) require an `apiKey` out of the box — and in production the server adapter refuses to start without one. [Details](/docs/server#the-security-model-honestly).
 
 ## What happens if the network drops mid-submit?
 

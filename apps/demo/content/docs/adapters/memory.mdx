@@ -11,10 +11,11 @@ npm i @siteping/adapter-memory
 
 ```ts
 import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler } from "@siteping/server";
 
 const store = new MemoryStore();
 
-// Server-side, behind the HTTP handler:
+// Server-side, behind the HTTP handler (no Prisma involved):
 createSitepingHandler({ store });
 
 // Or client-side, directly in the widget:

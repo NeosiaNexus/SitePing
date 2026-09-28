@@ -21,7 +21,7 @@ import { prisma } from "@/lib/prisma";
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ prisma });
 ```
 
-Tout framework qui parle `Request`/`Response` du Web (Hono, Remix, SvelteKit, …) peut monter les mêmes handlers sur un unique endpoint et répartir par méthode.
+C'est le handler de [`@siteping/server`](/fr/docs/server) avec un store Prisma intégré : même surface HTTP, même modèle de sécurité et mêmes [recettes de montage](/fr/docs/server#le-montage) pour Hono, Express et les autres frameworks.
 
 ## Options
 
@@ -29,49 +29,10 @@ Tout framework qui parle `Request`/`Response` du Web (Hono, Remix, SvelteKit, �
 |---|---|---|---|
 | `prisma` | `SitepingPrismaClient` | — | Votre client Prisma. Obligatoire sauf si vous passez `store` |
 | `store` | `SitepingStore` | — | Utiliser n'importe quel store au lieu de Prisma (prioritaire) |
-| `apiKey` | `string` | — | Active l'auth Bearer. Les requêtes envoient `Authorization: Bearer <clé>` |
-| `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` quand `apiKey` est défini | Méthodes qui contournent l'auth. **Passer une valeur remplace le défaut** — incluez `"POST"` vous-même, sinon le widget ne peut plus envoyer |
-| `requireAuthForDestructive` | `boolean` | `true` | Sans `apiKey`, PATCH et DELETE répondent `401`. En `NODE_ENV=production`, la factory refuse de démarrer sans `apiKey` |
-| `redactUnauthenticatedEmails` | `boolean` | `true` | Voir [ce que les réponses exposent](#ce-que-les-réponses-exposent) |
-| `allowedOrigins` | `string[]` | — | Liste blanche CORS en correspondance exacte. **Aucun joker** — `["*"]` ne correspond à rien ; non défini signifie aucun en-tête CORS du tout. Les origines listées peuvent envoyer `Content-Type`, `Authorization` et tout en-tête personnalisé demandé par leur préflight (par exemple via l'option `headers` du widget) |
 | `screenshotStorage` | `ScreenshotStorage` | — | Envoyer les captures quelque part de réel au lieu de les inliner en URL `data:`. Ignoré quand vous passez un `store` personnalisé |
 | `caseInsensitiveSearch` | `boolean` | détecté automatiquement | Détecté depuis le provider Prisma (actif pour PostgreSQL, MongoDB, CockroachDB). Ne s'applique que si `prisma` est fourni |
-| `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Déclenchés à chaque nouveau feedback — voir [webhooks](#webhooks) |
 
-## Le modèle de sécurité, franchement
-
-- **Les lectures sont publiques par défaut.** Sans `apiKey`, quiconque connaît l'URL peut lister les feedbacks (avec les e-mails masqués — voir plus bas).
-- **Les appels destructifs, non.** PATCH et DELETE répondent `401` sauf si vous définissez un `apiKey` ou vous en désengagez explicitement avec `requireAuthForDestructive: false`. En production, la factory lève au démarrage plutôt que de tourner sans clé.
-- `OPTIONS` est toujours public — les préflights doivent fonctionner.
-
-### Ce que les réponses exposent
-
-- `clientId` est retiré de **toutes** les réponses.
-- `authorEmail` est vidé sauf si la requête porte un en-tête `Authorization: Bearer` valide. Seule exception : un `POST` réussi renvoie l'e-mail à son auteur.
-
-## Référence HTTP
-
-Un endpoint, cinq méthodes. Tous les corps sont en JSON.
-
-| Méthode | Rôle | Succès |
-|---|---|---|
-| `POST` | Créer un feedback (envois du widget) | `201` + l'enregistrement. Un `clientId` rejoué renvoie l'enregistrement existant au lieu d'échouer (et ne notifie jamais les webhooks deux fois) ; un `clientId` déjà utilisé par **un autre** projet est refusé avec `409` |
-| `GET` | Lister les feedbacks | `200` + `{ feedbacks, total }`, avec `Cache-Control: private, max-age=5` |
-| `PATCH` | Changer un statut | `200` + l'enregistrement mis à jour |
-| `DELETE` | Supprimer un ou tous | `200` + `{ deleted: true }` |
-| `OPTIONS` | Préflight CORS | `204` |
-
-**Paramètres de requête du GET :** `projectName` (obligatoire), `page` (défaut 1), `limit` (défaut 50, max 100), `type`, `status`, `statuses` (liste séparée par des virgules, max 4 — ex. `statuses=open,in_progress`), `search`, `url`, `urlPattern`.
-
-**Corps du PATCH :** `{ id, projectName, status }` — les trois sont obligatoires. `status` vaut `open`, `in_progress`, `resolved` ou `wont_fix`. Le serveur déduit `resolvedAt` automatiquement : renseigné quand le statut est clos (`resolved`/`wont_fix`), effacé sinon.
-
-**Corps du DELETE :** `{ id, projectName }` pour un enregistrement, ou `{ projectName, deleteAll: true }` pour tout le projet.
-
-**Erreurs :** JSON invalide → `400 { error }` ; échec de validation → `400 { errors: [{ field, message }] }` ; id inconnu → `404` ; `clientId` appartenant à un autre projet → `409 { error }` ; table manquante → `500` avec une indication d'exécuter `npx prisma db push` ; tout le reste → `500 { error: "Internal server error" }`.
-
-### Les limites de validation à connaître
-
-`message` ≤ 5000 caractères · `annotations` ≤ 50 par feedback · `screenshotDataUrl` ≤ 1,5 Mo, JPEG/PNG/WebP uniquement · `diagnostics` ≤ 50 entrées console + 20 réseau · `clientId` doit correspondre à `[a-zA-Z0-9_-]+` · `authorEmail` suit le même motif Unicode que la fenêtre d'identité du widget (`françois@exemple.fr` passe), donc une adresse acceptée par la fenêtre n'est jamais refusée ici.
+Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent aussi — `apiKey`, `allowedOrigins`, `webhooks`, `access`, les hooks… Un seul ajout : quand la table manque, la `500` vous indique de lancer `npx prisma db push` (un `describeError` que vous passez a la priorité).
 
 ## Schéma de base de données
 
@@ -159,29 +120,8 @@ Ajoutez un `delete(url)` optionnel et l'adapter l'appelle à la suppression d'un
 
 Il est aussi appelé quand une création est refusée parce que son `clientId` est déjà enregistré (un nouvel essai en concurrence avec le premier), pour supprimer la capture envoyée par cette tentative — sauf si le feedback enregistré pointe vers cette même URL. C'est le cas quand votre clé dérive de `feedbackId` : l'envoi a réécrit l'objet du feedback enregistré, qui est donc conservé. Une capture dont l'insertion a échoué pour une autre raison reste dans votre bucket, car un nouvel essai sur une autre instance peut être sur le point de la référencer.
 
-## Webhooks
-
-Soyez notifié à chaque nouveau feedback :
-
-```ts
-createSitepingHandler({
-  prisma,
-  webhooks: [
-    { url: process.env.SLACK_WEBHOOK_URL!, type: "slack" },
-    { url: "https://mon-api.dev/hooks/siteping", type: "generic", headers: { "x-secret": "…" } },
-  ],
-});
-```
-
-`type` vaut `"slack"`, `"discord"` ou `"generic"` (le défaut — il poste l'enregistrement en JSON avec l'e-mail de l'auteur non masqué : traitez donc les cibles de webhook générique comme de confiance ; le `clientId` est retiré comme partout ailleurs). Chaque appel a un timeout de 5 secondes, les échecs ne bloquent jamais l'envoi, et un `onError(err, feedbackId)` optionnel permet de les journaliser. Un `clientId` rejoué ne les redéclenche jamais, et deux envois simultanés du même `clientId` (le widget qui relance une requête expirée) ne notifient qu'une fois lorsqu'ils atteignent le même processus serveur. Entre plusieurs instances, seul le store peut les départager : le `@unique` de Prisma sur `clientId` le fait, tout comme l'index unique du [store Drizzle](/fr/docs/adapters/drizzle). Les stores memory et localStorage, comme tout store construit sur `createCollectionStore`, ne dédoublonnent qu'au sein d'une même instance de store, et un store personnalisé qui renvoie l'enregistrement existant sur un doublon peut notifier deux fois s'il n'implémente pas `createFeedbackIfAbsent` de façon atomique — voir [Écrire un adapter](/fr/docs/adapters/writing-an-adapter#effets-de-création-exactement-une-fois).
-
-Le texte des feedbacks est saisi par des visiteurs anonymes, les charges utiles de chat sont donc durcies : le texte Slack est échappé (un commentaire contenant `<!channel>` s'affiche tel quel, jamais comme une notification) et les messages Discord partent avec l'analyse des mentions désactivée (`allowed_mentions: { parse: [] }`) et leur markdown échappé (un lien masqué `[Réinitialisez votre mot de passe](https://…)` s'affiche tel quel, jamais comme un lien déguisé) — un formulaire public ne peut servir ni à notifier tout votre serveur, ni à l'hameçonner. Les valeurs trop longues sont tronquées aux limites de taille de Slack et de Discord (échappement compris), pour qu'une URL de page de 2000 caractères ne fasse jamais rejeter toute la notification.
-
 ## Utiliser un store personnalisé
 
-`createSitepingHandler({ store })` monte n'importe quel `SitepingStore` (l'adapter memory, ou le vôtre) derrière la même surface HTTP — mêmes validations, même auth, même redaction.
+Pas sur Prisma ? Montez votre store directement avec [`@siteping/server`](/fr/docs/server) — même handler, rien de Prisma à installer. `createSitepingHandler({ store })` fonctionne toujours ici aussi : `@prisma/client` est une dépendance peer optionnelle, installée seulement si vous passez `prisma`.
 
-Deux réserves, directement issues du code source :
-
-- La vérification d'appartenance inter-projets sur PATCH/DELETE tourne pour tout store qui implémente la méthode optionnelle `verifyProjectOwnership` — les adapters memory et localStorage et tout ce qui repose sur `createCollectionStore` le font. Un store écrit à la main qui l'omet saute la vérification : quiconque connaît l'`id` d'un feedback peut alors le modifier quel que soit le `projectName`, donc implémentez la méthode (voir [écrire un adapter](/fr/docs/adapters/writing-an-adapter#appartenance-au-projet)) ou placez l'endpoint derrière un `apiKey`.
-- `screenshotStorage` et `caseInsensitiveSearch` ne s'appliquent qu'au chemin Prisma intégré ; avec un store personnalisé, gérez les captures à l'intérieur de votre store.
+`screenshotStorage` et `caseInsensitiveSearch` ne s'appliquent qu'au chemin Prisma intégré ; avec un store personnalisé, gérez les captures à l'intérieur de votre store.

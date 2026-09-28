@@ -1,0 +1,236 @@
+---
+title: Server
+description: One HTTP endpoint over any store, for any framework — auth, CORS, validation, redaction, hooks and webhooks on the Fetch API.
+---
+
+`@siteping/server` turns any [store](/docs/adapters) into the HTTP API the widget and the dashboard talk to. It speaks the Fetch API only (`Request` → `Response`) and imports no Node built-in, so the same handler runs on Node 20+, Bun, Deno and edge workers, mounted by Next.js, Hono, Express or anything else.
+
+```bash
+npm i @siteping/server
+```
+
+On Prisma, [`@siteping/adapter-prisma`](/docs/adapters/prisma) gives you this handler with the Prisma store built in — every option below works there too.
+
+## Mounting
+
+`createSitepingHandler` returns one handler per HTTP method: `GET`, `POST`, `PATCH`, `DELETE` and `OPTIONS`. Mount all five on a single URL.
+
+### Next.js (App Router)
+
+```ts
+// app/api/siteping/route.ts
+import { createSitepingHandler } from "@siteping/server";
+import { store } from "@/lib/siteping-store";
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  apiKey: process.env.SITEPING_API_KEY,
+});
+```
+
+### Hono
+
+```ts
+import { createSitepingHandler } from "@siteping/server";
+import { Hono } from "hono";
+import { store } from "./siteping-store";
+
+const siteping = createSitepingHandler({ store, apiKey: process.env.SITEPING_API_KEY });
+
+const app = new Hono();
+app.on(["GET", "POST", "PATCH", "DELETE", "OPTIONS"], "/api/siteping", (c) =>
+  siteping[c.req.method as keyof typeof siteping](c.req.raw),
+);
+
+export default app;
+```
+
+The same dispatch works wherever a `Request` comes in: `Bun.serve`, `Deno.serve`, a Cloudflare Worker's `fetch`, Remix or SvelteKit endpoints.
+
+### Express
+
+Express hands you Node's `req`/`res`, not a `Request`: convert at the edge.
+
+```ts
+import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
+import express from "express";
+import { store } from "./siteping-store";
+
+const siteping = createSitepingHandler({ store, apiKey: process.env.SITEPING_API_KEY });
+const app = express();
+
+// Raw bytes in: the handler parses and validates the JSON itself. Screenshots
+// travel inline, so allow more than body-parser's 100 kB default.
+app.all("/api/siteping", express.raw({ type: () => true, limit: "2mb" }), async (req, res) => {
+  const handle = siteping[req.method as keyof SitepingHandler];
+  if (!handle) {
+    res.sendStatus(405);
+    return;
+  }
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+  }
+  const response = await handle(
+    new Request(`${req.protocol}://${req.get("host")}${req.originalUrl}`, {
+      method: req.method,
+      headers,
+      body: Buffer.isBuffer(req.body) && req.body.length > 0 ? new Uint8Array(req.body) : null,
+    }),
+  );
+  res.status(response.status);
+  response.headers.forEach((value, name) => res.setHeader(name, value));
+  res.send(Buffer.from(await response.arrayBuffer()));
+});
+```
+
+Rate limiting is not handled here: apply it in your framework or reverse proxy, on `POST` above all — the widget calls it from anonymous browsers.
+
+## Options
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `store` | `SitepingStore` | — | Required. [Prisma](/docs/adapters/prisma), [Drizzle](/docs/adapters/drizzle), [memory](/docs/adapters/memory) or [your own](/docs/adapters/writing-an-adapter) |
+| `apiKey` | `string` | — | Enables Bearer auth. Requests send `Authorization: Bearer <key>` |
+| `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` when `apiKey` is set | Methods that skip auth. **Passing a value replaces the default** — include `"POST"` yourself or the widget can no longer submit |
+| `requireAuthForDestructive` | `boolean` | `true` | Without an `apiKey`, PATCH and DELETE answer `401`. In `NODE_ENV=production` the factory refuses to start without an `apiKey` |
+| `redactUnauthenticatedEmails` | `boolean` | `true` | See [what responses expose](#what-responses-expose) |
+| `access` | `SitepingAccessControl` | — | Your own authentication instead of the four options above — see [custom access](#custom-access) |
+| `allowedOrigins` | `string[]` | — | Exact-match CORS allowlist. **No wildcard support** — `["*"]` matches nothing; unset means no CORS headers at all. Listed origins may send `Content-Type`, `Authorization`, and any custom header their preflight asks for (e.g. from the widget's `headers` option) |
+| `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Fire on each new feedback — see [webhooks](#webhooks) |
+| `waitUntil` | `(promise) => void` | — | Keeps webhook deliveries alive after the response on serverless and edge runtimes — see [webhooks](#webhooks) |
+| `beforeCreate` | `(input, context) => input` | — | Rewrite a submission before it is stored — see [extension points](#extension-points) |
+| `presentFeedback` | `(feedback, context) => feedback` | — | Transform each record before it is sent |
+| `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
+| `logger` | `{ error(message, context) }` | `console.error` | Where unexpected failures go, with the request's method and path |
+| `describeError` | `(error) => string \| undefined` | — | The message of a `500` instead of `"Internal server error"`, e.g. a "run your migrations" hint. Never return the error's own details |
+
+## The security model, honestly
+
+- **Reads are public by default.** Without an `apiKey`, anyone who knows the URL can list feedbacks (with emails redacted — see below).
+- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key. That check reads `process.env.NODE_ENV`, so it only runs where `process` exists; elsewhere the `401` still applies.
+- `OPTIONS` is always public — preflights must work.
+- **Cross-project checks need the store.** PATCH and DELETE verify that the record belongs to the `projectName` they name through the store's optional `verifyProjectOwnership` — every bundled store and anything built on `createCollectionStore` implements it. A hand-written store that omits it skips the check: any caller who knows a feedback `id` can then modify it regardless of `projectName`, so implement the method (see [writing an adapter](/docs/adapters/writing-an-adapter#project-ownership)) or put the endpoint behind an `apiKey`.
+
+### What responses expose
+
+- `clientId` is stripped from **every** response.
+- `authorEmail` is blanked unless the request carries a valid `Authorization: Bearer` header. The one exception: a successful `POST` echoes the email back to its author.
+
+Under [`access`](#custom-access), `canReadAuthorEmail` decides instead, for every response — `POST` included.
+
+## Custom access
+
+A shared key suits a site and its dashboard. When reviewers log in, pass `access` instead: the handler asks your code who is calling and what they may do, from the standard `Request` — a session cookie, a JWT, a header set by your proxy.
+
+```ts
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  allowedOrigins: ["https://client-site.com"],
+  access: {
+    // null → 401
+    authenticate: (request) => getSessionUser(request),
+    // false → 403
+    authorize: ({ principal, action, projectName }) =>
+      action === "create" || principal.projects.includes(projectName),
+    // reviewer emails are personal data
+    canReadAuthorEmail: (principal) => principal.isStaff,
+  },
+});
+```
+
+- **`authenticate`** runs on every method but `OPTIONS`. `null` or `undefined` answers `401`. Its return type types `principal` everywhere else.
+- **`authorize`** receives the `action` (`create`, `list`, `update`, `delete`, `deleteAll`), the `projectName` and, for `update` and `delete`, the `feedbackId`. It defaults to letting every authenticated caller through. PATCH and DELETE address records by id, so the factory refuses to start with an `authorize` over a store that lacks `verifyProjectOwnership` — every bundled store has it.
+- **`canReadAuthorEmail`** defaults to `true`.
+- A callback that throws answers a logged `500`.
+
+`access` replaces `apiKey`, `publicEndpoints`, `requireAuthForDestructive` and `redactUnauthenticatedEmails`: passing both is a type error. From a page on another origin, send the credential through the widget's `headers` option — the widget does not send cookies cross-origin.
+
+### CSRF protection
+
+A browser attaches cookies to a forged cross-site request too, so under `access`, `POST`, `PATCH` and `DELETE` pass two checks before anything else runs:
+
+- **JSON only.** A body without `Content-Type: application/json` answers `415`. That type forces a CORS preflight, which a foreign page fails.
+- **Origin.** With `allowedOrigins`, a mutation whose `Origin` is neither listed nor the endpoint's own answers `403` and is logged. Requests without `Origin` — server-to-server calls, curl — pass. Behind a proxy that rewrites the request URL, list your public origin too, or same-origin calls look foreign.
+
+Lists are also sent with `Cache-Control: no-store`, since they depend on who asks. The `apiKey` policy needs neither: its key travels in a header no forged request can set.
+
+## Extension points
+
+```ts
+createSitepingHandler({
+  store,
+  access,
+  // Take the author from the session, and scrub tokens pasted in the message.
+  beforeCreate: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name,
+    authorEmail: principal.email,
+    message: input.message.replace(/token=\S+/g, "token=[redacted]"),
+  }),
+  hooks: {
+    onCreated: (feedback) => tracker.openIssue(feedback),
+    // Throw to keep the record: the DELETE answers 502 and can be retried.
+    onDeleting: (target) => tracker.closeIssues(target),
+  },
+});
+```
+
+- **`beforeCreate`** runs on the validated submission, before `authorize` — which sees the project it returns.
+- **`presentFeedback`** runs on each record just before it is sent; `clientId` stripping and email redaction still apply after it.
+- **`onCreated`**, **`onUpdated`** and **`onDeleted`** are awaited before the response, so serverless runtimes don't cut them off. A throw is logged and never fails the request: the write already happened. `onCreated` runs once per stored feedback, never for a replayed `clientId`.
+- **`onDeleting`** runs before the delete, with `{ kind: "single", id, projectName }` or `{ kind: "project", projectName }`. A throw keeps the record and answers `502`.
+
+These callbacks get `{ request, principal }` as their context; `principal` is `null` under the `apiKey` policy. Hooks written as class methods keep their `this`.
+
+## HTTP reference
+
+One endpoint, five methods. All bodies are JSON.
+
+| Method | Purpose | Success |
+|---|---|---|
+| `POST` | Create feedback (widget submissions) | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks or `onCreated` twice); a `clientId` already used by **another** project is refused with `409` |
+| `GET` | List feedbacks | `200` + `{ feedbacks, total }`, with `Cache-Control: private, max-age=5` (`no-store` under `access`) |
+| `PATCH` | Change a status | `200` + updated record |
+| `DELETE` | Delete one or all | `200` + `{ deleted: true }` |
+| `OPTIONS` | CORS preflight | `204` |
+
+**GET query parameters:** `projectName` (required), `page` (default 1), `limit` (default 50, max 100), `type`, `status`, `statuses` (comma-separated list, max 4 — e.g. `statuses=open,in_progress`), `search`, `url`, `urlPattern`.
+
+**PATCH body:** `{ id, projectName, status }` — all three required. `status` is one of `open`, `in_progress`, `resolved`, `wont_fix`. The server derives `resolvedAt` automatically: set when the status is closed (`resolved`/`wont_fix`), cleared otherwise.
+
+**DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
+
+**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project → `409 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
+
+### Validation limits worth knowing
+
+`message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
+
+## Webhooks
+
+Get pinged on every new feedback:
+
+```ts
+createSitepingHandler({
+  store,
+  webhooks: [
+    { url: process.env.SLACK_WEBHOOK_URL!, type: "slack" },
+    { url: "https://my-api.dev/hooks/siteping", type: "generic", headers: { "x-secret": "…" } },
+  ],
+});
+```
+
+`type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the record as JSON with the author's email unredacted, so treat generic webhook targets as trusted; `clientId` is stripped like everywhere else). Each call has a 5-second timeout, failures never block the submission, and an optional `onError(err, feedbackId)` lets you log them. A replayed `clientId` never fires them again, and two overlapping submissions of the same `clientId` (the widget retrying a request that timed out) notify once when they reach the same server process. Across several instances only the store can tell them apart: Prisma's `@unique` on `clientId` does, and so does the unique index of the [Drizzle store](/docs/adapters/drizzle). The memory and localStorage stores, like any store built on `createCollectionStore`, deduplicate only within one store instance, and a custom store that returns the existing record on a duplicate may notify twice unless it implements `createFeedbackIfAbsent` atomically — see [Writing an adapter](/docs/adapters/writing-an-adapter#exactly-once-creation-effects).
+
+Deliveries are not awaited: the widget gets its answer first. A serverless or edge runtime may freeze or cancel that work once the response is out, so hand it over with `waitUntil`:
+
+```ts
+import { after } from "next/server";
+
+createSitepingHandler({ store, webhooks, waitUntil: after });
+```
+
+`waitUntil` from `@vercel/functions` or from `cloudflare:workers` works the same way — pass a standalone function, not an unbound method.
+
+Feedback text is typed by anonymous visitors, so the chat payloads are hardened: Slack text is escaped (a comment containing `<!channel>` is shown literally, never as a notification) and Discord messages are sent with mention parsing disabled (`allowed_mentions: { parse: [] }`) and their markdown escaped (a `[Reset your password](https://…)` masked link is shown as typed, never as a disguised link) — a public form can't be used to ping your whole server or phish it. Long values are truncated to Slack's and Discord's size limits (after escaping), so a 2000-character page URL never gets the whole notification rejected.

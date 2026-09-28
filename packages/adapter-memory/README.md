@@ -18,10 +18,11 @@ npm install @siteping/adapter-memory
 
 ```ts
 import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler } from "@siteping/server";
 
 const store = new MemoryStore();
 
-// Behind the HTTP handler (server):
+// Behind the HTTP handler (server, no Prisma involved):
 createSitepingHandler({ store });
 
 // Or directly in the widget (client-side mode):
@@ -30,7 +31,7 @@ initSiteping({ store, projectName: "preview" });
 
 `clear()` resets it between test cases. Duplicate `clientId` submissions return the existing record (retry-safe), unknown IDs throw `StoreNotFoundError`, and records are returned **by reference** — clone before mutating.
 
-Writing your own adapter? This store passes the shared 56-test conformance suite (`testSitepingStore` from `@siteping/core/testing`) — yours should too.
+Writing your own adapter? This store passes the shared 56-test conformance suite (`testSitepingStore` from `@siteping/adapter-kit/testing`) — yours should too.
 
 ## License
 
