@@ -163,6 +163,11 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const countsGenRef = useRef(0);
   /** Latest in-flight mutation per feedback id. */
   const inFlightRef = useRef(new Map<string, InFlight>());
+  /** Pending-mutation count and start sequence — tell loadMore its page may predate an optimistic edit. */
+  const pendingMutationsRef = useRef(0);
+  const mutationSeqRef = useRef(0);
+  /** loadMore's own token: appending must not invalidate anything else, only an older append. */
+  const loadMoreTokenRef = useRef(0);
   /** Bumped on every project switch — a mutation failing after one must not touch the new project's state. */
   const projectEpochRef = useRef(0);
   /** Bumped on every `pendingUndo` write — a failed mutation restores the undo only if nothing replaced its own. */
@@ -272,7 +277,12 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const loadMore = useCallback(async (): Promise<void> => {
     if (loading || loadingMore) return;
     if (totalRef.current === null || itemsRef.current.length >= totalRef.current) return;
-    const token = ++tokenRef.current;
+    // Appending doesn't bump the list token — only a newer load() (or append) supersedes it.
+    const listToken = tokenRef.current;
+    const token = ++loadMoreTokenRef.current;
+    const mutationSeq = mutationSeqRef.current;
+    const mutationPending = pendingMutationsRef.current > 0;
+    const superseded = () => listToken !== tokenRef.current || token !== loadMoreTokenRef.current;
     setLoadingMore(true);
     try {
       // Derive the page from what is actually loaded, not a counter —
@@ -286,17 +296,26 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         page: nextPage,
         limit: pageSize,
       });
-      if (token !== tokenRef.current) return;
+      if (superseded()) return;
+      // A mutation in flight during the fetch: the server may not have applied
+      // it yet, so the page can repeat rows removed optimistically and its
+      // total can still count them — the local total already accounts for it.
+      const racing = mutationPending || mutationSeqRef.current !== mutationSeq;
       const seen = new Set(itemsRef.current.map((f) => f.id));
       const fresh = page.feedbacks.filter((f) => !seen.has(f.id));
-      if (fresh.length === 0) setExhausted(true);
+      // Out of rows only when nothing new came back from a short page, or from
+      // any page no racing mutation can explain — a duplicate-only page caused
+      // by an in-flight removal must not end pagination for good.
+      if (fresh.length === 0 && (page.feedbacks.length < pageSize || !racing)) setExhausted(true);
       const nextItems = [...itemsRef.current, ...fresh];
       itemsRef.current = nextItems;
-      totalRef.current = page.total;
       setItems(nextItems);
-      setTotal(page.total);
+      if (!racing) {
+        totalRef.current = page.total;
+        setTotal(page.total);
+      }
     } catch (cause) {
-      if (token !== tokenRef.current) return;
+      if (superseded()) return;
       const err = toError(cause);
       setErrorState(err);
       callbacksRef.current.onError?.(err);
@@ -438,6 +457,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     const prior = inFlightRef.current.get(id);
     if (prior) prior.next = handle;
     inFlightRef.current.set(id, handle);
+    pendingMutationsRef.current += 1;
+    mutationSeqRef.current += 1;
     return handle;
   }, []);
 
@@ -450,6 +471,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
    */
   const settleMutation = useCallback((id: string, handle: InFlight, ok: boolean): boolean => {
     handle.state = ok ? "ok" : "failed";
+    pendingMutationsRef.current -= 1;
     if (inFlightRef.current.get(id) === handle) inFlightRef.current.delete(id);
     let later = handle.next;
     while (later !== null && later.state === "failed") later = later.next;

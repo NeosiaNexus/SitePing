@@ -877,6 +877,84 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
   });
 });
 
+describe("useSitepingInbox — loadMore while a mutation is in flight", () => {
+  // Six open records, m0 newest.
+  function sixOpen(): FeedbackRecord[] {
+    return Array.from({ length: 6 }, (_, i) =>
+      makeRecord({ id: `m${i}`, status: "open", createdAt: new Date(Date.UTC(2026, 6, 20, 10, 10 - i)) }),
+    );
+  }
+
+  /** Two pages (4 rows) loaded at pageSize 2, counts settled. */
+  async function mountPaged() {
+    const source = makeSource(sixOpen());
+    const hook = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize: 2 }));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    await settle();
+    await act(async () => {
+      await hook.result.current.loadMore();
+    });
+    expect(ids(hook.result.current.items)).toEqual(["m0", "m1", "m2", "m3"]);
+    return { source, ...hook };
+  }
+
+  it("a mutation failing after a loadMore still rolls back its row and the total", async () => {
+    const { source, result } = await mountPaged();
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+    let change!: Promise<unknown>;
+    act(() => {
+      change = result.current.changeStatus("m0", "resolved").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      await result.current.loadMore(); // the server still has m0 open: page 2 is all duplicates
+    });
+    await act(async () => {
+      held.reject(new Error("patch failed"));
+      await change;
+    });
+
+    expect(ids(result.current.items)).toEqual(["m0", "m1", "m2", "m3"]);
+    expect(result.current.total).toBe(6);
+    expect(result.current.hasMore).toBe(true);
+  });
+
+  it("a duplicate-only page caused by an in-flight removal does not end pagination", async () => {
+    const { source, result } = await mountPaged();
+    // Hold the change: the server applies it only once the gate opens.
+    const real = source.setStatus.getMockImplementation();
+    const gate = deferred<void>();
+    source.setStatus.mockImplementationOnce(async (id, projectName, status) => {
+      await gate.promise;
+      if (!real) throw new Error("no setStatus implementation");
+      return real(id, projectName, status);
+    });
+    let change!: Promise<void>;
+    act(() => {
+      change = result.current.changeStatus("m0", "resolved");
+    });
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    await act(async () => {
+      gate.resolve();
+      await change;
+    });
+
+    expect(ids(result.current.items)).toEqual(["m1", "m2", "m3"]);
+    expect(result.current.total).toBe(5);
+    expect(result.current.hasMore).toBe(true);
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(ids(result.current.items)).toEqual(["m1", "m2", "m3", "m4", "m5"]);
+    expect(result.current.hasMore).toBe(false);
+  });
+});
+
 describe("useSitepingInbox — re-entering rows respect the whole query", () => {
   it("undo does not insert a row the type filter excludes, nor count it", async () => {
     const { result } = await mountDemo();
