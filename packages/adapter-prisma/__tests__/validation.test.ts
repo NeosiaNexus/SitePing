@@ -59,6 +59,17 @@ describe("feedbackCreateSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it.each(["user@हिंदी.भारत", "françois@exemple.fr".normalize("NFD")])(
+    "accepts the internationalised email %s",
+    (authorEmail) => {
+      expect(feedbackCreateSchema.safeParse({ ...validPayload, authorEmail }).success).toBe(true);
+    },
+  );
+
+  it.each(["a@b.-com", "a@b.com-"])("rejects %s (final label starts or ends with a hyphen)", (authorEmail) => {
+    expect(feedbackCreateSchema.safeParse({ ...validPayload, authorEmail }).success).toBe(false);
+  });
+
   it("rejects empty url", () => {
     // Hosts override `getPageScope()` to return any string identifier
     // (pathname, full URL, opaque slug, …); we only require non-empty.

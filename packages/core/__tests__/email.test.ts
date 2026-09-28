@@ -12,8 +12,15 @@ describe("EMAIL_PATTERN / isValidEmail", () => {
     "user@münchen.de",
     "user@xn--mnchen-3ya.de",
     `${"x".repeat(64)}@example.com`,
+    // A script written with combining marks (\p{M}).
+    "user@हिंदी.भारत",
   ])("accepts %s", (email) => {
     expect(isValidEmail(email)).toBe(true);
+  });
+
+  it("accepts NFD-composed input (base letter + combining mark)", () => {
+    expect(isValidEmail("françois@exemple.fr".normalize("NFD"))).toBe(true);
+    expect(isValidEmail("user@münchen.de".normalize("NFD"))).toBe(true);
   });
 
   it.each([
@@ -22,6 +29,9 @@ describe("EMAIL_PATTERN / isValidEmail", () => {
     ["single-character final label", "a@b.c"],
     ["underscore in the domain", "user@exa_mple.com"],
     ["domain label starting with a hyphen", "user@-dash.com"],
+    ["final label starting with a hyphen", "a@b.-com"],
+    ["final label ending with a hyphen", "a@b.com-"],
+    ["domain label starting with a combining mark", "user@́example.com"],
     ["leading dot in the local part", ".lead@example.com"],
     ["trailing dot in the local part", "user.@example.com"],
     ["doubled dot", "user..dot@example.com"],
