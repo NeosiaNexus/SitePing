@@ -526,6 +526,43 @@ describe("createS3ObjectStore — credentials without s3:ListBucket", () => {
   });
 });
 
+describe("createS3ObjectStore — a body cut short", () => {
+  /** A 200 or 403 whose body errors mid-read, as when the request timeout fires during the download. */
+  function openS3WithBrokenBody(status: number) {
+    const timeout = new DOMException("The operation timed out.", "TimeoutError");
+    return {
+      timeout,
+      objectStore: createS3ObjectStore({
+        endpoint: "https://account.r2.cloudflarestorage.com",
+        bucket: "screens",
+        publicBaseUrl: PUBLIC_BASE_URL,
+        accessKeyId: "AKIDEXAMPLE",
+        secretAccessKey: "s3-secret",
+        treatAccessDeniedAsMissing: true,
+        fetch: async () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(timeout);
+              },
+            }),
+            { status },
+          ),
+      }),
+    };
+  }
+
+  it.each([200, 403])("reports a %i whose body fails to read as a failed request", async (status) => {
+    const { objectStore, timeout } = openS3WithBrokenBody(status);
+
+    const failure = await objectStore.get?.(`siteping-${"a".repeat(32)}.jpg`).catch((error: unknown) => error);
+
+    expect(isObjectStoreRequestError(failure)).toBe(true);
+    expect((failure as ObjectStoreRequestError).status).toBe(status);
+    expect((failure as ObjectStoreRequestError).cause).toBe(timeout);
+  });
+});
+
 /**
  * A memory backend whose `put` times out while the upload is still in flight:
  * the caller gets an unknown outcome at once, and the object is committed

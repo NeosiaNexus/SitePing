@@ -127,13 +127,20 @@ export function createS3ObjectStore({
     async get(key) {
       const response = await send("GET", key, { acceptStatuses: getMissingStatuses });
       if (response.status === HTTP_STATUS_NOT_FOUND) return null;
+      // The request timeout also cuts the body short: a failed read is a failed request.
+      const failure = (cause: unknown) =>
+        new ObjectStoreRequestError("S3", "GET", objectUrl(key).pathname, response.status, { cause });
+      const read = <T>(body: Promise<T>): Promise<T> =>
+        body.catch((cause: unknown) => {
+          throw failure(cause);
+        });
       if (response.status === HTTP_STATUS_FORBIDDEN) {
-        const errorBody = await response.text();
+        const errorBody = await read(response.text());
         if (isAccessDeniedError(errorBody)) return null;
-        throw new ObjectStoreRequestError("S3", "GET", objectUrl(key).pathname, response.status, { cause: errorBody });
+        throw failure(errorBody);
       }
       return {
-        bytes: new Uint8Array(await response.arrayBuffer()),
+        bytes: new Uint8Array(await read(response.arrayBuffer())),
         contentType: response.headers.get("content-type") ?? "application/octet-stream",
       };
     },
