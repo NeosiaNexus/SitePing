@@ -66,14 +66,12 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout: () =>
 }
 
 /**
- * Build the headers for one request — mirrors the dashboard's
- * `createEndpointSource` semantics: `Content-Type` when the request carries a
- * JSON body, then `Bearer` from `apiKey`, then `headers` merged on top
- * (case-insensitively) so an explicit `Authorization` wins.
+ * Build the headers for one request: `Content-Type` when the request
+ * carries a JSON body, then `Bearer` from `apiKey`, then `headers` merged on
+ * top case-insensitively, so an explicit `Authorization` in any casing wins.
  *
  * A function `headers` resolves once per call — retries inside
- * `resilientFetch` reuse the values for the whole retry sequence (the
- * dashboard has the same per-request semantics, without retries). A factory
+ * `resilientFetch` reuse the values for the whole retry sequence. A factory
  * that throws, rejects, or does not settle within 10 s fails the request
  * like a network error — nothing may hold a send forever.
  */
