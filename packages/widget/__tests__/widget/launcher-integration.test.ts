@@ -1097,6 +1097,33 @@ describe("launcher — annotation:complete integration", () => {
   });
 
   // -------------------------------------------------------------------------
+  // Diagnostics snapshot
+  // -------------------------------------------------------------------------
+
+  describe("captureDiagnostics", () => {
+    it("submits a snapshot within the server caps even when larger buffer sizes are configured", async () => {
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      mockSendFeedback.mockResolvedValue(makeFeedbackResponse());
+      try {
+        const instance = launch(defaultConfig({ captureDiagnostics: { maxConsoleEntries: 200, network: false } }));
+        for (let i = 0; i < 300; i++) console.log(`log-${i}`);
+
+        capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+        await vi.waitFor(() => {
+          expect(mockSendFeedback).toHaveBeenCalledOnce();
+        });
+
+        // adapter-prisma: `diagnostics.console` max 50 — more is a 400.
+        const payload = mockSendFeedback.mock.calls[0]![0];
+        expect(payload.diagnostics?.console).toHaveLength(50);
+        instance.destroy();
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Double init guard
   // -------------------------------------------------------------------------
 

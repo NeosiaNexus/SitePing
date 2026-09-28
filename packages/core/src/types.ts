@@ -31,7 +31,9 @@ export type SitepingSkipReason = "production" | "mobile" | "ssr";
 export interface DiagnosticsCaptureOptions {
   console?: boolean | undefined;
   network?: boolean | undefined;
+  /** Console buffer size — default and maximum 50 (the server's cap; larger values are clamped). */
   maxConsoleEntries?: number | undefined;
+  /** Failed-request buffer size — default and maximum 20 (the server's cap; larger values are clamped). */
   maxNetworkEntries?: number | undefined;
 }
 
@@ -179,7 +181,8 @@ export interface SitepingBaseConfig {
    *
    * - `true` — capture with defaults (50 console / 20 network entries).
    * - `false` (default) — no capture, no monkey-patching.
-   * - object — per-channel toggles + custom buffer sizes.
+   * - object — per-channel toggles + smaller buffer sizes (values above the
+   *   50 / 20 server caps are clamped so submissions never fail validation).
    *
    * **Privacy considerations:** console messages may contain anything the
    * host page logs, including user data. Failed network requests record the

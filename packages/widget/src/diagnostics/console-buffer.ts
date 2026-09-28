@@ -14,7 +14,12 @@
  *    behind on `destroy()`.
  */
 
-const DEFAULT_MAX_ENTRIES = 50;
+/**
+ * Default AND ceiling: adapter-prisma validates `diagnostics.console` at max
+ * 50 entries, so a larger buffer would turn every submission into a 400.
+ */
+const MAX_ENTRIES = 50;
+/** Under the server's 600-char `message` cap. */
 const MAX_MESSAGE_LENGTH = 500;
 
 /** Per-entry shape — sent to the server in the diagnostics payload. */
@@ -99,11 +104,12 @@ export class ConsoleBuffer {
   private wrappers = new Map<ConsoleEntry["level"], (...args: unknown[]) => void>();
   private disposed = false;
 
-  constructor(maxEntries: number = DEFAULT_MAX_ENTRIES) {
-    // Guard against pathological values — 0 disables silently, negative
-    // numbers fall through to the default, and absurdly large numbers are
-    // capped so a misuse can't OOM the page.
-    this.maxEntries = Math.min(Math.max(Math.floor(maxEntries), 0), 1000);
+  constructor(maxEntries: number = MAX_ENTRIES) {
+    // Guard against pathological values — 0 disables silently, NaN / Infinity
+    // / negative numbers (untyped script-tag configs) fall back to the
+    // default, and anything above the server cap is clamped to it.
+    this.maxEntries =
+      Number.isFinite(maxEntries) && maxEntries >= 0 ? Math.min(Math.floor(maxEntries), MAX_ENTRIES) : MAX_ENTRIES;
 
     if (typeof console === "undefined") return;
 

@@ -68,6 +68,31 @@ describe("ConsoleBuffer", () => {
     buffer.dispose();
   });
 
+  it("never holds more than the server's 50-entry cap, whatever size is configured", () => {
+    // adapter-prisma rejects `diagnostics.console` > 50 with a 400 — a larger
+    // buffer would make every submission fail.
+    const buffer = new ConsoleBuffer(200);
+    for (let i = 0; i < 300; i++) {
+      console.log(`msg-${i}`);
+    }
+    const entries = buffer.getEntries();
+    expect(entries).toHaveLength(50);
+    expect(entries[49]?.message).toBe("msg-299");
+    buffer.dispose();
+  });
+
+  it.each([Number.NaN, -1, Number.POSITIVE_INFINITY])(
+    "falls back to the default size for an invalid size (%s)",
+    (size) => {
+      const buffer = new ConsoleBuffer(size);
+      for (let i = 0; i < 2000; i++) {
+        console.log(`msg-${i}`);
+      }
+      expect(buffer.getEntries()).toHaveLength(50);
+      buffer.dispose();
+    },
+  );
+
   it("dispose restores the original console methods", () => {
     const before = console.log;
     const buffer = new ConsoleBuffer();

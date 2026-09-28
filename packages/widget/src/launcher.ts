@@ -41,8 +41,9 @@ interface NormalisedDiagnostics {
  * - `undefined` / `false` → everything off (no monkey-patching).
  * - `true` → console + network on with the defaults (50 / 20).
  * - object → per-channel toggles + optional custom sizes; missing booleans
- *   default to `true` so users can pass `{ maxConsoleEntries: 200 }` and
- *   still get both channels.
+ *   default to `true` so users can pass `{ maxConsoleEntries: 10 }` and
+ *   still get both channels. The buffers sanitise sizes themselves: capped
+ *   at the server limits (50 / 20), NaN / negative → default.
  */
 function normaliseDiagnosticsOptions(value: SitepingConfig["captureDiagnostics"]): NormalisedDiagnostics {
   if (value === undefined || value === false) {

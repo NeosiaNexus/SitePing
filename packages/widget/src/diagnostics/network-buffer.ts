@@ -13,8 +13,17 @@
  * `NetworkEntry` on failure.
  */
 
-const DEFAULT_MAX_ENTRIES = 20;
+/**
+ * Server schema limits (adapter-prisma `networkEntrySchema`). Entries are
+ * clamped to them on capture: one out-of-range field fails validation for
+ * the whole feedback, not just its diagnostics. `MAX_ENTRIES` is both the
+ * default and the ceiling of the buffer size.
+ */
+const MAX_ENTRIES = 20;
 const MAX_URL_LENGTH = 2000;
+const MAX_METHOD_LENGTH = 20;
+const MAX_DURATION_MS = 600_000;
+const MAX_STATUS = 599;
 
 /** Per-entry shape — sent to the server in the diagnostics payload. */
 export interface NetworkEntry {
@@ -69,8 +78,11 @@ export class NetworkBuffer {
   private wrappedXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
   private disposed = false;
 
-  constructor(maxEntries: number = DEFAULT_MAX_ENTRIES) {
-    this.maxEntries = Math.min(Math.max(Math.floor(maxEntries), 0), 500);
+  constructor(maxEntries: number = MAX_ENTRIES) {
+    // Same guard as ConsoleBuffer: 0 disables, non-finite / negative falls
+    // back to the default, larger values clamp to the server cap.
+    this.maxEntries =
+      Number.isFinite(maxEntries) && maxEntries >= 0 ? Math.min(Math.floor(maxEntries), MAX_ENTRIES) : MAX_ENTRIES;
     this.installFetch();
     this.installXhr();
   }
@@ -80,7 +92,14 @@ export class NetworkBuffer {
     if (this.entries.length >= this.maxEntries) {
       this.entries.shift();
     }
-    this.entries.push(entry);
+    // A request left open > 10 min, an exotic method, or a non-standard
+    // status (fetch allows up to 999 — LinkedIn answers 999) would each 400.
+    this.entries.push({
+      ...entry,
+      method: entry.method.slice(0, MAX_METHOD_LENGTH),
+      status: Math.min(entry.status, MAX_STATUS),
+      durationMs: Math.min(Math.max(entry.durationMs, 0), MAX_DURATION_MS),
+    });
   }
 
   private installFetch(): void {

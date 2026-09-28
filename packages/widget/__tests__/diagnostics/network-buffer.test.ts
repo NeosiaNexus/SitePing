@@ -68,6 +68,43 @@ describe("NetworkBuffer — fetch", () => {
     buffer.dispose();
   });
 
+  it("never holds more than the server's 20-entry cap, whatever size is configured", async () => {
+    fetchSpy.mockResolvedValue(new Response("", { status: 500 }));
+    const buffer = new NetworkBuffer(100);
+    for (let i = 0; i < 30; i++) {
+      await fetch(`/api/err-${i}`);
+    }
+    const entries = buffer.getEntries();
+    expect(entries).toHaveLength(20);
+    expect(entries[19]?.url).toBe("/api/err-29");
+    buffer.dispose();
+  });
+
+  it("falls back to the default size for a NaN size", async () => {
+    fetchSpy.mockResolvedValue(new Response("", { status: 500 }));
+    const buffer = new NetworkBuffer(Number.NaN);
+    for (let i = 0; i < 30; i++) {
+      await fetch(`/api/err-${i}`);
+    }
+    expect(buffer.getEntries()).toHaveLength(20);
+    buffer.dispose();
+  });
+
+  it("clamps each entry to the server schema (durationMs, method, status)", async () => {
+    // A request open > 10 min, an exotic long method, and a non-standard
+    // status (LinkedIn's 999) would each fail adapter-prisma's validation.
+    const nowSpy = vi.spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValueOnce(700_000);
+    fetchSpy.mockResolvedValue({ ok: false, status: 999 } as Response);
+    const buffer = new NetworkBuffer();
+    await fetch("/api/slow", { method: "X".repeat(30) });
+    nowSpy.mockRestore();
+    const entry = buffer.getEntries()[0];
+    expect(entry?.durationMs).toBe(600_000);
+    expect(entry?.method.length).toBeLessThanOrEqual(20);
+    expect(entry?.status).toBeLessThanOrEqual(599);
+    buffer.dispose();
+  });
+
   it("dispose restores the original fetch", () => {
     const buffer = new NetworkBuffer();
     expect(globalThis.fetch).not.toBe(fetchSpy);
