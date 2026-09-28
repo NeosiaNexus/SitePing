@@ -224,8 +224,10 @@ const DISCORD_AUTOLINK = /(<https?:\/\/[^\s<>]+>|https?:\/\/[^\s<>]+)/i;
 const DISCORD_LINK_TRAILER = `.,:;"')]`;
 
 const escapeMarkdownChar = (char: string) => char.replace(DISCORD_MARKDOWN, "\\$&");
+// Global so it stays complete on any input, not only the single code
+// points `discordUrlUnits` passes in.
 const encodeLinkChar = (char: string) =>
-  char.replace(/[[\]()]/, (bracket) => `%${bracket.charCodeAt(0).toString(16).toUpperCase()}`);
+  char.replace(/[[\]()]/g, (bracket) => `%${bracket.charCodeAt(0).toString(16).toUpperCase()}`);
 const count = (text: string, char: string) => text.split(char).length - 1;
 
 /**
