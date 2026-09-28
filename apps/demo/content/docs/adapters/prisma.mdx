@@ -171,7 +171,7 @@ createSitepingHandler({
 
 `type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the record as JSON with the author's email unredacted, so treat generic webhook targets as trusted; `clientId` is stripped like everywhere else). Each call has a 5-second timeout, failures never block the submission, and an optional `onError(err, feedbackId)` lets you log them.
 
-Feedback text is typed by anonymous visitors, so the chat payloads are hardened: Slack text is escaped (a comment containing `<!channel>` is shown literally, never as a notification) and Discord messages are sent with mention parsing disabled (`allowed_mentions: { parse: [] }`) — a public form can't be used to ping your whole server.
+Feedback text is typed by anonymous visitors, so the chat payloads are hardened: Slack text is escaped (a comment containing `<!channel>` is shown literally, never as a notification) and Discord messages are sent with mention parsing disabled (`allowed_mentions: { parse: [] }`) and their markdown escaped (a `[Reset your password](https://…)` masked link is shown as typed, never as a disguised link) — a public form can't be used to ping your whole server or phish it. Long values are truncated to Discord's field limits so a 2000-character page URL never gets the whole notification rejected.
 
 ## Using a custom store
 

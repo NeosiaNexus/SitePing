@@ -130,6 +130,51 @@ describe("buildWebhookPayload — untrusted input", () => {
     expect(payload.allowed_mentions).toEqual({ parse: [] });
     expect(payload.content).toContain("@everyone");
   });
+
+  it("escapes Discord markdown so a visitor can't send a disguised masked link", () => {
+    const phish = "[Reset your password](https://evil.example/phish)";
+    const escaped = "\\[Reset your password\\]\\(https://evil.example/phish\\)";
+    const payload = buildWebhookPayload("discord", {
+      ...FEEDBACK,
+      message: `**urgent** ${phish}`,
+      authorName: phish,
+      projectName: "__proj__",
+      url: phish,
+      viewport: "[x](https://e.co)",
+    });
+    const embed = payload.embeds[0];
+    const all = JSON.stringify(payload);
+
+    expect(all).not.toMatch(/(?<!\\)\[Reset your password\]/);
+    expect(payload.content).toBe(`New **bug** feedback from **${escaped}**`);
+    expect(embed?.description).toBe(`\\*\\*urgent\\*\\* ${escaped}`);
+    expect(embed?.title).toBe("bug — \\_\\_proj\\_\\_");
+    expect(embed?.fields.find((f) => f.name === "URL")?.value).toBe(escaped);
+    expect(embed?.fields.find((f) => f.name === "Author")?.value).toBe(`${escaped} (alice@example.com)`);
+    expect(embed?.fields.find((f) => f.name === "Viewport")?.value).toBe("\\[x\\]\\(https://e.co\\)");
+  });
+
+  it("keeps every Discord value within the API limits, even after escaping", () => {
+    // A 2000-char page URL is valid input; Discord rejects the whole webhook
+    // when one field value exceeds 1024 characters.
+    const payload = buildWebhookPayload("discord", {
+      ...FEEDBACK,
+      url: `https://example.com/${"a".repeat(1980)}`,
+      projectName: "_".repeat(200),
+      authorName: "*".repeat(3000),
+    });
+    const embed = payload.embeds[0];
+    expect(payload.content.length).toBeLessThanOrEqual(2000);
+    expect(embed?.title.length).toBeLessThanOrEqual(256);
+    for (const field of embed?.fields ?? []) expect(field.value.length).toBeLessThanOrEqual(1024);
+  });
+
+  it("never cuts a Discord escape in half when truncating", () => {
+    const payload = buildWebhookPayload("discord", { ...FEEDBACK, url: "_".repeat(2000) });
+    const value = payload.embeds[0]?.fields.find((f) => f.name === "URL")?.value ?? "";
+    expect(value.length).toBeLessThanOrEqual(1024);
+    expect(value).toMatch(/^(\\_)+…$/);
+  });
 });
 
 // ---------------------------------------------------------------------------

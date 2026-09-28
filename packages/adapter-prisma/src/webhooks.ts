@@ -10,8 +10,9 @@
  * - **Type-specific formatting**: Slack uses `{ text, blocks }`, Discord uses
  *   `{ content, embeds }`, generic posts the record as JSON (minus `clientId`).
  * - **Untrusted input**: `message` and `authorName` come from anonymous
- *   visitors. Slack text is escaped and Discord mention parsing is disabled,
- *   so a public feedback form can never be turned into a channel-wide ping.
+ *   visitors. Slack text is escaped, Discord markdown is escaped and its
+ *   mention parsing disabled, so a public feedback form can never be turned
+ *   into a channel-wide ping or a disguised link.
  * - **Timeout**: 5s by default (overridable per webhook).
  * - **Error handling**: `config.onError(err, feedback.id)` is invoked when
  *   present; otherwise we log a one-liner to `console.warn` so the issue is
@@ -166,23 +167,68 @@ function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
 }
 
 /**
+ * Discord API limits — a payload exceeding any of them is rejected whole
+ * (HTTP 400), so the notification is lost rather than truncated.
+ */
+const DISCORD_CONTENT_MAX = 2000;
+const DISCORD_TITLE_MAX = 256;
+const DISCORD_FIELD_VALUE_MAX = 1024;
+
+/**
+ * Characters Discord's markdown treats as syntax: emphasis, code, spoilers,
+ * quotes, headings (and `-#` subtext), masked links (`[text](url)`), and
+ * `<…>` mentions / channel links. `\` is escaped too so a visitor's own
+ * backslash can't cancel one of ours. `-` is left alone: outside `-#` it only
+ * starts a bullet list — cosmetic, and escaping it would litter every
+ * hyphenated name and URL.
+ */
+const DISCORD_MARKDOWN = /[\\*_~`|>#[\]()<]/g;
+
+/**
+ * Backslash-escape Discord markdown in untrusted text, truncated so the
+ * ESCAPED result fits `max`. Truncation walks whole characters and their
+ * escapes, so an escape is never cut in half. Feedback text is typed by
+ * anonymous visitors: unescaped, `[Reset your password](https://evil.example)`
+ * renders as a disguised link — the same threat `escapeSlackText` handles.
+ */
+function escapeDiscordText(text: string, max: number): string {
+  const escaped = text.replace(DISCORD_MARKDOWN, "\\$&");
+  if (escaped.length <= max) return escaped;
+  let out = "";
+  for (const char of text) {
+    const unit = char.replace(DISCORD_MARKDOWN, "\\$&");
+    if (out.length + unit.length > max - 1) break;
+    out += unit;
+  }
+  return `${out}…`;
+}
+
+/**
  * Discord message: content fallback + embed for rich rendering. Sent with
  * mention parsing disabled — `content` embeds the author name, and Discord
- * would otherwise turn `@everyone` / `@here` into a server-wide ping.
+ * would otherwise turn `@everyone` / `@here` into a server-wide ping. Every
+ * user-supplied value is markdown-escaped and sized to its slot's limit.
  */
 function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
-  const preview = truncate(feedback.message);
+  const contentLead = `New **${feedback.type}** feedback from **`;
+  const titleLead = `${feedback.type} — `;
+  // Two halves + " ()" stay under the field-value limit.
+  const authorHalf = Math.floor((DISCORD_FIELD_VALUE_MAX - 3) / 2);
   return {
-    content: `New **${feedback.type}** feedback from **${feedback.authorName}**`,
+    content: `${contentLead}${escapeDiscordText(feedback.authorName, DISCORD_CONTENT_MAX - contentLead.length - 2)}**`,
     embeds: [
       {
-        title: `${feedback.type} — ${feedback.projectName}`,
-        description: preview,
+        title: `${titleLead}${escapeDiscordText(feedback.projectName, DISCORD_TITLE_MAX - titleLead.length)}`,
+        description: escapeDiscordText(feedback.message, 300),
         color: DISCORD_COLORS[feedback.type] ?? DEFAULT_DISCORD_COLOR,
         fields: [
-          { name: "URL", value: feedback.url, inline: false },
-          { name: "Author", value: `${feedback.authorName} (${feedback.authorEmail})`, inline: true },
-          { name: "Viewport", value: feedback.viewport, inline: true },
+          { name: "URL", value: escapeDiscordText(feedback.url, DISCORD_FIELD_VALUE_MAX), inline: false },
+          {
+            name: "Author",
+            value: `${escapeDiscordText(feedback.authorName, authorHalf)} (${escapeDiscordText(feedback.authorEmail, authorHalf)})`,
+            inline: true,
+          },
+          { name: "Viewport", value: escapeDiscordText(feedback.viewport, DISCORD_FIELD_VALUE_MAX), inline: true },
         ],
         timestamp: new Date(feedback.createdAt).toISOString(),
       },
