@@ -94,9 +94,15 @@ export class FakeFeedbackDelegate {
     return result.map(({ r }) => pick(r, select));
   }
 
-  async findUnique({ where }: { where: { id?: string; clientId?: string } }): Promise<FeedbackRecord | null> {
+  async findUnique({
+    where,
+    select,
+  }: {
+    where: { id?: string; clientId?: string };
+    select?: Record<string, boolean>;
+  }): Promise<unknown> {
     const row = this.rows.find((r) => (where.id !== undefined ? r.id === where.id : r.clientId === where.clientId));
-    return row ? structuredClone(row) : null;
+    return row ? pick(row, select) : null;
   }
 
   async update({ where, data }: { where: { id: string }; data: Partial<FeedbackRecord> }): Promise<FeedbackRecord> {

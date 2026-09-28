@@ -269,12 +269,32 @@ export class PrismaStore implements SitepingStore {
     try {
       return await this.insertFeedback(data, screenshotUrl);
     } catch (error) {
-      // A replay of an already-stored clientId (the widget's retry queue):
-      // the existing row keeps its own screenshot, so the one just uploaded
-      // for this attempt is an orphan — drop it before reporting the dup.
-      if (isStoreDuplicate(error)) await this.discardScreenshots([screenshotUrl]);
+      await this.discardUnreferencedUpload(screenshotUrl, data.clientId);
       throw toStoreError(error);
     }
+  }
+
+  /**
+   * Drop the screenshot uploaded for an insert that failed — unless a stored
+   * row references it. Uploads are keyed on clientId, so with a deterministic
+   * key (`feedback/${feedbackId}.jpg`) a replay of a stored clientId wrote to
+   * the very object the existing row points at: deleting it would strip the
+   * surviving feedback of its screenshot. If the lookup itself fails the
+   * object is kept — an orphan beats data loss.
+   */
+  private async discardUnreferencedUpload(url: string | null, clientId: string): Promise<void> {
+    if (!isStoredScreenshotUrl(url) || !this.screenshotStorage?.delete) return;
+    let existing: { screenshotUrl: string | null } | null;
+    try {
+      existing = (await this.prisma.sitepingFeedback.findUnique({
+        where: { clientId },
+        select: { screenshotUrl: true },
+      })) as { screenshotUrl: string | null } | null;
+    } catch {
+      return;
+    }
+    if (existing?.screenshotUrl === url) return;
+    await this.discardScreenshots([url]);
   }
 
   private async insertFeedback(data: FeedbackCreateInput, screenshotUrl: string | null): Promise<FeedbackRecord> {
