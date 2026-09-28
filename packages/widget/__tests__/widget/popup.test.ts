@@ -188,8 +188,8 @@ describe("Popup", () => {
       const typeBtn = document.querySelector<HTMLButtonElement>('[data-type="question"]')!;
       typeBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
-      const result = await promise;
-      expect(result).toBeNull();
+      expect(popup.isOpen).toBe(false);
+      expect(await promise).toBeNull();
     });
   });
 
