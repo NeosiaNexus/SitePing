@@ -95,6 +95,7 @@ vi.mock("../../src/styles/base.js", () => ({
   buildStyles: vi.fn().mockReturnValue("/* styles */"),
 }));
 
+import { adjacentText, neighborText } from "../../src/dom/text-context.js";
 import { launch } from "../../src/launcher.js";
 
 // ---------------------------------------------------------------------------
@@ -379,6 +380,24 @@ describe("launch", () => {
       expect(liveRegions.length).toBeGreaterThan(0);
 
       instance.destroy();
+    });
+
+    it("keeps the live region out of a body-level element's anchor text context", () => {
+      // The live region is appended to <body> after the page — a footer's
+      // suffix used to become "1 feedback markers displayed", which drifts
+      // with the marker count and is empty on the next page load.
+      const footer = document.createElement("footer");
+      footer.textContent = "© Acme";
+      document.body.appendChild(footer);
+      const instance = launch(defaultConfig());
+      const liveRegion = document.querySelector('[role="status"][aria-live="polite"]') as HTMLElement;
+      liveRegion.textContent = "1 feedback markers displayed";
+
+      expect(adjacentText(footer, "after")).toBe("");
+      expect(neighborText(footer)).not.toContain("feedback markers");
+
+      instance.destroy();
+      footer.remove();
     });
 
     it("uses open shadow mode in test environment", () => {

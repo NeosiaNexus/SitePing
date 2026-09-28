@@ -3,9 +3,25 @@
  * Used by both anchor generation (anchor.ts) and resolution (resolver.ts).
  */
 
+import { isWidgetChrome } from "../focus-tracker.js";
+
 /** Raw-char budget for sibling reads that only keep 32–40 chars — generous
  * headroom for leading/trailing whitespace that trimming discards. */
 const SIBLING_READ_CAP = 256;
+
+type SiblingProp = "previousElementSibling" | "nextElementSibling";
+
+/**
+ * `sibling`, or the nearest page element past it in `prop` direction. The
+ * widget appends its own chrome (host, live region, markers, tooltip) to
+ * <body> after the page, and its text changes with marker count / tooltip
+ * state — as anchor context it would drift, and be empty on reload.
+ */
+function pageSibling(sibling: Element | null, prop: SiblingProp): Element | null {
+  let current = sibling;
+  while (current && isWidgetChrome(current)) current = current[prop];
+  return current;
+}
 
 /**
  * Extract ~32 chars of text from the nearest sibling with content.
@@ -17,8 +33,8 @@ const SIBLING_READ_CAP = 256;
  * candidate verification on big pages.
  */
 export function adjacentText(element: Element, direction: "before" | "after"): string {
-  const prop = direction === "before" ? "previousElementSibling" : "nextElementSibling";
-  let sibling: Element | null = element[prop];
+  const prop: SiblingProp = direction === "before" ? "previousElementSibling" : "nextElementSibling";
+  let sibling = pageSibling(element[prop], prop);
   let attempts = 3;
 
   while (sibling && attempts > 0) {
@@ -29,17 +45,17 @@ export function adjacentText(element: Element, direction: "before" | "after"): s
     if (text) {
       return direction === "before" ? text.slice(-32) : text.slice(0, 32);
     }
-    sibling = sibling[prop];
+    sibling = pageSibling(sibling[prop], prop);
     attempts--;
   }
 
   return "";
 }
 
-/** Collect text from immediate siblings for disambiguation context. */
+/** Collect text from immediate (page, not widget chrome) siblings for disambiguation context. */
 export function neighborText(element: Element): string {
-  const prevSibling = element.previousElementSibling;
-  const nextSibling = element.nextElementSibling;
+  const prevSibling = pageSibling(element.previousElementSibling, "previousElementSibling");
+  const nextSibling = pageSibling(element.nextElementSibling, "nextElementSibling");
   const prev = prevSibling ? boundedText(prevSibling, SIBLING_READ_CAP).trim().slice(0, 40) : "";
   const next = nextSibling ? boundedText(nextSibling, SIBLING_READ_CAP).trim().slice(0, 40) : "";
   return [prev, next].filter(Boolean).join(" | ");

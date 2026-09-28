@@ -321,6 +321,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
   liveRegion.setAttribute("role", "status");
   liveRegion.setAttribute("aria-live", "polite");
   liveRegion.setAttribute("aria-atomic", "true");
+  // Widget chrome (see `isWidgetChrome`): anchor text context must never
+  // read "1 feedback markers displayed" off a body-level element's sibling.
+  liveRegion.setAttribute("data-siteping-ignore", "true");
   liveRegion.style.cssText =
     "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;";
   document.body.appendChild(liveRegion);
