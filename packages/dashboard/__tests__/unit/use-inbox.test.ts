@@ -1477,6 +1477,63 @@ describe("useSitepingInbox — undo state after a failed mutation", () => {
     expect(result.current.pendingUndo).toEqual({ id: "r2", previousStatus: "open" });
   });
 
+  it("a failed delete that never touched the undo leaves it to the change that set it", async () => {
+    const { source, result } = await mountDemo();
+    const heldChange = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => heldChange.promise);
+    const heldDelete = deferred<void>();
+    source.remove.mockImplementationOnce(() => heldDelete.promise);
+
+    let change!: Promise<unknown>;
+    let del!: Promise<unknown>;
+    act(() => {
+      change = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    act(() => {
+      del = result.current.deleteFeedback("r2").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      heldDelete.reject(new Error("delete failed"));
+      await del;
+    });
+    expect(result.current.pendingUndo).toEqual({ id: "r1", previousStatus: "open" });
+    await act(async () => {
+      heldChange.reject(new Error("change failed"));
+      await change;
+    });
+
+    expect(ids(result.current.items)).toEqual(["r1", "r2", "r3"]);
+    expect(result.current.pendingUndo).toBeNull();
+  });
+
+  it("an earlier change still takes back the undo a later failed change handed back to it", async () => {
+    const { source, result } = await mountDemo();
+    const heldA = deferred<FeedbackRecord>();
+    const heldB = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => heldA.promise).mockImplementationOnce(() => heldB.promise);
+
+    let a!: Promise<unknown>;
+    let b!: Promise<unknown>;
+    act(() => {
+      a = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    act(() => {
+      b = result.current.changeStatus("r2", "resolved").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      heldB.reject(new Error("b failed"));
+      await b;
+    });
+    expect(result.current.pendingUndo).toEqual({ id: "r1", previousStatus: "open" });
+    await act(async () => {
+      heldA.reject(new Error("a failed"));
+      await a;
+    });
+
+    expect(ids(result.current.items)).toEqual(["r1", "r2", "r3"]);
+    expect(result.current.pendingUndo).toBeNull();
+  });
+
   it("drops the undo as soon as the project switches — an undo in the same tick does nothing", async () => {
     const source = makeSource([
       makeRecord({ id: "a1", projectName: "A", status: "open" }),
