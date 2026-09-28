@@ -167,7 +167,17 @@ function isRetryEntry(value: unknown): value is RetryEntry {
 function readQueue(): RetryEntry[] {
   const raw = localStorage.getItem(RETRY_QUEUE_KEY);
   if (!raw) return [];
-  const parsed: unknown = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // The widget only ever writes JSON.stringify output here, so an external
+    // writer put this value in place. Nothing in it can be replayed; clear it
+    // so the queue works again instead of every write failing on this parse.
+    localStorage.removeItem(RETRY_QUEUE_KEY);
+    console.warn(`[siteping] discarded an unreadable retry queue from localStorage (${raw.length} chars)`);
+    return [];
+  }
   return Array.isArray(parsed) ? parsed.filter(isRetryEntry) : [];
 }
 
@@ -185,7 +195,7 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
       queue.push({ endpoint, payload });
       localStorage.setItem(RETRY_QUEUE_KEY, JSON.stringify(queue));
     } catch {
-      // localStorage full or unavailable — silently drop
+      // localStorage full or unavailable — the new entry is dropped
     }
   });
 }

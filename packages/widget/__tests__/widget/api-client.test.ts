@@ -1150,10 +1150,13 @@ describe("flushRetryQueue", () => {
 
   it("handles corrupted localStorage gracefully", async () => {
     vi.mocked(localStorage.getItem).mockReturnValue("not valid json{{{");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     // Should not throw
     await expect(flushRetryQueue(endpoint)).resolves.toBeUndefined();
     expect(fetch).not.toHaveBeenCalled();
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
   it("treats non-array stored value as empty queue (flushRetryQueue)", async () => {
@@ -1184,6 +1187,84 @@ describe("flushRetryQueue", () => {
 
     // Failed item should be kept in queue
     expect(localStorage.setItem).toHaveBeenCalledWith("siteping_retry_queue", expect.stringContaining("fail"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unparseable stored queue (#344) — written by something other than the
+// widget (DevTools, an extension, other code on the origin). It used to make
+// every readQueue() throw, so the queue stayed disabled on that origin.
+// ---------------------------------------------------------------------------
+
+describe("unparseable retry queue", () => {
+  const KEY = "siteping_retry_queue";
+  const endpoint = "http://localhost/api/siteping";
+  const payload = {
+    projectName: "test",
+    type: "bug" as const,
+    message: "offline feedback",
+    url: "https://example.com",
+    viewport: "1x1",
+    userAgent: "t",
+    authorName: "A",
+    authorEmail: "a@b.com",
+    annotations: [],
+    clientId: "c1",
+  };
+  const queued = JSON.stringify([{ endpoint, payload }]);
+  const validQueue = JSON.stringify([{ endpoint, payload: { ...payload, clientId: "old" } }]);
+  let store: Map<string, string>;
+
+  beforeEach(() => {
+    store = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  /** One submission that fails transiently (network), i.e. one the widget promises to queue. */
+  async function failTransiently(): Promise<void> {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+    await expectTransientFailure(new ApiClient(endpoint, "test"), payload);
+    await new Promise((r) => setTimeout(r, 0)); // let the fire-and-forget queue write settle
+  }
+
+  describe.each([
+    ["garbage", "{not json"],
+    ["a truncated valid queue", validQueue.slice(0, -10)],
+  ])("holding %s", (_label, bad) => {
+    it("is replaced by the next transient failure, with one [siteping] warning", async () => {
+      store.set(KEY, bad);
+      await failTransiently();
+      expect(store.get(KEY)).toBe(queued);
+      expect(console.warn).toHaveBeenCalledExactlyOnceWith(
+        `[siteping] discarded an unreadable retry queue from localStorage (${bad.length} chars)`,
+      );
+    });
+
+    it("is removed by flushRetryQueue with one warning, so the next failure is queued", async () => {
+      store.set(KEY, bad);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 201 }));
+      await flushRetryQueue(endpoint); // page load 1
+      await flushRetryQueue(endpoint, { name: "A", email: "a@b.com" }); // page load 2
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(store.has(KEY)).toBe(false);
+      expect(console.warn).toHaveBeenCalledTimes(1);
+
+      await failTransiently();
+      expect(store.get(KEY)).toBe(queued);
+    });
   });
 });
 
