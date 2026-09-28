@@ -201,6 +201,8 @@ describe("buildWebhookPayload — untrusted input", () => {
   describe("Discord URLs", () => {
     const urlField = (url: string) =>
       buildWebhookPayload("discord", { ...FEEDBACK, url }).embeds[0]?.fields.find((f) => f.name === "URL")?.value;
+    const description = (message: string) =>
+      buildWebhookPayload("discord", { ...FEEDBACK, message }).embeds[0]?.description;
 
     it("keeps a full page URL linkable — no backslash lands inside Discord's autolink", () => {
       expect(urlField("https://example.com/docs/some_page_(v2)?q=a*b~c")).toBe(
@@ -222,10 +224,14 @@ describe("buildWebhookPayload — untrusted input", () => {
     });
 
     it("keeps a URL typed into the message linkable while escaping the text around it", () => {
-      const description = (message: string) =>
-        buildWebhookPayload("discord", { ...FEEDBACK, message }).embeds[0]?.description;
       expect(description("_Price_ is wrong on https://shop.example/product_42#price_box, please fix")).toBe(
         "\\_Price\\_ is wrong on https://shop.example/product_42#price_box, please fix",
+      );
+    });
+
+    it("keeps Discord's <url> link form intact, without letting other <…> syntax through", () => {
+      expect(description("see <https://a.example/some_page> or <@&123>")).toBe(
+        "see <https://a.example/some_page> or \\<@&123\\>",
       );
     });
 

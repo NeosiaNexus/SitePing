@@ -210,13 +210,14 @@ const DISCORD_FIELD_VALUE_MAX = 1024;
 const DISCORD_MARKDOWN = /[\\*_~`|>#[\]()<]/g;
 
 /**
- * An http(s) URL, which Discord autolinks. Backslash escapes inside it would
- * land in the link (browsers read `\` as `/`), so its characters are not
- * escaped: only `[`, `]`, `(`, `)` are percent-encoded, which keeps the
- * address while making sure no masked link can form wherever Discord ends
- * the autolink. The capture group makes `split` keep the URLs.
+ * An http(s) URL, bare or in Discord's `<url>` link form, which Discord
+ * autolinks. Backslash escapes inside it would land in the link (browsers
+ * read `\` as `/`), so its characters are not escaped: only `[`, `]`, `(`,
+ * `)` are percent-encoded, which keeps the address while making sure no
+ * masked link can form wherever Discord ends the autolink. `<https://…>` is
+ * never a mention. The capture group makes `split` keep the URLs.
  */
-const DISCORD_AUTOLINK = /(https?:\/\/[^\s<>]+)/i;
+const DISCORD_AUTOLINK = /(<https?:\/\/[^\s<>]+>|https?:\/\/[^\s<>]+)/i;
 
 const escapeMarkdownChar = (char: string) => char.replace(DISCORD_MARKDOWN, "\\$&");
 const encodeLinkChar = (char: string) =>
