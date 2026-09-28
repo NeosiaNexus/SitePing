@@ -187,6 +187,20 @@ describe("Popup", () => {
       expect(dialog.style.overflowY).toBe("");
     });
 
+    it("caps its whole box when the host page resets box-sizing to border-box", () => {
+      const hostReset = document.head.appendChild(document.createElement("style"));
+      hostReset.textContent = "* { box-sizing: border-box; }";
+      try {
+        popup.show(makeBounds({ top: 450, bottom: 500 }), undefined, { top: 400, bottom: 200 });
+
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+        // max-height already covers the padding and borders: the whole 152px band
+        expect(dialog.style.maxHeight).toBe("152px");
+      } finally {
+        hostReset.remove();
+      }
+    });
+
     it("resolves to null when cancelled (via cancel button)", async () => {
       const promise = popup.show(makeBounds());
 
