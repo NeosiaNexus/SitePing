@@ -50,10 +50,10 @@ describe("computePopupPosition", () => {
 
   it("does not place the popup below an anchor that lies inside the top toolbar band", () => {
     // The anchor ends at 20, inside the 52px top toolbar: below would start at
-    // 28, still under the toolbar.
+    // 28, still under the toolbar. It goes just under the toolbar instead, not
+    // to the far end of the band.
     const position = computePopupPosition(anchor(0, 20), popup, viewport, { top: 52, bottom: 0 });
-    expect(position.top).toBeGreaterThanOrEqual(52 + 8);
-    expect(position.top + popup.height).toBeLessThanOrEqual(viewport.height - 8);
+    expect(position.top).toBe(52 + 8);
   });
 
   it("does not place the popup above an anchor that lies inside the bottom toolbar band", () => {

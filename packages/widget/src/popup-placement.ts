@@ -52,14 +52,14 @@ export interface PopupPosition {
 /**
  * Position the popup next to `anchor`: below it when it fits, above it
  * otherwise, and as a last resort clamped inside the usable viewport (the
- * viewport minus `insets`), keeping its bottom — where the actions live —
- * visible. A side is accepted only when the whole popup stays inside the
- * usable band, so an anchor lying inside a toolbar band never drags the popup
- * under that toolbar. When the popup is taller than the usable band it fills
- * the band and reports a `maxHeight`, so its content scrolls instead of the
- * actions being pushed past the bottom edge. Horizontally it aligns with the
- * anchor's left edge, flips to its right edge when it would overflow, and is
- * clamped inside the viewport margins.
+ * viewport minus `insets`) as close below the anchor as it allows, keeping its
+ * bottom — where the actions live — visible. A side is accepted only when the
+ * whole popup stays inside the usable band, so an anchor lying inside a
+ * toolbar band never drags the popup under that toolbar. When the popup is
+ * taller than the usable band it fills the band and reports a `maxHeight`, so
+ * its content scrolls instead of the actions being pushed past the bottom
+ * edge. Horizontally it aligns with the anchor's left edge, flips to its right
+ * edge when it would overflow, and is clamped inside the viewport margins.
  */
 export function computePopupPosition(
   anchor: Rect,
@@ -83,7 +83,7 @@ export function computePopupPosition(
   } else if (fitsInsideUsableBand(aboveTop)) {
     top = aboveTop;
   } else if (popup.height <= usableHeight) {
-    top = maxBottom - popup.height;
+    top = Math.min(Math.max(belowTop, minTop), maxBottom - popup.height);
   } else {
     top = minTop;
     maxHeight = usableHeight;
