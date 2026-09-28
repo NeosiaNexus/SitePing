@@ -1969,11 +1969,41 @@ describe("Panel", () => {
       await vi.waitFor(() => {
         expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
       });
-      // Nothing was deleted: the selection survives the reload for a retry.
+      // Nothing was deleted: the selection is kept for a retry.
       await vi.waitFor(() => expect(deleteBtn.disabled).toBe(false));
       const checkbox = shadow.querySelector('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!;
       expect(checkbox.getAttribute("aria-checked")).toBe("true");
     });
+
+    it.each(["resolve", "delete"] as const)(
+      "a bulk %s that fails for every item reports one error, without a reload",
+      async (action) => {
+        const fb1 = makeFeedback({ id: "fb-1" });
+        const fb2 = makeFeedback({ id: "fb-2" });
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2], total: 2 });
+        apiClient.resolveFeedback.mockRejectedValue(new Error("offline"));
+        apiClient.deleteFeedback.mockRejectedValue(new Error("offline"));
+        const errorListener = vi.fn();
+        bus.on("feedback:error", errorListener);
+        const checked = (selector: string) =>
+          shadow.querySelector(`${selector} .sp-bulk-checkbox`)!.getAttribute("aria-checked");
+
+        await panel.open();
+        shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+        // During an outage the reload would fail too.
+        apiClient.getFeedbacks.mockClear();
+        apiClient.getFeedbacks.mockRejectedValue(new Error("offline"));
+        const button = shadow.querySelector<HTMLButtonElement>(`.sp-bulk-btn-${action}`)!;
+        button.click();
+        await vi.waitFor(() => expect(button.disabled).toBe(false));
+
+        expect(errorListener).toHaveBeenCalledTimes(1);
+        expect(apiClient.getFeedbacks).not.toHaveBeenCalled();
+        expect(checked('[data-feedback-id="fb-1"]')).toBe("true");
+        expect(checked('[data-feedback-id="fb-2"]')).toBe("true");
+        expect(checked(".sp-bulk-select-all")).toBe("true");
+      },
+    );
   });
 
   // -------------------------------------------------------------------------

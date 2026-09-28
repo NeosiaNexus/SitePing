@@ -813,18 +813,20 @@ export class Panel {
   }
 
   /**
-   * Finish a bulk action. Always reload — items that succeeded must leave the
-   * list (and their markers the page) even when another item failed. Then
-   * re-select the failed items the reload still lists, so the user can retry
-   * them, and surface the first failure, rethrown so BulkActions restores its
-   * buttons.
+   * Finish a bulk action. Reload when any item succeeded — it must leave the
+   * list (and its markers the page) even when another item failed. When every
+   * item failed nothing changed, so skip the reload: during an outage it would
+   * only fail again and report a second error. Then re-select the failed items
+   * still listed, so the user can retry them, and surface the first failure,
+   * rethrown so BulkActions restores its buttons.
    */
   private async settleBulk(ids: string[], results: PromiseSettledResult<unknown>[]): Promise<void> {
-    await this.loadFeedbacks();
+    const failed = ids.filter((_, i) => results[i]?.status === "rejected");
+    if (failed.length < ids.length) await this.loadFeedbacks();
     const failure = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
     if (!failure) return;
     const listed = new Set(this.feedbacks.map((f) => f.id));
-    this.bulk.selectAll(ids.filter((id, i) => results[i]?.status === "rejected" && listed.has(id)));
+    this.bulk.selectAll(failed.filter((id) => listed.has(id)));
     const error = failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason));
     this.bus.emit("feedback:error", error);
     throw error;
