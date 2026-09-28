@@ -166,18 +166,20 @@ test.describe("Widget against the real handler", () => {
     expect(stored?.annotations[0]?.scrollX).toBeLessThan(0);
   });
 
-  test("a diagnostics buffer configured above the server cap still submits", async ({ page, request }, testInfo) => {
+  test("diagnostics buffers configured above the server caps still submit", async ({ page, request }, testInfo) => {
     const project = projectFor(testInfo);
-    // The launcher's own docs example: maxConsoleEntries 200 (server cap: 50).
+    // Larger limits clamp to the server's caps: 50 console and 20 network entries.
     await openWidgetPage(page, { project, diag: "200" });
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       for (let i = 0; i < 120; i++) console.error(`noisy log ${i}`);
+      await Promise.all(Array.from({ length: 30 }, (_, i) => fetch(`/missing-${i}`)));
     });
 
     const response = await annotateAndSend(page, "With diagnostics");
     expect(response.status()).toBe(201);
     const [stored] = await listFeedbacks(request, project);
     expect(stored?.diagnostics?.console).toHaveLength(50);
+    expect(stored?.diagnostics?.network).toHaveLength(20);
   });
 
   test("the panel loads from an endpoint that already carries a query string", async ({ page, request }, testInfo) => {

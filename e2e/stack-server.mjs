@@ -80,13 +80,14 @@ const inboxBundle = (
 function widgetPage(params) {
   const project = params.get("project") ?? "e2e-stack";
   const rtl = params.get("rtl") === "1";
+  const diag = Number(params.get("diag"));
   const config = {
     endpoint: params.get("endpoint") ?? "/api/siteping",
     projectName: project,
     forceShow: true,
     // Skips the identity modal — the submission path is what's under test.
     identity: { name: "E2E Tester", email: "e2e@example.com" },
-    ...(params.get("diag") ? { captureDiagnostics: { maxConsoleEntries: Number(params.get("diag")) } } : {}),
+    ...(diag ? { captureDiagnostics: { maxConsoleEntries: diag, maxNetworkEntries: diag } } : {}),
   };
   return `<!DOCTYPE html>
 <html lang="en"${rtl ? ' dir="rtl"' : ""}>
