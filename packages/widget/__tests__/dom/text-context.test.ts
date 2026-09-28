@@ -176,6 +176,55 @@ describe("widget chrome siblings", () => {
   });
 });
 
+describe("masked siblings", () => {
+  /**
+   * Anchor context is stored with the feedback: text the host masked with
+   * `data-siteping-ignore="true"` must not reach it, whether the mask sits on
+   * the sibling itself or on an element nested inside an unmasked sibling
+   * (the usual pattern: an IBAN or email span inside a row).
+   */
+  function sibling(html: string): HTMLElement {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div;
+  }
+
+  it("adjacentText leaves out masked text nested in a sibling, in both directions", () => {
+    const parent = document.createElement("div");
+    const target = document.createElement("p");
+    parent.append(
+      sibling('Account <span data-siteping-ignore="true"><b>IBAN FR76 1234</b></span>'),
+      target,
+      sibling('<span data-siteping-ignore="true"><b>SECRET</b></span> Total due'),
+    );
+
+    expect(adjacentText(target, "before")).toBe("Account");
+    expect(adjacentText(target, "after")).toBe("Total due");
+  });
+
+  it("adjacentText walks past a sibling whose only text is masked", () => {
+    const parent = document.createElement("div");
+    const header = document.createElement("header");
+    header.textContent = "Acme header";
+    const target = document.createElement("p");
+    parent.append(header, sibling('<span data-siteping-ignore="true"><b>IBAN FR76 1234</b></span>'), target);
+
+    expect(adjacentText(target, "before")).toBe("Acme header");
+  });
+
+  it("neighborText leaves out masked text nested in a sibling", () => {
+    const parent = document.createElement("div");
+    const target = document.createElement("p");
+    parent.append(
+      sibling('<span data-siteping-ignore="true"><b>IBAN FR76 1234</b></span>'),
+      target,
+      sibling('Contact <em data-siteping-ignore="true"><b>jane@acme.test</b></em>'),
+    );
+
+    expect(neighborText(target)).toBe("Contact");
+  });
+});
+
 describe("boundedText / boundedTextEnd", () => {
   it("boundedText returns the leading text of a leaf element up to the cap", () => {
     const el = document.createElement("div");

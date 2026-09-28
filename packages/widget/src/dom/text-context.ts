@@ -23,9 +23,23 @@ function pageSibling(sibling: Element | null, prop: SiblingProp): Element | null
   return current;
 }
 
+/** The host's privacy mask (see screenshot.ts), which widget chrome carries too. */
+function isMasked(node: Node): boolean {
+  return node.nodeType === 1 && (node as Element).getAttribute("data-siteping-ignore") === "true";
+}
+
+/** TreeWalker filter for `skipMasked`: text nodes only, a masked subtree rejected whole. */
+function rejectMasked(node: Node): number {
+  if (node.nodeType === 3) return NodeFilter.FILTER_ACCEPT;
+  return isMasked(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+}
+
 /**
  * Extract ~32 chars of text from the nearest sibling with content.
  * Walks up to 3 siblings in the given direction.
+ *
+ * Sibling context is stored with the feedback, so masked text is never read:
+ * `pageSibling` skips a masked sibling, the walkers a masked descendant.
  *
  * Sibling text is read through the bounded walkers, never `textContent` —
  * a sibling can be an arbitrarily large subtree (a whole `<section>`), and
@@ -40,8 +54,8 @@ export function adjacentText(element: Element, direction: "before" | "after"): s
   while (sibling && attempts > 0) {
     const text =
       direction === "before"
-        ? boundedTextEnd(sibling, SIBLING_READ_CAP).trim()
-        : boundedText(sibling, SIBLING_READ_CAP).trim();
+        ? boundedTextEnd(sibling, SIBLING_READ_CAP, true).trim()
+        : boundedText(sibling, SIBLING_READ_CAP, true).trim();
     if (text) {
       return direction === "before" ? text.slice(-32) : text.slice(0, 32);
     }
@@ -52,12 +66,12 @@ export function adjacentText(element: Element, direction: "before" | "after"): s
   return "";
 }
 
-/** Collect text from immediate (page, not widget chrome) siblings for disambiguation context. */
+/** Collect text from immediate (page, not widget chrome) siblings for disambiguation context, masked text excluded. */
 export function neighborText(element: Element): string {
   const prevSibling = pageSibling(element.previousElementSibling, "previousElementSibling");
   const nextSibling = pageSibling(element.nextElementSibling, "nextElementSibling");
-  const prev = prevSibling ? boundedText(prevSibling, SIBLING_READ_CAP).trim().slice(0, 40) : "";
-  const next = nextSibling ? boundedText(nextSibling, SIBLING_READ_CAP).trim().slice(0, 40) : "";
+  const prev = prevSibling ? boundedText(prevSibling, SIBLING_READ_CAP, true).trim().slice(0, 40) : "";
+  const next = nextSibling ? boundedText(nextSibling, SIBLING_READ_CAP, true).trim().slice(0, 40) : "";
   return [prev, next].filter(Boolean).join(" | ");
 }
 
@@ -68,8 +82,11 @@ export function neighborText(element: Element): string {
  * text, and repeated across scan candidates it degenerates to O(page²).
  * A TreeWalker yields the same text nodes in the same (tree) order and stops
  * as soon as the budget is reached.
+ *
+ * `skipMasked` leaves out text under a `data-siteping-ignore="true"`
+ * descendant.
  */
-export function boundedText(element: Element, cap: number): string {
+export function boundedText(element: Element, cap: number, skipMasked = false): string {
   let out = "";
 
   // Leaf fast path — the majority of scan candidates have no element
@@ -85,7 +102,9 @@ export function boundedText(element: Element, cap: number): string {
     return out.length > cap ? out.slice(0, cap) : out;
   }
 
-  const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const walker = skipMasked
+    ? element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, rejectMasked)
+    : element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   while (out.length < cap) {
     const node = walker.nextNode();
     if (!node) break;
@@ -99,14 +118,14 @@ export function boundedText(element: Element, cap: number): string {
  * counterpart of `boundedText` (TreeWalker only walks forward). Visits text
  * nodes in reverse tree order and stops once the budget is filled.
  */
-export function boundedTextEnd(element: Element, cap: number): string {
+export function boundedTextEnd(element: Element, cap: number, skipMasked = false): string {
   let out = "";
   const walk = (node: Node): boolean => {
     for (let child: Node | null = node.lastChild; child; child = child.previousSibling) {
       if (child.nodeType === 3) {
         out = (child as Text).data + out;
         if (out.length >= cap) return true;
-      } else if (child.nodeType === 1 && walk(child)) {
+      } else if (child.nodeType === 1 && !(skipMasked && isMasked(child)) && walk(child)) {
         return true;
       }
     }
