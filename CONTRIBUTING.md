@@ -142,7 +142,8 @@ is the smallest). The pieces that matter:
 4. **Register in release-please** — add the package to
    `release-please-config.json` (release-type `node`, `bump-minor-pre-major`)
    and to `.release-please-manifest.json` with the pre-first-release
-   placeholder version `"0.0.0"` (the post-release npm check knows to skip it).
+   placeholder version `"0.0.0"` (the post-release npm check knows to skip it;
+   the root `initial-version` makes the first release `0.1.0`).
 5. **Wire `.github/workflows/release.yml`** (4 spots — copy an existing
    publish job): the `release_created` output, the build-artifact path, the
    publish job itself, and the `verify-publish` needs list. A package that
