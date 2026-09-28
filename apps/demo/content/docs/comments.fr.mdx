@@ -1,0 +1,125 @@
+---
+title: Fils de discussion
+description: Des commentaires sur un feedback, stockés à côté de lui et servis par le même endpoint — avec le rôle équipe et les e-mails des relecteurs protégés par votre politique d'accès.
+---
+
+Un feedback porte un fil de commentaires : le relecteur demande « 16 ou 24 px ? », l'équipe répond, et la conversation reste à côté du retour au lieu de partir par e-mail. Les fils sont conservés par votre [store](/fr/docs/adapters) et servis par [`@siteping/server`](/fr/docs/server) sur l'endpoint que vous avez déjà monté — aucune nouvelle route.
+
+Cette page couvre le stockage et l'API HTTP. Le widget et le dashboard n'affichent pas encore les fils.
+
+## Ce que contient un commentaire
+
+| Champ | Type | Notes |
+|---|---|---|
+| `id` | `string` | Attribué par le store |
+| `feedbackId` | `string` | Le feedback dont le fil le contient |
+| `body` | `string` | Nettoyé des espaces en bordure, de 1 à 5000 caractères |
+| `authorName` | `string` | De 1 à 200 caractères |
+| `authorEmail` | `string` | Une adresse valide, ou `""` quand l'auteur n'en a pas (un utilisateur du dashboard). Masqué comme celui du feedback — voir [les e-mails](#e-mails-des-relecteurs) |
+| `authorRole` | `"client" \| "team"` | `client` pour le relecteur sur le site, `team` pour le côté projet — voir [le rôle équipe](#le-rôle-équipe) |
+| `createdAt` | chaîne ISO | Quand le store l'a enregistré |
+
+Chaque feedback d'une réponse porte `comments`, du plus ancien au plus récent : `[]` quand le fil est vide, ou quand le store ne garde aucun commentaire.
+
+- **Des envois idempotents.** Un commentaire porte aussi un `clientId` que le client génère. Renvoyer le même `clientId` renvoie le commentaire enregistré au lieu de l'ajouter deux fois : une requête relancée ne duplique jamais une réponse. Comme celui du feedback, il n'est jamais renvoyé.
+- **100 commentaires par fil** (`MAX_COMMENTS_PER_FEEDBACK`). Les listes embarquent les fils entiers, qui ne sont pas paginés : la limite borne le poids d'un feedback.
+- **Un commentaire ne touche pas à l'`updatedAt` du feedback.** `updatedAt` suit les champs propres au feedback (son statut) ; le `createdAt` du commentaire le plus récent dit quand le fil a bougé pour la dernière fois.
+- **Supprimer un feedback supprime son fil.**
+
+## API HTTP
+
+Les commentaires partagent l'unique endpoint : un corps de `POST` avec un `feedbackId` est un commentaire, un corps de `DELETE` avec un `commentId` en supprime un. Les corps propres aux feedbacks ne portent jamais ces clés.
+
+### Poster un commentaire
+
+```http
+POST /api/siteping
+Content-Type: application/json
+
+{
+  "projectName": "mon-site",
+  "feedbackId": "cm3f8x…",
+  "body": "C'est 16 ou 24 px ?",
+  "authorName": "Alice",
+  "authorEmail": "alice@client.example",
+  "clientId": "4f0c2b8e-4c1d-4f7a-9d4e-6b1f2a3c5d7e"
+}
+```
+
+Il répond `201` avec le commentaire. `authorRole` est optionnel et vaut `client` par défaut. `clientId` est obligatoire — `[a-zA-Z0-9_-]`, jusqu'à 200 caractères : générez-en un par commentaire (`crypto.randomUUID()`) et renvoyez le même en cas de relance.
+
+### Supprimer un commentaire
+
+```http
+DELETE /api/siteping
+Content-Type: application/json
+
+{ "projectName": "mon-site", "feedbackId": "cm3f8x…", "commentId": "cm4a1k…" }
+```
+
+Il répond `200 { "deleted": true }`. Comme tout `DELETE`, il exige l'`apiKey` — ou ce que demande votre [politique d'accès](/fr/docs/server#accès-personnalisé).
+
+### Lire les fils
+
+La liste `GET` ne change pas, à deux ajouts près : les `comments` de chaque feedback, et un objet `capabilities` qui dit si le store accepte les commentaires — un client peut ainsi masquer sa zone de réponse d'emblée au lieu de tomber sur un `501` :
+
+```json
+{
+  "feedbacks": [{ "id": "cm3f8x…", "message": "…", "comments": [] }],
+  "total": 1,
+  "capabilities": { "comments": true }
+}
+```
+
+### Erreurs
+
+| Statut | Quand |
+|---|---|
+| `400 { errors }` | Le corps échoue à la validation (texte vide, e-mail invalide, `clientId` absent…) |
+| `401` / `403` | Identifiants absents, ou refus d'`authorize` ou d'un contrôle CSRF |
+| `404 { error: "Feedback not found" }` | Feedback inconnu, ou d'un autre projet |
+| `404 { error: "Comment not found" }` | Le commentaire n'est pas dans le fil de ce feedback |
+| `409 { error }` | Le fil contient déjà 100 commentaires, ou le `clientId` est déjà utilisé sur un autre feedback |
+| `501 { error: "Comments are not supported by this store" }` | Le store ne garde aucun commentaire — voir [activer les fils](#activer-les-fils-sur-votre-store) |
+
+## Le rôle équipe
+
+Le widget poste depuis des navigateurs anonymes : l'`authorRole` qu'envoie une requête n'est donc qu'une prétention. Le handler ne garde `team` que lorsque votre politique d'accès se porte garante de l'appelant, et marque tout autre commentaire `client` :
+
+- **Avec la politique `apiKey`**, la requête doit porter `Authorization: Bearer <apiKey>`. Le `POST` public, une mauvaise clé et un handler sans `apiKey` obtiennent tous `client`. Un widget configuré avec `apiKey` envoie cette clé depuis le navigateur de chaque visiteur, qui pourrait alors poster au nom de l'équipe : gardez `apiKey` hors des widgets publics.
+- **Avec [`access`](/fr/docs/server#accès-personnalisé)**, c'est `canCommentAsTeam(principal)` qui décide. Par défaut, il reprend votre réponse à `canReadAuthorEmail` — qui peut lire les e-mails des relecteurs est du côté projet —, donc une politique qui distingue déjà les visiteurs n'a rien à ajouter.
+
+`authorize` voit deux actions de plus : `createComment` et `deleteComment`, avec le `feedbackId` — et le `commentId` pour une suppression.
+
+```ts
+createSitepingHandler({
+  store,
+  access: {
+    authenticate: (request) => getSessionUser(request),
+    authorize: ({ principal, action }) =>
+      action === "deleteComment" ? principal.isStaff : true,
+    canReadAuthorEmail: (principal) => principal.isStaff,
+    // Optionnel ici : il reprendrait canReadAuthorEmail.
+    canCommentAsTeam: (principal) => principal.isStaff,
+  },
+});
+```
+
+## E-mails des relecteurs
+
+L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback : vide sauf si le demandeur peut le lire — l'`apiKey` en Bearer, ou `canReadAuthorEmail` avec `access`. La réponse à un `POST` de commentaire renvoie à son auteur l'e-mail du nouveau commentaire, comme le fait un `POST` de feedback ; un `POST` de feedback rejoué ne renvoie que l'e-mail de son auteur, jamais ceux du fil.
+
+## Endpoints publics et abus
+
+- **Lire les réponses depuis le widget.** Avec une `apiKey`, `publicEndpoints` vaut par défaut `["POST", "OPTIONS"]` : `GET` exige la clé, donc un widget public peut poster un commentaire mais pas lire la réponse. Ajoutez `"GET"` à `publicEndpoints` pour que les relecteurs lisent leurs fils — les e-mails restent masqués.
+- **Limitation de débit.** Le `POST` public accepte aussi les commentaires : quiconque connaît l'id d'un feedback et le nom de votre projet peut en ajouter. Limitez le débit de `POST` dans votre framework ou votre reverse proxy ; la limite de 100 commentaires borne la taille d'un fil, pas sa vitesse de remplissage.
+- **Notifications.** Les webhooks et `onCreated` se déclenchent pour les nouveaux feedbacks seulement, pas pour les commentaires.
+
+## Activer les fils sur votre store
+
+| Store | Quoi faire |
+|---|---|
+| [Prisma](/fr/docs/adapters/prisma#fils-de-discussion) | Lancez `npx @siteping/cli sync` pour ajouter le modèle `SitepingComment`, puis `npx prisma db push` (ou `npx prisma migrate dev`). Tant que le client n'est pas généré avec lui, les fils se lisent vides et les écritures de commentaires répondent `501` |
+| [Drizzle](/fr/docs/adapters/drizzle) | Exportez `sitepingComments` depuis votre schéma à côté des autres tables, puis générez et appliquez la migration avec `drizzle-kit` |
+| [Memory](/fr/docs/adapters/memory), [localStorage](/fr/docs/adapters/localstorage) | Rien — les deux gardent les fils. Les données localStorage enregistrées par une version antérieure se lisent avec des fils vides |
+| [Le vôtre](/fr/docs/adapters/writing-an-adapter#fils-de-discussion) | Implémentez les méthodes optionnelles `addComment` et `deleteComment` — `createCollectionStore` fournit les deux |

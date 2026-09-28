@@ -190,7 +190,7 @@ Two implementation strategies:
   `createFeedbackIfAbsent` when `createFeedback` returns the existing record
   on a duplicate, so webhooks fire once per feedback.
 
-Verify with the shared conformance suite (~56 tests — the scaffold pre-wires
+Verify with the shared conformance suite (~67 tests — the scaffold pre-wires
 this file):
 
 ```ts

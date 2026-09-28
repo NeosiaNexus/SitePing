@@ -41,7 +41,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 56 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
+That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 67 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
 
 **The three primitives:**
 
@@ -49,15 +49,15 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 |---|---|
 | `load()` | Return the current full snapshot of records. Sync or async. When `load` and `persist` are both sync, each write runs from load to persist in one step, so nothing else in the same JavaScript process can write in between; an async backend is only serialized against the store's own queue |
 | `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
-| `generateId()` | A unique id, used for both feedback and annotation records |
+| `generateId()` | A unique id, used for feedback, annotation and comment records |
 
-`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional — with `createFeedbackIfAbsent` guaranteed too, so you can delegate to both without a null check.
+`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional — with `createFeedbackIfAbsent`, `addComment` and `deleteComment` guaranteed too, so you can delegate to all of them without a null check.
 
 **A failed `persist` leaves your snapshot untouched.** The engine never mutates the array `load()` returned — every write builds a new array and hands it to `persist`. So if `load()` serves a cached array and the write throws, no phantom record stays visible, and the widget's retry of the same `clientId` is written for real instead of being deduplicated against something that never reached storage.
 
 **Quota pressure drops screenshots first.** When `persist` throws during `createFeedback` and the record carries an inline screenshot, the engine clears `screenshotUrl` — by far the heaviest field — and retries once, so the written comment survives a full storage bucket. If that second write also fails, the error propagates: returning the record would claim a success that never happened.
 
-**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback` and `deleteAllFeedbacks` so each starts from the previous one's result; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
+**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback`, `deleteAllFeedbacks`, `addComment` and `deleteComment` so each starts from the previous one's result — a comment posted while a feedback is resolved keeps both changes; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
 
 ## Query backends
 
@@ -100,10 +100,12 @@ Handlers and the dashboard read behavior off these errors, so throw the kit's cl
 |---|---|
 | `updateFeedback` / `deleteFeedback` on an unknown id | Throw `StoreNotFoundError` — the HTTP handler turns it into a 404 |
 | `createFeedback` with an already-used `clientId` | Either return the existing record (idempotent) or throw `StoreDuplicateError`. Both are valid; handlers cope with either |
+| `addComment` on an unknown feedback, `deleteComment` of a comment not on that feedback's thread | Throw `StoreNotFoundError` — a 404 |
+| `addComment` on a thread that already holds 100 comments | Throw `StoreLimitError` — a 409 |
 | A mutation accepted but not persisted | Throw `StorePersistenceError` instead of reporting a phantom success |
 | Empty results on `getFeedbacks` / `findByClientId` | Don't throw — return an empty array or `null` |
 
-Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStorePersistence`. Use them instead of `instanceof` when you catch across package boundaries — every package bundles its own copy of the classes, so `instanceof` can fail on an error thrown by another one. The guards also recognize Prisma's `P2025` and `P2002` codes.
+Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStorePersistence`. Use them instead of `instanceof` when you catch across package boundaries — every package bundles its own copy of the classes, so `instanceof` can fail on an error thrown by another one. The guards also recognize Prisma's `P2025` and `P2002` codes.
 
 ### Query semantics to match
 
@@ -133,9 +135,20 @@ Implement it whenever your store serves more than one project. When it's absent,
 
 `createFeedbackIfAbsent(data)` is the other optional method: `createFeedback` that also returns whether this call inserted the record — `{ feedback, created }`. The request handlers prefer it over `createFeedback`, and notify webhooks only for `created: true`, so two requests racing on the same `clientId` — the widget retrying a request that timed out, landing on another server instance — notify once. Implement it if your `createFeedback` returns the existing record on a duplicate (`duplicateBehavior: "return"`); a store that throws `StoreDuplicateError` already gives the handlers that signal and can leave it out. The dedup check and the insert must be atomic: of concurrent calls with the same `clientId`, exactly one reports `created: true`, and all return that record. `createCollectionStore` guarantees it within one store instance by queueing its writes; storage shared by several processes (or browser tabs) needs an atomic primitive of its own — a unique constraint, a transaction, a compare-and-set.
 
+## Discussion threads
+
+`addComment(feedbackId, data)` and `deleteComment(feedbackId, commentId)` are optional too. Without them your store has no threads: your records can leave `comments` out, the handler serves every feedback with an empty thread and answers comment writes with `501`. Implement both to support [threads](/docs/comments):
+
+- Return the thread on every record, as `comments`, oldest first — an empty array when there is none.
+- `addComment` is idempotent on `data.clientId`: when a comment with that `clientId` exists, on any thread, return it unchanged. The handler refuses a replay aimed at another feedback.
+- `deleteComment` is scoped to the thread it names, which the caller was authorized for: a comment of another thread is "not found".
+- A thread holds at most `MAX_COMMENTS_PER_FEEDBACK` (100) comments, a comment leaves the feedback's `updatedAt` alone, and deleting a feedback deletes its thread.
+
+`buildCommentRecord(data, { id, feedbackId })` builds the record, and `createCollectionStore` implements both methods.
+
 ## Prove it: the conformance suite
 
-The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 56 tests:
+The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 67 tests:
 
 ```ts
 // __tests__/my-store.test.ts
@@ -161,7 +174,7 @@ testSitepingStore(() => new PostgresStore(db), {
 });
 ```
 
-`verifyProjectOwnership` and `createFeedbackIfAbsent` are covered too: stores that don't implement them skip the assertions, so adding either later is checked automatically with no test changes.
+`verifyProjectOwnership`, `createFeedbackIfAbsent`, `addComment` and `deleteComment` are covered too: stores that don't implement them skip the assertions, so adding any of them later is checked automatically with no test changes. The comment cases include a comment racing status changes on the same store.
 
 ## Using your adapter
 

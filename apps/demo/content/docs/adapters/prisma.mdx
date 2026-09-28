@@ -32,7 +32,7 @@ This is [`@siteping/server`](/docs/server)'s handler with a Prisma store built i
 | `screenshotStorage` | `ScreenshotStorage` | — | Upload screenshots somewhere real instead of inlining data URLs. Ignored when you pass a custom `store` |
 | `caseInsensitiveSearch` | `boolean` | auto-detected | Detected from the Prisma provider (on for PostgreSQL, MongoDB, CockroachDB). Only applies when `prisma` is given |
 
-Every [`@siteping/server` option](/docs/server#options) works too — `apiKey`, `allowedOrigins`, `webhooks`, `access`, hooks… The one addition: when the table is missing, the `500` tells you to run `npx prisma db push` (a `describeError` you pass takes precedence). Their types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) are re-exported here, so a strict package manager such as pnpm needs no direct `@siteping/server` dependency to type a policy on its own.
+Every [`@siteping/server` option](/docs/server#options) works too — `apiKey`, `allowedOrigins`, `webhooks`, `access`, hooks… The one addition: when a SitePing table is missing, the `500` tells you to run `npx prisma db push` (a `describeError` you pass takes precedence). Their types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) are re-exported here, so a strict package manager such as pnpm needs no direct `@siteping/server` dependency to type a policy on its own.
 
 ## Database schema
 
@@ -59,6 +59,7 @@ model SitepingFeedback {
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
   annotations      SitepingAnnotation[]
+  comments         SitepingComment[]
 
   @@index([projectName])
   @@index([projectName, status, createdAt])
@@ -92,9 +93,36 @@ model SitepingAnnotation {
 
   @@index([feedbackId])
 }
+
+model SitepingComment {
+  id          String           @id @default(cuid())
+  feedbackId  String
+  feedback    SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  body        String           @db.Text
+  authorName  String
+  authorEmail String
+  authorRole  String           @default("client")
+  clientId    String           @unique
+  createdAt   DateTime         @default(now())
+
+  @@index([feedbackId, createdAt])
+}
 ```
 
 > `@db.Text` targets PostgreSQL and MySQL. SQLite and CockroachDB reject it, and plain `String` is already unbounded there — `sync` reads your datasource `provider` and leaves `@db.Text` out on those databases. Writing the schema by hand? Drop those attributes yourself.
+
+## Discussion threads
+
+The `SitepingComment` model holds [discussion threads](/docs/comments). A schema synced before it keeps working: without the model, the generated client has no `sitepingComment` delegate, so `PrismaStore` reads every thread empty and the handler answers comment writes with `501`. To turn threads on:
+
+```bash
+npx @siteping/cli sync   # adds SitepingComment and SitepingFeedback.comments
+npx prisma db push       # or: npx prisma migrate dev --name siteping-comments
+```
+
+Both commands regenerate the client. Apply the schema to the database before you deploy that client: it reads the comments table on every list, so until the table exists, lists answer `500` with the missing-table hint.
+
+A thread comes back oldest first. A post connects to its feedback, so an unknown feedback is a `404` on every provider, and the unique `clientId` makes a replayed post return the stored comment. The 100-comment cap is a count before the insert: posts racing for the last free slot may overshoot it.
 
 ## Screenshot storage
 

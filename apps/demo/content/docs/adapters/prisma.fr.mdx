@@ -32,7 +32,7 @@ C'est le handler de [`@siteping/server`](/fr/docs/server) avec un store Prisma i
 | `screenshotStorage` | `ScreenshotStorage` | — | Envoyer les captures quelque part de réel au lieu de les inliner en URL `data:`. Ignoré quand vous passez un `store` personnalisé |
 | `caseInsensitiveSearch` | `boolean` | détecté automatiquement | Détecté depuis le provider Prisma (actif pour PostgreSQL, MongoDB, CockroachDB). Ne s'applique que si `prisma` est fourni |
 
-Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent aussi — `apiKey`, `allowedOrigins`, `webhooks`, `access`, les hooks… Un seul ajout : quand la table manque, la `500` vous indique de lancer `npx prisma db push` (un `describeError` que vous passez a la priorité). Leurs types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) sont réexportés ici : un gestionnaire de paquets strict comme pnpm n'a pas besoin de `@siteping/server` en dépendance directe pour typer une politique à part.
+Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent aussi — `apiKey`, `allowedOrigins`, `webhooks`, `access`, les hooks… Un seul ajout : quand une table SitePing manque, la `500` vous indique de lancer `npx prisma db push` (un `describeError` que vous passez a la priorité). Leurs types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) sont réexportés ici : un gestionnaire de paquets strict comme pnpm n'a pas besoin de `@siteping/server` en dépendance directe pour typer une politique à part.
 
 ## Schéma de base de données
 
@@ -59,6 +59,7 @@ model SitepingFeedback {
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
   annotations      SitepingAnnotation[]
+  comments         SitepingComment[]
 
   @@index([projectName])
   @@index([projectName, status, createdAt])
@@ -92,9 +93,36 @@ model SitepingAnnotation {
 
   @@index([feedbackId])
 }
+
+model SitepingComment {
+  id          String           @id @default(cuid())
+  feedbackId  String
+  feedback    SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  body        String           @db.Text
+  authorName  String
+  authorEmail String
+  authorRole  String           @default("client")
+  clientId    String           @unique
+  createdAt   DateTime         @default(now())
+
+  @@index([feedbackId, createdAt])
+}
 ```
 
 > `@db.Text` cible PostgreSQL et MySQL. SQLite et CockroachDB le refusent, et un `String` simple y est déjà sans limite — `sync` lit le `provider` de votre datasource et y omet `@db.Text`. Vous écrivez le schéma à la main ? Retirez ces attributs vous-même.
+
+## Fils de discussion
+
+Le modèle `SitepingComment` contient les [fils de discussion](/fr/docs/comments). Un schéma synchronisé avant lui continue de fonctionner : sans le modèle, le client généré n'a pas de délégué `sitepingComment`, donc `PrismaStore` lit chaque fil vide et le handler répond `501` aux écritures de commentaires. Pour activer les fils :
+
+```bash
+npx @siteping/cli sync   # ajoute SitepingComment et SitepingFeedback.comments
+npx prisma db push       # ou : npx prisma migrate dev --name siteping-comments
+```
+
+Les deux commandes régénèrent le client. Appliquez le schéma à la base avant de déployer ce client : il lit la table des commentaires à chaque liste, donc tant qu'elle n'existe pas, les listes répondent `500` avec l'indication de table manquante.
+
+Un fil revient du plus ancien au plus récent. Un envoi se rattache à son feedback, donc un feedback inconnu donne un `404` quel que soit le provider, et le `clientId` unique fait qu'un envoi rejoué renvoie le commentaire enregistré. La limite de 100 commentaires est un comptage avant l'insertion : des envois qui se disputent la dernière place libre peuvent la dépasser.
 
 ## Stockage des captures
 

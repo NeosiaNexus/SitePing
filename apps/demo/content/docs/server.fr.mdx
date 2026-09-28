@@ -114,8 +114,8 @@ La limitation de débit n'est pas gérée ici : appliquez-la dans votre framewor
 
 ### Ce que les réponses exposent
 
-- `clientId` est retiré de **toutes** les réponses.
-- `authorEmail` est vidé sauf si la requête porte un en-tête `Authorization: Bearer` valide. Seule exception : un `POST` réussi renvoie l'e-mail à son auteur.
+- `clientId` est retiré de **toutes** les réponses, sur les feedbacks comme sur leurs commentaires.
+- `authorEmail` est vidé sauf si la requête porte un en-tête `Authorization: Bearer` valide — sur les feedbacks comme sur les commentaires de leurs [fils](/fr/docs/comments). Seule exception : un `POST` réussi renvoie l'e-mail à son auteur.
 
 Avec [`access`](#accès-personnalisé), c'est `canReadAuthorEmail` qui décide, pour toutes les réponses — `POST` compris.
 
@@ -140,8 +140,9 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 ```
 
 - **`authenticate`** tourne sur toutes les méthodes sauf `OPTIONS`, et résout **qui** appelle — un objet, une chaîne ou un nombre, jamais un booléen. Toute valeur falsy (`null`, `undefined`, `""`, `0`) répond `401`. Une vérification `true`/`false` est une erreur de type, et un `false` en JavaScript pur répond `401` lui aussi. Son type de retour type `principal` partout ailleurs.
-- **`authorize`** reçoit l'`action` (`create`, `list`, `update`, `delete`, `deleteAll`), le `projectName` et, pour `update` et `delete`, le `feedbackId`. Par défaut, il laisse passer tout appelant authentifié. PATCH et DELETE désignent les enregistrements par id : la factory refuse donc de démarrer avec un `authorize` devant un store sans `verifyProjectOwnership` — tous les stores fournis l'implémentent.
+- **`authorize`** reçoit l'`action` (`create`, `list`, `update`, `delete`, `deleteAll`, et `createComment` / `deleteComment` pour les [fils](/fr/docs/comments)), le `projectName` et, pour `update`, `delete` et les actions de commentaire, le `feedbackId` — plus le `commentId` pour `deleteComment`. Par défaut, il laisse passer tout appelant authentifié. PATCH et DELETE désignent les enregistrements par id : la factory refuse donc de démarrer avec un `authorize` devant un store sans `verifyProjectOwnership` — tous les stores fournis l'implémentent.
 - **`canReadAuthorEmail`** vaut `true` par défaut.
+- **`canCommentAsTeam`** décide si un commentaire qui demande le rôle `team` le garde ; tout autre est marqué `client`. Par défaut, il reprend la réponse de `canReadAuthorEmail` — voir [le rôle équipe](/fr/docs/comments#le-rôle-équipe).
 - Un callback qui lève répond une `500` journalisée.
 
 `access` remplace `apiKey`, `publicEndpoints`, `requireAuthForDestructive` et `redactUnauthenticatedEmails` : passer les deux est une erreur de type. Depuis une page d'une autre origine, envoyez l'identifiant par l'option `headers` du widget — le widget n'envoie pas de cookies en cross-origin.
@@ -189,10 +190,10 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 
 | Méthode | Rôle | Succès |
 |---|---|---|
-| `POST` | Créer un feedback (envois du widget) | `201` + l'enregistrement. Un `clientId` rejoué renvoie l'enregistrement existant au lieu d'échouer (et ne notifie jamais deux fois les webhooks ni `onCreated`) ; un `clientId` déjà utilisé par **un autre** projet est refusé avec `409` |
-| `GET` | Lister les feedbacks | `200` + `{ feedbacks, total }`, avec `Cache-Control: private, max-age=5` (`no-store` avec `access`) |
+| `POST` | Créer un feedback (envois du widget) — ou [un commentaire](/fr/docs/comments#poster-un-commentaire), quand le corps porte un `feedbackId` | `201` + l'enregistrement. Un `clientId` rejoué renvoie l'enregistrement existant au lieu d'échouer (et ne notifie jamais deux fois les webhooks ni `onCreated`) ; un `clientId` déjà utilisé par **un autre** projet est refusé avec `409` |
+| `GET` | Lister les feedbacks, chacun avec son fil | `200` + `{ feedbacks, total, capabilities }`, avec `Cache-Control: private, max-age=5` (`no-store` avec `access`) |
 | `PATCH` | Changer un statut | `200` + l'enregistrement mis à jour |
-| `DELETE` | Supprimer un ou tous | `200` + `{ deleted: true }` |
+| `DELETE` | Supprimer un ou tous — ou [un commentaire](/fr/docs/comments#supprimer-un-commentaire), quand le corps porte un `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | Préflight CORS | `204` |
 
 **Paramètres de requête du GET :** `projectName` (obligatoire), `page` (défaut 1), `limit` (défaut 50, max 100), `type`, `status`, `statuses` (liste séparée par des virgules, max 4 — ex. `statuses=open,in_progress`), `search`, `url`, `urlPattern`.
@@ -201,11 +202,11 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 
 **Corps du DELETE :** `{ id, projectName }` pour un enregistrement, ou `{ projectName, deleteAll: true }` pour tout le projet.
 
-**Erreurs :** JSON invalide → `400 { error }` ; échec de validation → `400 { errors: [{ field, message }] }` ; identifiants absents ou faux → `401` ; refus d'`authorize` ou d'un contrôle CSRF → `403` ; corps non JSON avec `access` → `415` ; id inconnu → `404` ; `clientId` appartenant à un autre projet → `409 { error }` ; `onDeleting` a levé → `502` ; tout le reste → `500 { error: "Internal server error" }`, ou le message que renvoie `describeError`.
+**Erreurs :** JSON invalide → `400 { error }` ; échec de validation → `400 { errors: [{ field, message }] }` ; identifiants absents ou faux → `401` ; refus d'`authorize` ou d'un contrôle CSRF → `403` ; corps non JSON avec `access` → `415` ; id inconnu → `404` ; `clientId` appartenant à un autre projet, ou fil de commentaires plein → `409 { error }` ; écriture de commentaire sur un store sans commentaires → `501 { error }` ; `onDeleting` a levé → `502` ; tout le reste → `500 { error: "Internal server error" }`, ou le message que renvoie `describeError`.
 
 ### Les limites de validation à connaître
 
-`message` ≤ 5000 caractères · `annotations` ≤ 50 par feedback · `screenshotDataUrl` ≤ 1,5 Mo, JPEG/PNG/WebP uniquement · `diagnostics` ≤ 50 entrées console + 20 réseau · `clientId` doit correspondre à `[a-zA-Z0-9_-]+` · `authorEmail` suit le même motif Unicode que la fenêtre d'identité du widget (`françois@exemple.fr` passe), donc une adresse acceptée par la fenêtre n'est jamais refusée ici.
+`message` ≤ 5000 caractères · `annotations` ≤ 50 par feedback · `body` d'un commentaire ≤ 5000 caractères, 100 commentaires par fil · `screenshotDataUrl` ≤ 1,5 Mo, JPEG/PNG/WebP uniquement · `diagnostics` ≤ 50 entrées console + 20 réseau · `clientId` doit correspondre à `[a-zA-Z0-9_-]+` · `authorEmail` suit le même motif Unicode que la fenêtre d'identité du widget (`françois@exemple.fr` passe), donc une adresse acceptée par la fenêtre n'est jamais refusée ici.
 
 ## Webhooks
 
