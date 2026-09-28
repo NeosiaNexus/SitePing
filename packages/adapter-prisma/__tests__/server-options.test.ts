@@ -8,10 +8,10 @@ import { validPayloadNoAnnotations } from "./fixtures.js";
 
 const LIST = "http://localhost/api/siteping?projectName=test-project";
 
-/** A Prisma client whose table is missing, as before `npx prisma db push`. */
-function prismaWithoutTable() {
+/** A Prisma client whose `table` is missing, as before `npx prisma db push`. */
+function prismaWithoutTable(table = "SitepingFeedback") {
   const prisma = fakePrisma();
-  const missingTable = Object.assign(new Error("The table `SitepingFeedback` does not exist"), { code: "P2021" });
+  const missingTable = Object.assign(new Error(`The table \`${table}\` does not exist`), { code: "P2021" });
   vi.spyOn(prisma.sitepingFeedback, "findMany").mockRejectedValue(missingTable);
   return prisma;
 }
@@ -19,14 +19,18 @@ function prismaWithoutTable() {
 const silentLogger = () => ({ error: vi.fn() });
 
 describe("createSitepingHandler — @siteping/server options", () => {
-  it("answers Prisma's missing-table error with the db push hint", async () => {
-    const handler = createSitepingHandler({ prisma: prismaWithoutTable(), logger: silentLogger() });
+  it.each([
+    ["SitepingFeedback"],
+    // A client generated after `sync` added threads, before the database has the table
+    ["SitepingComment"],
+  ])("answers Prisma's missing-table error on %s with the db push hint", async (table) => {
+    const handler = createSitepingHandler({ prisma: prismaWithoutTable(table), logger: silentLogger() });
 
     const response = await handler.GET(new Request(LIST));
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
-      error: "Table 'SitepingFeedback' not found. Run 'npx prisma db push' to create it.",
+      error: "A SitePing table is missing. Run 'npx prisma db push' (or apply your migrations) to create it.",
     });
   });
 
