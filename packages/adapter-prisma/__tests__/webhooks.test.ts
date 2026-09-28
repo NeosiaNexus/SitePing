@@ -639,9 +639,12 @@ describe("createSitepingHandler — webhooks on clientId replays", () => {
     // own report of which call inserted the record keeps the second request
     // from notifying.
     const store = asyncCollectionStore();
-    const handlers = [1, 2].map(() => createSitepingHandler({ store, webhooks: { url: "https://hooks.example.com" } }));
+    const processHandler = () => createSitepingHandler({ store, webhooks: { url: "https://hooks.example.com" } });
 
-    const [first, second] = await Promise.all(handlers.map((handler) => postClientId(handler, "cross-process")));
+    const [first, second] = await Promise.all([
+      postClientId(processHandler(), "cross-process"),
+      postClientId(processHandler(), "cross-process"),
+    ]);
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
     expect(((await first.json()) as { id: string }).id).toBe(((await second.json()) as { id: string }).id);
