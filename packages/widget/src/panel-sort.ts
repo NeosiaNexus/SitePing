@@ -324,10 +324,10 @@ export class PanelSortControls {
     // Position relative to button
     this.element.appendChild(this.menuEl);
 
-    // Close on outside click (next tick to avoid the current click)
-    requestAnimationFrame(() => {
-      this.removeOutsideClick = onClickOutside(this.element, () => this.closeMenu());
-    });
+    // Close on outside click. Armed now, not in a frame that closeMenu()
+    // could miss: capture listeners added while the opening click is at its
+    // target never see that click.
+    this.removeOutsideClick = onClickOutside(this.element, () => this.closeMenu());
   }
 
   private closeMenu(): void {

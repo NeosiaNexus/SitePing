@@ -35,6 +35,24 @@ export function createShadowRoot(): ShadowRoot {
 }
 
 /**
+ * Spy on the targets' click listeners. The returned function lists those
+ * added and not removed since — undo the spies with `vi.restoreAllMocks()`.
+ */
+export function trackClickListeners(...targets: EventTarget[]): () => unknown[] {
+  const spies = targets.map((target) => ({
+    add: vi.spyOn(target, "addEventListener"),
+    remove: vi.spyOn(target, "removeEventListener"),
+  }));
+  return () =>
+    spies.flatMap(({ add, remove }) =>
+      add.mock.calls
+        .filter(([type]) => type === "click")
+        .map(([, listener]) => listener)
+        .filter((listener) => !remove.mock.calls.some(([type, removed]) => type === "click" && removed === listener)),
+    );
+}
+
+/**
  * Run `fn` with `window.innerWidth` stubbed to `width`, restoring the original
  * value afterwards — even when an assertion inside `fn` throws.
  */

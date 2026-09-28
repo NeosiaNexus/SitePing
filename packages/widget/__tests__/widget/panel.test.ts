@@ -6,7 +6,7 @@ import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { createT, tWithParams } from "../../src/i18n/index.js";
 import { Panel } from "../../src/panel.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
-import { createShadowRoot } from "../helpers.js";
+import { createShadowRoot, trackClickListeners } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -2310,6 +2310,21 @@ describe("Panel", () => {
 
       closedPanel.destroy();
       host.remove();
+    });
+
+    it("leaves no click listener behind when the menu closes in the frame it opened", async () => {
+      await panel.open();
+      const liveClickListeners = trackClickListeners(document, shadow);
+      try {
+        const typeBtn = shadow.querySelector<HTMLButtonElement>(".sp-filter-dropdown-btn")!;
+        typeBtn.click();
+        typeBtn.click();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+        expect(liveClickListeners()).toEqual([]);
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
   });
 

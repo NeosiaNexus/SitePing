@@ -1112,9 +1112,8 @@ export class Panel {
 
     this.typeDropdownContainer.appendChild(this.typeDropdownMenu);
 
-    requestAnimationFrame(() => {
-      this.removeTypeDropdownOutsideClick = onClickOutside(this.typeDropdownContainer, () => this.closeTypeDropdown());
-    });
+    // Armed now (see PanelSortControls.openMenu): a frame could outlive the menu.
+    this.removeTypeDropdownOutsideClick = onClickOutside(this.typeDropdownContainer, () => this.closeTypeDropdown());
   }
 
   private closeTypeDropdown(): void {

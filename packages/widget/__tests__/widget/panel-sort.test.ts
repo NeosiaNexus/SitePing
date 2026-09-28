@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
 import { createPageGroupHeader, groupFeedbacksByPage, PanelSortControls, sortFeedbacks } from "../../src/panel-sort.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
+import { trackClickListeners } from "../helpers.js";
 
 function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackResponse {
   return {
@@ -279,6 +280,25 @@ describe("PanelSortControls", () => {
 
     controls.destroy();
     host.remove();
+  });
+
+  it("leaves no click listener behind when destroyed with its menu open", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = host.attachShadow({ mode: "closed" });
+    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
+    root.append(controls.element);
+    const liveClickListeners = trackClickListeners(document, root);
+    try {
+      controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!.click();
+      controls.destroy();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      expect(liveClickListeners()).toEqual([]);
+    } finally {
+      vi.restoreAllMocks();
+      host.remove();
+    }
   });
 });
 
