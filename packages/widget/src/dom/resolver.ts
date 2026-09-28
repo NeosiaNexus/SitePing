@@ -1,5 +1,5 @@
 import type { AnchorData, RectData } from "@siteping/core";
-import { ANCHOR_KEY_ATTR } from "./anchor.js";
+import { ANCHOR_KEY_ATTR, SHADOW_BOUNDARY } from "./anchor.js";
 import { attrHash, scoreFingerprint } from "./fingerprint.js";
 import {
   bigramCounts,
@@ -214,7 +214,7 @@ function buildSignals(anchor: AnchorData): AnchorSignals {
  */
 export function resolveAnchor(anchor: AnchorData, options?: ResolveOptions): AnchorResolution | null {
   const signals = buildSignals(anchor);
-  const pool = gatherSelectorCandidates(anchor);
+  const { pool, treeRoots } = gatherSelectorCandidates(anchor);
 
   const scored: ScoredCandidate[] = [];
   for (const [element, strategy] of pool) {
@@ -249,15 +249,16 @@ export function resolveAnchor(anchor: AnchorData, options?: ResolveOptions): Anc
   // The sweep only helps when something could beat the pool (scan's final is
   // capped by its prior) AND there is at least one stored signal to verify
   // scan candidates against — with none, every scan candidate is discarded
-  // and the sweep is pure cost.
+  // and the sweep is pure cost. A shadow anchor whose host chain no longer
+  // resolves has no tree to sweep at all.
   const verifiable = !!(signals.snippet || signals.fingerprint || signals.prefix || signals.suffix || signals.neighbor);
   const budget = options?.scanBudget;
-  if (verifiable && bestFinal < STRATEGY_PRIORS.scan && !strongVisibleMatch) {
+  if (verifiable && treeRoots.length > 0 && bestFinal < STRATEGY_PRIORS.scan && !strongVisibleMatch) {
     if (budget && budget.remaining <= 0) {
       budget.starved = true;
     } else {
       if (budget) budget.remaining--;
-      for (const element of sweepScanCandidates(signals, pool)) {
+      for (const element of sweepScanCandidates(signals, pool, treeRoots)) {
         const candidate = scoreOne(element, "scan", signals);
         if (candidate) scored.push(candidate);
       }
@@ -277,12 +278,72 @@ export function resolveAnchor(anchor: AnchorData, options?: ResolveOptions): Anc
   };
 }
 
+/** A tree selector strategies can be queried against. */
+type QueryRoot = Document | ShadowRoot;
+
+/**
+ * The first MAX_PER_STRATEGY matches of `selector` across `roots`, in root
+ * order. Throws on an invalid selector, like `querySelectorAll`.
+ */
+function queryRoots(roots: readonly QueryRoot[], selector: string): Element[] {
+  const found: Element[] = [];
+  for (const root of roots) {
+    const matches = root.querySelectorAll(selector);
+    for (let i = 0; i < matches.length && found.length < MAX_PER_STRATEGY; i++) {
+      const el = matches[i];
+      if (el) found.push(el);
+    }
+    if (found.length === MAX_PER_STRATEGY) break;
+  }
+  return found;
+}
+
+/**
+ * Follow a shadow-captured selector's host segments down from the document:
+ * `levels[i]` holds the open shadow roots of the hosts matched by segment i,
+ * the last level being the anchored element's own tree. Each segment is
+ * capped at MAX_PER_STRATEGY hosts, so a degenerate host selector cannot fan
+ * the lookup out across a whole card grid. Returns [] when the chain breaks
+ * (host gone, renamed, or its root closed).
+ */
+function resolveShadowLevels(hostSelectors: readonly string[]): ShadowRoot[][] {
+  const levels: ShadowRoot[][] = [];
+  let roots: readonly QueryRoot[] = [document];
+  for (const selector of hostSelectors) {
+    let hosts: Element[];
+    try {
+      hosts = queryRoots(roots, selector);
+    } catch {
+      return [];
+    }
+    const next: ShadowRoot[] = [];
+    for (const host of hosts) {
+      if (host.shadowRoot) next.push(host.shadowRoot);
+    }
+    if (next.length === 0) return [];
+    levels.push(next);
+    roots = next;
+  }
+  return levels;
+}
+
 /**
  * Collect candidates from all selector strategies, ALL matches per strategy
  * (bounded), in priority order. An element found by several strategies keeps
  * the highest-priority one (first insertion wins).
+ *
+ * Light-DOM anchors query the document exactly as before. A shadow-captured
+ * selector (`host >>> inner`) cannot match at document level by construction,
+ * so that anchor descends into the open roots its host chain leads to —
+ * never a whole-document walk. Ids and selectors are tree-scoped (against
+ * the document they would only surface cross-tree impostors) and run in the
+ * element's own tree; the semantic key may sit on any tree of the chain.
+ * Returns those trees too (`treeRoots`), for the sweep.
  */
-function gatherSelectorCandidates(anchor: AnchorData): Map<Element, ResolutionStrategy> {
+function gatherSelectorCandidates(anchor: AnchorData): {
+  pool: Map<Element, ResolutionStrategy>;
+  treeRoots: readonly QueryRoot[];
+} {
   const pool = new Map<Element, ResolutionStrategy>();
 
   const add = (el: Element | null, strategy: ResolutionStrategy, enforceTag: boolean) => {
@@ -291,15 +352,18 @@ function gatherSelectorCandidates(anchor: AnchorData): Map<Element, ResolutionSt
     pool.set(el, strategy);
   };
 
+  const segments = typeof anchor.cssSelector === "string" ? anchor.cssSelector.split(SHADOW_BOUNDARY) : [];
+  const selector = segments[segments.length - 1] ?? anchor.cssSelector;
+  const shadowLevels = segments.length > 1 ? resolveShadowLevels(segments.slice(0, -1)) : null;
+  const treeRoots: readonly QueryRoot[] = shadowLevels ? (shadowLevels[shadowLevels.length - 1] ?? []) : [document];
+  const keyRoots: readonly QueryRoot[] = shadowLevels ? [document, ...shadowLevels.flat()] : treeRoots;
+
   // anchorKey — host-controlled semantic key. Tag NOT enforced: hosts may
   // legitimately refactor the wrapper element while keeping the key stable.
   if (anchor.anchorKey) {
     const escaped = anchor.anchorKey.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     try {
-      const matches = document.querySelectorAll(`[${ANCHOR_KEY_ATTR}="${escaped}"]`);
-      for (let i = 0; i < Math.min(matches.length, MAX_PER_STRATEGY); i++) {
-        add(matches[i] ?? null, "anchorKey", false);
-      }
+      for (const el of queryRoots(keyRoots, `[${ANCHOR_KEY_ATTR}="${escaped}"]`)) add(el, "anchorKey", false);
     } catch {
       // Invalid attribute value — skip strategy
     }
@@ -312,24 +376,21 @@ function gatherSelectorCandidates(anchor: AnchorData): Map<Element, ResolutionSt
   if (anchor.elementId) {
     const escaped = anchor.elementId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     try {
-      const matches = document.querySelectorAll(`[id="${escaped}"]`);
-      for (let i = 0; i < Math.min(matches.length, MAX_PER_STRATEGY); i++) {
-        add(matches[i] ?? null, "id", true);
-      }
+      for (const el of queryRoots(treeRoots, `[id="${escaped}"]`)) add(el, "id", true);
     } catch {
-      add(document.getElementById(anchor.elementId), "id", true);
+      for (const root of treeRoots) add(root.getElementById(anchor.elementId), "id", true);
     }
   }
 
-  // CSS selector
+  // CSS selector — its innermost segment, for a shadow anchor
   try {
-    const matches = document.querySelectorAll(anchor.cssSelector);
-    for (let i = 0; i < Math.min(matches.length, MAX_PER_STRATEGY); i++) {
-      add(matches[i] ?? null, "css", true);
-    }
+    for (const el of queryRoots(treeRoots, selector)) add(el, "css", true);
   } catch {
     // Invalid selector — skip strategy
   }
+
+  // XPath cannot enter shadow trees: a shadow anchor's path is informational.
+  if (shadowLevels) return { pool, treeRoots };
 
   // XPath — snapshot (not FIRST_ORDERED_NODE) so later duplicates compete too
   try {
@@ -343,7 +404,7 @@ function gatherSelectorCandidates(anchor: AnchorData): Map<Element, ResolutionSt
     // Invalid XPath — skip strategy
   }
 
-  return pool;
+  return { pool, treeRoots };
 }
 
 /**
@@ -354,13 +415,27 @@ function gatherSelectorCandidates(anchor: AnchorData): Map<Element, ResolutionSt
  * structural hints (stable-attribute hash, child count). The prefilter only
  * RANKS — it never eliminates on a threshold, so an imperfect cheap score
  * demotes a candidate but cannot drop the true match on its own.
+ *
+ * SCAN_HARD_CAP bounds the whole sweep however many trees it spans, so one
+ * ScanBudget unit costs a shadow anchor no more than a light-DOM one.
  */
-function sweepScanCandidates(signals: AnchorSignals, pool: Map<Element, ResolutionStrategy>): Element[] {
+function sweepScanCandidates(
+  signals: AnchorSignals,
+  pool: Map<Element, ResolutionStrategy>,
+  roots: readonly QueryRoot[],
+): Element[] {
   const tag = signals.tag.toLowerCase();
   if (!tag) return [];
-  let candidates: NodeListOf<Element>;
+  const candidates: Element[] = [];
   try {
-    candidates = document.querySelectorAll(tag);
+    for (const root of roots) {
+      const matches = root.querySelectorAll(tag);
+      for (let i = 0; i < matches.length && candidates.length < SCAN_HARD_CAP; i++) {
+        const el = matches[i];
+        if (el) candidates.push(el);
+      }
+      if (candidates.length === SCAN_HARD_CAP) break;
+    }
   } catch {
     return [];
   }
@@ -372,12 +447,10 @@ function sweepScanCandidates(signals: AnchorSignals, pool: Map<Element, Resoluti
   const storedChildCount = storedFp.length === 3 ? Number(storedFp[0]) : Number.NaN;
   const storedAttrHash = storedFp.length === 3 ? (storedFp[2] ?? "") : "";
 
-  const limit = Math.min(candidates.length, SCAN_HARD_CAP);
   const ranked: { element: Element; cheap: number }[] = [];
 
-  for (let i = 0; i < limit; i++) {
-    const el = candidates[i];
-    if (!el || pool.has(el)) continue; // already scored under a selector strategy
+  for (const el of candidates) {
+    if (pool.has(el)) continue; // already scored under a selector strategy
 
     let cheap = 0;
     if (signals.snippetBigramTotal > 0) {

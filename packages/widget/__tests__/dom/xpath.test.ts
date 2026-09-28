@@ -174,4 +174,34 @@ describe("generateXPath", () => {
     // Only one preceding <span> sibling (zero), so position = 1
     expect(generateXPath(target)).toBe("/html/body/div[1]/span[1]");
   });
+
+  describe("inside an open shadow root (#177)", () => {
+    function shadowTree(): ShadowRoot {
+      const host = document.createElement("div");
+      host.id = "host";
+      document.body.appendChild(host);
+      return host.attachShadow({ mode: "open" });
+    }
+
+    it("is relative to the shadow root, never document-absolute", () => {
+      const shadow = shadowTree();
+      shadow.innerHTML = "<section><p>a</p><p>b</p></section>";
+
+      expect(generateXPath(shadow.querySelectorAll("p")[1] as Element)).toBe("./section[1]/p[2]");
+    });
+
+    it("keeps an id shortcut relative to the shadow root", () => {
+      const shadow = shadowTree();
+      shadow.innerHTML = '<p id="title">a</p>';
+
+      expect(generateXPath(shadow.firstElementChild as Element)).toBe(".//p[@id='title']");
+    });
+
+    it("stops at an id ancestor inside the shadow root", () => {
+      const shadow = shadowTree();
+      shadow.innerHTML = '<div id="panel"><button>ok</button></div>';
+
+      expect(generateXPath(shadow.querySelector("button") as Element)).toBe(".//div[@id='panel']/button[1]");
+    });
+  });
 });

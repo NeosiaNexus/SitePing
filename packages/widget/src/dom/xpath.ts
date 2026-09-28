@@ -7,11 +7,18 @@
  *   until we hit an ancestor with an id or reach <body>
  * - Cap depth at 6 levels to keep paths short — a path that does not reach
  *   <body> (truncated, or no parent left) is emitted relative (//tag[n]/…)
+ *
+ * Inside a shadow tree the path is relative to its shadow root (`./…`,
+ * `.//…`): XPath cannot enter shadow trees (Chromium even rejects a
+ * ShadowRoot context node), so a document-absolute path would only ever
+ * match an unrelated light-DOM element. The resolver never evaluates these.
  */
 export function generateXPath(element: Element): string {
+  const root = element.getRootNode() instanceof ShadowRoot ? "." : "";
+
   if (element.id) {
     const safeId = element.id.includes("'") ? `concat('${element.id.replace(/'/g, "',\"'\",'")}')` : `'${element.id}'`;
-    return `//${element.localName}[@id=${safeId}]`;
+    return `${root}//${element.localName}[@id=${safeId}]`;
   }
 
   const segments: string[] = [];
@@ -26,7 +33,7 @@ export function generateXPath(element: Element): string {
         ? `concat('${current.id.replace(/'/g, "',\"'\",'")}')`
         : `'${current.id}'`;
       segments.unshift(`/${tag}[@id=${safeId}]`);
-      return "/" + segments.join("");
+      return `${root}/${segments.join("")}`;
     }
 
     // Compute position among same-tag siblings
@@ -41,6 +48,8 @@ export function generateXPath(element: Element): string {
     segments.unshift(`/${tag}[${position}]`);
     current = parent;
   }
+
+  if (root) return root + segments.join("");
 
   // The walk stopped short of <body> — truncated by the depth cap, or out of
   // parents (<html> itself, a detached node, a shadow-root boundary):
