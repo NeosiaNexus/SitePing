@@ -803,6 +803,48 @@ export function createSitepingHandler({
     : [];
 
   /**
+   * Creates in flight, keyed by clientId. The widget aborts an attempt after
+   * 10 s and resends the same payload, so a retry can reach the server while
+   * the first attempt is still being processed. With a store that returns the
+   * existing record on a duplicate clientId (memory, localStorage,
+   * `createCollectionStore`), both requests would pass the replay check and
+   * both "create" — notifying the webhooks twice. A request whose clientId is
+   * in flight shares that outcome instead. Scoped to this handler instance:
+   * across processes, the store's unique constraint (the duplicate path in
+   * POST) still decides.
+   */
+  const inflightCreates = new Map<string, Promise<{ feedback: FeedbackRecord; inserted: boolean }>>();
+
+  /** Replay check + insert for one validated payload; `inserted` is false for a replay. */
+  async function createOrReplay(data: FeedbackPayload): Promise<{ feedback: FeedbackRecord; inserted: boolean }> {
+    // Replay detection up front, for every store alike: stores that return
+    // the existing record on a duplicate clientId are indistinguishable
+    // from a fresh insert afterwards, and a replayed submission must not
+    // notify the webhooks a second time.
+    const replayed = await store.findByClientId(data.clientId);
+    if (replayed) return { feedback: replayed, inserted: false };
+
+    const feedback = await store.createFeedback({
+      projectName: data.projectName,
+      type: data.type,
+      message: data.message,
+      status: "open",
+      url: data.url,
+      urlPattern: data.urlPattern ?? null,
+      viewport: data.viewport,
+      userAgent: data.userAgent,
+      authorName: data.authorName,
+      authorEmail: data.authorEmail,
+      clientId: data.clientId,
+      annotations: data.annotations.map(flattenAnnotation),
+      screenshotDataUrl: data.screenshotDataUrl ?? null,
+      screenshotRegion: data.screenshotRegion ?? null,
+      diagnostics: data.diagnostics ?? null,
+    });
+    return { feedback, inserted: true };
+  }
+
+  /**
    * True iff `apiKey` is configured AND the request carries a matching Bearer
    * token. Distinct from `authenticate`: a valid token on a public method still
    * counts as authenticated here (drives PII redaction, not access control).
@@ -894,36 +936,25 @@ export function createSitepingHandler({
         return withCors(Response.json(toWireFeedback(feedback, true), { status: 201 }), corsHeaders);
       };
 
-      try {
-        // Replay detection up front, for every store alike: stores that return
-        // the existing record on a duplicate clientId are indistinguishable
-        // from a fresh insert afterwards, and a replayed submission must not
-        // notify the webhooks a second time.
-        const replayed = await store.findByClientId(data.clientId);
-        if (replayed) return created(replayed);
+      // Join an in-flight create of this clientId, or start one. The lookup
+      // and the registration run in one synchronous turn, so two overlapping
+      // requests can never both miss.
+      let pending = inflightCreates.get(data.clientId);
+      const owner = pending === undefined;
+      if (!pending) {
+        pending = createOrReplay(data);
+        inflightCreates.set(data.clientId, pending);
+      }
 
-        const feedback = await store.createFeedback({
-          projectName: data.projectName,
-          type: data.type,
-          message: data.message,
-          status: "open",
-          url: data.url,
-          urlPattern: data.urlPattern ?? null,
-          viewport: data.viewport,
-          userAgent: data.userAgent,
-          authorName: data.authorName,
-          authorEmail: data.authorEmail,
-          clientId: data.clientId,
-          annotations: data.annotations.map(flattenAnnotation),
-          screenshotDataUrl: data.screenshotDataUrl ?? null,
-          screenshotRegion: data.screenshotRegion ?? null,
-          diagnostics: data.diagnostics ?? null,
-        });
+      try {
+        const { feedback, inserted } = await pending;
 
         // Fire-and-forget: drop the promise so the widget isn't held back
         // on slow Slack/Discord/generic receivers. `dispatchWebhooks` traps
         // its own errors and reports them through `WebhookConfig.onError`.
-        if (webhookList.length > 0 && feedback.projectName === data.projectName) {
+        // Only the request that ran the insert notifies — never a replay, and
+        // never a request that joined another one's in-flight create.
+        if (owner && inserted && webhookList.length > 0 && feedback.projectName === data.projectName) {
           void dispatchWebhooks(webhookList, feedback);
         }
 
@@ -946,6 +977,8 @@ export function createSitepingHandler({
         const message = actionableErrorMessage(error);
         console.error("[siteping] Failed to create feedback:", error);
         return withCors(Response.json({ error: message }, { status: 500 }), corsHeaders);
+      } finally {
+        if (owner) inflightCreates.delete(data.clientId);
       }
     },
 

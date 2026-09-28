@@ -531,4 +531,41 @@ describe("createSitepingHandler — webhooks on clientId replays", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(fetchSpy).toHaveBeenCalledOnce();
   });
+
+  it("dispatches once when two POSTs with the same clientId overlap (widget timeout + retry)", async () => {
+    // An async backend (KV, remote storage) lets both requests pass the
+    // replay check before either insert lands; the idempotent store then
+    // resolves the second create like a fresh insert.
+    let feedbacks: FeedbackRecord[] = [];
+    let seq = 0;
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 1));
+    const store = createCollectionStore({
+      load: async () => {
+        await tick();
+        return feedbacks;
+      },
+      persist: async (next) => {
+        await tick();
+        feedbacks = next;
+      },
+      generateId: () => `id-${++seq}`,
+    });
+    const handler = createSitepingHandler({ store, webhooks: { url: "https://hooks.example.com" } });
+    const post = () =>
+      handler.POST(
+        new Request("http://localhost/api/siteping", {
+          method: "POST",
+          body: JSON.stringify({ ...validPayloadNoAnnotations, clientId: "overlapping" }),
+        }),
+      );
+
+    const [first, second] = await Promise.all([post(), post()]);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(((await first.json()) as { id: string }).id).toBe(((await second.json()) as { id: string }).id);
+
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
 });
