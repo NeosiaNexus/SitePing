@@ -252,4 +252,110 @@ describe("generateAnchor", () => {
       expect(typeof anchor.neighborText).toBe("string");
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Shadow DOM support (#177)
+  // -------------------------------------------------------------------------
+
+  describe("Shadow DOM support", () => {
+    it("builds a shadow-piercing cssSelector path using >>>", () => {
+      const host = document.createElement("div");
+      host.id = "host1";
+      document.body.appendChild(host);
+
+      const shadow = host.attachShadow({ mode: "open" });
+      const target = document.createElement("span");
+      target.id = "target1";
+      shadow.appendChild(target);
+
+      const anchor = generateAnchor(target);
+      expect(anchor.cssSelector).toBe("#host1 >>> #target1");
+    });
+
+    it("builds a multi-level shadow-piercing cssSelector path", () => {
+      const host1 = document.createElement("div");
+      host1.id = "host1";
+      document.body.appendChild(host1);
+
+      const shadow1 = host1.attachShadow({ mode: "open" });
+      const host2 = document.createElement("section");
+      host2.className = "inner-host";
+      shadow1.appendChild(host2);
+
+      const shadow2 = host2.attachShadow({ mode: "open" });
+      const target = document.createElement("button");
+      target.id = "deep-target";
+      shadow2.appendChild(target);
+
+      const anchor = generateAnchor(target);
+      expect(anchor.cssSelector).toBe("#host1 >>> .inner-host >>> #deep-target");
+    });
+
+    it("scopes each segment's uniqueness to its own tree", () => {
+      // A light-DOM <em> must not force a longer inner selector, and the inner
+      // tree's twin <em> must be told apart within that tree.
+      document.body.appendChild(document.createElement("em"));
+      const host = document.createElement("div");
+      host.id = "card";
+      document.body.appendChild(host);
+      const shadow = host.attachShadow({ mode: "open" });
+      shadow.append(document.createElement("em"), document.createElement("em"));
+
+      const anchor = generateAnchor(shadow.lastElementChild as Element);
+      const [hostSelector, innerSelector] = anchor.cssSelector.split(" >>> ");
+      expect(hostSelector).toBe("#card");
+      expect(shadow.querySelectorAll(innerSelector as string)).toHaveLength(1);
+      expect(shadow.querySelector(innerSelector as string)).toBe(shadow.lastElementChild);
+    });
+
+    it("captures semantic anchorKey across a shadow boundary", () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-feedback-anchor", "global-section");
+      document.body.appendChild(host);
+
+      const shadow = host.attachShadow({ mode: "open" });
+      const target = document.createElement("p");
+      shadow.appendChild(target);
+
+      const anchor = generateAnchor(target);
+      expect(anchor.anchorKey).toBe("global-section");
+    });
+
+    it("prefers the nearest anchorKey inside the shadow tree over the host's", () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-feedback-anchor", "page.section");
+      document.body.appendChild(host);
+      const shadow = host.attachShadow({ mode: "open" });
+      const card = document.createElement("article");
+      card.setAttribute("data-feedback-anchor", "card.body");
+      const target = document.createElement("p");
+      card.appendChild(target);
+      shadow.appendChild(card);
+
+      expect(generateAnchor(target).anchorKey).toBe("card.body");
+    });
+
+    it("anchors a closed shadow root's host as plain light DOM", () => {
+      const host = document.createElement("div");
+      host.id = "closed-host";
+      document.body.appendChild(host);
+      host.attachShadow({ mode: "closed" }).appendChild(document.createElement("p"));
+
+      const anchor = generateAnchor(host);
+      expect(anchor.cssSelector).toBe("#closed-host");
+      expect(anchor.xpath).toBe("//div[@id='closed-host']");
+    });
+
+    it("leaves light-DOM output untouched when shadow hosts share the page", () => {
+      const section = document.createElement("section");
+      section.className = "pricing";
+      section.innerHTML = "<p>Plans</p><p>Free</p><p>Pro</p>";
+      document.body.appendChild(section);
+      document.body.appendChild(document.createElement("div")).attachShadow({ mode: "open" }).innerHTML = "<p>Pro</p>";
+
+      const anchor = generateAnchor(section.children[2] as Element);
+      expect(anchor.cssSelector).toBe("p:nth-of-type(3)");
+      expect(anchor.xpath).toBe("/html/body/section[1]/p[3]");
+    });
+  });
 });
