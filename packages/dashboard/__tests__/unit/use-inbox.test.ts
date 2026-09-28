@@ -935,6 +935,83 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
   });
 });
 
+describe("useSitepingInbox — a failure on a record the loaded list no longer holds", () => {
+  /** m0..m3 open, pageSize 2: both pages loaded, m3 opened, then a refresh leaves it in the drawer only. */
+  async function mountDrawerOnly(status: "open" | "all") {
+    const source = makeSource(
+      Array.from({ length: 4 }, (_, i) =>
+        makeRecord({ id: `m${i}`, status: "open", createdAt: new Date(Date.UTC(2026, 6, 20, 10, 10 - i)) }),
+      ),
+    );
+    const hook = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize: 2 }));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    act(() => hook.result.current.setStatus(status));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    await settle();
+    await act(async () => {
+      await hook.result.current.loadMore();
+    });
+    act(() => hook.result.current.openFeedback("m3"));
+    await act(async () => {
+      await hook.result.current.refresh();
+    });
+    await settle();
+    expect(ids(hook.result.current.items)).toEqual(["m0", "m1"]);
+    expect(hook.result.current.opened?.id).toBe("m3");
+    return { source, ...hook };
+  }
+
+  it("a failed drawer change doesn't leave the record appended to the loaded page", async () => {
+    const { source, result } = await mountDrawerOnly("all");
+    source.setStatus.mockRejectedValueOnce(new Error("patch failed"));
+    await act(async () => {
+      await result.current.changeStatus("m3", "in_progress").catch(() => undefined);
+    });
+
+    expect(ids(result.current.items)).toEqual(["m0", "m1"]);
+    expect(result.current.total).toBe(4);
+    expect(result.current.counts).toMatchObject({ all: 4, open: 4, in_progress: 0 });
+    expect(result.current.opened?.status).toBe("open");
+  });
+
+  it("a failed drawer delete doesn't insert the record into the loaded page", async () => {
+    const { source, result } = await mountDrawerOnly("open");
+    source.remove.mockRejectedValueOnce(new Error("delete failed"));
+    await act(async () => {
+      await result.current.deleteFeedback("m3").catch(() => undefined);
+    });
+
+    expect(ids(result.current.items)).toEqual(["m0", "m1"]);
+    expect(result.current.total).toBe(4);
+    expect(result.current.counts).toMatchObject({ all: 4, open: 4 });
+    expect(result.current.opened?.id).toBe("m3");
+  });
+
+  it("a failed undo takes back the row it re-inserted, and the focus with it", async () => {
+    const { source, result } = await mountDemo();
+    await act(async () => {
+      await result.current.changeStatus("r1", "resolved");
+    });
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+    let undo!: Promise<unknown>;
+    act(() => {
+      undo = result.current.undo().catch((e: unknown) => e);
+    });
+    expect(ids(result.current.items)).toEqual(["r1", "r2", "r3"]);
+    act(() => result.current.focus("r1"));
+
+    await act(async () => {
+      held.reject(new Error("undo failed"));
+      await undo;
+    });
+
+    expect(ids(result.current.items)).toEqual(["r2", "r3"]);
+    expect(result.current.total).toBe(2);
+    expect(result.current.focusedId).toBe("r2");
+  });
+});
+
 describe("useSitepingInbox — loadMore while a mutation is in flight", () => {
   // Six open records, m0 newest.
   function sixOpen(): FeedbackRecord[] {
