@@ -746,9 +746,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         setOpenedId(null);
       }
       if (openedCacheRef.current?.id === id) commitOpenedCache(null);
-      // Its undo goes with it: the only undo a failure here puts back.
-      const clearsUndo = pendingUndoRef.current?.id === id;
-      if (clearsUndo) {
+      if (pendingUndoRef.current?.id === id) {
         commitPendingUndo(null);
         undoRecordRef.current = null;
       }
@@ -770,7 +768,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
               setOpenedId(id);
             }
           }
-          if (clearsUndo && undoEntryRef.current === undoEntry) {
+          if (undoEntryRef.current === undoEntry) {
             commitPendingUndo(undoBefore.pending, undoBefore.entry);
             undoRecordRef.current = undoBefore.record;
           }
