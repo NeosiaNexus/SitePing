@@ -573,6 +573,83 @@ model SitepingFeedback {
   });
 
   // -----------------------------------------------------------------------
+  // User-owned parts of a Siteping field (@map, @ignore, relation name, comment)
+  // -----------------------------------------------------------------------
+
+  describe("user-owned field parts", () => {
+    /** A freshly synced (up-to-date) schema — the baseline each test edits. */
+    function syncedSchema(): string {
+      writeFileSync(schemaPath, MINIMAL_SCHEMA);
+      syncPrismaModels(schemaPath);
+      return readFileSync(schemaPath, "utf-8");
+    }
+
+    it("does not count a @map column name as drift", () => {
+      const schema = syncedSchema().replace(/^(\s*projectName\s+String)$/m, '$1 @map("project_name")');
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+    });
+
+    it("keeps @map, @ignore and the trailing comment when rewriting a drifted field", () => {
+      // message lost its @db.Text — the rewrite restores it and nothing else.
+      const schema = syncedSchema().replace(
+        /^(\s*)message\s+String\s+@db\.Text$/m,
+        '$1message String @map("body") @ignore // client text',
+      );
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([
+        { model: "SitepingFeedback", field: "message", action: "updated", detail: "+@db.Text" },
+      ]);
+      expect(readFileSync(schemaPath, "utf-8")).toMatch(
+        /^\s*message\s+String\s+@db\.Text @map\("body"\) @ignore \/\/ client text$/m,
+      );
+    });
+
+    it("keeps a named relation on both sides", () => {
+      // Stripping the name from one side only leaves Prisma with "missing an
+      // opposite relation field" — the schema must come back untouched.
+      const schema = syncedSchema()
+        .replace(/^(\s*annotations\s+SitepingAnnotation\[\])$/m, '$1 @relation("FbAnn")')
+        .replace("@relation(fields:", '@relation("FbAnn", fields:');
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+    });
+
+    it("keeps the relation name when rewriting a drifted relation field", () => {
+      const schema = syncedSchema()
+        .replace(/^(\s*)annotations\s+SitepingAnnotation\[\]$/m, '$1annotations SitepingAnnotation @relation("FbAnn")')
+        .replace(
+          /feedback(\s+)SitepingFeedback @relation\(fields:/,
+          'feedback$1SitepingFeedback? @relation(name: "FbAnn", fields:',
+        );
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes.map((c) => `${c.model}.${c.field}`)).toEqual([
+        "SitepingFeedback.annotations",
+        "SitepingAnnotation.feedback",
+      ]);
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).toMatch(/^\s*annotations\s+SitepingAnnotation\[\]\s+@relation\("FbAnn"\)$/m);
+      expect(output).toMatch(
+        /^\s*feedback\s+SitepingFeedback\s+@relation\(name: "FbAnn", fields: \[feedbackId\], references: \[id\], onDelete: Cascade\)$/m,
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Edge case: model exists but has no createdAt field
   // -----------------------------------------------------------------------
 

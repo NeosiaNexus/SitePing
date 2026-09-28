@@ -1,7 +1,16 @@
 // Must run before prisma-ast: chevrotain needs Object.groupBy (Node 21+).
 import "../utils/object-group-by-polyfill.js";
 import { readFileSync, writeFileSync } from "node:fs";
-import type { AttributeArgument, BlockAttribute, Field, Model, Property, Schema } from "@mrleebo/prisma-ast";
+import type {
+  Attribute,
+  AttributeArgument,
+  BlockAttribute,
+  Field,
+  KeyValue,
+  Model,
+  Property,
+  Schema,
+} from "@mrleebo/prisma-ast";
 import { getSchema, printSchema } from "@mrleebo/prisma-ast";
 import { type FieldDef, type IndexDef, SITEPING_MODELS } from "@siteping/core";
 
@@ -30,7 +39,7 @@ export interface SyncResult extends SchemaReconciliation {
  * Uses prisma-ast for AST-level manipulation (no regex/string concat).
  * - Missing models are created
  * - Missing fields are added
- * - Fields with wrong type/optional/attributes are updated
+ * - Fields with wrong type/optional/attributes are updated (user-owned parts kept)
  * - User-added fields outside Siteping's definition are left untouched
  */
 export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): SyncResult {
@@ -132,7 +141,7 @@ export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
           detail: formatFieldSignature(fieldDef),
         });
       } else if (!fieldsMatch(existing.field, expected)) {
-        fieldsToUpdate.push({ index: existing.index, field: expected });
+        fieldsToUpdate.push({ index: existing.index, field: withUserOwnedParts(expected, existing.field) });
         changes.push({
           model: modelName,
           field: fieldName,
@@ -178,15 +187,66 @@ export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
   return { addedModels, changes };
 }
 
-/** Check if two fields have the same type, optionality, and attributes. */
+// ── User-owned parts of a Siteping field ───────────────────────────────
+// The column name (`@map`), `@ignore`, the relation name and the field's
+// comment belong to the user: they're never compared, and a rewrite carries
+// them over. Dropping a `@map` makes `prisma db push` rename/drop the column;
+// dropping a relation name on one side only leaves the schema invalid.
+
+const USER_OWNED_ATTRIBUTES: ReadonlySet<string> = new Set(["map", "ignore"]);
+
+function isUserOwnedAttribute(attr: Attribute): boolean {
+  return !attr.group && USER_OWNED_ATTRIBUTES.has(attr.name);
+}
+
+function isRelation(attr: Attribute): boolean {
+  return !attr.group && attr.name === "relation";
+}
+
+function isKeyValue(value: unknown): value is KeyValue {
+  return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "keyValue";
+}
+
+/** `@relation("Name", …)` or `@relation(name: "Name", …)`. */
+function isRelationNameArg(arg: AttributeArgument): boolean {
+  return typeof arg.value === "string" || (isKeyValue(arg.value) && arg.value.key === "name");
+}
+
+/**
+ * The attributes `sync` owns on a field — user-owned ones left out. A
+ * `@relation` that only carries a name says nothing Siteping owns, so it's
+ * left out too (`annotations SitepingAnnotation[] @relation("X")` is up to date).
+ */
+function sitepingAttributes(field: Field): Attribute[] {
+  return (field.attributes ?? []).filter(
+    (attr) => !isUserOwnedAttribute(attr) && !(isRelation(attr) && (attr.args ?? []).every(isRelationNameArg)),
+  );
+}
+
+/** `expected`, carrying over the user-owned parts of the field it replaces. */
+function withUserOwnedParts(expected: Field, existing: Field): Field {
+  const existingAttrs = existing.attributes ?? [];
+  const relationName = existingAttrs.find(isRelation)?.args?.filter(isRelationNameArg) ?? [];
+  const attributes = (expected.attributes ?? []).map((attr) =>
+    isRelation(attr) ? { ...attr, args: [...relationName, ...(attr.args ?? [])] } : attr,
+  );
+  if (relationName.length > 0 && !attributes.some(isRelation)) {
+    attributes.push({ type: "attribute", name: "relation", kind: "field", args: relationName });
+  }
+  attributes.push(...existingAttrs.filter(isUserOwnedAttribute));
+  return { ...expected, attributes, ...(existing.comment ? { comment: existing.comment } : {}) };
+}
+
+const attrKey = (a: { group?: string; name: string }) => (a.group ? `${a.group}.${a.name}` : a.name);
+
+/** Check if two fields have the same type, optionality, and Siteping-owned attributes. */
 function fieldsMatch(existing: Field, expected: Field): boolean {
   if (existing.fieldType !== expected.fieldType) return false;
   if ((existing.optional ?? false) !== (expected.optional ?? false)) return false;
   if ((existing.array ?? false) !== (expected.array ?? false)) return false;
 
-  const attrKey = (a: { group?: string; name: string }) => (a.group ? `${a.group}.${a.name}` : a.name);
-  const existingAttrs = (existing.attributes ?? []).map(attrKey).sort();
-  const expectedAttrs = (expected.attributes ?? []).map(attrKey).sort();
+  const existingAttrs = sitepingAttributes(existing).map(attrKey).sort();
+  const expectedAttrs = sitepingAttributes(expected).map(attrKey).sort();
 
   if (existingAttrs.length !== expectedAttrs.length) return false;
   return existingAttrs.every((key, i) => key === expectedAttrs[i]);
@@ -203,9 +263,8 @@ function describeChange(existing: Field, expected: Field): string {
     parts.push(expected.optional ? "required \u2192 optional" : "optional \u2192 required");
   }
 
-  const attrKey = (a: { group?: string; name: string }) => (a.group ? `${a.group}.${a.name}` : a.name);
-  const existingAttrs = new Set((existing.attributes ?? []).map(attrKey));
-  const expectedAttrs = new Set((expected.attributes ?? []).map(attrKey));
+  const existingAttrs = new Set(sitepingAttributes(existing).map(attrKey));
+  const expectedAttrs = new Set(sitepingAttributes(expected).map(attrKey));
   for (const attr of expectedAttrs) {
     if (!existingAttrs.has(attr)) parts.push(`+@${attr}`);
   }

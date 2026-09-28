@@ -42,7 +42,7 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 
 - creates the two models if they are missing,
 - adds any missing fields and `@@index` blocks,
-- rewrites SitePing fields whose type or attributes drifted from the expected shape,
+- rewrites SitePing fields whose type or attributes drifted from the expected shape — keeping the parts that are yours: `@map` column names, `@ignore`, relation names, and comments,
 - **never touches fields you added yourself.**
 
 When something changed, it reminds you to run `npx prisma db push`. Running it twice in a row is a no-op.
