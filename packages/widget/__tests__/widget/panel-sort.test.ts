@@ -282,6 +282,32 @@ describe("PanelSortControls", () => {
     host.remove();
   });
 
+  it("closes the menu on a click on the group toggle or the empty bar beside it", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = host.attachShadow({ mode: "closed" });
+    const onChange = vi.fn();
+    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("en"));
+    root.append(controls.element);
+    const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
+    const groupToggle = controls.element.querySelector<HTMLButtonElement>(".sp-group-toggle")!;
+    const menuOpen = () => controls.element.querySelector(".sp-sort-menu") !== null;
+
+    for (const target of [groupToggle, controls.element]) {
+      sortButton.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      target.click();
+      expect(menuOpen()).toBe(false);
+      expect(sortButton.getAttribute("aria-expanded")).toBe("false");
+    }
+    // The toggle click still groups the list.
+    expect(controls.groupByPage).toBe(true);
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    controls.destroy();
+    host.remove();
+  });
+
   it("leaves no click listener behind when destroyed with its menu open", async () => {
     const host = document.createElement("div");
     document.body.appendChild(host);

@@ -203,6 +203,12 @@ test.describe("Panel", () => {
         await expect(open).toHaveCount(0);
       }
     }
+
+    // The group toggle shares the sort button's bar.
+    await page.click(".sp-sort-btn");
+    await expect(page.locator(".sp-sort-menu")).toHaveCount(1);
+    await page.click(".sp-group-toggle");
+    await expect(page.locator(".sp-sort-menu")).toHaveCount(0);
   });
 });
 
