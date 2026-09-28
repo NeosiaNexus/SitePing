@@ -193,7 +193,8 @@ export interface SitepingBaseConfig {
    *
    * **Privacy considerations:** console messages may contain anything the
    * host page logs, including user data. Failed network requests record the
-   * URL without its query string or hash, and never the response body.
+   * URL without its credentials, query string or hash, and never the
+   * response body.
    * Inform end users before enabling in environments where they might log
    * sensitive values.
    */

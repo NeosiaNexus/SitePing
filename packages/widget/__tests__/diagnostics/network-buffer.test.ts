@@ -116,6 +116,14 @@ describe("NetworkBuffer — fetch", () => {
     buffer.dispose();
   });
 
+  it("records a credentialed fetch URL without its userinfo (fetch rejects it after the wrapper read it)", async () => {
+    fetchSpy.mockRejectedValue(new TypeError("Request cannot be constructed from a URL that includes credentials"));
+    const buffer = new NetworkBuffer();
+    await expect(fetch("https://user:s3cr3t@api.example.com/v1/items?token=abc")).rejects.toBeInstanceOf(TypeError);
+    expect(buffer.getEntries()[0]?.url).toBe("https://api.example.com/v1/items");
+    buffer.dispose();
+  });
+
   it("dispose restores the original fetch", () => {
     const buffer = new NetworkBuffer();
     expect(globalThis.fetch).not.toBe(fetchSpy);
@@ -169,6 +177,24 @@ describe("NetworkBuffer — XHR", () => {
     Object.defineProperty(xhr, "status", { value: 500, configurable: true });
     xhr.dispatchEvent(new Event("loadend"));
     expect(buffer.getEntries()[0]?.url).toBe("/xhr-bad");
+    buffer.dispose();
+  });
+
+  it("records XHR URLs without their userinfo", () => {
+    const buffer = new NetworkBuffer();
+    // Loopback hosts: jsdom really issues the request.
+    const urls = ["https://user:s3cr3t@127.0.0.1/v1/items?token=abc", "//admin:hunter2@localhost/x"];
+    for (const url of urls) {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", url);
+      xhr.send();
+      Object.defineProperty(xhr, "status", { value: 401, configurable: true });
+      xhr.dispatchEvent(new Event("loadend"));
+    }
+    expect(buffer.getEntries().map((e) => e.url)).toEqual([
+      "https://127.0.0.1/v1/items",
+      `${location.protocol}//localhost/x`,
+    ]);
     buffer.dispose();
   });
 

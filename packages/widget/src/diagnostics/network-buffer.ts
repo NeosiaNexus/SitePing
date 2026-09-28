@@ -38,16 +38,34 @@ export interface NetworkEntry {
 }
 
 /**
- * The URL as recorded: query string and hash dropped — they routinely carry
- * secrets (`?api_key=…`, OAuth `#access_token=…`) and the docs promise query
- * strings never leave the browser — then capped to the schema's length.
+ * The URL as recorded: credentials, query string and hash dropped — they
+ * routinely carry secrets (`https://user:pass@…`, `?api_key=…`, OAuth
+ * `#access_token=…`) and the docs promise query strings never leave the
+ * browser — then capped to the schema's length.
  */
 function recordableUrl(input: unknown): string {
-  const url = urlString(input);
+  const url = withoutCredentials(urlString(input));
   const cut = url.search(/[?#]/);
   const bare = cut === -1 ? url : url.slice(0, cut);
   if (bare.length <= MAX_URL_LENGTH) return bare;
   return `${bare.slice(0, MAX_URL_LENGTH - 1)}…`;
+}
+
+/**
+ * `url` without its userinfo, parsed against the page as fetch and XHR parse
+ * it. XHR sends a credentialed URL, and fetch rejects one, a failure the
+ * wrapper records. A URL without credentials comes back exactly as given.
+ */
+function withoutCredentials(url: string): string {
+  try {
+    const parsed = new URL(url, typeof location === "undefined" ? undefined : location.href);
+    if (!parsed.username && !parsed.password) return url;
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.href;
+  } catch {
+    return url;
+  }
 }
 
 function urlString(input: unknown): string {
