@@ -284,6 +284,55 @@ test.describe("Annotation mode", () => {
   });
 });
 
+test.describe("Annotation popup lifecycle", () => {
+  async function drawAndOpenPopup(page: Page) {
+    const s = shadow(page);
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="annotate"]');
+    await s.click('[data-item-id="annotate"]');
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
+
+    const box = await page.locator("#target-element").boundingBox();
+    await page.mouse.move(box!.x + 10, box!.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + 250, box!.y + 60, { steps: 5 });
+    await page.mouse.up();
+    const dialog = page.locator('body > [role="dialog"][data-siteping-ignore]');
+    await expect(dialog).toHaveCSS("opacity", "1");
+    return dialog;
+  }
+
+  test("keeps its open/close transition after show()", async ({ page }) => {
+    const dialog = await drawAndOpenPopup(page);
+    await expect(dialog).toHaveCSS("transition-duration", "0.25s, 0.25s");
+  });
+
+  test("is not hit-testable while it fades out", async ({ page }) => {
+    await drawAndOpenPopup(page);
+    // Cancel and hit-test in the same task: deterministic, whatever the fade's timing
+    const hit = await page.evaluate(() => {
+      const dialog = document.querySelector<HTMLElement>('body > [role="dialog"][data-siteping-ignore]')!;
+      const textarea = dialog.querySelector("textarea")!.getBoundingClientRect();
+      Array.from(dialog.querySelectorAll("button"))
+        .find((button) => button.textContent === "Cancel")!
+        .click();
+      const target = document.elementFromPoint(textarea.left + textarea.width / 2, textarea.top + textarea.height / 2);
+      return { display: getComputedStyle(dialog).display, insideDialog: dialog.contains(target) };
+    });
+    expect(hit.display).toBe("block");
+    expect(hit.insideDialog).toBe(false);
+  });
+
+  test("the toolbar Cancel closes an open popup and ends the session", async ({ page }) => {
+    const dialog = await drawAndOpenPopup(page);
+
+    await page.locator("body > div[data-siteping-ignore] > button", { hasText: "Cancel" }).click();
+
+    await expect(dialog).toBeHidden();
+    await expect(page.locator("div[style*='crosshair']")).toHaveCount(0);
+  });
+});
+
 test.describe("Keyboard-only annotation", () => {
   test("FAB-launched Enter annotation targets the last focused page element", async ({ page }) => {
     const s = shadow(page);

@@ -15,7 +15,7 @@ export const PAGE_SIZE = 20;
 export const INSTANT_ANNOTATION_SIZE = 20;
 
 /**
- * Duration in milliseconds of the annotation popup's close transition. The
- * popup is set to `display: none` only once this fade-out has finished.
+ * Duration in milliseconds of the annotation popup's open/close transition.
+ * The popup is set to `display: none` only once the fade-out has finished.
  */
 export const POPUP_HIDE_TRANSITION_MS = 250;

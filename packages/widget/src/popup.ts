@@ -26,6 +26,18 @@ function isMacPlatform(): boolean {
     : (navigator.platform?.includes("Mac") ?? /Macintosh|Mac OS X/i.test(navigator.userAgent));
 }
 
+/**
+ * The popup's open/close animation. Declared once: `show()` swaps it for
+ * `none` under reduced motion and must restore this exact value, since the
+ * root has no other transition (an empty inline value removes it).
+ */
+const POPUP_TRANSITION = `opacity ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1),transform ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+
+/** Read live, not cached at construction, so an OS setting change applies to the next open or close. */
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 interface PopupResult {
   type: FeedbackType;
   message: string;
@@ -67,6 +79,11 @@ export class Popup {
   private onSubmit: PopupSubmitHandler | null = null;
   private submittingState = false;
   /**
+   * Frame in which `show()` fades the popup in and focuses it. A close that
+   * comes first cancels it, or it would bring the closed popup back.
+   */
+  private showFrame: number | null = null;
+  /**
    * Pending `display: none` scheduled by `hideElement()` once the fade-out
    * ends. Cleared by `show()` so a popup reopened inside the transition window
    * is not hidden by the previous session's timer.
@@ -105,7 +122,7 @@ export class Popup {
         font-family:"Inter",system-ui,-apple-system,sans-serif;
         opacity:0;
         transform:translateY(8px) scale(0.98);
-        transition:opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1),transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        transition:${POPUP_TRANSITION};
         display:none;
         -webkit-font-smoothing:antialiased;
       `,
@@ -328,7 +345,7 @@ export class Popup {
    */
   show(rectBounds: DOMRect, onSubmit?: PopupSubmitHandler): Promise<PopupResult | null> {
     return new Promise((resolve) => {
-      this.cancelPendingHide();
+      this.cancelPendingTransition();
       this.resolve = resolve;
       this.onSubmit = onSubmit ?? null;
       this.selectedType = null;
@@ -366,6 +383,7 @@ export class Popup {
 
       this.root.style.top = `${top}px`;
       this.root.style.left = `${left}px`;
+      this.root.removeAttribute("inert");
       this.root.style.display = "block";
 
       // Install focus trap. Escape cancels from any control, not only the
@@ -397,13 +415,11 @@ export class Popup {
       };
       this.root.addEventListener("keydown", this.onKeydownTrap);
 
-      // Check prefers-reduced-motion live (not cached at construction time)
-      const reduceMotion =
-        typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      this.root.style.transition = reduceMotion ? "none" : "";
+      this.root.style.transition = prefersReducedMotion() ? "none" : POPUP_TRANSITION;
 
       // Trigger animation
-      requestAnimationFrame(() => {
+      this.showFrame = requestAnimationFrame(() => {
+        this.showFrame = null;
         this.root.style.opacity = "1";
         this.root.style.transform = "translateY(0) scale(1)";
         this.textarea.focus();
@@ -578,13 +594,9 @@ export class Popup {
       border-radius:50%;
       box-sizing:border-box;
     `;
-    const reduceMotion =
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Web Animations API is available in every browser we target; the guard
     // is defensive for jsdom in tests, where `animate` may be undefined.
-    if (!reduceMotion && typeof spinner.animate === "function") {
+    if (!prefersReducedMotion() && typeof spinner.animate === "function") {
       this.spinnerAnimation = spinner.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }], {
         duration: 600,
         iterations: Infinity,
@@ -595,6 +607,7 @@ export class Popup {
   }
 
   private hideElement(): void {
+    this.cancelPendingTransition();
     // Remove focus trap
     if (this.onKeydownTrap) {
       this.root.removeEventListener("keydown", this.onKeydownTrap);
@@ -608,17 +621,26 @@ export class Popup {
     // Restore focus to the previously focused element
     this.previouslyFocused?.focus();
     this.previouslyFocused = null;
-    this.cancelPendingHide();
+    // Out of hit-testing and the Tab order while it fades: the transparent
+    // popup sits above the overlay and the page, and would take the next
+    // drag, click or Shift+Tab. The attribute, not the property, so jsdom
+    // (which does not implement `inert`) can observe it.
+    this.root.toggleAttribute("inert", true);
+    if (prefersReducedMotion()) {
+      this.root.style.display = "none";
+      return;
+    }
     this.hideTimeoutId = setTimeout(() => {
       this.hideTimeoutId = null;
       this.root.style.display = "none";
     }, POPUP_HIDE_TRANSITION_MS);
   }
 
-  /** Drop a `display: none` still pending from a previous `hideElement()`. */
-  private cancelPendingHide(): void {
-    if (this.hideTimeoutId === null) return;
-    clearTimeout(this.hideTimeoutId);
+  /** Drop the fade-in frame or the `display: none` still pending from an earlier show or close. */
+  private cancelPendingTransition(): void {
+    if (this.showFrame !== null) cancelAnimationFrame(this.showFrame);
+    if (this.hideTimeoutId !== null) clearTimeout(this.hideTimeoutId);
+    this.showFrame = null;
     this.hideTimeoutId = null;
   }
 
@@ -628,7 +650,7 @@ export class Popup {
     // whatever it retains: the annotation, the base64 screenshot). Resolving
     // with `null` reads as "cancelled", matching `dismiss()`.
     if (this.submittingState) this.exitSubmittingState();
-    this.cancelPendingHide();
+    this.cancelPendingTransition();
     this.resolve?.(null);
     this.resolve = null;
     this.onSubmit = null;

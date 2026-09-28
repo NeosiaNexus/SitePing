@@ -5,6 +5,7 @@ import { POPUP_HIDE_TRANSITION_MS } from "../../src/constants.js";
 import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
 import { Popup } from "../../src/popup.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
+import { mockMatchMedia } from "../helpers.js";
 
 // jsdom does not implement window.matchMedia — provide a stub
 Object.defineProperty(window, "matchMedia", {
@@ -539,6 +540,80 @@ describe("Popup", () => {
         expect(dialog.isConnected).toBe(false);
         expect(dialog.style.display).toBe("block");
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Open/close transition (#343)
+  // -------------------------------------------------------------------------
+
+  describe("open/close transition", () => {
+    const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const findDialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const findCancelButton = () =>
+      Array.from(findDialog().querySelectorAll<HTMLButtonElement>("button")).find(
+        (button) => button.textContent === t("popup.cancel"),
+      )!;
+
+    it("keeps its transition after show(), so it still fades in and out", () => {
+      const declared = findDialog().style.transition;
+      expect(declared).toContain("opacity");
+
+      popup.show(makeBounds());
+
+      expect(findDialog().style.transition).toBe(declared);
+    });
+
+    it("is inert while it fades out, and interactive again on the next show()", () => {
+      const dialog = findDialog();
+      popup.show(makeBounds());
+      expect(dialog.hasAttribute("inert")).toBe(false);
+
+      findCancelButton().click();
+      expect(dialog.hasAttribute("inert")).toBe(true);
+
+      popup.show(makeBounds());
+      expect(dialog.hasAttribute("inert")).toBe(false);
+    });
+
+    it("stays closed when cancelled before show()'s first frame", async () => {
+      const previous = document.body.appendChild(document.createElement("button"));
+      try {
+        previous.focus();
+        popup.show(makeBounds());
+        findCancelButton().click(); // Same task as show()
+
+        await nextFrame();
+
+        expect(findDialog().style.opacity).toBe("0");
+        expect(document.activeElement).toBe(previous);
+      } finally {
+        previous.remove();
+      }
+    });
+
+    it("stays transparent when destroyed before show()'s first frame", async () => {
+      const dialog = findDialog();
+      popup.show(makeBounds());
+      popup.destroy();
+
+      await nextFrame();
+
+      expect(dialog.style.opacity).toBe("0");
+    });
+
+    it("hides at once under prefers-reduced-motion", () => {
+      mockMatchMedia(true);
+      try {
+        const dialog = findDialog();
+        popup.show(makeBounds());
+
+        findCancelButton().click();
+
+        expect(dialog.style.display).toBe("none");
+      } finally {
+        mockMatchMedia(false);
+      }
     });
   });
 
