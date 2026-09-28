@@ -17,12 +17,35 @@ Le rectangle lui-même est stocké **en pourcentages de la boîte englobante de 
 
 **Bien encaissé :** les modifications de contenu autour de l'élément, les décalages de mise en page, le réagencement responsive, l'ajout ou la suppression d'autres éléments, et la plupart des refactorisations qui gardent l'élément reconnaissable.
 
-**Se dégrade :** la suppression de l'élément (plus rien à quoi s'ancrer), les réécritures lourdes qui changent d'un coup la balise, le texte et la position, et le contenu à l'intérieur d'un **Shadow DOM**, que le moteur d'ancrage ne traverse pas aujourd'hui (suivi dans [#177](https://github.com/NeosiaNexus/SitePing/issues/177)).
+**Se dégrade :** la suppression de l'élément (plus rien à quoi s'ancrer), les réécritures lourdes qui changent d'un coup la balise, le texte et la position, et le contenu des shadow roots **fermés**, hors d'atteinte par conception ([voir plus bas](#web-components-et-shadow-dom)).
 
 Quand une ancre ne peut pas être résolue lors d'une visite ultérieure, son marqueur reste masqué plutôt qu'affiché au mauvais endroit — un marqueur manquant est déroutant, un marqueur qui ment est pire. Les marqueurs se revérifient au défilement, au redimensionnement et aux changements du DOM de la page : un élément rendu tardivement (contenu chargé à la demande ou rendu côté client) obtient son marqueur lors d'une vérification suivante. Chaque annotation d'un feedback a son propre marqueur, si bien qu'une ancre manquante ne masque jamais les autres. Le feedback lui-même (message, capture, métadonnées) n'est jamais perdu : il reste visible dans le panneau et dans le dashboard.
+
+## Web components et Shadow DOM
+
+Le contenu des shadow roots **ouverts** — Lit, Stencil, Shoelace, Ionic et la plupart des composants de design system — est ancré comme n'importe quel autre élément. Un sélecteur CSS ne pouvant pas franchir la frontière d'un shadow root, SitePing enregistre un sélecteur par arbre, de l'hôte le plus externe vers l'intérieur, reliés par ` >>> ` :
+
+```text
+#pricing >>> plan-card:nth-of-type(2) >>> .title
+```
+
+C'est aussi la notation qu'accepte Puppeteer pour traverser les shadow roots : le sélecteur que le dashboard affiche et copie reste utilisable dans un script de test.
+
+Lors d'une visite ultérieure, la résolution redescend cette chaîne d'hôtes : elle ne cherche l'élément que dans les shadow roots auxquels mènent les hôtes enregistrés, jamais en parcourant toute la page — et les pages sans web components ne paient rien de plus. Deux conséquences :
+
+- Les hôtes doivent toujours correspondre. Renommer ou supprimer un élément hôte rend l'annotation orpheline (le marqueur est masqué ; le feedback reste dans le panneau et dans le dashboard).
+- Le repli XPath ne s'applique pas dans un shadow tree (XPath ne peut pas y entrer) ; les vérifications de texte et de structure, si.
+
+Les shadow roots **fermés** sont opaques par conception — la page elle-même ne peut pas regarder à l'intérieur — donc une annotation dessinée dessus s'ancre à son élément hôte : le composant entier.
+
+Deux réserves de timing :
+
+- Les marqueurs revérifient leur position au défilement, au redimensionnement et aux changements du DOM de la page. Un composant qui ne se re-rend qu'à l'intérieur de son propre shadow root ne signale aucun changement du DOM ; un marqueur posé dessus se recale au défilement ou au redimensionnement suivant.
+- Les marqueurs sont placés au chargement des feedbacks de la page. Un composant qui n'est pas encore rendu à ce moment-là — défini tardivement, ou un build chargé à la demande (Stencil, Ionic) qui remplit son shadow root un peu plus tard — n'offre encore rien à quoi s'ancrer : comme tout contenu qui apparaît après coup, son marqueur s'affiche au prochain chargement des feedbacks, à l'ouverture du panneau, lors d'une navigation SPA, ou quand vous appelez `siteping.refresh()` (par exemple une fois `customElements.whenDefined()` résolu).
 
 ## Aider les ancres à vous aider
 
 - Des attributs `id` stables sur les conteneurs importants rendent le sélecteur CSS court et durable.
+- Donnez aussi un `id` stable aux hôtes de web components : chacun ouvre un segment de tous les sélecteurs à l'intérieur.
 - Évitez d'annoter des éléments d'interface éphémères (toasts, squelettes de chargement) — par construction, l'élément aura disparu à la visite suivante.
 - Sur les routes dynamiques (`/produits/42`), utilisez [`getPageScope`](/fr/docs/widget/configuration#cadrage-par-page) avec un `urlPattern` pour que les feedbacks se regroupent par gabarit plutôt que par URL individuelle.

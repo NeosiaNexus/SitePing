@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFocusTracker, type FocusTracker } from "../../src/focus-tracker.js";
 
 // ---------------------------------------------------------------------------
@@ -95,6 +95,64 @@ describe("createFocusTracker", () => {
     tooltip.id = "sp-tooltip";
     tooltip.setAttribute("tabindex", "0");
     tooltip.focus();
+
+    expect(tracker.getLastPageFocus()).toBe(btn);
+  });
+
+  it("tracks the element focused inside open shadow roots, not the host focus retargets to (#177)", () => {
+    tracker = createFocusTracker(makeHost());
+    const component = append(document.createElement("div"));
+    const nested = document.createElement("div");
+    component.attachShadow({ mode: "open" }).appendChild(nested);
+    const inner = document.createElement("button");
+    nested.attachShadow({ mode: "open" }).appendChild(inner);
+    // `nested` keeps jsdom's 0x0 box (a display:contents wrapper, say):
+    // the drill passes through it to the element that has one.
+    vi.spyOn(inner, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 120, 32));
+
+    inner.focus();
+
+    expect(document.activeElement).toBe(component);
+    expect(tracker.getLastPageFocus()).toBe(inner);
+  });
+
+  it("stops at the last element with a real box when focus lands on a 1px hidden control", () => {
+    tracker = createFocusTracker(makeHost());
+    const component = append(document.createElement("div"));
+    const field = document.createElement("span");
+    component.attachShadow({ mode: "open" }).appendChild(field);
+    const control = document.createElement("input");
+    field.attachShadow({ mode: "open" }).appendChild(control);
+    vi.spyOn(field, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 200, 40));
+    vi.spyOn(control, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1, 1));
+
+    control.focus();
+
+    expect(tracker.getLastPageFocus()).toBe(field);
+  });
+
+  it("keeps the host of a closed shadow root", () => {
+    tracker = createFocusTracker(makeHost());
+    const component = append(document.createElement("div"));
+    const inner = document.createElement("button");
+    component.attachShadow({ mode: "closed" }).appendChild(inner);
+
+    inner.focus();
+
+    expect(tracker.getLastPageFocus()).toBe(component);
+  });
+
+  it("ignores a web component inside widget chrome (previous target retained)", () => {
+    tracker = createFocusTracker(makeHost());
+    const btn = pageButton();
+    btn.focus();
+
+    const chrome = append(document.createElement("div"));
+    chrome.setAttribute("data-siteping-ignore", "true");
+    const component = chrome.appendChild(document.createElement("div"));
+    const inner = document.createElement("button");
+    component.attachShadow({ mode: "open" }).appendChild(inner);
+    inner.focus();
 
     expect(tracker.getLastPageFocus()).toBe(btn);
   });

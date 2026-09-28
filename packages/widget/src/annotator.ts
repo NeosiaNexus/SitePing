@@ -3,7 +3,7 @@ import { INSTANT_ANNOTATION_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anchor.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
-import { isWidgetChrome } from "./focus-tracker.js";
+import { deepFocusTarget, isWidgetChrome } from "./focus-tracker.js";
 import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
 import { NO_VIEWPORT_INSETS, type ViewportInsets } from "./popup-placement.js";
@@ -154,13 +154,15 @@ export class Annotator {
     // activation, so the active element here is only the widget's 0x0 shadow
     // host — fall back to the last page element the focus tracker recorded
     // instead of silently dead-ending the Enter path. See issue #162.
+    // Focus inside a web component reports its host — annotate the focused
+    // element itself, as the pointer path does (#177).
     const active = document.activeElement;
     this.keyboardTarget =
       active instanceof HTMLElement &&
       active !== document.body &&
       active !== document.documentElement &&
       !isWidgetChrome(active)
-        ? active
+        ? deepFocusTarget(active)
         : (this.getFallbackTarget?.() ?? null);
 
     // Lock page scroll

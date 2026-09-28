@@ -174,4 +174,55 @@ describe("generateXPath", () => {
     // Only one preceding <span> sibling (zero), so position = 1
     expect(generateXPath(target)).toBe("/html/body/div[1]/span[1]");
   });
+
+  describe("inside an open shadow root (#177)", () => {
+    function shadowTree(html: string): ShadowRoot {
+      const host = document.createElement("div");
+      host.id = "host";
+      document.body.appendChild(host);
+      const shadow = host.attachShadow({ mode: "open" });
+      shadow.innerHTML = html;
+      return shadow;
+    }
+
+    function matchesFromDocument(xpath: string): number {
+      return document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null).snapshotLength;
+    }
+
+    it("is rooted at the shadow root, never document-absolute", () => {
+      const shadow = shadowTree("<section><p>a</p><p>b</p></section>");
+
+      expect(generateXPath(shadow.querySelectorAll("p")[1] as Element)).toBe("./section[1]/p[2]");
+    });
+
+    it("counts same-tag siblings at the top of the shadow root", () => {
+      const shadow = shadowTree("<p>a</p><div></div><p>b</p>");
+
+      expect(generateXPath(shadow.lastElementChild as Element)).toBe("./p[2]");
+    });
+
+    it("keeps ids as steps of the rooted path, with no // shortcut", () => {
+      const shadow = shadowTree(`<div id="panel"><section><button id="it's">ok</button></section></div>`);
+
+      expect(generateXPath(shadow.querySelector("button") as Element)).toBe(
+        `./div[@id='panel']/section[1]/button[@id=concat('it',"'",'s')]`,
+      );
+    });
+
+    it("walks past the light-DOM depth cap to stay rooted", () => {
+      const shadow = shadowTree(`${"<div>".repeat(7)}<span></span>${"</div>".repeat(7)}`);
+
+      expect(generateXPath(shadow.querySelector("span") as Element)).toBe(`.${"/div[1]".repeat(7)}/span[1]`);
+    });
+
+    it("never matches a light-DOM look-alike when an older widget evaluates it against the document", () => {
+      const html = '<div id="panel"><button>ok</button></div><button id="close"></button><p>text</p>';
+      document.body.insertAdjacentHTML("beforeend", html);
+      const shadow = shadowTree(html);
+
+      for (const el of shadow.querySelectorAll("*")) {
+        expect(matchesFromDocument(generateXPath(el))).toBe(0);
+      }
+    });
+  });
 });

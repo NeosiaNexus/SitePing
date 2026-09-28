@@ -308,6 +308,117 @@ describe("findAnchorElement", () => {
   });
 });
 
+describe("findAnchorElement — open shadow roots (#177)", () => {
+  afterEach(() => {
+    while (document.body.firstChild) {
+      document.body.removeChild(document.body.firstChild);
+    }
+    if ("_origElementFromPoint" in document) {
+      document.elementFromPoint = (document as any)._origElementFromPoint;
+      delete (document as any)._origElementFromPoint;
+    }
+  });
+
+  function stubElementFromPoint(target: Document | ShadowRoot, fn: (x: number, y: number) => Element | null) {
+    if (target === document) (document as any)._origElementFromPoint = document.elementFromPoint;
+    target.elementFromPoint = fn;
+  }
+
+  function stubBounds(el: Element, rect: DOMRect) {
+    el.getBoundingClientRect = () => rect;
+  }
+
+  /** A light-DOM host with an open shadow root holding one `<p>`. */
+  function openComponent(): { host: HTMLElement; shadow: ShadowRoot; inner: HTMLElement } {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: "open" });
+    const inner = document.createElement("p");
+    shadow.appendChild(inner);
+    return { host, shadow, inner };
+  }
+
+  const rect = makeDOMRect(50, 50, 100, 100);
+
+  it("drills from the retargeted host to the element under the point", () => {
+    const { host, shadow, inner } = openComponent();
+    stubBounds(inner, makeDOMRect(0, 0, 400, 400));
+    stubBounds(host, makeDOMRect(0, 0, 800, 800));
+    stubElementFromPoint(document, () => host);
+    stubElementFromPoint(shadow, () => inner);
+
+    expect(findAnchorElement(rect)).toBe(inner);
+  });
+
+  it("drills through nested open roots", () => {
+    const { host, shadow, inner } = openComponent();
+    const innerShadow = inner.attachShadow({ mode: "open" });
+    const deepest = document.createElement("span");
+    innerShadow.appendChild(deepest);
+    stubBounds(deepest, makeDOMRect(0, 0, 400, 400));
+    stubElementFromPoint(document, () => host);
+    stubElementFromPoint(shadow, () => inner);
+    stubElementFromPoint(innerShadow, () => deepest);
+
+    expect(findAnchorElement(rect)).toBe(deepest);
+  });
+
+  it("climbs back out through the host when nothing inside contains the rect", () => {
+    const { host, shadow, inner } = openComponent();
+    const leaf = inner.appendChild(document.createElement("span"));
+    stubBounds(leaf, makeDOMRect(60, 60, 10, 10));
+    stubBounds(inner, makeDOMRect(60, 60, 20, 20));
+    stubBounds(host, makeDOMRect(0, 0, 400, 400));
+    stubElementFromPoint(document, () => host);
+    stubElementFromPoint(shadow, () => leaf);
+
+    expect(findAnchorElement(rect)).toBe(host);
+  });
+
+  it("finds a semantic anchor on the host from inside its shadow root", () => {
+    const { host, shadow, inner } = openComponent();
+    host.setAttribute("data-feedback-anchor", "pricing");
+    // The inner <p> also contains the rect — pass 1 must still prefer the key.
+    stubBounds(inner, makeDOMRect(0, 0, 400, 400));
+    stubBounds(host, makeDOMRect(0, 0, 800, 800));
+    stubElementFromPoint(document, () => host);
+    stubElementFromPoint(shadow, () => inner);
+
+    expect(findAnchorElement(rect)).toBe(host);
+  });
+
+  it("stops at the host when the shadow root hit-tests back to it (slotted content)", () => {
+    const { host, shadow } = openComponent();
+    stubBounds(host, makeDOMRect(0, 0, 400, 400));
+    stubElementFromPoint(document, () => host);
+    // Bounded stub: without the guard the drill would spin on the host forever.
+    let shadowHits = 0;
+    stubElementFromPoint(shadow, () => (++shadowHits > 3 ? null : host));
+
+    expect(findAnchorElement(rect)).toBe(host);
+    expect(shadowHits).toBe(1);
+  });
+
+  it("keeps the host without throwing when ShadowRoot.elementFromPoint is missing", () => {
+    // jsdom (and any engine lacking DocumentOrShadowRoot.elementFromPoint).
+    const { host } = openComponent();
+    stubBounds(host, makeDOMRect(0, 0, 400, 400));
+    stubElementFromPoint(document, () => host);
+
+    expect(findAnchorElement(rect)).toBe(host);
+  });
+
+  it("treats a closed shadow root as opaque", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    host.attachShadow({ mode: "closed" }).appendChild(document.createElement("p"));
+    stubBounds(host, makeDOMRect(0, 0, 400, 400));
+    stubElementFromPoint(document, () => host);
+
+    expect(findAnchorElement(rect)).toBe(host);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // generateAnchor — focused branch coverage on className filter
 // ---------------------------------------------------------------------------

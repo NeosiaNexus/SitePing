@@ -7,11 +7,13 @@
  *   until we hit an ancestor with an id or reach <body>
  * - Cap depth at 6 levels to keep paths short — a path that does not reach
  *   <body> (truncated, or no parent left) is emitted relative (//tag[n]/…)
+ * - Inside a shadow tree: a path rooted at its shadow root (see shadowXPath)
  */
 export function generateXPath(element: Element): string {
+  if (element.getRootNode() instanceof ShadowRoot) return shadowXPath(element);
+
   if (element.id) {
-    const safeId = element.id.includes("'") ? `concat('${element.id.replace(/'/g, "',\"'\",'")}')` : `'${element.id}'`;
-    return `//${element.localName}[@id=${safeId}]`;
+    return `//${element.localName}[@id=${xpathLiteral(element.id)}]`;
   }
 
   const segments: string[] = [];
@@ -22,10 +24,7 @@ export function generateXPath(element: Element): string {
     const parent: Element | null = current.parentElement;
 
     if (current.id) {
-      const safeId = current.id.includes("'")
-        ? `concat('${current.id.replace(/'/g, "',\"'\",'")}')`
-        : `'${current.id}'`;
-      segments.unshift(`/${tag}[@id=${safeId}]`);
+      segments.unshift(`/${tag}[@id=${xpathLiteral(current.id)}]`);
       return "/" + segments.join("");
     }
 
@@ -43,11 +42,43 @@ export function generateXPath(element: Element): string {
   }
 
   // The walk stopped short of <body> — truncated by the depth cap, or out of
-  // parents (<html> itself, a detached node, a shadow-root boundary):
-  // "/html/body" + the segments would match nothing, or a shallower decoy
-  // with the same shape. The relative form matches the element wherever it
-  // sits — possibly alongside look-alikes, which the resolver gathers and
-  // verifies like CSS matches.
+  // parents (<html> itself, a detached node): "/html/body" + the segments
+  // would match nothing, or a shallower decoy with the same shape. The
+  // relative form matches the element wherever it sits — possibly alongside
+  // look-alikes, which the resolver gathers and verifies like CSS matches.
+  // (Shadow-tree elements never get here: see shadowXPath.)
   if (current !== document.body) return "/" + segments.join("");
   return "/html/body" + segments.join("");
+}
+
+/**
+ * XPath cannot enter shadow trees (Chromium even rejects a ShadowRoot context
+ * node), so a shadow element's path is informational: the resolver never
+ * evaluates it. It is walked all the way up to the shadow root, with no `//`
+ * shortcut and no depth cap (`./section[1]/p[@id='x']`), because older
+ * widgets evaluate every stored path against the document — where `./…` can
+ * only reach `<html>`, so it never matches a light-DOM look-alike.
+ */
+function shadowXPath(element: Element): string {
+  let path = "";
+  for (let current: Element | null = element; current; current = current.parentElement) {
+    const tag = current.localName;
+    if (current.id) {
+      path = `/${tag}[@id=${xpathLiteral(current.id)}]${path}`;
+      continue;
+    }
+    // Siblings, not parent.children: a top-level element's parent is the
+    // shadow root, which parentElement skips.
+    let position = 1;
+    for (let sibling = current.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
+      if (sibling.localName === tag) position++;
+    }
+    path = `/${tag}[${position}]${path}`;
+  }
+  return `.${path}`;
+}
+
+/** An XPath string literal for `value` (`concat()` when it holds a quote). */
+function xpathLiteral(value: string): string {
+  return value.includes("'") ? `concat('${value.replace(/'/g, "',\"'\",'")}')` : `'${value}'`;
 }
