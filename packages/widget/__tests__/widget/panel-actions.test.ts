@@ -43,12 +43,12 @@ describe("parseActionIcon", () => {
     expect(icon?.outerHTML).toBe('<svg aria-hidden="true"><path d="M0 0" stroke="url(#local)"></path></svg>');
   });
 
-  it("drops CSS-parsed values that could still fetch, and attributes outside the allowlist", () => {
+  it("drops CSS escapes, CSS-parsed values that could still fetch, and attributes outside the allowlist", () => {
     const icon = parseActionIcon(
       '<svg class="x" data-x="1" xmlns="http://www.w3.org/2000/svg">' +
         '<rect width="4" height="4" fill="\\75 rl(https://t.example/f.svg#p)" mask="image-set(\'https://t.example/m.png\' 1x)"/>' +
         '<circle r="2" clip-path="src(https://t.example/c.svg)" cursor="url(https://t.example/c.cur), auto"/>' +
-        '<path d="M1 1" stroke="rgb(var(--x))" filter="url(#f)" marker-start="url(#m)"/>' +
+        '<path d="M1 1" stroke="rgb(var(--x))" color="\\72 ed" filter="url(#f)" marker-start="url(#m)"/>' +
         "</svg>",
     );
     expect(icon?.outerHTML).toBe(
