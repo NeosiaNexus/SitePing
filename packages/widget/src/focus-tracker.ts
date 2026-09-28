@@ -35,19 +35,28 @@ export function isWidgetChrome(el: Element): boolean {
 }
 
 /**
+ * Below this size (px, either side) a focused element is a visually hidden
+ * stand-in — the 1px `sr-only` native control that form components keep in
+ * their shadow root — not something the user sees or means to annotate.
+ */
+const MIN_FOCUS_TARGET_PX = 4;
+
+/**
  * The element that actually holds focus under `el`: focus inside a web
  * component retargets `activeElement` (and `focusin` targets) to its shadow
- * host, so drill through open roots. Closed roots — the widget's own among
- * them — keep their host.
+ * host, so drill through open roots to the deepest focused element that has
+ * a real box. Closed roots — the widget's own among them — keep their host,
+ * and so does focus on a hidden control.
  */
 export function deepFocusTarget(el: HTMLElement): HTMLElement {
-  let current = el;
-  let inner = current.shadowRoot?.activeElement;
+  let target = el;
+  let inner = el.shadowRoot?.activeElement;
   while (inner instanceof HTMLElement) {
-    current = inner;
-    inner = current.shadowRoot?.activeElement;
+    const box = inner.getBoundingClientRect();
+    if (box.width >= MIN_FOCUS_TARGET_PX && box.height >= MIN_FOCUS_TARGET_PX) target = inner;
+    inner = inner.shadowRoot?.activeElement;
   }
-  return current;
+  return target;
 }
 
 export function createFocusTracker(host: HTMLElement): FocusTracker {
