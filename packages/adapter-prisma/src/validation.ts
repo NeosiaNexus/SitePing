@@ -21,7 +21,12 @@ const anchorSchema = z.object({
   xpath: z.string().min(1).max(2000),
   textSnippet: z.string().max(500),
   elementTag: z.string().min(1).max(ANCHOR_ELEMENT_TAG_MAX),
-  elementId: z.string().max(ANCHOR_ELEMENT_ID_MAX).optional(),
+  // A resolver hint: an over-long id is dropped, as the widget now does,
+  // rather than failing the whole payload — earlier widgets send it unbounded.
+  elementId: z
+    .string()
+    .transform((id) => (id.length <= ANCHOR_ELEMENT_ID_MAX ? id : undefined))
+    .optional(),
   textPrefix: z.string().max(200),
   textSuffix: z.string().max(200),
   fingerprint: z.string().max(200),

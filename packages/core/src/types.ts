@@ -896,8 +896,8 @@ export interface DiagnosticsSnapshot {
 
 /**
  * Length caps for `AnchorData.elementTag` / `elementId`, shared by the widget
- * (which bounds what it captures) and the HTTP adapter (which rejects longer
- * values) so the two can't drift. 191 fits Prisma's default `String` column
+ * (which bounds what it captures) and the HTTP adapter (which rejects a longer
+ * tag and drops a longer id) so the two can't drift. 191 fits Prisma's default `String` column
  * on MySQL (`VARCHAR(191)`); real tag names and ids are far shorter.
  */
 export const ANCHOR_ELEMENT_TAG_MAX = 191;

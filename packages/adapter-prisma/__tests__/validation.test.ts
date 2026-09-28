@@ -183,18 +183,30 @@ describe("feedbackCreateSchema", () => {
     expect(withViewport(1920, 2_147_483_648)).toBe(false);
   });
 
-  it("caps anchor elementTag and elementId at the limits the widget captures within", () => {
-    const withAnchor = (anchor: Partial<typeof validAnnotation.anchor>) =>
+  describe("anchor elementTag / elementId caps (the limits the widget captures within)", () => {
+    const parseAnchor = (anchor: Partial<typeof validAnnotation.anchor>) =>
       feedbackCreateSchema.safeParse({
         ...validPayload,
         annotations: [{ ...validAnnotation, anchor: { ...validAnnotation.anchor, ...anchor } }],
-      }).success;
+      });
 
-    expect(
-      withAnchor({ elementTag: "X".repeat(ANCHOR_ELEMENT_TAG_MAX), elementId: "i".repeat(ANCHOR_ELEMENT_ID_MAX) }),
-    ).toBe(true);
-    expect(withAnchor({ elementTag: "X".repeat(ANCHOR_ELEMENT_TAG_MAX + 1) })).toBe(false);
-    expect(withAnchor({ elementId: "i".repeat(ANCHOR_ELEMENT_ID_MAX + 1) })).toBe(false);
+    it("accepts both at their cap", () => {
+      const result = parseAnchor({
+        elementTag: "X".repeat(ANCHOR_ELEMENT_TAG_MAX),
+        elementId: "i".repeat(ANCHOR_ELEMENT_ID_MAX),
+      });
+      expect(result.data?.annotations[0]?.anchor.elementId).toBe("i".repeat(ANCHOR_ELEMENT_ID_MAX));
+    });
+
+    it("rejects a longer elementTag", () => {
+      expect(parseAnchor({ elementTag: "X".repeat(ANCHOR_ELEMENT_TAG_MAX + 1) }).success).toBe(false);
+    });
+
+    it("drops a longer elementId instead of rejecting the feedback (widgets before the cap send it unbounded)", () => {
+      const result = parseAnchor({ elementId: "i".repeat(ANCHOR_ELEMENT_ID_MAX + 1) });
+      expect(result.success).toBe(true);
+      expect(result.data?.annotations[0]?.anchor.elementId).toBeUndefined();
+    });
   });
 
   it("accepts empty strings for text context fields", () => {
