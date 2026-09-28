@@ -102,6 +102,7 @@ describe("SitepingStore contract", () => {
   it("is satisfied by the collection-store engine, including both optional members", () => {
     const engine = createCollectionStore({ load: () => [], persist: () => {}, generateId: () => "id" });
     expectTypeOf(engine).toExtend<SitepingStore>();
+    expectTypeOf(engine).toExtend<Required<Pick<SitepingStore, "verifyProjectOwnership" | "createFeedbackIfAbsent">>>();
     expectTypeOf(engine.verifyProjectOwnership).returns.resolves.toEqualTypeOf<boolean>();
     expectTypeOf(engine.createFeedbackIfAbsent).returns.resolves.toEqualTypeOf<FeedbackCreateOutcome>();
   });
