@@ -287,6 +287,19 @@ describe("host isolation", () => {
       expect(onDocumentFocusOut).not.toHaveBeenCalled();
     });
 
+    it("hides only the host field's focusout, not its native blur, when focus moves into the widget", () => {
+      const onHostFieldFocusOut = vi.fn();
+      const onHostFieldBlur = vi.fn();
+      hostInput.addEventListener("focusout", onHostFieldFocusOut);
+      hostInput.addEventListener("blur", onHostFieldBlur);
+      hostInput.focus();
+
+      surfaceButton.focus();
+
+      expect(onHostFieldFocusOut).not.toHaveBeenCalled();
+      expect(onHostFieldBlur).toHaveBeenCalledTimes(1);
+    });
+
     it("keeps focusout when focus moves to a host element masked with data-siteping-ignore", () => {
       const maskedInput = document.createElement("input");
       maskedInput.setAttribute("data-siteping-ignore", "true");
