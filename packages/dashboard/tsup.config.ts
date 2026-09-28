@@ -16,7 +16,7 @@ const minifyInboxCss: EsbuildPlugin = {
       const literal = /export const INBOX_CSS = `([^`]*)`;/.exec(source);
       const css = literal?.[1];
       if (!literal || !css || css.includes("${") || css.includes("\\")) {
-        throw new Error("[minify-inbox-css] INBOX_CSS must stay a plain template literal (no interpolation, no escapes)");
+        throw new Error("[minify-inbox-css] INBOX_CSS must be a plain template literal (no interpolation or escape)");
       }
       const { code } = await build.esbuild.transform(css, { loader: "css", minify: true });
       return {
