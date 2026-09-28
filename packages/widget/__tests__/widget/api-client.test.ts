@@ -1468,6 +1468,18 @@ describe("ApiClient — bounded waits", () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
   });
 
+  it("gives the body a fresh 10 s window once the headers arrive, not the rest of the upload's", async () => {
+    // Headers at 6 s (a slow upload), then the body stalls: a window shared
+    // with the upload would abort at 10 s, only 4 s into the body.
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) => new Promise((resolve) => setTimeout(() => resolve(stalledBody(init, 201)), 6_000)),
+    );
+
+    const error = await settlesAt(() => new ApiClient(endpoint, "test").sendFeedback(payload), 16_000);
+
+    expect(error).toBeInstanceOf(SitepingNetworkError);
+  });
+
   it("leaves reads unbounded: a GET body that takes longer than one attempt window still loads", async () => {
     // A page of inline screenshots can legitimately take > 10 s on a slow
     // link, and a read holds no popup — only the send path bounds its body.
