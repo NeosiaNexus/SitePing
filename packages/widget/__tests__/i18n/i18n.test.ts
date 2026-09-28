@@ -86,13 +86,16 @@ describe("createT", () => {
     expect(t("identity.emailLabel")).toBe("メールアドレス");
   });
 
-  // The 400px panel header fits フィードバック and its two action labels on one
-  // line only while the labels stay short: Japanese breaks between any two
-  // characters, so すべて削除 / エクスポート wrapped mid-word (エクスポー/ト).
-  it("keeps the Japanese panel header actions short", () => {
+  // The 400px panel header fits フィードバック and its two actions, and the
+  // 180px export menu its items, on one line only while the labels stay short:
+  // Japanese breaks between any two characters, so エクスポート wrapped
+  // mid-word (エクスポー/ト) in both places.
+  it("keeps the Japanese panel header actions and export menu items short", () => {
     const t = createT("ja");
     expect(t("panel.deleteAll")).toBe("全削除");
     expect(t("export.label")).toBe("出力");
+    expect(t("export.csv")).toBe("CSV で出力");
+    expect(t("export.json")).toBe("JSON で出力");
   });
 
   it("is case-insensitive on the locale prefix", () => {

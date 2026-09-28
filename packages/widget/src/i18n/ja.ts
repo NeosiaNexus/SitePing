@@ -159,6 +159,6 @@ export const ja: Translations = {
 
   // Export controls
   "export.label": "出力",
-  "export.csv": "CSV をエクスポート",
-  "export.json": "JSON をエクスポート",
+  "export.csv": "CSV で出力",
+  "export.json": "JSON で出力",
 };
