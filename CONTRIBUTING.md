@@ -214,6 +214,7 @@ Re-export the error types for consumer convenience, and use
 - **Conventional Commits** for all commit messages: `type(scope): description`.
   - Examples: `feat(widget): add color picker`, `fix(cli): handle missing config`.
 - **i18n** — Built-in locales: English (default), French, German, Spanish, Italian, Brazilian Portuguese, Russian, Japanese. See [Adding a Locale](#adding-a-locale) below.
+- **Widget CSS** — write CSS in a template literal (the Shadow DOM stylesheet, an element's inline style) behind a `/* css */` marker: `` style: /* css */ `...` ``. The build strips its comments and indentation (`packages/widget/scripts/css-literals.ts`), and a test fails on a multi-line CSS literal left without the marker.
 - Keep functions small and focused. Prefer composition over inheritance.
 
 ## Adding a Locale
