@@ -192,10 +192,14 @@ test.describe("Panel", () => {
       [".sp-export-btn", ".sp-export-menu--open"],
     ] as const) {
       const open = page.locator(menu);
-      for (const outside of [() => page.click(trigger), () => page.click(".sp-panel-title"), () => page.mouse.click(40, 360)]) {
+      for (const dismiss of [
+        () => page.click(trigger),
+        () => page.click(".sp-panel-title"),
+        () => page.mouse.click(40, 360),
+      ]) {
         await page.click(trigger);
         await expect(open).toHaveCount(1);
-        await outside();
+        await dismiss();
         await expect(open).toHaveCount(0);
       }
     }
