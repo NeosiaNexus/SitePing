@@ -199,6 +199,50 @@ describe("createSitepingHandler — lifecycle hooks", () => {
     expect(onUpdated.mock.calls[0]?.[0]).toMatchObject({ id: feedback.id, status: "wont_fix" });
   });
 
+  it("logs a failing onUpdated hook without failing the request", async () => {
+    const logger = silentLogger();
+    const hookError = new Error("search index down");
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      access: sessionAccess,
+      logger,
+      hooks: { onUpdated: () => Promise.reject(hookError) },
+    });
+    const feedback = await createFeedback(handler);
+
+    const response = await handler.PATCH(
+      jsonRequest("PATCH", { id: feedback.id, projectName: PROJECT, status: "resolved" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: feedback.id, status: "resolved" });
+    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onUpdated failed", { error: hookError });
+  });
+
+  it("logs a failing onDeleted hook without failing the request", async () => {
+    const store = new MemoryStore();
+    const logger = silentLogger();
+    const hookError = new Error("audit log down");
+    const handler = createSitepingHandler({
+      store,
+      access: sessionAccess,
+      logger,
+      hooks: {
+        onDeleted: () => {
+          throw hookError;
+        },
+      },
+    });
+    const feedback = await createFeedback(handler);
+
+    const response = await handler.DELETE(jsonRequest("DELETE", { id: feedback.id, projectName: PROJECT }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: true });
+    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onDeleted failed", { error: hookError });
+    expect((await store.getFeedbacks({ projectName: PROJECT })).total).toBe(0);
+  });
+
   it("keeps the record and answers 502 when onDeleting throws", async () => {
     const store = new MemoryStore();
     const onDeleted = vi.fn();

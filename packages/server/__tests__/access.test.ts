@@ -178,6 +178,24 @@ describe("createSitepingHandler — access", () => {
     expect((await list(ADMIN))[0]).not.toHaveProperty("clientId");
   });
 
+  it("lets every authenticated principal read authorEmail when canReadAuthorEmail is not set", async () => {
+    const handler = createSitepingHandler({ store: new MemoryStore(), access: sessionAccess() });
+
+    const created = await createFeedback(handler, GUEST);
+    const listed = ((await (await handler.GET(listRequest(GUEST))).json()) as { feedbacks: FeedbackRecord[] })
+      .feedbacks[0];
+    const updated = (await (
+      await handler.PATCH(jsonRequest("PATCH", { id: created.id, projectName: PROJECT, status: "resolved" }, GUEST))
+    ).json()) as FeedbackRecord;
+
+    const { authorEmail } = validPayloadNoAnnotations;
+    expect([created.authorEmail, listed?.authorEmail, updated.authorEmail]).toEqual([
+      authorEmail,
+      authorEmail,
+      authorEmail,
+    ]);
+  });
+
   it("applies the email permission to fresh and replayed POST responses", async () => {
     const store = new MemoryStore();
     const handler = createSitepingHandler({
