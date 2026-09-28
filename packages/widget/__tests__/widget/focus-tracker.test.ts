@@ -99,6 +99,46 @@ describe("createFocusTracker", () => {
     expect(tracker.getLastPageFocus()).toBe(btn);
   });
 
+  it("tracks the element focused inside open shadow roots, not the host focus retargets to (#177)", () => {
+    tracker = createFocusTracker(makeHost());
+    const component = append(document.createElement("div"));
+    const nested = document.createElement("div");
+    component.attachShadow({ mode: "open" }).appendChild(nested);
+    const inner = document.createElement("button");
+    nested.attachShadow({ mode: "open" }).appendChild(inner);
+
+    inner.focus();
+
+    expect(document.activeElement).toBe(component);
+    expect(tracker.getLastPageFocus()).toBe(inner);
+  });
+
+  it("keeps the host of a closed shadow root", () => {
+    tracker = createFocusTracker(makeHost());
+    const component = append(document.createElement("div"));
+    const inner = document.createElement("button");
+    component.attachShadow({ mode: "closed" }).appendChild(inner);
+
+    inner.focus();
+
+    expect(tracker.getLastPageFocus()).toBe(component);
+  });
+
+  it("ignores a web component inside widget chrome (previous target retained)", () => {
+    tracker = createFocusTracker(makeHost());
+    const btn = pageButton();
+    btn.focus();
+
+    const chrome = append(document.createElement("div"));
+    chrome.setAttribute("data-siteping-ignore", "true");
+    const component = chrome.appendChild(document.createElement("div"));
+    const inner = document.createElement("button");
+    component.attachShadow({ mode: "open" }).appendChild(inner);
+    inner.focus();
+
+    expect(tracker.getLastPageFocus()).toBe(btn);
+  });
+
   it("returns null once the tracked element leaves the DOM", () => {
     tracker = createFocusTracker(makeHost());
     const btn = pageButton();

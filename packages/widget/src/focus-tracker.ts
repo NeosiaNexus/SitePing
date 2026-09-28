@@ -34,6 +34,22 @@ export function isWidgetChrome(el: Element): boolean {
   );
 }
 
+/**
+ * The element that actually holds focus under `el`: focus inside a web
+ * component retargets `activeElement` (and `focusin` targets) to its shadow
+ * host, so drill through open roots. Closed roots — the widget's own among
+ * them — keep their host.
+ */
+export function deepFocusTarget(el: HTMLElement): HTMLElement {
+  let current = el;
+  let inner = current.shadowRoot?.activeElement;
+  while (inner instanceof HTMLElement) {
+    current = inner;
+    inner = current.shadowRoot?.activeElement;
+  }
+  return current;
+}
+
 export function createFocusTracker(host: HTMLElement): FocusTracker {
   let lastPageFocus: HTMLElement | null = null;
 
@@ -44,7 +60,7 @@ export function createFocusTracker(host: HTMLElement): FocusTracker {
     // teardown — never something the user chose to annotate.
     if (target === document.body || target === document.documentElement) return;
     if (target === host || isWidgetChrome(target)) return;
-    lastPageFocus = target;
+    lastPageFocus = deepFocusTarget(target);
   };
 
   document.addEventListener("focusin", onFocusIn);

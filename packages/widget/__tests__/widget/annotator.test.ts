@@ -654,6 +654,29 @@ describe("Annotator", () => {
       target.remove();
     });
 
+    it("Enter annotates the element focused inside an open shadow root, not its host (#177)", async () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const target = document.createElement("button");
+      host.attachShadow({ mode: "open" }).appendChild(target);
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 40));
+      target.focus();
+      expect(document.activeElement).toBe(host);
+
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      findOverlay()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+      expect(generateAnchor).toHaveBeenLastCalledWith(target);
+
+      host.remove();
+    });
+
     it("Enter on overlay without pre-focused element does nothing", async () => {
       // Blur everything so there's no activeElement with bounds
       (document.activeElement as HTMLElement)?.blur?.();
