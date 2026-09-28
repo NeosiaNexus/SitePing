@@ -3,10 +3,10 @@
 import type { FeedbackResponse } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
-import { createT } from "../../src/i18n/index.js";
+import { createT, tWithParams } from "../../src/i18n/index.js";
 import { Panel } from "../../src/panel.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
-import { createShadowRoot } from "../helpers.js";
+import { createShadowRoot, trackClickListeners } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -773,6 +773,24 @@ describe("Panel", () => {
       expect(detail!.getAttribute("aria-hidden")).toBe("false");
     });
 
+    it("detail title uses the card's displayed number (sort order), for click and Enter", async () => {
+      // Server order: older first; the default "newest" sort displays it second.
+      const older = makeFeedback({ id: "fb-old", createdAt: "2026-01-01T00:00:00.000Z" });
+      const newer = makeFeedback({ id: "fb-new", createdAt: "2026-02-01T00:00:00.000Z" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [older, newer], total: 2 });
+
+      await panel.open();
+
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-old"]')!;
+      expect(card.querySelector(".sp-card-number")!.textContent).toBe("#2");
+
+      card.click();
+      expect(shadow.querySelector(".sp-detail-title")!.textContent).toBe(t("detail.title").replace("{number}", "2"));
+
+      card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      expect(shadow.querySelector(".sp-detail-title")!.textContent).toBe(t("detail.title").replace("{number}", "2"));
+    });
+
     it("clicking a card shows the correct feedback in detail view", async () => {
       const fb = makeFeedback({ id: "fb-1", message: "Test bug report", annotations: [annotation] });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
@@ -1112,6 +1130,72 @@ describe("Panel", () => {
 
       expect(preventSpy).toHaveBeenCalled();
     });
+
+    describe("Escape closes only the innermost layer", () => {
+      const escapeOn = (target: EventTarget) =>
+        target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
+      const panelIsOpen = () => shadow.querySelector<HTMLElement>(".sp-panel")!.classList.contains("sp-panel--open");
+
+      beforeEach(async () => {
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
+        await panel.open();
+      });
+
+      it("shortcuts help overlay", () => {
+        shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+        const overlay = shadow.querySelector<HTMLElement>(".sp-shortcuts-overlay")!;
+        expect(overlay.classList.contains("sp-shortcuts-overlay--visible")).toBe(true);
+
+        escapeOn(overlay.querySelector(".sp-shortcuts-close")!);
+
+        expect(overlay.classList.contains("sp-shortcuts-overlay--visible")).toBe(false);
+        expect(panelIsOpen()).toBe(true);
+      });
+
+      it("type dropdown", () => {
+        shadow.querySelector<HTMLButtonElement>(".sp-filter-dropdown-btn")!.click();
+        escapeOn(shadow.querySelector(".sp-filter-dropdown-option")!);
+
+        expect(shadow.querySelector(".sp-filter-dropdown-menu")).toBeNull();
+        expect(panelIsOpen()).toBe(true);
+      });
+
+      it("sort menu", () => {
+        shadow.querySelector<HTMLButtonElement>(".sp-sort-btn")!.click();
+        escapeOn(shadow.querySelector(".sp-sort-option")!);
+
+        expect(shadow.querySelector(".sp-sort-menu")).toBeNull();
+        expect(panelIsOpen()).toBe(true);
+      });
+
+      it.each([
+        [".sp-filter-dropdown-btn", ".sp-filter-dropdown-menu"],
+        [".sp-sort-btn", ".sp-sort-menu"],
+        [".sp-export-btn", ".sp-export-menu--open"],
+      ])("menu opened by %s, with focus still on its trigger", (trigger, menu) => {
+        const btn = shadow.querySelector<HTMLButtonElement>(trigger)!;
+        btn.click();
+        btn.focus();
+        expect(shadow.querySelector(menu)).not.toBeNull();
+
+        escapeOn(btn);
+
+        expect(shadow.querySelector(menu)).toBeNull();
+        expect(panelIsOpen()).toBe(true);
+        expect(shadow.activeElement).toBe(btn);
+      });
+
+      it("delete-all confirm dialog", async () => {
+        shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!.click();
+        await vi.waitFor(() => expect(shadow.querySelector(".sp-confirm-backdrop")).not.toBeNull());
+
+        escapeOn(shadow.querySelector(".sp-confirm-dialog .sp-btn-ghost")!);
+
+        expect(panelIsOpen()).toBe(true);
+        await new Promise((r) => setTimeout(r, 250));
+        expect(apiClient.deleteAllFeedbacks).not.toHaveBeenCalled();
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -1386,8 +1470,42 @@ describe("Panel", () => {
       });
     });
 
+    it("hides 'Go to annotation' for a feedback from another page (scope: all pages)", async () => {
+      const elsewhere = makeFeedback({ id: "elsewhere", url: "/pricing", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [elsewhere], total: 1 });
+      const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+
+      await panel.open();
+      shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!.click();
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="elsewhere"]')).not.toBeNull());
+      shadow.querySelector<HTMLElement>('[data-feedback-id="elsewhere"]')!.click();
+
+      // Its stored scroll offset and anchor belong to /pricing, not this page.
+      expect(shadow.querySelector(".sp-detail-btn-goto")).toBeNull();
+      scrollSpy.mockRestore();
+    });
+
+    it("keeps 'Go to annotation' for another page's feedback when markers are not scoped by URL", async () => {
+      panel.destroy();
+      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+        getScope: () => ({ url: "/", urlPattern: null }),
+        scopeAnnotationsByUrl: false,
+      });
+      const elsewhere = makeFeedback({ id: "elsewhere", url: "/pricing", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [elsewhere], total: 1 });
+
+      await panel.open();
+      shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!.click();
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="elsewhere"]')).not.toBeNull());
+      shadow.querySelector<HTMLElement>('[data-feedback-id="elsewhere"]')!.click();
+
+      // Markers render for every URL here, so the detail view keeps the jump.
+      expect(shadow.querySelector(".sp-detail-btn-goto")).not.toBeNull();
+    });
+
     it("detail onGoToAnnotation scrolls and pins the highlight", async () => {
-      const fb = makeFeedback({ id: "fb-1", annotations: [annotation] });
+      // url = the current page scope (pathname) — as the launcher stores it
+      const fb = makeFeedback({ id: "fb-1", url: "/", annotations: [annotation] });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
 
       const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -1539,6 +1657,59 @@ describe("Panel", () => {
       });
     });
 
+    it("D deletes the card that has DOM focus, not the last J/K target", async () => {
+      const fbs = ["fb-a", "fb-b", "fb-c"].map((id) => makeFeedback({ id }));
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: fbs, total: 3 });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      stubScrollOnCards(shadow);
+
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true })); // highlights fb-a
+      const cardC = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-c"]')!;
+      cardC.focus(); // Tab / click moves real focus elsewhere
+      cardC.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true, composed: true }));
+
+      await vi.waitFor(() => expect(apiClient.deleteFeedback).toHaveBeenCalled());
+      expect(apiClient.deleteFeedback).toHaveBeenCalledWith("fb-c");
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalledWith("fb-a");
+    });
+
+    it("single-key shortcuts are ignored inside the delete-all confirm dialog", async () => {
+      const fb = makeFeedback({ id: "fb-a" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      stubScrollOnCards(shadow);
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+
+      shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!.click();
+      await vi.waitFor(() => expect(shadow.querySelector(".sp-confirm-backdrop")).not.toBeNull());
+      const cancelBtn = shadow.querySelector<HTMLButtonElement>(".sp-confirm-dialog .sp-btn-ghost")!;
+      cancelBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true, composed: true }));
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalled();
+    });
+
+    it("single-key shortcuts are ignored while the detail view covers the list", async () => {
+      const fbs = ["fb-a", "fb-b"].map((id) => makeFeedback({ id }));
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: fbs, total: 2 });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      stubScrollOnCards(shadow);
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true })); // highlights fb-a
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-b"]')!.click(); // detail for fb-b
+
+      const backBtn = shadow.querySelector<HTMLButtonElement>(".sp-detail-back")!;
+      backBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true, composed: true }));
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalled();
+    });
+
     it("F key focuses search input", async () => {
       await panel.open();
 
@@ -1596,6 +1767,98 @@ describe("Panel", () => {
       });
     });
 
+    it.each(["resolve", "delete"] as const)(
+      "checkboxes still follow the selection after a successful bulk %s",
+      async (action) => {
+        const fb1 = makeFeedback({ id: "fb-1" });
+        const fb2 = makeFeedback({ id: "fb-2" });
+        const fb3 = makeFeedback({ id: "fb-3" });
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2, fb3], total: 3 });
+        apiClient.resolveFeedback.mockResolvedValue(undefined);
+        apiClient.deleteFeedback.mockResolvedValue(undefined);
+        const checkbox = (selector: string) => shadow.querySelector<HTMLElement>(`${selector} .sp-bulk-checkbox`)!;
+
+        await panel.open();
+        checkbox('[data-feedback-id="fb-1"]').click();
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb2, fb3], total: 2 });
+        const button = shadow.querySelector<HTMLButtonElement>(`.sp-bulk-btn-${action}`)!;
+        button.click();
+        await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-1"]')).toBeNull());
+        await vi.waitFor(() => expect(button.disabled).toBe(false));
+
+        // The reloaded list's checkboxes must still be wired to the selection.
+        checkbox('[data-feedback-id="fb-2"]').click();
+        expect(checkbox('[data-feedback-id="fb-2"]').getAttribute("aria-checked")).toBe("true");
+        checkbox(".sp-bulk-select-all").click();
+        expect(checkbox(".sp-bulk-select-all").getAttribute("aria-checked")).toBe("true");
+        expect(checkbox('[data-feedback-id="fb-3"]').getAttribute("aria-checked")).toBe("true");
+        expect(shadow.querySelector(".sp-bulk-bar-count")!.textContent).toBe(
+          tWithParams(t, "bulk.selected", { count: 2 }),
+        );
+      },
+    );
+
+    it("selection stays visible on cards after a re-render (group toggle / sort / load more)", async () => {
+      const fb1 = makeFeedback({ id: "fb-1" });
+      const fb2 = makeFeedback({ id: "fb-2" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2], total: 2 });
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!.click();
+
+      // Re-render the list without reloading (selection set is kept)
+      shadow.querySelector<HTMLButtonElement>(".sp-group-toggle")!.click();
+
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+      const checkbox = card.querySelector<HTMLElement>(".sp-bulk-checkbox")!;
+      expect(checkbox.getAttribute("aria-checked")).toBe("true");
+      expect(checkbox.classList.contains("sp-bulk-checkbox--checked")).toBe(true);
+      expect(card.classList.contains("sp-card--selected")).toBe(true);
+      const other = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-2"]')!;
+      expect(other.classList.contains("sp-card--selected")).toBe(false);
+    });
+
+    it("keeps the selection checked across Load more, with stats over both pages", async () => {
+      const page1 = [makeFeedback({ id: "fb-1" }), makeFeedback({ id: "fb-2" })];
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: page1, total: 3 });
+      const checked = (selector: string) =>
+        shadow.querySelector(`${selector} .sp-bulk-checkbox`)!.getAttribute("aria-checked");
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+      shadow.querySelector<HTMLButtonElement>(".sp-group-toggle")!.click();
+      expect(checked(".sp-bulk-select-all")).toBe("true");
+
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-3" })], total: 3 });
+      shadow.querySelector<HTMLButtonElement>(".sp-btn-load-more")!.click();
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-3"]')).not.toBeNull());
+
+      expect(checked('[data-feedback-id="fb-1"]')).toBe("true");
+      expect(checked('[data-feedback-id="fb-2"]')).toBe("true");
+      expect(checked('[data-feedback-id="fb-3"]')).toBe("false");
+      expect(checked(".sp-bulk-select-all")).toBe("false");
+      expect(shadow.querySelector(".sp-bulk-bar-count")!.textContent).toBe(
+        tWithParams(t, "bulk.selected", { count: 2 }),
+      );
+      // The first stat is the open count, over both pages.
+      expect(shadow.querySelector(".sp-stats-value")!.textContent).toBe("3");
+    });
+
+    it("bulkResolve skips already-closed feedbacks (keeps wont_fix and resolvedAt)", async () => {
+      const open = makeFeedback({ id: "fb-open", status: "open" });
+      const wontFix = makeFeedback({ id: "fb-wontfix", status: "wont_fix", resolvedAt: new Date().toISOString() });
+      const resolved = makeFeedback({ id: "fb-resolved", status: "resolved", resolvedAt: new Date().toISOString() });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [open, wontFix, resolved], total: 3 });
+      apiClient.resolveFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+      shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-resolve")!.click();
+
+      await vi.waitFor(() => expect(apiClient.resolveFeedback).toHaveBeenCalledWith("fb-open", true));
+      expect(apiClient.resolveFeedback).toHaveBeenCalledTimes(1);
+    });
+
     it("bulkResolve emits feedback:error on failure", async () => {
       const fb = makeFeedback({ id: "fb-1" });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
@@ -1645,6 +1908,66 @@ describe("Panel", () => {
       });
     });
 
+    it("bulkDelete partial failure still reports the deleted items and reloads", async () => {
+      const fb1 = makeFeedback({ id: "fb-1" });
+      const fb2 = makeFeedback({ id: "fb-2" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2], total: 2 });
+      apiClient.deleteFeedback.mockImplementation((id: string) =>
+        id === "fb-2" ? Promise.reject(new Error("fb-2 failed")) : Promise.resolve(undefined),
+      );
+      const deletedListener = vi.fn();
+      const errorListener = vi.fn();
+      bus.on("feedback:deleted", deletedListener);
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb2], total: 1 });
+
+      const deleteBtn = shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-delete")!;
+      deleteBtn.click();
+
+      await vi.waitFor(() => expect(errorListener).toHaveBeenCalledWith(expect.any(Error)));
+      expect(deletedListener).toHaveBeenCalledWith("fb-1");
+      expect(deletedListener).not.toHaveBeenCalledWith("fb-2");
+      expect(apiClient.getFeedbacks).toHaveBeenCalled();
+
+      // Only the failed item stays selected, ready for a retry.
+      await vi.waitFor(() => expect(deleteBtn.disabled).toBe(false));
+      const checkbox = shadow.querySelector('[data-feedback-id="fb-2"] .sp-bulk-checkbox')!;
+      expect(checkbox.getAttribute("aria-checked")).toBe("true");
+      expect(deleteBtn.textContent).toBe(`${t("bulk.delete")} 1`);
+    });
+
+    it("bulkResolve partial failure still reloads the list", async () => {
+      const fb1 = makeFeedback({ id: "fb-1" });
+      const fb2 = makeFeedback({ id: "fb-2" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2], total: 2 });
+      apiClient.resolveFeedback.mockImplementation((id: string) =>
+        id === "fb-2" ? Promise.reject(new Error("fb-2 failed")) : Promise.resolve(undefined),
+      );
+      const errorListener = vi.fn();
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+      apiClient.getFeedbacks.mockClear();
+
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-resolve")!;
+      resolveBtn.click();
+
+      await vi.waitFor(() => expect(errorListener).toHaveBeenCalledWith(expect.any(Error)));
+      expect(apiClient.getFeedbacks).toHaveBeenCalled();
+
+      await vi.waitFor(() => expect(resolveBtn.disabled).toBe(false));
+      const checked = (id: string) =>
+        shadow.querySelector(`[data-feedback-id="${id}"] .sp-bulk-checkbox`)!.getAttribute("aria-checked");
+      expect(checked("fb-1")).toBe("false");
+      expect(checked("fb-2")).toBe("true");
+      expect(resolveBtn.textContent).toBe(`${t("bulk.resolve")} 1`);
+    });
+
     it("bulkDelete emits feedback:error on failure", async () => {
       const fb = makeFeedback({ id: "fb-1" });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
@@ -1664,7 +1987,41 @@ describe("Panel", () => {
       await vi.waitFor(() => {
         expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
       });
+      // Nothing was deleted: the selection is kept for a retry.
+      await vi.waitFor(() => expect(deleteBtn.disabled).toBe(false));
+      const checkbox = shadow.querySelector('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!;
+      expect(checkbox.getAttribute("aria-checked")).toBe("true");
     });
+
+    it.each(["resolve", "delete"] as const)(
+      "a bulk %s that fails for every item reports one error, without a reload",
+      async (action) => {
+        const fb1 = makeFeedback({ id: "fb-1" });
+        const fb2 = makeFeedback({ id: "fb-2" });
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2], total: 2 });
+        apiClient.resolveFeedback.mockRejectedValue(new Error("offline"));
+        apiClient.deleteFeedback.mockRejectedValue(new Error("offline"));
+        const errorListener = vi.fn();
+        bus.on("feedback:error", errorListener);
+        const checked = (selector: string) =>
+          shadow.querySelector(`${selector} .sp-bulk-checkbox`)!.getAttribute("aria-checked");
+
+        await panel.open();
+        shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+        // During an outage the reload would fail too.
+        apiClient.getFeedbacks.mockClear();
+        apiClient.getFeedbacks.mockRejectedValue(new Error("offline"));
+        const button = shadow.querySelector<HTMLButtonElement>(`.sp-bulk-btn-${action}`)!;
+        button.click();
+        await vi.waitFor(() => expect(button.disabled).toBe(false));
+
+        expect(errorListener).toHaveBeenCalledTimes(1);
+        expect(apiClient.getFeedbacks).not.toHaveBeenCalled();
+        expect(checked('[data-feedback-id="fb-1"]')).toBe("true");
+        expect(checked('[data-feedback-id="fb-2"]')).toBe("true");
+        expect(checked(".sp-bulk-select-all")).toBe("true");
+      },
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -2042,6 +2399,43 @@ describe("Panel", () => {
 
       typeBtn.click();
       expect(shadow.querySelector(".sp-filter-dropdown-menu")).toBeNull();
+    });
+
+    it("toggles on its trigger and closes on any other click from a closed shadow root", async () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const root = host.attachShadow({ mode: "closed" });
+      const closedPanel = new Panel(root, colors, bus, apiClient as never, "test-project", markers as never, t, "fr");
+      await closedPanel.open();
+      const typeBtn = root.querySelector<HTMLButtonElement>(".sp-filter-dropdown-btn")!;
+      const menuOpen = () => root.querySelector(".sp-filter-dropdown-menu") !== null;
+
+      // The trigger itself, elsewhere in the same shadow tree, the host page.
+      for (const target of [typeBtn, root.querySelector<HTMLElement>(".sp-search")!, document.body]) {
+        typeBtn.click();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        expect(menuOpen()).toBe(true);
+        target.click();
+        expect(menuOpen()).toBe(false);
+      }
+
+      closedPanel.destroy();
+      host.remove();
+    });
+
+    it("leaves no click listener behind when the menu closes in the frame it opened", async () => {
+      await panel.open();
+      const liveClickListeners = trackClickListeners(document, shadow);
+      try {
+        const typeBtn = shadow.querySelector<HTMLButtonElement>(".sp-filter-dropdown-btn")!;
+        typeBtn.click();
+        typeBtn.click();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+        expect(liveClickListeners()).toEqual([]);
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
   });
 

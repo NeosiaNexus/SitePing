@@ -100,6 +100,24 @@ describe("BulkActions", () => {
     expect(bulk.barElement.classList.contains("sp-bulk-bar--visible")).toBe(false);
   });
 
+  it("re-enables both bar buttons after a successful bulk action", async () => {
+    const { bulk, onResolve, onDelete } = createBulkActions();
+    const resolveButton = bulk.barElement.querySelector<HTMLButtonElement>(".sp-bulk-btn-resolve")!;
+    const deleteButton = bulk.barElement.querySelector<HTMLButtonElement>(".sp-bulk-btn-delete")!;
+    bulk.selectAll(["fb-1"]);
+
+    resolveButton.click();
+    await vi.waitFor(() => expect(onResolve).toHaveBeenCalledWith(["fb-1"]));
+    await vi.waitFor(() => expect(bulk.selectedIds).toEqual([]));
+
+    // Next selection: the bar must be usable again.
+    bulk.toggle("fb-2");
+    expect(resolveButton.disabled).toBe(false);
+    expect(deleteButton.disabled).toBe(false);
+    deleteButton.click();
+    await vi.waitFor(() => expect(onDelete).toHaveBeenCalledWith(["fb-2"]));
+  });
+
   it("restores delete button state and keeps selection when delete fails", async () => {
     const onResolve = vi.fn().mockResolvedValue(undefined);
     const onDelete = vi.fn().mockRejectedValue(new Error("boom"));

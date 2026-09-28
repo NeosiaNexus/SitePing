@@ -32,6 +32,8 @@ export interface ShortcutCallbacks {
   onDelete: () => void;
   onFocusSearch: () => void;
   onToggleSelect: () => void;
+  /** True while another layer (e.g. the detail view) covers the list. */
+  isSuspended?: () => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -40,11 +42,14 @@ export interface ShortcutCallbacks {
 
 /** Get the currently focused card index from the list container (-1 if none). */
 export function getFocusedCardIndex(listContainer: HTMLElement): number {
-  const cards = listContainer.querySelectorAll<HTMLElement>(".sp-card");
-  for (let i = 0; i < cards.length; i++) {
-    if (cards[i]?.classList.contains("sp-card--focused")) return i;
-  }
-  return -1;
+  const cards = Array.from(listContainer.querySelectorAll<HTMLElement>(".sp-card"));
+  // Real focus wins over the J/K highlight — a card reached by Tab or click
+  // must not leave R/D acting on the last J/K target.
+  const root = listContainer.getRootNode() as Document | ShadowRoot;
+  const activeCard = root.activeElement?.closest<HTMLElement>(".sp-card");
+  const activeIdx = activeCard ? cards.indexOf(activeCard) : -1;
+  if (activeIdx >= 0) return activeIdx;
+  return cards.findIndex((card) => card.classList.contains("sp-card--focused"));
 }
 
 /** Focus a card by index in the list container. Clamps to valid range. */
@@ -334,6 +339,7 @@ export class KeyboardShortcuts {
   readonly hintButton: HTMLButtonElement;
 
   private readonly keyMap: Map<string, () => void>;
+  private readonly isSuspended: () => boolean;
   private readonly boundHandler: (e: KeyboardEvent) => void;
   private shadowRoot: ShadowRoot | HTMLElement | null = null;
   private enabled = false;
@@ -356,6 +362,7 @@ export class KeyboardShortcuts {
       ["x", () => callbacks.onToggleSelect()],
       ["?", () => this.toggleHelp()],
     ]);
+    this.isSuspended = callbacks.isSuspended ?? (() => false);
 
     // Build DOM
     this.helpOverlay = this.buildOverlay();
@@ -386,6 +393,11 @@ export class KeyboardShortcuts {
     this.enabled = false;
     // Also hide help if visible
     if (this.helpVisible) this.hideHelp();
+  }
+
+  /** Whether the help overlay is showing (it consumes Escape before the panel). */
+  get isHelpVisible(): boolean {
+    return this.helpVisible;
   }
 
   /** Show/hide help overlay. */
@@ -424,8 +436,14 @@ export class KeyboardShortcuts {
     // If help overlay is open, block all other shortcuts
     if (this.helpVisible) return;
 
+    // A modal layer (confirm dialog) or a view covering the list owns the
+    // keyboard — R/D must not act on a card hidden behind it.
+    if (this.isSuspended()) return;
+    const path = e.composedPath();
+    if (path.some((n) => n instanceof Element && n.getAttribute("aria-modal") === "true")) return;
+
     // Ignore when focus is in an input, textarea, or contenteditable
-    const active = e.composedPath()[0] as HTMLElement | undefined;
+    const active = path[0] as HTMLElement | undefined;
     if (active) {
       const tag = active.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select") return;

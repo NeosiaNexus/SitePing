@@ -176,6 +176,40 @@ test.describe("Panel", () => {
     await s.waitForHidden(".sp-panel--open");
     expect(await s.query(".sp-panel--open")).toBe(false);
   });
+
+  test("filter, sort and export menus toggle on their trigger and close on any other click", async ({ page }) => {
+    const s = shadow(page);
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="chat"]');
+    await s.click('[data-item-id="chat"]');
+    await s.waitFor(".sp-panel--open");
+
+    // Real pointer clicks: the outside-click listeners must tell the trigger,
+    // the rest of the shadow tree and the host page apart.
+    for (const [trigger, menu] of [
+      [".sp-filter-dropdown-btn", ".sp-filter-dropdown-menu"],
+      [".sp-sort-btn", ".sp-sort-menu"],
+      [".sp-export-btn", ".sp-export-menu--open"],
+    ] as const) {
+      const open = page.locator(menu);
+      for (const dismiss of [
+        () => page.click(trigger),
+        () => page.click(".sp-panel-title"),
+        () => page.mouse.click(40, 360),
+      ]) {
+        await page.click(trigger);
+        await expect(open).toHaveCount(1);
+        await dismiss();
+        await expect(open).toHaveCount(0);
+      }
+    }
+
+    // The group toggle shares the sort button's bar.
+    await page.click(".sp-sort-btn");
+    await expect(page.locator(".sp-sort-menu")).toHaveCount(1);
+    await page.click(".sp-group-toggle");
+    await expect(page.locator(".sp-sort-menu")).toHaveCount(0);
+  });
 });
 
 test.describe("Annotation mode", () => {

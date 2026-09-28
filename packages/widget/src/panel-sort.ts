@@ -11,7 +11,7 @@
  */
 
 import { type FeedbackResponse, type FeedbackType, isClosedStatus } from "@siteping/core";
-import { el, parseSvg, setText } from "./dom-utils.js";
+import { el, onClickOutside, parseSvg, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -204,11 +204,12 @@ export class PanelSortControls {
   private _groupByPage = false;
   private menuEl: HTMLElement | null = null;
   private sortBtn: HTMLButtonElement;
+  private readonly sortDropdown: HTMLElement;
   private groupToggle: HTMLButtonElement;
   private readonly t: TFunction;
   private readonly colors: ThemeColors;
   private readonly onChange: () => void;
-  private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
+  private removeOutsideClick: (() => void) | null = null;
 
   constructor(colors: ThemeColors, onChange: () => void, t: TFunction) {
     this.colors = colors;
@@ -255,8 +256,21 @@ export class PanelSortControls {
       this.onChange();
     });
 
-    this.element.appendChild(this.sortBtn);
+    // The trigger and its menu: a click anywhere else closes the menu.
+    this.sortDropdown = el("div", { class: "sp-sort-dropdown" });
+    this.sortDropdown.appendChild(this.sortBtn);
+
+    this.element.appendChild(this.sortDropdown);
     this.element.appendChild(this.groupToggle);
+
+    // Close the open menu on Escape from anywhere in the controls: a click
+    // leaves focus on the trigger, not in the menu.
+    this.element.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !this.menuEl) return;
+      e.stopPropagation(); // Close the menu only, not the panel
+      this.closeMenu();
+      this.sortBtn.focus();
+    });
   }
 
   get sortMode(): SortMode {
@@ -313,25 +327,12 @@ export class PanelSortControls {
     }
 
     // Position relative to button
-    this.element.appendChild(this.menuEl);
+    this.sortDropdown.appendChild(this.menuEl);
 
-    // Close on outside click (next tick to avoid the current click)
-    requestAnimationFrame(() => {
-      this.outsideClickHandler = (e: MouseEvent) => {
-        if (this.menuEl && !this.element.contains(e.target as Node)) {
-          this.closeMenu();
-        }
-      };
-      document.addEventListener("click", this.outsideClickHandler, true);
-    });
-
-    // Close on Escape
-    this.menuEl.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        this.closeMenu();
-        this.sortBtn.focus();
-      }
-    });
+    // Close on outside click. Armed now, not in a frame that closeMenu()
+    // could miss: capture listeners added while the opening click is at its
+    // target never see that click.
+    this.removeOutsideClick = onClickOutside(this.sortDropdown, () => this.closeMenu());
   }
 
   private closeMenu(): void {
@@ -340,10 +341,8 @@ export class PanelSortControls {
       this.menuEl = null;
     }
     this.sortBtn.setAttribute("aria-expanded", "false");
-    if (this.outsideClickHandler) {
-      document.removeEventListener("click", this.outsideClickHandler, true);
-      this.outsideClickHandler = null;
-    }
+    this.removeOutsideClick?.();
+    this.removeOutsideClick = null;
   }
 
   private updateSortLabel(): void {
@@ -378,6 +377,12 @@ export const SORT_CSS = `
     margin-top: 4px;
     padding-top: 8px;
     border-top: 1px solid var(--sp-border);
+  }
+
+  /* Groups the sort button with its menu for outside clicks, without a box:
+     both still lay out as children of .sp-sort-controls. */
+  .sp-sort-dropdown {
+    display: contents;
   }
 
   /* ============================

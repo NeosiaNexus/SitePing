@@ -53,6 +53,33 @@ export function setText(element: HTMLElement | SVGElement, text: string): void {
 }
 
 /**
+ * Call `onOutside` for every click outside `container` until the returned
+ * disposer runs. Arm it once `container` sits in its shadow tree.
+ *
+ * A document listener alone cannot tell: it sees a click inside the widget's
+ * shadow tree retargeted to the host, and composedPath() hides a closed
+ * tree's nodes from it. So the tree's own root judges clicks inside it (the
+ * target is the real element there) and the document handles the rest of
+ * the page.
+ */
+export function onClickOutside(container: HTMLElement, onOutside: () => void): () => void {
+  const root = container.getRootNode();
+  const host = root instanceof ShadowRoot ? root.host : null;
+  const inTree = (e: Event) => {
+    if (!container.contains(e.target as Node)) onOutside();
+  };
+  const onPage = (e: Event) => {
+    if (e.target !== host) onOutside();
+  };
+  root.addEventListener("click", inTree, true);
+  if (host) document.addEventListener("click", onPage, true);
+  return () => {
+    root.removeEventListener("click", inTree, true);
+    if (host) document.removeEventListener("click", onPage, true);
+  };
+}
+
+/**
  * Replace a button's children with a small spinner and disable it.
  * Returns a `restore` callback that swaps the original content back and
  * re-enables the button. Used by every async button (delete, resolve, …)

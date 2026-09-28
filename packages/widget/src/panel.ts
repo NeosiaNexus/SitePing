@@ -10,7 +10,7 @@ import {
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
 import { SegmentedControl } from "./components/segmented-control.js";
 import { PAGE_SIZE } from "./constants.js";
-import { el, formatRelativeDate, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
+import { el, formatRelativeDate, onClickOutside, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
@@ -57,7 +57,7 @@ export class Panel {
   private typeDropdownBtn!: HTMLButtonElement;
   private typeDropdownContainer!: HTMLElement;
   private typeDropdownMenu: HTMLElement | null = null;
-  private typeDropdownOutsideHandler: ((e: MouseEvent) => void) | null = null;
+  private removeTypeDropdownOutsideClick: (() => void) | null = null;
   private statusSegmented!: SegmentedControl<"all" | FeedbackStatus>;
   private typeOptions!: ReadonlyArray<{ value: string; label: string; icon: string; color: string; bg: string }>;
   private feedbacks: FeedbackResponse[] = [];
@@ -226,6 +226,9 @@ export class Panel {
             throw error;
           }
         },
+        // Same rule as the page markers: another page's scroll offset and
+        // anchor mean nothing here (reachable via the "all pages" scope).
+        canGoToAnnotation: (fb) => !this.scopeAnnotationsByUrl || fb.url === this.getScope().url,
         onGoToAnnotation: (fb) => {
           if (fb.annotations.length > 0) {
             const ann = fb.annotations[0];
@@ -268,6 +271,8 @@ export class Panel {
           const fb = this.getFocusedFeedback();
           if (fb) this.bulk.toggle(fb.id);
         },
+        // The detail view covers the whole list (and would hide the help overlay).
+        isSuspended: () => this.detail.isVisible,
       },
       this.t,
     );
@@ -325,10 +330,7 @@ export class Panel {
       if (card) {
         const feedbackId = card.dataset.feedbackId;
         const feedback = this.feedbacks.find((f) => f.id === feedbackId);
-        if (feedback) {
-          const number = this.feedbacks.indexOf(feedback) + 1;
-          this.detail.show(feedback, number);
-        }
+        if (feedback) this.detail.show(feedback, Number(card.dataset.number));
       }
     };
     this.listContainer.addEventListener("click", this.onListClick);
@@ -343,10 +345,7 @@ export class Panel {
       ke.preventDefault();
       const feedbackId = card.dataset.feedbackId;
       const feedback = this.feedbacks.find((f) => f.id === feedbackId);
-      if (feedback) {
-        const number = this.feedbacks.indexOf(feedback) + 1;
-        this.detail.show(feedback, number);
-      }
+      if (feedback) this.detail.show(feedback, Number(card.dataset.number));
     };
     this.listContainer.addEventListener("keydown", this.onListKeydown);
 
@@ -373,10 +372,13 @@ export class Panel {
       open ? this.open() : this.close();
     });
 
-    // Keyboard handling: Escape to close + focus trap
+    // Keyboard handling: Escape to close + focus trap. Nested layers (menus,
+    // confirm dialog) stop Escape before it bubbles here; the help overlay's
+    // handler sits on this same shadow root but runs later, so defer to it.
     shadowRoot.addEventListener("keydown", (e) => {
       const ke = e as KeyboardEvent;
       if (ke.key === "Escape" && this.isOpen) {
+        if (this.shortcuts.isHelpVisible) return;
         // If detail view is open, close it instead
         if (this.detail.isVisible) {
           this.detail.hide();
@@ -680,6 +682,7 @@ export class Panel {
     const card = el("div", {
       class: `sp-card ${isResolved ? "sp-card--resolved" : ""}`,
     });
+    card.classList.toggle("sp-card--selected", this.bulk.isSelected(feedback.id));
     card.setAttribute("role", "listitem");
     card.setAttribute("tabindex", "0");
     card.setAttribute(
@@ -687,6 +690,8 @@ export class Panel {
       `Feedback #${number}: ${getTypeLabel(feedback.type, this.t)} — ${feedback.message.slice(0, 80)}`,
     );
     card.dataset.feedbackId = feedback.id;
+    // Display (sort-order) number — the detail title must match the card's #.
+    card.dataset.number = String(number);
 
     // Color bar
     const bar = el("div", { class: "sp-card-bar" });
@@ -791,24 +796,40 @@ export class Panel {
   // ---------------------------------------------------------------------------
 
   private async bulkResolve(ids: string[]): Promise<void> {
-    try {
-      await Promise.all(ids.map((id) => this.client.resolveFeedback(id, true)));
-      await this.loadFeedbacks();
-    } catch (error) {
-      this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
-      throw error;
-    }
+    // Skip closed items: resolving would turn a wont_fix into resolved and
+    // overwrite a resolved item's closure timestamp.
+    const closed = new Set(this.feedbacks.filter((f) => isClosedStatus(f.status)).map((f) => f.id));
+    const targets = ids.filter((id) => !closed.has(id));
+    const results = await Promise.allSettled(targets.map((id) => this.client.resolveFeedback(id, true)));
+    await this.settleBulk(targets, results);
   }
 
   private async bulkDelete(ids: string[]): Promise<void> {
-    try {
-      await Promise.all(ids.map((id) => this.client.deleteFeedback(id)));
-      for (const id of ids) this.bus.emit("feedback:deleted", id);
-      await this.loadFeedbacks();
-    } catch (error) {
-      this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
-      throw error;
-    }
+    const results = await Promise.allSettled(ids.map((id) => this.client.deleteFeedback(id)));
+    ids.forEach((id, i) => {
+      if (results[i]?.status === "fulfilled") this.bus.emit("feedback:deleted", id);
+    });
+    await this.settleBulk(ids, results);
+  }
+
+  /**
+   * Finish a bulk action. Reload when any item succeeded — it must leave the
+   * list (and its markers the page) even when another item failed. When every
+   * item failed nothing changed, so skip the reload: during an outage it would
+   * only fail again and report a second error. Then re-select the failed items
+   * still listed, so the user can retry them, and surface the first failure,
+   * rethrown so BulkActions restores its buttons.
+   */
+  private async settleBulk(ids: string[], results: PromiseSettledResult<unknown>[]): Promise<void> {
+    const failed = ids.filter((_, i) => results[i]?.status === "rejected");
+    if (failed.length < ids.length) await this.loadFeedbacks();
+    const failure = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (!failure) return;
+    const listed = new Set(this.feedbacks.map((f) => f.id));
+    this.bulk.selectAll(failed.filter((id) => listed.has(id)));
+    const error = failure.reason instanceof Error ? failure.reason : new Error(String(failure.reason));
+    this.bus.emit("feedback:error", error);
+    throw error;
   }
 
   // ---------------------------------------------------------------------------
@@ -884,6 +905,7 @@ export class Panel {
       const onKeydown = (e: Event) => {
         const ke = e as KeyboardEvent;
         if (ke.key === "Escape") {
+          ke.stopPropagation(); // Cancel the dialog only, not the panel
           close(false);
           return;
         }
@@ -1009,6 +1031,14 @@ export class Panel {
       else this.openTypeDropdown();
     });
 
+    // Escape from the trigger too: a click leaves focus there, not in the menu.
+    this.typeDropdownContainer.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !this.typeDropdownMenu) return;
+      e.stopPropagation(); // Close the menu only, not the panel
+      this.closeTypeDropdown();
+      this.typeDropdownBtn.focus();
+    });
+
     this.typeDropdownContainer.appendChild(this.typeDropdownBtn);
     return this.typeDropdownContainer;
   }
@@ -1083,21 +1113,8 @@ export class Panel {
 
     this.typeDropdownContainer.appendChild(this.typeDropdownMenu);
 
-    requestAnimationFrame(() => {
-      this.typeDropdownOutsideHandler = (e: MouseEvent) => {
-        if (this.typeDropdownMenu && !this.typeDropdownContainer.contains(e.target as Node)) {
-          this.closeTypeDropdown();
-        }
-      };
-      document.addEventListener("click", this.typeDropdownOutsideHandler, true);
-    });
-
-    this.typeDropdownMenu.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        this.closeTypeDropdown();
-        this.typeDropdownBtn.focus();
-      }
-    });
+    // Armed now (see PanelSortControls.openMenu): a frame could outlive the menu.
+    this.removeTypeDropdownOutsideClick = onClickOutside(this.typeDropdownContainer, () => this.closeTypeDropdown());
   }
 
   private closeTypeDropdown(): void {
@@ -1106,10 +1123,8 @@ export class Panel {
       this.typeDropdownMenu = null;
     }
     this.typeDropdownBtn.setAttribute("aria-expanded", "false");
-    if (this.typeDropdownOutsideHandler) {
-      document.removeEventListener("click", this.typeDropdownOutsideHandler, true);
-      this.typeDropdownOutsideHandler = null;
-    }
+    this.removeTypeDropdownOutsideClick?.();
+    this.removeTypeDropdownOutsideClick = null;
   }
 
   private selectTypeFilter(value: string): void {

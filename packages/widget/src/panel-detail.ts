@@ -11,7 +11,7 @@
 
 import { type FeedbackResponse, type FeedbackStatus, isClosedStatus } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
-import { getStatusLabel, type TFunction, tWithParams } from "./i18n/index.js";
+import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -803,7 +803,7 @@ function parseBrowser(ua: string): string {
   return "Unknown";
 }
 
-/** Format an ISO date string to a full locale-aware date/time. */
+/** Format an ISO date string to a full date/time in the widget's locale (any BCP 47 tag, like the cards). */
 function formatFullDate(isoString: string, locale: string): string {
   try {
     const d = new Date(isoString);
@@ -902,6 +902,8 @@ export interface DetailCallbacks {
   onResolve: (feedback: FeedbackResponse) => Promise<void>;
   onDelete: (feedback: FeedbackResponse) => Promise<void>;
   onGoToAnnotation: (feedback: FeedbackResponse) => void;
+  /** False hides "Go to annotation" (e.g. the feedback belongs to another page). */
+  canGoToAnnotation?: (feedback: FeedbackResponse) => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -978,7 +980,7 @@ export class DetailView {
     const badge = el("span", { class: "sp-badge" });
     badge.style.background = getTypeBgColor(feedback.type, this.colors);
     badge.style.color = getTypeColor(feedback.type, this.colors);
-    setText(badge, feedback.type);
+    setText(badge, getTypeLabel(feedback.type, this.t));
     header.appendChild(badge);
 
     // ---- Build content sections ----
@@ -1201,7 +1203,7 @@ export class DetailView {
     // Date
     this.addMetaRow(meta, ICON_CALENDAR, this.t("detail.date"), () => {
       const value = el("div", { class: "sp-detail-meta-value" });
-      setText(value, formatFullDate(feedback.createdAt, this.locale.startsWith("fr") ? "fr" : "en"));
+      setText(value, formatFullDate(feedback.createdAt, this.locale));
       return value;
     });
 
@@ -1231,7 +1233,7 @@ export class DetailView {
       const dateLabel = feedback.status === "wont_fix" ? this.t("detail.closedAt") : this.t("detail.resolvedAt");
       this.addMetaRow(meta, ICON_CHECK, dateLabel, () => {
         const value = el("div", { class: "sp-detail-meta-value sp-detail-meta-value--secondary" });
-        setText(value, formatFullDate(resolvedDate, this.locale.startsWith("fr") ? "fr" : "en"));
+        setText(value, formatFullDate(resolvedDate, this.locale));
         return value;
       });
     }
@@ -1283,15 +1285,19 @@ export class DetailView {
     // Position
     this.addAnnotationRow(info, ICON_MAP_PIN, this.t("detail.position"), () => {
       const value = el("span", { class: "sp-detail-annotation-value" });
+      // Rect fields are stored as fractions (0..1) of the anchor box.
+      const pct = (fraction: number) => `${(fraction * 100).toFixed(1)}%`;
       setText(
         value,
-        `${ann.xPct.toFixed(1)}%, ${ann.yPct.toFixed(1)}%` +
-          (ann.wPct > 0 || ann.hPct > 0 ? ` (${ann.wPct.toFixed(1)}% \u00d7 ${ann.hPct.toFixed(1)}%)` : ""),
+        `${pct(ann.xPct)}, ${pct(ann.yPct)}` +
+          (ann.wPct > 0 || ann.hPct > 0 ? ` (${pct(ann.wPct)} \u00d7 ${pct(ann.hPct)})` : ""),
       );
       return value;
     });
 
     wrapper.appendChild(info);
+    container.appendChild(wrapper);
+    if (this.callbacks.canGoToAnnotation?.(feedback) === false) return;
 
     // "Go to annotation" button
     const gotoBtn = document.createElement("button");
@@ -1308,7 +1314,6 @@ export class DetailView {
     });
 
     wrapper.appendChild(gotoBtn);
-    container.appendChild(wrapper);
   }
 
   /**
