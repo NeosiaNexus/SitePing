@@ -1246,6 +1246,22 @@ describe("custom panel actions", () => {
     expect(btns[0]?.textContent).toContain("Send to agent");
   });
 
+  it("renders host actions in their own row below Resolve/Delete, titled with the full label", () => {
+    const { view } = buildDetail([makeAction(), makeAction({ id: "other", label: "Other" })]);
+    view.show(makeFeedback(), 1);
+    const rows = view.element.querySelectorAll(".sp-detail-actions");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.querySelectorAll(".sp-detail-btn-custom")).toHaveLength(0);
+    expect(rows[1]?.classList.contains("sp-detail-actions--custom")).toBe(true);
+    expect([...(rows[1]?.children ?? [])].map((b) => (b as HTMLElement).title)).toEqual(["Send to agent", "Other"]);
+  });
+
+  it("renders no host row when no action is visible for the feedback", () => {
+    const { view } = buildDetail([makeAction({ visible: () => false })]);
+    view.show(makeFeedback(), 1);
+    expect(view.element.querySelectorAll(".sp-detail-actions")).toHaveLength(1);
+  });
+
   it("omits actions whose visible() returns false", () => {
     const { view } = buildDetail([makeAction({ visible: (fb) => fb.type === "change" })]);
     view.show(makeFeedback({ type: "bug" }), 1);

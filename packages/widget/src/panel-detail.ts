@@ -379,6 +379,28 @@ export const DETAIL_CSS = /* css */ `
     transition-duration: 0.1s;
   }
 
+  .sp-detail-actions--custom {
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  /* Content-sized so the row wraps, shrinkable so one long label truncates. */
+  .sp-detail-actions--custom > .sp-detail-btn-custom {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .sp-detail-btn-custom svg {
+    flex-shrink: 0;
+  }
+
+  .sp-detail-btn-custom span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .sp-detail-actions button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -1208,8 +1230,11 @@ export class DetailView {
 
     actions.appendChild(this.resolveBtn);
     actions.appendChild(this.deleteBtn);
+    container.appendChild(actions);
 
-    // Host-defined custom actions
+    // Host-defined actions get their own wrapping row, so long labels or
+    // several actions never squash Resolve/Delete.
+    const customRow = el("div", { class: "sp-detail-actions sp-detail-actions--custom" });
     this.customBtns = [];
     for (const { action, icon } of this.customActions) {
       try {
@@ -1224,16 +1249,16 @@ export class DetailView {
       btn.setAttribute("data-action-id", action.id);
       // Keeps the button named while the spinner replaces its label.
       btn.setAttribute("aria-label", action.label);
+      btn.title = action.label; // full label when the row truncates it
       if (icon) btn.appendChild(icon.cloneNode(true));
       const span = document.createElement("span");
       setText(span, action.label);
       btn.appendChild(span);
       btn.addEventListener("click", () => void this.handleCustomAction(action, btn));
       this.customBtns.push(btn);
-      actions.appendChild(btn);
+      customRow.appendChild(btn);
     }
-
-    container.appendChild(actions);
+    if (this.customBtns.length > 0) container.appendChild(customRow);
   }
 
   /** Build the metadata grid. */
