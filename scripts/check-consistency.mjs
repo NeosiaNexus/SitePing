@@ -68,7 +68,15 @@ for (const [dir, ext] of [
 }
 
 const englishName = new Intl.DisplayNames(["en"], { type: "language" });
-const wordRe = (word) => new RegExp(`\\b${word}\\b`);
+// A standalone code or name: `fr` or "French", not the fr of fr-CA or fr_FR.
+const mentionRe = (word) =>
+  new RegExp(`(?<![\\p{L}\\p{N}_-])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_-])`, "gu");
+// What separates two entries of a locale list: a closing backtick or
+// parenthesis, an optional note ("(default)", "(`fr`)"), a comma and/or
+// "and"/"et", then the words that may lead the next entry ("French (`fr`)",
+// "Brazilian Portuguese").
+const LIST_SEPARATOR =
+  /^[`)]*(?:\s*\([^()\n]*\))?\s*(?:,\s*(?:(?:and|et)\s+)?|(?:and|et)\s+)(?:[\p{L} ]+\(|\p{Lu}\p{L}*\s)?`?$/u;
 
 for (const file of localeDocFiles) {
   if (!existsSync(join(root, file))) continue;
@@ -80,16 +88,25 @@ for (const file of localeDocFiles) {
       errors.push(`${file} claims "${m[0]}" but BUILTIN_LOCALES has ${locales.length} entries`);
     }
   }
-  // A paragraph that names both fr and ru, as codes (`fr`, fr-CA) or as
-  // English names (French, Russian), enumerates the built-in locales, so it
-  // must name every one of them.
-  for (const { 0: paragraph, index } of content.matchAll(/.*\S.*(?:\n.*\S.*)*/g)) {
-    for (const name of [(code) => code, (code) => englishName.of(code)]) {
-      const ru = paragraph.search(wordRe(name("ru")));
-      if (ru < 0 || !wordRe(name("fr")).test(paragraph)) continue;
-      const missing = locales.filter((code) => !wordRe(name(code)).test(paragraph));
+  // Locale codes (`fr`) or English names (French) chained by list separators
+  // form a locale list. A list that names both fr and ru enumerates the
+  // built-in locales, so it must name every one of them.
+  for (const name of [(code) => code, (code) => englishName.of(code)]) {
+    const mentions = locales
+      .flatMap((code) =>
+        [...content.matchAll(mentionRe(name(code)))].map((m) => ({ code, index: m.index, end: m.index + m[0].length })),
+      )
+      .sort((a, b) => a.index - b.index);
+    const lists = [];
+    for (const [i, { code, index }] of mentions.entries()) {
+      if (i > 0 && LIST_SEPARATOR.test(content.slice(mentions[i - 1].end, index))) lists.at(-1).codes.add(code);
+      else lists.push({ index, codes: new Set([code]) });
+    }
+    for (const { index, codes } of lists) {
+      if (!codes.has("fr") || !codes.has("ru")) continue;
+      const missing = locales.filter((code) => !codes.has(code));
       if (missing.length > 0) {
-        const line = content.slice(0, index + ru).split("\n").length;
+        const line = content.slice(0, index).split("\n").length;
         errors.push(`${file}:${line} lists the built-in locales without ${missing.map(name).join(", ")}`);
       }
     }
