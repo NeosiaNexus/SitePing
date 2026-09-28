@@ -1485,6 +1485,24 @@ describe("Panel", () => {
       scrollSpy.mockRestore();
     });
 
+    it("keeps 'Go to annotation' for another page's feedback when markers are not scoped by URL", async () => {
+      panel.destroy();
+      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+        getScope: () => ({ url: "/", urlPattern: null }),
+        scopeAnnotationsByUrl: false,
+      });
+      const elsewhere = makeFeedback({ id: "elsewhere", url: "/pricing", annotations: [annotation] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [elsewhere], total: 1 });
+
+      await panel.open();
+      shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!.click();
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="elsewhere"]')).not.toBeNull());
+      shadow.querySelector<HTMLElement>('[data-feedback-id="elsewhere"]')!.click();
+
+      // Markers render for every URL here, so the detail view keeps the jump.
+      expect(shadow.querySelector(".sp-detail-btn-goto")).not.toBeNull();
+    });
+
     it("detail onGoToAnnotation scrolls and pins the highlight", async () => {
       // url = the current page scope (pathname) — as the launcher stores it
       const fb = makeFeedback({ id: "fb-1", url: "/", annotations: [annotation] });
