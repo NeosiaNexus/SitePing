@@ -39,7 +39,11 @@ function freshPanelActions(ref: { readonly current: SitepingConfig }): SitepingC
     // untouched, so the widget still warns about it and skips it.
     if (typeof initial !== "object" || initial === null) return initial;
     const latest = (): SitepingPanelAction => ref.current.panelActions?.find((a) => a?.id === initial.id) ?? initial;
-    const visible = (fb: Readonly<FeedbackResponse>) => latest().visible?.(fb) ?? true;
+    // Truthiness, as in the widget: a plain-JS `visible` returning `undefined` hides the action.
+    const visible = (fb: Readonly<FeedbackResponse>) => {
+      const current = latest().visible;
+      return current ? Boolean(current(fb)) : true;
+    };
     const { onAction, href } = initial;
     if (typeof onAction === "function" && href === undefined) {
       return { ...initial, visible, onAction: (fb, ctx) => (latest().onAction ?? onAction)(fb, ctx) };

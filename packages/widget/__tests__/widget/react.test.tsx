@@ -263,6 +263,28 @@ describe("useSiteping", () => {
     expect(first.onAction).toHaveBeenCalledOnce();
   });
 
+  it("hides an action whose visible() returns a falsy non-boolean, like the vanilla widget", () => {
+    const visible = vi.fn<() => unknown>();
+    const panelActions = [
+      { id: "flag", label: "Flag", onAction: () => {}, visible: visible as never },
+      { id: "always", label: "Always", onAction: () => {} },
+    ];
+    render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions }} />);
+
+    const [flag, always] = wiredConfig().panelActions as SitepingPanelButtonAction[];
+    const fb = { id: "fb-1" } as FeedbackResponse;
+    for (const [result, shown] of [
+      [undefined, false],
+      [null, false],
+      [0, false],
+      ["yes", true],
+    ] as const) {
+      visible.mockReturnValue(result);
+      expect(flag?.visible?.(fb)).toBe(shown);
+    }
+    expect(always?.visible?.(fb)).toBe(true);
+  });
+
   it("hands malformed panelActions to the widget untouched instead of crashing the mount", () => {
     const first = render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions: [null, "x"] as never }} />);
     expect(wiredConfig().panelActions).toEqual([null, "x"]);
