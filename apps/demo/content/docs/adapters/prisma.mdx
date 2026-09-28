@@ -153,6 +153,8 @@ createSitepingHandler({
 
 If an upload fails, the feedback is still saved (with `screenshotUrl: null`) and a warning is logged — a broken bucket never loses a client's comment.
 
+Return an `https:` URL: the widget's detail view only renders `https:` images, plus plain `http:` on this machine (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`) so a local MinIO or localstack works in development.
+
 Add an optional `delete(url)` and the adapter calls it when a feedback is deleted — single `DELETE` and `deleteAll` alike — so nothing is left behind in your bucket. It is best-effort: a failing `delete` is logged and never fails the deletion (an orphaned object beats a row that refuses to go away). Inline `data:` URLs are never passed to it.
 
 It is also called when a create is rejected because its `clientId` is already stored (a retry racing the first attempt), to drop the screenshot that attempt uploaded — unless the stored feedback points at that same URL. That happens when your key is derived from `feedbackId`: the upload rewrote the stored feedback's own object, so it is kept. A screenshot whose insert failed for any other reason stays in your bucket, since a retry on another instance may be about to reference it.

@@ -14,7 +14,12 @@
  *    behind on `destroy()`.
  */
 
-const DEFAULT_MAX_ENTRIES = 50;
+/**
+ * Default AND ceiling: adapter-prisma validates `diagnostics.console` at max
+ * 50 entries, so a larger buffer would turn every submission into a 400.
+ */
+const MAX_ENTRIES = 50;
+/** Under the server's 600-char `message` cap. */
 const MAX_MESSAGE_LENGTH = 500;
 
 /** Per-entry shape — sent to the server in the diagnostics payload. */
@@ -47,17 +52,25 @@ function serializeArg(arg: unknown): string {
     return `${arg.name}: ${arg.message}${arg.stack ? `\n${arg.stack}` : ""}`;
   }
   try {
-    // Replacer drops cycles + functions; functions stringify-default to
-    // undefined and disappear from the output, which is the right call (we
-    // don't want random function bodies in a feedback payload).
-    const seen = new WeakSet<object>();
-    return JSON.stringify(arg, (_key, value: unknown) => {
+    // Replacer marks cycles and replaces functions with a placeholder (we
+    // don't want random function bodies in a feedback payload). Cycles are
+    // detected against the ANCESTOR chain, not every object seen so far: an
+    // object referenced twice side by side (`{ a: s, b: s }`) is shared, not
+    // circular. `this` is the object holding `value`, so ancestors past it
+    // belong to a finished sibling. A shared object is serialized at every
+    // reference, so a node budget keeps a diamond-shaped graph from growing
+    // exponentially — past it, values are pruned, and what was already
+    // emitted fills the MAX_MESSAGE_LENGTH the output is cut to anyway.
+    const ancestors: unknown[] = [];
+    let budget = MAX_MESSAGE_LENGTH;
+    return JSON.stringify(arg, function (this: unknown, _key, value: unknown) {
+      if (--budget < 0) return undefined;
       if (typeof value === "function") return "[Function]";
       if (typeof value === "symbol") return value.toString();
-      if (typeof value === "object" && value !== null) {
-        if (seen.has(value as object)) return "[Circular]";
-        seen.add(value as object);
-      }
+      if (typeof value !== "object" || value === null) return value;
+      while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+      if (ancestors.includes(value)) return "[Circular]";
+      ancestors.push(value);
       return value;
     });
   } catch {
@@ -99,11 +112,12 @@ export class ConsoleBuffer {
   private wrappers = new Map<ConsoleEntry["level"], (...args: unknown[]) => void>();
   private disposed = false;
 
-  constructor(maxEntries: number = DEFAULT_MAX_ENTRIES) {
-    // Guard against pathological values — 0 disables silently, negative
-    // numbers fall through to the default, and absurdly large numbers are
-    // capped so a misuse can't OOM the page.
-    this.maxEntries = Math.min(Math.max(Math.floor(maxEntries), 0), 1000);
+  constructor(maxEntries: number = MAX_ENTRIES) {
+    // Guard against pathological values — 0 disables silently, NaN / Infinity
+    // / negative numbers (untyped script-tag configs) fall back to the
+    // default, and anything above the server cap is clamped to it.
+    this.maxEntries =
+      Number.isFinite(maxEntries) && maxEntries >= 0 ? Math.min(Math.floor(maxEntries), MAX_ENTRIES) : MAX_ENTRIES;
 
     if (typeof console === "undefined") return;
 

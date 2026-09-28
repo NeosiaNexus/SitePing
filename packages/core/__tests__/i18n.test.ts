@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createI18n, intlLocale } from "../src/i18n.js";
+import { canonicalizeLocale, createI18n, intlLocale } from "../src/i18n.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("intlLocale", () => {
   it("keeps a tag Intl accepts, canonicalized", () => {
@@ -18,9 +22,27 @@ describe("intlLocale", () => {
   });
 });
 
-describe("createI18n — locale normalisation", () => {
-  afterEach(() => vi.restoreAllMocks());
+describe("canonicalizeLocale", () => {
+  it.each([
+    ["fr_FR", "fr-FR"],
+    ["pt_BR", "pt-BR"],
+    ["zh_hant_tw", "zh-Hant-TW"],
+    ["EN", "en"],
+    ["fr-ca", "fr-CA"],
+  ])("turns %j into the tag Intl accepts (%j)", (input, expected) => {
+    expect(canonicalizeLocale(input)).toBe(expected);
+    // The whole point: every Intl constructor accepts the result.
+    expect(() => new Intl.RelativeTimeFormat(canonicalizeLocale(input))).not.toThrow();
+  });
 
+  it.each(["", "not a locale", "fr__FR"])("falls back to en, with a warning, for the malformed tag %j", (input) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(canonicalizeLocale(input)).toBe("en");
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`[siteping] Invalid locale "${input}", falling back to "en"`);
+  });
+});
+
+describe("createI18n — locale normalisation", () => {
   const i18n = createI18n<{ hello: string }>(
     { hello: "Hello" },
     {
@@ -38,5 +60,12 @@ describe("createI18n — locale normalisation", () => {
     expect(await i18n.loadLocale("fr_FR")).toEqual({ hello: "Bonjour" });
     expect(i18n.createT("fr_FR")("hello")).toBe("Bonjour");
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("resolves a dictionary registered under the base language for an underscore tag", () => {
+    const custom = createI18n({ hello: "Hello" }, {} as never);
+    custom.registerLocale("fr_FR", { hello: "Bonjour" });
+    expect(custom.createT("fr_BE")("hello")).toBe("Bonjour");
+    expect(custom.createT("fr-CA")("hello")).toBe("Bonjour");
   });
 });

@@ -74,7 +74,8 @@ function containsRect(el: Element, rect: DOMRect): boolean {
  *    them keeps the percentage-based rect stable across viewport changes
  *    instead of stretching to the width of `<main>` or `<body>`.
  * 2. Smallest ancestor that contains the rect (legacy behavior).
- * 3. `document.body` fallback — keeps percentages in [0, 1].
+ * 3. `document.body` fallback — it may not contain the rect (a short body, its
+ *    default margin); the HTTP client clips the rect for the server schema.
  */
 export function findAnchorElement(rect: DOMRect, root: Element = document.documentElement): Element {
   const centerX = rect.x + rect.width / 2;

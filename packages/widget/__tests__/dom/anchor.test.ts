@@ -111,6 +111,9 @@ describe("rectToPercentages", () => {
     expect(result).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
   });
 
+  // A rect outside its anchor keeps its drawn geometry: store mode stores it
+  // as is and markers extrapolate past the anchor box. Only the HTTP client
+  // clips it, for the server schema (api-client.test.ts).
   it("negative percentages when rect is outside anchor bounds", () => {
     const anchor = makeDOMRect(200, 200, 100, 100);
     // Rect is 50px to the left and 30px above the anchor
@@ -187,6 +190,27 @@ describe("findAnchorElement", () => {
     const rect = makeDOMRect(50, 50, 100, 100);
     const result = findAnchorElement(rect);
     expect(result).toBe(document.body);
+  });
+
+  it("a rect drawn in the blank area below a short body keeps its geometry against the body fallback", () => {
+    // Body 300px tall with the default 8px margin; the drag lands below it, so
+    // the body fallback does not contain the rect. Store mode renders it back
+    // where it was drawn; the HTTP client clips it for the server schema.
+    stubElementFromPoint(() => document.documentElement);
+    stubBounds(document.body, makeDOMRect(8, 8, 1008, 300));
+    try {
+      const drawn = makeDOMRect(2, 500, 198, 100);
+      const anchor = findAnchorElement(drawn);
+      expect(anchor).toBe(document.body);
+
+      const rect = rectToPercentages(drawn, anchor.getBoundingClientRect());
+      expect(rect.xPct).toBeCloseTo(-6 / 1008);
+      expect(rect.yPct).toBeCloseTo(492 / 300);
+      expect(rect.wPct).toBeCloseTo(198 / 1008);
+      expect(rect.hPct).toBeCloseTo(100 / 300);
+    } finally {
+      delete (document.body as { getBoundingClientRect?: unknown }).getBoundingClientRect;
+    }
   });
 
   it("falls back to document.body when elementFromPoint returns root", () => {

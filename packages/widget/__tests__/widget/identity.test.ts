@@ -50,6 +50,20 @@ describe("identity", () => {
     expect(getIdentity()).toBeNull();
   });
 
+  it("treats a stored identity longer than the server's 200-char cap as absent", () => {
+    // adapter-prisma rejects authorName / authorEmail > 200 chars — replaying
+    // such an identity would 400 every submission.
+    const longEmail = `${"a".repeat(64)}@${"b".repeat(60)}.${"c".repeat(60)}.${"d".repeat(60)}.com`;
+    (localStorage.getItem as ReturnType<typeof vi.fn>).mockReturnValue(
+      JSON.stringify({ name: "N".repeat(201), email: "alice@example.com" }),
+    );
+    expect(getIdentity()).toBeNull();
+    (localStorage.getItem as ReturnType<typeof vi.fn>).mockReturnValue(
+      JSON.stringify({ name: "Alice", email: longEmail }),
+    );
+    expect(getIdentity()).toBeNull();
+  });
+
   it("handles localStorage quota error gracefully", () => {
     (localStorage.setItem as ReturnType<typeof vi.fn>).mockImplementation(() => {
       throw new DOMException("QuotaExceededError");

@@ -841,11 +841,31 @@ function isSafeImageUrl(url: string): boolean {
   // because it can contain external references and is rarely a useful
   // screenshot format.
   if (/^data:image\/(jpeg|png|webp);/i.test(url)) return true;
-  // Remote URLs over https are accepted (S3, R2, etc.). http: is rejected
-  // because the panel typically runs over https and mixed-content is blocked
-  // anyway — surfacing the issue here is clearer than a silent network error.
+  // Remote URLs over https are accepted (S3, R2, etc.). Other http: URLs are
+  // rejected because the panel typically runs over https and mixed-content
+  // is blocked anyway — surfacing the issue here is clearer than a silent
+  // network error.
   if (/^https:\/\//i.test(url)) return true;
-  return false;
+  return isLoopbackHttp(url);
+}
+
+/**
+ * Plain-http URL on this machine — a dev stack's local object storage (MinIO
+ * on `localhost:9000`, localstack) behind a `ScreenshotStorage`. Nothing
+ * leaves the machine, so there is no IP/UA/Referer leak to defend against.
+ * Parsed rather than pattern-matched, so `localhost.evil.com` or
+ * `localhost@evil.com` never pass for loopback.
+ */
+function isLoopbackHttp(url: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return (
+      protocol === "http:" &&
+      (hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "[::1]")
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Truncate a string to a max length with ellipsis. */

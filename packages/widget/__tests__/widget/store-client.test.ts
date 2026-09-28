@@ -1,11 +1,13 @@
-import type {
-  AnnotationPayload,
-  FeedbackCreateInput,
-  FeedbackPayload,
-  FeedbackRecord,
-  SitepingStore,
+import {
+  type AnnotationPayload,
+  type FeedbackCreateInput,
+  type FeedbackPayload,
+  type FeedbackRecord,
+  SitepingError,
+  type SitepingStore,
+  StoreDuplicateError,
 } from "@siteping/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreClient } from "../../src/store-client.js";
 
 // ---------------------------------------------------------------------------
@@ -129,6 +131,129 @@ describe("StoreClient", () => {
   // sendFeedback
   // -----------------------------------------------------------------------
 
+  // -----------------------------------------------------------------------
+  // sendFeedback — a write that never settles (#342): SitepingStore takes no
+  // AbortSignal, and the popup holds the user until the send settles.
+  // -----------------------------------------------------------------------
+
+  describe("sendFeedback — bounded wait", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("rejects with a retryable TIMEOUT SitepingError at 30 s, not before, and leaves no timer pending", async () => {
+      vi.useFakeTimers();
+      vi.mocked(store.createFeedback).mockReturnValue(new Promise(() => {}));
+      const settled = vi.fn();
+      const outcome = client.sendFeedback(samplePayload).then(settled, (error: unknown) => {
+        settled();
+        return error;
+      });
+
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      const error = await outcome;
+      expect(error).toBeInstanceOf(SitepingError);
+      expect(error).toMatchObject({ code: "TIMEOUT", retryable: true });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("does not serialize writes: the resend reaches the store while the first write still hangs, with the same clientId", async () => {
+      // The late-write policy: the abandoned write may still land; the resend
+      // from the same popup carries its clientId, so the store keeps one
+      // record (see "duplicate clientId"). A write chain would instead never
+      // unblock after a write that never settles.
+      vi.useFakeTimers();
+      vi.mocked(store.createFeedback)
+        .mockReturnValueOnce(new Promise(() => {}))
+        .mockResolvedValueOnce(makeFeedbackRecord());
+
+      const first = client.sendFeedback(samplePayload).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await first).toMatchObject({ code: "TIMEOUT" });
+
+      await expect(client.sendFeedback({ ...samplePayload, message: "Edited" })).resolves.toMatchObject({ id: "fb-1" });
+      const calls = vi.mocked(store.createFeedback).mock.calls;
+      expect(calls).toHaveLength(2);
+      expect(calls[1]![0].clientId).toBe(calls[0]![0].clientId);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // sendFeedback — duplicate clientId: the contract lets createFeedback throw
+  // StoreDuplicateError instead of returning the existing record.
+  // -----------------------------------------------------------------------
+
+  describe("sendFeedback — duplicate clientId", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("resolves a resend with the stored record when the timed-out first write landed and the store throws on duplicates", async () => {
+      vi.useFakeTimers();
+      const rows = new Map<string, FeedbackRecord>();
+      vi.mocked(store.createFeedback).mockImplementation(async (input) => {
+        if (rows.has(input.clientId)) throw new StoreDuplicateError();
+        rows.set(input.clientId, makeFeedbackRecord({ clientId: input.clientId, message: input.message }));
+        // The row is written at once, but the store only answers after 50 s.
+        await new Promise((resolve) => setTimeout(resolve, 50_000));
+        return rows.get(input.clientId)!;
+      });
+      vi.mocked(store.findByClientId).mockImplementation(async (clientId) => rows.get(clientId) ?? null);
+
+      const first = client.sendFeedback(samplePayload).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await first).toMatchObject({ code: "TIMEOUT" });
+
+      const resent = await client.sendFeedback({ ...samplePayload, message: "Edited" });
+
+      expect(resent).toMatchObject({ id: "fb-1", message: "Broken layout" });
+      expect(rows.size).toBe(1);
+    });
+
+    it("recognises the duplicate from a store bundled with its own copy of core", async () => {
+      // Every published package bundles core, so an adapter-kit store throws
+      // another StoreDuplicateError class: only its `code` matches.
+      const existing = makeFeedbackRecord();
+      vi.mocked(store.createFeedback).mockRejectedValue(Object.assign(new Error("dup"), { code: "STORE_DUPLICATE" }));
+      vi.mocked(store.findByClientId).mockResolvedValue(existing);
+
+      await expect(client.sendFeedback(samplePayload)).resolves.toMatchObject({ id: existing.id });
+    });
+
+    it.each([
+      ["no record carries the clientId", null],
+      ["the clientId belongs to another project", makeFeedbackRecord({ projectName: "other-project" })],
+    ])("rethrows the duplicate error when %s", async (_case, found) => {
+      const duplicate = new StoreDuplicateError();
+      vi.mocked(store.createFeedback).mockRejectedValue(duplicate);
+      vi.mocked(store.findByClientId).mockResolvedValue(found);
+
+      await expect(client.sendFeedback(samplePayload)).rejects.toBe(duplicate);
+    });
+
+    it("leaves other store errors alone", async () => {
+      const failure = new Error("disk full");
+      vi.mocked(store.createFeedback).mockRejectedValue(failure);
+
+      await expect(client.sendFeedback(samplePayload)).rejects.toBe(failure);
+      expect(store.findByClientId).not.toHaveBeenCalled();
+    });
+
+    it("bounds the duplicate lookup by the same 30 s", async () => {
+      vi.useFakeTimers();
+      vi.mocked(store.createFeedback).mockRejectedValue(new StoreDuplicateError());
+      vi.mocked(store.findByClientId).mockReturnValue(new Promise(() => {}));
+
+      const outcome = client.sendFeedback(samplePayload).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(await outcome).toMatchObject({ code: "TIMEOUT" });
+    });
+  });
+
   describe("sendFeedback", () => {
     it("calls store.createFeedback with flattened annotations", async () => {
       const record = makeFeedbackRecord();
@@ -189,6 +314,16 @@ describe("StoreClient", () => {
       vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord());
       const response = await client.sendFeedback(samplePayload);
       expect("clientId" in response).toBe(false);
+    });
+
+    it("stores a rect drawn past its anchor as drawn: no server schema, and markers extrapolate", async () => {
+      vi.mocked(store.createFeedback).mockResolvedValue(makeFeedbackRecord());
+      const rect = { xPct: -0.006, yPct: 1.64, wPct: 0.196, hPct: 0.33 };
+
+      await client.sendFeedback({ ...samplePayload, annotations: [{ ...sampleAnnotation, rect }] });
+      const input = vi.mocked(store.createFeedback).mock.calls[0]![0] as FeedbackCreateInput;
+
+      expect(input.annotations[0]).toMatchObject(rect);
     });
 
     it("forwards screenshotRegion to store.createFeedback", async () => {

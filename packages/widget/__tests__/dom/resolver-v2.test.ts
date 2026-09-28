@@ -6,6 +6,7 @@
 
 import type { AnchorData } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { generateAnchor } from "../../src/dom/anchor";
 import { generateFingerprint } from "../../src/dom/fingerprint";
 import { fuzzyIncludes, normalizeText } from "../../src/dom/fuzzy";
 import { resolveAnchor } from "../../src/dom/resolver";
@@ -641,6 +642,35 @@ describe("xpath multi-match gathering", () => {
     // A FIRST_ORDERED_NODE regression would resolve the HIDDEN first match.
     expect(result!.element).toBe(second);
     expect(result!.strategy).toBe("xpath");
+  });
+});
+
+describe("deep elements — truncated xpath", () => {
+  /** Append a chain of nested elements under `parent`, returning the innermost. */
+  function nest(parent: Element, tags: string[]): Element {
+    let current = parent;
+    for (const tag of tags) {
+      const child = document.createElement(tag);
+      current.appendChild(child);
+      current = child;
+    }
+    return current;
+  }
+
+  it("resolves a deep element via xpath after CSS drift instead of a shallower decoy", () => {
+    // Same card markup twice: once directly under <body> (a promo block) and
+    // once 9 levels deep. The xpath keeps only the 6 innermost segments, and
+    // prefixing "/html/body" to them pointed at the promo copy.
+    const decoyLi = nest(document.body, ["main", "section", "div", "ul", "li"]);
+    decoyLi.innerHTML = "<span>Add to cart</span><em>Blue linen shirt, 25 €</em>";
+    const realLi = nest(document.body, ["div", "div", "div", "main", "section", "div", "ul", "li"]);
+    realLi.innerHTML = "<span>Add to cart</span><em>Blue linen shirt, 20 €</em>";
+    const real = realLi.querySelector("span") as HTMLElement;
+
+    // A redesign renamed the classes the CSS selector relied on.
+    const anchor = { ...generateAnchor(real), cssSelector: "span.renamed-by-redesign" };
+    const result = resolveAnchor(anchor);
+    expect(result?.element).toBe(real);
   });
 });
 

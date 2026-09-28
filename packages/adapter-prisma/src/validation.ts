@@ -6,6 +6,7 @@ import {
   EMAIL_PATTERN,
   FEEDBACK_STATUSES,
   FEEDBACK_TYPES,
+  IDENTITY_FIELD_MAX_LENGTH,
 } from "@siteping/core";
 import * as zod from "zod";
 
@@ -106,10 +107,11 @@ export const feedbackCreateSchema = z.object({
   urlPattern: z.string().max(2000).nullable().optional(),
   viewport: z.string().min(1).max(50),
   userAgent: z.string().min(1).max(500),
-  authorName: z.string().min(1).max(200),
-  // The widget's identity modal validates against the same core pattern, so
-  // an address the modal accepts (and persists) is never a 400 here.
-  authorEmail: z.email({ pattern: EMAIL_PATTERN }).max(200),
+  // The widget's identity modal validates against the same core pattern and
+  // length cap, so an identity the modal accepts (and persists) is never a
+  // 400 here.
+  authorName: z.string().min(1).max(IDENTITY_FIELD_MAX_LENGTH),
+  authorEmail: z.email({ pattern: EMAIL_PATTERN }).max(IDENTITY_FIELD_MAX_LENGTH),
   annotations: z.array(annotationSchema).max(50),
   // Restrict to URL-safe identifiers. The widget generates UUIDs (or a
   // Date+Math.random fallback), both of which match. Anything outside this

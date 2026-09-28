@@ -13,8 +13,17 @@
  * `NetworkEntry` on failure.
  */
 
-const DEFAULT_MAX_ENTRIES = 20;
+/**
+ * Server schema limits (adapter-prisma `networkEntrySchema`). Entries are
+ * clamped to them on capture: one out-of-range field fails validation for
+ * the whole feedback, not just its diagnostics. `MAX_ENTRIES` is both the
+ * default and the ceiling of the buffer size.
+ */
+const MAX_ENTRIES = 20;
 const MAX_URL_LENGTH = 2000;
+const MAX_METHOD_LENGTH = 20;
+const MAX_DURATION_MS = 600_000;
+const MAX_STATUS = 599;
 
 /** Per-entry shape — sent to the server in the diagnostics payload. */
 export interface NetworkEntry {
@@ -28,9 +37,35 @@ export interface NetworkEntry {
   timestamp: string;
 }
 
-function truncateUrl(url: string): string {
-  if (url.length <= MAX_URL_LENGTH) return url;
-  return `${url.slice(0, MAX_URL_LENGTH - 1)}…`;
+/**
+ * The URL as recorded: credentials, query string and hash dropped — they
+ * routinely carry secrets (`https://user:pass@…`, `?api_key=…`, OAuth
+ * `#access_token=…`) and the docs promise query strings never leave the
+ * browser — then capped to the schema's length.
+ */
+function recordableUrl(input: unknown): string {
+  const url = withoutCredentials(urlString(input));
+  const cut = url.search(/[?#]/);
+  const bare = cut === -1 ? url : url.slice(0, cut);
+  if (bare.length <= MAX_URL_LENGTH) return bare;
+  return `${bare.slice(0, MAX_URL_LENGTH - 1)}…`;
+}
+
+/**
+ * `url` without its userinfo, parsed against the page as fetch and XHR parse
+ * it. XHR sends a credentialed URL, and fetch rejects one, a failure the
+ * wrapper records. A URL without credentials comes back exactly as given.
+ */
+function withoutCredentials(url: string): string {
+  try {
+    const parsed = new URL(url, typeof location === "undefined" ? undefined : location.href);
+    if (!parsed.username && !parsed.password) return url;
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.href;
+  } catch {
+    return url;
+  }
 }
 
 function urlString(input: unknown): string {
@@ -69,8 +104,11 @@ export class NetworkBuffer {
   private wrappedXhrSend: typeof XMLHttpRequest.prototype.send | null = null;
   private disposed = false;
 
-  constructor(maxEntries: number = DEFAULT_MAX_ENTRIES) {
-    this.maxEntries = Math.min(Math.max(Math.floor(maxEntries), 0), 500);
+  constructor(maxEntries: number = MAX_ENTRIES) {
+    // Same guard as ConsoleBuffer: 0 disables, non-finite / negative falls
+    // back to the default, larger values clamp to the server cap.
+    this.maxEntries =
+      Number.isFinite(maxEntries) && maxEntries >= 0 ? Math.min(Math.floor(maxEntries), MAX_ENTRIES) : MAX_ENTRIES;
     this.installFetch();
     this.installXhr();
   }
@@ -80,7 +118,16 @@ export class NetworkBuffer {
     if (this.entries.length >= this.maxEntries) {
       this.entries.shift();
     }
-    this.entries.push(entry);
+    // A request left open > 10 min, an exotic method, or a non-standard
+    // status (fetch allows up to 999 — LinkedIn answers 999) would each 400.
+    // An out-of-range status is recorded as 0 ("no usable status") rather
+    // than clamped to 599, which would pass it off as a real 5xx.
+    this.entries.push({
+      ...entry,
+      method: entry.method.slice(0, MAX_METHOD_LENGTH),
+      status: entry.status <= MAX_STATUS ? entry.status : 0,
+      durationMs: Math.min(Math.max(entry.durationMs, 0), MAX_DURATION_MS),
+    });
   }
 
   private installFetch(): void {
@@ -91,7 +138,7 @@ export class NetworkBuffer {
     const wrapped: typeof fetch = async (input, init) => {
       const startedAt = new Date();
       const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-      const url = truncateUrl(urlString(input));
+      const url = recordableUrl(input);
       const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
 
       try {
@@ -141,7 +188,7 @@ export class NetworkBuffer {
       try {
         meta.set(this, {
           method: method.toUpperCase(),
-          url: truncateUrl(urlString(url)),
+          url: recordableUrl(url),
           startedAt: new Date(),
           t0: typeof performance !== "undefined" ? performance.now() : Date.now(),
         });

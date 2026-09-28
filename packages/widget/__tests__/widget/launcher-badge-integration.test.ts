@@ -134,6 +134,7 @@ function makeAnnotationCompleteData() {
     },
     type: "bug",
     message: "Test annotation message",
+    clientId: "client-1",
   };
 }
 

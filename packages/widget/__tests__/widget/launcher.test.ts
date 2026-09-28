@@ -95,7 +95,9 @@ vi.mock("../../src/styles/base.js", () => ({
   buildStyles: vi.fn().mockReturnValue("/* styles */"),
 }));
 
+import { adjacentText, neighborText } from "../../src/dom/text-context.js";
 import { launch } from "../../src/launcher.js";
+import { Tooltip } from "../../src/tooltip.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -381,6 +383,24 @@ describe("launch", () => {
       instance.destroy();
     });
 
+    it("keeps the live region out of a body-level element's anchor text context", () => {
+      // The live region is appended to <body> after the page — a footer's
+      // suffix used to become "1 feedback markers displayed", which drifts
+      // with the marker count and is empty on the next page load.
+      const footer = document.createElement("footer");
+      footer.textContent = "© Acme";
+      document.body.appendChild(footer);
+      const instance = launch(defaultConfig());
+      const liveRegion = document.querySelector('[role="status"][aria-live="polite"]') as HTMLElement;
+      liveRegion.textContent = "1 feedback markers displayed";
+
+      expect(adjacentText(footer, "after")).toBe("");
+      expect(neighborText(footer)).not.toContain("feedback markers");
+
+      instance.destroy();
+      footer.remove();
+    });
+
     it("uses open shadow mode in test environment", () => {
       const instance = launch(defaultConfig());
 
@@ -419,6 +439,32 @@ describe("launch", () => {
       instance.destroy();
       // Second destroy should not throw (DOM elements already removed)
       expect(() => instance.destroy()).not.toThrow();
+    });
+
+    it("a stale destroy() of an earlier instance does not release the current singleton", () => {
+      const w1 = launch(defaultConfig());
+      w1.destroy();
+      const w2 = launch(defaultConfig());
+      w1.destroy(); // stale handle — must be a no-op
+      const w3 = launch(defaultConfig());
+
+      expect(w3).toBe(w2);
+      expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
+      w2.destroy();
+    });
+
+    it("keeps a remounted widget alive when another consumer destroys its stale handle (useSiteping x2)", () => {
+      // Two components share the singleton; A unmounts (destroys it), A
+      // remounts (new widget), then B unmounts and destroys its old handle.
+      const shared = launch(defaultConfig());
+      const sameForB = launch(defaultConfig());
+      shared.destroy();
+      const remounted = launch(defaultConfig());
+      sameForB.destroy();
+
+      expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
+      expect(launch(defaultConfig())).toBe(remounted);
+      remounted.destroy();
     });
   });
 
@@ -473,6 +519,24 @@ describe("launch", () => {
       const fabBtn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
       // French ARIA label
       expect(fabBtn.getAttribute("aria-label")).toContain("Siteping");
+
+      instance.destroy();
+    });
+
+    it("accepts a POSIX-style tag (fr_FR): French strings, and a tag Intl date formatting accepts", async () => {
+      // PHP / WordPress hand out `fr_FR`. Intl rejects it with a RangeError
+      // (crashing the panel list and tooltip dates), and the dictionary
+      // lookup used to miss French.
+      const instance = launch(defaultConfig({ locale: "fr_FR" }));
+      expect(vi.mocked(Tooltip).mock.calls.at(-1)?.[1]).toBe("fr-FR");
+      instance.open();
+
+      const shadow = document.querySelector("siteping-widget")!.shadowRoot!;
+      await vi.waitFor(() => {
+        expect(shadow.querySelector('[role="complementary"]')?.getAttribute("aria-label")).toBe(
+          "Panneau de feedback Siteping",
+        );
+      });
 
       instance.destroy();
     });

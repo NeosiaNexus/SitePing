@@ -30,6 +30,43 @@ export function feedbackQueryToSearchParams(query: FeedbackQuery): URLSearchPara
 }
 
 /**
+ * Merge caller-supplied `extra` headers over a client's `defaults`
+ * (`Content-Type`, `Authorization` from `apiKey`). Header names are
+ * case-insensitive, so a default spelled differently is dropped and the
+ * explicit value replaces it — a plain object merge kept both, and fetch
+ * joined them (`authorization: "Basic x"` over an apiKey went out as
+ * "Bearer k, Basic x").
+ */
+export function mergeRequestHeaders(
+  defaults: Record<string, string>,
+  extra: Record<string, string> | undefined,
+): Record<string, string> {
+  const merged = { ...defaults };
+  for (const [name, value] of Object.entries(extra ?? {})) {
+    for (const key of Object.keys(merged)) {
+      if (key.toLowerCase() === name.toLowerCase()) delete merged[key];
+    }
+    merged[name] = value;
+  }
+  return merged;
+}
+
+/**
+ * Append `params` to `endpoint`, which may already carry a query string
+ * (`/api/siteping?tenant=acme`) or a fragment — naive `${endpoint}?${params}`
+ * produced `?tenant=acme?projectName=…`, a 400. Plain string work, so
+ * relative endpoints stay relative and nothing depends on `location`.
+ */
+export function withSearchParams(endpoint: string, params: URLSearchParams): string {
+  const query = params.toString();
+  if (!query) return endpoint;
+  const hashAt = endpoint.includes("#") ? endpoint.indexOf("#") : endpoint.length;
+  const base = endpoint.slice(0, hashAt);
+  const separator = /[?&]$/.test(base) ? "" : base.includes("?") ? "&" : "?";
+  return base + separator + query + endpoint.slice(hashAt);
+}
+
+/**
  * Map a non-OK `Response` to the appropriate typed error:
  *   - 401 / 403 → `SitepingAuthError`
  *   - other 4xx → `SitepingValidationError`

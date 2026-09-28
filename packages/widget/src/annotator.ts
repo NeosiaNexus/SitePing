@@ -14,6 +14,13 @@ export interface AnnotationComplete {
   type: FeedbackType;
   message: string;
   /**
+   * Idempotency key of this feedback, minted once per popup session: every
+   * resend from the same popup carries it, so the server (and the retry
+   * queue) dedupe a resend against an earlier attempt instead of storing
+   * the feedback twice. See `PopupSession`.
+   */
+  clientId: string;
+  /**
    * Base64 JPEG `data:` URL captured by html2canvas-pro, or null when capture
    * is disabled / failed / the peer dep is missing.
    */
@@ -24,6 +31,31 @@ export interface AnnotationComplete {
    * `screenshotDataUrl` is null.
    */
   screenshotRegion?: ScreenshotRegion | null | undefined;
+}
+
+/**
+ * State shared by every submit attempt from one popup session (the popup
+ * restores the form after a failure so the user can resend).
+ *
+ * `clientId` is reused even when the user edits the message before
+ * resending. If the first attempt landed although it timed out on our side,
+ * the server dedupes the resend and returns the original record, so that
+ * edit is lost — accepted: it takes a commit whose response never arrived,
+ * and minting a new id on edit would store a duplicate in that same case.
+ */
+interface PopupSession {
+  readonly clientId: string;
+  /** Captured on the first attempt (`undefined` until then) and reused on every retry. */
+  screenshot?: AnnotatedScreenshot | null;
+}
+
+function newPopupSession(): PopupSession {
+  // crypto.randomUUID() throws in non-secure contexts (plain HTTP)
+  try {
+    return { clientId: crypto.randomUUID() };
+  } catch {
+    return { clientId: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
+  }
 }
 
 /**
@@ -353,9 +385,9 @@ export class Annotator {
 
     // Submission stays inside the popup so the user gets a visible spinner
     // until the server confirms — see finishDrawing for the rationale.
-    const screenshotCache: { value?: AnnotatedScreenshot | null } = {};
+    const session = newPopupSession();
     const result = await this.popup.show(rectBounds, (formResult) =>
-      this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
+      this.runSubmission(annotation, formResult, rectBounds, session),
     );
 
     this.drawingRect?.remove();
@@ -476,9 +508,9 @@ export class Annotator {
     // Keep the drawn rectangle visible while the popup is open so the user
     // can see what they're sending feedback about — including while the
     // submit-spinner is running. We only remove it after the popup closes.
-    const screenshotCache: { value?: AnnotatedScreenshot | null } = {};
+    const session = newPopupSession();
     const result = await this.popup.show(rectBounds, (formResult) =>
-      this.runSubmission(annotation, formResult, rectBounds, screenshotCache),
+      this.runSubmission(annotation, formResult, rectBounds, session),
     );
 
     this.drawingRect?.remove();
@@ -554,10 +586,8 @@ export class Annotator {
     this.drawingRect.setAttribute("data-siteping-ignore", "true");
     this.overlay?.appendChild(this.drawingRect);
 
-    const screenshotCache: { value?: AnnotatedScreenshot | null } = {};
-    await this.popup.show(pointRect, (formResult) =>
-      this.runSubmission(annotation, formResult, captureRect, screenshotCache),
-    );
+    const session = newPopupSession();
+    await this.popup.show(pointRect, (formResult) => this.runSubmission(annotation, formResult, captureRect, session));
 
     // Instant flow: always deactivate on popup close — unlike the draw flow
     // where cancel keeps the session alive so the user can re-draw, there is
@@ -570,7 +600,8 @@ export class Annotator {
 
   /**
    * Submit handler passed into `popup.show()`. Captures the screenshot once
-   * (cached across retries) and emits `annotation:complete` on the bus, then
+   * (cached across retries in the popup `session`, like its `clientId`) and
+   * emits `annotation:complete` on the bus, then
    * waits for one of three terminal signals:
    *
    * - `feedback:sent` — resolve (popup closes).
@@ -587,15 +618,15 @@ export class Annotator {
     annotation: AnnotationPayload,
     formResult: { type: FeedbackType; message: string },
     rectBounds: DOMRect,
-    screenshotCache: { value?: AnnotatedScreenshot | null },
+    session: PopupSession,
   ): Promise<void> {
     // Screenshot capture is the slow part. Capture once and reuse the
     // cached data URL + region on every retry — re-running html2canvas-pro after
     // each failed submit would punish the user for a network blip.
-    if (screenshotCache.value === undefined) {
-      screenshotCache.value = await this.maybeCapture(rectBounds);
+    if (session.screenshot === undefined) {
+      session.screenshot = await this.maybeCapture(rectBounds);
     }
-    const capture = screenshotCache.value;
+    const capture = session.screenshot;
 
     await new Promise<void>((resolve, reject) => {
       const cleanup = () => {
@@ -629,6 +660,7 @@ export class Annotator {
         annotation,
         type: formResult.type,
         message: formResult.message,
+        clientId: session.clientId,
         screenshotDataUrl: capture?.dataUrl ?? null,
         screenshotRegion: capture?.region ?? null,
       });

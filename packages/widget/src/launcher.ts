@@ -1,6 +1,8 @@
 import {
+  canonicalizeLocale,
   type DiagnosticsSnapshot,
   type FeedbackPayload,
+  IDENTITY_FIELD_MAX_LENGTH,
   isValidEmail,
   type PageScope,
   type SitepingConfig,
@@ -41,8 +43,9 @@ interface NormalisedDiagnostics {
  * - `undefined` / `false` → everything off (no monkey-patching).
  * - `true` → console + network on with the defaults (50 / 20).
  * - object → per-channel toggles + optional custom sizes; missing booleans
- *   default to `true` so users can pass `{ maxConsoleEntries: 200 }` and
- *   still get both channels.
+ *   default to `true` so users can pass `{ maxConsoleEntries: 10 }` and
+ *   still get both channels. The buffers sanitise sizes themselves: capped
+ *   at the server limits (50 / 20), NaN / negative → default.
  */
 function normaliseDiagnosticsOptions(value: SitepingConfig["captureDiagnostics"]): NormalisedDiagnostics {
   if (value === undefined || value === false) {
@@ -192,7 +195,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
     return skippedInstance();
   }
 
-  const locale = config.locale ?? "en";
+  // Canonical once, here: every consumer (dictionary lookup, Intl date
+  // formatting in the panel, tooltip and detail view) gets a tag it accepts.
+  const locale = canonicalizeLocale(config.locale ?? "en");
   // Kick off the locale fetch immediately. English is bundled synchronously
   // and used as the fallback while the chunk is in flight. The launcher
   // awaits `localeReady` before rendering markers and re-localizes the FAB
@@ -319,6 +324,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
   liveRegion.setAttribute("role", "status");
   liveRegion.setAttribute("aria-live", "polite");
   liveRegion.setAttribute("aria-atomic", "true");
+  // Widget chrome (see `isWidgetChrome`): anchor text context must never
+  // read "1 feedback markers displayed" off a body-level element's sibling.
+  liveRegion.setAttribute("data-siteping-ignore", "true");
   liveRegion.style.cssText =
     "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;";
   document.body.appendChild(liveRegion);
@@ -476,7 +484,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     }
     submitting = true;
     try {
-      const { annotation, type, message, screenshotDataUrl, screenshotRegion } = data;
+      const { annotation, type, message, clientId, screenshotDataUrl, screenshotRegion } = data;
 
       // Ensure identity — config wins (host-provided), then localStorage,
       // then prompt the user as a last resort. Host-provided identity is
@@ -494,15 +502,6 @@ export function launch(config: SitepingConfig): SitepingInstance {
         }
         saveIdentity(identity);
       }
-
-      // crypto.randomUUID() throws in non-secure contexts (plain HTTP)
-      const clientId = (() => {
-        try {
-          return crypto.randomUUID();
-        } catch {
-          return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        }
-      })();
 
       // Use scope.url as the single source of truth — same identifier the
       // panel filter and marker filter use. If we stored full URLs here while
@@ -705,8 +704,12 @@ export function launch(config: SitepingConfig): SitepingInstance {
     };
   }
 
-  instance = {
+  const self: SitepingInstance = {
     destroy: () => {
+      // Idempotent: hosts can hold stale handles (two `useSiteping` consumers
+      // share the singleton), and a repeat call must not tear anything down
+      // again — least of all a newer widget's singleton slot below.
+      if (destroyed) return;
       log("Destroying widget");
       if (onContextMenu) {
         document.removeEventListener("contextmenu", onContextMenu);
@@ -730,7 +733,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       publicBus.removeAll();
       liveRegion.remove();
       host.remove();
-      instance = null;
+      if (instance === self) instance = null;
     },
     open: () => {
       // Emit synchronously so consumers wired through `onOpen` / `panel:open`
@@ -765,7 +768,8 @@ export function launch(config: SitepingConfig): SitepingInstance {
     },
   };
 
-  return instance;
+  instance = self;
+  return self;
 }
 
 /**
@@ -837,6 +841,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
     nameInput.className = "sp-input";
     nameInput.id = nameInputId;
     nameInput.type = "text";
+    nameInput.maxLength = IDENTITY_FIELD_MAX_LENGTH;
     nameInput.placeholder = t("identity.namePlaceholder");
     nameInput.style.marginBottom = "14px";
 
@@ -848,6 +853,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
     emailInput.className = "sp-input";
     emailInput.id = emailInputId;
     emailInput.type = "email";
+    emailInput.maxLength = IDENTITY_FIELD_MAX_LENGTH;
     emailInput.placeholder = t("identity.emailPlaceholder");
 
     const btnRow = document.createElement("div");
@@ -872,17 +878,25 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
     const submitBtn = document.createElement("button");
     submitBtn.className = "sp-btn-primary";
     submitBtn.textContent = t("identity.submit");
+    const setInvalid = (input: HTMLInputElement, invalid: boolean) => {
+      input.style.borderColor = invalid ? "var(--sp-type-bug, #ef4444)" : "";
+      if (invalid) input.setAttribute("aria-invalid", "true");
+      else input.removeAttribute("aria-invalid");
+    };
+
     submitBtn.addEventListener("click", () => {
       const name = nameInput.value.trim();
       const email = emailInput.value.trim();
       if (!name || !email) return;
-      // Same pattern the server schema enforces — what the modal accepts here
-      // is persisted and replayed on every submission, so it must never be
-      // something the server rejects.
-      if (!isValidEmail(email)) {
-        emailInput.style.borderColor = "var(--sp-type-bug, #ef4444)";
-        return;
-      }
+      // Same pattern and length cap the server schema enforces — what the
+      // modal accepts here is persisted and replayed on every submission, so
+      // it must never be something the server rejects. `maxlength` covers
+      // typing; this covers values set around it.
+      const nameInvalid = name.length > IDENTITY_FIELD_MAX_LENGTH;
+      const emailInvalid = email.length > IDENTITY_FIELD_MAX_LENGTH || !isValidEmail(email);
+      setInvalid(nameInput, nameInvalid);
+      setInvalid(emailInput, emailInvalid);
+      if (nameInvalid || emailInvalid) return;
       closeModal({ name, email });
     });
 

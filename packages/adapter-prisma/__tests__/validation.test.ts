@@ -1,4 +1,4 @@
-import { ANCHOR_ELEMENT_ID_MAX, ANCHOR_ELEMENT_TAG_MAX } from "@siteping/core";
+import { ANCHOR_ELEMENT_ID_MAX, ANCHOR_ELEMENT_TAG_MAX, IDENTITY_FIELD_MAX_LENGTH } from "@siteping/core";
 import { describe, expect, it } from "vitest";
 import {
   feedbackCreateSchema,
@@ -50,6 +50,17 @@ describe("feedbackCreateSchema", () => {
       message: "x".repeat(5001),
     });
     expect(result.success).toBe(false);
+  });
+
+  it("caps authorName / authorEmail at the length the widget's identity modal enforces", () => {
+    const max = IDENTITY_FIELD_MAX_LENGTH;
+    // Labels stay within the pattern's 63-char limit: 64 + 1 + 61 + 61 + (length - 191) + 4 chars.
+    const email = (length: number) =>
+      `${"a".repeat(64)}@${"b".repeat(60)}.${"c".repeat(60)}.${"d".repeat(length - 191)}.com`;
+    expect(feedbackCreateSchema.safeParse({ ...validPayload, authorName: "n".repeat(max) }).success).toBe(true);
+    expect(feedbackCreateSchema.safeParse({ ...validPayload, authorName: "n".repeat(max + 1) }).success).toBe(false);
+    expect(feedbackCreateSchema.safeParse({ ...validPayload, authorEmail: email(max) }).success).toBe(true);
+    expect(feedbackCreateSchema.safeParse({ ...validPayload, authorEmail: email(max + 1) }).success).toBe(false);
   });
 
   it("rejects invalid email", () => {

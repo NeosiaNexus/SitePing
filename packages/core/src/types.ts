@@ -31,7 +31,9 @@ export type SitepingSkipReason = "production" | "mobile" | "ssr";
 export interface DiagnosticsCaptureOptions {
   console?: boolean | undefined;
   network?: boolean | undefined;
+  /** Console buffer size — default and maximum 50 (the server's cap; larger values are clamped). */
   maxConsoleEntries?: number | undefined;
+  /** Failed-request buffer size — default and maximum 20 (the server's cap; larger values are clamped). */
   maxNetworkEntries?: number | undefined;
 }
 
@@ -40,6 +42,13 @@ export interface SitepingIdentity {
   name: string;
   email: string;
 }
+
+/**
+ * Max length of an identity's `name` and `email` — the HTTP schema's
+ * `authorName` / `authorEmail` cap. The widget's modal enforces it so a value
+ * it persists is never a 400 on every later submission.
+ */
+export const IDENTITY_FIELD_MAX_LENGTH = 200;
 
 /** Deep-link configuration — controls how a feedback id is read from the URL. */
 export interface SitepingDeepLinkOptions {
@@ -179,12 +188,15 @@ export interface SitepingBaseConfig {
    *
    * - `true` — capture with defaults (50 console / 20 network entries).
    * - `false` (default) — no capture, no monkey-patching.
-   * - object — per-channel toggles + custom buffer sizes.
+   * - object — per-channel toggles + smaller buffer sizes (values above the
+   *   50 / 20 server caps are clamped so submissions never fail validation).
    *
    * **Privacy considerations:** console messages may contain anything the
    * host page logs, including user data. Failed network requests record the
-   * URL (with query string) but never the response body. Inform end users
-   * before enabling in environments where they might log sensitive values.
+   * URL without its credentials, query string or hash, and never the
+   * response body.
+   * Inform end users before enabling in environments where they might log
+   * sensitive values.
    */
   captureDiagnostics?: boolean | DiagnosticsCaptureOptions | undefined;
   /** Called when the widget is skipped (production mode, mobile viewport, SSR — no DOM) */
@@ -302,9 +314,10 @@ export interface SitepingHttpConfig extends SitepingBaseConfig {
   /**
    * Extra headers for every HTTP-mode request — a static map, or a factory
    * (sync or async) called once per request (e.g. to fetch a fresh session
-   * token). Merged over the widget's generated headers, so an explicit
-   * `Authorization` entry overrides `apiKey`. A throwing/rejecting factory
-   * fails the request like a network error.
+   * token). Merged over the widget's generated headers, case-insensitively,
+   * so an explicit `Authorization` entry overrides `apiKey`. A factory that
+   * throws, rejects, or does not settle within 10 s fails the request like a
+   * network error.
    */
   headers?: SitepingHeadersOption | undefined;
   /** Not available in HTTP mode — use either `endpoint` or `store`, never both. */
@@ -316,7 +329,11 @@ export interface SitepingHttpConfig extends SitepingBaseConfig {
  * browser, no server needed (demos, prototypes, localStorage persistence).
  */
 export interface SitepingStoreConfig extends SitepingBaseConfig {
-  /** Direct store for client-side mode. Bypasses HTTP entirely. */
+  /**
+   * Direct store for client-side mode. Bypasses HTTP entirely. A send stops
+   * waiting on `createFeedback` after 30 s (the call itself cannot be
+   * cancelled), so a network-backed store should bound its own calls.
+   */
   store: SitepingStore;
   /** Not available in store mode — use either `endpoint` or `store`, never both. */
   endpoint?: never;

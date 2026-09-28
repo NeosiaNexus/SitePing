@@ -1574,4 +1574,68 @@ describe("Annotator", () => {
       }
     });
   });
+  // -------------------------------------------------------------------------
+  // clientId — one per popup session, shared by every resend from it (#307)
+  // -------------------------------------------------------------------------
+
+  describe("clientId per popup session", () => {
+    function draw(): void {
+      const overlay = findOverlay()!;
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+    }
+
+    it("reuses one clientId across resends from the same popup, and mints a new one per popup", async () => {
+      // Keep show() pending so the popup stays "open" across the retry.
+      popupMocks.keepShowPending = true;
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      draw();
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      // Fail the first submission, then resend (edited) through the same
+      // onSubmit the popup holds — what the real popup's retry does.
+      bus.emit("feedback:error", new Error("network blip"));
+      await expect(popupMocks.lastSubmitPromise!).rejects.toThrow("network blip");
+      void popupMocks.capturedOnSubmit!({ type: "bug", message: "Edited before resending" }).catch(() => {});
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledTimes(2);
+      });
+
+      const first = completeListener.mock.calls[0]![0].clientId;
+      expect(first).toMatch(/\S/);
+      // A fresh id here would let the queued first attempt replay as a duplicate.
+      expect(completeListener.mock.calls[1]![0].clientId).toBe(first);
+
+      // The popup closes; the next drawing is a new feedback with its own id.
+      popupMocks.isOpenState = false;
+      draw();
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledTimes(3);
+      });
+      expect(completeListener.mock.calls[2]![0].clientId).not.toBe(first);
+    });
+
+    it("falls back to a Date.now()-based id when crypto.randomUUID throws (non-secure context)", async () => {
+      vi.spyOn(crypto, "randomUUID").mockImplementation(() => {
+        throw new Error("Insecure context");
+      });
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      draw();
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      // Still URL-safe for the server's clientId pattern: "<timestamp>-<random>".
+      expect(completeListener.mock.calls[0]![0].clientId).toMatch(/^\d+-[a-z0-9]+$/);
+      vi.restoreAllMocks();
+    });
+  });
 });

@@ -75,7 +75,7 @@ The hook returns `null` until it mounts, then the instance. Changing `endpoint` 
 
 ## Handling errors
 
-`onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER"`) and `retryable` (boolean):
+`onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, the last one only in `store` mode) and `retryable` (boolean):
 
 ```ts
 initSiteping({
@@ -97,5 +97,5 @@ Feedback has four statuses (`open`, `in_progress`, `resolved`, `wont_fix`). The 
 ## Reliability details you get for free
 
 - **Retry with backoff** — failed submissions retry 3 times (10 s timeout, exponential backoff with jitter). Server errors and network failures retry; validation errors don't.
-- **Offline queue** — when a submission still fails after the retries, the payload is queued in localStorage (up to 20 entries) and flushed on the next page load. Only transient failures are queued (network errors, 5xx): a 4xx is the server's verdict on the payload and would fail identically on replay, so it is reported through `onError` and never queued. The queue stores payloads only — never tokens or headers, which are recomputed at flush time.
-- Both apply to HTTP mode (`endpoint`). In client-side [`store` mode](/docs/adapters/localstorage) writes are local, so there is nothing to retry.
+- **Offline queue** — when a submission still fails after the retries, the payload is queued in localStorage (up to 20 entries) and flushed on the next page load. Only transient failures are queued (network errors, 5xx): a 4xx is the server's verdict on the payload and would fail identically on replay, so it is reported through `onError` and never queued. Every resend from the same popup keeps the feedback's id, so it replaces its queued attempt and the server never stores it twice. The queue stores payloads only — never tokens or headers, which are recomputed at flush time. If localStorage runs out of space, queued screenshots are dropped first (oldest first), then the oldest entries, and a console warning says what was dropped.
+- **Nothing hangs a send** — its response body gets a 10 s window too (a server that sends its headers and then stalls counts as a timeout), and a `headers` factory must settle within 10 s. Retries and the queue apply to HTTP mode (`endpoint`). In client-side [`store` mode](/docs/adapters/localstorage) nothing is retried or queued: the widget stops waiting on the store's `createFeedback` after 30 s and reports a retryable error (code `"TIMEOUT"`), but cannot cancel the call — a network-backed [custom store](/docs/adapters/writing-an-adapter) should bound its own calls.

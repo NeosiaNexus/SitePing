@@ -11,7 +11,7 @@ export {
   matchesFeedbackQuery,
 } from "./filters.js";
 export type { I18n, LocaleLoaders, TranslateFunction } from "./i18n.js";
-export { createI18n, interpolate, intlLocale, tWithParams } from "./i18n.js";
+export { canonicalizeLocale, createI18n, interpolate, intlLocale, tWithParams } from "./i18n.js";
 export type {
   FieldDef,
   IndexDef,
@@ -85,6 +85,7 @@ export {
   FEEDBACK_STATUSES,
   FEEDBACK_TYPES,
   flattenAnnotation,
+  IDENTITY_FIELD_MAX_LENGTH,
   isClosedStatus,
   isStoreDuplicate,
   isStoreNotFound,
@@ -95,4 +96,10 @@ export {
   StorePersistenceError,
   toFeedbackUpdate,
 } from "./types.js";
-export { errorFromResponse, feedbackQueryToSearchParams, networkErrorFromException } from "./wire.js";
+export {
+  errorFromResponse,
+  feedbackQueryToSearchParams,
+  mergeRequestHeaders,
+  networkErrorFromException,
+  withSearchParams,
+} from "./wire.js";

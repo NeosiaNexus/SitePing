@@ -75,7 +75,7 @@ Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint`
 
 ## Gérer les erreurs
 
-`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER"`) et `retryable` (booléen) :
+`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable` (booléen) :
 
 ```ts
 initSiteping({
@@ -97,5 +97,5 @@ Un feedback a quatre statuts (`open`, `in_progress`, `resolved`, `wont_fix`). Le
 ## La fiabilité, sans rien faire
 
 - **Réessais avec backoff** — les envois échoués sont retentés 3 fois (timeout de 10 s, backoff exponentiel avec jitter). Les erreurs serveur et les pannes réseau sont retentées, les erreurs de validation non.
-- **File d'attente hors ligne** — quand un envoi échoue encore après les réessais, la charge utile est mise en file dans le localStorage (jusqu'à 20 entrées) et vidée au chargement suivant. Seuls les échecs transitoires sont mis en file (pannes réseau, 5xx) : un 4xx est le verdict du serveur sur la charge utile et échouerait à l'identique au rejeu, il est donc signalé via `onError` et jamais mis en file. La file ne stocke que les charges utiles — jamais de tokens ni d'en-têtes, qui sont recalculés au moment de la purge.
-- Les deux s'appliquent au mode HTTP (`endpoint`). En [mode `store`](/fr/docs/adapters/localstorage) côté client, les écritures sont locales : il n'y a rien à réessayer.
+- **File d'attente hors ligne** — quand un envoi échoue encore après les réessais, la charge utile est mise en file dans le localStorage (jusqu'à 20 entrées) et vidée au chargement suivant. Seuls les échecs transitoires sont mis en file (pannes réseau, 5xx) : un 4xx est le verdict du serveur sur la charge utile et échouerait à l'identique au rejeu, il est donc signalé via `onError` et jamais mis en file. Chaque renvoi depuis la même popup garde l'identifiant du feedback : il remplace sa tentative en file, et le serveur ne l'enregistre jamais deux fois. La file ne stocke que les charges utiles — jamais de tokens ni d'en-têtes, qui sont recalculés au moment de la purge. Si le localStorage manque de place, les captures en file sont abandonnées d'abord (les plus anciennes en premier), puis les entrées les plus anciennes, et un avertissement dans la console indique ce qui a été abandonné.
+- **Rien ne bloque un envoi** — le corps de sa réponse a lui aussi 10 s pour arriver (un serveur qui envoie ses en-têtes puis se fige compte comme un timeout), et une fabrique `headers` doit répondre en 10 s. Les réessais et la file s'appliquent au mode HTTP (`endpoint`). En [mode `store`](/fr/docs/adapters/localstorage) côté client, rien n'est réessayé ni mis en file : le widget cesse d'attendre le `createFeedback` du store au bout de 30 s et signale une erreur réessayable (code `"TIMEOUT"`), mais ne peut pas annuler l'appel — un [store personnalisé](/fr/docs/adapters/writing-an-adapter) qui passe par le réseau doit borner lui-même ses appels.

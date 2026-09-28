@@ -68,6 +68,62 @@ describe("NetworkBuffer — fetch", () => {
     buffer.dispose();
   });
 
+  it("never holds more than the server's 20-entry cap, whatever size is configured", async () => {
+    fetchSpy.mockResolvedValue(new Response("", { status: 500 }));
+    const buffer = new NetworkBuffer(100);
+    for (let i = 0; i < 30; i++) {
+      await fetch(`/api/err-${i}`);
+    }
+    const entries = buffer.getEntries();
+    expect(entries).toHaveLength(20);
+    expect(entries[19]?.url).toBe("/api/err-29");
+    buffer.dispose();
+  });
+
+  it("falls back to the default size for a NaN size", async () => {
+    fetchSpy.mockResolvedValue(new Response("", { status: 500 }));
+    const buffer = new NetworkBuffer(Number.NaN);
+    for (let i = 0; i < 30; i++) {
+      await fetch(`/api/err-${i}`);
+    }
+    expect(buffer.getEntries()).toHaveLength(20);
+    buffer.dispose();
+  });
+
+  it("clamps each entry to the server schema (durationMs, method, status)", async () => {
+    // A request open > 10 min, an exotic long method, and a non-standard
+    // status (LinkedIn's 999) would each fail adapter-prisma's validation.
+    const nowSpy = vi.spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValueOnce(700_000);
+    fetchSpy.mockResolvedValue({ ok: false, status: 999 } as Response);
+    const buffer = new NetworkBuffer();
+    await fetch("/api/slow", { method: "X".repeat(30) });
+    nowSpy.mockRestore();
+    const entry = buffer.getEntries()[0];
+    expect(entry?.durationMs).toBe(600_000);
+    expect(entry?.method).toBe("X".repeat(20));
+    // 999 is not a 5xx — clamping it to 599 would misreport it as one.
+    expect(entry?.status).toBe(0);
+    buffer.dispose();
+  });
+
+  it("records fetch URLs without their query string or hash (tokens never leave the browser)", async () => {
+    fetchSpy.mockResolvedValue(new Response("", { status: 401 }));
+    const buffer = new NetworkBuffer();
+    await fetch("/api/items?api_key=SECRET&token=abc#access_token=xyz");
+    await fetch(new Request("https://example.com/api/me?session=s3cr3t"));
+    const urls = buffer.getEntries().map((e) => e.url);
+    expect(urls).toEqual(["/api/items", "https://example.com/api/me"]);
+    buffer.dispose();
+  });
+
+  it("records a credentialed fetch URL without its userinfo (fetch rejects it after the wrapper read it)", async () => {
+    fetchSpy.mockRejectedValue(new TypeError("Request cannot be constructed from a URL that includes credentials"));
+    const buffer = new NetworkBuffer();
+    await expect(fetch("https://user:s3cr3t@api.example.com/v1/items?token=abc")).rejects.toBeInstanceOf(TypeError);
+    expect(buffer.getEntries()[0]?.url).toBe("https://api.example.com/v1/items");
+    buffer.dispose();
+  });
+
   it("dispose restores the original fetch", () => {
     const buffer = new NetworkBuffer();
     expect(globalThis.fetch).not.toBe(fetchSpy);
@@ -110,6 +166,35 @@ describe("NetworkBuffer — XHR", () => {
     const entries = buffer.getEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ method: "GET", url: "/xhr-bad", status: 502 });
+    buffer.dispose();
+  });
+
+  it("records XHR URLs without their query string or hash", () => {
+    const buffer = new NetworkBuffer();
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "/xhr-bad?api_key=SECRET#frag");
+    xhr.send();
+    Object.defineProperty(xhr, "status", { value: 500, configurable: true });
+    xhr.dispatchEvent(new Event("loadend"));
+    expect(buffer.getEntries()[0]?.url).toBe("/xhr-bad");
+    buffer.dispose();
+  });
+
+  it("records XHR URLs without their userinfo", () => {
+    const buffer = new NetworkBuffer();
+    // Loopback hosts: jsdom really issues the request.
+    const urls = ["https://user:s3cr3t@127.0.0.1/v1/items?token=abc", "//admin:hunter2@localhost/x"];
+    for (const url of urls) {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", url);
+      xhr.send();
+      Object.defineProperty(xhr, "status", { value: 401, configurable: true });
+      xhr.dispatchEvent(new Event("loadend"));
+    }
+    expect(buffer.getEntries().map((e) => e.url)).toEqual([
+      "https://127.0.0.1/v1/items",
+      `${location.protocol}//localhost/x`,
+    ]);
     buffer.dispose();
   });
 

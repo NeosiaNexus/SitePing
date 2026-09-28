@@ -78,6 +78,46 @@ describe("generateXPath", () => {
     expect(segments.length).toBeLessThanOrEqual(6);
   });
 
+  it("emits a relative path when truncated, so it still matches the deep element", () => {
+    // body > div > div > div > div > div > div > div > div > span: 9 levels,
+    // no ids — "/html/body" + the 6 innermost segments would match nothing.
+    let current: Element = document.body;
+    for (let i = 0; i < 8; i++) {
+      const div = document.createElement("div");
+      current.appendChild(div);
+      current = div;
+    }
+    const leaf = document.createElement("span");
+    current.appendChild(leaf);
+
+    const xpath = generateXPath(leaf);
+    expect(xpath.startsWith("//")).toBe(true);
+    const result = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    const matches = Array.from({ length: result.snapshotLength }, (_, i) => result.snapshotItem(i));
+    expect(matches).toContain(leaf);
+  });
+
+  it("emits a relative path for <html>, which has no <body> to start from", () => {
+    // "/html/body/html[1]" matched nothing.
+    const xpath = generateXPath(document.documentElement);
+    expect(xpath).toBe("//html[1]");
+    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    expect(result.singleNodeValue).toBe(document.documentElement);
+  });
+
+  it("keeps the absolute path when the 6-segment walk ends exactly at <body>", () => {
+    let current: Element = document.body;
+    for (let i = 0; i < 5; i++) {
+      const div = document.createElement("div");
+      current.appendChild(div);
+      current = div;
+    }
+    const leaf = document.createElement("span");
+    current.appendChild(leaf);
+
+    expect(generateXPath(leaf)).toBe("/html/body/div[1]/div[1]/div[1]/div[1]/div[1]/span[1]");
+  });
+
   it("returns short path for element directly inside body", () => {
     const p = document.createElement("p");
     document.body.appendChild(p);
@@ -100,9 +140,10 @@ describe("generateXPath", () => {
 
   it("handles an element detached from the document (no parent)", () => {
     // Orphan element: current.parentElement === null inside the loop,
-    // exercising the `if (parent)` false branch (line 33) for position calc.
+    // exercising the `if (parent)` false branch for position calc. It is not
+    // under <body>, so the path must not claim "/html/body".
     const orphan = document.createElement("article");
-    expect(generateXPath(orphan)).toBe("/html/body/article[1]");
+    expect(generateXPath(orphan)).toBe("//article[1]");
   });
 
   it("handles an orphan element with an ID via the early-return id path", () => {

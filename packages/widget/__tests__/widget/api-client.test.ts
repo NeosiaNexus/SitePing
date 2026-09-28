@@ -1,5 +1,7 @@
 import {
+  type AnnotationPayload,
   type FeedbackPayload,
+  type RectData,
   SitepingAuthError,
   type SitepingError,
   SitepingNetworkError,
@@ -125,15 +127,67 @@ describe("ApiClient", () => {
     expect("screenshotRegion" in lastPostBody()).toBe(false);
   });
 
+  // -------------------------------------------------------------------------
+  // Annotation rects — the server schema rejects any field outside [0, 1],
+  // and the body fallback anchor may not contain the drawn rect.
+  // -------------------------------------------------------------------------
+
+  it("clips annotation rects drawn past their anchor to [0, 1] on the wire, leaving the payload as drawn", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 201 }));
+    const annotation = (rect: RectData): AnnotationPayload => ({
+      anchor: {
+        cssSelector: "body",
+        xpath: "/html/body",
+        textSnippet: "",
+        elementTag: "BODY",
+        textPrefix: "",
+        textSuffix: "",
+        fingerprint: "0:0:",
+        neighborText: "",
+      },
+      rect,
+      scrollX: 0,
+      scrollY: 0,
+      viewportW: 1024,
+      viewportH: 768,
+      devicePixelRatio: 1,
+    });
+    const payload = {
+      ...basePayload,
+      annotations: [
+        annotation({ xPct: -0.006, yPct: 1.64, wPct: 0.196, hPct: 0.33 }), // below a short body
+        annotation({ xPct: -0.05, yPct: 0.5, wPct: 0.3, hPct: 0.75 }), // overhangs left and bottom
+        annotation({ xPct: -0.4, yPct: -0.4, wPct: 4, hPct: 3 }), // larger than the anchor
+        annotation({ xPct: 0.1, yPct: 0.2, wPct: 0.3, hPct: 0.4 }), // inside
+      ],
+    };
+
+    await client.sendFeedback(payload);
+
+    const rects = (lastPostBody().annotations as AnnotationPayload[]).map((a) => a.rect);
+    expect(rects).toEqual([
+      { xPct: 0, yPct: 1, wPct: expect.closeTo(0.19), hPct: 0 },
+      { xPct: 0, yPct: 0.5, wPct: expect.closeTo(0.25), hPct: 0.5 },
+      { xPct: 0, yPct: 0, wPct: 1, hPct: 1 },
+      { xPct: 0.1, yPct: 0.2, wPct: 0.3, hPct: 0.4 }, // exactly as drawn, no float drift
+    ]);
+    // The caller's payload is not rewritten.
+    expect(payload.annotations[0]!.rect.yPct).toBe(1.64);
+  });
+
   /**
    * Node test env has no persistent localStorage — back it with a Map so
    * queueForRetry's fire-and-forget write is observable.
    */
-  function stubLocalStorage(): Map<string, string> {
+  function stubLocalStorage(quotaChars = Number.POSITIVE_INFINITY): Map<string, string> {
     const store = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
+      setItem: (k: string, v: string) => {
+        // Browsers throw QuotaExceededError instead of storing an oversized value.
+        if (v.length > quotaChars) throw new DOMException("quota exceeded", "QuotaExceededError");
+        store.set(k, v);
+      },
       removeItem: (k: string) => void store.delete(k),
       clear: () => store.clear(),
     });
@@ -173,6 +227,150 @@ describe("ApiClient", () => {
     vi.useRealTimers();
 
     expect(readQueue(store)).toHaveLength(1);
+
+    vi.unstubAllGlobals();
+  });
+
+  async function failWithNetworkError(payload: FeedbackPayload): Promise<void> {
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+    await expectTransientFailure(client, payload);
+  }
+
+  const screenshotPayload = {
+    ...basePayload,
+    screenshotDataUrl: `data:image/jpeg;base64,${"A".repeat(4_000)}`,
+    screenshotRegion: { xPct: 0.1, yPct: 0.1, wPct: 0.5, hPct: 0.5 },
+  };
+
+  const annotation = {
+    anchor: {
+      cssSelector: "#hero",
+      xpath: "/html/body/div[1]",
+      textSnippet: "Hero",
+      elementTag: "DIV",
+      textPrefix: "",
+      textSuffix: "",
+      fingerprint: "1:0:abc",
+      neighborText: "",
+    },
+    rect: { xPct: 0.1, yPct: 0.2, wPct: 0.3, hPct: 0.4 },
+    scrollX: 0,
+    scrollY: 120,
+    viewportW: 1280,
+    viewportH: 800,
+    devicePixelRatio: 2,
+  };
+
+  const withoutScreenshot = ({
+    screenshotDataUrl: _screenshotDataUrl,
+    screenshotRegion: _screenshotRegion,
+    ...rest
+  }: FeedbackPayload): FeedbackPayload => rest;
+
+  it("sheds queued screenshots oldest first, only as many as the quota requires", async () => {
+    const annotated = (message: string, clientId: string): FeedbackPayload => ({
+      ...screenshotPayload,
+      message,
+      clientId,
+      annotations: [annotation],
+    });
+    const first = annotated("first", "cid-1");
+    const second = annotated("second", "cid-2");
+    const third = annotated("third", "cid-3");
+    const twoFull = [
+      { endpoint, payload: first },
+      { endpoint, payload: second },
+    ];
+    // Room for exactly two full entries: the third only fits once the two oldest shed their screenshots.
+    const store = stubLocalStorage(JSON.stringify(twoFull).length);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError(first);
+    await failWithNetworkError(second);
+    expect(readQueue(store)).toEqual(twoFull);
+    expect(warn).not.toHaveBeenCalled();
+
+    await failWithNetworkError(third);
+
+    expect(readQueue(store)).toEqual([
+      { endpoint, payload: withoutScreenshot(first) },
+      { endpoint, payload: withoutScreenshot(second) },
+      { endpoint, payload: third },
+    ]);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[siteping] retry queue exceeded the localStorage quota — dropped the screenshot of 2 of 3 queued feedback(s)",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("drops the oldest queued feedbacks when even the screenshot-free queue exceeds the quota", async () => {
+    const older = [
+      { endpoint, payload: { ...screenshotPayload, message: "oldest", clientId: "cid-1" } },
+      { endpoint, payload: { ...screenshotPayload, message: "older", clientId: "cid-2" } },
+    ];
+    const newest = { ...screenshotPayload, message: "newest", clientId: "cid-3" };
+    const expected = [{ endpoint, payload: withoutScreenshot(newest) }];
+    const store = stubLocalStorage(JSON.stringify(expected).length);
+    store.set("siteping_retry_queue", JSON.stringify(older)); // seeded behind the quota check
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError(newest);
+
+    expect(readQueue(store)).toEqual(expected);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[siteping] retry queue exceeded the localStorage quota — dropped the 2 oldest of 3 queued feedback(s), and the screenshot of 1 of the rest",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("reports evicted text-only feedbacks without blaming screenshots", async () => {
+    // The launcher always sends `screenshotDataUrl: null` when nothing was captured.
+    const textOnly = (message: string): FeedbackPayload => ({
+      ...basePayload,
+      message,
+      clientId: `cid-${message}`,
+      screenshotDataUrl: null,
+    });
+    const expected = [
+      { endpoint, payload: textOnly("b") },
+      { endpoint, payload: textOnly("c") },
+    ];
+    const store = stubLocalStorage(JSON.stringify(expected).length);
+    store.set(
+      "siteping_retry_queue",
+      JSON.stringify([
+        { endpoint, payload: textOnly("a") },
+        { endpoint, payload: textOnly("b") },
+      ]),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError(textOnly("c"));
+
+    expect(readQueue(store)).toEqual(expected);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[siteping] retry queue exceeded the localStorage quota — dropped the 1 oldest of 3 queued feedback(s)",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves the stored queue untouched and warns when not even the stripped newest entry fits", async () => {
+    const store = stubLocalStorage(10); // no queue write can fit
+    const previous = JSON.stringify([
+      { endpoint, payload: { ...basePayload, message: "previous", clientId: "cid-0" } },
+    ]);
+    store.set("siteping_retry_queue", previous); // seeded behind the quota check
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await failWithNetworkError({ ...screenshotPayload, message: "newest" });
+
+    expect(store.get("siteping_retry_queue")).toBe(previous);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[siteping] feedback could not be queued for retry — localStorage is full or unavailable",
+    );
 
     vi.unstubAllGlobals();
   });
@@ -461,6 +659,17 @@ describe("ApiClient", () => {
     expect(calledUrl).toContain("limit=10");
   });
 
+  it.each([
+    ["/api/siteping?tenant=acme", "/api/siteping?tenant=acme&projectName=test-project&limit=10"],
+    ["/api/siteping?", "/api/siteping?projectName=test-project&limit=10"],
+    ["/api/siteping#top", "/api/siteping?projectName=test-project&limit=10#top"],
+  ])("appends GET params to an endpoint that already has a query or hash (%s)", async (withQuery, expected) => {
+    // `${endpoint}?${params}` produced "?tenant=acme?projectName=…" — a 400.
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
+    await new ApiClient(withQuery, "test").getFeedbacks("test-project", { limit: 10 });
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(expected);
+  });
+
   it("sends GET with the full set of optional query params (page/status/search)", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
 
@@ -661,6 +870,20 @@ describe("ApiClient — auth & headers", () => {
     expect(lastHeaders().Authorization).toBe("Bearer from-headers");
   });
 
+  it("lets an explicit authorization header override apiKey whatever its casing", async () => {
+    // Header names are case-insensitive: a plain object merge sent both
+    // entries, which fetch combines into "Bearer k, Basic xyz".
+    const client = new ApiClient(endpoint, "test", { apiKey: "k", headers: { authorization: "Basic xyz" } });
+    await client.sendFeedback(payload);
+    expect(new Headers(lastHeaders()).get("Authorization")).toBe("Basic xyz");
+  });
+
+  it("lets a lowercase content-type replace the JSON default instead of combining with it", async () => {
+    const client = new ApiClient(endpoint, "test", { headers: { "content-type": "application/vnd.api+json" } });
+    await client.sendFeedback(payload);
+    expect(new Headers(lastHeaders()).get("Content-Type")).toBe("application/vnd.api+json");
+  });
+
   it("fails the request like a network error when the headers factory throws", async () => {
     const client = new ApiClient(endpoint, "test", {
       headers: () => {
@@ -795,6 +1018,37 @@ describe("flushRetryQueue", () => {
     );
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("dropped 1 queued feedback"));
     warnSpy.mockRestore();
+  });
+
+  it("drops a malformed queued entry individually and still replays the valid ones", async () => {
+    const valid = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "still replayed",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "Alice",
+      authorEmail: "alice@example.com",
+      annotations: [],
+      clientId: "valid-1",
+    };
+    // Tampered / legacy entries: `payload.authorName.trim()` (or the email's)
+    // used to throw, the outer catch swallowed it and nothing was ever
+    // replayed again.
+    vi.mocked(localStorage.getItem).mockReturnValue(
+      JSON.stringify([
+        { endpoint, payload: {} },
+        { endpoint, payload: { authorName: "Alice" } },
+        { endpoint, payload: valid },
+      ]),
+    );
+
+    await flushRetryQueue(endpoint, { name: "Alice", email: "alice@example.com" });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0]?.[1]?.body as string)).toEqual(valid);
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
   });
 
   it("retries queued items and removes on success", async () => {
@@ -1096,10 +1350,13 @@ describe("flushRetryQueue", () => {
 
   it("handles corrupted localStorage gracefully", async () => {
     vi.mocked(localStorage.getItem).mockReturnValue("not valid json{{{");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     // Should not throw
     await expect(flushRetryQueue(endpoint)).resolves.toBeUndefined();
     expect(fetch).not.toHaveBeenCalled();
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
   it("treats non-array stored value as empty queue (flushRetryQueue)", async () => {
@@ -1130,6 +1387,236 @@ describe("flushRetryQueue", () => {
 
     // Failed item should be kept in queue
     expect(localStorage.setItem).toHaveBeenCalledWith("siteping_retry_queue", expect.stringContaining("fail"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unbounded waits in the send path (#342) — the popup holds the user until a
+// send settles, so every wait needs a bound. Mocked bodies error on abort,
+// like real fetch.
+// ---------------------------------------------------------------------------
+
+describe("ApiClient — bounded waits", () => {
+  const endpoint = "http://localhost/api/siteping";
+  const payload: FeedbackPayload = {
+    projectName: "test",
+    type: "bug",
+    message: "m",
+    url: "https://example.com",
+    viewport: "1x1",
+    userAgent: "t",
+    authorName: "A",
+    authorEmail: "a@b.com",
+    annotations: [],
+    clientId: "c1",
+  };
+
+  /** Headers arrive with `status`, then the body stalls until the request's signal aborts. */
+  function stalledBody(init: RequestInit | undefined, status: number): Response {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"id":'));
+        init?.signal?.addEventListener("abort", () => controller.error(new DOMException("aborted", "AbortError")));
+      },
+    });
+    return new Response(body, { status, headers: { "Content-Type": "application/json" } });
+  }
+
+  /** Start `run` under fake timers; assert it is still pending just before `ms`, and settled at `ms`. */
+  async function settlesAt(run: () => Promise<unknown>, ms: number): Promise<unknown> {
+    const settled = vi.fn();
+    const outcome = run().then(
+      (value: unknown) => {
+        settled();
+        return value;
+      },
+      (error: unknown) => {
+        settled();
+        return error;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(ms - 1);
+    expect(settled, `still pending at ${ms - 1} ms`).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled, `settled at ${ms} ms`).toHaveBeenCalled();
+    expect(vi.getTimerCount(), "no timer left pending").toBe(0);
+    return outcome;
+  }
+
+  beforeEach(() => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("a 2xx body that stalls after the headers fails the send as a network error at the 10 s attempt bound", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => stalledBody(init, 201));
+
+    const error = await settlesAt(() => new ApiClient(endpoint, "test").sendFeedback(payload), 10_000);
+
+    expect(error).toBeInstanceOf(SitepingNetworkError);
+    // The headers said 201: the POST landed, so it is not re-sent (a queued replay dedupes by clientId).
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it("gives the body a fresh 10 s window once the headers arrive, not the rest of the upload's", async () => {
+    // Headers at 6 s (a slow upload), then the body stalls: a window shared
+    // with the upload would abort at 10 s, only 4 s into the body.
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) => new Promise((resolve) => setTimeout(() => resolve(stalledBody(init, 201)), 6_000)),
+    );
+
+    const error = await settlesAt(() => new ApiClient(endpoint, "test").sendFeedback(payload), 16_000);
+
+    expect(error).toBeInstanceOf(SitepingNetworkError);
+  });
+
+  it("leaves reads unbounded: a GET body that takes longer than one attempt window still loads", async () => {
+    // A page of inline screenshots can legitimately take > 10 s on a slow
+    // link, and a read holds no popup — only the send path bounds its body.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const arrival = setTimeout(() => {
+            controller.enqueue(new TextEncoder().encode(JSON.stringify({ feedbacks: [], total: 0 })));
+            controller.close();
+          }, 15_000);
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(arrival);
+            controller.error(new DOMException("aborted", "AbortError"));
+          });
+        },
+      });
+      return new Response(body, { status: 200 });
+    });
+
+    const list = await settlesAt(() => new ApiClient(endpoint, "test").getFeedbacks("test"), 15_000);
+
+    expect(list).toEqual({ feedbacks: [], total: 0 });
+  });
+
+  it("a non-OK body that stalls still yields the status's typed error at the bound", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => stalledBody(init, 400));
+
+    const error = await settlesAt(() => new ApiClient(endpoint, "test").sendFeedback(payload), 10_000);
+
+    expect(error).toBeInstanceOf(SitepingValidationError);
+    expect((error as Error).message).toBe("Failed to send feedback: 400 Unknown error");
+  });
+
+  it("a headers factory that never settles fails the send as a network error at 10 s, before any fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const client = new ApiClient(endpoint, "test", { headers: () => new Promise(() => {}) });
+
+    const error = await settlesAt(() => client.sendFeedback(payload), 10_000);
+
+    expect(error).toBeInstanceOf(SitepingNetworkError);
+    expect((error as Error).message).toBe("Failed to send feedback: headers factory did not settle within 10 s");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("a queued replay that never answers gives up at 10 s and stays queued (the flush holds the cross-tab lock)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    );
+    const queued = JSON.stringify([{ endpoint, payload }]);
+    localStorage.setItem("siteping_retry_queue", queued);
+
+    await settlesAt(() => flushRetryQueue(endpoint), 10_000);
+
+    expect(localStorage.getItem("siteping_retry_queue")).toBe(queued);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unparseable stored queue (#344) — written by something other than the
+// widget (DevTools, an extension, other code on the origin). It used to make
+// every readQueue() throw, so the queue stayed disabled on that origin.
+// ---------------------------------------------------------------------------
+
+describe("unparseable retry queue", () => {
+  const KEY = "siteping_retry_queue";
+  const endpoint = "http://localhost/api/siteping";
+  const payload = {
+    projectName: "test",
+    type: "bug" as const,
+    message: "offline feedback",
+    url: "https://example.com",
+    viewport: "1x1",
+    userAgent: "t",
+    authorName: "A",
+    authorEmail: "a@b.com",
+    annotations: [],
+    clientId: "c1",
+  };
+  const queued = JSON.stringify([{ endpoint, payload }]);
+  const validQueue = JSON.stringify([{ endpoint, payload: { ...payload, clientId: "old" } }]);
+  let store: Map<string, string>;
+
+  beforeEach(() => {
+    store = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  /** One submission that fails transiently (network), i.e. one the widget promises to queue. */
+  async function failTransiently(): Promise<void> {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+    await expectTransientFailure(new ApiClient(endpoint, "test"), payload);
+    await new Promise((r) => setTimeout(r, 0)); // let the fire-and-forget queue write settle
+  }
+
+  describe.each([
+    ["garbage", "{not json"],
+    ["a truncated valid queue", validQueue.slice(0, -10)],
+  ])("holding %s", (_label, bad) => {
+    it("is replaced by the next transient failure, with one [siteping] warning", async () => {
+      store.set(KEY, bad);
+      await failTransiently();
+      expect(store.get(KEY)).toBe(queued);
+      expect(console.warn).toHaveBeenCalledExactlyOnceWith(
+        `[siteping] discarded an unreadable retry queue from localStorage (${bad.length} chars)`,
+      );
+    });
+
+    it("is removed by flushRetryQueue with one warning, so the next failure is queued", async () => {
+      store.set(KEY, bad);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 201 }));
+      await flushRetryQueue(endpoint); // page load 1
+      await flushRetryQueue(endpoint, { name: "A", email: "a@b.com" }); // page load 2
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(store.has(KEY)).toBe(false);
+      expect(console.warn).toHaveBeenCalledTimes(1);
+
+      await failTransiently();
+      expect(store.get(KEY)).toBe(queued);
+    });
   });
 });
 
@@ -1253,6 +1740,84 @@ describe("queueForRetry (via sendFeedback)", () => {
     expect(parsed).toHaveLength(2);
     expect(parsed[0].payload.message).toBe("existing");
     expect(parsed[1].payload.message).toBe("new");
+  });
+
+  it("a failed resend of the same clientId replaces its queued entry (latest edit is replayed)", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "first attempt",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "same-session",
+    };
+    vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify([{ endpoint, payload }]));
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+
+    const client = new ApiClient(endpoint, "test");
+    await expectTransientFailure(client, { ...payload, message: "edited resend" });
+
+    const savedValue = vi.mocked(localStorage.setItem).mock.calls[0]?.[1];
+    if (savedValue === undefined) throw new Error("expected the retry queue to be written to localStorage");
+    const parsed = JSON.parse(savedValue);
+    // Two entries would replay the stale first attempt, and the server's
+    // clientId dedupe would then discard the edit.
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].payload.message).toBe("edited resend");
+  });
+
+  it("a successful resend removes the queued attempt with the same clientId (and only that one)", async () => {
+    const queued = (clientId: string) => ({
+      endpoint,
+      payload: {
+        projectName: "test",
+        type: "bug" as const,
+        message: `queued ${clientId}`,
+        url: "https://example.com",
+        viewport: "1x1",
+        userAgent: "t",
+        authorName: "A",
+        authorEmail: "a@b.com",
+        annotations: [],
+        clientId,
+      },
+    });
+    localStorage.setItem("siteping_retry_queue", JSON.stringify([queued("same-session"), queued("other")]));
+    vi.mocked(localStorage.setItem).mockClear();
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ id: "fb-1" }), { status: 201 }));
+
+    await new ApiClient(endpoint, "test").sendFeedback({ ...queued("same-session").payload, message: "resent" });
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the fire-and-forget queue write settle
+
+    // Left queued, the next page load would re-POST it only to be deduped.
+    expect(JSON.parse(localStorage.getItem("siteping_retry_queue") ?? "[]")).toEqual([queued("other")]);
+  });
+
+  it("a successful send of the last queued clientId removes the queue key", async () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "only one",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "same-session",
+    };
+    localStorage.setItem("siteping_retry_queue", JSON.stringify([{ endpoint, payload }]));
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ id: "fb-1" }), { status: 201 }));
+
+    await new ApiClient(endpoint, "test").sendFeedback(payload);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+    expect(localStorage.getItem("siteping_retry_queue")).toBeNull();
   });
 
   it("drops the oldest entry when the queue exceeds MAX_QUEUE_SIZE (20)", async () => {

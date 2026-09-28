@@ -10,6 +10,7 @@ import {
   networkErrorFromException,
   type SitepingStore,
   toFeedbackUpdate,
+  withSearchParams,
 } from "@siteping/core";
 import type { EndpointSourceOptions, InboxSource } from "./types.js";
 
@@ -90,7 +91,7 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
       // dropped the `statuses` bucket filter.
       const params = feedbackQueryToSearchParams(query);
 
-      const response = await request("Failed to fetch feedbacks", `${endpoint}?${params.toString()}`, {
+      const response = await request("Failed to fetch feedbacks", withSearchParams(endpoint, params), {
         method: "GET",
         cache: "no-store",
         headers: await buildHeaders(false),

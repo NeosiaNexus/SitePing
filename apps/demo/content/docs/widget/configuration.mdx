@@ -56,7 +56,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
 |---|---|---|---|
 | `enableScreenshot` | `boolean` | `false` | Capture a JPEG of the annotated area on submit — see [Screenshots](/docs/widget/screenshots) |
 | `enableRightClickComment` | `boolean` | `false` | Right-click anywhere to comment instantly — see [Right-click comments](/docs/widget/right-click) |
-| `captureDiagnostics` | `boolean` or object | `false` | Attach recent console entries (max 50) and network requests (max 20) to each feedback. `true` enables both; an object picks channels and limits |
+| `captureDiagnostics` | `boolean` or object | `false` | Attach recent console entries (max 50) and failed network requests (max 20, URL recorded without credentials, query string or hash) to each feedback. `true` enables both; an object picks channels and lower limits (`maxConsoleEntries` / `maxNetworkEntries` — larger values are clamped to 50 / 20, the server's caps) |
 | `deepLink` | `boolean` or `{ param?: string }` | `false` | On first load, focus the feedback referenced by `?siteping=<id>` (or your custom param). Initial load only — for route changes, call `focusFeedback()` |
 | `identity` | `{ name, email }` | — | Pre-fill the author (SSO apps): skips the identity modal entirely, never persisted to localStorage |
 
