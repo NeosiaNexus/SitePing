@@ -269,6 +269,31 @@ describe("createSitepingHandler — lifecycle hooks", () => {
     expect((await store.getFeedbacks({ projectName: PROJECT })).total).toBe(1);
   });
 
+  it("runs no deletion hook for a DELETE refused by authorize or aimed at another project's record", async () => {
+    const store = new MemoryStore();
+    const onDeleting = vi.fn();
+    const onDeleted = vi.fn();
+    const handler = createSitepingHandler({
+      store,
+      // Anyone may report; only PROJECT's feedback may be deleted.
+      access: {
+        ...sessionAccess,
+        authorize: ({ action, projectName }) => action === "create" || projectName === PROJECT,
+      },
+      hooks: { onDeleting, onDeleted },
+    });
+    const other = await createFeedback(handler, { ...validPayloadNoAnnotations, projectName: "other-project" });
+
+    const refused = await handler.DELETE(jsonRequest("DELETE", { id: other.id, projectName: "other-project" }));
+    const refusedAll = await handler.DELETE(jsonRequest("DELETE", { projectName: "other-project", deleteAll: true }));
+    const crossProject = await handler.DELETE(jsonRequest("DELETE", { id: other.id, projectName: PROJECT }));
+
+    expect([refused.status, refusedAll.status, crossProject.status]).toEqual([403, 403, 404]);
+    expect(onDeleting).not.toHaveBeenCalled();
+    expect(onDeleted).not.toHaveBeenCalled();
+    expect((await store.getFeedbacks({ projectName: "other-project" })).total).toBe(1);
+  });
+
   it("passes single and whole-project deletion targets to onDeleting and onDeleted", async () => {
     const onDeleting = vi.fn();
     const onDeleted = vi.fn();
