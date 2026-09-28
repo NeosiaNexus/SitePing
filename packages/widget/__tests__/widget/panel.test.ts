@@ -773,6 +773,24 @@ describe("Panel", () => {
       expect(detail!.getAttribute("aria-hidden")).toBe("false");
     });
 
+    it("detail title uses the card's displayed number (sort order), for click and Enter", async () => {
+      // Server order: older first; the default "newest" sort displays it second.
+      const older = makeFeedback({ id: "fb-old", createdAt: "2026-01-01T00:00:00.000Z" });
+      const newer = makeFeedback({ id: "fb-new", createdAt: "2026-02-01T00:00:00.000Z" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [older, newer], total: 2 });
+
+      await panel.open();
+
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-old"]')!;
+      expect(card.querySelector(".sp-card-number")!.textContent).toBe("#2");
+
+      card.click();
+      expect(shadow.querySelector(".sp-detail-title")!.textContent).toBe(t("detail.title").replace("{number}", "2"));
+
+      card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      expect(shadow.querySelector(".sp-detail-title")!.textContent).toBe(t("detail.title").replace("{number}", "2"));
+    });
+
     it("clicking a card shows the correct feedback in detail view", async () => {
       const fb = makeFeedback({ id: "fb-1", message: "Test bug report", annotations: [annotation] });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });

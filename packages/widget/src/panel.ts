@@ -327,10 +327,7 @@ export class Panel {
       if (card) {
         const feedbackId = card.dataset.feedbackId;
         const feedback = this.feedbacks.find((f) => f.id === feedbackId);
-        if (feedback) {
-          const number = this.feedbacks.indexOf(feedback) + 1;
-          this.detail.show(feedback, number);
-        }
+        if (feedback) this.detail.show(feedback, Number(card.dataset.number));
       }
     };
     this.listContainer.addEventListener("click", this.onListClick);
@@ -345,10 +342,7 @@ export class Panel {
       ke.preventDefault();
       const feedbackId = card.dataset.feedbackId;
       const feedback = this.feedbacks.find((f) => f.id === feedbackId);
-      if (feedback) {
-        const number = this.feedbacks.indexOf(feedback) + 1;
-        this.detail.show(feedback, number);
-      }
+      if (feedback) this.detail.show(feedback, Number(card.dataset.number));
     };
     this.listContainer.addEventListener("keydown", this.onListKeydown);
 
@@ -693,6 +687,8 @@ export class Panel {
       `Feedback #${number}: ${getTypeLabel(feedback.type, this.t)} — ${feedback.message.slice(0, 80)}`,
     );
     card.dataset.feedbackId = feedback.id;
+    // Display (sort-order) number — the detail title must match the card's #.
+    card.dataset.number = String(number);
 
     // Color bar
     const bar = el("div", { class: "sp-card-bar" });
