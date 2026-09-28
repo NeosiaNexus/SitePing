@@ -405,7 +405,8 @@ describe("SitepingInbox — drawer", () => {
     expect(dialog.tagName).toBe("DIV");
   });
 
-  it("is a non-modal region in side-by-side (wide) mode", async () => {
+  /** Run `body` with a ResizeObserver reporting a wide (side-by-side) container. */
+  async function withWideLayout(body: () => Promise<void>): Promise<void> {
     const original = globalThis.ResizeObserver;
     class WideResizeObserver {
       private readonly cb: ResizeObserverCallback;
@@ -420,15 +421,47 @@ describe("SitepingInbox — drawer", () => {
     }
     globalThis.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
     try {
+      await body();
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
+  }
+
+  it("is a non-modal region in side-by-side (wide) mode", async () => {
+    await withWideLayout(async () => {
       renderInbox();
       const listbox = await ready();
       fireEvent.keyDown(listbox, { key: "j" });
       fireEvent.keyDown(listbox, { key: "Enter" });
       const panel = await screen.findByRole("region", { name: /Feedback details/ });
       expect(panel.getAttribute("aria-modal")).toBeNull();
-    } finally {
-      globalThis.ResizeObserver = original;
-    }
+    });
+  });
+
+  it("returns focus to the list when the side-by-side drawer closes or its record is deleted", async () => {
+    await withWideLayout(async () => {
+      renderInbox();
+      const listbox = await ready();
+      fireEvent.keyDown(listbox, { key: "j" });
+      fireEvent.keyDown(listbox, { key: "Enter" });
+
+      // Clicking inside the panel moves focus there; unmounting it must not drop focus to <body>.
+      const panel = await screen.findByRole("region", { name: /Feedback details/ });
+      const close = within(panel).getByRole("button", { name: "Close details" });
+      close.focus();
+      fireEvent.click(close);
+      await waitFor(() => expect(screen.queryByRole("region", { name: /Feedback details/ })).toBeNull());
+      expect(document.activeElement).toBe(listbox);
+
+      fireEvent.keyDown(listbox, { key: "Enter" }); // reopen o1
+      const reopened = await screen.findByRole("region", { name: /Feedback details/ });
+      fireEvent.click(within(reopened).getByRole("button", { name: "Delete feedback" }));
+      const confirm = within(reopened).getByRole("button", { name: "Delete" });
+      confirm.focus();
+      fireEvent.click(confirm);
+      await waitFor(() => expect(screen.queryByRole("region", { name: /Feedback details/ })).toBeNull());
+      expect(document.activeElement).toBe(listbox);
+    });
   });
 });
 
