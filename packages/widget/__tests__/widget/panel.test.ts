@@ -1749,6 +1749,37 @@ describe("Panel", () => {
       });
     });
 
+    it.each(["resolve", "delete"] as const)(
+      "checkboxes still follow the selection after a successful bulk %s",
+      async (action) => {
+        const fb1 = makeFeedback({ id: "fb-1" });
+        const fb2 = makeFeedback({ id: "fb-2" });
+        const fb3 = makeFeedback({ id: "fb-3" });
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2, fb3], total: 3 });
+        apiClient.resolveFeedback.mockResolvedValue(undefined);
+        apiClient.deleteFeedback.mockResolvedValue(undefined);
+        const checkbox = (selector: string) => shadow.querySelector<HTMLElement>(`${selector} .sp-bulk-checkbox`)!;
+
+        await panel.open();
+        checkbox('[data-feedback-id="fb-1"]').click();
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb2, fb3], total: 2 });
+        const button = shadow.querySelector<HTMLButtonElement>(`.sp-bulk-btn-${action}`)!;
+        button.click();
+        await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-1"]')).toBeNull());
+        await vi.waitFor(() => expect(button.disabled).toBe(false));
+
+        // The reloaded list's checkboxes must still be wired to the selection.
+        checkbox('[data-feedback-id="fb-2"]').click();
+        expect(checkbox('[data-feedback-id="fb-2"]').getAttribute("aria-checked")).toBe("true");
+        checkbox(".sp-bulk-select-all").click();
+        expect(checkbox(".sp-bulk-select-all").getAttribute("aria-checked")).toBe("true");
+        expect(checkbox('[data-feedback-id="fb-3"]').getAttribute("aria-checked")).toBe("true");
+        expect(shadow.querySelector(".sp-bulk-bar-count")!.textContent).toBe(
+          tWithParams(t, "bulk.selected", { count: 2 }),
+        );
+      },
+    );
+
     it("selection stays visible on cards after a re-render (group toggle / sort / load more)", async () => {
       const fb1 = makeFeedback({ id: "fb-1" });
       const fb2 = makeFeedback({ id: "fb-2" });

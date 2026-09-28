@@ -631,7 +631,7 @@ export class BulkActions {
     } finally {
       this.endProcessing();
     }
-    this.reset();
+    this.deselectAll();
   }
 
   private async handleDelete(): Promise<void> {
@@ -649,7 +649,7 @@ export class BulkActions {
     } finally {
       this.endProcessing();
     }
-    this.reset();
+    this.deselectAll();
   }
 
   /**
