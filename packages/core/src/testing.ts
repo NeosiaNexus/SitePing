@@ -453,6 +453,28 @@ export function testSitepingStore(
         expect(page3.feedbacks).toHaveLength(1);
       });
 
+      it("returns an empty page with the total when the page lies far past the end", async () => {
+        for (let i = 0; i < 3; i++) {
+          await store.createFeedback(createInput());
+        }
+
+        // Direct callers reach the store without the HTTP schema's bounds:
+        // offsets past a 32-bit and a 64-bit signed integer, past
+        // `Number.MAX_SAFE_INTEGER`, and an infinite one must all read as an
+        // empty page, never as a backend error.
+        const farPages = [
+          { page: 2 ** 31, limit: 2 },
+          { page: 1e18, limit: 100 },
+          { page: Number.MAX_SAFE_INTEGER, limit: 50 },
+          { page: 1e308, limit: 100 },
+        ];
+        for (const { page, limit } of farPages) {
+          const result = await store.getFeedbacks({ projectName: "test-project", page, limit });
+          expect(result.feedbacks).toEqual([]);
+          expect(result.total).toBe(3);
+        }
+      });
+
       it("caps limit at 100", async () => {
         // 105 records so a limit above the cap actually exercises it.
         for (let i = 0; i < 105; i++) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampPagination, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from "../src/index.js";
+import { clampPagination, DEFAULT_PAGE_LIMIT, isUnreachableOffset, MAX_PAGE_LIMIT } from "../src/index.js";
 
 describe("clampPagination", () => {
   it("defaults to the first page of 50", () => {
@@ -29,5 +29,19 @@ describe("clampPagination", () => {
       limit: DEFAULT_PAGE_LIMIT,
       skip: 0,
     });
+  });
+});
+
+describe("isUnreachableOffset", () => {
+  it("accepts every offset a store can reach", () => {
+    expect(isUnreachableOffset(0)).toBe(false);
+    expect(isUnreachableOffset(clampPagination({ page: 2 ** 31, limit: 2 }).skip)).toBe(false);
+    expect(isUnreachableOffset(Number.MAX_SAFE_INTEGER)).toBe(false);
+  });
+
+  it("flags offsets past Number.MAX_SAFE_INTEGER or infinite", () => {
+    expect(isUnreachableOffset(clampPagination({ page: 1e18, limit: 100 }).skip)).toBe(true);
+    expect(isUnreachableOffset(clampPagination({ page: Number.MAX_SAFE_INTEGER, limit: 50 }).skip)).toBe(true);
+    expect(isUnreachableOffset(clampPagination({ page: 1e308, limit: 100 }).skip)).toBe(true);
   });
 });

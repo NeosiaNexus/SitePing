@@ -80,6 +80,7 @@ export {
   isStoreDuplicate,
   isStoreNotFound,
   isStorePersistence,
+  isUnreachableOffset,
   MAX_PAGE_LIMIT,
   OPEN_FEEDBACK_STATUSES,
   StoreDuplicateError,

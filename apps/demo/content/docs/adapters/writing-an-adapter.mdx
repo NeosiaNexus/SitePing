@@ -114,7 +114,7 @@ Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreP
 - Newest first, by `createdAt` descending.
 - `page` is 1-based, `limit` defaults to 50 and is capped at 100.
 
-Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above. Querying a database? `clampPagination(query)` returns the normalized `{ page, limit, skip }` — the same clamp the in-memory pipeline and `PrismaStore` use, so pass its `limit` and `skip` straight to your `LIMIT`/`OFFSET`.
+Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above. Querying a database? `clampPagination(query)` returns the normalized `{ page, limit, skip }` — the same clamp the in-memory pipeline and `PrismaStore` use, so pass its `limit` and `skip` straight to your `LIMIT`/`OFFSET`. Check `isUnreachableOffset(skip)` first: a huge `page` from a direct caller yields an offset past `Number.MAX_SAFE_INTEGER` (or `Infinity`) that SQL backends reject, and the suite expects `{ feedbacks: [], total }` for it — answer with your count query alone.
 
 ## Project ownership
 

@@ -62,6 +62,15 @@ describe("PrismaStore — pagination clamp", () => {
     const args = prisma.sitepingFeedback.findMany.mock.calls[0]?.[0] as { skip: number; take: number };
     expect(args).toMatchObject({ skip: 40, take: 20 });
   });
+
+  it("answers an unreachable page from count alone, never forwarding the offset to findMany", async () => {
+    const prisma = spyDelegate();
+    prisma.sitepingFeedback.count.mockResolvedValue(7);
+    const result = await new PrismaStore(prisma).getFeedbacks({ projectName: "p", page: 1e18, limit: 100 });
+    expect(result).toEqual({ feedbacks: [], total: 7 });
+    expect(prisma.sitepingFeedback.findMany).not.toHaveBeenCalled();
+    expect(prisma.sitepingFeedback.count).toHaveBeenCalledWith({ where: { projectName: "p" } });
+  });
 });
 
 describe("PrismaStore — ordering", () => {
