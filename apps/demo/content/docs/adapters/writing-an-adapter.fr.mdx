@@ -72,7 +72,7 @@ import {
   type SitepingStore,
 } from "@siteping/adapter-kit";
 
-export class DrizzleStore implements SitepingStore {
+export class MySqlStore implements SitepingStore {
   async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
     const record = buildFeedbackRecord(data, {
       id: crypto.randomUUID(),

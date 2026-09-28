@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Scaffold a new first-party store adapter: `bun run new:adapter drizzle [--platform=node]`
+// Scaffold a new first-party store adapter: `bun run new:adapter kysely [--platform=node]`
 //
 // Creates packages/adapter-<name>/ with the exact layout the CI gates
 // expect (dual-exports package.json with the fix-dts build chain, shared

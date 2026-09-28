@@ -114,7 +114,7 @@ For an adapter, use the scaffold — it writes every file below in the correct
 final shape and registers the package in release-please:
 
 ```bash
-bun run new:adapter drizzle -- --platform=node   # node | browser | neutral
+bun run new:adapter kysely -- --platform=node   # node | browser | neutral
 ```
 
 For a non-adapter package, copy the closest existing one (`packages/adapter-memory`
@@ -159,7 +159,7 @@ which exports the contract, the building blocks and the conformance suite.
 **First-party adapters** start with the scaffold:
 
 ```bash
-bun run new:adapter drizzle -- --platform=node
+bun run new:adapter kysely -- --platform=node
 ```
 
 Two implementation strategies:
