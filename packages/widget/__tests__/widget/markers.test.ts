@@ -1782,6 +1782,26 @@ describe("MarkerManager", () => {
         Element.prototype.scrollIntoView = original;
       }
     });
+
+    it("(g) a marker whose anchor disappears leaves its cluster", () => {
+      vi.useFakeTimers();
+      markers.render([makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-b" })]);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(1);
+
+      // resize: fb-a still resolves, fb-b's anchor is gone
+      mockState.nullSchedule = [false, true];
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(visibleMarkers("fb-b")).toHaveLength(0);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
+      // fb-a is alone again: a click opens the panel instead of fanning out a phantom cluster
+      const panelSpy = vi.fn();
+      bus.on("panel:toggle", panelSpy);
+      visibleMarkers("fb-a")[0]?.click();
+      expect(panelSpy).toHaveBeenCalledWith(true);
+      vi.useRealTimers();
+    });
   });
 
   // -------------------------------------------------------------------------
