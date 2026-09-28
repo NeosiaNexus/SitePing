@@ -266,7 +266,7 @@ describe("dispatchWebhook", () => {
     const [calledUrl, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(calledUrl).toBe("https://hooks.slack.com/T/B/X");
     expect(init.method).toBe("POST");
-    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
     const sent = JSON.parse(init.body as string) as { text: string };
     expect(sent.text).toContain("Alice");
   });
@@ -298,19 +298,18 @@ describe("dispatchWebhook", () => {
       FEEDBACK,
     );
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
-    expect(Object.fromEntries(new Headers(init.headers))).toEqual({
-      "content-type": "application/json",
-      "x-signature": "abc",
-      authorization: "Bearer xyz",
+    expect(init.headers).toEqual({
+      "Content-Type": "application/json",
+      "X-Signature": "abc",
+      Authorization: "Bearer xyz",
     });
   });
 
   it("lets a user header override Content-Type case-insensitively (never sent twice)", async () => {
     await dispatchWebhook({ url: "https://hooks.example.com", headers: { "content-type": "text/plain" } }, FEEDBACK);
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
-    // A plain-object merge keeps both keys and fetch combines them into
-    // "application/json, text/plain".
-    expect(new Headers(init.headers).get("content-type")).toBe("text/plain");
+    // Keeping both keys would make fetch send "application/json, text/plain".
+    expect(init.headers).toEqual({ "content-type": "text/plain" });
   });
 
   it("invokes onError on a 500 response and does not throw", async () => {

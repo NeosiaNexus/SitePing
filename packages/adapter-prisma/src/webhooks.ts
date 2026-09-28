@@ -345,11 +345,12 @@ export async function dispatchWebhook(config: WebhookConfig, feedback: FeedbackR
 
     // Build merged headers — caller-supplied entries override `Content-Type`
     // when they explicitly need a different mime (rare for chat webhooks, but
-    // possible for some generic receivers). `Headers.set` matches names
-    // case-insensitively: an object spread would keep `content-type` next to
-    // `Content-Type` and fetch would send both values combined.
-    const headers = new Headers({ "Content-Type": "application/json" });
-    for (const [name, value] of Object.entries(config.headers ?? {})) headers.set(name, value);
+    // possible for some generic receivers). Names are case-insensitive: a
+    // `content-type` spread next to our `Content-Type` would make fetch send
+    // both values combined, so the default is dropped for any spelling.
+    const custom = config.headers ?? {};
+    const setsContentType = Object.keys(custom).some((name) => name.toLowerCase() === "content-type");
+    const headers = setsContentType ? custom : { "Content-Type": "application/json", ...custom };
 
     // Use AbortSignal.timeout when available (Node 17.3+, all modern browsers).
     // Fall back to a manual controller for environments lacking it.
