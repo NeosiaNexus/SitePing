@@ -136,6 +136,31 @@ const HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// Injected by ?panelActions=1 (panel actions spec): a button that records
+// what the host receives and stays pending until released, a computed link,
+// an icon smuggling an <img onerror> that must never run, and a label too
+// long for one line.
+const PANEL_ACTIONS_CONFIG = `      panelActions: [
+        {
+          id: 'record',
+          label: 'Record',
+          icon: '<svg viewBox="0 0 24 24"><path d="M4 12h16"/><img src="x" onerror="window.__pwned = true"></svg>',
+          onAction: (feedback) => new Promise((resolve) => {
+            window.__panelActionCalls = (window.__panelActionCalls || []).concat([
+              { id: feedback.id, frozen: Object.isFrozen(feedback) && Object.isFrozen(feedback.annotations) },
+            ]);
+            window.__releasePanelAction = resolve;
+          }),
+        },
+        { id: 'tracker', label: 'Open in tracker', href: (feedback) => 'https://tracker.example/fb/' + feedback.id },
+        {
+          id: 'long',
+          label: 'A very long host-provided label that cannot possibly fit on one line of the detail view',
+          href: 'mailto:dev@example.com',
+        },
+      ],
+`;
+
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost:3999");
 
@@ -178,6 +203,15 @@ const server = createServer((req, res) => {
         return;
       }
       html = stripped;
+    }
+    if (url.searchParams.get("panelActions") === "1") {
+      const anchor = "      accentColor: '#6366f1',\n";
+      if (!html.includes(anchor)) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("panelActions=1: failed to inject panelActions into the page template");
+        return;
+      }
+      html = html.replace(anchor, anchor + PANEL_ACTIONS_CONFIG);
     }
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end(html);
