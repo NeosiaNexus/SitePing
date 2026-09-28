@@ -822,6 +822,35 @@ describe("flushRetryQueue", () => {
     warnSpy.mockRestore();
   });
 
+  it("drops a malformed queued entry individually and still replays the valid ones", async () => {
+    const valid = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "still replayed",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "Alice",
+      authorEmail: "alice@example.com",
+      annotations: [],
+      clientId: "valid-1",
+    };
+    // Tampered / legacy entry: `payload.authorName.trim()` used to throw,
+    // the outer catch swallowed it and nothing was ever replayed again.
+    vi.mocked(localStorage.getItem).mockReturnValue(
+      JSON.stringify([
+        { endpoint, payload: {} },
+        { endpoint, payload: valid },
+      ]),
+    );
+
+    await flushRetryQueue(endpoint, { name: "Alice", email: "alice@example.com" });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0]?.[1]?.body as string)).toEqual(valid);
+    expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+  });
+
   it("retries queued items and removes on success", async () => {
     const payload = {
       projectName: "test",

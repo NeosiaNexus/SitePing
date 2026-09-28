@@ -149,15 +149,18 @@ async function withRetryLock<T>(callback: () => T | Promise<T>): Promise<T> {
 /**
  * Shape-check one queue element — localStorage can hold tampered or legacy
  * entries, and a malformed one used to abort the whole flush via the outer
- * catch. Bad entries are dropped individually instead.
+ * catch. Bad entries are dropped individually instead. The author fields are
+ * checked because the flush itself reads them (identity match); anything
+ * else wrong with a payload is the server's verdict (4xx → dropped).
  */
 function isRetryEntry(value: unknown): value is RetryEntry {
+  if (!hasOwn(value, "endpoint") || typeof value.endpoint !== "string" || !hasOwn(value, "payload")) return false;
+  const { payload } = value;
   return (
-    hasOwn(value, "endpoint") &&
-    typeof value.endpoint === "string" &&
-    hasOwn(value, "payload") &&
-    typeof value.payload === "object" &&
-    value.payload !== null
+    hasOwn(payload, "authorName") &&
+    typeof payload.authorName === "string" &&
+    hasOwn(payload, "authorEmail") &&
+    typeof payload.authorEmail === "string"
   );
 }
 
