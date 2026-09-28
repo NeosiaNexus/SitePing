@@ -622,13 +622,15 @@ export class BulkActions {
 
     try {
       await this.callbacks.onResolve(ids);
-      this.reset();
     } catch {
+      return; // Keep the selection so the user can retry
+    } finally {
+      // Success too: reset() re-renders the labels but never re-enables.
       restoreResolve();
       this.deleteBtn.disabled = false;
-    } finally {
       this.isProcessing = false;
     }
+    this.reset();
   }
 
   private async handleDelete(): Promise<void> {
@@ -641,12 +643,13 @@ export class BulkActions {
 
     try {
       await this.callbacks.onDelete(ids);
-      this.reset();
     } catch {
+      return; // Keep the selection so the user can retry
+    } finally {
       restoreDelete();
       this.resolveBtn.disabled = false;
-    } finally {
       this.isProcessing = false;
     }
+    this.reset();
   }
 }
