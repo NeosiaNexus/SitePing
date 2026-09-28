@@ -4,7 +4,7 @@ export interface SigV4Credentials {
   accessKeyId: string;
   secretAccessKey: string;
   /** Temporary credentials (STS). */
-  sessionToken?: string;
+  sessionToken?: string | undefined;
 }
 
 export interface SigV4Request {

@@ -45,7 +45,7 @@ export interface LibSQLScreenshotObjectStoreOptions {
   /** Where `createScreenshotServeHandler` is mounted, e.g. `https://app.example.com/api/siteping/screenshots`. */
   publicBaseUrl: string;
   /** The table from `createSitepingScreenshotsSqliteTable` — pass it when you renamed it. */
-  table?: SitepingScreenshotsSqliteTable;
+  table?: SitepingScreenshotsSqliteTable | undefined;
 }
 
 /**

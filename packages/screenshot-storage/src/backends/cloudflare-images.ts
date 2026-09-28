@@ -18,11 +18,11 @@ export interface CloudflareImagesObjectStoreOptions {
   /** Account hash of the delivery URLs (`imagedelivery.net/<hash>/…`), shown in the Images dashboard. */
   accountHash: string;
   /** Variant the widget renders. Defaults to `public`. */
-  variant?: string;
+  variant?: string | undefined;
   /** Delivery URL root — set it when serving Images from a custom domain (`https://example.com/cdn-cgi/imagedelivery`). */
-  deliveryBaseUrl?: string;
-  fetch?: typeof fetch;
-  timeoutMs?: number;
+  deliveryBaseUrl?: string | undefined;
+  fetch?: typeof fetch | undefined;
+  timeoutMs?: number | undefined;
 }
 
 /**

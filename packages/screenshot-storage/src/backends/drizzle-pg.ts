@@ -49,7 +49,7 @@ export interface PgScreenshotObjectStoreOptions {
   /** Where `createScreenshotServeHandler` is mounted, e.g. `https://app.example.com/api/siteping/screenshots`. */
   publicBaseUrl: string;
   /** The table from `createSitepingScreenshotsPgTable` — pass it when you renamed it. */
-  table?: SitepingScreenshotsPgTable;
+  table?: SitepingScreenshotsPgTable | undefined;
 }
 
 /**

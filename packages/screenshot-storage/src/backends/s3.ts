@@ -16,7 +16,7 @@ export interface S3ObjectStoreOptions extends SigV4Credentials {
   endpoint: string;
   bucket: string;
   /** Signing region. Defaults to `auto` (Cloudflare R2); use the bucket's region on AWS and B2. */
-  region?: string;
+  region?: string | undefined;
   /**
    * Public URL objects are read from: the bucket's public domain, a CDN in
    * front of it, or `createScreenshotServeHandler` when the bucket is private.
@@ -24,14 +24,14 @@ export interface S3ObjectStoreOptions extends SigV4Credentials {
    * https screenshots.
    */
   publicBaseUrl: string;
-  fetch?: typeof fetch;
-  timeoutMs?: number;
+  fetch?: typeof fetch | undefined;
+  timeoutMs?: number | undefined;
   /**
    * Clock read once per request to sign it (`x-amz-date` and credential scope).
    * Defaults to the host clock; supply a corrected one when the host clock is
    * skewed, since S3 rejects signatures more than a few minutes off.
    */
-  now?: () => Date;
+  now?: (() => Date) | undefined;
   /**
    * Read a `403 AccessDenied` on GET as a missing object. Enable it when the
    * credentials have `s3:GetObject` but not `s3:ListBucket` (a common
@@ -43,7 +43,7 @@ export interface S3ObjectStoreOptions extends SigV4Credentials {
    * that also lacks `s3:GetObject` then shows as `404` rather than failing.
    * Deletes need no mapping (S3 answers `204` for a missing key). Defaults to `false`.
    */
-  treatAccessDeniedAsMissing?: boolean;
+  treatAccessDeniedAsMissing?: boolean | undefined;
 }
 
 /**

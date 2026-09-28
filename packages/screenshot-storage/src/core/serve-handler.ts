@@ -27,7 +27,7 @@ export interface ScreenshotServeHandlerOptions {
    * reading the object — the ETag is the never-reused key, so no backend I/O).
    * Receives the requested key for per-screenshot decisions.
    */
-  authorize?: (request: Request, target: ScreenshotServeRequestTarget) => boolean | Promise<boolean>;
+  authorize?: ((request: Request, target: ScreenshotServeRequestTarget) => boolean | Promise<boolean>) | undefined;
   /**
    * Namespace served: only keys `<keyPrefix><hex>.<ext>` are read, anything
    * else answers `404`. Use the `keyPrefix` given to `createScreenshotStorage`
@@ -35,7 +35,7 @@ export interface ScreenshotServeHandlerOptions {
    * bucket under distinct prefixes cannot read each other's screenshots
    * through this handler.
    */
-  keyPrefix?: string;
+  keyPrefix?: string | undefined;
 }
 
 /**

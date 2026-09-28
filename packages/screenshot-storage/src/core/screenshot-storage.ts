@@ -26,27 +26,27 @@ export interface ScreenshotStorageOptions {
    * SVG or XML-based type, which can run scripts when opened directly) are
    * refused; `createScreenshotStorage` throws otherwise.
    */
-  allowedContentTypes?: readonly string[];
+  allowedContentTypes?: readonly string[] | undefined;
   /**
    * Largest decoded image accepted, in bytes. Defaults to 1,125,000 (what the
    * server's 1.5M-character data URL cap decodes to). Must be a
    * positive integer — `NaN`, `Infinity`, `0` or a fraction throw, since they
    * could not enforce a limit.
    */
-  maxBytes?: number;
+  maxBytes?: number | undefined;
   /**
    * Prefix of generated keys (lowercase letters, digits, `-`, `_`). Defaults to
    * `siteping-`. `delete` only removes keys with this prefix, so keep it
    * distinctive when the bucket or CDN is shared with other objects, and pass
    * the same value to `createScreenshotServeHandler`, which only serves it.
    */
-  keyPrefix?: string;
+  keyPrefix?: string | undefined;
   /**
    * Receives warnings for degraded-but-handled situations. Defaults to
    * `console.warn`. A logger that throws is ignored: it never replaces an
    * upload error, skips the reclaim hook nor makes `delete` throw.
    */
-  logger?: ScreenshotStorageLogger;
+  logger?: ScreenshotStorageLogger | undefined;
   /**
    * Receives the key of every upload whose outcome is unknown (timeout, 5xx),
    * right after its immediate removal. The backend may still commit such an
@@ -54,7 +54,7 @@ export interface ScreenshotStorageOptions {
    * after a few minutes. Awaited before the upload error is rethrown; its own
    * errors are logged, never thrown.
    */
-  onUncertainUpload?: UncertainUploadHook;
+  onUncertainUpload?: UncertainUploadHook | undefined;
 }
 
 const defaultLogger: ScreenshotStorageLogger = {
