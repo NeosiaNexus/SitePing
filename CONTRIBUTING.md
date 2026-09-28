@@ -276,8 +276,8 @@ misses the new locale, and a picker that does not offer it.
 - **E2E tests** — Playwright. Place in the `e2e/` directory at the root.
   They load the built packages, so run `bun run build` first. Two servers
   back them: `e2e/server.mjs`, a hand-written fake API for widget UI flows
-  (`widget.spec.ts`), and `e2e/stack-server.mjs`, the real
-  `createSitepingHandler` over a `MemoryStore` with a webhook receiver,
+  (`widget.spec.ts`, `host-modal.spec.ts`), and `e2e/stack-server.mjs`, the
+  real `createSitepingHandler` over a `MemoryStore` with a webhook receiver,
   serving the widget and `<SitepingInbox />` (`stack.spec.ts`). Anything the
   server validates, persists or dispatches belongs on the real stack.
 - **Property tests** — [fast-check](https://fast-check.dev/), in `*.property.test.ts` next to the example-based suite.

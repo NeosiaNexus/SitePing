@@ -18,7 +18,8 @@
  * included — see `projectFor` in stack.spec.ts), so no global reset is needed
  * and specs can run in parallel against the shared store.
  *
- * Requires `bun run build` (widget, dashboard, adapter-prisma, adapter-memory).
+ * Requires `bun run build` (widget, dashboard, adapter-prisma and the
+ * @siteping/server it imports, adapter-memory).
  */
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
