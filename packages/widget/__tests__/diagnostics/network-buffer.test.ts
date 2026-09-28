@@ -100,8 +100,9 @@ describe("NetworkBuffer — fetch", () => {
     nowSpy.mockRestore();
     const entry = buffer.getEntries()[0];
     expect(entry?.durationMs).toBe(600_000);
-    expect(entry?.method.length).toBeLessThanOrEqual(20);
-    expect(entry?.status).toBeLessThanOrEqual(599);
+    expect(entry?.method).toBe("X".repeat(20));
+    // 999 is not a 5xx — clamping it to 599 would misreport it as one.
+    expect(entry?.status).toBe(0);
     buffer.dispose();
   });
 

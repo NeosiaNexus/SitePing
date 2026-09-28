@@ -94,10 +94,12 @@ export class NetworkBuffer {
     }
     // A request left open > 10 min, an exotic method, or a non-standard
     // status (fetch allows up to 999 — LinkedIn answers 999) would each 400.
+    // An out-of-range status is recorded as 0 ("no usable status") rather
+    // than clamped to 599, which would pass it off as a real 5xx.
     this.entries.push({
       ...entry,
       method: entry.method.slice(0, MAX_METHOD_LENGTH),
-      status: Math.min(entry.status, MAX_STATUS),
+      status: entry.status <= MAX_STATUS ? entry.status : 0,
       durationMs: Math.min(Math.max(entry.durationMs, 0), MAX_DURATION_MS),
     });
   }
