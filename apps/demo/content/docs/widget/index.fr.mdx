@@ -49,7 +49,7 @@ siteping.destroy();               // démontage complet, restaure tous les globa
 |---|---|---|
 | `feedback:sent` | le feedback créé | Un envoi a réussi |
 | `feedback:deleted` | l'id du feedback | Un feedback a été supprimé |
-| `feedback:error` | l'`Error` | Un appel à l'API de feedback a échoué — même charge utile que le callback de config `onError` |
+| `feedback:error` | l'`Error` | Un appel à l'API de feedback a échoué — même charge utile que le callback de config `onError`, qui reçoit en plus les échecs des [actions du panneau](/fr/docs/widget/panel-actions#erreurs) |
 | `panel:open` / `panel:close` | — | Le panneau s'est ouvert / fermé |
 | `annotation:start` / `annotation:end` | — | Une session d'annotation a commencé / s'est terminée. `end` se déclenche que l'utilisateur ait envoyé ou annulé, et les deux points d'entrée — le bouton flottant et les [commentaires au clic droit](/fr/docs/widget/right-click) — émettent la paire symétrique : de quoi mettre en pause vos bulles de chat ou vos overlays d'analytics entre les deux |
 
@@ -71,7 +71,7 @@ export function Feedback() {
 }
 ```
 
-Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint` ou une autre option structurelle demande un remontage ; changer un callback, non — **tous** les callbacks acceptés par la config (`onFeedbackSent`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) sont lus au moment de l'appel, donc un handler qui capture un état frais se déclenche avec cet état. Ils se taisent également après le démontage : une réponse tardive ne peut pas rappeler dans un arbre déjà démonté.
+Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint` ou une autre option structurelle demande un remontage ; changer un callback, non — **tous** les callbacks acceptés par la config (`onFeedbackSent`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) sont lus au moment de l'appel, donc un handler qui capture un état frais se déclenche avec cet état — tout comme les callbacks des [actions du panneau](/fr/docs/widget/panel-actions#react). Ils se taisent également après le démontage : une réponse tardive ne peut pas rappeler dans un arbre déjà démonté.
 
 ## Gérer les erreurs
 

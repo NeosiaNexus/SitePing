@@ -1,0 +1,100 @@
+---
+title: Panel actions
+description: Add your own buttons and links to the feedback detail view — create a ticket, hand a feedback to an agent, open it in your tracker.
+---
+
+`panelActions` adds your own controls to the feedback detail view, in a row below **Resolve** and **Delete**. Use them to bridge a feedback into the tools you already run, without forking the panel.
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "my-project",
+  panelActions: [
+    {
+      id: "create-ticket",
+      label: "Create ticket",
+      visible: (feedback) => feedback.type === "bug",
+      onAction: async (feedback, { refresh }) => {
+        await fetch("/api/tickets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ feedbackId: feedback.id, message: feedback.message }),
+        });
+        await refresh(); // your endpoint moved the feedback to in_progress — show it
+      },
+    },
+    {
+      id: "github-issue",
+      label: "File a GitHub issue",
+      href: (feedback) =>
+        `https://github.com/acme/site/issues/new?title=${encodeURIComponent(feedback.message.slice(0, 80))}`,
+    },
+  ],
+});
+```
+
+## Buttons and links
+
+Each action is **either** a button (`onAction`) or a link (`href`). TypeScript rejects an action with both, or with neither:
+
+| Field | Type | What it does |
+|---|---|---|
+| `id` | `string` | Required and unique. Exposed as `data-action-id` on the control |
+| `label` | `string` | Required. Rendered as plain text, never as HTML. Not translated by the widget, so localize it yourself |
+| `icon` | `string` | Optional SVG markup shown before the label — see [Icons](#icons) |
+| `visible` | `(feedback) => boolean` | Optional. Return `false` to hide the action for that feedback |
+| `onAction` | `(feedback, context) => void \| Promise<void>` | **Button.** Runs on click |
+| `href` | `string` or `(feedback) => string` | **Link.** Where it points — `http:`, `https:` or `mailto:` only |
+
+The types are exported from `@siteping/widget`: `SitepingPanelAction` (the union), `SitepingPanelButtonAction`, `SitepingPanelLinkAction` and `SitepingPanelActionContext`.
+
+## Running an action
+
+While the promise returned by `onAction` is pending, the clicked button shows a spinner and every other button of the view — Resolve and Delete included — is disabled. The spinner keeps the button's accessible name and sets `aria-busy`. The detail view stays open whatever the outcome.
+
+The second argument gives you two helpers:
+
+- `refresh()` reloads the list and the markers, then re-renders the detail view with the updated feedback — or goes back to the list when it no longer matches the panel filters. Call it when your action changed the feedback server-side.
+- `close()` closes the panel.
+
+Callbacks receive a **frozen copy** of the feedback. Read anything you need; writing to it throws, and could never change what the panel shows anyway.
+
+## Links
+
+Links are real `<a>` elements: middle-click, "open in new tab" and screen readers behave as users expect. Web links open in a new tab with `rel="noopener noreferrer"`, so the page under review never leaks as referrer. `mailto:` links open the mail client in place. Relative URLs resolve against the current page.
+
+Any other scheme — `javascript:`, `data:`, `file:`… — is never rendered. A static `href` skips the action with a console warning; a computed one hides the action for that feedback and is reported through `onError`.
+
+## Errors
+
+Whatever `onAction` throws or rejects with, and a `visible` or `href` function that throws, goes to [`onError`](/docs/widget#handling-errors) — non-`Error` values are wrapped — and the buttons come back. These are failures of your code, not of the feedback API, so they are **not** emitted on the public `feedback:error` event, and they can never be mistaken for a failed submission in the comment popup.
+
+```ts
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "my-project",
+  onError: (error) => showToast(error.message),
+  panelActions: [
+    {
+      id: "send-to-agent",
+      label: "Send to agent",
+      onAction: async (feedback) => {
+        const res = await fetch("/api/agent", { method: "POST", body: JSON.stringify(feedback) });
+        if (!res.ok) throw new Error(`The agent refused the job (${res.status})`); // → onError
+      },
+    },
+  ],
+});
+```
+
+## Validation
+
+`panelActions` is read once, when the panel loads. An entry without a non-empty `id` and `label`, without exactly one of `onAction` / `href`, with an unsafe static `href`, or reusing an earlier `id` is skipped with a `[siteping]` console warning. The other actions still render.
+
+## Icons
+
+`icon` takes SVG markup, drawn at 15 px before the label and hidden from assistive technologies (the label already names the control). The markup is parsed in an inert document and reduced to plain shapes — `path`, `circle`, `rect`, `g`, gradients, clip paths. Scripts, `foreignObject`, styles, animations, links, event handlers and external `url()` references are dropped. Still, treat it as static markup you control. A string that is not an `<svg>` is ignored with a warning, and the action keeps its label.
+
+## React
+
+With [`useSiteping`](/docs/widget#react), `onAction`, `visible` and a function `href` are read at call time, so they can close over fresh state (an auth token, the current user) without re-initializing the widget. The list itself — ids, labels, icons, static hrefs — is read at mount, like every other structural option.

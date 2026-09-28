@@ -59,6 +59,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
 | `captureDiagnostics` | `boolean` or object | `false` | Attach recent console entries (max 50) and failed network requests (max 20, URL recorded without credentials, query string or hash) to each feedback. `true` enables both; an object picks channels and lower limits (`maxConsoleEntries` / `maxNetworkEntries` — larger values are clamped to 50 / 20, the server's caps) |
 | `deepLink` | `boolean` or `{ param?: string }` | `false` | On first load, focus the feedback referenced by `?siteping=<id>` (or your custom param). Initial load only — for route changes, call `focusFeedback()` |
 | `identity` | `{ name, email }` | — | Pre-fill the author (SSO apps): skips the identity modal entirely, never persisted to localStorage |
+| `panelActions` | array | — | Your own buttons and links in the feedback detail view — create a ticket, open it in your tracker. See [Panel actions](/docs/widget/panel-actions) |
 
 ## Page scoping
 
@@ -75,7 +76,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
 | Option | Signature | Fires when |
 |---|---|---|
 | `onFeedbackSent` | `(feedback) => void` | A feedback was successfully created |
-| `onError` | `(error) => void` | A submission or fetch failed — see [error handling](/docs/widget#handling-errors) |
+| `onError` | `(error) => void` | A submission or fetch failed, or one of your [panel actions](/docs/widget/panel-actions#errors) threw — see [error handling](/docs/widget#handling-errors) |
 | `onOpen` / `onClose` | `() => void` | The panel opened / closed |
 | `onAnnotationStart` / `onAnnotationEnd` | `() => void` | An annotation session began / ended — pause chat bubbles or analytics overlays here |
 | `onSkip` | `(reason) => void` | The widget decided not to render: `"ssr"`, `"production"`, or `"mobile"`. Invalid config logs a `console.error` instead |
