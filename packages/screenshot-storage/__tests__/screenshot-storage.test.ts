@@ -682,7 +682,7 @@ describe("backend requests — timeouts", () => {
           fetch,
         }),
       uploadMethod: "POST",
-      uploadedKey: (_request, init) => String((init?.body as FormData).get("id")),
+      uploadedKey: (_request, init) => String((init?.body as FormData | undefined)?.get("id")),
     },
   ])(
     "$backend aborts an upload after timeoutMs, reports it without a status and reclaims its key",
