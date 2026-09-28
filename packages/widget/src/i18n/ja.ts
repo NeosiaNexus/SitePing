@@ -7,7 +7,7 @@ export const ja: Translations = {
   "panel.feedbackList": "フィードバック一覧",
   "panel.loading": "フィードバックを読み込み中",
   "panel.close": "パネルを閉じる",
-  "panel.deleteAll": "すべて削除",
+  "panel.deleteAll": "全削除",
   "panel.deleteAllConfirmTitle": "すべて削除",
   "panel.deleteAllConfirmMessage": "このプロジェクトのフィードバックをすべて削除しますか？この操作は取り消せません。",
   "panel.search": "検索...",
@@ -158,7 +158,7 @@ export const ja: Translations = {
   "shortcuts.hint": "キーボードショートカット",
 
   // Export controls
-  "export.label": "エクスポート",
+  "export.label": "出力",
   "export.csv": "CSV をエクスポート",
   "export.json": "JSON をエクスポート",
 };
