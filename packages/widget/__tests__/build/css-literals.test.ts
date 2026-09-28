@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { build, transformSync } from "esbuild";
@@ -168,7 +168,7 @@ describe("the widget's CSS literals", () => {
           }),
       );
       lines.forEach((line, i) => {
-        if (!literalLines.has(i)) expect(out[i], `${relative(srcDir, join(srcDir, file))}:${i + 1}`).toBe(line);
+        if (!literalLines.has(i)) expect(out[i], `${file}:${i + 1}`).toBe(line);
       });
     }
   });
