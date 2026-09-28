@@ -196,7 +196,7 @@ export function createPipeline<Principal>({
     /**
      * Wire shape of a record answering a POST (fresh or replayed): the
      * requester's email permission, unless the policy echoes the email to
-     * its submitter.
+     * its submitter — who supplied the feedback's, never its thread's.
      */
     presentCreated(scope: Scope<Principal>, feedback: FeedbackRecord) {
       return present(scope, feedback, gate.echoesAuthorEmailOnCreate || scope.canReadAuthorEmail);

@@ -185,8 +185,8 @@ export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions
   requireAuthForDestructive?: boolean;
   /**
    * Blank `authorEmail` — of feedbacks and of their comments — in GET/PATCH
-   * responses to requests that do not carry
-   * a valid `Authorization: Bearer <apiKey>` header. Defaults to `true`:
+   * responses to requests that do not carry a valid
+   * `Authorization: Bearer <apiKey>` header. Defaults to `true`:
    * reviewer emails are PII and the widget needs GET to be reachable, so an
    * unauthenticated response must not enumerate them (issue #105).
    *

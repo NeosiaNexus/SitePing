@@ -8,10 +8,10 @@
  * the dedup/update/delete choreography of the `SitepingStore` contract.
  *
  * `buildFeedbackRecord` / `buildAnnotationRecord` / `buildCommentRecord`
- * cover the first part for any adapter. `createCollectionStore` covers all of it: give it `load`,
- * `persist`, and `generateId`, and it returns a fully conformant
- * `SitepingStore` — writing a new snapshot adapter is ~20 lines plus its
- * storage specifics.
+ * cover the first part for any adapter. `createCollectionStore` covers all
+ * of it: give it `load`, `persist`, and `generateId`, and it returns a fully
+ * conformant `SitepingStore` — writing a new snapshot adapter is ~20 lines
+ * plus its storage specifics.
  */
 
 import { applyFeedbackFilters } from "./filters.js";
@@ -169,8 +169,8 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * ordering, the standard filter/pagination pipeline, `StoreNotFoundError` on
  * missing update/delete, project-scoped bulk delete,
  * `verifyProjectOwnership`, and discussion threads (`addComment`,
- * `deleteComment`) kept on each record. The snapshot returned by `load` is never
- * mutated: every write hands `persist` a new array, so a failed write leaves
+ * `deleteComment`) kept on each record. The snapshot returned by `load` is
+ * never mutated: every write hands `persist` a new array, so a failed write leaves
  * a cached snapshot exactly as it was. When `persist` fails during `createFeedback`
  * and the record carries an inline screenshot, the engine retries once
  * without the screenshot (by far the heaviest field) so the text feedback
@@ -178,10 +178,10 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * returning the record would claim a success that was never persisted.
  *
  * Mutations (`createFeedbackIfAbsent`, `createFeedback`, `updateFeedback`,
- * `deleteFeedback`, `deleteAllFeedbacks`, `addComment`, `deleteComment`)
- * run one at a time through a queue
- * owned by the returned store, so concurrent calls — the widget's
- * `Promise.all` bulk resolve/delete — never start from the same snapshot and
+ * `deleteFeedback`, `deleteAllFeedbacks`, `addComment`, `deleteComment`) run
+ * one at a time through a queue owned by the returned store, so concurrent
+ * calls — the widget's `Promise.all` bulk resolve/delete, a comment posted
+ * while its feedback is resolved — never start from the same snapshot and
  * overwrite each other, and `createFeedbackIfAbsent` reports `created: true`
  * exactly once per `clientId`. A failed mutation rejects with its own error
  * and does not block the ones queued after it, but `load` and `persist` must
