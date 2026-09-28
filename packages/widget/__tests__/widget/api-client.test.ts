@@ -1421,13 +1421,17 @@ describe("ApiClient — bounded waits", () => {
   it("leaves reads unbounded: a GET body that takes longer than one attempt window still loads", async () => {
     // A page of inline screenshots can legitimately take > 10 s on a slow
     // link, and a read holds no popup — only the send path bounds its body.
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
-          setTimeout(() => {
+          const arrival = setTimeout(() => {
             controller.enqueue(new TextEncoder().encode(JSON.stringify({ feedbacks: [], total: 0 })));
             controller.close();
           }, 15_000);
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(arrival);
+            controller.error(new DOMException("aborted", "AbortError"));
+          });
         },
       });
       return new Response(body, { status: 200 });
