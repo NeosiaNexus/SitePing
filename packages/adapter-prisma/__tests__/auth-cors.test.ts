@@ -425,6 +425,24 @@ describe("CORS", () => {
 
       expect(res.headers.get("Vary")).toBe("Origin");
     });
+
+    // With an allowlist, a header-less response is still Origin-dependent: a
+    // shared cache must not serve it to an allowed origin (or vice versa).
+    it("sets Vary: Origin when the Origin is absent or not allowlisted", async () => {
+      const handler = createSitepingHandler({ prisma, allowedOrigins: [ALLOWED_ORIGIN] });
+
+      expect(handler.OPTIONS(optionsRequest()).headers.get("Vary")).toBe("Origin");
+      expect(handler.OPTIONS(optionsRequest({ Origin: "http://evil.com" })).headers.get("Vary")).toBe("Origin");
+      expect((await handler.GET(getRequest("projectName=test"))).headers.get("Vary")).toBe("Origin");
+      const unlisted = await handler.POST(postRequest(validPayloadNoAnnotations, { Origin: "http://evil.com" }));
+      expect(unlisted.headers.get("Vary")).toBe("Origin");
+      expect(unlisted.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+
+    it("sends no Vary when allowedOrigins is not configured (responses don't vary by Origin)", () => {
+      const handler = createSitepingHandler({ prisma });
+      expect(handler.OPTIONS(optionsRequest({ Origin: ALLOWED_ORIGIN })).headers.get("Vary")).toBeNull();
+    });
   });
 
   describe("CORS on data endpoints", () => {

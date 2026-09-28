@@ -643,10 +643,11 @@ type CorsHeaders = Readonly<Record<string, string>>;
 function buildCorsHeaders(request: Request, allowedOrigins: ReadonlyArray<string> | undefined): CorsHeaders {
   if (!allowedOrigins) return {};
 
+  // With an allowlist the response depends on Origin even when it gets no
+  // CORS headers (Origin absent or unlisted) — without `Vary`, a shared cache
+  // could replay a header-less response to an allowed origin, or vice versa.
   const origin = request.headers.get("Origin");
-  if (!origin) return {};
-
-  if (!allowedOrigins.includes(origin)) return {};
+  if (!origin || !allowedOrigins.includes(origin)) return { Vary: "Origin" };
 
   return {
     "Access-Control-Allow-Origin": origin,
