@@ -4304,6 +4304,38 @@ describe("Panel", () => {
       );
     });
 
+    it("context.refresh() keeps the pages added by Load more, so a record from page 2 stays open", async () => {
+      // 21 records: page 1 holds 20, "Load more" brings the last one.
+      let records = Array.from({ length: 21 }, (_, i) => makeFeedback({ id: `fb-${i}` }));
+      rebuildWithActions([
+        {
+          id: "ticket",
+          label: "Create ticket",
+          onAction: async (fb, ctx) => {
+            records = records.map((r) => (r.id === fb.id ? { ...r, status: "in_progress" } : r));
+            await ctx.refresh();
+          },
+        },
+      ]);
+      apiClient.getFeedbacks.mockImplementation(async (_project: string, opts: { page: number; limit: number }) => ({
+        feedbacks: records.slice((opts.page - 1) * opts.limit, opts.page * opts.limit),
+        total: records.length,
+      }));
+      await panel.open();
+      shadow.querySelector<HTMLButtonElement>(".sp-btn-load-more")!.click();
+      await vi.waitFor(() => expect(shadow.querySelectorAll(".sp-card")).toHaveLength(21));
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-20"]')!.click();
+      apiClient.getFeedbacks.mockClear();
+
+      shadow.querySelector<HTMLButtonElement>('[data-action-id="ticket"]')!.click();
+
+      await vi.waitFor(() => expect(shadow.querySelector(".sp-detail-status-pill--in-progress")).not.toBeNull());
+      expect(detailEl().classList.contains("sp-detail--visible")).toBe(true);
+      expect(apiClient.getFeedbacks.mock.calls.map(([, opts]) => opts.page)).toEqual([1, 2]);
+      expect(shadow.querySelectorAll(".sp-card")).toHaveLength(21);
+      expect(shadow.querySelector(".sp-btn-load-more")).toBeNull();
+    });
+
     it("context.refresh() goes back to the list when the feedback no longer matches", async () => {
       rebuildWithActions([
         {

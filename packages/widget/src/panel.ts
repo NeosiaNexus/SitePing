@@ -530,7 +530,11 @@ export class Panel {
     return isClosedStatus(tab) ? CLOSED_FEEDBACK_STATUSES : OPEN_FEEDBACK_STATUSES;
   }
 
-  private async loadFeedbacks(): Promise<void> {
+  /**
+   * Load the list from page 1. `pages` > 1 re-fetches that many pages before
+   * rendering, so a panel action's `refresh()` keeps what "Load more" added.
+   */
+  private async loadFeedbacks(pages = 1): Promise<void> {
     // Cancel any in-flight request to prevent stale responses from overwriting newer results
     this.loadController?.abort();
     this.loadController = new AbortController();
@@ -573,8 +577,16 @@ export class Panel {
     try {
       const listRequest = this.client.getFeedbacks(this.projectName, options);
       if (!listIsMarkerQuery) void this.loadPageMarkers(scope, signal);
-      const { feedbacks, total } = await listRequest;
+      let { feedbacks, total } = await listRequest;
+      let page = 1;
+      while (page < pages && feedbacks.length < total && !signal.aborted) {
+        page++;
+        const more = await this.client.getFeedbacks(this.projectName, { ...options, page });
+        feedbacks = [...feedbacks, ...more.feedbacks];
+        total = more.total;
+      }
       if (signal.aborted) return; // Stale response — a newer request superseded this one
+      this.currentPage = page;
       this.feedbacks = feedbacks;
       this.totalFeedbacks = total;
       this.stats.update(feedbacks, total);
@@ -1318,13 +1330,14 @@ export class Panel {
   }
 
   /**
-   * `refresh()` handed to panel actions: reload the list and markers, then
-   * re-render the detail view with the updated record — or go back to the
-   * list when it no longer matches the filters. Leaves the view alone when
-   * the user has already moved on to another feedback.
+   * `refresh()` handed to panel actions: reload the list (every page loaded
+   * so far) and markers, then re-render the detail view with the updated
+   * record — or go back to the list when it no longer matches the filters.
+   * Leaves the view alone when the user has already moved on to another
+   * feedback.
    */
   private async refreshDetail(feedbackId: string): Promise<void> {
-    await this.refresh();
+    if (this.isOpen) await this.loadFeedbacks(this.currentPage);
     if (this.detail.feedbackId !== feedbackId) return;
     const index = this.feedbacks.findIndex((f) => f.id === feedbackId);
     const fresh = this.feedbacks[index];
