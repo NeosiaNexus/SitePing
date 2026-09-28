@@ -9,11 +9,27 @@ const MONTH = 30 * DAY;
 const YEAR = 365 * DAY;
 
 /**
+ * Shown for an Invalid Date — reachable from a custom source or corrupt
+ * localStorage, where Intl/toISOString would throw and the math yields NaN.
+ */
+const INVALID_DATE = "—";
+
+function isValidDate(date: Date): boolean {
+  return !Number.isNaN(date.getTime());
+}
+
+/** ISO string for a `<time dateTime>` attribute — undefined (attribute omitted) for an invalid date. */
+export function toDateTimeAttr(date: Date): string | undefined {
+  return isValidDate(date) ? date.toISOString() : undefined;
+}
+
+/**
  * Compact relative timestamp for list rows — "now", "5 min", "3 h", "2 d"…
  * All thresholds floor (Linear-style: "1 h" until a full second hour has
  * elapsed). Future dates clamp to "now".
  */
 export function formatRelativeTime(date: Date, t: TFunction): string {
+  if (!isValidDate(date)) return INVALID_DATE;
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
   if (seconds < MINUTE) return t("time.now");
   if (seconds < HOUR) return tWithParams(t, "time.minutes", { n: Math.floor(seconds / MINUTE) });
@@ -32,6 +48,7 @@ export function formatRelativeTime(date: Date, t: TFunction): string {
 
 /** Full localized date + time, for row tooltips and the drawer meta grid. `locale` must be Intl-valid. */
 export function formatAbsolute(date: Date, locale: string): string {
+  if (!isValidDate(date)) return INVALID_DATE;
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 

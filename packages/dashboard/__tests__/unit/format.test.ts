@@ -6,6 +6,7 @@ import {
   pathFromUrl,
   resolveRecordUrl,
   shortId,
+  toDateTimeAttr,
 } from "../../src/format.js";
 import { createT } from "../../src/i18n/index.js";
 
@@ -53,6 +54,23 @@ describe("formatAbsolute", () => {
 
   it("formats with a valid locale", () => {
     expect(formatAbsolute(date, "en")).toMatch(/2026/);
+  });
+});
+
+describe("invalid dates (custom source, corrupt localStorage)", () => {
+  const invalid = new Date("nope");
+
+  it("formatRelativeTime renders a placeholder, not 'NaN y'", () => {
+    expect(formatRelativeTime(invalid, t)).toBe("—");
+  });
+
+  it("formatAbsolute renders a placeholder instead of throwing", () => {
+    expect(formatAbsolute(invalid, "en")).toBe("—");
+  });
+
+  it("toDateTimeAttr omits the attribute instead of throwing", () => {
+    expect(toDateTimeAttr(invalid)).toBeUndefined();
+    expect(toDateTimeAttr(new Date("2026-07-20T12:00:00.000Z"))).toBe("2026-07-20T12:00:00.000Z");
   });
 });
 

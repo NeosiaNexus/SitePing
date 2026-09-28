@@ -1,7 +1,14 @@
 import type { FeedbackRecord, FeedbackStatus } from "@siteping/core";
 import type { ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import { buildDeepLink, formatAbsolute, formatRelativeTime, resolveRecordUrl, shortId } from "../format.js";
+import {
+  buildDeepLink,
+  formatAbsolute,
+  formatRelativeTime,
+  resolveRecordUrl,
+  shortId,
+  toDateTimeAttr,
+} from "../format.js";
 import { getTypeLabel } from "../i18n/index.js";
 import { useInboxUi } from "./context.js";
 import { Diagnostics } from "./diagnostics.js";
@@ -157,7 +164,7 @@ export function Drawer({
             </dd>
             <dt className="spd-meta-label">{t("drawer.submitted")}</dt>
             <dd className="spd-meta-value">
-              <time dateTime={record.createdAt.toISOString()}>{formatAbsolute(record.createdAt, locale)}</time>
+              <time dateTime={toDateTimeAttr(record.createdAt)}>{formatAbsolute(record.createdAt, locale)}</time>
               {" · "}
               {formatRelativeTime(record.createdAt, t)}
             </dd>

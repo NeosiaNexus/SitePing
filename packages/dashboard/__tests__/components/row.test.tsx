@@ -30,6 +30,15 @@ function renderRow(recordOverrides = {}, props: Partial<Parameters<typeof Row>[0
   return { record, onSelect, refCallback, row: container.querySelector<HTMLElement>(".spd-row") as HTMLElement };
 }
 
+describe("Row — invalid createdAt", () => {
+  it("renders a placeholder time instead of throwing", () => {
+    const { row } = renderRow({ createdAt: new Date("nope") });
+    const time = row.querySelector("time.spd-row-time");
+    expect(time?.textContent).toBe("—");
+    expect(time?.hasAttribute("datetime")).toBe(false);
+  });
+});
+
 describe("Row", () => {
   it("renders status, type, message, path and author with the right attributes", () => {
     const { row } = renderRow({

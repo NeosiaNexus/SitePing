@@ -26,6 +26,15 @@ function renderDrawer(recordOverrides = {}) {
   return { record, container };
 }
 
+describe("Drawer — invalid createdAt", () => {
+  it("renders a placeholder submitted date instead of throwing", () => {
+    const { container } = renderDrawer({ createdAt: new Date("nope") });
+    const time = container.querySelector(".spd-meta-grid time");
+    expect(time?.textContent).toBe("—");
+    expect(time?.hasAttribute("datetime")).toBe(false);
+  });
+});
+
 describe("Drawer — author line", () => {
   it("renders the author email in angle brackets when present", () => {
     const { container } = renderDrawer({ authorName: "Alex Client", authorEmail: "alex@client.example" });
