@@ -101,6 +101,15 @@ describe("isStoreNotFound", () => {
     expect(isStoreNotFound({ code: "P2021" })).toBe(false);
   });
 
+  it("returns true for a code-only match (cross-bundle copies of core)", () => {
+    class ForeignStoreNotFoundError extends Error {
+      readonly code = "STORE_NOT_FOUND";
+    }
+    expect(isStoreNotFound(new ForeignStoreNotFoundError())).toBe(true);
+    expect(isStoreNotFound({ code: "STORE_NOT_FOUND" })).toBe(true);
+    expect(isStoreNotFound({ code: "STORE_DUPLICATE" })).toBe(false);
+  });
+
   it("returns false for StoreDuplicateError", () => {
     expect(isStoreNotFound(new StoreDuplicateError())).toBe(false);
   });
@@ -136,6 +145,15 @@ describe("isStoreDuplicate", () => {
 
   it("returns false for other Prisma codes", () => {
     expect(isStoreDuplicate({ code: "P2025" })).toBe(false);
+  });
+
+  it("returns true for a code-only match (cross-bundle copies of core)", () => {
+    class ForeignStoreDuplicateError extends Error {
+      readonly code = "STORE_DUPLICATE";
+    }
+    expect(isStoreDuplicate(new ForeignStoreDuplicateError())).toBe(true);
+    expect(isStoreDuplicate({ code: "STORE_DUPLICATE" })).toBe(true);
+    expect(isStoreDuplicate({ code: "STORE_NOT_FOUND" })).toBe(false);
   });
 
   it("returns false for StoreNotFoundError", () => {

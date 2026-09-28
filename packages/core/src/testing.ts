@@ -16,7 +16,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DiagnosticsSnapshot, FeedbackCreateInput, SitepingStore } from "./types.js";
-import { isStoreDuplicate, StoreNotFoundError } from "./types.js";
+import { isStoreDuplicate, isStoreNotFound } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Test fixture
@@ -569,8 +569,8 @@ export function testSitepingStore(
       });
 
       it("throws StoreNotFoundError for unknown id", async () => {
-        await expect(store.updateFeedback("unknown", { status: "resolved", resolvedAt: new Date() })).rejects.toThrow(
-          StoreNotFoundError,
+        await expect(store.updateFeedback("unknown", { status: "resolved", resolvedAt: new Date() })).rejects.toSatisfy(
+          isStoreNotFound,
         );
       });
 
@@ -601,7 +601,7 @@ export function testSitepingStore(
       });
 
       it("throws StoreNotFoundError for unknown id", async () => {
-        await expect(store.deleteFeedback("unknown")).rejects.toThrow(StoreNotFoundError);
+        await expect(store.deleteFeedback("unknown")).rejects.toSatisfy(isStoreNotFound);
       });
 
       it("removes only the target from a multi-record set", async () => {
