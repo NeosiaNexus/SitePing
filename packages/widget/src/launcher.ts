@@ -809,7 +809,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
     if (host.parentNode) host.parentNode.appendChild(host);
 
     const backdrop = document.createElement("div");
-    backdrop.style.cssText = `
+    backdrop.style.cssText = /* css */ `
       position:fixed;inset:0;
       background:var(--sp-identity-overlay);
       backdrop-filter:blur(8px);
@@ -820,7 +820,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
     `;
 
     const modal = document.createElement("div");
-    modal.style.cssText = `
+    modal.style.cssText = /* css */ `
       width:340px;padding:28px;border-radius:var(--sp-radius-xl);
       background:var(--sp-identity-bg);
       backdrop-filter:blur(var(--sp-blur-heavy));

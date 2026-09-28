@@ -227,7 +227,7 @@ export function getTypeBgColor(type: string, colors: ThemeColors): string {
 }
 
 export function cssVariables(colors: ThemeColors): string {
-  return `
+  return /* css */ `
     --sp-accent: ${colors.accent};
     --sp-accent-light: ${colors.accentLight};
     --sp-accent-dark: ${colors.accentDark};

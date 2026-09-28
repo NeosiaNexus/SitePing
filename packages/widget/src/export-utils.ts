@@ -18,7 +18,7 @@ const ICON_JSON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 // CSS
 // ---------------------------------------------------------------------------
 
-export const EXPORT_CSS = `
+export const EXPORT_CSS = /* css */ `
   /* ============================
      Export Button & Menu
      ============================ */

@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { cssLiteralsPlugin } from "./scripts/css-literals.js";
 
 // Three parallel builds:
 //  - ESM+CJS main: ESM is code-split so dynamic imports (Panel, locale
@@ -9,6 +10,9 @@ import { defineConfig } from "tsup";
 //    incompatible with IIFE, so everything is inlined.
 //  - ESM+CJS React entry (`@siteping/widget/react`): React stays external so
 //    consumers pin their own version.
+//
+// `cssLiteralsPlugin` minifies the `/* css */`-marked template literals —
+// the stylesheet and inline styles — which the JS minifier ships verbatim.
 //
 // `esbuildOptions.pure` strips `console.debug` / `console.info` calls in the
 // production minifier — they're dev-only diagnostics. `console.warn` and
@@ -38,6 +42,7 @@ export default defineConfig([
     splitting: true,
     treeshake: "recommended",
     noExternal: ["@medv/finder", "@siteping/core"],
+    esbuildPlugins: [cssLiteralsPlugin],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
       o.define = { ...o.define, ...keepNodeEnvLiteral };
@@ -56,6 +61,7 @@ export default defineConfig([
     splitting: false,
     treeshake: "recommended",
     noExternal: ["@medv/finder", "@siteping/core"],
+    esbuildPlugins: [cssLiteralsPlugin],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
       o.define = { ...o.define, ...keepNodeEnvLiteral };
@@ -74,6 +80,7 @@ export default defineConfig([
     treeshake: "recommended",
     noExternal: ["@medv/finder", "@siteping/core"],
     external: ["react"],
+    esbuildPlugins: [cssLiteralsPlugin],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
       o.define = { ...o.define, ...keepNodeEnvLiteral };

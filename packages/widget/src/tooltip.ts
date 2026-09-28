@@ -34,7 +34,7 @@ export class Tooltip {
     private readonly locale: string = "en",
   ) {
     this.root = el("div", {
-      style: `
+      style: /* css */ `
         position: fixed;
         z-index: ${Z_INDEX_MAX};
         max-width: 280px;
@@ -60,7 +60,7 @@ export class Tooltip {
 
     // Arrow element
     this.arrow = el("div", {
-      style: `
+      style: /* css */ `
         position: absolute;
         width: 12px;
         height: 12px;
@@ -148,7 +148,7 @@ export class Tooltip {
     const header = el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:8px;" });
 
     const badge = el("span", {
-      style: `
+      style: /* css */ `
         padding:3px 10px;border-radius:9999px;
         font-size:11px;font-weight:600;
         color:${typeColor};background:${typeBg};
@@ -198,7 +198,7 @@ export class Tooltip {
 
     if (isAbove) {
       // Arrow at bottom, pointing down
-      this.arrow.style.cssText = `
+      this.arrow.style.cssText = /* css */ `
         position:absolute;
         width:12px;height:12px;
         background:${this.colors.glassBgHeavy};
@@ -211,7 +211,7 @@ export class Tooltip {
       `;
     } else {
       // Arrow at top, pointing up
-      this.arrow.style.cssText = `
+      this.arrow.style.cssText = /* css */ `
         position:absolute;
         width:12px;height:12px;
         background:${this.colors.glassBgHeavy};

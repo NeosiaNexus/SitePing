@@ -17,7 +17,7 @@ const SPRING_OVERSHOOT = `cubic-bezier(0.34, 1.56, 0.64, 1)`;
 // Smooth decel — for glass transitions
 const EASE_OUT_QUART = `cubic-bezier(0.25, 1, 0.5, 1)`;
 
-export const ANIMATION_CSS = `
+export const ANIMATION_CSS = /* css */ `
   /* ---- Keyframes ---- */
 
   @keyframes sp-fab-in {

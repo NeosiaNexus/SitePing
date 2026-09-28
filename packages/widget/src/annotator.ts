@@ -183,7 +183,7 @@ export class Annotator {
     // and the accent-colored selection border plus the page tint end up
     // baked into the captured JPEG. See issue #124.
     this.overlay = el("div", {
-      style: `
+      style: /* css */ `
         position:fixed;inset:0;
         z-index:${Z_INDEX_MAX - 1};
         pointer-events:auto;
@@ -207,7 +207,7 @@ export class Annotator {
     // "Draw a rectangle" copy is wrong when the composer is already open)
     if (drawMode) {
       this.toolbar = el("div", {
-        style: `
+        style: /* css */ `
           position:fixed;top:0;left:0;right:0;
           z-index:${Z_INDEX_MAX};
           pointer-events:auto;
@@ -226,7 +226,7 @@ export class Annotator {
       this.toolbar.setAttribute("data-siteping-ignore", "true");
 
       const dot = el("span", {
-        style: `
+        style: /* css */ `
           width:8px;height:8px;border-radius:50%;
           background:${this.colors.accent};
           box-shadow:0 0 8px ${this.colors.accentGlow};
@@ -246,7 +246,7 @@ export class Annotator {
       setText(instruction, this.t("annotator.instruction"));
 
       const cancelBtn = document.createElement("button");
-      cancelBtn.style.cssText = `
+      cancelBtn.style.cssText = /* css */ `
         height:34px;padding:0 18px;border-radius:9999px;
         border:1px solid ${this.colors.border};
         background:${this.colors.glassBg};
@@ -476,7 +476,7 @@ export class Annotator {
    */
   private createDrawingRect(): HTMLElement {
     const rect = el("div", {
-      style: `
+      style: /* css */ `
         position:fixed;
         border:2px solid ${this.colors.accent};
         background:${this.colors.accent}12;
@@ -620,7 +620,7 @@ export class Annotator {
     // Create a visual indicator at the click point
     this.drawingRect?.remove();
     this.drawingRect = el("div", {
-      style: `
+      style: /* css */ `
         position:fixed;
         left:${x}px;
         top:${y}px;

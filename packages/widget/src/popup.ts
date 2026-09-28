@@ -115,7 +115,7 @@ export class Popup {
     private readonly t: TFunction,
   ) {
     this.root = el("div", {
-      style: `
+      style: /* css */ `
         position:fixed;
         z-index:${Z_INDEX_MAX};
         pointer-events:auto;
@@ -156,7 +156,7 @@ export class Popup {
     this.typeRow = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;" });
     for (const option of typeOptions) {
       const btn = document.createElement("button");
-      btn.style.cssText = `
+      btn.style.cssText = /* css */ `
         height:44px;
         border-radius:9999px;border:1px solid ${this.colors.border};
         background:${this.colors.glassBg};cursor:pointer;
@@ -200,7 +200,7 @@ export class Popup {
 
     // Textarea
     this.textarea = document.createElement("textarea");
-    this.textarea.style.cssText = `
+    this.textarea.style.cssText = /* css */ `
       width:100%;min-height:72px;max-height:152px;
       padding:10px 12px;border-radius:12px;
       border:1px solid ${this.colors.border};
@@ -214,7 +214,7 @@ export class Popup {
 
     // Keyboard shortcut hint
     this.hint = el("div", {
-      style: `
+      style: /* css */ `
         font-size:11px;color:${this.colors.textTertiary};
         text-align:right;margin-top:4px;
         font-family:"Inter",system-ui,-apple-system,sans-serif;
@@ -249,7 +249,7 @@ export class Popup {
     const btnRow = el("div", { style: "display:flex;justify-content:flex-end;gap:8px;margin-top:12px;" });
 
     this.cancelBtn = document.createElement("button");
-    this.cancelBtn.style.cssText = `
+    this.cancelBtn.style.cssText = /* css */ `
       height:34px;padding:0 16px;border-radius:9999px;
       border:1px solid ${this.colors.border};
       background:${this.colors.glassBg};
@@ -270,7 +270,7 @@ export class Popup {
     });
 
     this.submitBtn = document.createElement("button");
-    this.submitBtn.style.cssText = `
+    this.submitBtn.style.cssText = /* css */ `
       height:34px;padding:0 18px;border-radius:9999px;
       border:none;background:${this.colors.accentGradient};
       color:#fff;font-family:"Inter",system-ui,-apple-system,sans-serif;
@@ -620,7 +620,7 @@ export class Popup {
   private buildSpinner(): HTMLDivElement {
     const spinner = document.createElement("div");
     spinner.dataset.role = "sp-popup-spinner";
-    spinner.style.cssText = `
+    spinner.style.cssText = /* css */ `
       width:14px;height:14px;
       border:2px solid rgba(255,255,255,0.35);
       border-top-color:#fff;
