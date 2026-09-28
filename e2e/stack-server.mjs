@@ -90,6 +90,8 @@ function widgetPage(params) {
     identity: { name: "E2E Tester", email: "e2e@example.com" },
     ...(diag ? { captureDiagnostics: { maxConsoleEntries: diag, maxNetworkEntries: diag } } : {}),
   };
+  // Inlined into a <script>: `<` is escaped so a query param can neither
+  // close the element (`</script>`) nor open a `<!--`.
   return `<!DOCTYPE html>
 <html lang="en"${rtl ? ' dir="rtl"' : ""}>
 <head>
@@ -110,7 +112,7 @@ function widgetPage(params) {
   <script>globalThis.process = { env: { NODE_ENV: "test" } };</script>
   <script type="module">
     import { initSiteping } from "/widget.js";
-    window.__siteping = initSiteping(${JSON.stringify(config)});
+    window.__siteping = initSiteping(${JSON.stringify(config).replace(/</g, "\\u003c")});
   </script>
 </body>
 </html>`;
@@ -192,4 +194,5 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`[stack-server] listening on ${ORIGIN}`));
+// Loopback only: the API is unauthenticated and destructive methods are open.
+server.listen(PORT, "127.0.0.1", () => console.log(`[stack-server] listening on ${ORIGIN}`));
