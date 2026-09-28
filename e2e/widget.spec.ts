@@ -634,7 +634,7 @@ test.describe("Shadow DOM anchoring (#177)", () => {
       }
     });
 
-    // 2. Capture pierced the boundary: one selector per tree, root-relative XPath.
+    // 2. Capture pierced the boundary: one selector per tree, a shadow-rooted XPath.
     const project = getProject(page);
     await page.waitForFunction(
       async (pn) => (await (await fetch(`/api/siteping?projectName=${pn}`)).json()).total >= 1,
@@ -644,7 +644,7 @@ test.describe("Shadow DOM anchoring (#177)", () => {
     const data = await (await page.request.get(`http://localhost:3999/api/siteping?projectName=${project}`)).json();
     const annotation = data.feedbacks[0].annotations[0];
     expect(annotation.cssSelector).toBe("#e2e-component >>> #shadow-target");
-    expect(annotation.xpath).toBe(".//p[@id='shadow-target']");
+    expect(annotation.xpath).toBe("./p[@id='shadow-target']");
     expect(annotation.elementTag).toBe("P");
 
     // 3. After a reload, resolution finds the element inside the shadow root:
