@@ -392,6 +392,25 @@ test.describe("Annotation popup placement", () => {
     expect(popup.bottom).toBeLessThanOrEqual(toolbar.top);
     expect(popup.top).toBeGreaterThanOrEqual(0);
   });
+
+  test("caps a popup taller than the room left by the toolbar, scrolled to its type buttons", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 320 });
+    await startAnnotating(page);
+    await drawRectangle(page, 100, 200);
+    const dialog = page.locator('body > [role="dialog"]');
+    await expect(dialog).toHaveCSS("overflow-y", "auto");
+    await expect(dialog).toHaveCSS("opacity", "1");
+
+    const { toolbar, popup, viewportHeight } = await readLayout(page);
+    expect(popup.top).toBeGreaterThanOrEqual(toolbar.bottom);
+    expect(popup.bottom).toBeLessThanOrEqual(viewportHeight);
+    // The type buttons enable Send: the popup starts on them, not scrolled to its bottom
+    const typeRowOffset = await dialog.evaluate(
+      (element) =>
+        element.querySelector("button[data-type]")!.getBoundingClientRect().top - element.getBoundingClientRect().top,
+    );
+    expect(typeRowOffset).toBeGreaterThanOrEqual(0);
+  });
 });
 
 test.describe("Keyboard-only annotation", () => {
