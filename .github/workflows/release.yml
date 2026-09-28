@@ -137,8 +137,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+  # After the server: the @siteping/server version it pins must reach npm
+  # first, and a failed server publish (`!failure()`) keeps adapter-prisma
+  # from shipping a dependency nobody can install. A skipped server job (no
+  # server release) does not hold it back.
   publish-adapter-prisma:
-    needs: [release-please, build]
+    needs: [release-please, build, publish-server]
     if: |
       !failure() && !cancelled() &&
       (needs.release-please.outputs.adapter-release_created == 'true' ||
@@ -449,8 +453,17 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
+      # Idempotent, unlike the other publish jobs: adapter-prisma waits for
+      # this one, so a rescue run (workflow_dispatch) must not fail it over a
+      # server version that is already on npm.
       - name: Publish @siteping/server
-        run: npm publish --access public --provenance
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          if [ "$(npm view "@siteping/server@$version" version 2>/dev/null)" = "$version" ]; then
+            echo "@siteping/server@$version is already on npm, skipping"
+          else
+            npm publish --access public --provenance
+          fi
         working-directory: packages/server
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

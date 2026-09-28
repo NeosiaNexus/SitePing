@@ -20,7 +20,7 @@
   - `@siteping/widget` — browser feedback widget (Shadow DOM, closed mode). Accepts `store` option for client-side mode (no server needed)
   - `@siteping/dashboard` — Linear-style triage inbox React component (`<SitepingInbox />` + headless `useSitepingInbox()`); no Shadow DOM — scoped `spd-` classes + `--spd-*` CSS vars injected once
   - `@siteping/server` — store-agnostic HTTP handler (`createSitepingHandler({ store })`, Fetch API, platform neutral): `apiKey` policy XOR custom `access` (CSRF guards), hooks, `waitUntil`; owns the request schemas and webhooks
-  - `@siteping/adapter-prisma` — PrismaStore + `createSitepingHandler` delegating to `@siteping/server` (`workspace:^` dependency, pinned by release.yml at publish, server published first); `@prisma/client` optional peer
+  - `@siteping/adapter-prisma` — PrismaStore + `createSitepingHandler` delegating to `@siteping/server` (`workspace:^` dependency, pinned by release.yml at publish; its publish job waits for the idempotent `publish-server`); `@prisma/client` optional peer
   - `@siteping/adapter-drizzle` — Drizzle ORM store: `/pg` (any PostgreSQL driver, Neon HTTP included) and `/libsql` (Turso); `drizzle-orm` peer, mounted through `@siteping/server`
   - `@siteping/adapter-memory` — in-memory adapter (testing, demos, serverless)
   - `@siteping/adapter-localstorage` — client-side localStorage adapter (demos, prototyping)
