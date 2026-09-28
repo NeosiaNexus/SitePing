@@ -1033,11 +1033,13 @@ describe("flushRetryQueue", () => {
       annotations: [],
       clientId: "valid-1",
     };
-    // Tampered / legacy entry: `payload.authorName.trim()` used to throw,
-    // the outer catch swallowed it and nothing was ever replayed again.
+    // Tampered / legacy entries: `payload.authorName.trim()` (or the email's)
+    // used to throw, the outer catch swallowed it and nothing was ever
+    // replayed again.
     vi.mocked(localStorage.getItem).mockReturnValue(
       JSON.stringify([
         { endpoint, payload: {} },
+        { endpoint, payload: { authorName: "Alice" } },
         { endpoint, payload: valid },
       ]),
     );
