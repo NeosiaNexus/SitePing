@@ -65,7 +65,7 @@ Rows win over every other signal: during a refetch the already-loaded rows stay 
 
 ## Mutations are optimistic — and they re-throw
 
-The UI updates immediately; if the server rejects, the hook rolls everything back (items, counts, focus, the open record) **and then re-throws**. Always attach a catch:
+The UI updates immediately; if the server rejects, the hook rolls that feedback back (its row, the counts, focus, the open record) **and then re-throws**. The rollback touches only the rejected feedback: other changes in flight and data refetched in the meantime are kept. Always attach a catch:
 
 ```tsx
 <button

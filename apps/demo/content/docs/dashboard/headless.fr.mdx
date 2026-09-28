@@ -65,7 +65,7 @@ Les lignes l'emportent sur tout autre signal : pendant un rechargement, les lign
 
 ## Les mutations sont optimistes — et elles relèvent l'erreur
 
-L'interface se met à jour immédiatement ; si le serveur refuse, le hook annule tout (items, compteurs, focus, feedback ouvert) **puis relève l'erreur**. Attachez toujours un `catch` :
+L'interface se met à jour immédiatement ; si le serveur refuse, le hook rétablit ce feedback (sa ligne, les compteurs, le focus, le feedback ouvert) **puis relève l'erreur**. Le retour arrière ne touche que le feedback refusé : les autres modifications en cours et les données rechargées entre-temps sont conservées. Attachez toujours un `catch` :
 
 ```tsx
 <button

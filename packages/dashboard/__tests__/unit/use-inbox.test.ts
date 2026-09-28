@@ -5,7 +5,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InboxSource } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
-import { makeRecord, makeSource } from "../helpers.js";
+import { deferred, makeRecord, makeSource } from "../helpers.js";
 
 // Six-record demo project: three open (mixed types), one of each other status.
 function demoRecords(): FeedbackRecord[] {
@@ -709,5 +709,168 @@ describe("useSitepingInbox — edge branches", () => {
     expect(result.current.openedId).toBeNull();
     expect(result.current.opened).toBeNull();
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "r2" }));
+  });
+});
+
+/** Let every pending microtask/macrotask settle (e.g. a load's background count queries). */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+/** Mount the demo project and wait until both page 1 and the tab counts have landed. */
+async function mountDemo(source = makeSource(demoRecords())) {
+  const hook = renderHook(() => useSitepingInbox({ projects: "demo", source }));
+  await waitFor(() => expect(hook.result.current.loading).toBe(false));
+  await settle();
+  return { source, ...hook };
+}
+
+describe("useSitepingInbox — concurrent mutations roll back per record", () => {
+  it("a failed change restores only its own row — a concurrent success survives", async () => {
+    const { source, result } = await mountDemo();
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+
+    let first!: Promise<unknown>;
+    act(() => {
+      first = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      await result.current.changeStatus("r2", "resolved");
+    });
+    expect(ids(result.current.items)).toEqual(["r3"]);
+
+    await act(async () => {
+      held.reject(new Error("patch failed"));
+      await first;
+    });
+
+    // r2's confirmed change stands; only r1 comes back.
+    expect(ids(result.current.items)).toEqual(["r1", "r3"]);
+    expect(result.current.items.find((r) => r.id === "r1")?.status).toBe("open");
+    expect(result.current.total).toBe(2);
+    expect(result.current.counts).toMatchObject({ all: 6, open: 2, resolved: 2 });
+  });
+
+  it("two failed changes each put their own row back", async () => {
+    const { source, result } = await mountDemo();
+    const heldA = deferred<FeedbackRecord>();
+    const heldB = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => heldA.promise).mockImplementationOnce(() => heldB.promise);
+
+    let a!: Promise<unknown>;
+    let b!: Promise<unknown>;
+    act(() => {
+      a = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    act(() => {
+      b = result.current.changeStatus("r2", "resolved").catch((e: unknown) => e);
+    });
+    expect(ids(result.current.items)).toEqual(["r3"]);
+
+    await act(async () => {
+      heldA.reject(new Error("a failed"));
+      await a;
+    });
+    await act(async () => {
+      heldB.reject(new Error("b failed"));
+      await b;
+    });
+
+    expect(ids(result.current.items)).toEqual(["r1", "r2", "r3"]);
+    expect(result.current.total).toBe(3);
+    expect(result.current.counts).toMatchObject({ all: 6, open: 3, resolved: 1 });
+  });
+
+  it("a failed change does not resurrect a record deleted meanwhile", async () => {
+    const { source, result } = await mountDemo();
+    act(() => result.current.setStatus("all"));
+    await waitFor(() => expect(result.current.items).toHaveLength(6));
+    await settle();
+
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+    let change!: Promise<unknown>;
+    act(() => {
+      change = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    await act(async () => {
+      await result.current.deleteFeedback("r1");
+    });
+    await act(async () => {
+      held.reject(new Error("patch failed"));
+      await change;
+    });
+
+    expect(ids(result.current.items)).not.toContain("r1");
+    expect(result.current.total).toBe(5);
+    // r1 was open on the server and is now deleted: open and all each lose one.
+    expect(result.current.counts).toMatchObject({ all: 5, open: 2, resolved: 1 });
+  });
+
+  it("a change and its undo both failing leave the record as the server has it", async () => {
+    const { source, result } = await mountDemo();
+    const heldChange = deferred<FeedbackRecord>();
+    const heldUndo = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => heldChange.promise).mockImplementationOnce(() => heldUndo.promise);
+
+    let change!: Promise<unknown>;
+    let undo!: Promise<unknown>;
+    act(() => {
+      change = result.current.changeStatus("r1", "resolved").catch((e: unknown) => e);
+    });
+    act(() => {
+      undo = result.current.undo().catch((e: unknown) => e);
+    });
+    expect(ids(result.current.items)).toEqual(["r1", "r2", "r3"]);
+
+    await act(async () => {
+      heldChange.reject(new Error("change failed"));
+      await change;
+    });
+    await act(async () => {
+      heldUndo.reject(new Error("undo failed"));
+      await undo;
+    });
+
+    expect(ids(result.current.items)).toEqual(["r1", "r2", "r3"]);
+    expect(result.current.items.find((r) => r.id === "r1")?.status).toBe("open");
+    expect(result.current.total).toBe(3);
+    expect(result.current.counts).toMatchObject({ all: 6, open: 3, resolved: 1 });
+  });
+
+  it("a failed change keeps a refresh that was already in flight when it started", async () => {
+    const { source, result } = await mountDemo();
+    const r0 = makeRecord({ id: "r0", status: "open", createdAt: new Date("2026-07-20T10:07:00Z") });
+    const page = deferred<FeedbackPage>();
+    source.list.mockImplementationOnce(() => page.promise);
+
+    let refreshing!: Promise<void>;
+    act(() => {
+      refreshing = result.current.refresh();
+    });
+    const held = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => held.promise);
+    let change!: Promise<unknown>;
+    act(() => {
+      change = result.current.changeStatus("r2", "resolved").catch((e: unknown) => e);
+    });
+
+    // The refresh lands with the server's view: r0 is new, r2 is still open.
+    const open = source.records.filter((r) => r.status === "open");
+    await act(async () => {
+      page.resolve({ feedbacks: [r0, ...open], total: 4 });
+      await refreshing;
+    });
+    await act(async () => {
+      held.reject(new Error("patch failed"));
+      await change;
+    });
+
+    expect(ids(result.current.items)).toEqual(["r0", "r1", "r2", "r3"]);
+    expect(result.current.items.find((r) => r.id === "r2")?.status).toBe("open");
+    expect(result.current.total).toBe(4);
   });
 });

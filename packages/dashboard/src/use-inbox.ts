@@ -24,11 +24,27 @@ function toError(cause: unknown): Error {
   return cause instanceof Error ? cause : new Error(String(cause));
 }
 
+/** Per-tab count adjustments made by one optimistic step. */
+type CountDeltas = readonly (readonly ["all" | FeedbackStatus, number])[];
+
+/**
+ * Rollback data for one in-flight optimistic mutation. Mutations on the same
+ * feedback chain through `next`: a failure that a still-pending mutation has
+ * built on hands it `prev` and its deltas, so the chain reverts as one.
+ */
+interface InFlight {
+  /** The record before the optimistic step — what a failure puts back. */
+  prev: FeedbackRecord;
+  /** Count deltas still to invert on failure, each tagged with the counts generation it was applied to. */
+  undo: { deltas: CountDeltas; countsGen: number }[];
+  /** List generation at the optimistic step — a page 1 committed since then already dropped the edit. */
+  listGen: number;
+  state: "pending" | "ok" | "failed";
+  next: InFlight | null;
+}
+
 /** Apply deltas to the count keys that are known — unknown (undefined) counts stay unknown. */
-function adjustCounts(
-  counts: InboxState["counts"],
-  deltas: readonly (readonly ["all" | FeedbackStatus, number])[],
-): InboxState["counts"] {
+function adjustCounts(counts: InboxState["counts"], deltas: CountDeltas): InboxState["counts"] {
   const next: InboxState["counts"] = { ...counts };
   for (const [key, delta] of deltas) {
     const current = next[key];
@@ -137,6 +153,15 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
    * bumps it. loadMore() must not discard an in-flight counts result.
    */
   const countsTokenRef = useRef(0);
+  /**
+   * Bumped when load() COMMITS page 1 / counts (tokens bump at fetch start).
+   * Optimistic edits made before a commit are gone from the committed data,
+   * so a failing mutation must not invert them there.
+   */
+  const listGenRef = useRef(0);
+  const countsGenRef = useRef(0);
+  /** Latest in-flight mutation per feedback id. */
+  const inFlightRef = useRef(new Map<string, InFlight>());
   /** Set when a loadMore page returned nothing new — the server has no more rows for us. */
   const [exhausted, setExhausted] = useState(false);
   /** The opened record — kept so the drawer survives its row leaving the filtered list. */
@@ -194,6 +219,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const page = await src.list(query);
       if (token !== tokenRef.current) return;
       setExhausted(false);
+      listGenRef.current += 1;
       itemsRef.current = page.feedbacks;
       totalRef.current = page.total;
       setItems(page.feedbacks);
@@ -223,6 +249,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const value = totals[index];
       if (typeof value === "number") next[key] = value;
     });
+    countsGenRef.current += 1;
     countsRef.current = next;
     setCounts(next);
   }, [src, queryBase, status, pageSize]);
@@ -310,14 +337,16 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   }, [items, openedId]);
 
   // -------------------------------------------------------------------------
-  // Mutations — optimistic, rollback on error (guarded against newer fetches)
+  // Mutations — optimistic, per-record rollback on error
   // -------------------------------------------------------------------------
 
-  /** After removing the row at `index`, focus the row now sitting at that index (or the new last). */
-  const moveFocusAfterRemoval = useCallback((nextItems: FeedbackRecord[], index: number) => {
+  /** After removing the row at `index`, focus the row now sitting at that index (or the new last). Returns the new focus. */
+  const moveFocusAfterRemoval = useCallback((nextItems: FeedbackRecord[], index: number): string | null => {
     const fallback = index === -1 ? null : (nextItems[Math.min(index, nextItems.length - 1)] ?? null);
-    focusedIdRef.current = fallback ? fallback.id : null;
-    setFocusedId(fallback ? fallback.id : null);
+    const next = fallback ? fallback.id : null;
+    focusedIdRef.current = next;
+    setFocusedId(next);
+    return next;
   }, []);
 
   /**
@@ -343,6 +372,104 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     setPendingUndo(next);
   }, []);
 
+  /** Whether a record belongs in the currently loaded list. */
+  const belongsInList = useCallback((record: FeedbackRecord): boolean => {
+    const filter = statusRef.current;
+    return filter === "all" || filter === record.status;
+  }, []);
+
+  /**
+   * Put one feedback where the current list wants it: replace its row, insert
+   * it (newest-first) or remove it — `null` always removes. Keeps `total` in
+   * step and returns the removed row's former index (-1 if none) plus whether
+   * a row was inserted.
+   */
+  const placeRecord = useCallback(
+    (id: string, record: FeedbackRecord | null): { removedAt: number; inserted: boolean } => {
+      const list = itemsRef.current;
+      const index = list.findIndex((f) => f.id === id);
+      const keep = record !== null && belongsInList(record);
+      if (index !== -1 && !keep) {
+        commitItems(list.filter((f) => f.id !== id));
+        commitTotal(totalRef.current === null ? null : Math.max(0, totalRef.current - 1));
+        return { removedAt: index, inserted: false };
+      }
+      if (index !== -1 && record !== null) {
+        commitItems(list.map((f) => (f.id === id ? record : f)));
+      } else if (keep) {
+        commitItems(insertByCreatedAtDesc(list, record));
+        commitTotal(totalRef.current === null ? null : totalRef.current + 1);
+        return { removedAt: -1, inserted: true };
+      }
+      return { removedAt: -1, inserted: false };
+    },
+    [belongsInList, commitItems, commitTotal],
+  );
+
+  /** Register an optimistic step, chained behind any mutation still pending on the same feedback. */
+  const beginMutation = useCallback((id: string, prev: FeedbackRecord, deltas: CountDeltas): InFlight => {
+    const handle: InFlight = {
+      prev,
+      undo: [{ deltas, countsGen: countsGenRef.current }],
+      listGen: listGenRef.current,
+      state: "pending",
+      next: null,
+    };
+    const prior = inFlightRef.current.get(id);
+    if (prior) prior.next = handle;
+    inFlightRef.current.set(id, handle);
+    return handle;
+  }, []);
+
+  /**
+   * Settle a mutation. Returns true when its outcome is the record's latest
+   * word — no later mutation on the same feedback is pending or succeeded —
+   * so the caller may write the record back to the list. A failure that a
+   * pending mutation has built on hands that one its base and deltas instead:
+   * that later mutation's success keeps them, its failure reverts both.
+   */
+  const settleMutation = useCallback((id: string, handle: InFlight, ok: boolean): boolean => {
+    handle.state = ok ? "ok" : "failed";
+    if (inFlightRef.current.get(id) === handle) inFlightRef.current.delete(id);
+    let later = handle.next;
+    while (later !== null && later.state === "failed") later = later.next;
+    if (later === null) return true;
+    if (!ok && later.state === "pending") {
+      later.prev = handle.prev;
+      later.undo = [...handle.undo, ...later.undo];
+    }
+    return false;
+  }, []);
+
+  /**
+   * Revert a failed mutation for its own record only, against the CURRENT
+   * state — concurrent mutations on other rows and fetches that landed
+   * meanwhile stay intact. A page 1 or counts committed after the optimistic
+   * step already hold the server's view, so nothing is inverted in them.
+   */
+  const rollback = useCallback(
+    (id: string, handle: InFlight, optimistic: FeedbackRecord | null, focusMovedTo: string | null | undefined) => {
+      if (handle.listGen === listGenRef.current) {
+        const { inserted } = placeRecord(id, handle.prev);
+        if (inserted && focusMovedTo !== undefined && focusedIdRef.current === focusMovedTo) {
+          focusedIdRef.current = id;
+          setFocusedId(id);
+        }
+      }
+      let nextCounts = countsRef.current;
+      for (const { deltas, countsGen } of handle.undo) {
+        if (countsGen !== countsGenRef.current) continue;
+        nextCounts = adjustCounts(
+          nextCounts,
+          deltas.map(([key, delta]) => [key, -delta] as const),
+        );
+      }
+      commitCounts(nextCounts);
+      if (optimistic !== null && openedCacheRef.current === optimistic) openedCacheRef.current = handle.prev;
+    },
+    [placeRecord, commitCounts],
+  );
+
   const applyStatusChange = useCallback(
     async (id: string, nextStatus: FeedbackStatus, isUndo: boolean): Promise<void> => {
       const record =
@@ -354,18 +481,9 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         return;
       }
 
-      const snapshot = {
-        items: itemsRef.current,
-        counts: countsRef.current,
-        total: totalRef.current,
-        focusedId: focusedIdRef.current,
-        // Unconditional: a FAILED undo leaves the status change standing, so
-        // the undo affordance must survive the rollback.
-        pendingUndo: pendingUndoRef.current,
-        undoRecord: undoRecordRef.current,
-        openedCache: openedCacheRef.current,
-        token: tokenRef.current,
-      };
+      // Unconditional: a FAILED undo leaves the status change standing, so
+      // the undo affordance must survive the rollback.
+      const undoBefore = { pending: pendingUndoRef.current, record: undoRecordRef.current };
 
       const previous = record.status;
       const now = new Date();
@@ -376,31 +494,18 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         resolvedAt: isClosedStatus(nextStatus) ? now : null,
         updatedAt: now,
       };
+      const deltas: CountDeltas = [
+        [previous, -1],
+        [nextStatus, +1],
+      ];
 
-      const filter = statusRef.current;
-      const includedAfter = filter === "all" || filter === nextStatus;
-      const index = itemsRef.current.findIndex((f) => f.id === id);
-      if (index !== -1 && !includedAfter) {
-        // Row leaves the filtered list.
-        const nextItems = itemsRef.current.filter((f) => f.id !== id);
-        commitItems(nextItems);
-        commitTotal(totalRef.current === null ? null : Math.max(0, totalRef.current - 1));
-        if (snapshot.focusedId === id) moveFocusAfterRemoval(nextItems, index);
-      } else if (index !== -1) {
-        commitItems(itemsRef.current.map((f) => (f.id === id ? optimistic : f)));
-      } else if (includedAfter) {
-        // Row re-enters the filtered list (typically an undo).
-        commitItems(insertByCreatedAtDesc(itemsRef.current, optimistic));
-        commitTotal(totalRef.current === null ? null : totalRef.current + 1);
-      }
-
+      const wasFocused = focusedIdRef.current === id;
+      const { removedAt } = placeRecord(id, optimistic);
+      const focusMovedTo =
+        wasFocused && removedAt !== -1 ? moveFocusAfterRemoval(itemsRef.current, removedAt) : undefined;
       if (openedCacheRef.current?.id === id) openedCacheRef.current = optimistic;
-      commitCounts(
-        adjustCounts(countsRef.current, [
-          [previous, -1],
-          [nextStatus, +1],
-        ]),
-      );
+      commitCounts(adjustCounts(countsRef.current, deltas));
+      const handle = beginMutation(id, record, deltas);
       if (isUndo) {
         commitPendingUndo(null);
         undoRecordRef.current = null;
@@ -411,28 +516,33 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
       try {
         const saved = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
-        commitItems(itemsRef.current.map((f) => (f.id === id ? saved : f)));
-        if (openedCacheRef.current?.id === id) openedCacheRef.current = saved;
-        if (undoRecordRef.current?.id === id) undoRecordRef.current = saved;
-        callbacksRef.current.onStatusChange?.(saved, previous);
-      } catch (cause) {
-        // Roll back — unless a newer fetch already replaced the list.
-        if (tokenRef.current === snapshot.token) {
-          commitItems(snapshot.items);
-          commitCounts(snapshot.counts);
-          commitTotal(snapshot.total);
-          focusedIdRef.current = snapshot.focusedId;
-          setFocusedId(snapshot.focusedId);
-          openedCacheRef.current = snapshot.openedCache;
+        // A later mutation on this feedback owns the row now — don't clobber its optimistic state.
+        if (settleMutation(id, handle, true)) {
+          commitItems(itemsRef.current.map((f) => (f.id === id ? saved : f)));
+          if (openedCacheRef.current?.id === id) openedCacheRef.current = saved;
+          if (undoRecordRef.current?.id === id) undoRecordRef.current = saved;
         }
-        commitPendingUndo(snapshot.pendingUndo);
-        undoRecordRef.current = snapshot.undoRecord;
+        // `prev` may have been rebased onto an earlier failed change — it is what the server held.
+        callbacksRef.current.onStatusChange?.(saved, handle.prev.status);
+      } catch (cause) {
+        if (settleMutation(id, handle, false)) rollback(id, handle, optimistic, focusMovedTo);
+        commitPendingUndo(undoBefore.pending);
+        undoRecordRef.current = undoBefore.record;
         const err = toError(cause);
         callbacksRef.current.onError?.(err);
         throw err;
       }
     },
-    [moveFocusAfterRemoval, commitItems, commitCounts, commitTotal, commitPendingUndo],
+    [
+      placeRecord,
+      moveFocusAfterRemoval,
+      beginMutation,
+      settleMutation,
+      rollback,
+      commitItems,
+      commitCounts,
+      commitPendingUndo,
+    ],
   );
 
   const changeStatus = useCallback(
@@ -453,32 +563,20 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
       if (!record) return;
 
-      const snapshot = {
-        items: itemsRef.current,
-        counts: countsRef.current,
-        total: totalRef.current,
-        focusedId: focusedIdRef.current,
-        openedId: openedIdRef.current,
-        pendingUndo: pendingUndoRef.current,
-        undoRecord: undoRecordRef.current,
-        openedCache: openedCacheRef.current,
-        token: tokenRef.current,
-      };
+      const undoBefore = { pending: pendingUndoRef.current, record: undoRecordRef.current };
+      const deltas: CountDeltas = [
+        [record.status, -1],
+        ["all", -1],
+      ];
 
-      const index = itemsRef.current.findIndex((f) => f.id === id);
-      if (index !== -1) {
-        const nextItems = itemsRef.current.filter((f) => f.id !== id);
-        commitItems(nextItems);
-        commitTotal(totalRef.current === null ? null : Math.max(0, totalRef.current - 1));
-        if (snapshot.focusedId === id) moveFocusAfterRemoval(nextItems, index);
-      }
-      commitCounts(
-        adjustCounts(countsRef.current, [
-          [record.status, -1],
-          ["all", -1],
-        ]),
-      );
-      if (openedIdRef.current === id) {
+      const wasFocused = focusedIdRef.current === id;
+      const wasOpened = openedIdRef.current === id;
+      const { removedAt } = placeRecord(id, null);
+      const focusMovedTo =
+        wasFocused && removedAt !== -1 ? moveFocusAfterRemoval(itemsRef.current, removedAt) : undefined;
+      commitCounts(adjustCounts(countsRef.current, deltas));
+      const handle = beginMutation(id, record, deltas);
+      if (wasOpened) {
         openedIdRef.current = null;
         setOpenedId(null);
       }
@@ -490,26 +588,26 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
       try {
         await srcRef.current.remove(id, projectRef.current);
+        settleMutation(id, handle, true);
         callbacksRef.current.onDelete?.(record);
       } catch (cause) {
-        if (tokenRef.current === snapshot.token) {
-          commitItems(snapshot.items);
-          commitCounts(snapshot.counts);
-          commitTotal(snapshot.total);
-          focusedIdRef.current = snapshot.focusedId;
-          setFocusedId(snapshot.focusedId);
-          openedIdRef.current = snapshot.openedId;
-          setOpenedId(snapshot.openedId);
-          openedCacheRef.current = snapshot.openedCache;
+        if (settleMutation(id, handle, false)) {
+          rollback(id, handle, null, focusMovedTo);
+          // Reopen the drawer unless another feedback was opened meanwhile.
+          if (wasOpened && openedIdRef.current === null) {
+            openedCacheRef.current = handle.prev;
+            openedIdRef.current = id;
+            setOpenedId(id);
+          }
         }
-        commitPendingUndo(snapshot.pendingUndo);
-        undoRecordRef.current = snapshot.undoRecord;
+        commitPendingUndo(undoBefore.pending);
+        undoRecordRef.current = undoBefore.record;
         const err = toError(cause);
         callbacksRef.current.onError?.(err);
         throw err;
       }
     },
-    [moveFocusAfterRemoval, commitItems, commitCounts, commitTotal, commitPendingUndo],
+    [placeRecord, moveFocusAfterRemoval, beginMutation, settleMutation, rollback, commitCounts, commitPendingUndo],
   );
 
   // -------------------------------------------------------------------------
