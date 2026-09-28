@@ -230,6 +230,17 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const queryBaseRef = useRef(queryBase);
   queryBaseRef.current = queryBase;
 
+  /**
+   * Ids the server listed under a query base. Its search can be broader than
+   * the local predicate (accent-insensitive collations, full-text, a custom
+   * source), so a record it listed stays in that query even once its row left.
+   */
+  const listedRef = useRef({ base: queryBase, ids: new Set<string>() });
+  const rememberListed = useCallback((base: typeof queryBase, records: readonly FeedbackRecord[]) => {
+    if (listedRef.current.base !== base) listedRef.current = { base, ids: new Set() };
+    for (const record of records) listedRef.current.ids.add(record.id);
+  }, []);
+
   /** Set when a load's counts raced a mutation — recounted once no mutation is pending. */
   const countsStaleRef = useRef(false);
   /** A mutation can settle after unmount: its recount must not outlive the component. */
@@ -299,6 +310,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       if (token !== tokenRef.current) return;
       setExhausted(false);
       listGenRef.current += 1;
+      rememberListed(queryBase, page.feedbacks);
       itemsRef.current = page.feedbacks;
       totalRef.current = page.total;
       setItems(page.feedbacks);
@@ -320,7 +332,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       return;
     }
     await loadCounts(queryBase, countsToken);
-  }, [src, queryBase, status, pageSize, loadCounts]);
+  }, [src, queryBase, status, pageSize, loadCounts, rememberListed]);
 
   useEffect(() => {
     void load();
@@ -342,13 +354,15 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       // skip the rows that slid into already-consumed offsets.
       const nextPage = Math.floor(itemsRef.current.length / pageSize) + 1;
       const currentStatus = statusRef.current;
+      const base = queryBaseRef.current;
       const page = await srcRef.current.list({
-        ...queryBaseRef.current,
+        ...base,
         status: currentStatus === "all" ? undefined : currentStatus,
         page: nextPage,
         limit: pageSize,
       });
       if (superseded()) return;
+      rememberListed(base, page.feedbacks);
       // A mutation in flight during the fetch: the server may not have applied
       // it yet, so the page can repeat rows removed optimistically and its
       // total can still count them — the local total already accounts for it.
@@ -376,7 +390,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     } finally {
       setLoadingMore(false);
     }
-  }, [loading, loadingMore, pageSize]);
+  }, [loading, loadingMore, pageSize, rememberListed]);
 
   // -------------------------------------------------------------------------
   // Focus & drawer
@@ -461,13 +475,15 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
   /**
    * Whether a record matches the current project / type / search — the query
-   * the tab counts describe. Uses the stores' own predicate so search
-   * semantics (case-insensitive substring of the message) can't drift.
+   * the tab counts describe. The server's word for a record it listed under
+   * it; otherwise the stores' own predicate (case-insensitive substring of
+   * the message), which a broader server search can outmatch.
    */
-  const matchesBase = useCallback(
-    (record: FeedbackRecord): boolean => matchesFeedbackQuery(record, queryBaseRef.current),
-    [],
-  );
+  const matchesBase = useCallback((record: FeedbackRecord): boolean => {
+    const base = queryBaseRef.current;
+    const listed = listedRef.current;
+    return (listed.base === base && listed.ids.has(record.id)) || matchesFeedbackQuery(record, base);
+  }, []);
 
   /** Whether a record belongs in the currently loaded list (base query + status tab). */
   const belongsInList = useCallback(

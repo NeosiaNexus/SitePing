@@ -1349,6 +1349,77 @@ describe("useSitepingInbox — re-entering rows respect the whole query", () => 
   });
 });
 
+describe("useSitepingInbox — a server search broader than the local predicate", () => {
+  /** Searches "cafe" on a server that also matches "Café" (c2), like MySQL's accent-insensitive collations. */
+  async function mountCafeSearch(status: "open" | "all", pageSize = 50) {
+    const source = makeSource([
+      makeRecord({ id: "c1", status: "open", message: "Cafe typo", createdAt: new Date("2026-07-20T10:06:00Z") }),
+      makeRecord({ id: "c2", status: "open", message: "Café crash", createdAt: new Date("2026-07-20T10:05:00Z") }),
+      makeRecord({ id: "x1", status: "open", message: "unrelated", createdAt: new Date("2026-07-20T10:04:00Z") }),
+    ]);
+    const real = source.list.getMockImplementation();
+    if (!real) throw new Error("no list implementation");
+    const fold = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+    source.list.mockImplementation(async ({ search, ...query }) => {
+      if (!search) return real(query);
+      const { page = 1, limit = 50 } = query;
+      const all = await real({ ...query, page: 1, limit: 100 });
+      const matching = all.feedbacks.filter((r) => fold(r.message).includes(fold(search)));
+      return { feedbacks: matching.slice((page - 1) * limit, page * limit), total: matching.length };
+    });
+    const hook = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize }));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    act(() => hook.result.current.setStatus(status));
+    act(() => hook.result.current.setSearch("cafe"));
+    await waitFor(() => expect(hook.result.current.total).toBe(2), { timeout: 1500 });
+    await settle();
+    expect(hook.result.current.counts).toMatchObject({ all: 2, open: 2, resolved: 0 });
+    return { source, ...hook };
+  }
+
+  it("keeps a row it listed and moves the counts on a change or a delete", async () => {
+    const { result } = await mountCafeSearch("all");
+    await act(async () => {
+      await result.current.changeStatus("c2", "resolved");
+    });
+    expect(ids(result.current.items)).toEqual(["c1", "c2"]);
+    expect(result.current.counts).toMatchObject({ all: 2, open: 1, resolved: 1 });
+
+    await act(async () => {
+      await result.current.deleteFeedback("c2");
+    });
+    expect(ids(result.current.items)).toEqual(["c1"]);
+    expect(result.current.counts).toMatchObject({ all: 1, open: 1, resolved: 0 });
+  });
+
+  it("brings a row it listed back on undo and on a failed change", async () => {
+    const { source, result } = await mountCafeSearch("open", 1);
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(ids(result.current.items)).toEqual(["c1", "c2"]);
+
+    await act(async () => {
+      await result.current.changeStatus("c2", "resolved");
+    });
+    expect(ids(result.current.items)).toEqual(["c1"]);
+    expect(result.current.counts).toMatchObject({ all: 2, open: 1, resolved: 1 });
+    await act(async () => {
+      await result.current.undo();
+    });
+    expect(ids(result.current.items)).toEqual(["c1", "c2"]);
+    expect(result.current.counts).toMatchObject({ all: 2, open: 2, resolved: 0 });
+
+    source.setStatus.mockRejectedValueOnce(new Error("patch failed"));
+    await act(async () => {
+      await result.current.changeStatus("c2", "resolved").catch(() => undefined);
+    });
+    expect(ids(result.current.items)).toEqual(["c1", "c2"]);
+    expect(result.current.total).toBe(2);
+    expect(result.current.counts).toMatchObject({ all: 2, open: 2, resolved: 0 });
+  });
+});
+
 describe("useSitepingInbox — undo state after a failed mutation", () => {
   it("does not restore another project's undo when a mutation fails after a project switch", async () => {
     const source = makeSource([
