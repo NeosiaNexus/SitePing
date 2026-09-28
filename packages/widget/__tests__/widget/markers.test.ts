@@ -1656,17 +1656,87 @@ describe("MarkerManager", () => {
   // buildEntry — annotation that fails to resolve is skipped (line 255 branch)
   // -------------------------------------------------------------------------
 
-  describe("buildEntry — unresolved annotations skipped", () => {
-    it("skips annotations that fail to resolve (no marker rendered)", () => {
+  describe("buildEntry — unresolved annotations hidden", () => {
+    it("keeps a hidden marker for an annotation that fails to resolve (shown once it resolves)", () => {
       mockState.returnNull = true;
-      // resolveAnnotation returns null → buildEntry creates an entry with no elements
       markers.render([makeFeedback({ id: "fb-no-resolve" })]);
 
       const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-no-resolve"]');
-      expect(marker).toBeNull();
+      expect(marker?.style.display).toBe("none");
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
 
       // Reset for cleanup
       mockState.returnNull = false;
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // One marker per annotation, each with its own position
+  // -------------------------------------------------------------------------
+
+  describe("multi-annotation / late-resolving markers", () => {
+    const visibleMarkers = (id: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>(`[data-feedback-id="${id}"]`)).filter(
+        (m) => m.style.display !== "none",
+      );
+
+    it("(a) an anchor that appears after render() gets its marker on the next reposition", () => {
+      vi.useFakeTimers();
+      mockState.returnNull = true; // anchor not in the DOM yet
+      markers.render([makeFeedback({ id: "fb-late" })]);
+      expect(visibleMarkers("fb-late")).toHaveLength(0);
+
+      mockState.returnNull = false; // SPA / lazy content rendered it
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(visibleMarkers("fb-late")).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it("(b) two far-apart annotations of one feedback get a marker at each position", () => {
+      vi.useFakeTimers();
+      mockState.rectQueue = [
+        { x: 100, y: 100, w: 50, h: 50 },
+        { x: 500, y: 500, w: 50, h: 50 },
+      ];
+      const fb = makeFeedback({
+        id: "fb-two",
+        annotations: [makeAnnotation({ id: "a1" }), makeAnnotation({ id: "a2" })],
+      });
+      markers.render([fb]);
+
+      const tops = () => visibleMarkers("fb-two").map((m) => Number.parseFloat(m.style.top));
+      expect(tops()).toEqual([87, 487]); // rect.top - 13 each, not stacked
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
+
+      // Still apart after a reposition pass
+      mockState.rectQueue = [
+        { x: 100, y: 100, w: 50, h: 50 },
+        { x: 500, y: 500, w: 50, h: 50 },
+      ];
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      expect(tops()).toEqual([87, 487]);
+      vi.useRealTimers();
+    });
+
+    it("(c) a missing annotation[0] does not hide annotation[1]'s marker on resize", () => {
+      vi.useFakeTimers();
+      // render: a1 missing, a2 resolves; reposition: same again
+      mockState.nullSchedule = [true, false, true, false];
+      const fb = makeFeedback({
+        id: "fb-gap",
+        annotations: [makeAnnotation({ id: "a1" }), makeAnnotation({ id: "a2" })],
+      });
+      markers.render([fb]);
+      expect(visibleMarkers("fb-gap")).toHaveLength(1);
+
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(visibleMarkers("fb-gap")).toHaveLength(1);
+      vi.useRealTimers();
     });
   });
 
