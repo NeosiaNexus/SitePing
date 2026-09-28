@@ -46,7 +46,7 @@ Each action is **either** a button (`onAction`) or a link (`href`). TypeScript r
 | `onAction` | `(feedback, context) => void \| Promise<void>` | **Button.** Runs on click |
 | `href` | `string` or `(feedback) => string` | **Link.** Where it points — `http:`, `https:` or `mailto:` only |
 
-The types are exported from `@siteping/widget`: `SitepingPanelAction` (the union), `SitepingPanelButtonAction`, `SitepingPanelLinkAction` and `SitepingPanelActionContext`.
+The types are exported from `@siteping/widget`: `SitepingPanelAction` (the union), `SitepingPanelButtonAction`, `SitepingPanelLinkAction`, `SitepingPanelActionContext` and `SitepingPanelActionFeedback`.
 
 ## Running an action
 
@@ -57,7 +57,7 @@ The second argument gives you two helpers:
 - `refresh()` reloads the list and the markers, then re-renders the detail view with the updated feedback — or goes back to the list when it no longer matches the panel filters. Call it when your action changed the feedback server-side.
 - `close()` closes the panel.
 
-Callbacks receive a **frozen copy** of the feedback. Read anything you need; writing to it throws, and could never change what the panel shows anyway.
+Callbacks receive a **frozen copy** of the feedback, typed `SitepingPanelActionFeedback`: read-only all the way down, arrays and nested records included. Read anything you need. Writes are rejected — TypeScript flags them, and at runtime they throw in strict-mode code (and are silently ignored otherwise) — and could never change what the panel shows anyway. Type your own helpers with `SitepingPanelActionFeedback`: a `FeedbackResponse` parameter does not accept the frozen copy.
 
 ## Links
 

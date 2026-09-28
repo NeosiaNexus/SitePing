@@ -17,6 +17,7 @@ import {
   registerLocale,
   type SitepingPanelAction,
   type SitepingPanelActionContext,
+  type SitepingPanelActionFeedback,
   type SitepingPanelButtonAction,
   type SitepingPanelLinkAction,
   type Translations,
@@ -63,21 +64,23 @@ describe("panelActions", () => {
 
   it("hands callbacks a read-only feedback and the context", () => {
     expectTypeOf<Parameters<SitepingPanelButtonAction["onAction"]>>().toEqualTypeOf<
-      [Readonly<FeedbackResponse>, SitepingPanelActionContext]
+      [SitepingPanelActionFeedback, SitepingPanelActionContext]
     >();
+    expectTypeOf<FeedbackResponse>().toExtend<SitepingPanelActionFeedback>();
     expectTypeOf<ReturnType<SitepingPanelButtonAction["onAction"]>>().toEqualTypeOf<void | Promise<void>>();
     expectTypeOf<SitepingPanelActionContext>().toEqualTypeOf<{ refresh: () => Promise<void>; close: () => void }>();
     expectTypeOf<SitepingPanelLinkAction["href"]>().toEqualTypeOf<
-      string | ((feedback: Readonly<FeedbackResponse>) => string)
+      string | ((feedback: SitepingPanelActionFeedback) => string)
     >();
   });
 
-  it("still accepts handlers written against FeedbackResponse", () => {
-    const createTicket = (_fb: FeedbackResponse): Promise<void> => Promise.resolve();
+  it("accepts helpers typed with SitepingPanelActionFeedback", () => {
+    const createTicket = (_fb: SitepingPanelActionFeedback): Promise<void> => Promise.resolve();
+    const hasPin = (fb: SitepingPanelActionFeedback) => fb.annotations.length > 0;
     expectTypeOf(initSiteping).toBeCallableWith({
       projectName: "p",
       endpoint: "/api",
-      panelActions: [{ id: "t", label: "Ticket", onAction: createTicket, visible: (fb: FeedbackResponse) => !!fb }],
+      panelActions: [{ id: "t", label: "Ticket", onAction: createTicket, visible: hasPin }],
     });
   });
 
@@ -86,8 +89,14 @@ describe("panelActions", () => {
       id: "x",
       label: "X",
       onAction: (fb) => {
-        // @ts-expect-error — the snapshot is read-only
+        // @ts-expect-error — the snapshot is read-only…
         fb.status = "resolved";
+        // @ts-expect-error — …its arrays included…
+        fb.annotations.sort();
+        // @ts-expect-error — …and the records inside them
+        fb.annotations[0]!.scrollX = 0;
+        // @ts-expect-error — …down to the diagnostics entries
+        fb.diagnostics?.console.splice(0);
       },
     };
     void action;

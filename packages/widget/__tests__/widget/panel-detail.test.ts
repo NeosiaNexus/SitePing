@@ -4,6 +4,7 @@ import type {
   AnnotationResponse,
   FeedbackResponse,
   SitepingPanelAction,
+  SitepingPanelActionFeedback,
   SitepingPanelButtonAction,
   SitepingPanelLinkAction,
 } from "@siteping/core";
@@ -1303,7 +1304,7 @@ describe("custom panel actions", () => {
   });
 
   it("builds a computed href from the frozen snapshot and keeps links clickable while a button action runs", () => {
-    const href = vi.fn((fb: Readonly<FeedbackResponse>) => `https://tracker.example/fb/${fb.id}`);
+    const href = vi.fn((fb: SitepingPanelActionFeedback) => `https://tracker.example/fb/${fb.id}`);
     const { view } = buildDetail([makeAction(), makeLink({ href })], {
       onCustomAction: vi.fn(() => new Promise<void>(() => {})),
     });
@@ -1557,7 +1558,7 @@ describe("custom panel actions", () => {
         network: [],
       },
     });
-    const seen: Readonly<FeedbackResponse>[] = [];
+    const seen: SitepingPanelActionFeedback[] = [];
     const { view, cb } = buildDetail([makeAction({ visible: (snap) => seen.push(snap) > 0 })]);
     view.show(fb, 1);
     view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!.click();

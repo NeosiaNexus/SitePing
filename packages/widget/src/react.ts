@@ -20,7 +20,12 @@
  * that never import `@siteping/widget/react` don't need React installed.
  */
 
-import type { FeedbackResponse, SitepingConfig, SitepingInstance, SitepingPanelAction } from "@siteping/core";
+import type {
+  SitepingConfig,
+  SitepingInstance,
+  SitepingPanelAction,
+  SitepingPanelActionFeedback,
+} from "@siteping/core";
 import { useEffect, useRef, useState } from "react";
 import { initSiteping } from "./index.js";
 
@@ -40,7 +45,7 @@ function freshPanelActions(ref: { readonly current: SitepingConfig }): SitepingC
     if (typeof initial !== "object" || initial === null) return initial;
     const latest = (): SitepingPanelAction => ref.current.panelActions?.find((a) => a?.id === initial.id) ?? initial;
     // Truthiness, as in the widget: a plain-JS `visible` returning `undefined` hides the action.
-    const visible = (fb: Readonly<FeedbackResponse>) => {
+    const visible = (fb: SitepingPanelActionFeedback) => {
       const current = latest().visible;
       return current ? Boolean(current(fb)) : true;
     };

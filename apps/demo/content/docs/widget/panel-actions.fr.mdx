@@ -46,7 +46,7 @@ Chaque action est **soit** un bouton (`onAction`), **soit** un lien (`href`). Ty
 | `onAction` | `(feedback, context) => void \| Promise<void>` | **Bouton.** Exécuté au clic |
 | `href` | `string` ou `(feedback) => string` | **Lien.** Sa cible — uniquement `http:`, `https:` ou `mailto:` |
 
-Les types sont exportés par `@siteping/widget` : `SitepingPanelAction` (l'union), `SitepingPanelButtonAction`, `SitepingPanelLinkAction` et `SitepingPanelActionContext`.
+Les types sont exportés par `@siteping/widget` : `SitepingPanelAction` (l'union), `SitepingPanelButtonAction`, `SitepingPanelLinkAction`, `SitepingPanelActionContext` et `SitepingPanelActionFeedback`.
 
 ## Exécution d'une action
 
@@ -57,7 +57,7 @@ Le second argument vous donne deux utilitaires :
 - `refresh()` recharge la liste et les marqueurs, puis réaffiche la vue détail avec le feedback à jour — ou revient à la liste s'il ne correspond plus aux filtres du panneau. Appelez-le quand votre action a modifié le feedback côté serveur.
 - `close()` ferme le panneau.
 
-Les callbacks reçoivent une **copie gelée** du feedback. Lisez tout ce dont vous avez besoin ; y écrire lève une erreur, et ne pourrait de toute façon pas changer ce qu'affiche le panneau.
+Les callbacks reçoivent une **copie gelée** du feedback, typée `SitepingPanelActionFeedback` : en lecture seule à tous les niveaux, tableaux et objets imbriqués compris. Lisez tout ce dont vous avez besoin. Les écritures sont refusées — TypeScript les signale, et à l'exécution elles lèvent une erreur en mode strict (et sont ignorées sans bruit sinon) — et ne pourraient de toute façon pas changer ce qu'affiche le panneau. Typez vos propres fonctions avec `SitepingPanelActionFeedback` : un paramètre `FeedbackResponse` n'accepte pas la copie gelée.
 
 ## Liens
 

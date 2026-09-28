@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 
-import type { FeedbackResponse, SitepingPanelAction, SitepingPanelActionContext } from "@siteping/core";
+import type {
+  FeedbackResponse,
+  SitepingPanelAction,
+  SitepingPanelActionContext,
+  SitepingPanelActionFeedback,
+} from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { createT, tWithParams } from "../../src/i18n/index.js";
@@ -4282,7 +4287,7 @@ describe("Panel", () => {
 
     it("context.refresh() reloads the list and re-renders the detail with the updated record", async () => {
       const fb = makeFeedback({ id: "fb-1", status: "open" });
-      const onAction = vi.fn(async (_fb: Readonly<FeedbackResponse>, ctx: SitepingPanelActionContext) => {
+      const onAction = vi.fn(async (_fb: SitepingPanelActionFeedback, ctx: SitepingPanelActionContext) => {
         // The host moved the feedback forward server-side.
         apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [{ ...fb, status: "in_progress" }], total: 1 });
         await ctx.refresh();
@@ -4308,7 +4313,7 @@ describe("Panel", () => {
       const fb = makeFeedback({ id: "fb-1", status: "open" });
       let finish!: () => void;
       const hostWork = new Promise<void>((r) => (finish = r));
-      const onAction = vi.fn(async (_fb: Readonly<FeedbackResponse>, ctx: SitepingPanelActionContext) => {
+      const onAction = vi.fn(async (_fb: SitepingPanelActionFeedback, ctx: SitepingPanelActionContext) => {
         apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [{ ...fb, status: "in_progress" }], total: 1 });
         await ctx.refresh();
         await hostWork; // the host keeps working after the refresh

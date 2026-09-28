@@ -4,7 +4,7 @@
  * detail view goes through here before it touches the DOM.
  */
 
-import type { FeedbackResponse, SitepingPanelAction } from "@siteping/core";
+import type { FeedbackResponse, SitepingPanelAction, SitepingPanelActionFeedback } from "@siteping/core";
 
 /** A validated action, its icon parsed once and cloned on every render. */
 export interface PanelActionItem {
@@ -98,7 +98,7 @@ export function safeHref(href: string): string | null {
  * `FeedbackResponse` is JSON by construction (`Serialized<FeedbackRecord>`),
  * so the round trip is lossless.
  */
-export function snapshotFeedback(feedback: FeedbackResponse): Readonly<FeedbackResponse> {
+export function snapshotFeedback(feedback: FeedbackResponse): SitepingPanelActionFeedback {
   return JSON.parse(JSON.stringify(feedback), (_key, value: unknown) =>
     typeof value === "object" && value !== null ? Object.freeze(value) : value,
   );

@@ -4,6 +4,7 @@ import type {
   FeedbackResponse,
   SitepingConfig,
   SitepingInstance,
+  SitepingPanelActionFeedback,
   SitepingPanelButtonAction,
   SitepingPanelLinkAction,
 } from "@siteping/core";
@@ -223,7 +224,7 @@ describe("useSiteping", () => {
     const handlers = () => ({
       onAction: vi.fn(),
       visible: vi.fn(() => true),
-      href: vi.fn((f: Readonly<FeedbackResponse>) => `https://t.example/${f.id}`),
+      href: vi.fn((f: SitepingPanelActionFeedback) => `https://t.example/${f.id}`),
     });
     const first = handlers();
     const second = { ...handlers(), visible: vi.fn(() => false) };

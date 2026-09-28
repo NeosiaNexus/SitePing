@@ -1,4 +1,4 @@
-import { type AssertEqual, hasOwn, type Prettify, type Serialized } from "./type-utils.js";
+import { type AssertEqual, type DeepReadonly, hasOwn, type Prettify, type Serialized } from "./type-utils.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -57,6 +57,13 @@ export interface SitepingDeepLinkOptions {
 }
 
 /**
+ * The feedback handed to panel action callbacks: a detached, deeply frozen
+ * copy, typed read-only all the way down. Type your own helpers with it — a
+ * `FeedbackResponse` parameter does not accept the frozen copy.
+ */
+export type SitepingPanelActionFeedback = DeepReadonly<FeedbackResponse>;
+
+/**
  * Helpers passed to a panel action's `onAction` as its second argument.
  * Both do nothing once the widget has been destroyed.
  */
@@ -97,7 +104,7 @@ export interface SitepingPanelActionBase {
    * for that feedback. Defaults to always visible. A throw hides the action
    * and is reported through `onError`.
    */
-  visible?: ((feedback: Readonly<FeedbackResponse>) => boolean) | undefined;
+  visible?: ((feedback: SitepingPanelActionFeedback) => boolean) | undefined;
 }
 
 /** A panel action rendered as a button that runs host code. */
@@ -110,7 +117,7 @@ export interface SitepingPanelButtonAction extends SitepingPanelActionBase {
    * Throws and rejections are reported through `onError` and restore the
    * buttons; the detail view stays open either way.
    */
-  onAction: (feedback: Readonly<FeedbackResponse>, context: SitepingPanelActionContext) => void | Promise<void>;
+  onAction: (feedback: SitepingPanelActionFeedback, context: SitepingPanelActionContext) => void | Promise<void>;
   /** Not available on a button action — use either `onAction` or `href`, never both. */
   href?: never;
 }
@@ -125,7 +132,7 @@ export interface SitepingPanelLinkAction extends SitepingPanelActionBase {
    * returning one hides the action and is reported through `onError`. Web
    * links open in a new tab with `rel="noopener noreferrer"`.
    */
-  href: string | ((feedback: Readonly<FeedbackResponse>) => string);
+  href: string | ((feedback: SitepingPanelActionFeedback) => string);
   /** Not available on a link action — use either `onAction` or `href`, never both. */
   onAction?: never;
 }

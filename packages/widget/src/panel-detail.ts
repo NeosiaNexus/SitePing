@@ -13,6 +13,7 @@ import {
   type FeedbackResponse,
   type FeedbackStatus,
   isClosedStatus,
+  type SitepingPanelActionFeedback,
   type SitepingPanelButtonAction,
 } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
@@ -957,7 +958,7 @@ export interface DetailCallbacks {
   /** False hides "Go to annotation" (e.g. the feedback belongs to another page). */
   canGoToAnnotation?: (feedback: FeedbackResponse) => boolean;
   /** Runs a host-defined button action. Never rejects: the panel contains and reports host failures. */
-  onCustomAction: (action: SitepingPanelButtonAction, feedback: Readonly<FeedbackResponse>) => Promise<void>;
+  onCustomAction: (action: SitepingPanelButtonAction, feedback: SitepingPanelActionFeedback) => Promise<void>;
   /** Reports a host `visible()`/`href()` that threw or an unsafe computed href — the action is hidden. */
   onCustomActionError: (error: unknown) => void;
 }
