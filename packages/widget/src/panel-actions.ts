@@ -33,14 +33,28 @@ const ICON_TAGS = new Set([
   "mask",
 ]);
 
+// Geometry, paint and gradient/clip/mask plumbing. Everything else —
+// handlers, href / xlink:href, style, class, filter, marker-*, cursor — is
+// dropped.
+const ICON_ATTRS = new Set(
+  `id viewbox preserveaspectratio width height x y x1 y1 x2 y2 cx cy r rx ry fx fy fr d points pathlength
+  transform opacity color fill fill-opacity fill-rule stroke stroke-width stroke-linecap stroke-linejoin
+  stroke-miterlimit stroke-dasharray stroke-dashoffset stroke-opacity clip-path clip-rule mask offset
+  stop-color stop-opacity gradientunits gradienttransform spreadmethod clippathunits maskunits
+  maskcontentunits`.split(/\s+/),
+);
+
+// Presentation attributes are parsed as CSS, where an escaped `\75 rl(…)`,
+// `image-set(…)` or `src(…)` fetches as surely as `url(…)`. So a value may
+// hold no escape and call nothing but a color or transform function, or
+// `url(#id)` pointing inside the icon.
+const INERT_CALLS =
+  /\b(?:(?:rgba?|hsla?|matrix|translate|scale|rotate|skewx|skewy)\([^()\\]*\)|url\(\s*(['"]?)#[\w-]+\1\s*\))/gi;
+const isInertValue = (value: string) => !value.includes("\\") && !value.replace(INERT_CALLS, "").includes("(");
+
 function sanitizeIconNode(node: Element): void {
   for (const attr of [...node.attributes]) {
-    const name = attr.name.toLowerCase();
-    // Handlers, links (href / xlink:href), inline CSS, and url() references
-    // to anything but a local fragment.
-    if (name.startsWith("on") || name.endsWith("href") || name === "style" || /url\((?!\s*['"]?#)/i.test(attr.value)) {
-      node.removeAttribute(attr.name);
-    }
+    if (!ICON_ATTRS.has(attr.name.toLowerCase()) || !isInertValue(attr.value)) node.removeAttribute(attr.name);
   }
   for (const child of [...node.children]) {
     if (ICON_TAGS.has(child.localName.toLowerCase())) sanitizeIconNode(child);

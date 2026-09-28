@@ -93,7 +93,7 @@ initSiteping({
 
 ## Icons
 
-`icon` takes SVG markup, drawn at 15 px before the label and hidden from assistive technologies (the label already names the control). The markup is parsed in an inert document and reduced to plain shapes — `path`, `circle`, `rect`, `g`, gradients, clip paths. Scripts, `foreignObject`, styles, animations, links, event handlers and external `url()` references are dropped. Still, treat it as static markup you control. A string that is not an `<svg>` is ignored with a warning, and the action keeps its label.
+`icon` takes SVG markup, drawn at 15 px before the label and hidden from assistive technologies (the label already names the control). The markup is parsed in an inert document and reduced to plain shapes — `path`, `circle`, `rect`, `g`, gradients, clip paths — keeping only their geometry and paint attributes. Scripts, `foreignObject`, styles, animations, links, event handlers and any attribute value that could load a resource are dropped; `url(#id)` references inside the icon are kept. Still, treat it as static markup you control. A string that is not an `<svg>` is ignored with a warning, and the action keeps its label.
 
 ## React
 

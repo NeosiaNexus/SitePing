@@ -93,7 +93,7 @@ initSiteping({
 
 ## Icônes
 
-`icon` prend du balisage SVG, dessiné en 15 px avant le libellé et masqué des technologies d'assistance (le libellé nomme déjà le contrôle). Le balisage est analysé dans un document inerte et réduit à des formes simples — `path`, `circle`, `rect`, `g`, dégradés, masques de découpe. Scripts, `foreignObject`, styles, animations, liens, gestionnaires d'événements et références `url()` externes sont supprimés. Traitez-le malgré tout comme du balisage statique que vous maîtrisez. Une chaîne qui n'est pas un `<svg>` est ignorée avec un avertissement, et l'action garde son libellé.
+`icon` prend du balisage SVG, dessiné en 15 px avant le libellé et masqué des technologies d'assistance (le libellé nomme déjà le contrôle). Le balisage est analysé dans un document inerte et réduit à des formes simples — `path`, `circle`, `rect`, `g`, dégradés, masques de découpe — dont seuls les attributs de géométrie et de peinture sont conservés. Scripts, `foreignObject`, styles, animations, liens, gestionnaires d'événements et toute valeur d'attribut capable de charger une ressource sont supprimés ; les références `url(#id)` internes à l'icône sont conservées. Traitez-le malgré tout comme du balisage statique que vous maîtrisez. Une chaîne qui n'est pas un `<svg>` est ignorée avec un avertissement, et l'action garde son libellé.
 
 ## React
 

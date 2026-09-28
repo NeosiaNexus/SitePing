@@ -1175,8 +1175,15 @@ test.describe("Panel actions", () => {
   // <img onerror> hoisted out of an <svg> parsed with createContextualFragment),
   // link attributes as the browser resolves them, and layout geometry.
   let feedbackId = "";
+  let external: string[] = [];
 
   test.beforeEach(async ({ page, browserName }) => {
+    external = [];
+    await page.route(/^https?:\/\/evil\.test\//, (route) => route.abort());
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.protocol.startsWith("http") && url.host !== "localhost:3999") external.push(url.href);
+    });
     const project = `e2e-${browserName}-actions`;
     await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
     const created = await page.request.post("http://localhost:3999/api/siteping", {
@@ -1204,8 +1211,9 @@ test.describe("Panel actions", () => {
     await s.waitFor(".sp-detail-actions--custom");
   });
 
-  test("renders a sanitized icon that never runs, and safe links", async ({ page }) => {
-    // Give a hoisted <img src="x"> ample time to 404 and fire onerror.
+  test("renders a sanitized icon that never runs nor fetches, and safe links", async ({ page }) => {
+    // Give a hoisted <img src="x"> ample time to 404 and fire onerror, and
+    // the icon's CSS-parsed attributes time to request their resources.
     await page.waitForTimeout(500);
     const result = await page.evaluate(() => {
       const root = document.querySelector("siteping-widget")!.shadowRoot!;
@@ -1228,7 +1236,12 @@ test.describe("Panel actions", () => {
 
     expect(result.pwned).toBe(false);
     expect(result.imgs).toBe(0);
-    expect(result.icon).toBe('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"></path></svg>');
+    expect(external).toEqual([]);
+    expect(result.icon).toBe(
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"></path>' +
+        '<rect width="8" height="8"></rect><rect x="8" width="8" height="8"></rect>' +
+        '<rect x="16" width="8" height="8"></rect></svg>',
+    );
     expect(result.record).toBe("BUTTON");
     expect(result.tracker).toEqual({
       tag: "A",

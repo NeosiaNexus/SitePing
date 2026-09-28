@@ -43,6 +43,32 @@ describe("parseActionIcon", () => {
     expect(icon?.outerHTML).toBe('<svg aria-hidden="true"><path d="M0 0" stroke="url(#local)"></path></svg>');
   });
 
+  it("drops CSS-parsed values that could still fetch, and attributes outside the allowlist", () => {
+    const icon = parseActionIcon(
+      '<svg class="x" data-x="1" xmlns="http://www.w3.org/2000/svg">' +
+        '<rect width="4" height="4" fill="\\75 rl(https://t.example/f.svg#p)" mask="image-set(\'https://t.example/m.png\' 1x)"/>' +
+        '<circle r="2" clip-path="src(https://t.example/c.svg)" cursor="url(https://t.example/c.cur), auto"/>' +
+        '<path d="M1 1" stroke="rgb(var(--x))" filter="url(#f)" marker-start="url(#m)"/>' +
+        "</svg>",
+    );
+    expect(icon?.outerHTML).toBe(
+      '<svg aria-hidden="true"><rect width="4" height="4"></rect><circle r="2"></circle><path d="M1 1"></path></svg>',
+    );
+  });
+
+  it("keeps colors, transforms and local references", () => {
+    const attrs =
+      'fill="url(#g) none" stroke="rgba(0, 0, 0, 0.5)" transform="translate(1 2) rotate(45)" ' +
+      'fill-rule="evenodd" stroke-linecap="round" mask="url(\'#m\')" color="currentColor"';
+    const icon = parseActionIcon(
+      `<svg viewBox="0 0 24 24"><defs><linearGradient id="g" gradientTransform="scale(2)"><stop offset="0" stop-color="#fff"/></linearGradient></defs><path d="M0 0" ${attrs}/></svg>`,
+    );
+    expect(icon?.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(icon?.querySelector("linearGradient")?.getAttribute("gradientTransform")).toBe("scale(2)");
+    expect(icon?.querySelector("stop")?.getAttribute("stop-color")).toBe("#fff");
+    expect(icon?.querySelector("path")?.outerHTML).toBe(`<path d="M0 0" ${attrs}></path>`);
+  });
+
   it("returns null for anything that is not an <svg> root", () => {
     expect(parseActionIcon("<img src=x onerror=alert(1)>")).toBeNull();
     expect(parseActionIcon("<b>bold</b>")).toBeNull();

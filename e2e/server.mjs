@@ -138,13 +138,18 @@ const HTML = `<!DOCTYPE html>
 
 // Injected by ?panelActions=1 (panel actions spec): a button that records
 // what the host receives and stays pending until released, a computed link,
-// an icon smuggling an <img onerror> that must never run, and a label too
-// long for one line.
+// an icon smuggling an <img onerror> that must never run and CSS-parsed
+// attributes that must never fetch (&#92; decodes to the backslash of a CSS
+// escape, \75 = "u"), and a label too long for one line.
 const PANEL_ACTIONS_CONFIG = `      panelActions: [
         {
           id: 'record',
           label: 'Record',
-          icon: '<svg viewBox="0 0 24 24"><path d="M4 12h16"/><img src="x" onerror="window.__pwned = true"></svg>',
+          icon: '<svg viewBox="0 0 24 24"><path d="M4 12h16"/>' +
+            '<rect width="8" height="8" fill="&#92;75 rl(http://evil.test/fill.svg#p)"/>' +
+            '<rect x="8" width="8" height="8" mask="&#92;75 rl(http://evil.test/mask.svg#m)"/>' +
+            '<rect x="16" width="8" height="8" mask="image-set(&#39;http://evil.test/set.png&#39; 1x)"/>' +
+            '<img src="x" onerror="window.__pwned = true"></svg>',
           onAction: (feedback) => new Promise((resolve) => {
             window.__panelActionCalls = (window.__panelActionCalls || []).concat([
               { id: feedback.id, frozen: Object.isFrozen(feedback) && Object.isFrozen(feedback.annotations) },
