@@ -322,7 +322,9 @@ describe("comments — email redaction", () => {
     const feedback = await createFeedback(handler);
     await postComment(handler, commentBody(feedback.id));
 
-    const response = await handler.PATCH(request("PATCH", { id: feedback.id, projectName: PROJECT, status: "resolved" }));
+    const response = await handler.PATCH(
+      request("PATCH", { id: feedback.id, projectName: PROJECT, status: "resolved" }),
+    );
 
     expect(((await response.json()) as FeedbackResponse).comments?.[0]?.authorEmail).toBe("");
   });
@@ -391,7 +393,9 @@ describe("comments — DELETE", () => {
     const handler = createSitepingHandler({ store, requireAuthForDestructive: false });
     const { feedback, doomed } = await seedThread(handler);
 
-    const response = await handler.DELETE(request("DELETE", { id: feedback.id, projectName: PROJECT, commentId: doomed.id }));
+    const response = await handler.DELETE(
+      request("DELETE", { id: feedback.id, projectName: PROJECT, commentId: doomed.id }),
+    );
 
     expect(response.status).toBe(400);
     expect(await store.findByClientId("uuid-123")).not.toBeNull();
@@ -404,7 +408,9 @@ describe("comments — a store without them", () => {
     const feedback = await createFeedback(handler);
 
     const listed = await list(handler);
-    const patched = await handler.PATCH(request("PATCH", { id: feedback.id, projectName: PROJECT, status: "resolved" }));
+    const patched = await handler.PATCH(
+      request("PATCH", { id: feedback.id, projectName: PROJECT, status: "resolved" }),
+    );
     const posted = await handler.POST(request("POST", commentBody(feedback.id)));
     const deleted = await handler.DELETE(
       request("DELETE", { projectName: PROJECT, feedbackId: feedback.id, commentId: "c1" }),
