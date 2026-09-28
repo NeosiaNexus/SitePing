@@ -12,6 +12,7 @@ In-memory store for [SitePing](https://github.com/NeosiaNexus/SitePing) — zero
 
 ```bash
 npm install @siteping/adapter-memory
+npm install @siteping/server # only to serve it over HTTP
 ```
 
 ## Usage

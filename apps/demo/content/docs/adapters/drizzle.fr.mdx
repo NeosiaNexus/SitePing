@@ -10,10 +10,10 @@ description: Un store de production sur PostgreSQL ou Turso / libSQL via Drizzle
 | `@siteping/adapter-drizzle/pg` | PostgreSQL | N'importe quel driver PostgreSQL de Drizzle — node-postgres, postgres.js, Neon (serverless et HTTP), Vercel Postgres, Supabase, PGlite… |
 | `@siteping/adapter-drizzle/libsql` | Turso / libSQL | `drizzle-orm/libsql` uniquement — Turso distant, réplicas embarqués, fichiers locaux |
 
-Il exige Node 20+ et `drizzle-orm` 0.45 ou plus récent (sous la 1.0), en dépendance peer :
+Il exige Node 20+ et `drizzle-orm` 0.45 ou plus récent (sous la 1.0), en dépendance peer. `@siteping/server` sert le store en HTTP (étape 3) :
 
 ```bash
-npm i @siteping/adapter-drizzle drizzle-orm
+npm i @siteping/adapter-drizzle @siteping/server drizzle-orm
 ```
 
 Ajoutez le driver de votre base (`pg`, `postgres`, `@neondatabase/serverless`, `@electric-sql/pglite`, `@libsql/client`…) et `drizzle-kit` pour les migrations.

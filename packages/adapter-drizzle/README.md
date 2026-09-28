@@ -11,7 +11,7 @@
 ## Install
 
 ```bash
-npm install @siteping/adapter-drizzle drizzle-orm
+npm install @siteping/adapter-drizzle @siteping/server drizzle-orm
 ```
 
 **Peer dependency:** `drizzle-orm` `>=0.45 <1` · Node ≥ 20.
