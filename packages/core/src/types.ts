@@ -766,6 +766,20 @@ export function flattenAnnotation(ann: AnnotationPayload): AnnotationCreateInput
 // Abstract Store — adapter pattern
 // ---------------------------------------------------------------------------
 
+/**
+ * Outcome of `SitepingStore.createFeedbackIfAbsent` — the record plus whether
+ * this very call inserted it.
+ */
+export interface FeedbackCreateOutcome {
+  feedback: FeedbackRecord;
+  /**
+   * `true` when this call inserted the record, `false` when a record with the
+   * same `clientId` already existed and is returned instead (a replay, or a
+   * concurrent request that won the race).
+   */
+  created: boolean;
+}
+
 /** Paginated result returned by `SitepingStore.getFeedbacks`. */
 export interface FeedbackPage {
   feedbacks: FeedbackRecord[];
@@ -785,7 +799,10 @@ export interface FeedbackPage {
  *   the record does not exist.
  * - **`createFeedback`**: either return the existing record on duplicate
  *   `clientId` (idempotent) or throw `StoreDuplicateError`. The handler
- *   handles both patterns.
+ *   handles both patterns — but only a throw, or the optional
+ *   `createFeedbackIfAbsent`, tells it the record was not inserted by this
+ *   call; stores that return the existing record should implement
+ *   `createFeedbackIfAbsent` so creation side effects never run twice.
  * - **All mutations**: when a write is accepted but cannot be persisted
  *   (e.g. storage quota), throw `StorePersistenceError` instead of reporting
  *   a phantom success. Detect it with `isStorePersistence`.
@@ -813,6 +830,24 @@ export interface SitepingStore {
    * handlers skip the ownership check and rely on `id` alone.
    */
   verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
+  /**
+   * Optional — `createFeedback` that reports whether this call inserted the
+   * record (`created: true`) or found an existing one with the same
+   * `clientId` (`created: false`). The dedup check and the insert must be
+   * atomic, like `createFeedback`'s: of N concurrent calls with the same
+   * `clientId`, exactly one may report `created: true`, and all must return
+   * that same record. `createCollectionStore` guarantees this within one
+   * store instance by serializing its mutations; stores shared across
+   * processes need an atomic backend primitive (unique constraint,
+   * transaction, compare-and-set).
+   *
+   * HTTP handlers prefer it over `createFeedback` to fire creation side
+   * effects (webhooks) exactly once when concurrent requests race on the
+   * same `clientId`. Stores whose `createFeedback` throws
+   * `StoreDuplicateError` on a duplicate already give that signal and may
+   * leave it out.
+   */
+  createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
 }
 
 /** Payload sent from the widget to the server when submitting feedback. */

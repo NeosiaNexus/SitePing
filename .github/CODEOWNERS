@@ -5,6 +5,7 @@
 packages/widget/    @NeosiaNexus
 packages/dashboard/ @NeosiaNexus
 packages/adapter-prisma/ @NeosiaNexus
+packages/adapter-drizzle/ @NeosiaNexus
 packages/adapter-memory/ @NeosiaNexus
 packages/adapter-localstorage/ @NeosiaNexus
 packages/adapter-kit/ @NeosiaNexus

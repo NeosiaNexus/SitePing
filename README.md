@@ -92,6 +92,7 @@ The full documentation lives at **[siteping.dev/docs](https://siteping.dev/docs)
 | [`@siteping/widget`](./packages/widget) | The feedback widget (framework-agnostic + React hook) | [Widget](https://siteping.dev/docs/widget) · [Configuration](https://siteping.dev/docs/widget/configuration) · [Screenshots](https://siteping.dev/docs/widget/screenshots) |
 | [`@siteping/dashboard`](./packages/dashboard) | Triage inbox component + headless hook | [Dashboard](https://siteping.dev/docs/dashboard) · [Theming](https://siteping.dev/docs/dashboard/theming) |
 | [`@siteping/adapter-prisma`](./packages/adapter-prisma) | Production server adapter (auth, CORS, webhooks) | [Prisma adapter](https://siteping.dev/docs/adapters/prisma) |
+| [`@siteping/adapter-drizzle`](./packages/adapter-drizzle) | Drizzle ORM store (PostgreSQL, Turso/libSQL) | [Drizzle adapter](https://siteping.dev/docs/adapters/drizzle) |
 | [`@siteping/adapter-memory`](./packages/adapter-memory) | In-memory store (tests, demos) | [Memory adapter](https://siteping.dev/docs/adapters/memory) |
 | [`@siteping/adapter-localstorage`](./packages/adapter-localstorage) | Client-side store (zero server) | [localStorage adapter](https://siteping.dev/docs/adapters/localstorage) |
 | [`@siteping/cli`](./packages/cli) | `init` / `sync` / `status` / `doctor` | [CLI](https://siteping.dev/docs/cli) |

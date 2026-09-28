@@ -1,0 +1,20 @@
+/** Name of the scalar "largest argument" SQL function in each dialect. */
+export type GreatestValueFunction = "GREATEST" | "MAX";
+
+/**
+ * Scalar "largest argument" function per dialect — keeps a stamped
+ * `updatedAt` from landing before the row's own timestamps.
+ */
+export const GREATEST_VALUE_FUNCTION = {
+  postgres: "GREATEST",
+  sqlite: "MAX",
+} as const satisfies Record<string, GreatestValueFunction>;
+
+/** CTE holding the feedback row the single-statement PostgreSQL insert actually wrote (none on a `clientId` conflict). */
+export const INSERTED_FEEDBACK_CTE_ALIAS = "siteping_inserted_feedback";
+
+/** CTE of the PostgreSQL annotation insert chained to {@link INSERTED_FEEDBACK_CTE_ALIAS}. */
+export const INSERTED_ANNOTATIONS_CTE_ALIAS = "siteping_inserted_annotations";
+
+/** Alias of the `VALUES` list the annotation rows are selected from. */
+export const ANNOTATION_VALUES_ALIAS = "siteping_annotation_values";

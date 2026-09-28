@@ -224,6 +224,29 @@ describe.each([
     expect(state.rows).toHaveLength(1);
   });
 
+  it("createFeedbackIfAbsent reports one insert when concurrent calls share a clientId", async () => {
+    const { store, state } = arrayBackend(async);
+
+    const outcomes = await Promise.all(Array.from({ length: 5 }, () => store.createFeedbackIfAbsent(input("a"))));
+
+    expect(outcomes.map((o) => o.created)).toEqual([true, false, false, false, false]);
+    expect(outcomes.map((o) => o.feedback.id)).toEqual(Array(5).fill(state.rows[0]?.id));
+    expect(state.rows).toHaveLength(1);
+  });
+
+  it("createFeedbackIfAbsent reports the insert to the call queued after a failed one", async () => {
+    const { store, state } = arrayBackend(async);
+    state.failNextPersist = true;
+
+    const [failed, retried] = await Promise.allSettled([
+      store.createFeedbackIfAbsent(input("a")),
+      store.createFeedbackIfAbsent(input("a")),
+    ]);
+
+    expect(failed).toMatchObject({ status: "rejected", reason: expect.any(StorePersistenceError) });
+    expect(retried).toMatchObject({ status: "fulfilled", value: { created: true, feedback: { clientId: "a" } } });
+  });
+
   it("a rejected mutation does not break the queue for the ones after it", async () => {
     const { store } = arrayBackend(async);
     const a = await store.createFeedback(input("a"));

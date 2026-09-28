@@ -13,10 +13,12 @@ import {
   hasOwn,
   isStoreDuplicate,
   isStoreNotFound,
+  isUnreachableOffset,
   type ScreenshotStorage,
   type SitepingStore,
   StoreDuplicateError,
   StoreNotFoundError,
+  screenshotMimeType,
   toFeedbackUpdate,
 } from "@siteping/core";
 import {
@@ -229,17 +231,6 @@ function isStoredScreenshotUrl(url: unknown): url is string {
 }
 
 /**
- * MIME type declared by an image data URL (`data:image/png;base64,…` →
- * `image/png`), limited to the JPEG, PNG and WebP the HTTP schema accepts:
- * `PrismaStore` is public and may be fed unvalidated data URLs, and an
- * `image/svg+xml` label would make the stored object script-capable when
- * served inline. Anything else falls back to JPEG, the widget's capture format.
- */
-function dataUrlMimeType(dataUrl: string): string {
-  return /^data:(image\/(?:jpeg|png|webp))[;,]/.exec(dataUrl)?.[1] ?? "image/jpeg";
-}
-
-/**
  * Prisma-backed implementation of `SitepingStore`.
  *
  * Wraps a PrismaClient to satisfy the abstract store interface.
@@ -389,7 +380,7 @@ export class PrismaStore implements SitepingStore {
         // map it to a filesystem path MUST sanitize against path traversal.
         const { url } = await this.screenshotStorage.upload(dataUrl, {
           feedbackId: clientId,
-          mimeType: dataUrlMimeType(dataUrl),
+          mimeType: screenshotMimeType(dataUrl),
         });
         return url;
       } catch (err) {
@@ -470,6 +461,13 @@ export class PrismaStore implements SitepingStore {
     if (urlPattern) where.urlPattern = urlPattern;
     if (search) {
       where.message = this.caseInsensitiveSearch ? { contains: search, mode: "insensitive" } : { contains: search };
+    }
+
+    // A huge `page` from a direct caller yields a `skip` Prisma rejects
+    // (non-integer or past 64 bits): answer the empty page the in-memory
+    // stores return, with the real total, without issuing `findMany`.
+    if (isUnreachableOffset(skip)) {
+      return { feedbacks: [], total: await this.prisma.sitepingFeedback.count({ where }) };
     }
 
     const [feedbacks, total] = await Promise.all([
@@ -814,25 +812,19 @@ export function createSitepingHandler({
    * Creates in flight, keyed by clientId. The widget aborts an attempt after
    * 10 s and resends the same payload, so a retry can reach the server while
    * the first attempt is still being processed. With a store that returns the
-   * existing record on a duplicate clientId (memory, localStorage,
-   * `createCollectionStore`), both requests would pass the replay check and
+   * existing record on a duplicate clientId without implementing
+   * `createFeedbackIfAbsent`, both requests would pass the replay check and
    * both "create" — notifying the webhooks twice. A request whose clientId is
-   * in flight shares that outcome instead. Scoped to this handler instance:
-   * across processes, the store's unique constraint (the duplicate path in
-   * POST) still decides.
+   * in flight shares that outcome instead, and never runs a second insert or
+   * upload. Scoped to this handler instance: across processes, the store
+   * decides — `createFeedbackIfAbsent`, or its unique constraint (the
+   * duplicate path in POST).
    */
   const inflightCreates = new Map<string, Promise<{ feedback: FeedbackRecord; inserted: boolean }>>();
 
   /** Replay check + insert for one validated payload; `inserted` is false for a replay. */
   async function createOrReplay(data: FeedbackPayload): Promise<{ feedback: FeedbackRecord; inserted: boolean }> {
-    // Replay detection up front, for every store alike: stores that return
-    // the existing record on a duplicate clientId are indistinguishable
-    // from a fresh insert afterwards, and a replayed submission must not
-    // notify the webhooks a second time.
-    const replayed = await store.findByClientId(data.clientId);
-    if (replayed) return { feedback: replayed, inserted: false };
-
-    const feedback = await store.createFeedback({
+    const input: FeedbackCreateInput = {
       projectName: data.projectName,
       type: data.type,
       message: data.message,
@@ -848,8 +840,23 @@ export function createSitepingHandler({
       screenshotDataUrl: data.screenshotDataUrl ?? null,
       screenshotRegion: data.screenshotRegion ?? null,
       diagnostics: data.diagnostics ?? null,
-    });
-    return { feedback, inserted: true };
+    };
+
+    // The store reports its own inserts: it arbitrates replays and races on
+    // the clientId atomically, across handler instances and processes too.
+    if (store.createFeedbackIfAbsent) {
+      const { feedback, created } = await store.createFeedbackIfAbsent(input);
+      return { feedback, inserted: created };
+    }
+
+    // Otherwise, replay detection up front: stores that return the existing
+    // record on a duplicate clientId are indistinguishable from a fresh
+    // insert afterwards, and a replayed submission must not notify the
+    // webhooks a second time.
+    const replayed = await store.findByClientId(data.clientId);
+    if (replayed) return { feedback: replayed, inserted: false };
+
+    return { feedback: await store.createFeedback(input), inserted: true };
   }
 
   /**

@@ -48,6 +48,11 @@
       "component": "cli",
       "bump-minor-pre-major": true,
       "extra-files": ["src/index.ts"]
+    },
+    "packages/adapter-drizzle": {
+      "release-type": "node",
+      "component": "adapter-drizzle",
+      "bump-minor-pre-major": true
     }
   }
 }

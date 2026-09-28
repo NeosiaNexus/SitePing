@@ -1,0 +1,89 @@
+{
+  "name": "@siteping/adapter-drizzle",
+  "version": "0.0.0",
+  "description": "Drizzle ORM adapter for Siteping — PostgreSQL and Turso/libSQL",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./pg": {
+      "import": {
+        "types": "./dist/pg.d.ts",
+        "default": "./dist/pg.js"
+      },
+      "require": {
+        "types": "./dist/pg.d.cts",
+        "default": "./dist/pg.cjs"
+      }
+    },
+    "./libsql": {
+      "import": {
+        "types": "./dist/libsql.d.ts",
+        "default": "./dist/libsql.js"
+      },
+      "require": {
+        "types": "./dist/libsql.d.cts",
+        "default": "./dist/libsql.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && node ../../scripts/fix-dts.mjs dist",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "siteping",
+    "drizzle",
+    "postgres",
+    "turso",
+    "libsql",
+    "sqlite",
+    "adapter",
+    "feedback",
+    "typescript"
+  ],
+  "author": "neosianexus",
+  "license": "MIT",
+  "homepage": "https://siteping.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NeosiaNexus/SitePing.git",
+    "directory": "packages/adapter-drizzle"
+  },
+  "bugs": {
+    "url": "https://github.com/NeosiaNexus/SitePing/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@libsql/client": "^0.18.0",
+    "@siteping/adapter-prisma": "workspace:*",
+    "@siteping/core": "workspace:*",
+    "drizzle-kit": "^0.31.11",
+    "drizzle-orm": "^0.45.3"
+  },
+  "peerDependencies": {
+    "drizzle-orm": ">=0.45.0 <1"
+  }
+}

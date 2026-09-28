@@ -453,6 +453,28 @@ export function testSitepingStore(
         expect(page3.feedbacks).toHaveLength(1);
       });
 
+      it("returns an empty page with the total when the page lies far past the end", async () => {
+        for (let i = 0; i < 3; i++) {
+          await store.createFeedback(createInput());
+        }
+
+        // Direct callers reach the store without the HTTP schema's bounds:
+        // offsets past a 32-bit and a 64-bit signed integer, past
+        // `Number.MAX_SAFE_INTEGER`, and an infinite one must all read as an
+        // empty page, never as a backend error.
+        const farPages = [
+          { page: 2 ** 31, limit: 2 },
+          { page: 1e18, limit: 100 },
+          { page: Number.MAX_SAFE_INTEGER, limit: 50 },
+          { page: 1e308, limit: 100 },
+        ];
+        for (const { page, limit } of farPages) {
+          const result = await store.getFeedbacks({ projectName: "test-project", page, limit });
+          expect(result.feedbacks).toEqual([]);
+          expect(result.total).toBe(3);
+        }
+      });
+
       it("caps limit at 100", async () => {
         // 105 records so a limit above the cap actually exercises it.
         for (let i = 0; i < 105; i++) {
@@ -727,6 +749,44 @@ export function testSitepingStore(
         await expect(store.verifyProjectOwnership(fb.id, "owner")).resolves.toBe(true);
         await expect(store.verifyProjectOwnership(fb.id, "intruder")).resolves.toBe(false);
         await expect(store.verifyProjectOwnership("unknown-id", "owner")).resolves.toBe(false);
+      });
+    });
+
+    // ------------------------------------------------------------------
+    // createFeedbackIfAbsent (optional contract member)
+    // ------------------------------------------------------------------
+
+    describe("createFeedbackIfAbsent", () => {
+      it("reports an insert, then the existing record for the same clientId (when implemented)", async () => {
+        // Optional member — same skip-but-run pattern as verifyProjectOwnership.
+        if (!store.createFeedbackIfAbsent) return;
+
+        const input = createInput({ clientId: "once-id" });
+        const first = await store.createFeedbackIfAbsent(input);
+        const second = await store.createFeedbackIfAbsent(input);
+
+        expect(first.created).toBe(true);
+        expect(second).toEqual({ feedback: expect.objectContaining({ id: first.feedback.id }), created: false });
+        expect((await store.getFeedbacks({ projectName: "test-project" })).total).toBe(1);
+      });
+
+      it("reports exactly one insert when concurrent calls race on the same clientId (when implemented)", async () => {
+        if (!store.createFeedbackIfAbsent) return;
+        const createFeedbackIfAbsent = store.createFeedbackIfAbsent.bind(store);
+
+        const concurrentCallerCount = 5;
+        const input = createInput({ clientId: "race-id" });
+        const outcomes = await Promise.all(
+          Array.from({ length: concurrentCallerCount }, () => createFeedbackIfAbsent(input)),
+        );
+
+        const insertedOutcomes = outcomes.filter((outcome) => outcome.created);
+        expect(insertedOutcomes).toHaveLength(1);
+        const insertedId = insertedOutcomes[0]?.feedback.id;
+        for (const outcome of outcomes) expect(outcome.feedback.id).toBe(insertedId);
+        const { feedbacks, total } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(total).toBe(1);
+        expect(feedbacks[0]?.id).toBe(insertedId);
       });
     });
   });

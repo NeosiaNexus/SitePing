@@ -2,7 +2,13 @@ export { EMAIL_PATTERN, isValidEmail } from "./email.js";
 export type { SitepingErrorCode } from "./errors.js";
 export { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
 export type { FilterResult, Pagination } from "./filters.js";
-export { applyFeedbackFilters, clampPagination, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from "./filters.js";
+export {
+  applyFeedbackFilters,
+  clampPagination,
+  DEFAULT_PAGE_LIMIT,
+  isUnreachableOffset,
+  MAX_PAGE_LIMIT,
+} from "./filters.js";
 export type { I18n, LocaleLoaders, TranslateFunction } from "./i18n.js";
 export { createI18n, interpolate, tWithParams } from "./i18n.js";
 export type {
@@ -19,6 +25,7 @@ export type {
 } from "./schema.js";
 export { isRelationField, isScalarField, SITEPING_MODELS } from "./schema.js";
 export type { ScreenshotStorage } from "./screenshot-storage.js";
+export { screenshotMimeType } from "./screenshot-storage.js";
 export type { CollectionStore, CollectionStoreBackend } from "./store-helpers.js";
 export { buildAnnotationRecord, buildFeedbackRecord, createCollectionStore } from "./store-helpers.js";
 export type { AssertEqual, IfEquals, Prettify, Serialized } from "./type-utils.js";
@@ -36,6 +43,7 @@ export type {
   DiagnosticsCaptureOptions,
   DiagnosticsSnapshot,
   FeedbackCreateInput,
+  FeedbackCreateOutcome,
   FeedbackPage,
   FeedbackPayload,
   FeedbackQuery,

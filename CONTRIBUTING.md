@@ -52,6 +52,7 @@ Monorepo with bun workspaces + Turborepo. Libraries live in `packages/`, the web
 | `@siteping/widget` | published | Browser | Feedback widget (Shadow DOM, closed). Accepts `store` for client-side mode |
 | `@siteping/dashboard` | published | Browser (React) | Linear-style triage inbox (`<SitepingInbox />` + headless `useSitepingInbox()`) |
 | `@siteping/adapter-prisma` | published | Node | Prisma database adapter |
+| `@siteping/adapter-drizzle` | published | Node | Drizzle ORM store (PostgreSQL, Turso/libSQL) |
 | `@siteping/adapter-memory` | published | Any | In-memory adapter (testing, demos, serverless) |
 | `@siteping/adapter-localstorage` | published | Browser | localStorage adapter (demos, prototyping) |
 | `@siteping/adapter-kit` | published | Any | Everything third-party adapter authors need: store contract, helpers, `createCollectionStore`, and the conformance suite (`/testing`) |
@@ -97,7 +98,7 @@ English is the source language and lives at bare URLs (`/docs/widget`). Other la
 - A page without a translation still resolves in that language, served in English (`fallbackLanguage: "en"`), so partial translations never 404.
 - Adding a language means one entry in `apps/demo/src/lib/docs/i18n.ts` plus its UI dictionary in `apps/demo/src/lib/docs/ui.ts`, and a `localeMap` entry in `apps/demo/src/app/api/search/route.ts` so search uses the right stemmer.
 
-> **French is currently 100% translated** (18/18 pages). Adding a new English page without its `.fr.mdx` twin silently drops that page back to English for French readers — please add both, or flag it in the PR so a translator can pick it up.
+> **French is currently 100% translated** (20/20 pages). Adding a new English page without its `.fr.mdx` twin silently drops that page back to English for French readers — please add both, or flag it in the PR so a translator can pick it up.
 
 ### Before you open the PR
 
@@ -113,7 +114,7 @@ For an adapter, use the scaffold — it writes every file below in the correct
 final shape and registers the package in release-please:
 
 ```bash
-bun run new:adapter drizzle -- --platform=node   # node | browser | neutral
+bun run new:adapter kysely -- --platform=node   # node | browser | neutral
 ```
 
 For a non-adapter package, copy the closest existing one (`packages/adapter-memory`
@@ -158,7 +159,7 @@ which exports the contract, the building blocks and the conformance suite.
 **First-party adapters** start with the scaffold:
 
 ```bash
-bun run new:adapter drizzle -- --platform=node
+bun run new:adapter kysely -- --platform=node
 ```
 
 Two implementation strategies:
@@ -167,8 +168,8 @@ Two implementation strategies:
   `createCollectionStore({ load, persist, generateId })` from `@siteping/core`
   your three storage primitives and you get the complete store — clientId
   dedup, filtering/pagination, the error contract, `verifyProjectOwnership`,
-  and the screenshot-drop retry on failed persists. `adapter-memory` is the
-  ~80-line reference.
+  `createFeedbackIfAbsent`, and the screenshot-drop retry on failed persists.
+  `adapter-memory` is the ~80-line reference.
 - **Query backends** (SQL, ORMs): implement the 6 methods directly. Use
   `buildFeedbackRecord` / `buildAnnotationRecord` for input→record
   construction, and follow the error contract documented on `SitepingStore`:
@@ -176,9 +177,11 @@ Two implementation strategies:
   `updateFeedback`/`deleteFeedback` throw `StoreNotFoundError`,
   `deleteAllFeedbacks` is a no-op when empty, every lost write throws
   `StorePersistenceError`. Optionally implement `verifyProjectOwnership` so
-  HTTP handlers can reject cross-project PATCH/DELETE.
+  HTTP handlers can reject cross-project PATCH/DELETE, and
+  `createFeedbackIfAbsent` when `createFeedback` returns the existing record
+  on a duplicate, so webhooks fire once per feedback.
 
-Verify with the shared conformance suite (~53 tests — the scaffold pre-wires
+Verify with the shared conformance suite (~56 tests — the scaffold pre-wires
 this file):
 
 ```ts

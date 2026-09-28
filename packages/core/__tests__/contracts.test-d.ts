@@ -8,6 +8,7 @@ import { describe, expectTypeOf, it } from "vitest";
 import {
   type CLOSED_FEEDBACK_STATUSES,
   type ClosedFeedbackStatus,
+  type CollectionStore,
   createCollectionStore,
   type FeedbackStatus,
   isClosedStatus,
@@ -17,6 +18,8 @@ import {
 } from "../src/index.js";
 import type {
   AnnotationResponse,
+  FeedbackCreateInput,
+  FeedbackCreateOutcome,
   FeedbackRecord,
   FeedbackResponse,
   FeedbackUpdateInput,
@@ -96,10 +99,22 @@ describe("wire types derived from record types", () => {
 });
 
 describe("SitepingStore contract", () => {
-  it("is satisfied by the collection-store engine, including verifyProjectOwnership", () => {
+  it("is satisfied by the collection-store engine, including both optional members", () => {
     const engine = createCollectionStore({ load: () => [], persist: () => {}, generateId: () => "id" });
     expectTypeOf(engine).toExtend<SitepingStore>();
+    expectTypeOf(engine).toExtend<Required<Pick<SitepingStore, "verifyProjectOwnership" | "createFeedbackIfAbsent">>>();
     expectTypeOf(engine.verifyProjectOwnership).returns.resolves.toEqualTypeOf<boolean>();
+    expectTypeOf(engine.createFeedbackIfAbsent).returns.resolves.toEqualTypeOf<FeedbackCreateOutcome>();
+  });
+
+  it("keeps createFeedbackIfAbsent optional for minimal adapters", () => {
+    expectTypeOf<SitepingStore["createFeedbackIfAbsent"]>().toEqualTypeOf<
+      ((data: FeedbackCreateInput) => Promise<FeedbackCreateOutcome>) | undefined
+    >();
+  });
+
+  it("keeps createFeedbackIfAbsent optional on CollectionStore, which hand-built stores may be typed as", () => {
+    expectTypeOf<Omit<CollectionStore, "createFeedbackIfAbsent">>().toExtend<CollectionStore>();
   });
 
   it("keeps verifyProjectOwnership optional for minimal adapters", () => {

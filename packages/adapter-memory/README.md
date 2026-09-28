@@ -30,7 +30,7 @@ initSiteping({ store, projectName: "preview" });
 
 `clear()` resets it between test cases. Duplicate `clientId` submissions return the existing record (retry-safe), unknown IDs throw `StoreNotFoundError`, and records are returned **by reference** — clone before mutating.
 
-Writing your own adapter? This store passes the shared 53-test conformance suite (`testSitepingStore` from `@siteping/core/testing`) — yours should too.
+Writing your own adapter? This store passes the shared 56-test conformance suite (`testSitepingStore` from `@siteping/core/testing`) — yours should too.
 
 ## License
 

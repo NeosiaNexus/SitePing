@@ -3,7 +3,7 @@ title: Writing an adapter
 description: Build your own store adapter with @siteping/adapter-kit — the engine, the contract, and the conformance suite.
 ---
 
-The three bundled adapters cover most setups, but SitePing stores are pluggable: anything that can hold records can back the widget and the dashboard. `@siteping/adapter-kit` is the published package for that — it carries the `SitepingStore` contract, the building blocks the first-party adapters run on, and the conformance suite that proves your implementation behaves like the others.
+The four bundled adapters cover most setups, but SitePing stores are pluggable: anything that can hold records can back the widget and the dashboard. `@siteping/adapter-kit` is the published package for that — it carries the `SitepingStore` contract, the building blocks the first-party adapters run on, and the conformance suite that proves your implementation behaves like the others.
 
 ```bash
 npm i -D @siteping/adapter-kit vitest
@@ -41,7 +41,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 53 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
+That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 56 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
 
 **The three primitives:**
 
@@ -51,17 +51,17 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 | `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
 | `generateId()` | A unique id, used for both feedback and annotation records |
 
-`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional, so you can delegate to it without a null check.
+`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional — with `createFeedbackIfAbsent` guaranteed too, so you can delegate to both without a null check.
 
 **A failed `persist` leaves your snapshot untouched.** The engine never mutates the array `load()` returned — every write builds a new array and hands it to `persist`. So if `load()` serves a cached array and the write throws, no phantom record stays visible, and the widget's retry of the same `clientId` is written for real instead of being deduplicated against something that never reached storage.
 
 **Quota pressure drops screenshots first.** When `persist` throws during `createFeedback` and the record carries an inline screenshot, the engine clears `screenshotUrl` — by far the heaviest field — and retries once, so the written comment survives a full storage bucket. If that second write also fails, the error propagates: returning the record would claim a success that never happened.
 
-**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `updateFeedback`, `deleteFeedback` and `deleteAllFeedbacks` so each starts from the previous one's result; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
+**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback` and `deleteAllFeedbacks` so each starts from the previous one's result; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
 
 ## Query backends
 
-For SQL and ORMs, implement the six methods directly — you want your `WHERE` clauses in the database, not a full table load per request. The kit still saves you the input-to-record conversion:
+For SQL and ORMs, implement the six methods directly — you want your `WHERE` clauses in the database, not a full table load per request. The kit still saves you the input-to-record conversion (on PostgreSQL or Turso / libSQL, the first-party [Drizzle adapter](/docs/adapters/drizzle) already does all of this):
 
 ```ts
 import {
@@ -72,7 +72,7 @@ import {
   type SitepingStore,
 } from "@siteping/adapter-kit";
 
-export class DrizzleStore implements SitepingStore {
+export class PostgresStore implements SitepingStore {
   async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
     const record = buildFeedbackRecord(data, {
       id: crypto.randomUUID(),
@@ -114,11 +114,11 @@ Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreP
 - Newest first, by `createdAt` descending.
 - `page` is 1-based, `limit` defaults to 50 and is capped at 100.
 
-Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above. Querying a database? `clampPagination(query)` returns the normalized `{ page, limit, skip }` — the same clamp the in-memory pipeline and `PrismaStore` use, so pass its `limit` and `skip` straight to your `LIMIT`/`OFFSET`.
+Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above. Querying a database? `clampPagination(query)` returns the normalized `{ page, limit, skip }` — the same clamp the in-memory pipeline and `PrismaStore` use, so pass its `limit` and `skip` straight to your `LIMIT`/`OFFSET`. Check `isUnreachableOffset(skip)` first: a huge `page` from a direct caller yields an offset past `Number.MAX_SAFE_INTEGER` (or `Infinity`) that SQL backends reject, and the suite expects `{ feedbacks: [], total }` for it — answer with your count query alone.
 
 ## Project ownership
 
-`verifyProjectOwnership(id, projectName)` is the one optional method. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
+`verifyProjectOwnership(id, projectName)` is optional. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
 
 ```ts
 async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
@@ -129,9 +129,13 @@ async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> 
 
 Implement it whenever your store serves more than one project. When it's absent, handlers skip the check and trust the `id` alone.
 
+## Exactly-once creation effects
+
+`createFeedbackIfAbsent(data)` is the other optional method: `createFeedback` that also returns whether this call inserted the record — `{ feedback, created }`. The request handlers prefer it over `createFeedback`, and notify webhooks only for `created: true`, so two requests racing on the same `clientId` — the widget retrying a request that timed out, landing on another server instance — notify once. Implement it if your `createFeedback` returns the existing record on a duplicate (`duplicateBehavior: "return"`); a store that throws `StoreDuplicateError` already gives the handlers that signal and can leave it out. The dedup check and the insert must be atomic: of concurrent calls with the same `clientId`, exactly one reports `created: true`, and all return that record. `createCollectionStore` guarantees it within one store instance by queueing its writes; storage shared by several processes (or browser tabs) needs an atomic primitive of its own — a unique constraint, a transaction, a compare-and-set.
+
 ## Prove it: the conformance suite
 
-The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 53 tests:
+The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 56 tests:
 
 ```ts
 // __tests__/my-store.test.ts
@@ -157,7 +161,7 @@ testSitepingStore(() => new PostgresStore(db), {
 });
 ```
 
-`verifyProjectOwnership` is covered too: stores that don't implement it skip the assertions, so adding it later is checked automatically with no test changes.
+`verifyProjectOwnership` and `createFeedbackIfAbsent` are covered too: stores that don't implement them skip the assertions, so adding either later is checked automatically with no test changes.
 
 ## Using your adapter
 

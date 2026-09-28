@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 const faqs: { q: string; a: ReactNode }[] = [
   {
     q: "What databases are supported?",
-    a: "Any database supported by Prisma — PostgreSQL, MySQL, SQLite, MongoDB, CockroachDB, and more. A Drizzle adapter is on the roadmap.",
+    a: "Any database supported by Prisma — PostgreSQL, MySQL, SQLite, MongoDB, CockroachDB, and more — or, with the Drizzle adapter, PostgreSQL and Turso / libSQL.",
   },
   {
     q: "Does it work with frameworks other than Next.js?",
