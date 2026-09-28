@@ -1,0 +1,232 @@
+---
+title: Screenshot storage
+description: Upload screenshots to Cloudflare R2, AWS S3, Cloudflare Images, your database or your disk, and keep only their URL in the feedback.
+---
+
+Without a `screenshotStorage`, the Prisma and Drizzle stores keep each [screenshot](/docs/widget/screenshots) inline, as a base64 `data:` URL in the feedback row. That is fine to start with, but every list query then carries up to a megabyte per row. `@siteping/screenshot-storage` provides a `screenshotStorage` ready to use: the image goes to a backend of your choice, and the feedback stores only its URL.
+
+```bash
+npm i @siteping/screenshot-storage
+```
+
+It runs on Node 20+, Bun, Deno and edge runtimes: the S3 client signs requests with Web Crypto, with no AWS SDK and no runtime dependency. Only the filesystem backend needs Node. Its type declarations use `Uint8Array<ArrayBuffer>`, so type-checking them needs TypeScript 5.7 or later (or `skipLibCheck`).
+
+## Pick a backend
+
+| Backend | Import from | Screenshots are served by |
+|---|---|---|
+| Cloudflare R2, AWS S3, Backblaze B2, MinIO and other S3-compatible buckets | `@siteping/screenshot-storage/s3` | The bucket's public domain or a CDN, or your app when the bucket is private |
+| Cloudflare Images | `@siteping/screenshot-storage/cloudflare-images` | `imagedelivery.net` or your own domain |
+| PostgreSQL through Drizzle | `@siteping/screenshot-storage/drizzle-pg` | Your app |
+| Turso / libSQL through Drizzle | `@siteping/screenshot-storage/drizzle-libsql` | Your app |
+| Local disk (Node) | `@siteping/screenshot-storage/filesystem` | Your app |
+| Memory (tests, demos) | `@siteping/screenshot-storage/memory` | Your app |
+
+Each entry exports an **object store**, which only moves bytes. `createScreenshotStorage` wraps it into the `ScreenshotStorage` your store accepts:
+
+```ts
+// lib/siteping-screenshots.ts
+import { createScreenshotStorage } from "@siteping/screenshot-storage";
+import { createS3ObjectStore } from "@siteping/screenshot-storage/s3";
+
+export const objectStore = createS3ObjectStore({ /* see below */ });
+export const screenshotStorage = createScreenshotStorage(objectStore);
+```
+
+Then hand it to your store:
+
+```ts
+// Prisma: app/api/siteping/route.ts
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ prisma, screenshotStorage });
+
+// Drizzle
+const store = createPgSitepingStore(db, { screenshotStorage, logger: console });
+```
+
+`createScreenshotStorage` does the work every backend shares:
+
+- It validates the data URL before any network or disk access: an allowed image type, then its size.
+- It stores each upload under a fresh random key (`siteping-<32 hex characters>.<extension>`), so no two feedbacks ever share a URL and the client's `clientId` never enters a key. That is the [URL ownership rule](/docs/adapters/prisma#screenshot-storage) the stores rely on when they delete screenshots.
+- It removes an upload whose outcome is unknown (see [below](#uploads-with-an-unknown-outcome)).
+- `delete` only removes [objects it created](#what-delete-removes).
+
+If an upload fails, the store still saves the feedback, without its screenshot, and logs the failure: a broken bucket never costs a client's comment.
+
+## Cloudflare R2 and other S3-compatible buckets
+
+```ts
+import { createS3ObjectStore } from "@siteping/screenshot-storage/s3";
+
+// Cloudflare R2, served from the bucket's custom domain
+export const objectStore = createS3ObjectStore({
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  bucket: "siteping-screenshots",
+  accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  publicBaseUrl: "https://screenshots.example.com",
+});
+```
+
+```ts
+// AWS S3: the regional endpoint and the bucket's region
+export const objectStore = createS3ObjectStore({
+  endpoint: "https://s3.eu-west-3.amazonaws.com",
+  region: "eu-west-3",
+  bucket: "siteping-screenshots",
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  sessionToken: process.env.AWS_SESSION_TOKEN, // temporary credentials only
+  publicBaseUrl: "https://d1234abcd.cloudfront.net",
+});
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `endpoint` | required | The S3 API endpoint (`https://<account>.r2.cloudflarestorage.com`, `https://s3.<region>.amazonaws.com`, `https://s3.<region>.backblazeb2.com`, your MinIO URL). An absolute http(s) URL |
+| `bucket` | required | The bucket name |
+| `region` | `"auto"` | The signing region: `auto` suits R2; on AWS and B2, use the bucket's region |
+| `accessKeyId`, `secretAccessKey`, `sessionToken` | required, optional | The credentials. `sessionToken` is for temporary (STS) credentials |
+| `publicBaseUrl` | required | Where screenshots are read from: the bucket's public domain, a CDN in front of it, or [your app](#serve-screenshots-from-your-app) when the bucket is private |
+| `treatAccessDeniedAsMissing` | `false` | See [least-privilege credentials](#least-privilege-credentials) |
+| `timeoutMs` | `5000` | Per-request timeout, response body included |
+| `now` | the host clock | The clock that signs requests. S3 refuses a signature more than a few minutes off, so pass a corrected clock if the host's drifts |
+| `fetch` | `globalThis.fetch` | The fetch implementation, for tests or a proxy |
+
+Requests use path-style URLs (`<endpoint>/<bucket>/<key>`), which R2, AWS S3, B2 and MinIO all accept. Virtual-hosted-style addressing (`<bucket>.<endpoint>`) is not supported. Each object is stored with `Cache-Control: public, max-age=31536000, immutable`, since a key is never reused: a public bucket or CDN caches screenshots for good.
+
+### Least-privilege credentials
+
+Give the key access to your bucket only, and for AWS scope it to the key prefix:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:GetObject"],
+      "Resource": "arn:aws:s3:::siteping-screenshots/siteping-*"
+    }
+  ]
+}
+```
+
+`s3:GetObject` is only needed when your app serves a private bucket. Without `s3:ListBucket`, S3 answers `403 AccessDenied` for a missing key instead of `404`, so the serve handler would answer `500` for a deleted screenshot. Either grant `s3:ListBucket` on the bucket, or pass `treatAccessDeniedAsMissing: true`. That option maps only the `AccessDenied` code to "missing": signature and credential errors (`SignatureDoesNotMatch`, `InvalidAccessKeyId`, `ExpiredToken`…) still fail. It is off by default because it would also hide a policy that lacks `s3:GetObject` behind `404`s. On R2, an API token with **Object Read & Write** on this one bucket is the equivalent.
+
+## Cloudflare Images
+
+```ts
+import { createCloudflareImagesObjectStore } from "@siteping/screenshot-storage/cloudflare-images";
+
+export const objectStore = createCloudflareImagesObjectStore({
+  accountId: process.env.CF_ACCOUNT_ID!,
+  apiToken: process.env.CF_IMAGES_TOKEN!, // "Cloudflare Images: Edit" permission
+  accountHash: process.env.CF_IMAGES_ACCOUNT_HASH!, // shown in the Images dashboard
+});
+```
+
+Each screenshot is uploaded with its key as a custom image ID, so its delivery URL, `https://imagedelivery.net/<accountHash>/<key>/public`, is known before the upload finishes. `variant` picks another variant than `public`, and `deliveryBaseUrl` serves from your own domain (`https://example.com/cdn-cgi/imagedelivery`). `timeoutMs` and `fetch` work as for S3.
+
+Cloudflare does not allow signed URLs for images with a custom ID, so screenshots stay publicly readable by anyone who has the URL. Keys are 128-bit random values, which nobody can guess, but a URL shared in a ticket or a screenshot of the panel stays valid until the feedback is deleted. If screenshots must stay behind your login, use a private bucket served by your app.
+
+## Serve screenshots from your app
+
+The filesystem, database and memory backends have no public URL of their own, and neither does a private bucket. `createScreenshotServeHandler` serves them from a route of your app, and `publicBaseUrl` points at that route:
+
+```ts
+// lib/siteping-screenshots.ts
+import { createScreenshotStorage } from "@siteping/screenshot-storage";
+import { createFilesystemObjectStore } from "@siteping/screenshot-storage/filesystem";
+
+export const objectStore = createFilesystemObjectStore({
+  directory: "/var/lib/siteping/screenshots", // created if missing
+  publicBaseUrl: "https://app.example.com/api/siteping/screenshots",
+});
+export const screenshotStorage = createScreenshotStorage(objectStore);
+```
+
+```ts
+// app/api/siteping/screenshots/[key]/route.ts
+import { createScreenshotServeHandler } from "@siteping/screenshot-storage";
+import { objectStore } from "@/lib/siteping-screenshots";
+
+export const { GET } = createScreenshotServeHandler(objectStore);
+```
+
+The handler takes the key from the last path segment of the request. It is a Fetch API `Request` → `Response` function, so it mounts the same way in Hono, Express or a Worker.
+
+- **Only its own keys.** It serves keys of the `siteping-<32 hex characters>.<extension>` shape, under its `keyPrefix` (default `siteping-`: pass the one you gave `createScreenshotStorage`), and answers `404` to anything else before any read. No request can reach another file of the directory, another app's objects in a shared bucket, or a path outside the store.
+- **Inert images only.** Every response carries `Content-Security-Policy: default-src 'none'; sandbox` and `X-Content-Type-Options: nosniff`. JPEG, PNG, WebP and other raster types are served inline. Anything else a backend holds, like an SVG or `text/html` that reached it by another path, goes out as an `application/octet-stream` download, so it never runs as a page of your app's origin.
+- **Cached for good.** Responses are `Cache-Control: public, max-age=31536000, immutable`, with the key as a strong `ETag`.
+- **Behind your login.** Pass `authorize: (request, { key }) => boolean | Promise<boolean>` to check the request (the same session cookie as your app, for instance): a refusal answers `403`. Responses then become `private, no-cache`: no shared cache stores them, and the browser checks again on each reuse, which costs a `304` without reading the object. A logout or a revoked access takes effect at once. The browser sends your app's cookies with the `<img>` request only when the widget runs on the same site as the route.
+
+The filesystem backend writes `<key>` and a `<key>.content-type` file beside it. It is not suited to serverless platforms, whose disk does not outlive the instance, nor to several instances without a shared volume.
+
+### Screenshots in your database
+
+For a small or self-contained deployment, the Drizzle entries keep screenshots in a table of their own, next to the feedbacks: `bytea` rows on PostgreSQL, `blob` rows on SQLite. Every screenshot view then reads a row of up to about 1.1 MB from your database. In production, prefer object storage.
+
+```ts
+// db/schema.ts
+import { createSitepingScreenshotsPgTable } from "@siteping/screenshot-storage/drizzle-pg";
+
+export const sitepingScreenshots = createSitepingScreenshotsPgTable(); // "siteping_screenshots"
+```
+
+```ts
+// lib/siteping-screenshots.ts
+import { createScreenshotStorage } from "@siteping/screenshot-storage";
+import { createPgScreenshotObjectStore } from "@siteping/screenshot-storage/drizzle-pg";
+import { sitepingScreenshots } from "@/db/schema";
+import { db } from "@/db";
+
+export const objectStore = createPgScreenshotObjectStore(db, {
+  publicBaseUrl: "https://app.example.com/api/siteping/screenshots",
+  table: sitepingScreenshots,
+});
+export const screenshotStorage = createScreenshotStorage(objectStore);
+```
+
+Migrate the table with `drizzle-kit` like the rest of your schema, and serve it with the route above. On Turso / libSQL, use `createSitepingScreenshotsSqliteTable` and `createLibSQLScreenshotObjectStore` from `@siteping/screenshot-storage/drizzle-libsql`. Both need `drizzle-orm` 0.45 or later (below 1.0), an optional peer dependency. The table is independent from the store's tables: `createSitepingScreenshotsPgTable("my_name")` renames it, and you pass it as `table`.
+
+## Options
+
+`createScreenshotStorage(objectStore, options)`:
+
+| Option | Default | What it does |
+|---|---|---|
+| `allowedContentTypes` | `["image/jpeg", "image/png", "image/webp"]` | Image types accepted, case-insensitive. SVG and other XML-based types are refused when the storage is created, since they can run scripts once opened. The HTTP handler only accepts the three defaults anyway, so extra types matter only to code that calls the store directly |
+| `maxBytes` | `1125000` | Largest decoded image, in bytes: what the server's 1.5-million-character data URL limit decodes to. The data URL's raw length and its base64 length are checked before anything is decoded |
+| `keyPrefix` | `"siteping-"` | Prefix of generated keys (lowercase letters, digits, `-`, `_`). Keep it distinctive in a shared bucket, and pass the same value to `createScreenshotServeHandler` |
+| `logger` | `console.warn` | Receives the degraded-but-handled cases: a refused delete, a failed reclaim, a failing `onUncertainUpload` |
+| `onUncertainUpload` | — | `(key) => void \| Promise<void>`: see below |
+
+The factories throw on a configuration that could not work: an unsafe `keyPrefix`, a `maxBytes` that is not a positive integer, or a `publicBaseUrl`, `endpoint` or `deliveryBaseUrl` that is not an absolute http(s) URL. A `publicBaseUrl` or `deliveryBaseUrl` that is not https is accepted with a warning: the widget's panel only shows https screenshots (the dashboard shows them all), so `http://localhost` is fine for development only.
+
+## What `delete` removes
+
+The stores call `delete(url)` when a feedback is deleted, and when a create that already uploaded its screenshot is not stored, such as a duplicate `clientId` (the [Prisma](/docs/adapters/prisma#screenshot-storage) and [Drizzle](/docs/adapters/drizzle#screenshots) pages list the cases). It removes the object only when the URL is one this storage produced **and** its key is in its own namespace (`keyPrefix` plus the generated shape). An inline `data:` URL, another host or a malformed encoding is ignored. Another object behind the same bucket or CDN, such as a legacy screenshot or another app's file, is left alone with a warning to the `logger`. Deleting an object that is already gone succeeds.
+
+## Uploads with an unknown outcome
+
+When an upload fails with a timeout or a `5xx`, the backend may have stored the object anyway. The storage then removes the key right away and rethrows the error. A backend that commits the upload after that removal leaves an orphan, so `onUncertainUpload(key)` receives the key: enqueue it in a durable job that removes it again a few minutes later with `objectStore.remove(key)`. A definitive refusal (a `4xx`, such as bad credentials) stored nothing and is not reclaimed.
+
+An expiration lifecycle rule on `siteping-*` does not replace this: it cannot tell orphans from screenshots a feedback still shows, so it only fits if you want screenshots to expire after a retention period anyway.
+
+## Your own backend
+
+Vercel Blob, Supabase Storage, another ORM: implement `ScreenshotObjectStore` and wrap it with `createScreenshotStorage`, which keeps the validation, the random keys and the delete rules.
+
+```ts
+import { createPublicUrlMapping, type ScreenshotObjectStore } from "@siteping/screenshot-storage";
+
+export const objectStore: ScreenshotObjectStore = {
+  name: "my-backend", // used in error messages
+  ...createPublicUrlMapping("https://files.example.com/screenshots"), // urlFor(key) and keyFromUrl(url)
+  async put({ key, bytes, contentType }) { /* store the bytes; keys are unique and safe in paths */ },
+  async remove(key) { /* delete it; succeed when it is already gone */ },
+  async get(key) { /* optional: { bytes, contentType } or null, for createScreenshotServeHandler */ },
+};
+```
+
+`put` should throw `ScreenshotUploadRejectedError` when the backend refused the upload for good, so it is not reclaimed. Match errors with `isScreenshotUploadRejected(error)` and `isObjectStoreRequestError(error)` rather than `instanceof`: in CommonJS, each entry point bundles its own copy of the error classes. `InvalidScreenshotError` reports a data URL refused by validation.

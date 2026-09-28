@@ -1,54 +1,47 @@
+[![npm version](https://img.shields.io/npm/v/@siteping/screenshot-storage)](https://www.npmjs.com/package/@siteping/screenshot-storage)
+[![Docs](https://img.shields.io/badge/docs-siteping.dev-0066ff)](https://siteping.dev/docs/adapters/screenshot-storage)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
+
 # @siteping/screenshot-storage
 
-Where [SitePing](https://siteping.dev) screenshots live — pick a backend, or bring your own.
+Screenshot storage for the [SitePing](https://github.com/NeosiaNexus/SitePing) stores: upload screenshots to **Cloudflare R2, AWS S3** or any S3-compatible bucket, **Cloudflare Images**, **your database** through Drizzle, or **your disk**, and keep only their URL in the feedback. No AWS SDK and no runtime dependency: it runs on Node, Bun, Deno and edge workers.
+
+**[Documentation](https://siteping.dev/docs/adapters/screenshot-storage)**
+
+## Install
+
+```bash
+npm install @siteping/screenshot-storage
+```
+
+Node ≥ 20, or any runtime with the Fetch and Web Crypto APIs (the `/filesystem` entry needs Node). `drizzle-orm` is an optional peer, only for the `/drizzle-pg` and `/drizzle-libsql` entries.
+
+## Quick start
 
 ```ts
 import { createScreenshotStorage } from "@siteping/screenshot-storage";
-import { createCloudflareImagesObjectStore } from "@siteping/screenshot-storage/cloudflare-images";
+import { createS3ObjectStore } from "@siteping/screenshot-storage/s3";
 
 const screenshotStorage = createScreenshotStorage(
-  createCloudflareImagesObjectStore({ accountId, apiToken, accountHash }),
+  createS3ObjectStore({
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    bucket: "siteping-screenshots",
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    publicBaseUrl: "https://screenshots.example.com",
+  }),
 );
 
-// Hand it to your store: createPgSitepingStore(db, { screenshotStorage }), new PrismaStore(prisma, { screenshotStorage })…
+// Prisma: createSitepingHandler({ prisma, screenshotStorage })
+// Drizzle: createPgSitepingStore(db, { screenshotStorage })
 ```
 
-| Backend | Entry | Notes |
-|---|---|---|
-| Cloudflare Images | `./cloudflare-images` | Served from `imagedelivery.net` (or your custom domain) |
-| AWS S3, Cloudflare R2, Backblaze B2, MinIO, DigitalOcean Spaces… | `./s3` | SigV4 over WebCrypto — no AWS SDK, runs on edge runtimes |
-| Your database — PostgreSQL | `./drizzle-pg` | `bytea` rows via Drizzle (any Postgres driver); served by `createScreenshotServeHandler` |
-| Your database — Turso / libSQL | `./drizzle-libsql` | `blob` rows via Drizzle; served by `createScreenshotServeHandler` |
-| Local disk | `./filesystem` | Node.js; served by `createScreenshotServeHandler`. Keeps each image's content type in a `<key>.content-type` file beside it |
-| Memory | `./memory` | Development and tests |
-| Your own (Vercel Blob, Supabase Storage, another ORM…) | — | Implement `ScreenshotObjectStore`: `put`, `remove`, `urlFor`, `keyFromUrl` (+ `get` to be served by the handler) |
+Every upload gets a fresh random key, `delete` only removes objects it created, and backends without a public URL are served from your app by `createScreenshotServeHandler`.
 
-The database entries need their table in your Drizzle schema (`export const sitepingScreenshots = createSitepingScreenshotsPgTable()` or `createSitepingScreenshotsSqliteTable()`), migrated with `drizzle-kit`. Without any storage at all, stores keep screenshots inline in the feedback row as base64 — fine for development.
+## Documentation
 
-`createScreenshotStorage` handles the backend-agnostic parts: image type and size validation, a fresh random key per upload (one URL per feedback, never shared nor content-addressed, never derived from client input — as the `ScreenshotStorage` contract requires), reclaiming uploads whose outcome is unknown, and ignoring URLs it does not own on delete — including, under the backend's own base URL, any key outside its generated namespace (`<keyPrefix><random hex>.<ext>`), so a legacy or imported URL pointing at another object of a shared bucket or CDN is never deleted. A URL whose key has malformed percent-encoding (`%`, `%ZZ`, invalid UTF-8) is likewise treated as not owned, so a corrupt record never makes `delete` throw.
+Every backend, serving screenshots from your app, least-privilege credentials, options, delete semantics and custom backends: **[siteping.dev/docs/adapters/screenshot-storage](https://siteping.dev/docs/adapters/screenshot-storage)**.
 
-Options: `allowedContentTypes` (default JPEG, PNG, WebP; entries are case-insensitive and trimmed — each type must map to a 1–10 character key extension such as `image/gif` → `gif`, checked when the storage is created; active formats such as `image/svg+xml`, which can run scripts when opened directly, are refused), `maxBytes` (default 1,125,000 bytes, what the server's 1.5M-character data URL cap decodes to; must be a positive integer — `NaN`, `Infinity`, `0` or a fraction throw when the storage is created, and data URLs are bounded by their raw length — whitespace included — before parsing, then by their base64 length before decoding), `keyPrefix` (default `siteping-`), `logger`, and `onUncertainUpload`. `allowedContentTypes` is copied and validated when the storage is created, so mutating it afterwards has no effect.
+## License
 
-An upload whose outcome is unknown (timeout, 5xx) is removed at once, but the backend may still commit it afterwards: `onUncertainUpload` receives its key so a durable job can remove it again a few minutes later.
-
-Match errors with `isScreenshotUploadRejected(error)` and `isObjectStoreRequestError(error)` (stable `code` checks) rather than `instanceof`: in CommonJS each entry point (`@siteping/screenshot-storage`, `/s3`…) bundles its own copy of the error classes.
-
-S3 with least-privilege credentials: when the IAM policy grants `s3:GetObject` (plus `s3:PutObject` and `s3:DeleteObject`) but not `s3:ListBucket`, S3 answers a missing key with `403 AccessDenied` instead of `404`. Pass `treatAccessDeniedAsMissing: true` to `createS3ObjectStore` so `get` reads it as absent and the serve handler answers `404` rather than `500`. Only the `AccessDenied` code is mapped: credential failures (`SignatureDoesNotMatch`, `InvalidAccessKeyId`, `ExpiredToken`, `RequestTimeTooSkewed`…) still throw. The option is off by default because it also turns a policy missing `s3:GetObject` into `404`s; grant `s3:ListBucket` instead when you can.
-
-Backends without a public URL are served from your app:
-
-```ts
-// app/api/siteping/screenshots/[key]/route.ts
-export const { GET } = createScreenshotServeHandler(objectStore, {
-  keyPrefix: "siteping-", // the same keyPrefix as createScreenshotStorage (this is the default)
-  authorize: (request, { key }) => hasSession(request),
-});
-```
-
-The handler only serves keys generated under its `keyPrefix` (default `siteping-`) and answers `404` to anything else, so applications sharing a directory or bucket under distinct prefixes cannot read each other's screenshots through it — pass it the same `keyPrefix` as `createScreenshotStorage`. `authorize` receives the requested key for per-screenshot decisions.
-
-Responses are `Cache-Control: public, max-age=31536000, immutable` (keys are unguessable and never reused). With `authorize`, they are `private, no-cache` instead: a CDN or proxy never hands an authorized screenshot to a request that skipped the check, and the browser revalidates every reuse, so a logout or a revoked access applies at once. Each response carries an `ETag` (the key itself — a key always names the same bytes), so a revalidation listing it is answered `304` right after `authorize`, without reading the object from the backend; a screenshot deleted since then keeps showing from that viewer's own cache until the browser evicts it.
-
-Every served screenshot is sandboxed (`Content-Security-Policy: default-src 'none'; sandbox`, `X-Content-Type-Options: nosniff`): even an active object that reached the backend by another path cannot act as a document of your app's origin when opened directly.
-
-MIT
+[MIT](https://github.com/NeosiaNexus/SitePing/blob/main/LICENSE)

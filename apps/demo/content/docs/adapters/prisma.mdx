@@ -98,7 +98,21 @@ model SitepingAnnotation {
 
 ## Screenshot storage
 
-By default, screenshots are stored inline as `data:` URLs in the `screenshotUrl` column — fine for trying things out, heavy for a real database. For production, plug in a `ScreenshotStorage`:
+By default, screenshots are stored inline as `data:` URLs in the `screenshotUrl` column — fine for trying things out, heavy for a real database. For production, plug in a `ScreenshotStorage`. [`@siteping/screenshot-storage`](/docs/adapters/screenshot-storage) provides one for Cloudflare R2, AWS S3 and other S3-compatible buckets, Cloudflare Images, your disk or your database:
+
+```ts
+import { createScreenshotStorage } from "@siteping/screenshot-storage";
+import { createS3ObjectStore } from "@siteping/screenshot-storage/s3";
+
+createSitepingHandler({
+  prisma,
+  screenshotStorage: createScreenshotStorage(
+    createS3ObjectStore({ endpoint, bucket, accessKeyId, secretAccessKey, publicBaseUrl }),
+  ),
+});
+```
+
+Or write your own:
 
 ```ts
 createSitepingHandler({

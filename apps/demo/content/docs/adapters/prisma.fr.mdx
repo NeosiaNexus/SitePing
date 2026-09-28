@@ -98,7 +98,21 @@ model SitepingAnnotation {
 
 ## Stockage des captures
 
-Par défaut, les captures sont stockées en ligne sous forme d'URL `data:` dans la colonne `screenshotUrl` — parfait pour essayer, lourd pour une vraie base. En production, branchez un `ScreenshotStorage` :
+Par défaut, les captures sont stockées en ligne sous forme d'URL `data:` dans la colonne `screenshotUrl` — parfait pour essayer, lourd pour une vraie base. En production, branchez un `ScreenshotStorage`. [`@siteping/screenshot-storage`](/fr/docs/adapters/screenshot-storage) en fournit un pour Cloudflare R2, AWS S3 et les autres buckets compatibles S3, Cloudflare Images, votre disque ou votre base de données :
+
+```ts
+import { createScreenshotStorage } from "@siteping/screenshot-storage";
+import { createS3ObjectStore } from "@siteping/screenshot-storage/s3";
+
+createSitepingHandler({
+  prisma,
+  screenshotStorage: createScreenshotStorage(
+    createS3ObjectStore({ endpoint, bucket, accessKeyId, secretAccessKey, publicBaseUrl }),
+  ),
+});
+```
+
+Ou écrivez le vôtre :
 
 ```ts
 createSitepingHandler({

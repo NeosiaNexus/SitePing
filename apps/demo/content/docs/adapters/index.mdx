@@ -14,6 +14,8 @@ An adapter is the storage layer behind SitePing. All four implement the same `Si
 
 Need a different backend? [Write your own](/docs/adapters/writing-an-adapter) with `@siteping/adapter-kit`.
 
+Screenshots stay inline in the feedback unless the Prisma or Drizzle store gets a `screenshotStorage`: [`@siteping/screenshot-storage`](/docs/adapters/screenshot-storage) sends them to Cloudflare R2, AWS S3, Cloudflare Images, your database or your disk.
+
 ## Two ways to mount a store
 
 **Server mode** — the widget talks to an HTTP endpoint, and the endpoint talks to the store. This is the production shape:
