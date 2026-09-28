@@ -877,6 +877,63 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
   });
 });
 
+describe("useSitepingInbox — re-entering rows respect the whole query", () => {
+  it("undo does not insert a row the type filter excludes, nor count it", async () => {
+    const { result } = await mountDemo();
+    await act(async () => {
+      await result.current.changeStatus("r1", "resolved"); // r1 is a bug
+    });
+    act(() => result.current.setType("question"));
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["r2"]));
+    await settle();
+    expect(result.current.counts).toMatchObject({ all: 1, open: 1, resolved: 0 });
+
+    await act(async () => {
+      await result.current.undo();
+    });
+
+    expect(ids(result.current.items)).toEqual(["r2"]);
+    expect(result.current.total).toBe(1);
+    expect(result.current.counts).toMatchObject({ all: 1, open: 1, resolved: 0 });
+  });
+
+  it("a drawer status change does not insert a row the search excludes (case-insensitive)", async () => {
+    const { result } = await mountDemo();
+    act(() => result.current.openFeedback("r1"));
+    await act(async () => {
+      await result.current.changeStatus("r1", "resolved"); // leaves the list, stays in the drawer
+    });
+    act(() => result.current.setSearch("BETA"));
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["r2"]), { timeout: 1500 });
+    await settle();
+
+    await act(async () => {
+      await result.current.changeStatus("r1", "open"); // "alpha overlap" doesn't match "beta"
+    });
+
+    expect(ids(result.current.items)).toEqual(["r2"]);
+    expect(result.current.total).toBe(1);
+    expect(result.current.counts).toMatchObject({ all: 1, open: 1, resolved: 0 });
+    expect(result.current.opened?.status).toBe("open");
+  });
+
+  it("undo still re-inserts a row matching type and search", async () => {
+    const { result } = await mountDemo();
+    act(() => result.current.setSearch("Gamma"));
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["r3"]), { timeout: 1500 });
+    await settle();
+    await act(async () => {
+      await result.current.changeStatus("r3", "resolved");
+    });
+    expect(result.current.items).toHaveLength(0);
+    await act(async () => {
+      await result.current.undo();
+    });
+    expect(ids(result.current.items)).toEqual(["r3"]);
+    expect(result.current.counts).toMatchObject({ all: 1, open: 1, resolved: 0 });
+  });
+});
+
 describe("useSitepingInbox — undo state after a failed mutation", () => {
   it("does not restore another project's undo when a mutation fails after a project switch", async () => {
     const source = makeSource([
