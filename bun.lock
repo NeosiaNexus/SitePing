@@ -92,7 +92,7 @@
       "name": "@siteping/adapter-prisma",
       "version": "0.6.6",
       "dependencies": {
-        "zod": "^4.6.5",
+        "@siteping/server": "~0.0.0",
       },
       "devDependencies": {
         "@siteping/core": "workspace:*",
@@ -132,6 +132,17 @@
       },
       "peerDependencies": {
         "react": ">=18",
+      },
+    },
+    "packages/server": {
+      "name": "@siteping/server",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "@siteping/adapter-memory": "workspace:*",
+        "@siteping/core": "workspace:*",
       },
     },
     "packages/widget": {
@@ -705,6 +716,8 @@
     "@siteping/dashboard": ["@siteping/dashboard@workspace:packages/dashboard"],
 
     "@siteping/demo": ["@siteping/demo@workspace:apps/demo"],
+
+    "@siteping/server": ["@siteping/server@workspace:packages/server"],
 
     "@siteping/widget": ["@siteping/widget@workspace:packages/widget"],
 

@@ -53,6 +53,11 @@
       "release-type": "node",
       "component": "adapter-drizzle",
       "bump-minor-pre-major": true
+    },
+    "packages/server": {
+      "release-type": "node",
+      "component": "server",
+      "bump-minor-pre-major": true
     }
   }
 }
