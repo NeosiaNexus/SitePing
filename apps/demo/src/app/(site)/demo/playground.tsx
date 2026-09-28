@@ -20,6 +20,7 @@ const LOCALES = [
   { code: "it", label: "Italiano" },
   { code: "pt", label: "Português" },
   { code: "ru", label: "Русский" },
+  { code: "ja", label: "日本語" },
 ] as const;
 
 type LocaleCode = (typeof LOCALES)[number]["code"];

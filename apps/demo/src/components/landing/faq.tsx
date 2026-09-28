@@ -41,7 +41,7 @@ const faqs: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Can I customize the widget appearance?",
-    a: "Yes — accent color, position (bottom-right or bottom-left), theme (light, dark, auto), and 7 built-in locales (English, French, German, Spanish, Italian, Portuguese, Russian) plus registerLocale for your own. Try every option live on the demo.",
+    a: "Yes — accent color, position (bottom-right or bottom-left), theme (light, dark, auto), and 8 built-in locales (English, French, German, Spanish, Italian, Portuguese, Russian, Japanese) plus registerLocale for your own. Try every option live on the demo.",
   },
   {
     q: "Is it accessible?",

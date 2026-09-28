@@ -211,13 +211,13 @@ Re-export the error types for consumer convenience, and use
 - **TypeScript strict mode** with `exactOptionalPropertyTypes` enabled.
 - **Conventional Commits** for all commit messages: `type(scope): description`.
   - Examples: `feat(widget): add color picker`, `fix(cli): handle missing config`.
-- **i18n** — Built-in locales: English (default), French, German, Spanish, Italian, Brazilian Portuguese, Russian. See [Adding a Locale](#adding-a-locale) below.
+- **i18n** — Built-in locales: English (default), French, German, Spanish, Italian, Brazilian Portuguese, Russian, Japanese. See [Adding a Locale](#adding-a-locale) below.
 - Keep functions small and focused. Prefer composition over inheritance.
 
 ## Adding a Locale
 
 The widget and the dashboard share the same set of built-in locales (`en`,
-`fr`, `de`, `es`, `it`, `pt`, `ru` — the single source of truth is
+`fr`, `de`, `es`, `it`, `pt`, `ru`, `ja` — the single source of truth is
 `BUILTIN_LOCALES` in `packages/core/src/types.ts`). Unknown locales fall
 back to English. This is the friendliest first contribution, and the
 compiler + tests do most of the review:
