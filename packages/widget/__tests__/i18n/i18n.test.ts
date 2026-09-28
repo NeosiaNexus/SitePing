@@ -78,6 +78,26 @@ describe("createT", () => {
     expect(t("popup.submit")).toBe("Envoyer");
   });
 
+  // The identity modal requires an email: the Japanese label must not call it
+  // optional (メールアドレス（任意）), as the catalog's first version did.
+  it("returns Japanese translations for 'ja', with a required email label", () => {
+    const t = createT("ja");
+    expect(t("panel.close")).toBe("パネルを閉じる");
+    expect(t("identity.emailLabel")).toBe("メールアドレス");
+  });
+
+  // The 400px panel header fits フィードバック and its two actions, and the
+  // 180px export menu its items, on one line only while the labels stay short:
+  // Japanese breaks between any two characters, so エクスポート wrapped
+  // mid-word (エクスポー/ト) in both places.
+  it("keeps the Japanese panel header actions and export menu items short", () => {
+    const t = createT("ja");
+    expect(t("panel.deleteAll")).toBe("全削除");
+    expect(t("export.label")).toBe("出力");
+    expect(t("export.csv")).toBe("CSV で出力");
+    expect(t("export.json")).toBe("JSON で出力");
+  });
+
   it("is case-insensitive on the locale prefix", () => {
     expect(createT("EN")("panel.close")).toBe("Close panel");
     expect(createT("FR-FR")("panel.close")).toBe("Fermer le panneau");

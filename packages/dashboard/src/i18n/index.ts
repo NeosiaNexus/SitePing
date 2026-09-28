@@ -19,6 +19,7 @@ const i18n = createI18n<Translations>(en, {
   es: () => import("./es.js").then((m) => m.es),
   fr: () => import("./fr.js").then((m) => m.fr),
   it: () => import("./it.js").then((m) => m.it),
+  ja: () => import("./ja.js").then((m) => m.ja),
   pt: () => import("./pt.js").then((m) => m.pt),
   ru: () => import("./ru.js").then((m) => m.ru),
 });

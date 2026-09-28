@@ -11,7 +11,7 @@ export type SitepingPosition = "bottom-right" | "bottom-left";
 export type SitepingTheme = "light" | "dark" | "auto";
 
 /** Built-in UI locales shipped with the widget. */
-export const BUILTIN_LOCALES = ["en", "fr", "de", "es", "it", "pt", "ru"] as const;
+export const BUILTIN_LOCALES = ["en", "fr", "de", "es", "it", "pt", "ru", "ja"] as const;
 export type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
 
 /**
@@ -206,7 +206,7 @@ export interface SitepingBaseConfig {
   debug?: boolean | undefined;
   /** Color theme — defaults to 'light' */
   theme?: SitepingTheme | undefined;
-  /** UI locale — defaults to 'en'. Built-in: en, fr, de, es, it, pt (Brazilian), ru. Any other string falls back to English. */
+  /** UI locale — defaults to 'en'. Built-in: en, fr, de, es, it, pt (Brazilian), ru, ja. Any other string falls back to English. */
   locale?: SitepingLocale | undefined;
   /**
    * Returns the current page scope for annotations and panel filtering.

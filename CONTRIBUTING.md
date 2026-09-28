@@ -29,8 +29,9 @@ bun run lint               # lint with Biome (includes the type-aware rules doma
 bun run lint:fix           # auto-fix lint issues
 bun run verify             # build + check + lint + test:run — the full pre-PR gate
 bun run pkg-checks         # publint + attw on every published package (same script CI runs)
-bun run check:consistency  # locale counts, package registration, fix-dts chains, esbuild override, fileURLToPath in tooling,
-                           # no @prisma/client import in adapter-prisma, workspace dependencies pinned before publish
+bun run check:consistency  # locale counts/lists + demo pickers, package registration, fix-dts chains, esbuild override,
+                           # fileURLToPath in tooling, no @prisma/client import in adapter-prisma, workspace dependencies
+                           # pinned before publish
 bun run knip               # dead files / exports / dependencies
 bun run new:locale <code>  # scaffold a new built-in locale (see Adding a Locale)
 bun run new:adapter <name> # scaffold a new first-party adapter (see Creating a New Adapter)
@@ -211,13 +212,13 @@ Re-export the error types for consumer convenience, and use
 - **TypeScript strict mode** with `exactOptionalPropertyTypes` enabled.
 - **Conventional Commits** for all commit messages: `type(scope): description`.
   - Examples: `feat(widget): add color picker`, `fix(cli): handle missing config`.
-- **i18n** — Built-in locales: English (default), French, German, Spanish, Italian, Brazilian Portuguese, Russian. See [Adding a Locale](#adding-a-locale) below.
+- **i18n** — Built-in locales: English (default), French, German, Spanish, Italian, Brazilian Portuguese, Russian, Japanese. See [Adding a Locale](#adding-a-locale) below.
 - Keep functions small and focused. Prefer composition over inheritance.
 
 ## Adding a Locale
 
 The widget and the dashboard share the same set of built-in locales (`en`,
-`fr`, `de`, `es`, `it`, `pt`, `ru` — the single source of truth is
+`fr`, `de`, `es`, `it`, `pt`, `ru`, `ja` — the single source of truth is
 `BUILTIN_LOCALES` in `packages/core/src/types.ts`). Unknown locales fall
 back to English. This is the friendliest first contribution, and the
 compiler + tests do most of the review:
@@ -252,9 +253,13 @@ automatically (lazy-load, key parity, non-empty values, placeholder parity).
 ### 4. Update the user-facing lists
 
 Update the locale count/list in the docs site (`apps/demo/content/docs/widget/i18n.mdx`
-and `dashboard/index.mdx`, + their `.fr.mdx` twins), the two package READMEs
-and the root README. `bun run check:consistency` (run by CI) points at any
-count you missed.
+and `dashboard/index.mdx`, + their `.fr.mdx` twins), the two package READMEs,
+the root README, `CLAUDE.md`, this file, the `locale` JSDoc in
+`packages/core/src/types.ts`, the landing page (`apps/demo/src/components/landing/`)
+and the two demo locale pickers (`LOCALES` in `apps/demo/src/app/(site)/demo/`).
+`bun run check:consistency` (run by CI) flags, in those files, a stale
+"N locales" count, a list of locale codes or English language names that
+misses the new locale, and a picker that does not offer it.
 
 > **Custom locales without a PR:** both packages export `registerLocale`,
 > which accepts **partial** dictionaries — end users can override a single

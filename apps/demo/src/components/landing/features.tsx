@@ -366,7 +366,7 @@ export function Features() {
             </Link>
           </article>
 
-          {/* 7 languages built in */}
+          {/* 8 languages built in */}
           <article
             data-gsap="feature-card"
             className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900"
@@ -387,9 +387,10 @@ export function Features() {
                 />
               </svg>
             </div>
-            <h3 className="mt-4 text-lg font-semibold text-white">7 languages built in</h3>
+            <h3 className="mt-4 text-lg font-semibold text-white">8 languages built in</h3>
             <p className="mt-2 text-sm leading-relaxed text-gray-400">
-              English, French, German, Spanish, Italian, Portuguese, and Russian — in the widget and the inbox.
+              English, French, German, Spanish, Italian, Portuguese, Russian, and Japanese — in the widget and the
+              inbox.
             </p>
             <div className="mt-4 rounded-lg border border-gray-800/60 bg-gray-950/80 px-3 py-2">
               <code className="font-mono text-xs text-accent-light">registerLocale(code, translations)</code>

@@ -44,7 +44,7 @@ const inbox = useSitepingInbox({ projects: "my-app", endpoint: "/api/siteping" }
 - **Keyboard-first** — `j`/`k` navigate, `e`/`p`/`x` toggle statuses, `u` undo, `/` search, `?` shows the cheat sheet
 - **Three data modes** — HTTP `endpoint`, in-process `store`, or a fully custom 3-method `source` (tRPC/GraphQL/server actions)
 - **Themeable without Shadow DOM** — scoped `spd-` classes and `--spd-*` CSS variables; light/dark/auto with live system-theme tracking
-- **7 built-in locales** plus runtime custom locales via `registerLocale`
+- **8 built-in locales** plus runtime custom locales via `registerLocale`
 
 ## Documentation
 

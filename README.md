@@ -50,7 +50,7 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **Instant right-click comments** — opt-in, and it never hijacks keyboard or modifier-key context menus
 - **Screenshots + diagnostics** — opt-in JPEG of the annotated area (with privacy masking) and console/network capture
 - **Panel actions** — your own buttons and links in the feedback detail view: create a ticket, hand a feedback to an agent, open it in your tracker
-- **Triage inbox** — `<SitepingInbox />` (`@siteping/dashboard`): Linear-style, keyboard-first, light/dark, 7 locales
+- **Triage inbox** — `<SitepingInbox />` (`@siteping/dashboard`): Linear-style, keyboard-first, light/dark, 8 locales
 - **Reliability built in** — retry with backoff plus a localStorage queue; a flaky network never loses a comment
 - **Shadow DOM isolation** — widget CSS never leaks into your site, and your site CSS never breaks the widget
 - **Dev-only by default** — auto-hides in production builds unless `forceShow: true`
