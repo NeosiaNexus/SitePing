@@ -1,4 +1,10 @@
-import type { DiagnosticsSnapshot, FeedbackStatus, FeedbackType, ScreenshotRegion } from "@siteping/core";
+import type {
+  CommentAuthorRole,
+  DiagnosticsSnapshot,
+  FeedbackStatus,
+  FeedbackType,
+  ScreenshotRegion,
+} from "@siteping/core";
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { DEFAULT_SITEPING_TABLE_NAMES, type SitepingTableNames } from "../constants/table-names.js";
 
@@ -8,7 +14,7 @@ import { DEFAULT_SITEPING_TABLE_NAMES, type SitepingTableNames } from "../consta
  *
  * ```ts
  * // db/schema.ts
- * export const { sitepingFeedbacks, sitepingAnnotations } = createSitepingSqliteTables();
+ * export const { sitepingFeedbacks, sitepingAnnotations, sitepingComments } = createSitepingSqliteTables();
  * ```
  *
  * JSON columns are stored as text and timestamps as epoch milliseconds. The
@@ -87,7 +93,31 @@ export function createSitepingSqliteTables(names: SitepingTableNames = DEFAULT_S
     (table) => [index(`${names.annotations}_feedback_id_idx`).on(table.feedbackId)],
   );
 
-  return { sitepingFeedbacks, sitepingAnnotations };
+  const sitepingComments = sqliteTable(
+    names.comments,
+    {
+      id: text("id").primaryKey(),
+      feedbackId: text("feedback_id")
+        .notNull()
+        .references(() => sitepingFeedbacks.id, { onDelete: "cascade" }),
+      body: text("body").notNull(),
+      authorName: text("author_name").notNull(),
+      authorEmail: text("author_email").notNull(),
+      authorRole: text("author_role").$type<CommentAuthorRole>().notNull().default("client"),
+      clientId: text("client_id").notNull(),
+      createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+      // Posting index within the thread, assigned by the insert itself: breaks `createdAt`
+      // ties so a thread reads in posting order. Rows the host application inserts without
+      // it default to 0 and keep their `createdAt` order.
+      position: integer("position").notNull().default(0),
+    },
+    (table) => [
+      uniqueIndex(`${names.comments}_client_id_key`).on(table.clientId),
+      index(`${names.comments}_feedback_created_idx`).on(table.feedbackId, table.createdAt),
+    ],
+  );
+
+  return { sitepingFeedbacks, sitepingAnnotations, sitepingComments };
 }
 
 export type SitepingSqliteTables = ReturnType<typeof createSitepingSqliteTables>;

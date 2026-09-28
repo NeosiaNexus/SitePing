@@ -44,7 +44,9 @@ export async function createPgTestDatabase(names?: SitepingTableNames): Promise<
   return {
     db,
     async reset() {
-      await db.execute(sql`TRUNCATE ${tables.sitepingAnnotations}, ${tables.sitepingFeedbacks}`);
+      await db.execute(
+        sql`TRUNCATE ${tables.sitepingComments}, ${tables.sitepingAnnotations}, ${tables.sitepingFeedbacks}`,
+      );
     },
     withResponseSizeLimit: (maxResponseBytes) =>
       drizzlePglite({ client: withResponseSizeLimit(client, maxResponseBytes, PGLITE_RESULT_METHODS) }),
@@ -63,6 +65,7 @@ export async function createLibSQLTestDatabase(names?: SitepingTableNames): Prom
   return {
     db,
     async reset() {
+      await db.delete(tables.sitepingComments);
       await db.delete(tables.sitepingAnnotations);
       await db.delete(tables.sitepingFeedbacks);
     },

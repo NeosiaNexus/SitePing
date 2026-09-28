@@ -122,6 +122,37 @@ for (const dialect of dialects) {
       expect(((await emptied.json()) as { total: number }).total).toBe(0);
     });
 
+    it("serves a thread: a comment, its list with the capability, and its delete", async () => {
+      const api = handler();
+      const created = await api.POST(request("POST", { ...payload, clientId: crypto.randomUUID() }));
+      const { id: feedbackId } = (await created.json()) as { id: string };
+
+      const posted = await api.POST(
+        request("POST", {
+          projectName: "site",
+          feedbackId,
+          body: "Fixed on staging",
+          authorName: "Bob",
+          authorEmail: "bob@example.com",
+          clientId: crypto.randomUUID(),
+        }),
+      );
+      expect(posted.status).toBe(201);
+      const { id: commentId } = (await posted.json()) as { id: string };
+
+      const listed = (await (await api.GET(request("GET", undefined, "?projectName=site"))).json()) as {
+        capabilities: unknown;
+        feedbacks: Array<{ comments: unknown[] }>;
+      };
+      expect(listed.capabilities).toEqual({ comments: true });
+      expect(listed.feedbacks[0]?.comments).toEqual([
+        expect.objectContaining({ id: commentId, body: "Fixed on staging", authorRole: "client", authorEmail: "" }),
+      ]);
+
+      const deleted = await api.DELETE(request("DELETE", { projectName: "site", feedbackId, commentId }));
+      expect(await deleted.json()).toEqual({ deleted: true });
+    });
+
     it("notifies the webhooks once when two server processes race on one clientId", async () => {
       // One handler and one store instance each, sharing only the database —
       // as two serverless instances would: only the unique client_id index
