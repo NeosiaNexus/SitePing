@@ -186,6 +186,11 @@ export interface InboxState {
   openedId: string | null;
   /** The opened record — survives leaving the filtered list while the drawer stays open. */
   opened: FeedbackRecord | null;
+  /**
+   * Open a feedback in the drawer and focus its row. Only a loaded row or the
+   * record already open can be opened — any other id is ignored, so open one
+   * from a URL once `items` holds it.
+   */
   openFeedback(id: string): void;
   closeFeedback(): void;
   /** Optimistic status change with rollback on error. Rejects after rolling back. */

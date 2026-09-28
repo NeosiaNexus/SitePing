@@ -39,7 +39,7 @@ Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`
 
 **Filters** — `project`/`setProject`, `status`/`setStatus` (starts on `"open"`), `type`/`setType`, `search`/`setSearch`. Search updates state instantly and debounces the refetch by 250 ms; queries are trimmed and capped at 200 characters.
 
-**Focus & drawer** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (the open record — it stays available even if a filter removes its row), `openFeedback(id)`, `closeFeedback()`.
+**Focus & drawer** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (the open record — it stays available even if a filter removes its row), `openFeedback(id)`, `closeFeedback()`. `openFeedback` opens a loaded row or the record already open, and ignores any other id: to open one from a URL, wait until `items` holds it.
 
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
 
