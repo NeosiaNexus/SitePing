@@ -1,5 +1,5 @@
 import type { FeedbackResponse } from "@siteping/core";
-import { el, parseSvg, setText } from "./dom-utils.js";
+import { el, onClickOutside, parseSvg, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -222,7 +222,7 @@ export class ExportButton {
 
   private menu: HTMLElement;
   private isOpen = false;
-  private onDocumentClick: (e: MouseEvent) => void;
+  private removeOutsideClick: (() => void) | null = null;
 
   constructor(
     _colors: ThemeColors,
@@ -272,14 +272,6 @@ export class ExportButton {
       this.close();
       btn.focus();
     });
-
-    // Close on outside click
-    this.onDocumentClick = (e: MouseEvent) => {
-      if (this.isOpen && !this.element.contains(e.target as Node)) {
-        this.close();
-      }
-    };
-    document.addEventListener("click", this.onDocumentClick, true);
   }
 
   private createOption(iconSvg: string, labelText: string, onClick: () => void): HTMLButtonElement {
@@ -311,6 +303,7 @@ export class ExportButton {
 
   private open(): void {
     this.isOpen = true;
+    this.removeOutsideClick = onClickOutside(this.element, () => this.close());
     this.menu.classList.add("sp-export-menu--open");
     const btn = this.element.querySelector<HTMLButtonElement>(".sp-export-btn");
     btn?.setAttribute("aria-expanded", "true");
@@ -318,6 +311,8 @@ export class ExportButton {
 
   private close(): void {
     this.isOpen = false;
+    this.removeOutsideClick?.();
+    this.removeOutsideClick = null;
     this.menu.classList.remove("sp-export-menu--open");
     const btn = this.element.querySelector<HTMLButtonElement>(".sp-export-btn");
     btn?.setAttribute("aria-expanded", "false");
@@ -341,7 +336,7 @@ export class ExportButton {
   }
 
   destroy(): void {
-    document.removeEventListener("click", this.onDocumentClick, true);
+    this.close();
     this.element.remove();
   }
 }

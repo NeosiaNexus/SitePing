@@ -257,6 +257,29 @@ describe("PanelSortControls", () => {
     expect(controls.element.querySelector(".sp-sort-menu")).toBeNull();
     expect(sortButton.getAttribute("aria-expanded")).toBe("false");
   });
+
+  it("toggles on its trigger and closes on any other click from a closed shadow root", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = host.attachShadow({ mode: "closed" });
+    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
+    const elsewhere = document.createElement("button");
+    root.append(controls.element, elsewhere);
+    const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
+    const menuOpen = () => controls.element.querySelector(".sp-sort-menu") !== null;
+
+    // The trigger itself, elsewhere in the same shadow tree, the host page.
+    for (const target of [sortButton, elsewhere, document.body]) {
+      sortButton.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      expect(menuOpen()).toBe(true);
+      target.click();
+      expect(menuOpen()).toBe(false);
+    }
+
+    controls.destroy();
+    host.remove();
+  });
 });
 
 describe("createPageGroupHeader", () => {

@@ -10,7 +10,7 @@ import {
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
 import { SegmentedControl } from "./components/segmented-control.js";
 import { PAGE_SIZE } from "./constants.js";
-import { el, formatRelativeDate, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
+import { el, formatRelativeDate, onClickOutside, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
@@ -57,7 +57,7 @@ export class Panel {
   private typeDropdownBtn!: HTMLButtonElement;
   private typeDropdownContainer!: HTMLElement;
   private typeDropdownMenu: HTMLElement | null = null;
-  private typeDropdownOutsideHandler: ((e: MouseEvent) => void) | null = null;
+  private removeTypeDropdownOutsideClick: (() => void) | null = null;
   private statusSegmented!: SegmentedControl<"all" | FeedbackStatus>;
   private typeOptions!: ReadonlyArray<{ value: string; label: string; icon: string; color: string; bg: string }>;
   private feedbacks: FeedbackResponse[] = [];
@@ -1113,12 +1113,7 @@ export class Panel {
     this.typeDropdownContainer.appendChild(this.typeDropdownMenu);
 
     requestAnimationFrame(() => {
-      this.typeDropdownOutsideHandler = (e: MouseEvent) => {
-        if (this.typeDropdownMenu && !this.typeDropdownContainer.contains(e.target as Node)) {
-          this.closeTypeDropdown();
-        }
-      };
-      document.addEventListener("click", this.typeDropdownOutsideHandler, true);
+      this.removeTypeDropdownOutsideClick = onClickOutside(this.typeDropdownContainer, () => this.closeTypeDropdown());
     });
   }
 
@@ -1128,10 +1123,8 @@ export class Panel {
       this.typeDropdownMenu = null;
     }
     this.typeDropdownBtn.setAttribute("aria-expanded", "false");
-    if (this.typeDropdownOutsideHandler) {
-      document.removeEventListener("click", this.typeDropdownOutsideHandler, true);
-      this.typeDropdownOutsideHandler = null;
-    }
+    this.removeTypeDropdownOutsideClick?.();
+    this.removeTypeDropdownOutsideClick = null;
   }
 
   private selectTypeFilter(value: string): void {

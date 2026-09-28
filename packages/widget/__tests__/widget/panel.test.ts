@@ -2289,6 +2289,28 @@ describe("Panel", () => {
       typeBtn.click();
       expect(shadow.querySelector(".sp-filter-dropdown-menu")).toBeNull();
     });
+
+    it("toggles on its trigger and closes on any other click from a closed shadow root", async () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const root = host.attachShadow({ mode: "closed" });
+      const closedPanel = new Panel(root, colors, bus, apiClient as never, "test-project", markers as never, t, "fr");
+      await closedPanel.open();
+      const typeBtn = root.querySelector<HTMLButtonElement>(".sp-filter-dropdown-btn")!;
+      const menuOpen = () => root.querySelector(".sp-filter-dropdown-menu") !== null;
+
+      // The trigger itself, elsewhere in the same shadow tree, the host page.
+      for (const target of [typeBtn, root.querySelector<HTMLElement>(".sp-search")!, document.body]) {
+        typeBtn.click();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        expect(menuOpen()).toBe(true);
+        target.click();
+        expect(menuOpen()).toBe(false);
+      }
+
+      closedPanel.destroy();
+      host.remove();
+    });
   });
 
   // -------------------------------------------------------------------------

@@ -11,7 +11,7 @@
  */
 
 import { type FeedbackResponse, type FeedbackType, isClosedStatus } from "@siteping/core";
-import { el, parseSvg, setText } from "./dom-utils.js";
+import { el, onClickOutside, parseSvg, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -208,7 +208,7 @@ export class PanelSortControls {
   private readonly t: TFunction;
   private readonly colors: ThemeColors;
   private readonly onChange: () => void;
-  private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
+  private removeOutsideClick: (() => void) | null = null;
 
   constructor(colors: ThemeColors, onChange: () => void, t: TFunction) {
     this.colors = colors;
@@ -326,12 +326,7 @@ export class PanelSortControls {
 
     // Close on outside click (next tick to avoid the current click)
     requestAnimationFrame(() => {
-      this.outsideClickHandler = (e: MouseEvent) => {
-        if (this.menuEl && !this.element.contains(e.target as Node)) {
-          this.closeMenu();
-        }
-      };
-      document.addEventListener("click", this.outsideClickHandler, true);
+      this.removeOutsideClick = onClickOutside(this.element, () => this.closeMenu());
     });
   }
 
@@ -341,10 +336,8 @@ export class PanelSortControls {
       this.menuEl = null;
     }
     this.sortBtn.setAttribute("aria-expanded", "false");
-    if (this.outsideClickHandler) {
-      document.removeEventListener("click", this.outsideClickHandler, true);
-      this.outsideClickHandler = null;
-    }
+    this.removeOutsideClick?.();
+    this.removeOutsideClick = null;
   }
 
   private updateSortLabel(): void {
