@@ -1695,6 +1695,21 @@ describe("Panel", () => {
       expect(shadow.querySelector(".sp-stats-value")!.textContent).toBe("3");
     });
 
+    it("bulkResolve skips already-closed feedbacks (keeps wont_fix and resolvedAt)", async () => {
+      const open = makeFeedback({ id: "fb-open", status: "open" });
+      const wontFix = makeFeedback({ id: "fb-wontfix", status: "wont_fix", resolvedAt: new Date().toISOString() });
+      const resolved = makeFeedback({ id: "fb-resolved", status: "resolved", resolvedAt: new Date().toISOString() });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [open, wontFix, resolved], total: 3 });
+      apiClient.resolveFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+      shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-resolve")!.click();
+
+      await vi.waitFor(() => expect(apiClient.resolveFeedback).toHaveBeenCalledWith("fb-open", true));
+      expect(apiClient.resolveFeedback).toHaveBeenCalledTimes(1);
+    });
+
     it("bulkResolve emits feedback:error on failure", async () => {
       const fb = makeFeedback({ id: "fb-1" });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
