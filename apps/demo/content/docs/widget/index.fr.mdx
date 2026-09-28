@@ -75,7 +75,7 @@ Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint`
 
 ## Gérer les erreurs
 
-`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER"`) et `retryable` (booléen) :
+`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable` (booléen) :
 
 ```ts
 initSiteping({

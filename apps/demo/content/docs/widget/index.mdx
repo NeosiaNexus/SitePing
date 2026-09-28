@@ -75,7 +75,7 @@ The hook returns `null` until it mounts, then the instance. Changing `endpoint` 
 
 ## Handling errors
 
-`onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER"`) and `retryable` (boolean):
+`onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, the last one only in `store` mode) and `retryable` (boolean):
 
 ```ts
 initSiteping({
