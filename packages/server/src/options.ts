@@ -1,0 +1,234 @@
+import type { FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
+import type { WebhookConfig } from "./webhooks.js";
+
+/** HTTP methods served by `createSitepingHandler`. */
+export type SitepingHttpMethod = "GET" | "POST" | "PATCH" | "DELETE" | "OPTIONS";
+
+/** What a request does, as `SitepingAccessControl.authorize` sees it. */
+export type SitepingAction = "create" | "list" | "update" | "delete" | "deleteAll";
+
+/** The request being served, and who sent it. */
+export interface SitepingRequestContext<Principal> {
+  request: Request;
+  /** Whoever `access.authenticate` resolved — always `null` under the `apiKey` policy. */
+  principal: Principal;
+}
+
+/** What `SitepingAccessControl.authorize` decides about. */
+export interface SitepingAuthorizationContext<Principal> extends SitepingRequestContext<Principal> {
+  action: SitepingAction;
+  /** Project the request targets: the body's for writes, the query's for reads. */
+  projectName: string;
+  /** Target record of `update` and `delete`. */
+  feedbackId?: string;
+}
+
+/**
+ * Who `access.authenticate` may resolve: a user object, an id, a token's
+ * claims. Never a boolean — a `false` check would read as a signed-in caller.
+ */
+export type SitepingPrincipal = object | string | number;
+
+/**
+ * A custom access policy — sessions, JWTs, roles — resolved from the standard
+ * `Request` (a cookie, a header, a proxy identity…), in place of `apiKey`.
+ *
+ * - `authenticate` resolving a falsy value (`null`, `undefined`, `""`, `0`,
+ *   or `false` from plain JavaScript) → 401, on every method but `OPTIONS`.
+ * - `authorize` resolving `false` → 403. Defaults to allowing every
+ *   authenticated principal. When set, the store must implement
+ *   `verifyProjectOwnership`: PATCH/DELETE address records by id, and the
+ *   check is what binds the authorized `projectName` to the record.
+ * - `canReadAuthorEmail` decides whether responses include `authorEmail`
+ *   (reviewer PII) — the list, the PATCH answer and the POST answer alike.
+ *   Defaults to `true`.
+ *
+ * A throw from any of them answers a logged 500.
+ */
+export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
+  authenticate(request: Request): Principal | null | undefined | Promise<Principal | null | undefined>;
+  authorize?(context: SitepingAuthorizationContext<Principal>): boolean | Promise<boolean>;
+  canReadAuthorEmail?(principal: Principal): boolean | Promise<boolean>;
+}
+
+/** What a DELETE removes: one record, or a whole project (`deleteAll`). */
+export type SitepingDeletionTarget =
+  | { kind: "single"; id: string; projectName: string }
+  | { kind: "project"; projectName: string };
+
+/**
+ * Side effects around persistence — issue trackers, chat notifications,
+ * search indexes, audit logs. Hooks receive the stored record, `clientId` and
+ * `authorEmail` included.
+ *
+ * `onCreated`, `onUpdated` and `onDeleted` are awaited before the response
+ * (so serverless runtimes do not freeze them mid-flight); a throw is logged
+ * and never fails the request — the write already happened. `onCreated`
+ * runs once per inserted feedback, never for a replayed `clientId`.
+ * `onDeleting` runs before the delete: throw to abort it (the record is kept
+ * and the request answers 502), e.g. when a resource tied to the feedback
+ * could not be cleaned up and the delete must be retried.
+ */
+export interface SitepingLifecycleHooks<Principal> {
+  onCreated?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): void | Promise<void>;
+  onUpdated?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): void | Promise<void>;
+  onDeleting?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): void | Promise<void>;
+  onDeleted?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): void | Promise<void>;
+}
+
+/** Where the handler reports unexpected failures. Defaults to `console.error`. */
+export interface SitepingLogger {
+  error(message: string, context: Record<string, unknown>): void;
+}
+
+/** Options shared by both access policies. */
+export interface SitepingHandlerBaseOptions<Principal> {
+  /** Persistence backend — any `SitepingStore` (Prisma, Drizzle, memory, your own). */
+  store: SitepingStore;
+  /**
+   * Allowed CORS origins (exact match) — when set, only these origins get CORS
+   * headers. When unset, no CORS headers are emitted and browsers block
+   * cross-origin widgets. Under `access`, it also bounds which origins may
+   * send POST/PATCH/DELETE.
+   */
+  allowedOrigins?: ReadonlyArray<string> | undefined;
+  /**
+   * Outgoing webhooks fired after a feedback is successfully persisted.
+   *
+   * Pass a single config or an array — every entry receives a POST with a
+   * type-specific payload (Slack, Discord, or generic JSON). Dispatch is
+   * fire-and-forget: the HTTP response is returned to the widget before
+   * webhook delivery completes, so a slow receiver never blocks the client.
+   * Provide `onError` on each config to observe failures.
+   */
+  webhooks?: WebhookConfig | ReadonlyArray<WebhookConfig>;
+  /**
+   * Hand the webhook deliveries to the runtime, which may otherwise freeze
+   * or cancel them once the response is sent (serverless functions, edge
+   * workers): Next.js `after`, `waitUntil` from `@vercel/functions` or from
+   * `cloudflare:workers` — a standalone function, not an unbound method.
+   * Called once per notified feedback with a promise that never rejects; a
+   * throw is logged and the delivery still runs.
+   */
+  waitUntil?: ((promise: Promise<unknown>) => void) | undefined;
+  /**
+   * Rewrite the validated input before it is stored: impose the project or
+   * the author from the session, redact secrets from free text, drop fields
+   * you do not keep. Runs before `access.authorize`, which sees the effective
+   * `projectName`. A throw answers a logged 500 and stores nothing.
+   */
+  beforeCreate?(
+    input: FeedbackCreateInput,
+    context: SitepingRequestContext<Principal>,
+  ): FeedbackCreateInput | Promise<FeedbackCreateInput>;
+  /**
+   * Transform each record right before it is serialized in a response, e.g.
+   * read-time redaction. `clientId` is stripped, and `authorEmail` blanked
+   * when the requester may not read it, afterwards.
+   */
+  presentFeedback?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): FeedbackRecord;
+  /** Lifecycle side effects — see `SitepingLifecycleHooks`. */
+  hooks?: SitepingLifecycleHooks<Principal>;
+  /** Where unexpected failures are reported. Defaults to `console.error`. */
+  logger?: SitepingLogger;
+  /**
+   * Map an unexpected failure to the `error` string sent to the client.
+   * Return `undefined` for the default (`"Internal server error"`). Store
+   * adapters use it for setup hints (e.g. "table not found, run migrations");
+   * never return the failure's own details, which may leak internals.
+   */
+  describeError?(error: unknown): string | undefined;
+}
+
+/** The built-in shared-secret policy — `adapter-prisma`'s historical behaviour. */
+export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions<null> {
+  /**
+   * Shared secret expected as `Authorization: Bearer {apiKey}`.
+   *
+   * - **When set:** every request not listed in `publicEndpoints` must include
+   *   it. Requests without a valid token receive a 401 Unauthorized response.
+   * - **When not set:** the API is public — anyone can create and read
+   *   feedbacks, and update or delete them once `requireAuthForDestructive`
+   *   is turned off.
+   * - **Recommendation:** always set `apiKey` in production environments.
+   */
+  apiKey?: string | undefined;
+  /**
+   * HTTP methods that don't require API key authentication.
+   * Defaults to `['POST', 'OPTIONS']` when `apiKey` is set — POST must stay open
+   * because the browser widget submits feedback from unauthenticated contexts.
+   */
+  publicEndpoints?: ReadonlyArray<SitepingHttpMethod>;
+  /**
+   * Whether destructive endpoints (DELETE, PATCH) require `apiKey`.
+   *
+   * Defaults to `true` and intentionally cannot be disabled in production:
+   * - `NODE_ENV === "production"` without `apiKey` throws at startup. The
+   *   factory refuses to return an unauthenticated destructive surface.
+   * - `NODE_ENV !== "production"` without `apiKey` keeps the handler running
+   *   for local dev/tests, but DELETE/PATCH return 401 until you set
+   *   `apiKey` or explicitly opt out with `requireAuthForDestructive: false`.
+   *
+   * Set to `false` only when you wrap the handler in your own auth
+   * middleware (session, OAuth, etc.) and want SitePing to stay open.
+   */
+  requireAuthForDestructive?: boolean;
+  /**
+   * Blank `authorEmail` in GET/PATCH responses to requests that do not carry
+   * a valid `Authorization: Bearer <apiKey>` header. Defaults to `true`:
+   * reviewer emails are PII and the widget needs GET to be reachable, so an
+   * unauthenticated response must not enumerate them (issue #105).
+   *
+   * Set to `false` ONLY when the handler sits behind your own auth layer
+   * that covers GET as well (e.g. `requireAuthForDestructive: false` behind
+   * session middleware) — the handler cannot see that layer, and without it
+   * every visitor who can reach the endpoint can read reviewer emails.
+   * `clientId` is stripped from responses regardless of this option.
+   */
+  redactUnauthenticatedEmails?: boolean;
+  /** Use either the `apiKey` policy or `access`, never both. */
+  access?: never;
+}
+
+/** A custom access policy (sessions, JWTs, roles) in place of `apiKey`. */
+export interface SitepingAccessHandlerOptions<Principal extends SitepingPrincipal>
+  extends SitepingHandlerBaseOptions<Principal> {
+  /**
+   * Who is calling and what they may do — see `SitepingAccessControl`.
+   *
+   * Such a policy may authenticate with cookies, which browsers attach to
+   * forged cross-site requests too, so POST/PATCH/DELETE are guarded against
+   * CSRF before anything else runs: a body that is not `application/json`
+   * answers 415 (only JSON forces a CORS preflight), and with
+   * `allowedOrigins` an `Origin` that is neither listed nor the endpoint's
+   * own answers 403. Requests without an `Origin` (server-to-server, curl)
+   * pass. Behind a proxy that rewrites `request.url`, list your public origin
+   * in `allowedOrigins`. Lists are sent with `Cache-Control: no-store`: they
+   * depend on the principal, which the browser cache cannot tell apart.
+   */
+  access: SitepingAccessControl<Principal>;
+  /** `apiKey` policy only. */
+  apiKey?: never;
+  /** `apiKey` policy only. */
+  publicEndpoints?: never;
+  /** `apiKey` policy only. */
+  requireAuthForDestructive?: never;
+  /** `apiKey` policy only — use `access.canReadAuthorEmail`. */
+  redactUnauthenticatedEmails?: never;
+}
+
+/** Options of `createSitepingHandler`: the `apiKey` policy XOR a custom `access` policy. */
+export type SitepingHandlerOptions<Principal extends SitepingPrincipal = SitepingPrincipal> =
+  | SitepingApiKeyHandlerOptions
+  | SitepingAccessHandlerOptions<Principal>;
+
+/**
+ * Object returned by `createSitepingHandler` — one handler per HTTP method.
+ */
+export interface SitepingHandler {
+  OPTIONS: (request: Request) => Response;
+  POST: (request: Request) => Promise<Response>;
+  GET: (request: Request) => Promise<Response>;
+  PATCH: (request: Request) => Promise<Response>;
+  DELETE: (request: Request) => Promise<Response>;
+}

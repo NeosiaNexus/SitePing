@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import {
   clampPagination,
   type FeedbackCreateInput,
@@ -9,7 +8,6 @@ import {
   type FeedbackStatus,
   type FeedbackType,
   type FeedbackUpdateInput,
-  flattenAnnotation,
   hasOwn,
   isStoreDuplicate,
   isStoreNotFound,
@@ -19,16 +17,14 @@ import {
   StoreDuplicateError,
   StoreNotFoundError,
   screenshotMimeType,
-  toFeedbackUpdate,
 } from "@siteping/core";
 import {
-  feedbackCreateSchema,
-  feedbackDeleteSchema,
-  feedbackPatchSchema,
-  formatValidationErrors,
-  getQuerySchema,
-} from "./validation.js";
-import { dispatchWebhooks, type WebhookConfig } from "./webhooks.js";
+  createSitepingHandler as createServerHandler,
+  type SitepingAccessHandlerOptions,
+  type SitepingApiKeyHandlerOptions,
+  type SitepingHandler,
+  type SitepingPrincipal,
+} from "@siteping/server";
 
 export type { ScreenshotStorage, SitepingStore } from "@siteping/core";
 export {
@@ -38,22 +34,34 @@ export {
   StoreNotFoundError,
   StorePersistenceError,
 } from "@siteping/core";
-export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "./validation.js";
+export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "@siteping/server";
 
 /**
  * @deprecated The create wire shape is core's `FeedbackPayload` — import
  * that instead. This alias is kept for one release cycle.
  */
 export type FeedbackCreateSchemaInput = FeedbackPayload;
+// The server's option types, so a strict linker (pnpm, Bun's isolated
+// installs) never needs @siteping/server as a direct dependency to type them.
 export type {
   DiscordWebhookPayload,
   GenericWebhookPayload,
+  SitepingAccessControl,
+  SitepingAction,
+  SitepingAuthorizationContext,
+  SitepingDeletionTarget,
+  SitepingHandler,
+  SitepingHttpMethod,
+  SitepingLifecycleHooks,
+  SitepingLogger,
+  SitepingPrincipal,
+  SitepingRequestContext,
   SlackWebhookPayload,
   WebhookConfig,
   WebhookPayloadMap,
   WebhookType,
-} from "./webhooks.js";
-export { dispatchWebhook, dispatchWebhooks } from "./webhooks.js";
+} from "@siteping/server";
+export { dispatchWebhook, dispatchWebhooks } from "@siteping/server";
 
 // ---------------------------------------------------------------------------
 // Minimal PrismaClient shape expected by this adapter
@@ -540,13 +548,11 @@ export class PrismaStore implements SitepingStore {
 }
 
 // ---------------------------------------------------------------------------
-// Handler options — backwards compatible
+// Handler — @siteping/server behind the Prisma store
 // ---------------------------------------------------------------------------
 
-/** HTTP methods that may be listed in `HandlerOptions.publicEndpoints`. */
-export type SitepingHttpMethod = "GET" | "POST" | "PATCH" | "DELETE" | "OPTIONS";
-
-export interface HandlerOptions {
+/** How the handler reaches its data: a Prisma client, or any store. */
+interface PrismaHandlerStoreOptions {
   /** Prisma client — used when `store` is not provided. Wrapped in a `PrismaStore` internally. */
   prisma?: SitepingPrismaClient;
   /** Abstract store — when provided, takes precedence over `prisma`. */
@@ -559,25 +565,6 @@ export interface HandlerOptions {
    */
   screenshotStorage?: ScreenshotStorage;
   /**
-   * Optional API key for bearer-token authentication.
-   *
-   * - **When set:** every request not listed in `publicEndpoints` must include an
-   *   `Authorization: Bearer {apiKey}` header. Requests without a valid token
-   *   receive a 401 Unauthorized response.
-   * - **When not set:** the API is fully public — anyone can create, read,
-   *   update, and delete feedbacks (including destructive DELETE operations).
-   * - **Recommendation:** always set `apiKey` in production environments.
-   */
-  apiKey?: string | undefined;
-  /**
-   * HTTP methods that don't require API key authentication.
-   * Defaults to `['POST', 'OPTIONS']` when `apiKey` is set — POST must stay open
-   * because the browser widget submits feedback from unauthenticated contexts.
-   */
-  publicEndpoints?: ReadonlyArray<SitepingHttpMethod>;
-  /** Allowed CORS origins — when set, validates the Origin header */
-  allowedOrigins?: ReadonlyArray<string> | undefined;
-  /**
    * Override case-insensitive search behaviour for the built-in `PrismaStore`.
    *
    * Only applied when `prisma` is provided (not when a custom `store` is
@@ -585,159 +572,27 @@ export interface HandlerOptions {
    * auto-detection and per-provider semantics.
    */
   caseInsensitiveSearch?: boolean;
-  /**
-   * Whether destructive endpoints (DELETE, PATCH) require `apiKey`.
-   *
-   * Defaults to `true` and intentionally cannot be disabled in production:
-   * - `NODE_ENV === "production"` without `apiKey` throws at startup. The
-   *   factory refuses to return an unauthenticated destructive surface.
-   * - `NODE_ENV !== "production"` without `apiKey` keeps the handler running
-   *   for local dev/tests, but DELETE/PATCH return 401 until you set
-   *   `apiKey` or explicitly opt out with `requireAuthForDestructive: false`.
-   *
-   * Set to `false` only when you wrap `createSitepingHandler` in your own
-   * auth middleware (session, OAuth, etc.) and want SitePing to stay open.
-   */
-  requireAuthForDestructive?: boolean;
-  /**
-   * Blank `authorEmail` in GET/PATCH responses to requests that do not carry
-   * a valid `Authorization: Bearer <apiKey>` header. Defaults to `true`:
-   * reviewer emails are PII and the widget needs GET to be reachable, so an
-   * unauthenticated response must not enumerate them (issue #105).
-   *
-   * Set to `false` ONLY when the handler sits behind your own auth layer
-   * that covers GET as well (e.g. `requireAuthForDestructive: false` behind
-   * session middleware) — the handler cannot see that layer, and without it
-   * every visitor who can reach the endpoint can read reviewer emails.
-   * `clientId` is stripped from responses regardless of this option.
-   */
-  redactUnauthenticatedEmails?: boolean;
-  /**
-   * Outgoing webhooks fired after a feedback is successfully persisted.
-   *
-   * Pass a single config or an array — every entry receives a POST with a
-   * type-specific payload (Slack, Discord, or generic JSON). Dispatch is
-   * fire-and-forget: the HTTP response is returned to the widget before
-   * webhook delivery completes, so a slow receiver never blocks the client.
-   * Provide `onError` on each config to observe failures.
-   */
-  webhooks?: WebhookConfig | ReadonlyArray<WebhookConfig>;
 }
 
-/**
- * Object returned by `createSitepingHandler` — one handler per HTTP method.
- */
-export interface SitepingHandler {
-  OPTIONS: (request: Request) => Response;
-  POST: (request: Request) => Promise<Response>;
-  GET: (request: Request) => Promise<Response>;
-  PATCH: (request: Request) => Promise<Response>;
-  DELETE: (request: Request) => Promise<Response>;
-}
+/** Options of `createSitepingHandler` under the `apiKey` policy — every `@siteping/server` option. */
+export interface HandlerOptions extends Omit<SitepingApiKeyHandlerOptions, "store">, PrismaHandlerStoreOptions {}
 
-// ---------------------------------------------------------------------------
-// CORS helpers
-// ---------------------------------------------------------------------------
+/** Options of `createSitepingHandler` under a custom `access` policy (see `@siteping/server`). */
+export interface PrismaAccessHandlerOptions<Principal extends SitepingPrincipal>
+  extends Omit<SitepingAccessHandlerOptions<Principal>, "store">,
+    PrismaHandlerStoreOptions {}
 
-type CorsHeaders = Readonly<Record<string, string>>;
-
-/** Request headers every allowlisted origin may send (preflights can add more). */
-const DEFAULT_ALLOWED_HEADERS: ReadonlyArray<string> = ["Content-Type", "Authorization"];
-
-/**
- * Build CORS headers for a given request.
- * When `allowedOrigins` is set, only matching origins get reflected.
- * When unset, no CORS headers are added (no permissive wildcard by default).
- */
-function buildCorsHeaders(request: Request, allowedOrigins: ReadonlyArray<string> | undefined): CorsHeaders {
-  if (!allowedOrigins) return {};
-
-  // With an allowlist the response depends on Origin even when it gets no
-  // CORS headers (Origin absent or unlisted) — without `Vary`, a shared cache
-  // could replay a header-less response to an allowed origin, or vice versa.
-  const origin = request.headers.get("Origin");
-  if (!origin || !allowedOrigins.includes(origin)) return { Vary: "Origin" };
-
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": DEFAULT_ALLOWED_HEADERS.join(", "),
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
-  };
-}
-
-/**
- * Attach CORS headers to an existing Response.
- */
-function withCors(response: Response, corsHeaders: CorsHeaders): Response {
-  for (const [key, value] of Object.entries(corsHeaders)) {
-    response.headers.set(key, value);
+/** Setup hint for Prisma's "table does not exist" error (P2021). */
+function describePrismaError(error: unknown): string | undefined {
+  if (hasOwn(error, "code") && error.code === "P2021") {
+    return "Table 'SitepingFeedback' not found. Run 'npx prisma db push' to create it.";
   }
-  return response;
-}
-
-/** RFC 9110 `token` — the only valid shape for a header field name. */
-const HEADER_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-
-/**
- * `Access-Control-Allow-Headers` for a preflight from an ALLOWLISTED origin:
- * the defaults plus the header names it asks for — the widget's `headers`
- * option lets hosts send their own (a session token, a tenant id), which the
- * fixed default list would block. Names that are not valid header tokens
- * are dropped.
- */
-function preflightAllowedHeaders(request: Request): string {
-  const allowed = [...DEFAULT_ALLOWED_HEADERS];
-  const seen = new Set(allowed.map((name) => name.toLowerCase()));
-  for (const raw of (request.headers.get("Access-Control-Request-Headers") ?? "").split(",")) {
-    const name = raw.trim();
-    if (!HEADER_TOKEN.test(name) || seen.has(name.toLowerCase())) continue;
-    seen.add(name.toLowerCase());
-    allowed.push(name);
-  }
-  return allowed.join(", ");
-}
-
-// ---------------------------------------------------------------------------
-// Handler factory
-// ---------------------------------------------------------------------------
-
-/**
- * Perform a constant-time string comparison to prevent timing attacks on API key validation.
- * Returns `false` immediately when lengths differ (unavoidable length leak), but the
- * byte-level comparison itself is timing-safe.
- *
- * Length must be compared in BYTES: `timingSafeEqual` throws on byte-length
- * mismatch, and multi-byte characters make equal `.length` strings differ in
- * bytes — an attacker-controlled `Authorization` header must never turn that
- * into a 500.
- */
-function safeCompare(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+  return undefined;
 }
 
 /**
- * Serialize a feedback record for the HTTP wire (edge DTO — stores return raw
- * records, redaction happens here).
- *
- * `clientId` is always stripped: it is a browser-local dedup secret, and the
- * POST dedup path returns the full existing record for whoever presents it —
- * exposing it via responses would turn that into a record-theft oracle.
- * `authorEmail` is PII: blanked unless the requester is Bearer-authenticated.
- * Never mutates the input — webhooks receive the same record object.
- */
-function toWireFeedback(feedback: FeedbackRecord, includeEmail: boolean): Omit<FeedbackRecord, "clientId"> {
-  const { clientId: _clientId, ...wire } = feedback;
-  return includeEmail ? wire : { ...wire, authorEmail: "" };
-}
-
-/**
- * Create request handlers for the Siteping API endpoint.
+ * Create request handlers for the Siteping API endpoint — `@siteping/server`'s
+ * `createSitepingHandler` over a Prisma-backed store, with every server option.
  *
  * Accepts either a `store` (abstract) or a `prisma` client (backwards compatible).
  * When `prisma` is provided without `store`, it is wrapped in a `PrismaStore`.
@@ -764,30 +619,20 @@ function toWireFeedback(feedback: FeedbackRecord, includeEmail: boolean): Omit<F
  * export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ store })
  * ```
  */
-export function createSitepingHandler({
+export function createSitepingHandler<Principal extends SitepingPrincipal>(
+  options: PrismaAccessHandlerOptions<Principal>,
+): SitepingHandler;
+export function createSitepingHandler(options: HandlerOptions): SitepingHandler;
+export function createSitepingHandler<Principal extends SitepingPrincipal>({
   prisma,
   store: providedStore,
   screenshotStorage,
-  apiKey,
-  publicEndpoints = apiKey ? ["POST", "OPTIONS"] : undefined,
-  allowedOrigins,
   caseInsensitiveSearch,
-  requireAuthForDestructive = true,
-  redactUnauthenticatedEmails = true,
-  webhooks,
-}: HandlerOptions): SitepingHandler {
+  describeError,
+  ...serverOptions
+}: HandlerOptions | PrismaAccessHandlerOptions<Principal>): SitepingHandler {
   if (!providedStore && !prisma) {
     throw new Error("[siteping] createSitepingHandler requires either `store` or `prisma`.");
-  }
-
-  // Refuse to expose destructive endpoints publicly in production. Without
-  // this guard, anyone could `DELETE { deleteAll: true }` against the API.
-  if (!apiKey && requireAuthForDestructive && process.env.NODE_ENV === "production") {
-    throw new Error(
-      "[siteping] adapter-prisma: apiKey is required in production. " +
-        "Set `apiKey` to enable destructive endpoints, or pass " +
-        "`requireAuthForDestructive: false` if SitePing sits behind your own auth middleware.",
-    );
   }
 
   // Safe: the throw above guarantees at least one is defined
@@ -798,348 +643,9 @@ export function createSitepingHandler({
       ...(typeof caseInsensitiveSearch === "boolean" ? { caseInsensitiveSearch } : {}),
     });
 
-  const publicMethods: ReadonlySet<SitepingHttpMethod> | null = publicEndpoints ? new Set(publicEndpoints) : null;
-
-  // Normalise the webhook config to an array once so every POST avoids the
-  // allocation. Empty array short-circuits `dispatchWebhooks` cheaply.
-  const webhookList: ReadonlyArray<WebhookConfig> = webhooks
-    ? Array.isArray(webhooks)
-      ? (webhooks as ReadonlyArray<WebhookConfig>)
-      : [webhooks as WebhookConfig]
-    : [];
-
-  /**
-   * Creates in flight, keyed by clientId. The widget aborts an attempt after
-   * 10 s and resends the same payload, so a retry can reach the server while
-   * the first attempt is still being processed. With a store that returns the
-   * existing record on a duplicate clientId without implementing
-   * `createFeedbackIfAbsent`, both requests would pass the replay check and
-   * both "create" — notifying the webhooks twice. A request whose clientId is
-   * in flight shares that outcome instead, and never runs a second insert or
-   * upload. Scoped to this handler instance: across processes, the store
-   * decides — `createFeedbackIfAbsent`, or its unique constraint (the
-   * duplicate path in POST).
-   */
-  const inflightCreates = new Map<string, Promise<{ feedback: FeedbackRecord; inserted: boolean }>>();
-
-  /** Replay check + insert for one validated payload; `inserted` is false for a replay. */
-  async function createOrReplay(data: FeedbackPayload): Promise<{ feedback: FeedbackRecord; inserted: boolean }> {
-    const input: FeedbackCreateInput = {
-      projectName: data.projectName,
-      type: data.type,
-      message: data.message,
-      status: "open",
-      url: data.url,
-      urlPattern: data.urlPattern ?? null,
-      viewport: data.viewport,
-      userAgent: data.userAgent,
-      authorName: data.authorName,
-      authorEmail: data.authorEmail,
-      clientId: data.clientId,
-      annotations: data.annotations.map(flattenAnnotation),
-      screenshotDataUrl: data.screenshotDataUrl ?? null,
-      screenshotRegion: data.screenshotRegion ?? null,
-      diagnostics: data.diagnostics ?? null,
-    };
-
-    // The store reports its own inserts: it arbitrates replays and races on
-    // the clientId atomically, across handler instances and processes too.
-    if (store.createFeedbackIfAbsent) {
-      const { feedback, created } = await store.createFeedbackIfAbsent(input);
-      return { feedback, inserted: created };
-    }
-
-    // Otherwise, replay detection up front: stores that return the existing
-    // record on a duplicate clientId are indistinguishable from a fresh
-    // insert afterwards, and a replayed submission must not notify the
-    // webhooks a second time.
-    const replayed = await store.findByClientId(data.clientId);
-    if (replayed) return { feedback: replayed, inserted: false };
-
-    return { feedback: await store.createFeedback(input), inserted: true };
-  }
-
-  /**
-   * True iff `apiKey` is configured AND the request carries a matching Bearer
-   * token. Distinct from `authenticate`: a valid token on a public method still
-   * counts as authenticated here (drives PII redaction, not access control).
-   */
-  function isBearerAuthenticated(request: Request): boolean {
-    if (!apiKey) return false;
-    const header = request.headers.get("Authorization");
-    return header !== null && safeCompare(header, `Bearer ${apiKey}`);
-  }
-
-  /** Whether this request may see `authorEmail` (see `redactUnauthenticatedEmails`). */
-  function emailPermitted(request: Request): boolean {
-    return !redactUnauthenticatedEmails || isBearerAuthenticated(request);
-  }
-
-  /** Verify Bearer token when apiKey is configured. Skips methods listed in `publicEndpoints`. */
-  function authenticate(request: Request, method: SitepingHttpMethod): Response | null {
-    if (!apiKey) {
-      // No apiKey + destructive method + guard enabled → reject. GET/POST/OPTIONS
-      // stay open by default so the widget keeps working in dev without config.
-      if (requireAuthForDestructive && (method === "DELETE" || method === "PATCH")) {
-        return Response.json({ error: "apiKey required for destructive operations" }, { status: 401 });
-      }
-      return null;
-    }
-    if (publicMethods?.has(method)) return null;
-    if (!isBearerAuthenticated(request)) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    return null;
-  }
-
-  return {
-    /**
-     * CORS preflight handler. In production, always configure `allowedOrigins`
-     * to restrict which domains can make cross-origin requests to the API.
-     * Without it, no CORS headers are emitted and browsers will block widget requests.
-     */
-    OPTIONS: (request: Request): Response => {
-      const corsHeaders = buildCorsHeaders(request, allowedOrigins);
-      // An allowlisted preflight's answer also depends on the headers it requests.
-      const headers = corsHeaders["Access-Control-Allow-Origin"]
-        ? {
-            ...corsHeaders,
-            "Access-Control-Allow-Headers": preflightAllowedHeaders(request),
-            Vary: "Origin, Access-Control-Request-Headers",
-          }
-        : corsHeaders;
-      return new Response(null, { status: 204, headers });
-    },
-
-    POST: async (request: Request): Promise<Response> => {
-      const corsHeaders = buildCorsHeaders(request, allowedOrigins);
-      const authError = authenticate(request, "POST");
-      if (authError) return withCors(authError, corsHeaders);
-      const body = await request.json().catch(() => null);
-      if (!body) {
-        return withCors(Response.json({ error: "Invalid JSON" }, { status: 400 }), corsHeaders);
-      }
-
-      const parsed = feedbackCreateSchema.safeParse(body);
-      if (!parsed.success) {
-        return withCors(Response.json({ errors: formatValidationErrors(parsed.error) }, { status: 400 }), corsHeaders);
-      }
-
-      const data = parsed.data;
-
-      // Defense-in-depth: enforce annotation limit at handler level in addition to schema validation
-      if (data.annotations.length > 50) {
-        return withCors(Response.json({ error: "Too many annotations (max 50)" }, { status: 400 }), corsHeaders);
-      }
-
-      /**
-       * Respond to a create that resolved to `feedback`. A clientId is unique
-       * across the whole store, so a replay that resolves to another
-       * project's record is a boundary violation, not a dedup: refuse it
-       * rather than hand that record (email included) to a request scoped to
-       * a different project. Email stays intact otherwise: the requester
-       * supplied it (fresh insert) or proved ownership by presenting the
-       * clientId (replay).
-       */
-      const created = (feedback: FeedbackRecord): Response => {
-        if (feedback.projectName !== data.projectName) {
-          return withCors(
-            Response.json({ error: "clientId already used by another project" }, { status: 409 }),
-            corsHeaders,
-          );
-        }
-        return withCors(Response.json(toWireFeedback(feedback, true), { status: 201 }), corsHeaders);
-      };
-
-      // Join an in-flight create of this clientId, or start one. The lookup
-      // and the registration run in one synchronous turn, so two overlapping
-      // requests can never both miss.
-      let pending = inflightCreates.get(data.clientId);
-      const owner = pending === undefined;
-      if (!pending) {
-        pending = createOrReplay(data);
-        inflightCreates.set(data.clientId, pending);
-      }
-
-      try {
-        const { feedback, inserted } = await pending;
-
-        // Fire-and-forget: drop the promise so the widget isn't held back
-        // on slow Slack/Discord/generic receivers. `dispatchWebhooks` traps
-        // its own errors and reports them through `WebhookConfig.onError`.
-        // Only the request that ran the insert notifies — never a replay, and
-        // never a request that joined another one's in-flight create.
-        if (owner && inserted && webhookList.length > 0 && feedback.projectName === data.projectName) {
-          void dispatchWebhooks(webhookList, feedback);
-        }
-
-        return created(feedback);
-      } catch (error) {
-        // Unique-constraint race: the same clientId landed between the replay
-        // check above and the insert. The presenter still owns the record.
-        // A failing lookup falls through to the JSON 500 below — this catch
-        // must not throw, or the request loses its response and CORS headers.
-        if (isStoreDuplicate(error)) {
-          let existing: FeedbackRecord | null = null;
-          try {
-            existing = await store.findByClientId(data.clientId);
-          } catch (lookupError) {
-            console.error("[siteping] Failed to look up the duplicate clientId:", lookupError);
-          }
-          if (existing) return created(existing);
-        }
-
-        const message = actionableErrorMessage(error);
-        console.error("[siteping] Failed to create feedback:", error);
-        return withCors(Response.json({ error: message }, { status: 500 }), corsHeaders);
-      } finally {
-        if (owner) inflightCreates.delete(data.clientId);
-      }
-    },
-
-    GET: async (request: Request): Promise<Response> => {
-      const corsHeaders = buildCorsHeaders(request, allowedOrigins);
-      const authError = authenticate(request, "GET");
-      if (authError) return withCors(authError, corsHeaders);
-
-      const url = new URL(request.url);
-      const rawQuery: Record<string, string> = {};
-      for (const key of [
-        "projectName",
-        "page",
-        "limit",
-        "type",
-        "status",
-        "statuses",
-        "search",
-        "url",
-        "urlPattern",
-      ] as const) {
-        const val = url.searchParams.get(key);
-        if (val !== null) rawQuery[key] = val;
-      }
-
-      const parsed = getQuerySchema.safeParse(rawQuery);
-      if (!parsed.success) {
-        return withCors(Response.json({ errors: formatValidationErrors(parsed.error) }, { status: 400 }), corsHeaders);
-      }
-
-      try {
-        // GET can be public (no apiKey, or "GET" in publicEndpoints for widget
-        // hosts) — redact author emails unless the requester sent the key.
-        const authed = emailPermitted(request);
-        const result = await store.getFeedbacks(parsed.data);
-        const body = { ...result, feedbacks: result.feedbacks.map((f) => toWireFeedback(f, authed)) };
-        return withCors(Response.json(body, { headers: { "Cache-Control": "private, max-age=5" } }), corsHeaders);
-      } catch (error) {
-        const message = actionableErrorMessage(error);
-        console.error("[siteping] Failed to fetch feedbacks:", error);
-        return withCors(Response.json({ error: message }, { status: 500 }), corsHeaders);
-      }
-    },
-
-    PATCH: async (request: Request): Promise<Response> => {
-      const corsHeaders = buildCorsHeaders(request, allowedOrigins);
-      const authError = authenticate(request, "PATCH");
-      if (authError) return withCors(authError, corsHeaders);
-
-      const body = await request.json().catch(() => null);
-      if (!body) {
-        return withCors(Response.json({ error: "Invalid JSON" }, { status: 400 }), corsHeaders);
-      }
-
-      const parsed = feedbackPatchSchema.safeParse(body);
-      if (!parsed.success) {
-        return withCors(Response.json({ errors: formatValidationErrors(parsed.error) }, { status: 400 }), corsHeaders);
-      }
-
-      try {
-        // Verify project ownership before updating. Any store implementing
-        // the optional SitepingStore.verifyProjectOwnership gets the check;
-        // duck-typing instead of `instanceof` keeps it bundling-safe and
-        // open to third-party adapters.
-        if (store.verifyProjectOwnership) {
-          const owns = await store.verifyProjectOwnership(parsed.data.id, parsed.data.projectName);
-          if (!owns) {
-            return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);
-          }
-        }
-
-        // resolvedAt is the CLOSURE timestamp — set when the feedback enters
-        // a terminal status (resolved / wont_fix), cleared otherwise. The
-        // derivation lives here at the edge; stores persist what they're given.
-        const feedback = await store.updateFeedback(parsed.data.id, toFeedbackUpdate(parsed.data.status));
-
-        // PATCH can be made public via publicEndpoints / requireAuthForDestructive:
-        // false — don't leak the author's email through the update response.
-        return withCors(Response.json(toWireFeedback(feedback, emailPermitted(request))), corsHeaders);
-      } catch (error) {
-        if (isStoreNotFound(error)) {
-          return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);
-        }
-        const message = actionableErrorMessage(error);
-        console.error("[siteping] Failed to update feedback:", error);
-        return withCors(Response.json({ error: message }, { status: 500 }), corsHeaders);
-      }
-    },
-
-    DELETE: async (request: Request): Promise<Response> => {
-      const corsHeaders = buildCorsHeaders(request, allowedOrigins);
-      const authError = authenticate(request, "DELETE");
-      if (authError) return withCors(authError, corsHeaders);
-
-      const body = await request.json().catch(() => null);
-      if (!body) {
-        return withCors(Response.json({ error: "Invalid JSON" }, { status: 400 }), corsHeaders);
-      }
-
-      const parsed = feedbackDeleteSchema.safeParse(body);
-      if (!parsed.success) {
-        return withCors(Response.json({ errors: formatValidationErrors(parsed.error) }, { status: 400 }), corsHeaders);
-      }
-
-      try {
-        if ("deleteAll" in parsed.data) {
-          await store.deleteAllFeedbacks(parsed.data.projectName);
-          return withCors(Response.json({ deleted: true }), corsHeaders);
-        }
-
-        // Verify project ownership before deleting. Any store implementing
-        // the optional SitepingStore.verifyProjectOwnership gets the check;
-        // duck-typing instead of `instanceof` keeps it bundling-safe and
-        // open to third-party adapters.
-        if (store.verifyProjectOwnership) {
-          const owns = await store.verifyProjectOwnership(parsed.data.id, parsed.data.projectName);
-          if (!owns) {
-            return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);
-          }
-        }
-
-        await store.deleteFeedback(parsed.data.id);
-        return withCors(Response.json({ deleted: true }), corsHeaders);
-      } catch (error) {
-        if (isStoreNotFound(error)) {
-          return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);
-        }
-        const message = actionableErrorMessage(error);
-        console.error("[siteping] Failed to delete feedback:", error);
-        return withCors(Response.json({ error: message }, { status: 500 }), corsHeaders);
-      }
-    },
-  };
-}
-
-function isTableNotFoundError(error: unknown): error is { code: "P2021" } {
-  return hasOwn(error, "code") && (error as { code: unknown }).code === "P2021";
-}
-
-/**
- * Return an actionable error message for known Prisma error codes.
- * Falls back to a generic message for unknown errors.
- */
-function actionableErrorMessage(error: unknown): string {
-  if (isTableNotFoundError(error)) {
-    return "Table 'SitepingFeedback' not found. Run 'npx prisma db push' to create it.";
-  }
-  return "Internal server error";
+  return createServerHandler({
+    ...serverOptions,
+    store,
+    describeError: (error) => describeError?.(error) ?? describePrismaError(error),
+  });
 }

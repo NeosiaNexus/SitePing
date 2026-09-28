@@ -32,7 +32,7 @@ Le commentaire, son type et son statut, la page (le **chemin** de l'URL uniqueme
 
 ## N'importe qui peut-il lire mon API de feedback ?
 
-Les lectures sont publiques par défaut, avec les e-mails des auteurs masqués pour les appelants non authentifiés, et `clientId` jamais exposé. Les appels destructifs (changements de statut, suppressions) exigent un `apiKey` d'origine — et en production, l'adapter serveur refuse de démarrer sans. [Détails](/fr/docs/adapters/prisma#le-modèle-de-sécurité-franchement).
+Les lectures sont publiques par défaut, avec les e-mails des auteurs masqués pour les appelants non authentifiés, et `clientId` jamais exposé. Les appels destructifs (changements de statut, suppressions) exigent un `apiKey` d'origine — et en production, l'adapter serveur refuse de démarrer sans. [Détails](/fr/docs/server#le-modèle-de-sécurité-franchement).
 
 ## Que se passe-t-il si le réseau lâche en plein envoi ?
 

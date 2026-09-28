@@ -26,8 +26,8 @@
       "dependencies": {
         "@siteping/adapter-localstorage": "workspace:*",
         "@siteping/adapter-memory": "workspace:*",
-        "@siteping/adapter-prisma": "workspace:*",
         "@siteping/dashboard": "workspace:*",
+        "@siteping/server": "workspace:*",
         "@siteping/widget": "workspace:*",
         "fumadocs-core": "^16.15.11",
         "fumadocs-mdx": "^15.4.1",
@@ -52,8 +52,8 @@
       "devDependencies": {
         "@electric-sql/pglite": "^0.5.8",
         "@libsql/client": "^0.18.0",
-        "@siteping/adapter-prisma": "workspace:*",
         "@siteping/core": "workspace:*",
+        "@siteping/server": "workspace:*",
         "drizzle-kit": "^0.31.11",
         "drizzle-orm": "^0.45.3",
       },
@@ -92,7 +92,7 @@
       "name": "@siteping/adapter-prisma",
       "version": "0.6.6",
       "dependencies": {
-        "zod": "^4.6.5",
+        "@siteping/server": "workspace:^",
       },
       "devDependencies": {
         "@siteping/core": "workspace:*",
@@ -100,6 +100,9 @@
       "peerDependencies": {
         "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0",
       },
+      "optionalPeers": [
+        "@prisma/client",
+      ],
     },
     "packages/cli": {
       "name": "@siteping/cli",
@@ -132,6 +135,17 @@
       },
       "peerDependencies": {
         "react": ">=18",
+      },
+    },
+    "packages/server": {
+      "name": "@siteping/server",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "@siteping/adapter-memory": "workspace:*",
+        "@siteping/core": "workspace:*",
       },
     },
     "packages/widget": {
@@ -705,6 +719,8 @@
     "@siteping/dashboard": ["@siteping/dashboard@workspace:packages/dashboard"],
 
     "@siteping/demo": ["@siteping/demo@workspace:apps/demo"],
+
+    "@siteping/server": ["@siteping/server@workspace:packages/server"],
 
     "@siteping/widget": ["@siteping/widget@workspace:packages/widget"],
 

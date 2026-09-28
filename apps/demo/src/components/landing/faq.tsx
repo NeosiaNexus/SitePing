@@ -8,7 +8,7 @@ const faqs: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Does it work with frameworks other than Next.js?",
-    a: "The widget is framework-agnostic — it works with React, Vue, Svelte, Astro, or vanilla JavaScript. The CLI currently scaffolds Next.js API routes, but the adapter works with any server that handles standard Request/Response.",
+    a: "The widget is framework-agnostic — it works with React, Vue, Svelte, Astro, or vanilla JavaScript. The CLI currently scaffolds Next.js API routes, but the server handler (@siteping/server) works with any framework that handles standard Request/Response — Hono, Express, Remix, SvelteKit and more.",
   },
   {
     q: "What happens when the page layout changes?",

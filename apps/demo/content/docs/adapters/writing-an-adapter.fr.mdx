@@ -168,8 +168,8 @@ testSitepingStore(() => new PostgresStore(db), {
 Rien d'autre ne change. Côté serveur, passez-le aux handlers de requêtes ; côté client, passez-le directement au widget ou à l'inbox :
 
 ```ts
-// Serveur — les handlers de requêtes acceptent n'importe quel SitepingStore, Prisma ou non
-import { createSitepingHandler } from "@siteping/adapter-prisma";
+// Serveur — les handlers de requêtes acceptent n'importe quel SitepingStore
+import { createSitepingHandler } from "@siteping/server";
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ store: new MyStore() });
 
 // Navigateur — mode côté client, aucun serveur

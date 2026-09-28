@@ -26,6 +26,8 @@ import { prisma } from "@/lib/prisma";
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ prisma });
 ```
 
+Tout autre store se monte de la même façon avec [`@siteping/server`](/fr/docs/server) : `createSitepingHandler({ store })`.
+
 **Mode côté client** — le widget écrit directement dans un store du navigateur, aucun serveur nécessaire :
 
 ```ts

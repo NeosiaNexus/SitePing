@@ -29,7 +29,8 @@ bun run lint               # lint with Biome (includes the type-aware rules doma
 bun run lint:fix           # auto-fix lint issues
 bun run verify             # build + check + lint + test:run — the full pre-PR gate
 bun run pkg-checks         # publint + attw on every published package (same script CI runs)
-bun run check:consistency  # locale counts, package registration, fix-dts chains, esbuild override, fileURLToPath in tooling
+bun run check:consistency  # locale counts, package registration, fix-dts chains, esbuild override, fileURLToPath in tooling,
+                           # no @prisma/client import in adapter-prisma, workspace dependencies pinned before publish
 bun run knip               # dead files / exports / dependencies
 bun run new:locale <code>  # scaffold a new built-in locale (see Adding a Locale)
 bun run new:adapter <name> # scaffold a new first-party adapter (see Creating a New Adapter)
@@ -51,7 +52,8 @@ Monorepo with bun workspaces + Turborepo. Libraries live in `packages/`, the web
 | `@siteping/core` | private | — | Shared types, schema, store errors, helpers, conformance tests |
 | `@siteping/widget` | published | Browser | Feedback widget (Shadow DOM, closed). Accepts `store` for client-side mode |
 | `@siteping/dashboard` | published | Browser (React) | Linear-style triage inbox (`<SitepingInbox />` + headless `useSitepingInbox()`) |
-| `@siteping/adapter-prisma` | published | Node | Prisma database adapter |
+| `@siteping/server` | published | Any | Store-agnostic HTTP handler on the Fetch API (auth, CORS, hooks, webhooks) |
+| `@siteping/adapter-prisma` | published | Node | Prisma database adapter — `@siteping/server`'s handler with a Prisma store built in |
 | `@siteping/adapter-drizzle` | published | Node | Drizzle ORM store (PostgreSQL, Turso/libSQL) |
 | `@siteping/adapter-memory` | published | Any | In-memory adapter (testing, demos, serverless) |
 | `@siteping/adapter-localstorage` | published | Browser | localStorage adapter (demos, prototyping) |
@@ -98,7 +100,7 @@ English is the source language and lives at bare URLs (`/docs/widget`). Other la
 - A page without a translation still resolves in that language, served in English (`fallbackLanguage: "en"`), so partial translations never 404.
 - Adding a language means one entry in `apps/demo/src/lib/docs/i18n.ts` plus its UI dictionary in `apps/demo/src/lib/docs/ui.ts`, and a `localeMap` entry in `apps/demo/src/app/api/search/route.ts` so search uses the right stemmer.
 
-> **French is currently 100% translated** (20/20 pages). Adding a new English page without its `.fr.mdx` twin silently drops that page back to English for French readers — please add both, or flag it in the PR so a translator can pick it up.
+> **French is currently 100% translated** (22/22 pages). Adding a new English page without its `.fr.mdx` twin silently drops that page back to English for French readers — please add both, or flag it in the PR so a translator can pick it up.
 
 ### Before you open the PR
 
@@ -140,10 +142,15 @@ is the smallest). The pieces that matter:
 4. **Register in release-please** — add the package to
    `release-please-config.json` (release-type `node`, `bump-minor-pre-major`)
    and to `.release-please-manifest.json` with the pre-first-release
-   placeholder version `"0.0.0"` (the post-release npm check knows to skip it).
+   placeholder version `"0.0.0"` (the post-release npm check knows to skip it;
+   the root `initial-version` makes the first release `0.1.0`).
 5. **Wire `.github/workflows/release.yml`** (4 spots — copy an existing
    publish job): the `release_created` output, the build-artifact path, the
-   publish job itself, and the `verify-publish` needs list.
+   publish job itself, and the `verify-publish` needs list. A package that
+   depends on another published workspace package (`workspace:^`) also needs
+   a step pinning that range before `npm publish` (`npm pkg set`, as in
+   `publish-adapter-prisma`), and its publish job must list the dependency's
+   publish job in `needs` (`check:consistency` fails if either is missing).
 6. **Verify** — `bun install`, then `bun run verify && bun run pkg-checks && bun run check:consistency`.
 
 The publint/attw gates and pkg-pr-new previews derive their package list from

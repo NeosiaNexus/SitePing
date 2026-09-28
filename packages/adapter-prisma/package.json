@@ -56,12 +56,17 @@
     "node": ">=20"
   },
   "dependencies": {
-    "zod": "^4.6.5"
+    "@siteping/server": "workspace:^"
   },
   "devDependencies": {
     "@siteping/core": "workspace:*"
   },
   "peerDependencies": {
     "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@prisma/client": {
+      "optional": true
+    }
   }
 }

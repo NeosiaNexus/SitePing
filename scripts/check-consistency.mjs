@@ -13,7 +13,12 @@
 //      declarations need (cli is exempt: it ships no .d.ts);
 //   5. the root esbuild override drifted from the widget's esbuild spec;
 //   6. Node tooling (configs, scripts/, e2e/) takes a filesystem path from a
-//      file URL's .pathname instead of fileURLToPath().
+//      file URL's .pathname instead of fileURLToPath();
+//   7. adapter-prisma's source imports @prisma/client, which it declares as
+//      an optional peer dependency;
+//   8. a published package depends on another through `workspace:` without
+//      the release.yml step that pins the range before `npm publish`, or
+//      its publish job does not wait for the dependency's.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -163,6 +168,61 @@ for (const dir of toolingDirs) {
       errors.push(
         `${file}:${line} takes a filesystem path from a file URL's .pathname — use fileURLToPath() (node:url)`,
       );
+    }
+  }
+}
+
+// --- 7. @prisma/client stays an optional peer --------------------------------
+
+// Stores other than Prisma mount through adapter-prisma too, so its
+// @prisma/client peer is optional (#306): npm, pnpm and Bun then leave it
+// out. That is only safe while the source never imports it — not even as a
+// type, which would leave an import the consumer may not resolve in the
+// published declarations. The client shape is structural on purpose
+// (SitepingPrismaClient).
+const PRISMA_CLIENT_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']@prisma\/client(?:\/[^"']*)?["']/;
+const prismaSourceFiles = (dir) =>
+  readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? prismaSourceFiles(`${dir}/${e.name}`) : /\.[cm]?tsx?$/.test(e.name) ? [`${dir}/${e.name}`] : [],
+  );
+for (const file of prismaSourceFiles("packages/adapter-prisma/src")) {
+  if (PRISMA_CLIENT_IMPORT.test(read(file))) {
+    errors.push(`${file} imports @prisma/client — adapter-prisma declares it as an optional peer (#306)`);
+  }
+}
+
+// --- 8. Workspace dependencies are pinned before publishing ------------------
+
+// Bun links a `workspace:` range to the local package whatever its version
+// (a semver range stops matching as soon as release-please bumps it), but
+// `npm publish` ships the protocol verbatim, which npm cannot install. The
+// publish job must rewrite each one — `npm pkg set "dependencies.<name>=…"`
+// — and run after the dependency's, so the pinned version is on npm first.
+
+/** release.yml jobs: name → the lines indented under it. */
+const releaseJobs = [...releaseYml.matchAll(/^ {2}([\w-]+):\n((?: {4}.*\n|\s*\n)*)/gm)].map((m) => ({
+  name: m[1],
+  body: m[2],
+}));
+const publishJobOf = (pkgPath) => releaseJobs.find(({ body }) => body.includes(`working-directory: ${pkgPath}\n`));
+/** Jobs a release.yml job waits for (`needs: [a, b]` or `needs: a`). */
+const needsOf = (job) => job?.body.match(/^ {4}needs: \[?([^\]\n]*)/m)?.[1].split(/,\s*/) ?? [];
+const pkgPathByName = new Map(
+  Object.keys(manifest).map((pkgPath) => [JSON.parse(read(`${pkgPath}/package.json`)).name, pkgPath]),
+);
+
+for (const pkgPath of Object.keys(manifest)) {
+  const pkg = JSON.parse(read(`${pkgPath}/package.json`));
+  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+    for (const [name, spec] of Object.entries(pkg[field] ?? {})) {
+      if (!spec.startsWith("workspace:")) continue;
+      if (!releaseYml.includes(`npm pkg set "${field}.${name}=`)) {
+        errors.push(`${pkgPath} ${field} "${name}": "${spec}" is not pinned before npm publish in release.yml`);
+      }
+      const dependencyJob = pkgPathByName.has(name) && publishJobOf(pkgPathByName.get(name));
+      if (dependencyJob && !needsOf(publishJobOf(pkgPath)).includes(dependencyJob.name)) {
+        errors.push(`${pkgPath}'s publish job does not wait for ${dependencyJob.name} (${name}) in release.yml`);
+      }
     }
   }
 }

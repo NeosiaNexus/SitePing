@@ -14,7 +14,7 @@ The production server adapter for [SitePing](https://github.com/NeosiaNexus/Site
 npm install @siteping/adapter-prisma
 ```
 
-**Peer dependency:** `@prisma/client` ^5 || ^6 || ^7 · Node ≥ 20.
+**Optional peer dependency:** `@prisma/client` ^5 || ^6 || ^7, needed only for the `prisma` option · Node ≥ 20.
 
 ## Quick start
 
@@ -37,11 +37,11 @@ The handlers are Web-standard `Request` → `Response` — mount them from any f
 - **Safe by default** — status changes and deletes require the `apiKey`; in production the factory refuses to start without one. Author emails are redacted for unauthenticated readers and `clientId` never leaves the server
 - **Screenshot storage hook** — upload images to S3/R2/GCS instead of inlining data URLs
 - **Webhooks** — Slack, Discord, or generic POST on each new feedback (5 s timeout, never blocks the submission)
-- **Any store behind the same HTTP surface** — pass `store` instead of `prisma` to mount an in-memory or custom store with identical validation and auth
+- **Built on [`@siteping/server`](https://siteping.dev/docs/server)** — every server option works here too (custom `access`, lifecycle hooks, `waitUntil`…), and a non-Prisma store can mount through `@siteping/server` alone
 
 ## Documentation
 
-All options with their real defaults, the full HTTP reference (bodies, query params, errors, validation limits), the exact Prisma schema, and the security model: **[siteping.dev/docs/adapters/prisma](https://siteping.dev/docs/adapters/prisma)**.
+The Prisma options, the exact Prisma schema and screenshot storage: **[siteping.dev/docs/adapters/prisma](https://siteping.dev/docs/adapters/prisma)**. The security model and the full HTTP reference (bodies, query params, errors, validation limits): **[siteping.dev/docs/server](https://siteping.dev/docs/server)**.
 
 ## License
 

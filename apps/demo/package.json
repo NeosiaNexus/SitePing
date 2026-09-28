@@ -15,8 +15,8 @@
   "dependencies": {
     "@siteping/adapter-localstorage": "workspace:*",
     "@siteping/adapter-memory": "workspace:*",
-    "@siteping/adapter-prisma": "workspace:*",
     "@siteping/dashboard": "workspace:*",
+    "@siteping/server": "workspace:*",
     "@siteping/widget": "workspace:*",
     "gsap": "^3.15.0",
     "next": "^16.3.5",

@@ -11,7 +11,7 @@ L'inbox lit et écrit à travers une petite abstraction, que vous pouvez fournir
 <SitepingInbox projects="mon-projet" endpoint="/api/siteping" apiKey={KEY} />
 ```
 
-Parle à votre [endpoint d'adapter](/fr/docs/adapters/prisma) : `GET` pour les listes, `PATCH` pour les statuts, `DELETE` pour les suppressions, toujours avec `cache: "no-store"`. Les erreurs arrivent typées par `code` (`AUTH` pour 401/403, `VALIDATION` pour les autres 4xx, `SERVER` pour les 5xx, `NETWORK` pour les échecs de fetch). Il n'y a volontairement **aucun réessai** — une interface de tri doit vous dire les choses tout de suite.
+Parle à votre [endpoint SitePing](/fr/docs/server) : `GET` pour les listes, `PATCH` pour les statuts, `DELETE` pour les suppressions, toujours avec `cache: "no-store"`. Les erreurs arrivent typées par `code` (`AUTH` pour 401/403, `VALIDATION` pour les autres 4xx, `SERVER` pour les 5xx, `NETWORK` pour les échecs de fetch). Il n'y a volontairement **aucun réessai** — une interface de tri doit vous dire les choses tout de suite.
 
 ## Mode store
 

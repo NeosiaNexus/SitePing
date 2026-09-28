@@ -1,0 +1,64 @@
+{
+  "name": "@siteping/server",
+  "version": "0.0.0",
+  "description": "Store- and framework-agnostic HTTP handler for Siteping — any SitepingStore behind one Fetch API endpoint",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && node ../../scripts/fix-dts.mjs dist",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "siteping",
+    "server",
+    "api-handler",
+    "fetch-api",
+    "feedback",
+    "feedback-api",
+    "self-hosted",
+    "typescript"
+  ],
+  "author": "neosianexus",
+  "license": "MIT",
+  "homepage": "https://siteping.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NeosiaNexus/SitePing.git",
+    "directory": "packages/server"
+  },
+  "bugs": {
+    "url": "https://github.com/NeosiaNexus/SitePing/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@siteping/adapter-memory": "workspace:*",
+    "@siteping/core": "workspace:*"
+  }
+}

@@ -7,14 +7,16 @@ description: Un store en mémoire du processus pour les tests, previews et démo
 
 ```bash
 npm i @siteping/adapter-memory
+npm i @siteping/server # seulement pour le servir en HTTP
 ```
 
 ```ts
 import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler } from "@siteping/server";
 
 const store = new MemoryStore();
 
-// Côté serveur, derrière le handler HTTP :
+// Côté serveur, derrière le handler HTTP (sans Prisma) :
 createSitepingHandler({ store });
 
 // Ou côté client, directement dans le widget :
