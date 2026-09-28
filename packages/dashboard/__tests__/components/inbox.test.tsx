@@ -183,6 +183,33 @@ describe("SitepingInbox — keyboard", () => {
     await waitFor(() => expect(listRows()).toHaveLength(3)); // o1 reinstated
   });
 
+  /** Mount under a backend-style tag Intl rejects, and wait until the French dictionary is in. */
+  async function readyInFrFR(): Promise<HTMLElement> {
+    renderInbox({ locale: "fr_FR" });
+    const listbox = await ready();
+    await screen.findByRole("region", { name: "Boîte de réception des feedbacks" });
+    return listbox;
+  }
+
+  it("renders a backend-style fr_FR tag in French, with a valid lang, and e still toasts", async () => {
+    const listbox = await readyInFrFR();
+    expect(listbox.closest(".spd-root")?.getAttribute("lang")).toBe("fr-FR");
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "e" });
+    expect(await screen.findByText("Marqué comme résolu")).toBeTruthy();
+  });
+
+  it("opening a feedback with diagnostics under fr_FR keeps the inbox mounted", async () => {
+    const listbox = await readyInFrFR();
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "j" }); // o2 carries diagnostics
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    const dialog = await screen.findByRole("dialog", { name: /Détail du feedback/ });
+    const times = dialog.querySelectorAll("time.spd-diag-time");
+    expect(times.length).toBeGreaterThan(0);
+    for (const time of times) expect(time.textContent).toMatch(/\d/);
+  });
+
   it("p marks the focused row in progress and it leaves the open tab", async () => {
     renderInbox();
     const listbox = await ready();

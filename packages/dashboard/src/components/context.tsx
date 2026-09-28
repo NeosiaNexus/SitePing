@@ -6,10 +6,10 @@ import { StatusInProgressIcon, StatusOpenIcon, StatusResolvedIcon, StatusWontFix
 
 /**
  * UI context shared by every inbox sub-component: the translation function,
- * the active locale (for `Intl` formatting), a `notify` callback that routes
- * transient messages (e.g. "Copied") to the single toast slot, and
- * `focusList` to return keyboard focus to the listbox after a transient layer
- * (drawer, toast) unmounts.
+ * the active locale as an `Intl`-valid tag (see core `intlLocale`), a
+ * `notify` callback that routes transient messages (e.g. "Copied") to the
+ * single toast slot, and `focusList` to return keyboard focus to the listbox
+ * after a transient layer (drawer, toast) unmounts.
  */
 export interface InboxUiContextValue {
   t: TFunction;

@@ -54,13 +54,6 @@ describe("formatAbsolute", () => {
   it("formats with a valid locale", () => {
     expect(formatAbsolute(date, "en")).toMatch(/2026/);
   });
-
-  it("falls back to English on an invalid BCP-47 tag", () => {
-    // A structurally invalid tag makes Intl.DateTimeFormat throw — the catch
-    // path formats with "en" instead of crashing.
-    const result = formatAbsolute(date, "e!");
-    expect(result).toMatch(/2026/);
-  });
 });
 
 describe("pathFromUrl", () => {

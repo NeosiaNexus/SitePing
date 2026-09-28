@@ -1,4 +1,4 @@
-import type { FeedbackStatus } from "@siteping/core";
+import { type FeedbackStatus, intlLocale } from "@siteping/core";
 import type { CSSProperties, ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useInsertionEffect, useMemo, useRef, useState } from "react";
 import { buildDeepLink } from "../format.js";
@@ -68,6 +68,8 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     void localeTick; // new identity once the dictionary is registered
     return createT(locale);
   }, [locale, localeTick]);
+  // What every Intl / toLocale* call gets — a tag like "fr_FR" would throw there.
+  const intlTag = intlLocale(locale);
 
   // ----- toast slot (single)
   const toastSeq = useRef(0);
@@ -120,11 +122,11 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     async (id: string, status: FeedbackStatus): Promise<void> => {
       const ok = await runMutation(() => state.changeStatus(id, status));
       if (ok) {
-        const label = toastStatusLabel(getStatusLabel(status, t), locale);
+        const label = toastStatusLabel(getStatusLabel(status, t), intlTag);
         showToast(tWithParams(t, "inbox.markedAs", { status: label }), true);
       }
     },
-    [runMutation, state, showToast, t, locale],
+    [runMutation, state, showToast, t, intlTag],
   );
 
   const deleteFeedback = useCallback(
@@ -314,7 +316,10 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   );
 
   // ----- render
-  const ui = useMemo<InboxUiContextValue>(() => ({ t, locale, notify, focusList }), [t, locale, notify, focusList]);
+  const ui = useMemo<InboxUiContextValue>(
+    () => ({ t, locale: intlTag, notify, focusList }),
+    [t, intlTag, notify, focusList],
+  );
 
   const showSkeleton = state.view === "loading";
   const showError = state.view === "error";
@@ -329,7 +334,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
         style={rootStyle}
         data-theme={resolvedTheme}
         data-density={density}
-        lang={locale}
+        lang={intlTag}
         aria-label={t("inbox.regionLabel")}
         onKeyDown={handleKeyDown}
       >
