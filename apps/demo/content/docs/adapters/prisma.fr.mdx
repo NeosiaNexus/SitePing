@@ -155,6 +155,8 @@ Si un envoi échoue, le feedback est quand même enregistré (avec `screenshotUr
 
 Ajoutez un `delete(url)` optionnel et l'adapter l'appelle à la suppression d'un feedback — `DELETE` unitaire comme `deleteAll` — pour ne rien laisser traîner dans votre bucket. C'est du meilleur effort : un `delete` qui échoue est journalisé et ne fait jamais échouer la suppression (un objet orphelin vaut mieux qu'une ligne qui refuse de partir). Les URL `data:` en ligne ne lui sont jamais passées.
 
+Il est aussi appelé pour une capture envoyée par une création dont l'insertion a ensuite échoué, pour que l'objet ne traîne pas — sauf si un feedback enregistré pointe déjà vers cette URL. C'est le cas quand un `clientId` déjà enregistré est soumis à nouveau (un nouvel essai en concurrence avec le premier) et que votre clé dérive de `feedbackId` : l'envoi a réécrit l'objet du feedback enregistré, qui est donc conservé.
+
 ## Webhooks
 
 Soyez notifié à chaque nouveau feedback :

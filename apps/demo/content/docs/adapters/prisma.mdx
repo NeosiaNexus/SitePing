@@ -155,6 +155,8 @@ If an upload fails, the feedback is still saved (with `screenshotUrl: null`) and
 
 Add an optional `delete(url)` and the adapter calls it when a feedback is deleted — single `DELETE` and `deleteAll` alike — so nothing is left behind in your bucket. It is best-effort: a failing `delete` is logged and never fails the deletion (an orphaned object beats a row that refuses to go away). Inline `data:` URLs are never passed to it.
 
+It is also called for a screenshot uploaded by a create whose insert then failed, so the object doesn't linger — unless a stored feedback already points at that URL. That happens when a `clientId` that is already stored is submitted again (a retry racing the first attempt) and your key is derived from `feedbackId`: the upload rewrote the stored feedback's own object, so it is kept.
+
 ## Webhooks
 
 Get pinged on every new feedback:
