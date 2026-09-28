@@ -8,10 +8,10 @@
  * inline base64 (with a one-time warn) — fine for dev and small
  * deployments, a footgun for production Postgres.
  *
- * Implementations typically wrap an object store: S3, Cloudflare R2,
- * Backblaze B2, Cloudflare Images, local filesystem, etc. They are
- * intentionally not shipped from this package — wire your own based on
- * existing infra.
+ * `@siteping/screenshot-storage` implements it over any S3-compatible
+ * bucket (AWS S3, Cloudflare R2, Backblaze B2, MinIO…), Cloudflare Images,
+ * a database table, the local filesystem or memory. Implement it yourself
+ * for anything else.
  *
  * @example
  * ```ts
@@ -20,11 +20,11 @@
  *
  * const s3 = new S3Client({ region: "eu-west-3" });
  * const screenshotStorage: ScreenshotStorage = {
- *   async upload(dataUrl, ctx) {
- *     const buf = Buffer.from(dataUrl.split(",")[1], "base64");
- *     const key = `feedback/${ctx.feedbackId}.jpg`;
+ *   async upload(dataUrl, { mimeType }) {
+ *     const body = Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64");
+ *     const key = `siteping/${crypto.randomUUID()}`; // fresh per upload, see URL ownership
  *     await s3.send(new PutObjectCommand({
- *       Bucket: "my-bucket", Key: key, Body: buf, ContentType: ctx.mimeType,
+ *       Bucket: "my-bucket", Key: key, Body: body, ContentType: mimeType,
  *     }));
  *     return { url: `https://cdn.example.com/${key}` };
  *   },
@@ -45,16 +45,19 @@ export interface ScreenshotStorage {
    * `ctx.feedbackId` identifies the upload. Adapters that upload before the
    * record exists pass the *client-generated* `clientId` (Prisma); the
    * Drizzle adapter passes the server-generated id the create attempt will
-   * insert the record under — unique per attempt, so racing submissions of
-   * one `clientId` never write the same object key.
+   * insert the record under.
    *
-   * **URL ownership:** the returned URL must be unique to `ctx.feedbackId` —
-   * key the object by it (as the example does), never by a content hash or a
-   * fixed name. Adapters treat each URL as the property of the record that
-   * stores it and may pass it to `delete` once that record is deleted or its
-   * upload discarded. A URL shared by several records (content-addressed or
-   * id-ignoring keys) breaks this contract: deleting one record can remove
-   * the object another record still points at.
+   * **URL ownership:** every call must return a URL no other call returns —
+   * key the object by a fresh random value (`crypto.randomUUID()`, as the
+   * example does), never by `ctx.feedbackId` alone nor by a content hash.
+   * Adapters treat each URL as the property of the one record that stores it
+   * and may pass it to `delete` once that record is deleted, or once its
+   * create lost a race: two submissions of one `clientId` both upload, and
+   * the object of the one that is not stored is deleted. Under Prisma,
+   * `ctx.feedbackId` is that client-supplied `clientId`, so an object keyed
+   * by it is rewritten by every replay — a retry, or anyone who learns the
+   * id — and a URL shared by several records lets deleting one remove the
+   * object another still points at.
    *
    * **Security note:** treat `ctx.feedbackId` as attacker-controlled:
    * sanitize before using it in filesystem paths or object keys, even though
