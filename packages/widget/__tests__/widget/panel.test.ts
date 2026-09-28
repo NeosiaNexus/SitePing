@@ -3966,9 +3966,10 @@ describe("Panel", () => {
       await vi.waitFor(() => {
         expect(apiClient.getFeedbacks).toHaveBeenCalled();
       });
-      const lastCall = apiClient.getFeedbacks.mock.calls[apiClient.getFeedbacks.mock.calls.length - 1];
-      expect(lastCall?.[1]).not.toHaveProperty("url");
-      expect(lastCall?.[1]).not.toHaveProperty("urlPattern");
+      // First call = the list query (the page-marker query may follow it)
+      const listCall = apiClient.getFeedbacks.mock.calls[0];
+      expect(listCall?.[1]).not.toHaveProperty("url");
+      expect(listCall?.[1]).not.toHaveProperty("urlPattern");
     });
 
     it("respects custom getScope option for url and urlPattern", async () => {
@@ -4004,8 +4005,9 @@ describe("Panel", () => {
       await vi.waitFor(() => {
         expect(apiClient.getFeedbacks).toHaveBeenCalled();
       });
-      const lastCall = apiClient.getFeedbacks.mock.calls[apiClient.getFeedbacks.mock.calls.length - 1];
-      expect(lastCall?.[1]).toMatchObject({ urlPattern: "/orders/:id" });
+      // First call = the list query (the page-marker query may follow it)
+      const listCall = apiClient.getFeedbacks.mock.calls[0];
+      expect(listCall?.[1]).toMatchObject({ urlPattern: "/orders/:id" });
     });
 
     it("filters markers to current url even when panel shows wider scope", async () => {
@@ -4022,6 +4024,112 @@ describe("Panel", () => {
         const lastCall = markers.render.mock.calls[markers.render.mock.calls.length - 1];
         expect(lastCall?.[0]).toEqual([here]);
       });
+    });
+  });
+
+  describe("page markers under a list filter", () => {
+    const pageOpen = makeFeedback({ id: "fb-open", status: "open", url: "/" });
+    const pageDone = makeFeedback({ id: "fb-done", status: "resolved", url: "/" });
+    /** The list query under a status tab; the page-marker query has no filter. */
+    const isFiltered = (options?: { statuses?: unknown }) => options?.statuses !== undefined;
+    const clickStatusTab = (tab: string) =>
+      shadow.querySelector<HTMLButtonElement>(`[data-status-filter="${tab}"]`)!.click();
+    const lastMarkerRender = () => markers.render.mock.calls.at(-1)?.[0];
+
+    it("keep the page's open markers, and the FAB badge they drive, under the Resolved tab", async () => {
+      apiClient.getFeedbacks.mockImplementation(async (_project: string, options?: { statuses?: unknown }) =>
+        isFiltered(options) ? { feedbacks: [pageDone], total: 1 } : { feedbacks: [pageOpen, pageDone], total: 2 },
+      );
+      await panel.open();
+
+      clickStatusTab("resolved");
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-open"]')).toBeNull());
+
+      // The open marker must survive — otherwise the badge drops to 0 and
+      // stays there after the panel closes.
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen, pageDone]));
+    });
+
+    it("follow the page query, not the list, on a load under a filter", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [pageOpen, pageDone], total: 2 });
+      await panel.open();
+      // The resolved feedback was deleted meanwhile
+      apiClient.getFeedbacks.mockImplementation(async (_project: string, options?: { statuses?: unknown }) =>
+        isFiltered(options) ? { feedbacks: [], total: 0 } : { feedbacks: [pageOpen], total: 1 },
+      );
+
+      clickStatusTab("resolved");
+
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+    });
+
+    it("fetch the page-marker query alongside the filtered list, not after it", async () => {
+      await panel.open();
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockImplementation((_project: string, options?: { statuses?: unknown }) =>
+        isFiltered(options) ? new Promise(() => {}) : Promise.resolve({ feedbacks: [pageOpen], total: 1 }),
+      );
+
+      clickStatusTab("resolved");
+
+      // The list is still loading, and the markers already show the page
+      expect(apiClient.getFeedbacks).toHaveBeenCalledTimes(2);
+      expect(apiClient.getFeedbacks.mock.calls[1]?.[1]).toEqual({ limit: 20, url: "/" });
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+    });
+
+    it("drop a page-marker response that a newer load overtook", async () => {
+      await panel.open();
+      let resolveStaleMarkers!: (value: { feedbacks: FeedbackResponse[]; total: number }) => void;
+      apiClient.getFeedbacks
+        .mockResolvedValueOnce({ feedbacks: [pageDone], total: 1 }) // Resolved tab: list
+        .mockReturnValueOnce(new Promise((resolve) => (resolveStaleMarkers = resolve))) // …and its markers
+        .mockResolvedValue({ feedbacks: [pageOpen], total: 1 }); // Open tab: list and markers
+      clickStatusTab("resolved");
+      clickStatusTab("open");
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+
+      resolveStaleMarkers({ feedbacks: [], total: 0 });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(lastMarkerRender()).toEqual([pageOpen]);
+    });
+
+    it("keep the current markers, without an error, when the page-marker query fails", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [pageOpen], total: 1 });
+      await panel.open();
+      const errorListener = vi.fn();
+      bus.on("feedback:error", errorListener);
+      markers.render.mockClear();
+      apiClient.getFeedbacks.mockImplementation(async (_project: string, options?: { statuses?: unknown }) => {
+        if (!isFiltered(options)) throw new Error("markers down");
+        return { feedbacks: [], total: 0 };
+      });
+
+      clickStatusTab("resolved");
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-open"]')).toBeNull());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(markers.render).not.toHaveBeenCalled();
+      expect(errorListener).not.toHaveBeenCalled();
+    });
+
+    it("leave the markers alone when Load more appends a filtered page", async () => {
+      const resolvedPage = (prefix: string, length: number) =>
+        Array.from({ length }, (_, i) => makeFeedback({ id: `${prefix}-${i}`, status: "resolved", url: "/" }));
+      apiClient.getFeedbacks.mockImplementation(async (_project: string, options?: { statuses?: unknown }) =>
+        isFiltered(options) ? { feedbacks: resolvedPage("fb-p1", 20), total: 25 } : { feedbacks: [pageOpen], total: 1 },
+      );
+      await panel.open();
+      clickStatusTab("resolved");
+      await vi.waitFor(() => expect(shadow.querySelector(".sp-btn-load-more")).not.toBeNull());
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: resolvedPage("fb-p2", 5), total: 25 });
+
+      shadow.querySelector<HTMLButtonElement>(".sp-btn-load-more")!.click();
+      await vi.waitFor(() => expect(shadow.querySelectorAll(".sp-card")).toHaveLength(25));
+
+      expect(lastMarkerRender()).toEqual([pageOpen]);
     });
   });
 
