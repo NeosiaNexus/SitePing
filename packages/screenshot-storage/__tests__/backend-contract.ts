@@ -125,35 +125,34 @@ export function describeBackendContract(backend: BackendUnderTest): void {
       expect(await storedBytes(foreignKey)).toEqual(JPEG_BYTES);
     });
 
-    it.runIf(backend.servedByApp)("serves stored screenshots through createScreenshotServeHandler", async () => {
-      const { objectStore } = await backend.open();
-      const storage = createScreenshotStorage(objectStore, { logger: silentLogger() });
-      const { url } = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    if (backend.servedByApp) {
+      it("serves stored screenshots through createScreenshotServeHandler", async () => {
+        const { objectStore } = await backend.open();
+        const storage = createScreenshotStorage(objectStore, { logger: silentLogger() });
+        const { url } = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
 
-      const response = await createScreenshotServeHandler(objectStore).GET(new Request(url));
+        const response = await createScreenshotServeHandler(objectStore).GET(new Request(url));
 
-      expect(response.status).toBe(200);
-      expect(response.headers.get("content-type")).toBe("image/jpeg");
-      expect(new Uint8Array(await response.arrayBuffer())).toEqual(JPEG_BYTES);
-    });
-
-    it.runIf(backend.servedByApp)("serves a custom allowed type with the type it was uploaded with", async () => {
-      const { objectStore } = await backend.open();
-      const storage = createScreenshotStorage(objectStore, {
-        allowedContentTypes: ["image/jpeg", "image/gif"],
-        logger: silentLogger(),
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toBe("image/jpeg");
+        expect(new Uint8Array(await response.arrayBuffer())).toEqual(JPEG_BYTES);
       });
 
-      const { url } = await storage.upload(GIF_DATA_URL, UPLOAD_CONTEXT);
-      const response = await createScreenshotServeHandler(objectStore).GET(new Request(url));
+      it("serves a custom allowed type with the type it was uploaded with", async () => {
+        const { objectStore } = await backend.open();
+        const storage = createScreenshotStorage(objectStore, {
+          allowedContentTypes: ["image/jpeg", "image/gif"],
+          logger: silentLogger(),
+        });
 
-      expect(response.status).toBe(200);
-      expect(response.headers.get("content-type")).toBe("image/gif");
-    });
+        const { url } = await storage.upload(GIF_DATA_URL, UPLOAD_CONTEXT);
+        const response = await createScreenshotServeHandler(objectStore).GET(new Request(url));
 
-    it.runIf(backend.servedByApp)(
-      "serves an SVG that reached the backend directly as a sandboxed download, never inline",
-      async () => {
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toBe("image/gif");
+      });
+
+      it("serves an SVG that reached the backend directly as a sandboxed download, never inline", async () => {
         const { objectStore } = await backend.open();
         const legacyKey = `siteping-${"b".repeat(32)}.svg`;
         const svgBytes = new TextEncoder().encode(
@@ -170,8 +169,8 @@ export function describeBackendContract(backend: BackendUnderTest): void {
         expect(response.headers.get("content-disposition")).toBe("attachment");
         expect(response.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
         expect(response.headers.get("x-content-type-options")).toBe("nosniff");
-      },
-    );
+      });
+    }
 
     if (backend.injectsFailures) {
       it("reclaims an upload whose outcome is unknown, then reports the failure", async () => {

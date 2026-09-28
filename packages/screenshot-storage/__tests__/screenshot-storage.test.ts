@@ -572,6 +572,39 @@ describe("createS3ObjectStore — uploads", () => {
   });
 });
 
+describe("backend requests — timeouts", () => {
+  it("aborts an upload after timeoutMs, reports it without a status and reclaims its key", async () => {
+    const requests: { method: string; path: string }[] = [];
+    const objectStore = createS3ObjectStore({
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      bucket: "screens",
+      publicBaseUrl: "https://screens.example.com",
+      accessKeyId: "AKIDEXAMPLE",
+      secretAccessKey: "s3-secret",
+      timeoutMs: 20,
+      // The PUT never answers, as a stalled backend; the reclaiming DELETE does.
+      fetch: (input, init) => {
+        const request = new Request(input, init);
+        requests.push({ method: request.method, path: new URL(request.url).pathname });
+        if (request.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
+        return new Promise((_resolve, reject) => {
+          request.signal.addEventListener("abort", () => reject(request.signal.reason));
+        });
+      },
+    });
+
+    const failure = await createScreenshotStorage(objectStore, { logger: silentLogger() })
+      .upload(JPEG_DATA_URL, UPLOAD_CONTEXT)
+      .catch((error: unknown) => error);
+
+    expect(isObjectStoreRequestError(failure)).toBe(true);
+    expect((failure as ObjectStoreRequestError).status).toBeNull();
+    expect((failure as ObjectStoreRequestError).cause).toMatchObject({ name: "TimeoutError" });
+    expect(requests.map(({ method }) => method)).toEqual(["PUT", "DELETE"]);
+    expect(requests[1]?.path).toBe(requests[0]?.path);
+  });
+});
+
 describe("createS3ObjectStore — a body cut short", () => {
   /** A 200 or 403 whose body errors mid-read, as when the request timeout fires during the download. */
   function openS3WithBrokenBody(status: number) {
