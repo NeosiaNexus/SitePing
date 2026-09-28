@@ -1419,6 +1419,21 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
 
+    it("forwards panel action failures to onError but not to the public feedback:error event", () => {
+      const onError = vi.fn();
+      const instance = launch(defaultConfig({ onError }));
+      const publicFeedbackError = vi.fn();
+      instance.on("feedback:error", publicFeedbackError);
+
+      const error = new Error("ticket creation failed");
+      capturedBus!.emit("panel:action-error", error);
+
+      expect(onError).toHaveBeenCalledExactlyOnceWith(error);
+      expect(publicFeedbackError).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
     it("non-Error rejections from sendFeedback are wrapped into Error instances", async () => {
       // Reject with a string (non-Error) — launcher must wrap it
       mockSendFeedback.mockRejectedValue("string error");

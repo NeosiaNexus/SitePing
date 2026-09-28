@@ -254,8 +254,7 @@ export class Panel {
           try {
             await action.onAction(fb);
           } catch (error) {
-            this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
-            throw error;
+            this.bus.emit("panel:action-error", error instanceof Error ? error : new Error(String(error)));
           }
         },
       },

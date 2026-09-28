@@ -265,6 +265,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   if (config.onClose) bus.on("close", config.onClose);
   if (config.onFeedbackSent) bus.on("feedback:sent", config.onFeedbackSent);
   if (config.onError) bus.on("feedback:error", config.onError);
+  if (config.onError) bus.on("panel:action-error", config.onError);
   if (config.onAnnotationStart) bus.on("annotation:start", config.onAnnotationStart);
   if (config.onAnnotationEnd) bus.on("annotation:end", config.onAnnotationEnd);
 
@@ -288,6 +289,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   bus.on("close", () => log("Panel closed"));
   bus.on("feedback:sent", (fb) => log("Feedback sent", fb.id));
   bus.on("feedback:error", (err) => log("Feedback failed", err.message));
+  bus.on("panel:action-error", (err) => log("Panel action failed", err.message));
   bus.on("annotation:start", () => log("Annotation started"));
   bus.on("annotation:end", () => log("Annotation ended"));
 

@@ -5,7 +5,7 @@ import { POPUP_HIDE_TRANSITION_MS } from "../../src/constants.js";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
-import { mockMatchMedia } from "../helpers.js";
+import { createShadowRoot, mockMatchMedia } from "../helpers.js";
 
 mockMatchMedia(false);
 
@@ -28,6 +28,7 @@ vi.mock(new URL("../../src/dom/anchor.js", import.meta.url).pathname, () => ({
 }));
 
 import { Annotator } from "../../src/annotator.js";
+import { Panel } from "../../src/panel.js";
 
 const flush = () => new Promise((r) => setTimeout(r, 20));
 /** Outlast the popup's close transition, whatever its configured length. */
@@ -275,5 +276,69 @@ describe("draw flow — popup re-entry guards (#196, real Popup)", () => {
       expect(endListener).toHaveBeenCalledOnce();
       expect(annotator.isBusy).toBe(false);
     });
+  });
+
+  it("a failing panel action while the submission is in flight does not settle it", async () => {
+    const bus = new EventBus<WidgetEvents>();
+    const t = createT("en");
+    const annotator = new Annotator(buildThemeColors(), bus, t);
+    const shadow = createShadowRoot();
+    const feedback: FeedbackResponse = {
+      id: "f0",
+      projectName: "p",
+      type: "bug",
+      message: "earlier feedback",
+      status: "open",
+      url: "http://localhost/",
+      urlPattern: null,
+      viewport: "1280x720",
+      userAgent: "test",
+      authorName: "A",
+      authorEmail: "a@example.com",
+      resolvedAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      annotations: [],
+      screenshotUrl: null,
+      screenshotRegion: null,
+      diagnostics: null,
+    };
+    const client = { getFeedbacks: vi.fn().mockResolvedValue({ feedbacks: [feedback], total: 1 }) };
+    const markers = { render: vi.fn(), highlight: vi.fn() };
+    const onAction = vi.fn(() => Promise.reject(new Error("host down")));
+    const panel = new Panel(shadow, buildThemeColors(), bus, client as never, "p", markers as never, t, "en", {
+      getScope: () => ({ url: "/", urlPattern: null }),
+      scopeAnnotationsByUrl: true,
+      panelActions: [{ id: "ticket", label: "Create ticket", onAction }],
+    });
+    cleanup = () => {
+      panel.destroy();
+      annotator.destroy();
+    };
+
+    bus.emit("annotation:start");
+    drag(findOverlay(), 100, 100, 200, 200);
+    await flush();
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    dialog.querySelector<HTMLButtonElement>('button[data-type="bug"]')!.click();
+    const textarea = dialog.querySelector("textarea")!;
+    textarea.value = "submitted message";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    Array.from(dialog.querySelectorAll("button"))
+      .find((b) => b.textContent?.includes("Send"))!
+      .click();
+    await flush();
+    expect(textarea.disabled).toBe(true);
+
+    // The host action rejects while the submission is still pending.
+    await panel.open();
+    shadow.querySelector<HTMLElement>('[data-feedback-id="f0"]')!.click();
+    shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!.click();
+    await flush();
+    expect(onAction).toHaveBeenCalledOnce();
+
+    // Still submitting: the popup did not take the host's error for its own.
+    expect(textarea.disabled).toBe(true);
+    expect(textarea.value).toBe("submitted message");
   });
 });

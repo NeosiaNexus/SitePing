@@ -4205,7 +4205,7 @@ describe("Panel", () => {
   });
 
   describe("panelActions plumbing", () => {
-    it("wires panelActions through to the detail view and emits feedback:error on rejection", async () => {
+    it("wires panelActions through to the detail view and reports a rejection on panel:action-error only", async () => {
       // Rebuild the panel with a panelActions option — mirrors the "respects
       // custom getScope option" harness above, which is the existing pattern
       // for constructing a Panel with a non-default options bag.
@@ -4217,8 +4217,12 @@ describe("Panel", () => {
       markers = createMockMarkers();
 
       const onAction = vi.fn().mockRejectedValue(new Error("dispatch failed"));
-      const errors: Error[] = [];
-      bus.on("feedback:error", (e) => errors.push(e));
+      const actionErrors: Error[] = [];
+      bus.on("panel:action-error", (e) => actionErrors.push(e));
+      // `feedback:error` settles the annotator's pending submission — a host
+      // action failure must never be emitted there.
+      const feedbackErrors = vi.fn();
+      bus.on("feedback:error", feedbackErrors);
 
       panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
         getScope: () => ({ url: "/", urlPattern: null }),
@@ -4237,7 +4241,8 @@ describe("Panel", () => {
       customBtn.click();
 
       await vi.waitFor(() => expect(onAction).toHaveBeenCalled());
-      await vi.waitFor(() => expect(errors[0]?.message).toBe("dispatch failed"));
+      await vi.waitFor(() => expect(actionErrors[0]?.message).toBe("dispatch failed"));
+      expect(feedbackErrors).not.toHaveBeenCalled();
     });
   });
 });

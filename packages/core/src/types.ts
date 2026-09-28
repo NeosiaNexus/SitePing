@@ -320,6 +320,10 @@ export interface SitepingBaseConfig {
    * "SERVER"`) and `error.retryable`. The type is widened to `Error` so
    * direct-store callers can still surface raw errors without breaking the
    * contract.
+   *
+   * Also receives whatever a `panelActions` callback throws or rejects with
+   * (non-`Error` values are wrapped). Those host failures are not API
+   * failures, so they are not emitted on the public `feedback:error` event.
    */
   onError?: ((error: Error) => void) | undefined;
   /** Called when the user starts drawing an annotation. */
