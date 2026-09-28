@@ -266,6 +266,13 @@ export class ExportButton {
     this.element.appendChild(btn);
     this.element.appendChild(this.menu);
 
+    this.element.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !this.isOpen) return;
+      e.stopPropagation(); // Close the menu only, not the panel
+      this.close();
+      btn.focus();
+    });
+
     // Close on outside click
     this.onDocumentClick = (e: MouseEvent) => {
       if (this.isOpen && !this.element.contains(e.target as Node)) {

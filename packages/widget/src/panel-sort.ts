@@ -257,6 +257,15 @@ export class PanelSortControls {
 
     this.element.appendChild(this.sortBtn);
     this.element.appendChild(this.groupToggle);
+
+    // Close the open menu on Escape from anywhere in the controls: a click
+    // leaves focus on the trigger, not in the menu.
+    this.element.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !this.menuEl) return;
+      e.stopPropagation(); // Close the menu only, not the panel
+      this.closeMenu();
+      this.sortBtn.focus();
+    });
   }
 
   get sortMode(): SortMode {
@@ -323,15 +332,6 @@ export class PanelSortControls {
         }
       };
       document.addEventListener("click", this.outsideClickHandler, true);
-    });
-
-    // Close on Escape
-    this.menuEl.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation(); // Close the menu only, not the panel
-        this.closeMenu();
-        this.sortBtn.focus();
-      }
     });
   }
 

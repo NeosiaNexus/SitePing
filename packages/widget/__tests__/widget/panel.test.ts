@@ -1150,6 +1150,23 @@ describe("Panel", () => {
         expect(panelIsOpen()).toBe(true);
       });
 
+      it.each([
+        [".sp-filter-dropdown-btn", ".sp-filter-dropdown-menu"],
+        [".sp-sort-btn", ".sp-sort-menu"],
+        [".sp-export-btn", ".sp-export-menu--open"],
+      ])("menu opened by %s, with focus still on its trigger", (trigger, menu) => {
+        const btn = shadow.querySelector<HTMLButtonElement>(trigger)!;
+        btn.click();
+        btn.focus();
+        expect(shadow.querySelector(menu)).not.toBeNull();
+
+        escapeOn(btn);
+
+        expect(shadow.querySelector(menu)).toBeNull();
+        expect(panelIsOpen()).toBe(true);
+        expect(shadow.activeElement).toBe(btn);
+      });
+
       it("delete-all confirm dialog", async () => {
         shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!.click();
         await vi.waitFor(() => expect(shadow.querySelector(".sp-confirm-backdrop")).not.toBeNull());

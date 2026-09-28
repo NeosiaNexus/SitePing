@@ -1030,6 +1030,14 @@ export class Panel {
       else this.openTypeDropdown();
     });
 
+    // Escape from the trigger too: a click leaves focus there, not in the menu.
+    this.typeDropdownContainer.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !this.typeDropdownMenu) return;
+      e.stopPropagation(); // Close the menu only, not the panel
+      this.closeTypeDropdown();
+      this.typeDropdownBtn.focus();
+    });
+
     this.typeDropdownContainer.appendChild(this.typeDropdownBtn);
     return this.typeDropdownContainer;
   }
@@ -1111,14 +1119,6 @@ export class Panel {
         }
       };
       document.addEventListener("click", this.typeDropdownOutsideHandler, true);
-    });
-
-    this.typeDropdownMenu.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation(); // Close the menu only, not the panel
-        this.closeTypeDropdown();
-        this.typeDropdownBtn.focus();
-      }
     });
   }
 
