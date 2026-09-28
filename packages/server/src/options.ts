@@ -24,11 +24,17 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
 }
 
 /**
+ * Who `access.authenticate` may resolve: a user object, an id, a token's
+ * claims. Never a boolean — a `false` check would read as a signed-in caller.
+ */
+export type SitepingPrincipal = object | string | number;
+
+/**
  * A custom access policy — sessions, JWTs, roles — resolved from the standard
  * `Request` (a cookie, a header, a proxy identity…), in place of `apiKey`.
  *
- * - `authenticate` resolving `null` (or `undefined`) → 401, on every method
- *   but `OPTIONS`.
+ * - `authenticate` resolving a falsy value (`null`, `undefined`, `""`, `0`,
+ *   or `false` from plain JavaScript) → 401, on every method but `OPTIONS`.
  * - `authorize` resolving `false` → 403. Defaults to allowing every
  *   authenticated principal. When set, the store must implement
  *   `verifyProjectOwnership`: PATCH/DELETE address records by id, and the
@@ -39,7 +45,7 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
  *
  * A throw from any of them answers a logged 500.
  */
-export interface SitepingAccessControl<Principal> {
+export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
   authenticate(request: Request): Principal | null | undefined | Promise<Principal | null | undefined>;
   authorize?(context: SitepingAuthorizationContext<Principal>): boolean | Promise<boolean>;
   canReadAuthorEmail?(principal: Principal): boolean | Promise<boolean>;
@@ -185,7 +191,8 @@ export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions
 }
 
 /** A custom access policy (sessions, JWTs, roles) in place of `apiKey`. */
-export interface SitepingAccessHandlerOptions<Principal> extends SitepingHandlerBaseOptions<Principal> {
+export interface SitepingAccessHandlerOptions<Principal extends SitepingPrincipal>
+  extends SitepingHandlerBaseOptions<Principal> {
   /**
    * Who is calling and what they may do — see `SitepingAccessControl`.
    *
@@ -211,7 +218,7 @@ export interface SitepingAccessHandlerOptions<Principal> extends SitepingHandler
 }
 
 /** Options of `createSitepingHandler`: the `apiKey` policy XOR a custom `access` policy. */
-export type SitepingHandlerOptions<Principal = unknown> =
+export type SitepingHandlerOptions<Principal extends SitepingPrincipal = SitepingPrincipal> =
   | SitepingApiKeyHandlerOptions
   | SitepingAccessHandlerOptions<Principal>;
 

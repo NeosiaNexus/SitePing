@@ -4,6 +4,7 @@ import type {
   SitepingApiKeyHandlerOptions,
   SitepingAuthorizationContext,
   SitepingHttpMethod,
+  SitepingPrincipal,
 } from "./options.js";
 
 /** Outcome of the access check that opens every request. */
@@ -120,15 +121,18 @@ export function createApiKeyGate({
 }
 
 /** A custom `access` policy. */
-export function createAccessGate<Principal>(access: SitepingAccessControl<Principal>): AccessGate<Principal> {
+export function createAccessGate<Principal extends SitepingPrincipal>(
+  access: SitepingAccessControl<Principal>,
+): AccessGate<Principal> {
   return {
     echoesAuthorEmailOnCreate: false,
     guardsMutations: true,
     listCacheControl: "no-store",
     async authenticate(request) {
       const principal = await access.authenticate(request);
-      // Fail closed on `undefined` too: `return session?.user` must never let a request in.
-      if (principal === null || principal === undefined) {
+      // Fail closed on anything falsy: `return session?.user` or a plain
+      // JavaScript `false` check must never let a request in.
+      if (!principal) {
         return { ok: false, status: 401, error: ERROR_MESSAGES.unauthorized };
       }
       return { ok: true, principal, canReadAuthorEmail: (await access.canReadAuthorEmail?.(principal)) ?? true };

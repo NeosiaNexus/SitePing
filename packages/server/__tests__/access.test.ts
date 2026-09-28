@@ -77,6 +77,41 @@ describe("createSitepingHandler — access", () => {
     expect((await store.getFeedbacks({ projectName: PROJECT })).total).toBe(0);
   });
 
+  it("fails closed on every method when a JavaScript boolean check resolves false", async () => {
+    const store = new MemoryStore();
+    // TypeScript refuses a boolean principal (options.test-d.ts); plain JavaScript can still pass one.
+    const tokenCheck = { authenticate: (request: Request) => request.headers.get("x-token") === "secret" };
+    const handler = createSitepingHandler({ store, access: tokenCheck as unknown as SitepingAccessControl<string> });
+    const withToken = (request: Request, token: string) => {
+      const headers = new Headers(request.headers);
+      headers.set("x-token", token);
+      return new Request(request, { headers });
+    };
+    const created = await handler.POST(withToken(jsonRequest("POST", validPayloadNoAnnotations), "secret"));
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as FeedbackRecord;
+
+    const refused = [
+      await handler.GET(withToken(listRequest(), "wrong")),
+      await handler.POST(
+        withToken(jsonRequest("POST", { ...validPayloadNoAnnotations, clientId: "uuid-456" }), "wrong"),
+      ),
+      await handler.PATCH(withToken(jsonRequest("PATCH", { id, projectName: PROJECT, status: "resolved" }), "wrong")),
+      await handler.DELETE(withToken(jsonRequest("DELETE", { projectName: PROJECT, deleteAll: true }), "wrong")),
+    ];
+
+    expect(refused.map(({ status }) => status)).toEqual([401, 401, 401, 401]);
+    expect((await store.getFeedbacks({ projectName: PROJECT })).feedbacks).toEqual([
+      expect.objectContaining({ id, status: "open" }),
+    ]);
+  });
+
+  it.each([0, ""])("fails closed when authenticate resolves %j", async (principal) => {
+    const handler = createSitepingHandler({ store: new MemoryStore(), access: { authenticate: () => principal } });
+
+    expect((await handler.GET(listRequest())).status).toBe(401);
+  });
+
   it("passes action, project and target id to authorize and answers 403 when it refuses", async () => {
     const decisions: Array<SitepingAuthorizationContext<Reviewer>> = [];
     const handler = createSitepingHandler({

@@ -6,7 +6,12 @@
 
 import type { SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
-import { createSitepingHandler, type SitepingHandler, type SitepingHandlerOptions } from "../src/index.js";
+import {
+  createSitepingHandler,
+  type SitepingAccessControl,
+  type SitepingHandler,
+  type SitepingHandlerOptions,
+} from "../src/index.js";
 
 declare const store: SitepingStore;
 
@@ -64,6 +69,16 @@ describe("the principal", () => {
         },
       },
     });
+  });
+
+  it("is never a boolean, whose false would read as a signed-in caller", () => {
+    // @ts-expect-error — authenticate must resolve who is calling, not whether
+    createSitepingHandler({ store, access: { authenticate: (request) => request.headers.has("x-token") } });
+
+    const tokenCheck = (request: Request) => request.headers.get("x-token") === "secret";
+    // @ts-expect-error — nor through a policy typed on its own
+    const standalone: SitepingAccessControl<boolean> = { authenticate: tokenCheck };
+    void standalone;
   });
 
   it("is inferred from access.authenticate, without null", () => {

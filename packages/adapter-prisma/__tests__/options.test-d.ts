@@ -41,5 +41,8 @@ describe("createSitepingHandler options", () => {
 
     // @ts-expect-error — apiKey and access are mutually exclusive
     createSitepingHandler({ prisma, apiKey: "k", access: { authenticate: sessionUser } });
+
+    // @ts-expect-error — a boolean check is no principal: its false would read as a signed-in caller
+    createSitepingHandler({ prisma, access: { authenticate: (request) => request.headers.has("x-token") } });
   });
 });

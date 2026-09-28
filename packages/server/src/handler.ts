@@ -11,6 +11,7 @@ import type {
   SitepingHandlerBaseOptions,
   SitepingHandlerOptions,
   SitepingLogger,
+  SitepingPrincipal,
 } from "./options.js";
 import { createPipeline } from "./pipeline.js";
 import type { WebhookConfig } from "./webhooks.js";
@@ -50,11 +51,17 @@ const consoleLogger: SitepingLogger = {
  * })
  * ```
  */
-export function createSitepingHandler<Principal>(options: SitepingAccessHandlerOptions<Principal>): SitepingHandler;
+export function createSitepingHandler<Principal extends SitepingPrincipal>(
+  options: SitepingAccessHandlerOptions<Principal>,
+): SitepingHandler;
 export function createSitepingHandler(options: SitepingApiKeyHandlerOptions): SitepingHandler;
 /** Options assembled at runtime, either policy. */
-export function createSitepingHandler<Principal>(options: SitepingHandlerOptions<Principal>): SitepingHandler;
-export function createSitepingHandler<Principal>(options: SitepingHandlerOptions<Principal>): SitepingHandler {
+export function createSitepingHandler<Principal extends SitepingPrincipal>(
+  options: SitepingHandlerOptions<Principal>,
+): SitepingHandler;
+export function createSitepingHandler<Principal extends SitepingPrincipal>(
+  options: SitepingHandlerOptions<Principal>,
+): SitepingHandler {
   // Both policies share the callbacks, typed over `Principal` (`null` under apiKey).
   const {
     store,

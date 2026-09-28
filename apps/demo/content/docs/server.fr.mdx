@@ -128,7 +128,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
   allowedOrigins: ["https://site-client.com"],
   access: {
-    // null → 401
+    // null (ou toute valeur falsy) → 401
     authenticate: (request) => getSessionUser(request),
     // false → 403
     authorize: ({ principal, action, projectName }) =>
@@ -139,7 +139,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 ```
 
-- **`authenticate`** tourne sur toutes les méthodes sauf `OPTIONS`. `null` ou `undefined` répond `401`. Son type de retour type `principal` partout ailleurs.
+- **`authenticate`** tourne sur toutes les méthodes sauf `OPTIONS`, et résout **qui** appelle — un objet, une chaîne ou un nombre, jamais un booléen. Toute valeur falsy (`null`, `undefined`, `""`, `0`) répond `401`. Une vérification `true`/`false` est une erreur de type, et un `false` en JavaScript pur répond `401` lui aussi. Son type de retour type `principal` partout ailleurs.
 - **`authorize`** reçoit l'`action` (`create`, `list`, `update`, `delete`, `deleteAll`), le `projectName` et, pour `update` et `delete`, le `feedbackId`. Par défaut, il laisse passer tout appelant authentifié. PATCH et DELETE désignent les enregistrements par id : la factory refuse donc de démarrer avec un `authorize` devant un store sans `verifyProjectOwnership` — tous les stores fournis l'implémentent.
 - **`canReadAuthorEmail`** vaut `true` par défaut.
 - Un callback qui lève répond une `500` journalisée.

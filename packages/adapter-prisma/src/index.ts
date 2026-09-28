@@ -23,6 +23,7 @@ import {
   type SitepingAccessHandlerOptions,
   type SitepingApiKeyHandlerOptions,
   type SitepingHandler,
+  type SitepingPrincipal,
 } from "@siteping/server";
 
 export type { ScreenshotStorage, SitepingStore } from "@siteping/core";
@@ -567,7 +568,7 @@ interface PrismaHandlerStoreOptions {
 export interface HandlerOptions extends Omit<SitepingApiKeyHandlerOptions, "store">, PrismaHandlerStoreOptions {}
 
 /** Options of `createSitepingHandler` under a custom `access` policy (see `@siteping/server`). */
-export interface PrismaAccessHandlerOptions<Principal>
+export interface PrismaAccessHandlerOptions<Principal extends SitepingPrincipal>
   extends Omit<SitepingAccessHandlerOptions<Principal>, "store">,
     PrismaHandlerStoreOptions {}
 
@@ -608,9 +609,11 @@ function describePrismaError(error: unknown): string | undefined {
  * export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ store })
  * ```
  */
-export function createSitepingHandler<Principal>(options: PrismaAccessHandlerOptions<Principal>): SitepingHandler;
+export function createSitepingHandler<Principal extends SitepingPrincipal>(
+  options: PrismaAccessHandlerOptions<Principal>,
+): SitepingHandler;
 export function createSitepingHandler(options: HandlerOptions): SitepingHandler;
-export function createSitepingHandler<Principal>({
+export function createSitepingHandler<Principal extends SitepingPrincipal>({
   prisma,
   store: providedStore,
   screenshotStorage,
