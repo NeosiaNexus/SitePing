@@ -147,9 +147,19 @@
       "version": "0.0.0",
       "devDependencies": {
         "@aws-crypto/sha256-js": "^5.2.0",
+        "@electric-sql/pglite": "^0.5.8",
+        "@libsql/client": "^0.18.0",
         "@siteping/core": "workspace:*",
         "@smithy/signature-v4": "^5.7.4",
+        "drizzle-kit": "^0.31.11",
+        "drizzle-orm": "^0.45.3",
       },
+      "peerDependencies": {
+        "drizzle-orm": ">=0.45.0 <1",
+      },
+      "optionalPeers": [
+        "drizzle-orm",
+      ],
     },
     "packages/server": {
       "name": "@siteping/server",
