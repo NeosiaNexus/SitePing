@@ -14,7 +14,8 @@
  *   /__e2e/webhook  → generic-webhook receiver; GET /__e2e/webhooks lists
  *                     what it received, for assertions.
  *
- * Tests isolate by project name (one per test), so no global reset is needed
+ * Tests isolate by project name, one per test attempt (retry and repeat-each
+ * included — see `projectFor` in stack.spec.ts), so no global reset is needed
  * and specs can run in parallel against the shared store.
  *
  * Requires `bun run build` (widget, dashboard, adapter-prisma, adapter-memory).
