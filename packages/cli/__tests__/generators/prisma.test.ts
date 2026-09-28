@@ -825,6 +825,34 @@ model SitepingFeedback {
         '@relation(fields: [feedbackId], references: [id], onDelete: Cascade, map: "fk_annotation_feedback")',
       );
     });
+
+    it("leaves an onUpdate on the relation alone", () => {
+      // Siteping never sets it (its ids never change), and SQL Server may need
+      // `NoAction` there to break a cycle of cascade paths.
+      const schema = syncedSchema().replace("onDelete: Cascade)", "onDelete: Cascade, onUpdate: NoAction)");
+      writeFileSync(schemaPath, schema);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+    });
+
+    it("keeps onUpdate and a map: constraint name, in order, when rewriting the relation", () => {
+      writeFileSync(
+        schemaPath,
+        syncedSchema().replace(
+          "@relation(fields: [feedbackId], references: [id], onDelete: Cascade)",
+          '@relation(fields: [feedbackId], references: [id], onUpdate: NoAction, map: "fk_annotation_feedback")',
+        ),
+      );
+
+      syncPrismaModels(schemaPath);
+
+      expect(readFileSync(schemaPath, "utf-8")).toContain(
+        '@relation(fields: [feedbackId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_annotation_feedback")',
+      );
+    });
   });
 
   // -----------------------------------------------------------------------

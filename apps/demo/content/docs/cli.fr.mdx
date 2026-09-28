@@ -42,7 +42,7 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 
 - crée les deux modèles s'ils sont absents,
 - ajoute les champs et blocs `@@index` manquants,
-- réécrit les champs SitePing dont le type ou les attributs ont dérivé de la forme attendue — en gardant ce qui vous appartient (noms de colonne `@map`, noms de relation, commentaires) ; un `@ignore` compte comme une dérive, car l'adapter écrit toutes les colonnes SitePing,
+- réécrit les champs SitePing dont le type ou les attributs ont dérivé de la forme attendue — en gardant ce qui vous appartient (noms de colonne `@map`, noms de relation, `onUpdate` d'une relation, commentaires) ; un `@ignore` compte comme une dérive, car l'adapter écrit toutes les colonnes SitePing,
 - **ne touche jamais aux champs que vous avez ajoutés vous-même.**
 
 Quand quelque chose a changé, il vous rappelle de lancer `npx prisma db push`. Le lancer deux fois de suite ne fait rien.

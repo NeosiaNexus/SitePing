@@ -301,9 +301,9 @@ function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[]): S
 }
 
 // ── User-owned parts of a Siteping field ───────────────────────────────
-// The column name (`@map`), the relation name, constraint names (`map:`
-// arguments) and the field's comment belong to the user: they're never
-// compared, and a rewrite carries them over. Dropping a `@map` makes
+// The column name (`@map`), the relation name and its `onUpdate`, constraint
+// names (`map:` arguments) and the field's comment belong to the user: they're
+// never compared, and a rewrite carries them over. Dropping a `@map` makes
 // `prisma db push` rename/drop the column; dropping a relation name on one
 // side only leaves the schema invalid. `@ignore` is drift, not the user's:
 // it hides the field from Prisma Client, and the adapter writes every column.
@@ -325,10 +325,19 @@ function isConstraintName(arg: AttributeArgument): boolean {
   return isKeyValue(arg.value) && arg.value.key === "map";
 }
 
-/** A constraint name, or the relation name: `@relation("Name", …)` / `@relation(name: "Name", …)`. */
-function isUserOwnedArg(attr: Attribute, arg: AttributeArgument): boolean {
-  if (isConstraintName(arg)) return true;
+/** `@relation("Name", …)` / `@relation(name: "Name", …)`. */
+function isRelationName(attr: Attribute, arg: AttributeArgument): boolean {
   return isRelation(attr) && (typeof arg.value === "string" || (isKeyValue(arg.value) && arg.value.key === "name"));
+}
+
+/**
+ * A constraint name, the relation name, or the relation's `onUpdate` —
+ * Siteping never sets it (its ids never change), while SQL Server may need
+ * `NoAction` there to break a cycle of cascade paths.
+ */
+function isUserOwnedArg(attr: Attribute, arg: AttributeArgument): boolean {
+  if (isConstraintName(arg) || isRelationName(attr, arg)) return true;
+  return isRelation(attr) && isKeyValue(arg.value) && arg.value.key === "onUpdate";
 }
 
 /**
@@ -353,11 +362,11 @@ function withUserOwnedParts(expected: Field, existing: Field): Field {
   const attributes = (expected.attributes ?? []).map((attr) => {
     const owned = ownedArgs(attr);
     if (owned.length === 0) return attr;
-    // The relation name leads (`@relation("Name", …)`), constraint names trail.
+    // The relation name leads (`@relation("Name", …)`), the rest trails.
     const args = [
-      ...owned.filter((a) => !isConstraintName(a)),
+      ...owned.filter((a) => isRelationName(attr, a)),
       ...(attr.args ?? []),
-      ...owned.filter(isConstraintName),
+      ...owned.filter((a) => !isRelationName(attr, a)),
     ];
     return { ...attr, args };
   });
