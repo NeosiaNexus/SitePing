@@ -1,4 +1,4 @@
-export type { FeedbackRecord, SitepingStore } from "@siteping/core";
+export type { FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
 export { createSitepingHandler } from "./handler.js";
 export type {
   SitepingAccessControl,
@@ -6,10 +6,12 @@ export type {
   SitepingAction,
   SitepingApiKeyHandlerOptions,
   SitepingAuthorizationContext,
+  SitepingDeletionTarget,
   SitepingHandler,
   SitepingHandlerBaseOptions,
   SitepingHandlerOptions,
   SitepingHttpMethod,
+  SitepingLifecycleHooks,
   SitepingLogger,
   SitepingRequestContext,
 } from "./options.js";

@@ -1,4 +1,4 @@
-import type { SitepingStore } from "@siteping/core";
+import type { FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
 import type { WebhookConfig } from "./webhooks.js";
 
 /** HTTP methods served by `createSitepingHandler`. */
@@ -45,13 +45,38 @@ export interface SitepingAccessControl<Principal> {
   canReadAuthorEmail?(principal: Principal): boolean | Promise<boolean>;
 }
 
+/** What a DELETE removes: one record, or a whole project (`deleteAll`). */
+export type SitepingDeletionTarget =
+  | { kind: "single"; id: string; projectName: string }
+  | { kind: "project"; projectName: string };
+
+/**
+ * Side effects around persistence — issue trackers, chat notifications,
+ * search indexes, audit logs. Hooks receive the stored record, `clientId` and
+ * `authorEmail` included.
+ *
+ * `onCreated`, `onUpdated` and `onDeleted` are awaited before the response
+ * (so serverless runtimes do not freeze them mid-flight); a throw is logged
+ * and never fails the request — the write already happened. `onCreated`
+ * runs once per inserted feedback, never for a replayed `clientId`.
+ * `onDeleting` runs before the delete: throw to abort it (the record is kept
+ * and the request answers 502), e.g. when a resource tied to the feedback
+ * could not be cleaned up and the delete must be retried.
+ */
+export interface SitepingLifecycleHooks<Principal> {
+  onCreated?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): void | Promise<void>;
+  onUpdated?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): void | Promise<void>;
+  onDeleting?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): void | Promise<void>;
+  onDeleted?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): void | Promise<void>;
+}
+
 /** Where the handler reports unexpected failures. Defaults to `console.error`. */
 export interface SitepingLogger {
   error(message: string, context: Record<string, unknown>): void;
 }
 
 /** Options shared by both access policies. */
-export interface SitepingHandlerBaseOptions {
+export interface SitepingHandlerBaseOptions<Principal> {
   /** Persistence backend — any `SitepingStore` (Prisma, Drizzle, memory, your own). */
   store: SitepingStore;
   /**
@@ -71,6 +96,24 @@ export interface SitepingHandlerBaseOptions {
    * Provide `onError` on each config to observe failures.
    */
   webhooks?: WebhookConfig | ReadonlyArray<WebhookConfig>;
+  /**
+   * Rewrite the validated input before it is stored: impose the project or
+   * the author from the session, redact secrets from free text, drop fields
+   * you do not keep. Runs before `access.authorize`, which sees the effective
+   * `projectName`. A throw answers a logged 500 and stores nothing.
+   */
+  beforeCreate?(
+    input: FeedbackCreateInput,
+    context: SitepingRequestContext<Principal>,
+  ): FeedbackCreateInput | Promise<FeedbackCreateInput>;
+  /**
+   * Transform each record right before it is serialized in a response, e.g.
+   * read-time redaction. `clientId` is stripped, and `authorEmail` blanked
+   * when the requester may not read it, afterwards.
+   */
+  presentFeedback?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): FeedbackRecord;
+  /** Lifecycle side effects — see `SitepingLifecycleHooks`. */
+  hooks?: SitepingLifecycleHooks<Principal>;
   /** Where unexpected failures are reported. Defaults to `console.error`. */
   logger?: SitepingLogger;
   /**
@@ -83,7 +126,7 @@ export interface SitepingHandlerBaseOptions {
 }
 
 /** The built-in shared-secret policy — `adapter-prisma`'s historical behaviour. */
-export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions {
+export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions<null> {
   /**
    * Shared secret expected as `Authorization: Bearer {apiKey}`.
    *
@@ -133,7 +176,7 @@ export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions
 }
 
 /** A custom access policy (sessions, JWTs, roles) in place of `apiKey`. */
-export interface SitepingAccessHandlerOptions<Principal> extends SitepingHandlerBaseOptions {
+export interface SitepingAccessHandlerOptions<Principal> extends SitepingHandlerBaseOptions<Principal> {
   /**
    * Who is calling and what they may do — see `SitepingAccessControl`.
    *

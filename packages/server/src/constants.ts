@@ -14,6 +14,7 @@ export const ERROR_MESSAGES = {
   feedbackNotFound: "Feedback not found",
   clientIdUsedByAnotherProject: "clientId already used by another project",
   tooManyAnnotations: `Too many annotations (max ${MAX_ANNOTATIONS_PER_FEEDBACK})`,
+  deletionAborted: "Deletion aborted: a linked resource could not be cleaned up",
   internalServerError: "Internal server error",
 } as const;
 

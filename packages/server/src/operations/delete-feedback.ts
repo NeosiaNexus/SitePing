@@ -1,15 +1,23 @@
 import { isStoreNotFound, type SitepingStore } from "@siteping/core";
 import { ERROR_MESSAGES } from "../constants.js";
+import type { SitepingDeletionTarget, SitepingLifecycleHooks } from "../options.js";
 import type { Pipeline } from "../pipeline.js";
 import { feedbackDeleteSchema } from "../validation.js";
 
 interface DeleteFeedbackDependencies<Principal> {
   store: SitepingStore;
   pipeline: Pipeline<Principal>;
+  onDeleting: SitepingLifecycleHooks<Principal>["onDeleting"];
+  onDeleted: SitepingLifecycleHooks<Principal>["onDeleted"];
 }
 
 /** `DELETE` — remove one feedback, or every feedback of a project (`deleteAll`). */
-export function deleteFeedbackOperation<Principal>({ store, pipeline }: DeleteFeedbackDependencies<Principal>) {
+export function deleteFeedbackOperation<Principal>({
+  store,
+  pipeline,
+  onDeleting,
+  onDeleted,
+}: DeleteFeedbackDependencies<Principal>) {
   return async (request: Request): Promise<Response> => {
     const entry = await pipeline.enter(request, "DELETE");
     if (!entry.ok) return entry.response;
@@ -17,28 +25,41 @@ export function deleteFeedbackOperation<Principal>({ store, pipeline }: DeleteFe
 
     const payload = await pipeline.readBody(scope, feedbackDeleteSchema);
     if (!payload.ok) return payload.response;
-    const deletion = payload.value;
+    const target: SitepingDeletionTarget =
+      "deleteAll" in payload.value
+        ? { kind: "project", projectName: payload.value.projectName }
+        : { kind: "single", id: payload.value.id, projectName: payload.value.projectName };
 
     try {
       const refusal = await pipeline.authorize(
         scope,
-        "deleteAll" in deletion
-          ? { action: "deleteAll", projectName: deletion.projectName }
-          : { action: "delete", projectName: deletion.projectName, feedbackId: deletion.id },
+        target.kind === "project"
+          ? { action: "deleteAll", projectName: target.projectName }
+          : { action: "delete", projectName: target.projectName, feedbackId: target.id },
       );
       if (refusal) return refusal;
 
-      if ("deleteAll" in deletion) {
-        await store.deleteAllFeedbacks(deletion.projectName);
-        return pipeline.json(scope, { deleted: true });
-      }
-
       // Cross-project guard — see the PATCH operation.
-      if (store.verifyProjectOwnership && !(await store.verifyProjectOwnership(deletion.id, deletion.projectName))) {
+      if (
+        target.kind === "single" &&
+        store.verifyProjectOwnership &&
+        !(await store.verifyProjectOwnership(target.id, target.projectName))
+      ) {
         return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);
       }
 
-      await store.deleteFeedback(deletion.id);
+      if (onDeleting) {
+        try {
+          await onDeleting(target, scope.context);
+        } catch (error) {
+          pipeline.logger.error("[siteping] Hook onDeleting aborted the deletion", { error, target });
+          return pipeline.error(scope, 502, ERROR_MESSAGES.deletionAborted);
+        }
+      }
+
+      if (target.kind === "project") await store.deleteAllFeedbacks(target.projectName);
+      else await store.deleteFeedback(target.id);
+      if (onDeleted) await pipeline.runHook("onDeleted", () => onDeleted(target, scope.context));
       return pipeline.json(scope, { deleted: true });
     } catch (error) {
       if (isStoreNotFound(error)) return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);

@@ -49,6 +49,23 @@ describe("createSitepingHandler options XOR union", () => {
 });
 
 describe("the principal", () => {
+  it("is null in hooks and transforms under the apiKey policy", () => {
+    createSitepingHandler({
+      store,
+      apiKey: "k",
+      beforeCreate: (input, { principal }) => {
+        expectTypeOf(principal).toEqualTypeOf<null>();
+        return input;
+      },
+      hooks: {
+        onDeleted: (target, { principal }) => {
+          expectTypeOf(principal).toEqualTypeOf<null>();
+          expectTypeOf(target.projectName).toEqualTypeOf<string>();
+        },
+      },
+    });
+  });
+
   it("is inferred from access.authenticate, without null", () => {
     createSitepingHandler({
       store,
@@ -62,6 +79,15 @@ describe("the principal", () => {
         canReadAuthorEmail: (principal) => {
           expectTypeOf(principal).toEqualTypeOf<Reviewer>();
           return principal.isAdmin;
+        },
+      },
+      presentFeedback: (feedback, { principal }) => {
+        expectTypeOf(principal).toEqualTypeOf<Reviewer>();
+        return feedback;
+      },
+      hooks: {
+        onCreated: (_feedback, { principal }) => {
+          expectTypeOf(principal).toEqualTypeOf<Reviewer>();
         },
       },
     });

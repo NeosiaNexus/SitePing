@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSitepingHandler } from "../src/index.js";
 import { fakePrisma } from "./fake-prisma.js";
+import { validPayloadNoAnnotations } from "./fixtures.js";
 
 // adapter-prisma's handler is @siteping/server's over a PrismaStore: these
 // lock what the wrapper adds (Prisma's setup hint) and what it forwards.
@@ -49,6 +50,18 @@ describe("createSitepingHandler — @siteping/server options", () => {
 
     expect((await handler.GET(new Request(LIST))).status).toBe(401);
     expect((await handler.GET(new Request(LIST, { headers: { "x-session": "reviewer" } }))).status).toBe(200);
+  });
+
+  it("forwards the lifecycle hooks", async () => {
+    const onCreated = vi.fn();
+    const handler = createSitepingHandler({ prisma: fakePrisma(), hooks: { onCreated } });
+
+    const response = await handler.POST(
+      new Request("http://localhost/api/siteping", { method: "POST", body: JSON.stringify(validPayloadNoAnnotations) }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(onCreated).toHaveBeenCalledOnce();
   });
 
   it("forwards the logger", async () => {

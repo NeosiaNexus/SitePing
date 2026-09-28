@@ -7,6 +7,7 @@ import {
   type SitepingStore,
 } from "@siteping/core";
 import { ERROR_MESSAGES, MAX_ANNOTATIONS_PER_FEEDBACK } from "../constants.js";
+import type { SitepingHandlerBaseOptions, SitepingLifecycleHooks } from "../options.js";
 import type { Pipeline } from "../pipeline.js";
 import { feedbackCreateSchema } from "../validation.js";
 import { dispatchWebhooks, type WebhookConfig } from "../webhooks.js";
@@ -15,7 +16,11 @@ interface CreateFeedbackDependencies<Principal> {
   store: SitepingStore;
   pipeline: Pipeline<Principal>;
   webhooks: ReadonlyArray<WebhookConfig>;
+  beforeCreate: SitepingHandlerBaseOptions<Principal>["beforeCreate"];
+  onCreated: SitepingLifecycleHooks<Principal>["onCreated"];
 }
+
+const FAILED_TO_CREATE = "[siteping] Failed to create feedback";
 
 /** Outcome of one create: `inserted` is false for a replay. */
 interface CreateOutcome {
@@ -49,6 +54,8 @@ export function createFeedbackOperation<Principal>({
   store,
   pipeline,
   webhooks,
+  beforeCreate,
+  onCreated,
 }: CreateFeedbackDependencies<Principal>) {
   /**
    * Creates in flight, keyed by clientId. The widget aborts an attempt after
@@ -95,27 +102,16 @@ export function createFeedbackOperation<Principal>({
     if (payload.value.annotations.length > MAX_ANNOTATIONS_PER_FEEDBACK) {
       return pipeline.error(scope, 400, ERROR_MESSAGES.tooManyAnnotations);
     }
-    const input = toCreateInput(payload.value);
 
-    let refusal: Response | null;
+    let input: FeedbackCreateInput;
     try {
-      refusal = await pipeline.authorize(scope, { action: "create", projectName: input.projectName });
+      const validated = toCreateInput(payload.value);
+      input = beforeCreate ? await beforeCreate(validated, scope.context) : validated;
+      const refusal = await pipeline.authorize(scope, { action: "create", projectName: input.projectName });
+      if (refusal) return refusal;
     } catch (error) {
-      return pipeline.fail(scope, "[siteping] Failed to create feedback", error);
+      return pipeline.fail(scope, FAILED_TO_CREATE, error);
     }
-    if (refusal) return refusal;
-
-    /**
-     * Respond to a create that resolved to `feedback`. A clientId is unique
-     * across the whole store, so a replay that resolves to another
-     * project's record is a boundary violation, not a dedup: refuse it
-     * rather than hand that record (email included) to a request scoped to
-     * a different project.
-     */
-    const created = (feedback: FeedbackRecord): Response =>
-      feedback.projectName === input.projectName
-        ? pipeline.json(scope, pipeline.presentCreated(scope, feedback), { status: 201 })
-        : pipeline.error(scope, 409, ERROR_MESSAGES.clientIdUsedByAnotherProject);
 
     // Join an in-flight create of this clientId, or start one. The lookup
     // and the registration run in one synchronous turn, so two overlapping
@@ -127,36 +123,50 @@ export function createFeedbackOperation<Principal>({
       inflightCreates.set(input.clientId, pending);
     }
 
+    let outcome: CreateOutcome;
     try {
-      const { feedback, inserted } = await pending;
-
-      // Fire-and-forget: drop the promise so the widget isn't held back
-      // on slow Slack/Discord/generic receivers. `dispatchWebhooks` traps
-      // its own errors and reports them through `WebhookConfig.onError`.
-      // Only the request that ran the insert notifies — never a replay, and
-      // never a request that joined another one's in-flight create.
-      if (owner && inserted && webhooks.length > 0 && feedback.projectName === input.projectName) {
-        void dispatchWebhooks(webhooks, feedback);
-      }
-
-      return created(feedback);
+      outcome = await pending;
     } catch (error) {
       // Unique-constraint race: the same clientId landed between the replay
       // check above and the insert. The presenter still owns the record.
-      // A failing lookup falls through to the JSON 500 below — this catch
-      // must not throw, or the request loses its response and CORS headers.
+      // A failing lookup falls through to the JSON 500 — this catch must not
+      // throw, or the request loses its response and CORS headers.
+      let existing: FeedbackRecord | null = null;
       if (isStoreDuplicate(error)) {
-        let existing: FeedbackRecord | null = null;
         try {
           existing = await store.findByClientId(input.clientId);
         } catch (lookupError) {
           pipeline.logger.error("[siteping] Failed to look up the duplicate clientId", { error: lookupError });
         }
-        if (existing) return created(existing);
       }
-      return pipeline.fail(scope, "[siteping] Failed to create feedback", error);
+      if (!existing) return pipeline.fail(scope, FAILED_TO_CREATE, error);
+      outcome = { feedback: existing, inserted: false };
     } finally {
       if (owner) inflightCreates.delete(input.clientId);
+    }
+
+    const { feedback, inserted } = outcome;
+    try {
+      // Creation side effects run once per insert: never for a replay, and
+      // never for a request that joined another one's in-flight create.
+      if (owner && inserted && feedback.projectName === input.projectName) {
+        // Fire-and-forget: drop the promise so the widget isn't held back
+        // on slow Slack/Discord/generic receivers. `dispatchWebhooks` traps
+        // its own errors and reports them through `WebhookConfig.onError`.
+        if (webhooks.length > 0) void dispatchWebhooks(webhooks, feedback);
+        if (onCreated) await pipeline.runHook("onCreated", () => onCreated(feedback, scope.context));
+      }
+
+      // A clientId is unique across the whole store, so a replay that
+      // resolves to another project's record is a boundary violation, not a
+      // dedup: refuse it rather than hand that record (email included) to a
+      // request scoped to a different project.
+      if (feedback.projectName !== input.projectName) {
+        return pipeline.error(scope, 409, ERROR_MESSAGES.clientIdUsedByAnotherProject);
+      }
+      return pipeline.json(scope, pipeline.presentCreated(scope, feedback), { status: 201 });
+    } catch (error) {
+      return pipeline.fail(scope, FAILED_TO_CREATE, error);
     }
   };
 }

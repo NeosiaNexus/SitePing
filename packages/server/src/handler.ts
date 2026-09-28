@@ -8,6 +8,7 @@ import type {
   SitepingAccessHandlerOptions,
   SitepingApiKeyHandlerOptions,
   SitepingHandler,
+  SitepingHandlerBaseOptions,
   SitepingHandlerOptions,
   SitepingLogger,
 } from "./options.js";
@@ -54,7 +55,17 @@ export function createSitepingHandler(options: SitepingApiKeyHandlerOptions): Si
 /** Options assembled at runtime, either policy. */
 export function createSitepingHandler<Principal>(options: SitepingHandlerOptions<Principal>): SitepingHandler;
 export function createSitepingHandler<Principal>(options: SitepingHandlerOptions<Principal>): SitepingHandler {
-  const { store, allowedOrigins, webhooks, logger = consoleLogger, describeError } = options;
+  // Both policies share the callbacks, typed over `Principal` (`null` under apiKey).
+  const {
+    store,
+    allowedOrigins,
+    webhooks,
+    beforeCreate,
+    presentFeedback,
+    hooks = {},
+    logger = consoleLogger,
+    describeError,
+  } = options as SitepingHandlerBaseOptions<Principal>;
   if (!store) {
     throw new Error("[siteping] createSitepingHandler requires a `store`.");
   }
@@ -72,7 +83,7 @@ export function createSitepingHandler<Principal>(options: SitepingHandlerOptions
   const gate = options.access
     ? createAccessGate(options.access)
     : (createApiKeyGate(options) as AccessGate<unknown> as AccessGate<Principal>);
-  const pipeline = createPipeline({ gate, allowedOrigins, logger, describeError });
+  const pipeline = createPipeline({ gate, allowedOrigins, logger, describeError, presentFeedback });
   // Normalised once so every POST skips the allocation; an empty list
   // short-circuits dispatch.
   const webhookList: ReadonlyArray<WebhookConfig> = webhooks
@@ -83,9 +94,21 @@ export function createSitepingHandler<Principal>(options: SitepingHandlerOptions
 
   return {
     OPTIONS: (request: Request): Response => preflightResponse(request, allowedOrigins),
-    POST: createFeedbackOperation({ store, pipeline, webhooks: webhookList }),
+    POST: createFeedbackOperation({
+      store,
+      pipeline,
+      webhooks: webhookList,
+      beforeCreate,
+      // Bound so hooks written as class methods keep their `this`.
+      onCreated: hooks.onCreated?.bind(hooks),
+    }),
     GET: listFeedbacksOperation({ store, pipeline }),
-    PATCH: updateFeedbackOperation({ store, pipeline }),
-    DELETE: deleteFeedbackOperation({ store, pipeline }),
+    PATCH: updateFeedbackOperation({ store, pipeline, onUpdated: hooks.onUpdated?.bind(hooks) }),
+    DELETE: deleteFeedbackOperation({
+      store,
+      pipeline,
+      onDeleting: hooks.onDeleting?.bind(hooks),
+      onDeleted: hooks.onDeleted?.bind(hooks),
+    }),
   };
 }

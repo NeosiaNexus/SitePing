@@ -1,15 +1,21 @@
 import { isStoreNotFound, type SitepingStore, toFeedbackUpdate } from "@siteping/core";
 import { ERROR_MESSAGES } from "../constants.js";
+import type { SitepingLifecycleHooks } from "../options.js";
 import type { Pipeline } from "../pipeline.js";
 import { feedbackPatchSchema } from "../validation.js";
 
 interface UpdateFeedbackDependencies<Principal> {
   store: SitepingStore;
   pipeline: Pipeline<Principal>;
+  onUpdated: SitepingLifecycleHooks<Principal>["onUpdated"];
 }
 
 /** `PATCH` — change a feedback's status. */
-export function updateFeedbackOperation<Principal>({ store, pipeline }: UpdateFeedbackDependencies<Principal>) {
+export function updateFeedbackOperation<Principal>({
+  store,
+  pipeline,
+  onUpdated,
+}: UpdateFeedbackDependencies<Principal>) {
   return async (request: Request): Promise<Response> => {
     const entry = await pipeline.enter(request, "PATCH");
     if (!entry.ok) return entry.response;
@@ -36,6 +42,7 @@ export function updateFeedbackOperation<Principal>({ store, pipeline }: UpdateFe
       // a terminal status (resolved / wont_fix), cleared otherwise. The
       // derivation lives here at the edge; stores persist what they're given.
       const feedback = await store.updateFeedback(id, toFeedbackUpdate(status));
+      if (onUpdated) await pipeline.runHook("onUpdated", () => onUpdated(feedback, scope.context));
 
       // PATCH can be made public via publicEndpoints / requireAuthForDestructive:
       // false — the scope keeps the author's email out of the update response.

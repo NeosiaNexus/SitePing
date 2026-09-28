@@ -5,6 +5,7 @@ import { buildCorsHeaders, type CorsHeaders, withCors } from "./cors.js";
 import { csrfRefusal } from "./csrf.js";
 import type {
   SitepingAuthorizationContext,
+  SitepingHandlerBaseOptions,
   SitepingHttpMethod,
   SitepingLogger,
   SitepingRequestContext,
@@ -33,7 +34,8 @@ interface PipelineDependencies<Principal> {
   gate: AccessGate<Principal>;
   allowedOrigins: ReadonlyArray<string> | undefined;
   logger: SitepingLogger;
-  describeError: ((error: unknown) => string | undefined) | undefined;
+  describeError: SitepingHandlerBaseOptions<Principal>["describeError"];
+  presentFeedback: SitepingHandlerBaseOptions<Principal>["presentFeedback"];
 }
 
 /**
@@ -66,6 +68,7 @@ export function createPipeline<Principal>({
   allowedOrigins,
   logger,
   describeError,
+  presentFeedback,
 }: PipelineDependencies<Principal>) {
   const json = (scope: Pick<Scope<Principal>, "corsHeaders">, body: unknown, init?: ResponseInit): Response =>
     withCors(Response.json(body, init), scope.corsHeaders);
@@ -90,9 +93,9 @@ export function createPipeline<Principal>({
     return { ok: false, response: json(scope, { errors: formatValidationErrors(parsed.error) }, { status: 400 }) };
   };
 
-  /** Wire shape of a record for this requester. */
+  /** Wire shape of a record for this requester (`presentFeedback`, then redaction). */
   const present = (scope: Scope<Principal>, feedback: FeedbackRecord, includeEmail = scope.canReadAuthorEmail) =>
-    toWireFeedback(feedback, includeEmail);
+    toWireFeedback(presentFeedback ? presentFeedback(feedback, scope.context) : feedback, includeEmail);
 
   return {
     json,
@@ -169,6 +172,15 @@ export function createPipeline<Principal>({
     /** Log an unexpected failure of an operation and answer its JSON 500. */
     fail(scope: Scope<Principal>, message: string, failure: unknown): Response {
       return fail(scope.context.request, scope, message, failure);
+    },
+
+    /** Run a lifecycle hook after a write; a failure is logged, never surfaced — the write happened. */
+    async runHook(name: string, invoke: () => void | Promise<void>): Promise<void> {
+      try {
+        await invoke();
+      } catch (failure) {
+        logger.error(`[siteping] Hook ${name} failed`, { error: failure });
+      }
     },
 
     /** The list response's `Cache-Control`. */
