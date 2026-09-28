@@ -84,7 +84,7 @@ export const objectStore = createS3ObjectStore({
 |---|---|---|
 | `endpoint` | requis | L'endpoint de l'API S3 (`https://<compte>.r2.cloudflarestorage.com`, `https://s3.<région>.amazonaws.com`, `https://s3.<région>.backblazeb2.com`, l'URL de votre MinIO). Une URL http(s) absolue |
 | `bucket` | requis | Le nom du bucket |
-| `region` | `"auto"` | La région de signature : `auto` convient à R2 ; sur AWS et B2, la région du bucket |
+| `region` | `"auto"` | La région de signature : `auto` convient à R2 ; sur AWS, B2 et MinIO, la région configurée pour le bucket ou le serveur |
 | `accessKeyId`, `secretAccessKey`, `sessionToken` | requis, optionnel | Les identifiants. `sessionToken` sert aux identifiants temporaires (STS) |
 | `publicBaseUrl` | requis | D'où les captures sont lues : le domaine public du bucket, un CDN devant lui, ou [votre app](#servir-les-captures-depuis-votre-app) quand le bucket est privé |
 | `treatAccessDeniedAsMissing` | `false` | Voir [identifiants au moindre privilège](#identifiants-au-moindre-privilège) |
