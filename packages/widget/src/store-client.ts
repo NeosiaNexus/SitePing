@@ -6,6 +6,7 @@ import {
   type FeedbackResponse,
   type FeedbackResponseList,
   flattenAnnotation,
+  isStoreDuplicate,
   SitepingError,
   type SitepingStore,
   toFeedbackUpdate,
@@ -37,28 +38,12 @@ export class StoreClient implements WidgetClient {
    * is abandoned, not cancelled: it may still land after the popup restored.
    * Writes are not serialized (a chain would never unblock after one that
    * never settles); a resend from the same popup carries the same clientId,
-   * so a store that enforces clientId uniqueness keeps a single record.
+   * so the store keeps a single record whichever duplicate contract it
+   * follows (see `write`).
    */
   async sendFeedback(payload: FeedbackPayload): Promise<FeedbackResponse> {
-    const write = this.store.createFeedback({
-      projectName: payload.projectName,
-      type: payload.type,
-      message: payload.message,
-      status: "open",
-      url: payload.url,
-      urlPattern: payload.urlPattern ?? null,
-      viewport: payload.viewport,
-      userAgent: payload.userAgent,
-      authorName: payload.authorName,
-      authorEmail: payload.authorEmail,
-      clientId: payload.clientId,
-      annotations: payload.annotations.map(flattenAnnotation),
-      screenshotDataUrl: payload.screenshotDataUrl ?? null,
-      screenshotRegion: payload.screenshotRegion ?? null,
-      diagnostics: payload.diagnostics ?? null,
-    });
     const record = await withTimeout(
-      write,
+      this.write(payload),
       STORE_WRITE_TIMEOUT_MS,
       () =>
         new SitepingError(
@@ -69,6 +54,39 @@ export class StoreClient implements WidgetClient {
     );
 
     return toResponse(record);
+  }
+
+  /**
+   * `createFeedback`, resolving a duplicate clientId like the HTTP handler: a
+   * store may throw `StoreDuplicateError` instead of returning the existing
+   * record, and the popup's earlier attempt (one that timed out, then landed)
+   * is then the feedback being resent.
+   */
+  private async write(payload: FeedbackPayload): Promise<FeedbackRecord> {
+    try {
+      return await this.store.createFeedback({
+        projectName: payload.projectName,
+        type: payload.type,
+        message: payload.message,
+        status: "open",
+        url: payload.url,
+        urlPattern: payload.urlPattern ?? null,
+        viewport: payload.viewport,
+        userAgent: payload.userAgent,
+        authorName: payload.authorName,
+        authorEmail: payload.authorEmail,
+        clientId: payload.clientId,
+        annotations: payload.annotations.map(flattenAnnotation),
+        screenshotDataUrl: payload.screenshotDataUrl ?? null,
+        screenshotRegion: payload.screenshotRegion ?? null,
+        diagnostics: payload.diagnostics ?? null,
+      });
+    } catch (error) {
+      if (!isStoreDuplicate(error)) throw error;
+      const existing = await this.store.findByClientId(payload.clientId);
+      if (!existing || existing.projectName !== payload.projectName) throw error;
+      return existing;
+    }
   }
 
   async getFeedbacks(projectName: string, options?: GetFeedbacksOptions): Promise<FeedbackResponseList> {
