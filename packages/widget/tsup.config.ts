@@ -7,7 +7,10 @@ import { cssLiteralsPlugin } from "./scripts/css-literals.js";
 //    CJS twin is a single file (splitting is ESM-only) for require()
 //    consumers — Jest setups, legacy bundlers (#220).
 //  - IIFE main: single global script for <script src> consumers — splitting is
-//    incompatible with IIFE, so everything is inlined.
+//    incompatible with IIFE, so everything is inlined. It is the one bundle
+//    browsers run exactly as shipped (no consumer bundler minifies it again),
+//    so Terser takes a second pass after esbuild's minifier (the `minify*`
+//    flags); `sourceMap: true` lets tsup chain Terser's map onto esbuild's.
 //  - ESM+CJS React entry (`@siteping/widget/react`): React stays external so
 //    consumers pin their own version.
 //
@@ -57,7 +60,11 @@ export default defineConfig([
     dts: false,
     sourcemap: true,
     clean: false,
-    minify: true,
+    minify: "terser",
+    minifyWhitespace: true,
+    minifyIdentifiers: true,
+    minifySyntax: true,
+    terserOptions: { compress: { passes: 2 }, sourceMap: true },
     splitting: false,
     treeshake: "recommended",
     noExternal: ["@medv/finder", "@siteping/core"],
