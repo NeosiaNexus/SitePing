@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createSitepingHandler,
   type SitepingAccessControl,
+  type SitepingDeletionTarget,
   type SitepingHandler,
   type SitepingLogger,
 } from "../src/index.js";
@@ -160,17 +161,34 @@ describe("createSitepingHandler — lifecycle hooks", () => {
 
   it("keeps `this` for hooks implemented as class methods", async () => {
     class IssueTrackerHooks {
-      readonly createdIds: string[] = [];
+      readonly events: string[] = [];
       onCreated(feedback: FeedbackRecord): void {
-        this.createdIds.push(feedback.id);
+        this.events.push(`created ${feedback.id}`);
+      }
+      onUpdated(feedback: FeedbackRecord): void {
+        this.events.push(`updated ${feedback.id}`);
+      }
+      onDeleting(target: SitepingDeletionTarget): void {
+        this.events.push(`deleting ${target.kind}`);
+      }
+      onDeleted(target: SitepingDeletionTarget): void {
+        this.events.push(`deleted ${target.kind}`);
       }
     }
     const tracker = new IssueTrackerHooks();
     const handler = createSitepingHandler({ store: new MemoryStore(), access: sessionAccess, hooks: tracker });
 
     const feedback = await createFeedback(handler);
+    await handler.PATCH(jsonRequest("PATCH", { id: feedback.id, projectName: PROJECT, status: "resolved" }));
+    const deleted = await handler.DELETE(jsonRequest("DELETE", { id: feedback.id, projectName: PROJECT }));
 
-    expect(tracker.createdIds).toEqual([feedback.id]);
+    expect(deleted.status).toBe(200);
+    expect(tracker.events).toEqual([
+      `created ${feedback.id}`,
+      `updated ${feedback.id}`,
+      "deleting single",
+      "deleted single",
+    ]);
   });
 
   it("logs a failing onCreated hook without failing the request", async () => {
