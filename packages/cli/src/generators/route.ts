@@ -23,16 +23,24 @@ export interface RouteGenerationResult {
 }
 
 /**
+ * The App Router directory Next.js serves: `app/`, else `src/app/`. Next
+ * resolves `./app` first and then ignores `src/app` entirely
+ * (next/dist/lib/find-pages-dir.js), so a route under it would be dead.
+ */
+export function findAppDir(basePath: string): string | null {
+  return [join(basePath, "app"), join(basePath, "src", "app")].find((dir) => existsSync(dir)) ?? null;
+}
+
+/**
  * Generate the Next.js App Router API route file.
  *
  * Creates `app/api/siteping/route.ts` with the handler setup.
  * Skips if the file already exists.
  */
 export function generateRoute(basePath: string = process.cwd()): RouteGenerationResult {
-  // Detect app directory
-  const appDir = existsSync(join(basePath, "src", "app")) ? join(basePath, "src", "app") : join(basePath, "app");
+  const appDir = findAppDir(basePath);
 
-  if (!existsSync(appDir)) {
+  if (!appDir) {
     throw new Error("Cannot find the app/ directory. Are you in a Next.js App Router project?");
   }
 

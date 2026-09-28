@@ -5,16 +5,17 @@ import { join, relative } from "node:path";
 import * as p from "@clack/prompts";
 import { hasOwn } from "@siteping/core";
 import { parsePrismaSchema, reconcileSitepingModels } from "../generators/prisma.js";
+import { findAppDir } from "../generators/route.js";
 import { findPrismaSchema } from "../utils/find-schema.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
+/** The route in the app directory Next.js actually serves — the one `init` writes to. */
 function findApiRoute(cwd: string): string | null {
-  const candidates = [
-    join(cwd, "app", "api", "siteping", "route.ts"),
-    join(cwd, "src", "app", "api", "siteping", "route.ts"),
-  ];
-  return candidates.find((c) => existsSync(c)) ?? null;
+  const appDir = findAppDir(cwd);
+  if (!appDir) return null;
+  const route = join(appDir, "api", "siteping", "route.ts");
+  return existsSync(route) ? route : null;
 }
 
 /**

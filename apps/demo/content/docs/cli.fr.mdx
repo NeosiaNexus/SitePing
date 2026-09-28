@@ -20,7 +20,7 @@ npx @siteping/cli init
 `init` vous guide à travers deux confirmations :
 
 1. **Synchroniser les modèles Prisma** — si un schéma est trouvé (voir [détection du schéma](#détection-du-schéma)), il propose d'ajouter les modèles `SitepingFeedback` et `SitepingAnnotation`.
-2. **Générer la route API** — propose de créer une route Next.js App Router qui sert le widget. Le fichier va dans `app/api/siteping/route.ts`, ou `src/app/api/siteping/route.ts` si votre projet utilise une arborescence `src/`. Une route existante n'est jamais écrasée.
+2. **Générer la route API** — propose de créer une route Next.js App Router qui sert le widget. Le fichier va dans `app/api/siteping/route.ts`, ou `src/app/api/siteping/route.ts` si votre projet utilise une arborescence `src/`. Si `app/` et `src/app/` existent tous les deux, `app/` l'emporte — Next.js ignore alors lui-même `src/app/`. Une route existante n'est jamais écrasée.
 
 La route générée importe deux choses que vous devez fournir vous-même — le CLI n'installe rien :
 
@@ -61,7 +61,7 @@ npx @siteping/cli status --schema prisma/schema.prisma
 | Vérification | Ce qu'elle regarde |
 |---|---|
 | Schéma Prisma | Les deux modèles présents, chaque champ à jour — exactement le diff qu'applique `sync`, donc type, optionalité, attributs et leurs arguments (`@unique`, `@db.Text`, `onDelete: Cascade`, …) et blocs `@@index` comptent tous |
-| Route API | `app/api/siteping/route.ts` ou `src/app/api/siteping/route.ts` existe |
+| Route API | `api/siteping/route.ts` existe dans le répertoire app que sert Next.js — `app/`, ou `src/app/` en l'absence de `app/` |
 | Package | `@siteping/widget` listé dans votre `package.json` |
 | Intégration du widget | `initSiteping` référencé quelque part dans `src/`, `app/` ou `pages/` |
 

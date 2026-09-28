@@ -436,6 +436,19 @@ describe("statusCommand", () => {
       expect(successes.some((m) => m.includes("API route"))).toBe(true);
     });
 
+    it("reports a src/app route as not found when app/ exists (Next.js ignores src/app)", () => {
+      createPackageJson(tmpDir);
+      mkdirSync(join(tmpDir, "app"), { recursive: true });
+      const routeDir = join(tmpDir, "src", "app", "api", "siteping");
+      mkdirSync(routeDir, { recursive: true });
+      writeFileSync(join(routeDir, "route.ts"), "export const GET = () => {};");
+
+      statusCommand({});
+
+      expect(allMessages(logErrorSpy)).toContainEqual(expect.stringMatching(/^API route\s+Not found$/));
+      expect(allMessages(logSuccessSpy).some((m) => m.includes("API route"))).toBe(false);
+    });
+
     it("reports error when no API route is found", () => {
       createPackageJson(tmpDir);
 

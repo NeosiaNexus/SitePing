@@ -40,13 +40,15 @@ describe("generateRoute", () => {
     expect(existsSync(result.path)).toBe(true);
   });
 
-  it("prefers src/app/ over app/ when both exist", () => {
+  it("prefers app/ over src/app/ when both exist, as Next.js does", () => {
+    // Next.js resolves ./app first and ignores src/app entirely
+    // (next/dist/lib/find-pages-dir.js) — a route there would be dead.
     mkdirSync(join(tmpDir, "src", "app"), { recursive: true });
     mkdirSync(join(tmpDir, "app"), { recursive: true });
 
     const result = generateRoute(tmpDir);
 
-    expect(result.path).toBe(join(tmpDir, "src", "app", "api", "siteping", "route.ts"));
+    expect(result.path).toBe(join(tmpDir, "app", "api", "siteping", "route.ts"));
   });
 
   // -------------------------------------------------------------------------
