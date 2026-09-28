@@ -57,6 +57,36 @@ export interface SitepingDeepLinkOptions {
 }
 
 /**
+ * A host-defined action rendered as a button in the feedback detail view.
+ *
+ * Hosts use this to bridge feedbacks into their own systems — create a
+ * ticket, dispatch to a bot, copy a share link — without forking the panel.
+ */
+export interface SitepingPanelAction {
+  /** Stable identifier — becomes `data-action-id` on the rendered button. */
+  id: string;
+  /**
+   * Button label. Host-provided verbatim — deliberately NOT routed through
+   * the widget i18n system, since hosts localize their own product strings.
+   */
+  label: string;
+  /** Optional inline SVG markup rendered before the label. */
+  icon?: string | undefined;
+  /**
+   * Per-feedback visibility predicate. Return `false` to omit the button
+   * for that feedback. Defaults to always visible.
+   */
+  visible?: ((feedback: FeedbackResponse) => boolean) | undefined;
+  /**
+   * Invoked on click. While a returned promise is pending the detail view's
+   * action buttons are disabled and the clicked button shows a spinner.
+   * Rejections are reported through `SitepingConfig.onError` and restore
+   * the buttons; the detail view stays open either way.
+   */
+  onAction: (feedback: FeedbackResponse) => void | Promise<void>;
+}
+
+/**
  * Extra request headers for HTTP mode — a static map, or a factory (sync or
  * async) invoked once per request to produce fresh values (e.g. a short-lived
  * session token).
@@ -267,6 +297,11 @@ export interface SitepingBaseConfig {
    * future enhancement that propagates identity updates without a remount.
    */
   identity?: SitepingIdentity | undefined;
+  /**
+   * Host-defined actions rendered in the feedback detail view, after the
+   * built-in Resolve and Delete buttons. See {@link SitepingPanelAction}.
+   */
+  panelActions?: SitepingPanelAction[] | undefined;
 
   // Events
   /** Called when the feedback panel is opened. */
