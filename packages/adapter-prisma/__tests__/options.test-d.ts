@@ -5,7 +5,17 @@
 
 import type { SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
-import { createSitepingHandler, type HandlerOptions, type SitepingPrismaClient } from "../src/index.js";
+import {
+  createSitepingHandler,
+  type HandlerOptions,
+  type SitepingAccessControl,
+  type SitepingAuthorizationContext,
+  type SitepingDeletionTarget,
+  type SitepingLifecycleHooks,
+  type SitepingLogger,
+  type SitepingPrismaClient,
+  type SitepingRequestContext,
+} from "../src/index.js";
 
 declare const prisma: SitepingPrismaClient;
 declare const store: SitepingStore;
@@ -44,5 +54,27 @@ describe("createSitepingHandler options", () => {
 
     // @ts-expect-error — a boolean check is no principal: its false would read as a signed-in caller
     createSitepingHandler({ prisma, access: { authenticate: (request) => request.headers.has("x-token") } });
+  });
+});
+
+describe("server option types", () => {
+  interface Reviewer {
+    id: string;
+  }
+
+  it("are re-exported, so standalone policies and hooks need no direct @siteping/server dependency", () => {
+    const access: SitepingAccessControl<Reviewer> = {
+      authenticate: sessionUser,
+      authorize: ({ action }: SitepingAuthorizationContext<Reviewer>) => action !== "deleteAll",
+    };
+    const hooks: SitepingLifecycleHooks<Reviewer> = {
+      onDeleted: (target: SitepingDeletionTarget, { principal }: SitepingRequestContext<Reviewer>) => {
+        expectTypeOf(target.projectName).toEqualTypeOf<string>();
+        expectTypeOf(principal).toEqualTypeOf<Reviewer>();
+      },
+    };
+    const logger: SitepingLogger = { error: () => {} };
+
+    createSitepingHandler({ prisma, access, hooks, logger });
   });
 });

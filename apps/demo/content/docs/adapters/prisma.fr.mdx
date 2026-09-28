@@ -32,7 +32,7 @@ C'est le handler de [`@siteping/server`](/fr/docs/server) avec un store Prisma i
 | `screenshotStorage` | `ScreenshotStorage` | — | Envoyer les captures quelque part de réel au lieu de les inliner en URL `data:`. Ignoré quand vous passez un `store` personnalisé |
 | `caseInsensitiveSearch` | `boolean` | détecté automatiquement | Détecté depuis le provider Prisma (actif pour PostgreSQL, MongoDB, CockroachDB). Ne s'applique que si `prisma` est fourni |
 
-Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent aussi — `apiKey`, `allowedOrigins`, `webhooks`, `access`, les hooks… Un seul ajout : quand la table manque, la `500` vous indique de lancer `npx prisma db push` (un `describeError` que vous passez a la priorité).
+Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent aussi — `apiKey`, `allowedOrigins`, `webhooks`, `access`, les hooks… Un seul ajout : quand la table manque, la `500` vous indique de lancer `npx prisma db push` (un `describeError` que vous passez a la priorité). Leurs types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) sont réexportés ici : un gestionnaire de paquets strict comme pnpm n'a pas besoin de `@siteping/server` en dépendance directe pour typer une politique à part.
 
 ## Schéma de base de données
 

@@ -41,11 +41,21 @@ export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "@si
  * that instead. This alias is kept for one release cycle.
  */
 export type FeedbackCreateSchemaInput = FeedbackPayload;
+// The server's option types, so a strict linker (pnpm, Bun's isolated
+// installs) never needs @siteping/server as a direct dependency to type them.
 export type {
   DiscordWebhookPayload,
   GenericWebhookPayload,
+  SitepingAccessControl,
+  SitepingAction,
+  SitepingAuthorizationContext,
+  SitepingDeletionTarget,
   SitepingHandler,
   SitepingHttpMethod,
+  SitepingLifecycleHooks,
+  SitepingLogger,
+  SitepingPrincipal,
+  SitepingRequestContext,
   SlackWebhookPayload,
   WebhookConfig,
   WebhookPayloadMap,
