@@ -384,6 +384,7 @@ const server = createServer((req, res) => {
   res.end("Not found");
 });
 
-server.listen(3999, () => {
+// Loopback only: the fake API is unauthenticated and resets on demand.
+server.listen(3999, "127.0.0.1", () => {
   console.log("E2E server running on http://localhost:3999");
 });
