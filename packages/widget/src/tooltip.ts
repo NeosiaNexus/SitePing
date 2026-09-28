@@ -6,6 +6,11 @@ import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.j
 
 const SHOW_DELAY = 120;
 const HIDE_DELAY = 80;
+/**
+ * Declared once: `show()` swaps it for `none` under reduced motion and must
+ * restore this exact value, since an empty inline value removes it.
+ */
+const TOOLTIP_TRANSITION = "opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)";
 
 /**
  * Tooltip shown on annotation marker hover.
@@ -43,7 +48,7 @@ export class Tooltip {
         pointer-events: auto;
         opacity: 0;
         transform: translateY(6px) scale(0.97);
-        transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: ${TOOLTIP_TRANSITION};
         visibility: hidden;
         -webkit-font-smoothing: antialiased;
       `,
@@ -72,8 +77,10 @@ export class Tooltip {
   }
 
   show(feedback: FeedbackResponse, anchorRect: DOMRect): void {
-    if (this.currentFeedbackId === feedback.id) return;
+    // Cancel a pending hide first — the pointer may have left the marker and
+    // come back within HIDE_DELAY, which re-shows the same feedback.
     this.cancelHide();
+    if (this.currentFeedbackId === feedback.id) return;
     this.cancelShow();
 
     this.showTimer = setTimeout(() => {
@@ -84,7 +91,7 @@ export class Tooltip {
       // Check prefers-reduced-motion live (not cached at construction time)
       const reduceMotion =
         typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      this.root.style.transition = reduceMotion ? "none" : "";
+      this.root.style.transition = reduceMotion ? "none" : TOOLTIP_TRANSITION;
 
       this.root.style.visibility = "visible";
       this.root.style.opacity = "1";

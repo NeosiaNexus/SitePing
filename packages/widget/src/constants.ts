@@ -13,3 +13,9 @@ export const PAGE_SIZE = 20;
  * but small enough to feel like a point click rather than an area selection.
  */
 export const INSTANT_ANNOTATION_SIZE = 20;
+
+/**
+ * Duration in milliseconds of the annotation popup's open/close transition.
+ * The popup is set to `display: none` only once the fade-out has finished.
+ */
+export const POPUP_HIDE_TRANSITION_MS = 250;

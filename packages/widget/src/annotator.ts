@@ -6,6 +6,7 @@ import type { EventBus, WidgetEvents } from "./events.js";
 import { isWidgetChrome } from "./focus-tracker.js";
 import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
+import { NO_VIEWPORT_INSETS, type ViewportInsets } from "./popup-placement.js";
 import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screenshot.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -244,7 +245,7 @@ export class Annotator {
         transition:all 0.2s ease;
       `;
       setText(cancelBtn, this.t("annotator.cancel"));
-      cancelBtn.addEventListener("click", () => this.deactivate());
+      cancelBtn.addEventListener("click", () => this.cancelSession());
       cancelBtn.addEventListener("mouseenter", () => {
         cancelBtn.style.borderColor = this.colors.typeBug;
         cancelBtn.style.color = this.colors.typeBug;
@@ -294,6 +295,39 @@ export class Annotator {
     this.overlay.focus({ preventScroll: true });
   }
 
+  /**
+   * Viewport band covered by the toolbar, measured rather than assumed: its
+   * height depends on fonts and zoom, and a host may restyle or move it.
+   */
+  private toolbarInsets(): ViewportInsets {
+    if (!this.toolbar) return NO_VIEWPORT_INSETS;
+    const toolbarRect = this.toolbar.getBoundingClientRect();
+    if (toolbarRect.height === 0) return NO_VIEWPORT_INSETS;
+    const viewportHeight = window.innerHeight;
+    const sitsInTopHalf = toolbarRect.top + toolbarRect.height / 2 < viewportHeight / 2;
+    return sitsInTopHalf
+      ? { top: Math.max(0, toolbarRect.bottom), bottom: 0 }
+      : { top: 0, bottom: Math.max(0, viewportHeight - toolbarRect.top) };
+  }
+
+  /**
+   * User-initiated end of the session (toolbar Cancel, Escape). Closes an open
+   * comment form first so it is not left floating with nothing behind it — the
+   * popup's own focus restore runs before the annotator hands focus back to the
+   * pre-activation element. While a submission is in flight the popup refuses
+   * to close, and the session stays active too: deactivating here would clear
+   * `isActive` and emit `annotation:end` while the popup still waits on
+   * `feedback:sent`, letting a second annotation overwrite its resolver and
+   * submit handler. The session ends once the pending popup settles; the
+   * send bounds its network and store waits (#342), so the hold ends too.
+   */
+  private cancelSession(): void {
+    if (!this.isActive) return;
+    this.popup.dismiss();
+    if (this.popup.isOpen) return;
+    this.deactivate();
+  }
+
   private deactivate(): void {
     if (!this.isActive) return;
     this.isActive = false;
@@ -332,7 +366,7 @@ export class Annotator {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === "Escape") this.deactivate();
+    if (e.key === "Escape") this.cancelSession();
   };
 
   /**
@@ -386,8 +420,10 @@ export class Annotator {
     // Submission stays inside the popup so the user gets a visible spinner
     // until the server confirms — see finishDrawing for the rationale.
     const session = newPopupSession();
-    const result = await this.popup.show(rectBounds, (formResult) =>
-      this.runSubmission(annotation, formResult, rectBounds, session),
+    const result = await this.popup.show(
+      rectBounds,
+      (formResult) => this.runSubmission(annotation, formResult, rectBounds, session),
+      this.toolbarInsets(),
     );
 
     this.drawingRect?.remove();
@@ -509,8 +545,10 @@ export class Annotator {
     // can see what they're sending feedback about — including while the
     // submit-spinner is running. We only remove it after the popup closes.
     const session = newPopupSession();
-    const result = await this.popup.show(rectBounds, (formResult) =>
-      this.runSubmission(annotation, formResult, rectBounds, session),
+    const result = await this.popup.show(
+      rectBounds,
+      (formResult) => this.runSubmission(annotation, formResult, rectBounds, session),
+      this.toolbarInsets(),
     );
 
     this.drawingRect?.remove();

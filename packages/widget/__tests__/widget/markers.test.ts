@@ -1656,17 +1656,151 @@ describe("MarkerManager", () => {
   // buildEntry — annotation that fails to resolve is skipped (line 255 branch)
   // -------------------------------------------------------------------------
 
-  describe("buildEntry — unresolved annotations skipped", () => {
-    it("skips annotations that fail to resolve (no marker rendered)", () => {
+  describe("buildEntry — unresolved annotations hidden", () => {
+    it("keeps a hidden marker for an annotation that fails to resolve (shown once it resolves)", () => {
       mockState.returnNull = true;
-      // resolveAnnotation returns null → buildEntry creates an entry with no elements
       markers.render([makeFeedback({ id: "fb-no-resolve" })]);
 
       const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-no-resolve"]');
-      expect(marker).toBeNull();
+      expect(marker?.style.display).toBe("none");
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
 
       // Reset for cleanup
       mockState.returnNull = false;
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // One marker per annotation, each with its own position
+  // -------------------------------------------------------------------------
+
+  describe("multi-annotation / late-resolving markers", () => {
+    const visibleMarkers = (id: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>(`[data-feedback-id="${id}"]`)).filter(
+        (m) => m.style.display !== "none",
+      );
+
+    it("(a) an anchor that appears after render() gets its marker on the next reposition", () => {
+      vi.useFakeTimers();
+      mockState.returnNull = true; // anchor not in the DOM yet
+      markers.render([makeFeedback({ id: "fb-late" })]);
+      expect(visibleMarkers("fb-late")).toHaveLength(0);
+
+      mockState.returnNull = false; // SPA / lazy content rendered it
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(visibleMarkers("fb-late")).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it("(b) two far-apart annotations of one feedback get a marker at each position", () => {
+      vi.useFakeTimers();
+      mockState.rectQueue = [
+        { x: 100, y: 100, w: 50, h: 50 },
+        { x: 500, y: 500, w: 50, h: 50 },
+      ];
+      const fb = makeFeedback({
+        id: "fb-two",
+        annotations: [makeAnnotation({ id: "a1" }), makeAnnotation({ id: "a2" })],
+      });
+      markers.render([fb]);
+
+      const tops = () => visibleMarkers("fb-two").map((m) => Number.parseFloat(m.style.top));
+      expect(tops()).toEqual([87, 487]); // rect.top - 13 each, not stacked
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
+
+      // Still apart after a reposition pass
+      mockState.rectQueue = [
+        { x: 100, y: 100, w: 50, h: 50 },
+        { x: 500, y: 500, w: 50, h: 50 },
+      ];
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      expect(tops()).toEqual([87, 487]);
+      vi.useRealTimers();
+    });
+
+    it("(c) a missing annotation[0] does not hide annotation[1]'s marker on resize", () => {
+      vi.useFakeTimers();
+      // render: a1 missing, a2 resolves; reposition: same again
+      mockState.nullSchedule = [true, false, true, false];
+      const fb = makeFeedback({
+        id: "fb-gap",
+        annotations: [makeAnnotation({ id: "a1" }), makeAnnotation({ id: "a2" })],
+      });
+      markers.render([fb]);
+      expect(visibleMarkers("fb-gap")).toHaveLength(1);
+
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(visibleMarkers("fb-gap")).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it("(d) a late anchor that lands on another marker joins its cluster", () => {
+      vi.useFakeTimers();
+      // render: fb-a resolves, fb-b's anchor is missing; resize: both resolve at the same rect
+      mockState.nullSchedule = [false, true];
+      markers.render([makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-b" })]);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
+
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(visibleMarkers("fb-b")).toHaveLength(1);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(1);
+      vi.useRealTimers();
+    });
+
+    it("(e) a hidden marker never joins a cluster", () => {
+      // fb-a's marker lands at the document origin, where fb-b's hidden placeholder sits
+      mockState.nullSchedule = [false, true];
+      mockState.rectQueue = [{ x: 0, y: 13, w: 13, h: 10 }];
+      markers.render([makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-b" })]);
+
+      expect(visibleMarkers("fb-a")).toHaveLength(1);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
+    });
+
+    it("(f) focusFeedback scrolls to the first visible marker", () => {
+      mockState.nullSchedule = [true, false];
+      const fb = makeFeedback({
+        id: "fb-focus",
+        annotations: [makeAnnotation({ id: "a1" }), makeAnnotation({ id: "a2" })],
+      });
+      markers.render([fb]);
+      const scrollIntoView = vi.fn();
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = scrollIntoView; // jsdom lacks it
+      try {
+        expect(markers.focusFeedback("fb-focus")).toBe(true);
+
+        expect(scrollIntoView.mock.contexts).toEqual(visibleMarkers("fb-focus"));
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+
+    it("(g) a marker whose anchor disappears leaves its cluster", () => {
+      vi.useFakeTimers();
+      markers.render([makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-b" })]);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(1);
+
+      // resize: fb-a still resolves, fb-b's anchor is gone
+      mockState.nullSchedule = [false, true];
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(visibleMarkers("fb-b")).toHaveLength(0);
+      expect(document.querySelectorAll(".sp-cluster-badge")).toHaveLength(0);
+      // fb-a is alone again: a click opens the panel instead of fanning out a phantom cluster
+      const panelSpy = vi.fn();
+      bus.on("panel:toggle", panelSpy);
+      visibleMarkers("fb-a")[0]?.click();
+      expect(panelSpy).toHaveBeenCalledWith(true);
+      vi.useRealTimers();
     });
   });
 

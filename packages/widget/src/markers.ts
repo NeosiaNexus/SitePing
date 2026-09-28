@@ -32,8 +32,13 @@ function toRectData(a: Annotation): RectData {
 /** Half of the 26px marker diameter — used for centering on anchor corner. */
 const MARKER_OFFSET = 13;
 
+interface MarkerPos {
+  top: number;
+  left: number;
+}
+
 /** Convert a resolved rect to document-absolute marker position. */
-function markerPosition(rect: DOMRect): { top: number; left: number } {
+function markerPosition(rect: DOMRect): MarkerPos {
   return {
     top: rect.top + window.scrollY - MARKER_OFFSET,
     left: rect.right + window.scrollX - MARKER_OFFSET,
@@ -42,9 +47,14 @@ function markerPosition(rect: DOMRect): { top: number; left: number } {
 
 interface MarkerEntry {
   feedback: FeedbackResponse;
+  /**
+   * One marker per annotation, index-aligned with `feedback.annotations` —
+   * hidden (display:none) while its anchor doesn't resolve, so an anchor that
+   * appears later (SPA, lazy content) gets its marker on the next reposition.
+   */
   elements: HTMLElement[];
-  baseTop: number;
-  baseLeft: number;
+  /** Document position of each marker (same index) — annotations can be far apart. */
+  positions: MarkerPos[];
 }
 
 interface Cluster {
@@ -59,6 +69,12 @@ function clusterMarker(cluster: Cluster, i: number): HTMLElement | undefined {
   const elIdx = cluster.elementIndices[i];
   if (!entry || elIdx === undefined) return undefined;
   return entry.elements[elIdx];
+}
+
+/** Position of a cluster's first marker — the anchor point for stack/fan layout. */
+function clusterBase(cluster: Cluster): MarkerPos | undefined {
+  const elIdx = cluster.elementIndices[0];
+  return elIdx === undefined ? undefined : cluster.entries[0]?.positions[elIdx];
 }
 
 const HIGHLIGHT_FADE = 300;
@@ -217,6 +233,8 @@ export class MarkerManager {
 
     // Build set of valid keys to prune stale cache entries afterwards.
     const validKeys = new Set<string>();
+    // A marker appearing or disappearing changes which markers cluster.
+    let visibilityChanged = false;
 
     for (const entry of this.entries) {
       for (let i = 0; i < entry.feedback.annotations.length; i++) {
@@ -273,14 +291,15 @@ export class MarkerManager {
           }
         }
 
+        const wasVisible = markerEl.style.display !== "none";
         if (!resolved) {
+          if (wasVisible) visibilityChanged = true;
           markerEl.style.display = "none";
           continue;
         }
 
-        const pos = markerPosition(resolved.rect);
-        entry.baseTop = pos.top;
-        entry.baseLeft = pos.left;
+        if (!wasVisible) visibilityChanged = true;
+        entry.positions[i] = markerPosition(resolved.rect);
         markerEl.style.display = "flex";
         this.applyConfidenceStyle(markerEl, resolved.confidence, entry.feedback);
       }
@@ -294,6 +313,7 @@ export class MarkerManager {
       if (!validKeys.has(key)) this.hiddenRecheckAt.delete(key);
     }
 
+    if (visibilityChanged) this.buildClusters();
     this.applyClusterPositions();
 
     // Re-render the pinned highlight rectangle so it tracks the layout after
@@ -359,17 +379,16 @@ export class MarkerManager {
   }
 
   private buildEntry(feedback: FeedbackResponse, index: number): MarkerEntry {
-    const entry: MarkerEntry = { feedback, elements: [], baseTop: 0, baseLeft: 0 };
+    const entry: MarkerEntry = { feedback, elements: [], positions: [] };
     for (const annotation of feedback.annotations) {
       const resolved = resolveAnnotation(toAnchorData(annotation), toRectData(annotation));
-      if (!resolved) continue;
-      const pos = markerPosition(resolved.rect);
-      entry.baseTop = pos.top;
-      entry.baseLeft = pos.left;
+      const pos = resolved ? markerPosition(resolved.rect) : { top: 0, left: 0 };
       const marker = this.createMarker(index, feedback, pos);
-      this.applyConfidenceStyle(marker, resolved.confidence, feedback);
+      if (resolved) this.applyConfidenceStyle(marker, resolved.confidence, feedback);
+      else marker.style.display = "none";
       this.container.appendChild(marker);
       entry.elements.push(marker);
+      entry.positions.push(pos);
     }
     return entry;
   }
@@ -379,10 +398,13 @@ export class MarkerManager {
       badge.remove();
     }
 
-    const allItems: { entry: MarkerEntry; elIdx: number }[] = [];
+    // Hidden (unresolved) markers have no meaningful position — skip them.
+    const allItems: { entry: MarkerEntry; elIdx: number; pos: MarkerPos }[] = [];
     for (const entry of this.entries) {
       for (let i = 0; i < entry.elements.length; i++) {
-        allItems.push({ entry, elIdx: i });
+        const pos = entry.positions[i];
+        if (!pos || entry.elements[i]?.style.display === "none") continue;
+        allItems.push({ entry, elIdx: i, pos });
       }
     }
 
@@ -402,13 +424,13 @@ export class MarkerManager {
 
       for (let j = i + 1; j < allItems.length; j++) {
         if (used.has(j)) continue;
-        const a = itemI.entry;
+        const a = itemI.pos;
         const itemJ = allItems[j];
         if (!itemJ) continue;
-        const b = itemJ.entry;
-        const dist = Math.sqrt((a.baseLeft - b.baseLeft) ** 2 + (a.baseTop - b.baseTop) ** 2);
+        const b = itemJ.pos;
+        const dist = Math.sqrt((a.left - b.left) ** 2 + (a.top - b.top) ** 2);
         if (dist < CLUSTER_DISTANCE) {
-          cluster.entries.push(b);
+          cluster.entries.push(itemJ.entry);
           cluster.elementIndices.push(itemJ.elIdx);
           used.add(j);
         }
@@ -425,9 +447,9 @@ export class MarkerManager {
   }
 
   private applyStackPositions(cluster: Cluster): void {
-    const first = cluster.entries[0];
-    if (!first) return;
-    const { baseTop, baseLeft } = first;
+    const base = clusterBase(cluster);
+    if (!base) return;
+    const { top: baseTop, left: baseLeft } = base;
     const isSolo = cluster.entries.length <= 1;
     for (let i = 0; i < cluster.entries.length; i++) {
       const m = clusterMarker(cluster, i);
@@ -439,9 +461,9 @@ export class MarkerManager {
   }
 
   private applyFanPositions(cluster: Cluster): void {
-    const first = cluster.entries[0];
-    if (!first) return;
-    const { baseTop, baseLeft } = first;
+    const base = clusterBase(cluster);
+    if (!base) return;
+    const { top: baseTop, left: baseLeft } = base;
     const count = cluster.entries.length;
     const totalWidth = (count - 1) * FAN_SPACING;
     const startLeft = baseLeft - totalWidth / 2;
@@ -642,7 +664,7 @@ export class MarkerManager {
   focusFeedback(feedbackId: string): boolean {
     const entry = this.entries.find((e) => e.feedback.id === feedbackId);
     if (!entry) return false;
-    const markerEl = entry.elements[0];
+    const markerEl = entry.elements.find((m) => m.style.display !== "none");
     if (markerEl) {
       markerEl.scrollIntoView({ behavior: "smooth", block: "center" });
     }

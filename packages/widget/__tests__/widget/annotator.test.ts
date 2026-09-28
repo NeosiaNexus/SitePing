@@ -50,6 +50,8 @@ const popupMocks = vi.hoisted(() => {
     showCount: 0,
     /** Tracks whether the mock popup is currently open. */
     isOpenState: false,
+    /** True while the last `onSubmit` is pending — the real popup refuses to close then. */
+    submitInFlight: false,
   };
 });
 
@@ -73,7 +75,12 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
           if (popupMocks.nextResult && onSubmit) {
             const submit = onSubmit(popupMocks.nextResult);
             popupMocks.lastSubmitPromise = submit;
-            void submit.catch(() => {});
+            popupMocks.submitInFlight = true;
+            void submit
+              .catch(() => {})
+              .finally(() => {
+                popupMocks.submitInFlight = false;
+              });
           }
           // `keepShowPending` mirrors the real popup keeping `show()` unresolved
           // while `runSubmission` is in flight — the overlay therefore stays up,
@@ -88,6 +95,13 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
         }),
       destroy: vi.fn().mockImplementation(() => {
         popupMocks.destroyCount += 1;
+        popupMocks.isOpenState = false;
+      }),
+      // Like the real dismiss(): closes an open popup, but is a no-op while a
+      // submission is in flight. The real-popup suite
+      // (annotator-popup-reentry.test.ts) pins the user-visible behavior.
+      dismiss: vi.fn().mockImplementation(() => {
+        if (popupMocks.submitInFlight) return;
         popupMocks.isOpenState = false;
       }),
       get isOpen() {
@@ -169,6 +183,7 @@ describe("Annotator", () => {
     popupMocks.capturedOnSubmit = null;
     popupMocks.keepShowPending = false;
     popupMocks.isOpenState = false;
+    popupMocks.submitInFlight = false;
     popupMocks.destroyCount = 0;
     popupMocks.showCount = 0;
     screenshotMocks.captureAnnotatedScreenshot.mockReset();
@@ -825,7 +840,9 @@ describe("Annotator", () => {
 
     it("shows a fixed-position highlight over the target and removes it on deactivate", async () => {
       // Keep show() pending so the popup stays "open" — the window in which
-      // the highlight must persist, exactly like a pointer-drawn rect.
+      // the highlight must persist, exactly like a pointer-drawn rect. No
+      // result: an open, unsent popup, the state where Escape really closes it.
+      popupMocks.nextResult = null;
       popupMocks.keepShowPending = true;
 
       const pageButton = document.createElement("button");

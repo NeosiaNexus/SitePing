@@ -284,6 +284,135 @@ test.describe("Annotation mode", () => {
   });
 });
 
+test.describe("Annotation popup lifecycle", () => {
+  async function drawAndOpenPopup(page: Page) {
+    const s = shadow(page);
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="annotate"]');
+    await s.click('[data-item-id="annotate"]');
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
+
+    const box = await page.locator("#target-element").boundingBox();
+    await page.mouse.move(box!.x + 10, box!.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + 250, box!.y + 60, { steps: 5 });
+    await page.mouse.up();
+    const dialog = page.locator('body > [role="dialog"][data-siteping-ignore]');
+    await expect(dialog).toHaveCSS("opacity", "1");
+    return dialog;
+  }
+
+  test("keeps its open/close transition after show()", async ({ page }) => {
+    const dialog = await drawAndOpenPopup(page);
+    await expect(dialog).toHaveCSS("transition-duration", "0.25s, 0.25s");
+  });
+
+  test("is not hit-testable while it fades out", async ({ page }) => {
+    await drawAndOpenPopup(page);
+    // Cancel and hit-test in the same task: deterministic, whatever the fade's timing
+    const hit = await page.evaluate(() => {
+      const dialog = document.querySelector<HTMLElement>('body > [role="dialog"][data-siteping-ignore]')!;
+      const textarea = dialog.querySelector("textarea")!.getBoundingClientRect();
+      Array.from(dialog.querySelectorAll("button"))
+        .find((button) => button.textContent === "Cancel")!
+        .click();
+      const target = document.elementFromPoint(textarea.left + textarea.width / 2, textarea.top + textarea.height / 2);
+      return { display: getComputedStyle(dialog).display, insideDialog: dialog.contains(target) };
+    });
+    expect(hit.display).toBe("block");
+    expect(hit.insideDialog).toBe(false);
+  });
+
+  test("the toolbar Cancel closes an open popup and ends the session", async ({ page }) => {
+    const dialog = await drawAndOpenPopup(page);
+
+    await page.locator("body > div[data-siteping-ignore] > button", { hasText: "Cancel" }).click();
+
+    await expect(dialog).toBeHidden();
+    await expect(page.locator("div[style*='crosshair']")).toHaveCount(0);
+  });
+});
+
+test.describe("Annotation popup placement", () => {
+  const toolbarCancel = (page: Page) =>
+    page.locator("body > div[data-siteping-ignore] > button", { hasText: "Cancel" });
+
+  async function startAnnotating(page: Page) {
+    const s = shadow(page);
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="annotate"]');
+    await s.click('[data-item-id="annotate"]');
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
+  }
+
+  async function drawRectangle(page: Page, fromY: number, toY: number) {
+    await page.mouse.move(200, fromY);
+    await page.mouse.down();
+    await page.mouse.move(600, toY, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForSelector("button[data-type='bug']");
+  }
+
+  /** Popup and toolbar boxes; the popup's from style.top + offsetHeight, which ignore its entry transform. */
+  async function readLayout(page: Page) {
+    const toolbar = await toolbarCancel(page).evaluate((button) => {
+      const rect = button.parentElement!.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    });
+    const popup = await page.locator('body > [role="dialog"]').evaluate((dialog: HTMLElement) => {
+      const top = Number.parseFloat(dialog.style.top);
+      return { top, bottom: top + dialog.offsetHeight };
+    });
+    return { toolbar, popup, viewportHeight: await page.evaluate(() => window.innerHeight) };
+  }
+
+  test("does not flip above the rectangle into the top toolbar", async ({ page }) => {
+    await startAnnotating(page);
+    // Too tall to fit the popup below, and "above" lands inside the toolbar band
+    await drawRectangle(page, 250, 650);
+
+    const { toolbar, popup, viewportHeight } = await readLayout(page);
+    expect(popup.top).toBeGreaterThanOrEqual(toolbar.bottom);
+    expect(popup.bottom).toBeLessThanOrEqual(viewportHeight);
+  });
+
+  test("keeps clear of a toolbar the host moves to the bottom edge", async ({ page }) => {
+    await startAnnotating(page);
+    // A host moving the toolbar out of the way, e.g. off a modal's header
+    await toolbarCancel(page).evaluate((button) => {
+      const toolbar = button.parentElement!;
+      toolbar.style.top = "auto";
+      toolbar.style.bottom = "0";
+    });
+    // Below the rectangle would overlap the relocated toolbar
+    await drawRectangle(page, 300, 420);
+
+    const { toolbar, popup, viewportHeight } = await readLayout(page);
+    expect(toolbar.top).toBeGreaterThan(viewportHeight / 2);
+    expect(popup.bottom).toBeLessThanOrEqual(toolbar.top);
+    expect(popup.top).toBeGreaterThanOrEqual(0);
+  });
+
+  test("caps a popup taller than the room left by the toolbar, scrolled to its type buttons", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 320 });
+    await startAnnotating(page);
+    await drawRectangle(page, 100, 200);
+    const dialog = page.locator('body > [role="dialog"]');
+    await expect(dialog).toHaveCSS("overflow-y", "auto");
+    await expect(dialog).toHaveCSS("opacity", "1");
+
+    const { toolbar, popup, viewportHeight } = await readLayout(page);
+    expect(popup.top).toBeGreaterThanOrEqual(toolbar.bottom);
+    expect(popup.bottom).toBeLessThanOrEqual(viewportHeight);
+    // The type buttons enable Send: the popup starts on them, not scrolled to its bottom
+    const typeRowOffset = await dialog.evaluate(
+      (element) =>
+        element.querySelector("button[data-type]")!.getBoundingClientRect().top - element.getBoundingClientRect().top,
+    );
+    expect(typeRowOffset).toBeGreaterThanOrEqual(0);
+  });
+});
+
 test.describe("Keyboard-only annotation", () => {
   test("FAB-launched Enter annotation targets the last focused page element", async ({ page }) => {
     const s = shadow(page);
