@@ -5,8 +5,9 @@
 //      file in the widget AND dashboard i18n directories (the TS loader map
 //      already enforces the loader entries at compile time);
 //   2. a doc/README/landing page states a "N built-in locales" count that
-//      no longer matches BUILTIN_LOCALES.length, or a demo locale picker
-//      does not offer exactly BUILTIN_LOCALES;
+//      no longer matches BUILTIN_LOCALES.length or lists the locales without
+//      one of them, or a demo locale picker does not offer exactly
+//      BUILTIN_LOCALES;
 //   3. a non-private packages/* package is missing from the release-please
 //      config/manifest, or a manifest package is missing its release.yml
 //      wiring (output + publish job);
@@ -47,8 +48,14 @@ for (const code of locales) {
   }
 }
 
-/** Every file that may state a locale count. */
-const localeCountFiles = ["README.md", ...readdirSync(join(root, "packages")).map((p) => `packages/${p}/README.md`)];
+/** Every file that may state a locale count or list the locales. */
+const localeDocFiles = [
+  "README.md",
+  "CLAUDE.md",
+  "CONTRIBUTING.md",
+  "packages/core/src/types.ts",
+  ...readdirSync(join(root, "packages")).map((p) => `packages/${p}/README.md`),
+];
 const walk = (dir, ext) =>
   readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(`${dir}/${e.name}`, ext) : e.name.endsWith(ext) ? [`${dir}/${e.name}`] : [],
@@ -57,17 +64,33 @@ for (const [dir, ext] of [
   ["apps/demo/content/docs", ".mdx"],
   ["apps/demo/src", ".tsx"],
 ]) {
-  if (existsSync(join(root, dir))) localeCountFiles.push(...walk(dir, ext));
+  if (existsSync(join(root, dir))) localeDocFiles.push(...walk(dir, ext));
 }
 
-for (const file of localeCountFiles) {
+const englishName = new Intl.DisplayNames(["en"], { type: "language" });
+const hasWord = (text, word) => new RegExp(`\\b${word}\\b`).test(text);
+
+for (const file of localeDocFiles) {
   if (!existsSync(join(root, file))) continue;
   const content = read(file);
-  // EN docs say "7 built-in locales", FR docs "7 locales intégrées", the
-  // landing page "7 languages built in".
-  for (const m of content.matchAll(/(\d+)\s+(?:built-in locales|locales intégrées|languages built in)/gi)) {
+  // EN docs say "7 built-in locales", FR docs "7 locales intégrées", the root
+  // README "7 locales", the landing page "7 languages built in".
+  for (const m of content.matchAll(/(\d+)\s+(?:(?:built-in\s+)?locales\b|languages built in)/gi)) {
     if (Number(m[1]) !== locales.length) {
       errors.push(`${file} claims "${m[0]}" but BUILTIN_LOCALES has ${locales.length} entries`);
+    }
+  }
+  // A paragraph that names both fr and ru, as codes (`fr`, fr-CA) or as
+  // English names (French, Russian), enumerates the built-in locales, so it
+  // must name every one of them.
+  for (const { 0: paragraph, index } of content.matchAll(/.*\S.*(?:\n.*\S.*)*/g)) {
+    for (const name of [(code) => code, (code) => englishName.of(code)]) {
+      if (!hasWord(paragraph, name("fr")) || !hasWord(paragraph, name("ru"))) continue;
+      const missing = locales.filter((code) => !hasWord(paragraph, name(code)));
+      if (missing.length > 0) {
+        const line = content.slice(0, index).split("\n").length;
+        errors.push(`${file}:${line} lists the built-in locales without ${missing.map(name).join(", ")}`);
+      }
     }
   }
 }
