@@ -61,6 +61,14 @@ export function clampPagination(query: Pick<FeedbackQuery, "page" | "limit">): P
   return { page, limit, skip: (page - 1) * limit };
 }
 
+/** `createdAt` in ms for newest-first sorting — an invalid date counts as the oldest. */
+function sortTime(record: FeedbackRecord): number {
+  const time = record.createdAt.getTime();
+  // Below every valid Date (±8.64e15 ms) but finite, so two invalid dates
+  // subtract to 0 — `-Infinity - -Infinity` would be NaN again.
+  return Number.isNaN(time) ? Number.MIN_SAFE_INTEGER : time;
+}
+
 /**
  * Apply the standard feedback filter + pagination pipeline against an
  * in-memory snapshot. Used by `MemoryStore.getFeedbacks` and
@@ -91,8 +99,10 @@ export function applyFeedbackFilters(items: readonly FeedbackRecord[], query: Fe
   // Newest first is part of the store contract (PrismaStore orders by
   // createdAt desc) — sort explicitly instead of relying on insertion order.
   // Array.prototype.sort is stable, so same-millisecond records keep their
-  // insertion order (newest inserted first).
-  results.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  // insertion order (newest inserted first). An invalid date (a hand-edited
+  // localStorage blob) sorts as oldest: a NaN comparator result would leave
+  // the order of the valid records undefined too.
+  results.sort((a, b) => sortTime(b) - sortTime(a));
 
   const total = results.length;
   // Both bounds are clamped (see `clampPagination`): `(page - 1) * limit`

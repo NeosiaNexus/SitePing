@@ -220,3 +220,42 @@ describe("applyFeedbackFilters — pagination", () => {
     );
   });
 });
+
+describe("applyFeedbackFilters — ordering", () => {
+  function atTime(id: string, time: number): FeedbackRecord {
+    return {
+      ...makeRecord({ id, projectName: "alpha", type: "bug", status: "open", url: "/", urlPattern: null, message: "" }),
+      createdAt: new Date(time),
+    };
+  }
+
+  /**
+   * An invalid `createdAt` (NaN — reachable from a hand-edited localStorage
+   * blob) made the comparator return NaN, which leaves the sort order of the
+   * VALID records undefined too.
+   */
+  it("keeps valid records newest-first and sorts invalid dates last", () => {
+    const items = [atTime("t1000", 1000), atTime("bad", Number.NaN), atTime("t3000", 3000), atTime("t2000", 2000)];
+
+    const { feedbacks } = applyFeedbackFilters(items, { projectName: "alpha" });
+
+    expect(feedbacks.map((f) => f.id)).toEqual(["t3000", "t2000", "t1000", "bad"]);
+  });
+
+  it("orders any mix of valid and invalid dates newest-first, invalid last", () => {
+    const timeArb = fc.oneof(fc.integer({ min: 0, max: 5000 }), fc.constant(Number.NaN));
+    fc.assert(
+      fc.property(fc.array(timeArb, { maxLength: 30 }), (times) => {
+        const items = times.map((time, i) => atTime(`r${i}`, time));
+
+        const sorted = applyFeedbackFilters(items, { projectName: "alpha", limit: 100 }).feedbacks.map((f) =>
+          f.createdAt.getTime(),
+        );
+
+        const valid = sorted.filter((t) => !Number.isNaN(t));
+        expect(sorted.slice(0, valid.length)).toEqual(valid);
+        expect(valid).toEqual([...valid].sort((a, b) => b - a));
+      }),
+    );
+  });
+});
