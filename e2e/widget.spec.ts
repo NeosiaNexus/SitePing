@@ -333,6 +333,67 @@ test.describe("Annotation popup lifecycle", () => {
   });
 });
 
+test.describe("Annotation popup placement", () => {
+  const toolbarCancel = (page: Page) =>
+    page.locator("body > div[data-siteping-ignore] > button", { hasText: "Cancel" });
+
+  async function startAnnotating(page: Page) {
+    const s = shadow(page);
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="annotate"]');
+    await s.click('[data-item-id="annotate"]');
+    await page.waitForFunction(() => !!document.querySelector("div[style*='crosshair']"));
+  }
+
+  async function drawRectangle(page: Page, fromY: number, toY: number) {
+    await page.mouse.move(200, fromY);
+    await page.mouse.down();
+    await page.mouse.move(600, toY, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForSelector("button[data-type='bug']");
+  }
+
+  /** Popup and toolbar boxes; the popup's from style.top + offsetHeight, which ignore its entry transform. */
+  async function readLayout(page: Page) {
+    const toolbar = await toolbarCancel(page).evaluate((button) => {
+      const rect = button.parentElement!.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    });
+    const popup = await page.locator('body > [role="dialog"]').evaluate((dialog: HTMLElement) => {
+      const top = Number.parseFloat(dialog.style.top);
+      return { top, bottom: top + dialog.offsetHeight };
+    });
+    return { toolbar, popup, viewportHeight: await page.evaluate(() => window.innerHeight) };
+  }
+
+  test("does not flip above the rectangle into the top toolbar", async ({ page }) => {
+    await startAnnotating(page);
+    // Too tall to fit the popup below, and "above" lands inside the toolbar band
+    await drawRectangle(page, 250, 650);
+
+    const { toolbar, popup, viewportHeight } = await readLayout(page);
+    expect(popup.top).toBeGreaterThanOrEqual(toolbar.bottom);
+    expect(popup.bottom).toBeLessThanOrEqual(viewportHeight);
+  });
+
+  test("keeps clear of a toolbar the host moves to the bottom edge", async ({ page }) => {
+    await startAnnotating(page);
+    // A host moving the toolbar out of the way, e.g. off a modal's header
+    await toolbarCancel(page).evaluate((button) => {
+      const toolbar = button.parentElement!;
+      toolbar.style.top = "auto";
+      toolbar.style.bottom = "0";
+    });
+    // Below the rectangle would overlap the relocated toolbar
+    await drawRectangle(page, 300, 420);
+
+    const { toolbar, popup, viewportHeight } = await readLayout(page);
+    expect(toolbar.top).toBeGreaterThan(viewportHeight / 2);
+    expect(popup.bottom).toBeLessThanOrEqual(toolbar.top);
+    expect(popup.top).toBeGreaterThanOrEqual(0);
+  });
+});
+
 test.describe("Keyboard-only annotation", () => {
   test("FAB-launched Enter annotation targets the last focused page element", async ({ page }) => {
     const s = shadow(page);

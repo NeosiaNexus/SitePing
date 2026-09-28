@@ -142,23 +142,49 @@ describe("Popup", () => {
 
     it("flips up when not enough vertical space below", () => {
       // Simulate small viewport: bottom of rect is near the window bottom
-      // window.innerHeight defaults to 768 in jsdom
+      // window.innerHeight defaults to 768 in jsdom; jsdom has no layout, so
+      // the popup is placed with its 280px fallback height
       popup.show(makeBounds({ top: 500, bottom: 600 }));
 
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
-      // Should flip up: top = rectTop - 220 - 8 = 500 - 228 = 272
-      expect(dialog.style.top).toBe("272px");
+      // Should flip up: top = rectTop - 280 - 8 = 500 - 288 = 212
+      expect(dialog.style.top).toBe("212px");
     });
 
     it("clamps to viewport bottom when rect is too tall to fit popup above or below", () => {
       // Tall rect that spans most of the viewport (jsdom default 1024x768)
-      // — neither below (rect.bottom + 8 + 220 > 768) nor above
-      // (rect.top - 220 - 8 < 8) leaves room.
+      // — neither below (rect.bottom + 8 + 280 > 768) nor above
+      // (rect.top - 280 - 8 < 8) leaves room.
       popup.show(makeBounds({ top: 50, bottom: 750 }));
 
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
-      // top = innerHeight - popupH - 8 = 768 - 220 - 8 = 540
-      expect(dialog.style.top).toBe("540px");
+      // top = innerHeight - popupH - 8 = 768 - 280 - 8 = 480
+      expect(dialog.style.top).toBe("480px");
+    });
+
+    it("keeps clear of reserved viewport bands, such as the annotation toolbar", () => {
+      // Above would be 300 - 8 - 280 = 12, under a 53px top toolbar
+      popup.show(makeBounds({ top: 300, bottom: 700 }), undefined, { top: 53, bottom: 0 });
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      // Clamped inside the band instead: 768 - 8 - 280 = 480
+      expect(dialog.style.top).toBe("480px");
+    });
+
+    it("caps its height and scrolls when taller than the usable band, then resets on the next show", () => {
+      // jsdom is 768px tall; reserving 400px at the top and 200px at the
+      // bottom leaves a 152px band, shorter than the 280px fallback popup.
+      popup.show(makeBounds({ top: 450, bottom: 500 }), undefined, { top: 400, bottom: 200 });
+
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      expect(dialog.style.top).toBe("408px");
+      expect(dialog.style.overflowY).toBe("auto");
+      // The 16px vertical padding and 1px borders are excluded from the content-box cap.
+      expect(dialog.style.maxHeight).toBe(`${152 - 34}px`);
+
+      popup.show(makeBounds({ bottom: 200 }));
+      expect(dialog.style.maxHeight).toBe("");
+      expect(dialog.style.overflowY).toBe("");
     });
 
     it("resolves to null when cancelled (via cancel button)", async () => {
