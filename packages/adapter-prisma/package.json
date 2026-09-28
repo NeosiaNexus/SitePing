@@ -56,7 +56,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@siteping/server": "~0.0.0"
+    "@siteping/server": "workspace:^"
   },
   "devDependencies": {
     "@siteping/core": "workspace:*"

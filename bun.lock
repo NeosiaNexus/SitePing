@@ -92,7 +92,7 @@
       "name": "@siteping/adapter-prisma",
       "version": "0.6.6",
       "dependencies": {
-        "@siteping/server": "~0.0.0",
+        "@siteping/server": "workspace:^",
       },
       "devDependencies": {
         "@siteping/core": "workspace:*",

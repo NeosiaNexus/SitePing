@@ -139,7 +139,7 @@ jobs:
 
   publish-adapter-prisma:
     # After the server: adapter-prisma depends on @siteping/server, so a
-    # release that bumps both must never expose a dependency not yet on npm.
+    # release that bumps both must never publish a range not yet on npm.
     needs: [release-please, build, publish-server]
     if: |
       !failure() && !cancelled() &&
@@ -171,6 +171,12 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+
+      # adapter-prisma depends on @siteping/server through `workspace:^`,
+      # which npm cannot resolve: pin the server release this commit carries.
+      - name: Pin the @siteping/server dependency
+        run: npm pkg set "dependencies.@siteping/server=^$(node -p 'require("../server/package.json").version')"
+        working-directory: packages/adapter-prisma
 
       - name: Publish @siteping/adapter-prisma
         run: npm publish --access public --provenance

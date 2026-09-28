@@ -15,7 +15,9 @@
 //   6. Node tooling (configs, scripts/, e2e/) takes a filesystem path from a
 //      file URL's .pathname instead of fileURLToPath();
 //   7. adapter-prisma's source imports @prisma/client, which it declares as
-//      an optional peer dependency.
+//      an optional peer dependency;
+//   8. a published package depends on another through `workspace:` without
+//      the release.yml step that pins the range before `npm publish`.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -185,6 +187,23 @@ const prismaSourceFiles = (dir) =>
 for (const file of prismaSourceFiles("packages/adapter-prisma/src")) {
   if (PRISMA_CLIENT_IMPORT.test(read(file))) {
     errors.push(`${file} imports @prisma/client — adapter-prisma declares it as an optional peer (#306)`);
+  }
+}
+
+// --- 8. Workspace dependencies are pinned before publishing ------------------
+
+// Bun links a `workspace:` range to the local package whatever its version
+// (a semver range stops matching as soon as release-please bumps it), but
+// `npm publish` ships the protocol verbatim, which npm cannot install. The
+// publish job must rewrite each one — `npm pkg set "dependencies.<name>=…"`.
+for (const pkgPath of Object.keys(manifest)) {
+  const pkg = JSON.parse(read(`${pkgPath}/package.json`));
+  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+    for (const [name, spec] of Object.entries(pkg[field] ?? {})) {
+      if (spec.startsWith("workspace:") && !releaseYml.includes(`npm pkg set "${field}.${name}=`)) {
+        errors.push(`${pkgPath} ${field} "${name}": "${spec}" is not pinned before npm publish in release.yml`);
+      }
+    }
   }
 }
 
