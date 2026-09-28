@@ -59,6 +59,11 @@
       "release-type": "node",
       "component": "server",
       "bump-minor-pre-major": true
+    },
+    "packages/screenshot-storage": {
+      "release-type": "node",
+      "component": "screenshot-storage",
+      "bump-minor-pre-major": true
     }
   }
 }

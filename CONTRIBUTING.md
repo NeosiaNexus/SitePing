@@ -56,6 +56,7 @@ Monorepo with bun workspaces + Turborepo. Libraries live in `packages/`, the web
 | `@siteping/server` | published | Any | Store-agnostic HTTP handler on the Fetch API (auth, CORS, hooks, webhooks) |
 | `@siteping/adapter-prisma` | published | Node | Prisma database adapter — `@siteping/server`'s handler with a Prisma store built in |
 | `@siteping/adapter-drizzle` | published | Node | Drizzle ORM store (PostgreSQL, Turso/libSQL) |
+| `@siteping/screenshot-storage` | published | Any (`/filesystem`: Node) | Screenshot storage backends for stores: Cloudflare Images, S3-compatible, filesystem, memory, or a custom `ScreenshotObjectStore` |
 | `@siteping/adapter-memory` | published | Any | In-memory adapter (testing, demos, serverless) |
 | `@siteping/adapter-localstorage` | published | Browser | localStorage adapter (demos, prototyping) |
 | `@siteping/adapter-kit` | published | Any | Everything third-party adapter authors need: store contract, helpers, `createCollectionStore`, and the conformance suite (`/testing`) |
