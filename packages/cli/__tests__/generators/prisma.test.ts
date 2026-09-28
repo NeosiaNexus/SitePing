@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -997,6 +997,76 @@ model SitepingFeedback {
 
     expect(result.changes).toEqual([]);
     expect(readFileSync(schemaPath, "utf-8")).toBe(schema);
+  });
+
+  // -----------------------------------------------------------------------
+  // Multi-file schema folder (prisma/schema/*.prisma)
+  // -----------------------------------------------------------------------
+
+  describe("multi-file schema folder", () => {
+    let folder: string;
+    let mainPath: string;
+    let sitepingPath: string;
+
+    beforeEach(() => {
+      folder = join(tmpDir, "prisma", "schema");
+      mkdirSync(folder, { recursive: true });
+      mainPath = join(folder, "schema.prisma");
+      sitepingPath = join(folder, "siteping.prisma");
+    });
+
+    /** The two Siteping models as `sync` writes them, without the datasource/generator. */
+    function sitepingModels(): string {
+      const synced = syncedSchema();
+      return synced.slice(synced.indexOf("model SitepingFeedback"));
+    }
+
+    it("finds the Siteping models in a sibling file instead of adding them again", () => {
+      const models = sitepingModels();
+      writeFileSync(mainPath, MINIMAL_SCHEMA);
+      writeFileSync(sitepingPath, models);
+
+      const result = syncPrismaModels(mainPath);
+
+      expect(result.addedModels).toEqual([]);
+      expect(result.changes).toEqual([]);
+      expect(readFileSync(mainPath, "utf-8")).toBe(MINIMAL_SCHEMA);
+      expect(readFileSync(sitepingPath, "utf-8")).toBe(models);
+    });
+
+    it("updates a drifted model in the file that holds it", () => {
+      writeFileSync(mainPath, MINIMAL_SCHEMA);
+      writeFileSync(sitepingPath, sitepingModels().replace(/^\s*screenshotRegion\s+Json\?\s*\n/m, ""));
+
+      const result = syncPrismaModels(mainPath);
+
+      expect(result.changes).toEqual([
+        { model: "SitepingFeedback", field: "screenshotRegion", action: "added", detail: "Json?" },
+      ]);
+      expect(readFileSync(mainPath, "utf-8")).toBe(MINIMAL_SCHEMA);
+      expect(readFileSync(sitepingPath, "utf-8")).toMatch(/screenshotRegion\s+Json\?/);
+      expect(readFileSync(sitepingPath, "utf-8").match(/model SitepingFeedback/g)).toHaveLength(1);
+    });
+
+    it("reads the datasource provider from a sibling file", () => {
+      writeFileSync(mainPath, 'generator client {\n  provider = "prisma-client-js"\n}\n');
+      mkdirSync(join(folder, "db"));
+      writeFileSync(join(folder, "db", "datasource.prisma"), 'datasource db {\n  provider = "sqlite"\n}\n');
+
+      const result = syncPrismaModels(mainPath);
+
+      expect(result.addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+      expect(readFileSync(mainPath, "utf-8")).not.toContain("@db.");
+    });
+
+    it("leaves sibling .prisma files alone outside a schema folder", () => {
+      // prisma/schema.prisma is a single-file schema — Prisma ignores its neighbours.
+      const single = join(tmpDir, "prisma", "schema.prisma");
+      writeFileSync(single, MINIMAL_SCHEMA);
+      writeFileSync(join(tmpDir, "prisma", "old.prisma"), sitepingModels());
+
+      expect(syncPrismaModels(single).addedModels).toEqual(["SitepingFeedback", "SitepingAnnotation"]);
+    });
   });
 
   // -----------------------------------------------------------------------

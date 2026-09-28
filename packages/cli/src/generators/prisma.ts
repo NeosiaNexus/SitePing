@@ -1,6 +1,7 @@
 // Must run before prisma-ast: chevrotain needs Object.groupBy (Node 21+).
 import "../utils/object-group-by-polyfill.js";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import type {
   Attribute,
   AttributeArgument,
@@ -46,25 +47,80 @@ export interface SyncResult extends SchemaReconciliation {
  * - User-added fields outside Siteping's definition are left untouched
  */
 export function syncPrismaModels(schemaPath: string = DEFAULT_SCHEMA_PATH): SyncResult {
-  const schema = parsePrismaSchema(readSchemaSource(schemaPath));
-  const { addedModels, changes } = reconcileSitepingModels(schema);
+  const [main, ...siblings] = loadSchemaFiles(schemaPath);
+  // In a schema folder the Siteping models can live in any file: only the
+  // files whose printed form changed are written back.
+  const files = [main, ...siblings];
+  const before = files.map((file) => printPreservingDocs(file.schema));
+  const { addedModels, changes } = reconcileSitepingModels(
+    main.schema,
+    siblings.map((file) => file.schema),
+  );
 
   if (addedModels.length > 0 || changes.length > 0) {
-    // prisma-ast's printSchema() unconditionally prepends a newline, and prints
-    // blank lines as os.EOL ("\r\n" on Windows) -- strip both forms (#98)
-    const output = printPreservingDocs(schema).replace(/^(\r?\n)+/, "");
-    try {
-      writeFileSync(schemaPath, output, "utf-8");
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "EACCES" || code === "EPERM") {
-        throw new Error(`Permission denied: cannot write to ${schemaPath}. Check file permissions.`);
-      }
-      throw error;
-    }
+    files.forEach((file, i) => {
+      const output = printPreservingDocs(file.schema);
+      if (output !== before[i]) writeSchemaFile(file.path, output);
+    });
   }
 
   return { schemaPath, addedModels, changes };
+}
+
+/** What `sync` would change in the schema at `schemaPath` — nothing is written. */
+export function diffPrismaSchema(schemaPath: string): SchemaReconciliation {
+  const [main, ...siblings] = loadSchemaFiles(schemaPath);
+  return reconcileSitepingModels(
+    main.schema,
+    siblings.map((file) => file.schema),
+  );
+}
+
+function writeSchemaFile(path: string, printed: string): void {
+  // prisma-ast's printSchema() unconditionally prepends a newline, and prints
+  // blank lines as os.EOL ("\r\n" on Windows) -- strip both forms (#98)
+  const output = printed.replace(/^(\r?\n)+/, "");
+  try {
+    writeFileSync(path, output, "utf-8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EACCES" || code === "EPERM") {
+      throw new Error(`Permission denied: cannot write to ${path}. Check file permissions.`);
+    }
+    throw error;
+  }
+}
+
+interface SchemaFile {
+  path: string;
+  schema: Schema;
+}
+
+/**
+ * The parsed files of the schema at `schemaPath`, that file first. In a
+ * multi-file schema folder (`prisma/schema/`, which `findPrismaSchema`
+ * detects) Prisma merges every `.prisma` file under it, so a Siteping model in
+ * a sibling file has to be found there rather than added again.
+ */
+function loadSchemaFiles(schemaPath: string): [SchemaFile, ...SchemaFile[]] {
+  const main = { path: schemaPath, schema: parsePrismaSchema(readSchemaSource(schemaPath)) };
+  const folder = dirname(schemaPath);
+  if (basename(folder) !== "schema") return [main];
+  const siblings = prismaFilesIn(folder)
+    .filter((path) => resolve(path) !== resolve(schemaPath))
+    .map((path) => ({ path, schema: parsePrismaSchema(readFileSync(path, "utf-8")) }));
+  return [main, ...siblings];
+}
+
+/** Every `.prisma` file under `dir`, subfolders included — as Prisma loads a schema folder. */
+function prismaFilesIn(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) return prismaFilesIn(path);
+      return extname(entry.name) === ".prisma" ? [path] : [];
+    })
+    .sort();
 }
 
 /**
@@ -130,16 +186,20 @@ function readSchemaSource(schemaPath: string): string {
  * `status` only reads the report — so both commands agree on type,
  * optionality, cardinality, attributes and their arguments (`@unique`,
  * `@db.Text`, `@default(…)`, `@updatedAt`, `@relation(…)`) and `@@index` blocks.
+ *
+ * `siblings` are the other files of a multi-file schema: existing models and
+ * the datasource are looked up there too (and updated in place); missing
+ * models are added to `schema`.
  */
-export function reconcileSitepingModels(schema: Schema): SchemaReconciliation {
+export function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[] = []): SchemaReconciliation {
   const existingModelsMap = new Map<string, Model>();
-  for (const item of schema.list) {
+  for (const item of [...siblings, schema].flatMap((file) => file.list)) {
     if (item.type === "model") {
       existingModelsMap.set(item.name, item as Model);
     }
   }
 
-  const provider = datasourceProvider(schema);
+  const provider = [schema, ...siblings].map((file) => datasourceProvider(file)).find((p) => p !== undefined);
   const addedModels: string[] = [];
   const changes: FieldChange[] = [];
 

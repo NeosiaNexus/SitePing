@@ -369,6 +369,20 @@ describe("statusCommand", () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
+    it("finds the Siteping models in a sibling file of a prisma/schema/ folder", () => {
+      const folder = join(tmpDir, "prisma", "schema");
+      mkdirSync(folder, { recursive: true });
+      const [head, models] = FULL_SCHEMA.split(/(?=model SitepingFeedback)/);
+      writeFileSync(join(folder, "schema.prisma"), head ?? "");
+      writeFileSync(join(folder, "siteping.prisma"), models ?? "");
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      expect(allMessages(logSuccessSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Up to date$/));
+    });
+
     it("uses --schema flag path when provided", () => {
       const customDir = join(tmpDir, "custom");
       mkdirSync(customDir, { recursive: true });

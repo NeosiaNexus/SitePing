@@ -98,3 +98,5 @@ Quand vous ne passez pas `--schema`, le CLI teste trois emplacements dans l'ordr
 1. `prisma/schema.prisma`
 2. `schema.prisma`
 3. `prisma/schema/schema.prisma`
+
+Un fichier de schéma situé dans un dossier `schema/` (comme `prisma/schema/schema.prisma`) est traité comme une partie d'un schéma multi-fichiers, comme le fait Prisma : chaque fichier `.prisma` de ce dossier compte. Les modèles SitePing sont trouvés et mis à jour dans le fichier qui les contient ; ceux qui manquent sont ajoutés au fichier indiqué.

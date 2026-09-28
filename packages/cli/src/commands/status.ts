@@ -4,7 +4,7 @@ import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import * as p from "@clack/prompts";
 import { hasOwn } from "@siteping/core";
-import { parsePrismaSchema, reconcileSitepingModels } from "../generators/prisma.js";
+import { diffPrismaSchema, type SchemaReconciliation } from "../generators/prisma.js";
 import { findAppDir, findRouteFile } from "../generators/route.js";
 import { findPrismaSchema } from "../utils/find-schema.js";
 
@@ -108,9 +108,9 @@ function checkSchema(schemaPath: string | null): SchemaCheckResult {
     return { found: false, path: null, missingModels: [], missingFields: [], outdatedFields: [] };
   }
 
-  let reconciliation: ReturnType<typeof reconcileSitepingModels>;
+  let reconciliation: SchemaReconciliation;
   try {
-    reconciliation = reconcileSitepingModels(parsePrismaSchema(readFileSync(schemaPath, "utf-8")));
+    reconciliation = diffPrismaSchema(schemaPath);
   } catch (error) {
     // A directory (EISDIR) or a schema that doesn't parse: a failed check,
     // reported like the others (as sync and init do), not a stack trace.
