@@ -3,7 +3,7 @@
 import type { FeedbackResponse } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
-import { createT } from "../../src/i18n/index.js";
+import { createT, tWithParams } from "../../src/i18n/index.js";
 import { Panel } from "../../src/panel.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 import { createShadowRoot } from "../helpers.js";
@@ -1667,6 +1667,32 @@ describe("Panel", () => {
       expect(card.classList.contains("sp-card--selected")).toBe(true);
       const other = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-2"]')!;
       expect(other.classList.contains("sp-card--selected")).toBe(false);
+    });
+
+    it("keeps the selection checked across Load more, with stats over both pages", async () => {
+      const page1 = [makeFeedback({ id: "fb-1" }), makeFeedback({ id: "fb-2" })];
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: page1, total: 3 });
+      const checked = (selector: string) =>
+        shadow.querySelector(`${selector} .sp-bulk-checkbox`)!.getAttribute("aria-checked");
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+      shadow.querySelector<HTMLButtonElement>(".sp-group-toggle")!.click();
+      expect(checked(".sp-bulk-select-all")).toBe("true");
+
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-3" })], total: 3 });
+      shadow.querySelector<HTMLButtonElement>(".sp-btn-load-more")!.click();
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-3"]')).not.toBeNull());
+
+      expect(checked('[data-feedback-id="fb-1"]')).toBe("true");
+      expect(checked('[data-feedback-id="fb-2"]')).toBe("true");
+      expect(checked('[data-feedback-id="fb-3"]')).toBe("false");
+      expect(checked(".sp-bulk-select-all")).toBe("false");
+      expect(shadow.querySelector(".sp-bulk-bar-count")!.textContent).toBe(
+        tWithParams(t, "bulk.selected", { count: 2 }),
+      );
+      // The first stat is the open count, over both pages.
+      expect(shadow.querySelector(".sp-stats-value")!.textContent).toBe("3");
     });
 
     it("bulkResolve emits feedback:error on failure", async () => {
