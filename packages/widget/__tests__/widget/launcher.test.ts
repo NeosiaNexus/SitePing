@@ -439,6 +439,32 @@ describe("launch", () => {
       // Second destroy should not throw (DOM elements already removed)
       expect(() => instance.destroy()).not.toThrow();
     });
+
+    it("a stale destroy() of an earlier instance does not release the current singleton", () => {
+      const w1 = launch(defaultConfig());
+      w1.destroy();
+      const w2 = launch(defaultConfig());
+      w1.destroy(); // stale handle — must be a no-op
+      const w3 = launch(defaultConfig());
+
+      expect(w3).toBe(w2);
+      expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
+      w2.destroy();
+    });
+
+    it("keeps a remounted widget alive when another consumer destroys its stale handle (useSiteping x2)", () => {
+      // Two components share the singleton; A unmounts (destroys it), A
+      // remounts (new widget), then B unmounts and destroys its old handle.
+      const shared = launch(defaultConfig());
+      const sameForB = launch(defaultConfig());
+      shared.destroy();
+      const remounted = launch(defaultConfig());
+      sameForB.destroy();
+
+      expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
+      expect(launch(defaultConfig())).toBe(remounted);
+      remounted.destroy();
+    });
   });
 
   // -------------------------------------------------------------------------
