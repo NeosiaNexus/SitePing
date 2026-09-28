@@ -108,8 +108,11 @@ export function buildFeedbackRecord(
 
 /**
  * Storage primitives behind a collection store. `load`/`persist` may be
- * sync or async — the engine awaits both, so in-memory arrays, localStorage
- * and async KV stores all fit the same three functions.
+ * sync or async, so in-memory arrays, localStorage and async KV stores all
+ * fit the same three functions. When both are sync, a mutation runs from
+ * `load` to `persist` without yielding, so no other code in the realm can
+ * write in between; an async backend is only serialized against the
+ * engine's own queue.
  */
 export interface CollectionStoreBackend {
   /**
@@ -155,12 +158,15 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * returned store, so concurrent calls — the widget's `Promise.all` bulk
  * resolve/delete — never start from the same snapshot and overwrite each
  * other. A failed mutation rejects with its own error and does not block the
- * ones queued after it. Reads are not queued: they see the last persisted
- * snapshot. The guarantee is scoped to one store instance in one JS realm —
- * two instances over the same storage (two `LocalStorageStore`s on one key,
- * two browser tabs, several server processes sharing a KV or a file) are not
- * coordinated; a backend that needs that must bring its own atomic primitive
- * (a transaction, a compare-and-set).
+ * ones queued after it, but `load` and `persist` must always settle: one
+ * that never does stalls every later mutation on the store, so give
+ * network-backed primitives a timeout. Reads are not queued: they see the
+ * last persisted snapshot. The guarantee is scoped to one store instance in
+ * one JS realm — two instances over the same storage (two
+ * `LocalStorageStore`s on one key, two browser tabs, several server
+ * processes sharing a KV or a file) are not coordinated; a backend that
+ * needs that must bring its own atomic primitive (a transaction, a
+ * compare-and-set).
  *
  * @example
  * ```ts

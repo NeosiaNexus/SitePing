@@ -47,7 +47,7 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 
 | Function | Contract |
 |---|---|
-| `load()` | Return the current full snapshot of records. Sync or async — the engine awaits it either way |
+| `load()` | Return the current full snapshot of records. Sync or async. When `load` and `persist` are both sync, each write runs from load to persist in one step, so nothing else in the same JavaScript process can write in between; an async backend is only serialized against the store's own queue |
 | `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
 | `generateId()` | A unique id, used for both feedback and annotation records |
 
@@ -57,7 +57,7 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 
 **Quota pressure drops screenshots first.** When `persist` throws during `createFeedback` and the record carries an inline screenshot, the engine clears `screenshotUrl` — by far the heaviest field — and retries once, so the written comment survives a full storage bucket. If that second write also fails, the error propagates: returning the record would claim a success that never happened.
 
-**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `updateFeedback`, `deleteFeedback` and `deleteAllFeedbacks` so each starts from the previous one's result; a mutation that fails rejects with its own error and never blocks the ones behind it. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
+**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `updateFeedback`, `deleteFeedback` and `deleteAllFeedbacks` so each starts from the previous one's result; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
 
 ## Query backends
 
