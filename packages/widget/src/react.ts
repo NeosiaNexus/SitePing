@@ -35,16 +35,18 @@ function freshPanelActions(ref: { readonly current: SitepingConfig }): SitepingC
   const actions = ref.current.panelActions;
   if (!Array.isArray(actions)) return actions;
   return actions.map((initial) => {
-    // Malformed entries go through untouched — the widget warns and skips them.
+    // Only well-formed entries are wrapped. Anything else goes through
+    // untouched, so the widget still warns about it and skips it.
     if (typeof initial !== "object" || initial === null) return initial;
     const latest = (): SitepingPanelAction => ref.current.panelActions?.find((a) => a?.id === initial.id) ?? initial;
     const visible = (fb: Readonly<FeedbackResponse>) => latest().visible?.(fb) ?? true;
-    if (initial.href === undefined) {
-      const { onAction } = initial;
+    const { onAction, href } = initial;
+    if (typeof onAction === "function" && href === undefined) {
       return { ...initial, visible, onAction: (fb, ctx) => (latest().onAction ?? onAction)(fb, ctx) };
     }
-    const { href } = initial;
-    if (typeof href !== "function") return { ...initial, visible };
+    if (onAction !== undefined) return initial;
+    if (typeof href === "string") return { ...initial, visible };
+    if (typeof href !== "function") return initial;
     return {
       ...initial,
       visible,

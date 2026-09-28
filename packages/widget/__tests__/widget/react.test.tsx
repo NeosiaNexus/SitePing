@@ -70,6 +70,7 @@ afterEach(() => {
 });
 
 // Import after mock setup so the alias resolves to our spy.
+import { normalizePanelActions } from "../../src/panel-actions.js";
 import { useSiteping } from "../../src/react.js";
 
 // ---------------------------------------------------------------------------
@@ -269,6 +270,24 @@ describe("useSiteping", () => {
     initSpy.mockClear();
     render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions: { id: "x" } as never }} />);
     expect(wiredConfig().panelActions).toEqual({ id: "x" });
+  });
+
+  it("leaves malformed panel action entries unwrapped, so the widget still warns about them", () => {
+    const malformed = [
+      { id: "neither", label: "Neither" },
+      { id: "bad", label: "Bad", onAction: "nope" },
+      { id: "both", label: "Both", onAction: () => {}, href: "https://t.example" },
+      { id: "num", label: "Num", href: 42 },
+    ];
+    render(<Probe config={{ endpoint: "/api", projectName: "p", panelActions: malformed as never }} />);
+
+    const wired = wiredConfig().panelActions ?? [];
+    expect(wired).toHaveLength(malformed.length);
+    wired.forEach((action, i) => expect(action).toBe(malformed[i]));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(normalizePanelActions(wired)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(malformed.length);
+    warn.mockRestore();
   });
 
   it("ignores widget callbacks after unmount", () => {
