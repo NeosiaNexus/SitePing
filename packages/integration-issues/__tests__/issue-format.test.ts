@@ -199,6 +199,15 @@ describe("formatIssue", () => {
     );
   });
 
+  it("keeps the title within the 255 characters every tracker accepts", () => {
+    for (const message of ["a".repeat(244), "a".repeat(245), "a".repeat(5000), "@".repeat(5000)]) {
+      const { title } = formatIssue(record({ message }), options);
+
+      expect(title.length).toBeLessThanOrEqual(255);
+    }
+    expect(formatIssue(record({ message: "a".repeat(5000) }), options).title).toBe(`[SitePing] ${"a".repeat(241)}...`);
+  });
+
   it("breaks the URLs in the title, which GitLab would autolink into references", () => {
     const { title } = formatIssue(
       record({ message: "Same as https://gitlab.com/acme/site/-/merge_requests/12 and ftp://x" }),
