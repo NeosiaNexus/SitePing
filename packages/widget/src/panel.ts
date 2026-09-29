@@ -711,12 +711,16 @@ export class Panel {
     let seen = 0;
     let firstTotal: number | undefined;
     let steady = true; // The total never changed: no page shifted under the walk
+    // What the server takes (replies), as the plain list reports it
+    let capabilities: FeedbackResponseList["capabilities"];
     for (let page = 1; found.size < own.size && !signal.aborted; page++) {
-      const { feedbacks, total } = await this.client.getFeedbacks(this.projectName, {
+      const list = await this.client.getFeedbacks(this.projectName, {
         ...options,
         page,
         limit: MAX_PAGE_LIMIT,
       });
+      const { feedbacks, total } = list;
+      capabilities = list.capabilities;
       firstTotal ??= total;
       steady &&= total === firstTotal;
       for (const feedback of feedbacks) {
@@ -733,7 +737,7 @@ export class Panel {
     if (wholeProject && steady && met.size === firstTotal) {
       this.ownFeedback.remove(...[...own].filter((id) => !found.has(id)));
     }
-    return { feedbacks: [...found.values()], total: found.size };
+    return { feedbacks: [...found.values()], total: found.size, capabilities };
   }
 
   /** Fetch the page markers' own query (the launcher's) when the list shows a filtered or wider one. */

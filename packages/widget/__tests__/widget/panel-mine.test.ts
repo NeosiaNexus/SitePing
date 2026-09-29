@@ -350,6 +350,22 @@ describe("Panel — 'Mine' filter", () => {
     expect(cardIds()).toEqual(["sent-now"]);
   });
 
+  it("keeps the reply composer: the walk passes on the capabilities the server advertises", async () => {
+    const all = [makeFeedback("theirs"), makeFeedback("mine")];
+    own = new Set(["mine"]);
+    client.getFeedbacks.mockImplementation(async (project: string, options?: GetFeedbacksOptions) => ({
+      ...(await paginate(all)(project, options)),
+      capabilities: { comments: true },
+    }));
+    await panel.open();
+
+    toggle().click();
+    await vi.waitFor(() => expect(cardIds()).toEqual(["mine"]));
+    shadow.querySelector<HTMLElement>('[data-feedback-id="mine"]')!.click();
+
+    expect(shadow.querySelector(".sp-detail textarea")).not.toBeNull();
+  });
+
   it("leaves the page markers showing every feedback of the page", async () => {
     const all = [makeFeedback("theirs"), makeFeedback("mine")];
     own = new Set(["mine"]);
