@@ -64,6 +64,60 @@ describe("createSitepingHandler — apiKey", () => {
     expect(await response.json()).toEqual({ error: "Unauthorized" });
   });
 
+  it.each([
+    "Bearer",
+    "Bearer ",
+    "B",
+    `Bearer ${API_KEY.slice(0, -1)}`,
+    `Bearer ${API_KEY}x`,
+    `Bearer x${API_KEY.slice(1)}`,
+    // Same length, same last byte as the key.
+    `Bearer ${"x".repeat(API_KEY.length - 1)}${API_KEY.slice(-1)}`,
+  ])("refuses Authorization %j, reading nothing and deleting nothing", async (authorization) => {
+    const store = new MemoryStore();
+    const handler = createSitepingHandler({ store, apiKey: API_KEY });
+    await handler.POST(request("POST", validPayloadNoAnnotations));
+
+    const list = await handler.GET(listRequest({ Authorization: authorization }));
+    const wipe = await handler.DELETE(
+      request(
+        "DELETE",
+        { projectName: validPayloadNoAnnotations.projectName, deleteAll: true },
+        { Authorization: authorization },
+      ),
+    );
+
+    expect([list.status, wipe.status]).toEqual([401, 401]);
+    expect((await store.getFeedbacks({ projectName: validPayloadNoAnnotations.projectName })).total).toBe(1);
+  });
+
+  it("vouches for no Bearer at all when no apiKey is set, `Bearer undefined` included", async () => {
+    const store = new MemoryStore();
+    const handler = createSitepingHandler({ store });
+    const bearer = { Authorization: "Bearer undefined" };
+    const { id } = (await (await handler.POST(request("POST", validPayloadNoAnnotations))).json()) as FeedbackRecord;
+
+    const reply = await handler.POST(
+      request(
+        "POST",
+        {
+          projectName: validPayloadNoAnnotations.projectName,
+          feedbackId: id,
+          body: "Fixed",
+          authorName: "Eve",
+          authorEmail: "eve@example.com",
+          authorRole: "team",
+          clientId: "reply-1",
+        },
+        bearer,
+      ),
+    );
+    const listed = (await (await handler.GET(listRequest(bearer))).json()) as { feedbacks: FeedbackRecord[] };
+
+    expect(((await reply.json()) as { authorRole: string }).authorRole).toBe("client");
+    expect(listed.feedbacks[0]?.authorEmail).toBe("");
+  });
+
   it("refuses to start in production without an apiKey, naming the ways out", () => {
     vi.stubEnv("NODE_ENV", "production");
     try {
