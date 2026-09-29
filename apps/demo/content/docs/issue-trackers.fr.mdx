@@ -100,7 +100,7 @@ Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Le l
 | Option | Type | Défaut | Ce qu'elle fait |
 |---|---|---|---|
 | `tracker` | `IssueTracker` | — | Obligatoire. `createGitHubTracker`, `createGitLabTracker` ou [le vôtre](#autres-gestionnaires) |
-| `siteUrl` | `string` | — | Origine du site en recette. Par défaut, le widget enregistre `location.pathname` comme URL de page, résolue par rapport à elle. Le lien direct ne pointe que vers cette origine : sans `siteUrl`, les tickets n'ont pas de lien direct |
+| `siteUrl` | `string` | — | Origine du site en recette. Par défaut, le widget enregistre `location.pathname` comme URL de page, résolue par rapport à elle. Le lien direct ne pointe que vers cette origine : sans `siteUrl`, les tickets n'ont pas de lien direct. Ce doit être une URL http(s) absolue comme `https://acme.com` : toute autre valeur lève une erreur à la construction des hooks, et le module de la route ne se charge pas |
 | `deepLinkParam` | `string \| false` | `"siteping"` | Doit correspondre au `param` de l'option [`deepLink`](/fr/docs/widget/configuration) du widget. `false` retire le lien |
 | `labels` | `string[]` | `[]` | Labels en plus. `siteping` est toujours ajouté |
 | `redact` | `(text) => string` | aucun | Appliqué par le format intégré au message, à l'auteur, à l'URL de la page, au user agent, au texte des annotations et aux diagnostics avant qu'ils quittent votre serveur. Un `formatIssue` personnalisé reçoit le feedback non expurgé : appelez `options.redact` sur ce que vous copiez, ou [complétez le ticket par défaut](#compléter-le-ticket-par-défaut). Pour expurger avant même que le feedback soit enregistré, utilisez [`beforeCreate`](/fr/docs/server#points-dextension) du serveur |

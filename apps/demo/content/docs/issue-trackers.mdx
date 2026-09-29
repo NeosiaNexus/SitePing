@@ -100,7 +100,7 @@ Everything in the body comes from anonymous visitors, so it is quoted as code. T
 | Option | Type | Default | What it does |
 |---|---|---|---|
 | `tracker` | `IssueTracker` | — | Required. `createGitHubTracker`, `createGitLabTracker` or [your own](#other-trackers) |
-| `siteUrl` | `string` | — | Origin of the site under review. The widget records `location.pathname` as the page URL by default, which resolves against it. The deep link only points to this origin: without `siteUrl`, issues have no deep link |
+| `siteUrl` | `string` | — | Origin of the site under review. The widget records `location.pathname` as the page URL by default, which resolves against it. The deep link only points to this origin: without `siteUrl`, issues have no deep link. It must be an absolute http(s) URL such as `https://acme.com`: anything else throws when the hooks are built, so the route module fails to load |
 | `deepLinkParam` | `string \| false` | `"siteping"` | Must match the widget's [`deepLink`](/docs/widget/configuration) `param`. `false` leaves the link out |
 | `labels` | `string[]` | `[]` | Extra labels. `siteping` is always added |
 | `redact` | `(text) => string` | none | Applied by the built-in format to the message, author, page URL, user agent, annotation text and diagnostics before they leave your server. A custom `formatIssue` gets the feedback unredacted: call `options.redact` on what you copy, or [extend the default issue](#extending-the-default-issue). To redact before the feedback is even stored, use the server's [`beforeCreate`](/docs/server#extension-points) |
