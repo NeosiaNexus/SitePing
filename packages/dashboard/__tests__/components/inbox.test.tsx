@@ -700,6 +700,18 @@ describe("SitepingInbox — permissions and readOnly", () => {
     expect(hintKeys(triage)).toEqual(expect.arrayContaining(["e", "p", "x"]));
   });
 
+  it("keeps the status keys while any listed row allows a change", async () => {
+    const records = seed().map((record) => (record.id === "o1" ? { ...record, permissions: REVIEWER } : record));
+    const { container } = renderInbox({}, records);
+    const listbox = await ready();
+    expect(hintKeys(container)).toEqual(expect.arrayContaining(["e", "p", "x"]));
+
+    fireEvent.keyDown(listbox, { key: "?" });
+    const sheet = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    const keys = [...sheet.querySelectorAll("kbd")].map((kbd) => kbd.textContent);
+    expect(keys).toEqual(expect.arrayContaining(["e", "u"]));
+  });
+
   it("in readOnly, the drawer shows the status as text and offers no delete", async () => {
     const { container } = renderInbox({ readOnly: true });
     const listbox = await ready();
