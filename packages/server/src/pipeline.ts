@@ -1,4 +1,4 @@
-import type { FeedbackRecord } from "@siteping/core";
+import type { CommentRecord, FeedbackRecord } from "@siteping/core";
 import type { AccessGate, AccessOutcome } from "./access.js";
 import { ERROR_MESSAGES } from "./constants.js";
 import { buildCorsHeaders, type CorsHeaders, withCors } from "./cors.js";
@@ -38,6 +38,21 @@ interface PipelineDependencies<Principal> {
   presentFeedback: SitepingHandlerBaseOptions<Principal>["presentFeedback"];
 }
 
+/** A comment as it goes on the wire. */
+export type WireComment = Omit<CommentRecord, "clientId">;
+
+/** A feedback as it goes on the wire — its thread always present. */
+export type WireFeedback = Omit<FeedbackRecord, "clientId" | "comments"> & { comments: WireComment[] };
+
+/**
+ * Serialize a comment for the HTTP wire — `clientId` stripped and
+ * `authorEmail` blanked on the same terms as a feedback's (see below).
+ */
+function toWireComment(comment: CommentRecord, includeEmail: boolean): WireComment {
+  const { clientId: _clientId, ...wire } = comment;
+  return includeEmail ? wire : { ...wire, authorEmail: "" };
+}
+
 /**
  * Serialize a feedback record for the HTTP wire (edge DTO — stores return raw
  * records, redaction happens here).
@@ -45,12 +60,18 @@ interface PipelineDependencies<Principal> {
  * `clientId` is always stripped: it is a browser-local dedup secret, and the
  * POST dedup path returns the full existing record for whoever presents it —
  * exposing it via responses would turn that into a record-theft oracle.
- * `authorEmail` is PII: blanked unless the requester may read it.
+ * `authorEmail` is PII: blanked unless the requester may read it — on the
+ * feedback per `includeEmail`, on its comments per `includeCommentEmails`.
+ * A store without comments leaves the thread out: it goes out as `[]`.
  * Never mutates the input — webhooks receive the same record object.
  */
-function toWireFeedback(feedback: FeedbackRecord, includeEmail: boolean): Omit<FeedbackRecord, "clientId"> {
-  const { clientId: _clientId, ...wire } = feedback;
-  return includeEmail ? wire : { ...wire, authorEmail: "" };
+function toWireFeedback(feedback: FeedbackRecord, includeEmail: boolean, includeCommentEmails: boolean): WireFeedback {
+  const { clientId: _clientId, comments, ...wire } = feedback;
+  return {
+    ...wire,
+    ...(includeEmail ? {} : { authorEmail: "" }),
+    comments: (comments ?? []).map((comment) => toWireComment(comment, includeCommentEmails)),
+  };
 }
 
 /** Where a request failed, for the log: method and path — never the query, headers or body. */
@@ -93,9 +114,20 @@ export function createPipeline<Principal>({
     return { ok: false, response: json(scope, { errors: formatValidationErrors(parsed.error) }, { status: 400 }) };
   };
 
+  /** Read a JSON body, not validated yet. */
+  const readJson = async (scope: Scope<Principal>): Promise<Step<unknown>> => {
+    const body: unknown = await scope.context.request.json().catch(() => null);
+    if (!body) return { ok: false, response: error(scope, 400, ERROR_MESSAGES.invalidJson) };
+    return { ok: true, value: body };
+  };
+
   /** Wire shape of a record for this requester (`presentFeedback`, then redaction). */
   const present = (scope: Scope<Principal>, feedback: FeedbackRecord, includeEmail = scope.canReadAuthorEmail) =>
-    toWireFeedback(presentFeedback ? presentFeedback(feedback, scope.context) : feedback, includeEmail);
+    toWireFeedback(
+      presentFeedback ? presentFeedback(feedback, scope.context) : feedback,
+      includeEmail,
+      scope.canReadAuthorEmail,
+    );
 
   return {
     json,
@@ -143,11 +175,12 @@ export function createPipeline<Principal>({
       };
     },
 
+    readJson,
+
     /** Read and validate a JSON body. */
     async readBody<Output>(scope: Scope<Principal>, schema: Schema<Output>): Promise<Step<Output>> {
-      const body: unknown = await scope.context.request.json().catch(() => null);
-      if (!body) return { ok: false, response: error(scope, 400, ERROR_MESSAGES.invalidJson) };
-      return validate(scope, schema, body);
+      const body = await readJson(scope);
+      return body.ok ? validate(scope, schema, body.value) : body;
     },
 
     /** `null` when the policy allows the request, its 403 otherwise. */
@@ -163,10 +196,20 @@ export function createPipeline<Principal>({
     /**
      * Wire shape of a record answering a POST (fresh or replayed): the
      * requester's email permission, unless the policy echoes the email to
-     * its submitter.
+     * its submitter — who supplied the feedback's, never its thread's.
      */
     presentCreated(scope: Scope<Principal>, feedback: FeedbackRecord) {
       return present(scope, feedback, gate.echoesAuthorEmailOnCreate || scope.canReadAuthorEmail);
+    },
+
+    /** Wire shape of a comment answering a POST — the same echo rule as {@link presentCreated}. */
+    presentCreatedComment(scope: Scope<Principal>, comment: CommentRecord): WireComment {
+      return toWireComment(comment, gate.echoesAuthorEmailOnCreate || scope.canReadAuthorEmail);
+    },
+
+    /** Whether this caller's comment keeps the `team` role it asks for — see `AccessGate.canCommentAsTeam`. */
+    canCommentAsTeam(scope: Scope<Principal>): Promise<boolean> {
+      return gate.canCommentAsTeam(scope.context, scope.canReadAuthorEmail);
     },
 
     /** Log an unexpected failure of an operation and answer its JSON 500. */

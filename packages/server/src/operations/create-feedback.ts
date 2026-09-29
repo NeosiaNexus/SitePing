@@ -8,7 +8,7 @@ import {
 } from "@siteping/core";
 import { ERROR_MESSAGES, MAX_ANNOTATIONS_PER_FEEDBACK } from "../constants.js";
 import type { SitepingHandlerBaseOptions, SitepingLifecycleHooks } from "../options.js";
-import type { Pipeline } from "../pipeline.js";
+import type { Pipeline, Scope } from "../pipeline.js";
 import { feedbackCreateSchema } from "../validation.js";
 import { dispatchWebhooks, type WebhookConfig } from "../webhooks.js";
 
@@ -92,12 +92,8 @@ export function createFeedbackOperation<Principal>({
     return { feedback: await store.createFeedback(input), inserted: true };
   }
 
-  return async (request: Request): Promise<Response> => {
-    const entry = await pipeline.enter(request, "POST");
-    if (!entry.ok) return entry.response;
-    const scope = entry.value;
-
-    const payload = await pipeline.readBody(scope, feedbackCreateSchema);
+  return async (scope: Scope<Principal>, body: unknown): Promise<Response> => {
+    const payload = pipeline.validate(scope, feedbackCreateSchema, body);
     if (!payload.ok) return payload.response;
 
     // Defense-in-depth: enforce annotation limit at handler level in addition to schema validation

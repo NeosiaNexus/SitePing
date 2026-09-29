@@ -114,8 +114,8 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 
 ### What responses expose
 
-- `clientId` is stripped from **every** response.
-- `authorEmail` is blanked unless the request carries a valid `Authorization: Bearer` header. The one exception: a successful `POST` echoes the email back to its author.
+- `clientId` is stripped from **every** response, on feedbacks and on their comments.
+- `authorEmail` is blanked unless the request carries a valid `Authorization: Bearer` header — on feedbacks and on the comments of their [threads](/docs/comments). The one exception: a successful `POST` echoes the email back to its author.
 
 Under [`access`](#custom-access), `canReadAuthorEmail` decides instead, for every response — `POST` included.
 
@@ -140,8 +140,9 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 ```
 
 - **`authenticate`** runs on every method but `OPTIONS`, and resolves **who** is calling — an object, a string or a number, never a boolean. Anything falsy (`null`, `undefined`, `""`, `0`) answers `401`. A `true`/`false` check is a type error, and a plain-JavaScript `false` answers `401` too. Its return type types `principal` everywhere else.
-- **`authorize`** receives the `action` (`create`, `list`, `update`, `delete`, `deleteAll`), the `projectName` and, for `update` and `delete`, the `feedbackId`. It defaults to letting every authenticated caller through. PATCH and DELETE address records by id, so the factory refuses to start with an `authorize` over a store that lacks `verifyProjectOwnership` — every bundled store has it.
+- **`authorize`** receives the `action` (`create`, `list`, `update`, `delete`, `deleteAll`, and `createComment` / `deleteComment` for [threads](/docs/comments)), the `projectName` and, for `update`, `delete` and the comment actions, the `feedbackId` — plus the `commentId` for `deleteComment`. It defaults to letting every authenticated caller through. PATCH and DELETE address records by id, so the factory refuses to start with an `authorize` over a store that lacks `verifyProjectOwnership` — every bundled store has it.
 - **`canReadAuthorEmail`** defaults to `true`.
+- **`canCommentAsTeam`** decides whether a comment that asks for the `team` role keeps it; any other is stamped `client`. It defaults to the `canReadAuthorEmail` answer when you set that callback, and to `false` when you set neither — see [who speaks as the team](/docs/comments#who-speaks-as-the-team).
 - A callback that throws answers a logged `500`.
 
 `access` replaces `apiKey`, `publicEndpoints`, `requireAuthForDestructive` and `redactUnauthenticatedEmails`: passing both is a type error. From a page on another origin, send the credential through the widget's `headers` option — the widget does not send cookies cross-origin.
@@ -189,10 +190,10 @@ One endpoint, five methods. All bodies are JSON.
 
 | Method | Purpose | Success |
 |---|---|---|
-| `POST` | Create feedback (widget submissions) | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks or `onCreated` twice); a `clientId` already used by **another** project is refused with `409` |
-| `GET` | List feedbacks | `200` + `{ feedbacks, total }`, with `Cache-Control: private, max-age=5` (`no-store` under `access`) |
+| `POST` | Create feedback (widget submissions) — or [a comment](/docs/comments#post-a-comment), when the body has a `feedbackId` | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks or `onCreated` twice); a `clientId` already used by **another** project is refused with `409` |
+| `GET` | List feedbacks, each with its thread | `200` + `{ feedbacks, total, capabilities }`, with `Cache-Control: private, max-age=5` (`no-store` under `access`) |
 | `PATCH` | Change a status | `200` + updated record |
-| `DELETE` | Delete one or all | `200` + `{ deleted: true }` |
+| `DELETE` | Delete one or all — or [a comment](/docs/comments#delete-a-comment), when the body has a `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | CORS preflight | `204` |
 
 **GET query parameters:** `projectName` (required), `page` (default 1), `limit` (default 50, max 100), `type`, `status`, `statuses` (comma-separated list, max 4 — e.g. `statuses=open,in_progress`), `search`, `url`, `urlPattern`.
@@ -201,11 +202,11 @@ One endpoint, five methods. All bodies are JSON.
 
 **DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
 
-**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project → `409 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
+**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project, or a full comment thread → `409 { error }`; comment write on a store without comments → `501 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
 
 ### Validation limits worth knowing
 
-`message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
+`message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · comment `body` ≤ 5000 chars, 100 comments per thread · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
 
 ## Webhooks
 

@@ -31,6 +31,11 @@ function reviveRecord(response: FeedbackResponse): FeedbackRecord {
       ...annotation,
       createdAt: new Date(annotation.createdAt),
     })),
+    comments: response.comments?.map((comment) => ({
+      ...comment,
+      clientId: "",
+      createdAt: new Date(comment.createdAt),
+    })),
   };
 }
 

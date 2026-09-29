@@ -1,4 +1,4 @@
-import { type Column, count, eq, getTableColumns, inArray, type SQL, sql, type WithSubquery } from "drizzle-orm";
+import { and, type Column, count, eq, getTableColumns, inArray, type SQL, sql, type WithSubquery } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { CASE_INSENSITIVE_LIKE_OPERATOR } from "../constants/search.js";
 import {
@@ -6,11 +6,12 @@ import {
   INSERTED_ANNOTATIONS_CTE_ALIAS,
   INSERTED_FEEDBACK_CTE_ALIAS,
 } from "../constants/sql.js";
-import { annotationRecordColumns, selectAnnotationValues } from "../shared/annotations.js";
+import { guardedCommentInsert } from "../shared/comments.js";
 import { deletedFeedbackColumns, toDeletedFeedbacks } from "../shared/deletes.js";
 import { feedbackRecordColumns, newestFeedbackFirst } from "../shared/feedbacks.js";
 import { buildFeedbackWhere, withSearchableMessage } from "../shared/filters.js";
 import type { FeedbackFilter, SitepingSqlGateway } from "../shared/gateway.js";
+import { recordColumns, selectValues } from "../shared/rows.js";
 import { monotonicUpdatedAt } from "../shared/timestamps.js";
 import type { SitepingPgTables } from "./tables.js";
 
@@ -34,11 +35,12 @@ function castToColumnType(param: SQL, column: Column): SQL {
 /** The PostgreSQL SQL behind `createPgSitepingStore`. */
 export function createPgGateway(
   db: AnyPgDatabase,
-  { sitepingFeedbacks, sitepingAnnotations }: SitepingPgTables,
+  { sitepingFeedbacks, sitepingAnnotations, sitepingComments }: SitepingPgTables,
 ): SitepingSqlGateway {
   const whereClause = (filter: FeedbackFilter) =>
     buildFeedbackWhere(sitepingFeedbacks, filter, CASE_INSENSITIVE_LIKE_OPERATOR.postgres);
-  const recordColumns = feedbackRecordColumns(getTableColumns(sitepingFeedbacks));
+  const feedbackColumns = feedbackRecordColumns(getTableColumns(sitepingFeedbacks));
+  const commentColumns = recordColumns(getTableColumns(sitepingComments));
   /** Number of feedback rows matching a where clause — the page `total`. */
   const countMatching = async (where: ReturnType<typeof whereClause>): Promise<number> => {
     const [totals] = await db.select({ total: count() }).from(sitepingFeedbacks).where(where);
@@ -65,20 +67,16 @@ export function createPgGateway(
       if (annotations.length > 0) {
         // Data-modifying CTEs always run to completion, even unreferenced.
         statements.push(
-          db
-            .$with(INSERTED_ANNOTATIONS_CTE_ALIAS)
-            .as(
-              db
-                .insert(sitepingAnnotations)
-                .select(
-                  selectAnnotationValues(
-                    sitepingAnnotations,
-                    annotations,
-                    sql`EXISTS (SELECT 1 FROM ${insertedFeedback})`,
-                    castToColumnType,
-                  ),
-                ),
+          db.$with(INSERTED_ANNOTATIONS_CTE_ALIAS).as(
+            db.insert(sitepingAnnotations).select(
+              selectValues(
+                sitepingAnnotations,
+                annotations.map((annotation, position) => ({ ...annotation, position })),
+                sql`EXISTS (SELECT 1 FROM ${insertedFeedback})`,
+                castToColumnType,
+              ),
             ),
+          ),
         );
       }
       const inserted = await db
@@ -91,7 +89,7 @@ export function createPgGateway(
       const where = whereClause(filter);
       const [rows, total] = await Promise.all([
         db
-          .select(recordColumns)
+          .select(feedbackColumns)
           .from(sitepingFeedbacks)
           .where(where)
           .orderBy(...newestFeedbackFirst(sitepingFeedbacks.createdAt, sitepingFeedbacks.creationSequence))
@@ -106,14 +104,49 @@ export function createPgGateway(
     },
     async findAnnotations(feedbackIds) {
       return db
-        .select(annotationRecordColumns(getTableColumns(sitepingAnnotations)))
+        .select(recordColumns(getTableColumns(sitepingAnnotations)))
         .from(sitepingAnnotations)
         .where(inArray(sitepingAnnotations.feedbackId, [...feedbackIds]))
         .orderBy(sitepingAnnotations.createdAt, sitepingAnnotations.position);
     },
+    async findComments(feedbackIds) {
+      return db
+        .select(commentColumns)
+        .from(sitepingComments)
+        .where(inArray(sitepingComments.feedbackId, [...feedbackIds]))
+        .orderBy(sitepingComments.createdAt, sitepingComments.position);
+    },
+    async findCommentByClientId(clientId) {
+      const [row] = await db
+        .select(commentColumns)
+        .from(sitepingComments)
+        .where(eq(sitepingComments.clientId, clientId))
+        .limit(1);
+      return row ?? null;
+    },
+    async insertComment(comment, maxComments) {
+      const { values, condition } = guardedCommentInsert(
+        { feedbacks: sitepingFeedbacks, comments: sitepingComments },
+        comment,
+        maxComments,
+      );
+      const inserted = await db
+        .insert(sitepingComments)
+        .select(selectValues(sitepingComments, [values], condition, castToColumnType))
+        .onConflictDoNothing({ target: sitepingComments.clientId })
+        .returning({ id: sitepingComments.id });
+      return inserted.length > 0;
+    },
+    async deleteComment(feedbackId, commentId) {
+      const deleted = await db
+        .delete(sitepingComments)
+        .where(and(eq(sitepingComments.id, commentId), eq(sitepingComments.feedbackId, feedbackId)))
+        .returning({ id: sitepingComments.id });
+      return deleted.length > 0;
+    },
     async findByClientId(clientId) {
       const [row] = await db
-        .select(recordColumns)
+        .select(feedbackColumns)
         .from(sitepingFeedbacks)
         .where(eq(sitepingFeedbacks.clientId, clientId))
         .limit(1);
@@ -136,7 +169,7 @@ export function createPgGateway(
           updatedAt: monotonicUpdatedAt(sitepingFeedbacks, updatedAt, GREATEST_VALUE_FUNCTION.postgres),
         })
         .where(eq(sitepingFeedbacks.id, id))
-        .returning(recordColumns);
+        .returning(feedbackColumns);
       return row ?? null;
     },
     async deleteById(id, options) {
@@ -146,7 +179,7 @@ export function createPgGateway(
         .returning(deletedFeedbackColumns(sitepingFeedbacks, options));
       return rows.length > 0 ? toDeletedFeedbacks(rows) : null;
     },
-    // Annotations follow their feedback through the `ON DELETE CASCADE` foreign key.
+    // Annotations and comments follow their feedback through the `ON DELETE CASCADE` foreign keys.
     async deleteByProject(projectName) {
       await db.delete(sitepingFeedbacks).where(eq(sitepingFeedbacks.projectName, projectName));
     },

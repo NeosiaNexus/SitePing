@@ -16,5 +16,5 @@ export const INSERTED_FEEDBACK_CTE_ALIAS = "siteping_inserted_feedback";
 /** CTE of the PostgreSQL annotation insert chained to {@link INSERTED_FEEDBACK_CTE_ALIAS}. */
 export const INSERTED_ANNOTATIONS_CTE_ALIAS = "siteping_inserted_annotations";
 
-/** Alias of the `VALUES` list the annotation rows are selected from. */
-export const ANNOTATION_VALUES_ALIAS = "siteping_annotation_values";
+/** Alias of the `VALUES` list an insert-select reads its annotation or comment rows from. */
+export const VALUES_LIST_ALIAS = "siteping_values";

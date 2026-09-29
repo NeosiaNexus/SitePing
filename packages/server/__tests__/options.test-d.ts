@@ -9,6 +9,7 @@ import { describe, expectTypeOf, it } from "vitest";
 import {
   createSitepingHandler,
   type SitepingAccessControl,
+  type SitepingAction,
   type SitepingHandler,
   type SitepingHandlerOptions,
 } from "../src/index.js";
@@ -86,12 +87,17 @@ describe("the principal", () => {
       store,
       access: {
         authenticate: sessionUser,
-        authorize: ({ principal, action, feedbackId }) => {
+        authorize: ({ principal, action, feedbackId, commentId }) => {
           expectTypeOf(principal).toEqualTypeOf<Reviewer>();
           expectTypeOf(feedbackId).toEqualTypeOf<string | undefined>();
+          expectTypeOf(commentId).toEqualTypeOf<string | undefined>();
           return action === "create" || principal.isAdmin;
         },
         canReadAuthorEmail: (principal) => {
+          expectTypeOf(principal).toEqualTypeOf<Reviewer>();
+          return principal.isAdmin;
+        },
+        canCommentAsTeam: (principal) => {
           expectTypeOf(principal).toEqualTypeOf<Reviewer>();
           return principal.isAdmin;
         },
@@ -106,5 +112,13 @@ describe("the principal", () => {
         },
       },
     });
+  });
+});
+
+describe("the actions authorize decides about", () => {
+  it("include the comment writes", () => {
+    expectTypeOf<SitepingAction>().toEqualTypeOf<
+      "create" | "list" | "update" | "delete" | "deleteAll" | "createComment" | "deleteComment"
+    >();
   });
 });

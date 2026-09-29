@@ -1,7 +1,17 @@
-import type { AssertEqual, FeedbackPayload, FeedbackStatus, FeedbackType, Prettify } from "@siteping/core";
+import type {
+  AssertEqual,
+  CommentDeletePayload,
+  CommentPayload,
+  FeedbackPayload,
+  FeedbackStatus,
+  FeedbackType,
+  Prettify,
+} from "@siteping/core";
 import {
   ANCHOR_ELEMENT_ID_MAX,
   ANCHOR_ELEMENT_TAG_MAX,
+  COMMENT_AUTHOR_ROLES,
+  COMMENT_BODY_MAX_LENGTH,
   CONSOLE_DIAGNOSTIC_LEVELS,
   EMAIL_PATTERN,
   FEEDBACK_STATUSES,
@@ -91,6 +101,17 @@ export const screenshotRegionSchema = z.strictObject({
   hPct: z.number().min(0).max(1),
 });
 
+// Restrict to URL-safe identifiers. The widget generates UUIDs (or a
+// Date+Math.random fallback), both of which match. Anything outside this
+// alphabet — `..`, `/`, NUL, etc. — would be a path-traversal vector once
+// the adapter forwards clientId to `screenshotStorage.upload({ feedbackId })`
+// (e.g. an S3 key prefix or a local FS path).
+const clientIdSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(/^[a-zA-Z0-9_-]+$/, "clientId must be alphanumeric (a-z, A-Z, 0-9, _, -)");
+
 export const feedbackCreateSchema = z.object({
   projectName: z.string().min(1).max(200),
   type: z.enum(FEEDBACK_TYPES),
@@ -113,16 +134,7 @@ export const feedbackCreateSchema = z.object({
   authorName: z.string().min(1).max(IDENTITY_FIELD_MAX_LENGTH),
   authorEmail: z.email({ pattern: EMAIL_PATTERN }).max(IDENTITY_FIELD_MAX_LENGTH),
   annotations: z.array(annotationSchema).max(50),
-  // Restrict to URL-safe identifiers. The widget generates UUIDs (or a
-  // Date+Math.random fallback), both of which match. Anything outside this
-  // alphabet — `..`, `/`, NUL, etc. — would be a path-traversal vector once
-  // the adapter forwards clientId to `screenshotStorage.upload({ feedbackId })`
-  // (e.g. an S3 key prefix or a local FS path).
-  clientId: z
-    .string()
-    .min(1)
-    .max(200)
-    .regex(/^[a-zA-Z0-9_-]+$/, "clientId must be alphanumeric (a-z, A-Z, 0-9, _, -)"),
+  clientId: clientIdSchema,
   // Optional base64 JPEG data URL captured by the widget when
   // `enableScreenshot: true`. ~1.5 MB cap = roughly a 1.1 MB JPEG, well
   // above typical sizes (the widget downscales to 1200px). Rejects abuse
@@ -142,6 +154,29 @@ export const feedbackCreateSchema = z.object({
   // this when `captureDiagnostics` is enabled; null + omitted are both
   // accepted so existing clients keep working unchanged.
   diagnostics: diagnosticsSchema.nullable().optional(),
+});
+
+// `feedbackId` names the thread — its presence is what routes a POST here
+// rather than to `feedbackCreateSchema`.
+export const commentCreateSchema = z.object({
+  projectName: z.string().min(1).max(200),
+  feedbackId: z.string().min(1).max(200),
+  // Trimmed, so a whitespace-only reply is a 400 rather than an empty bubble.
+  body: z.string().trim().min(1).max(COMMENT_BODY_MAX_LENGTH),
+  authorName: z.string().min(1).max(IDENTITY_FIELD_MAX_LENGTH),
+  // The widget's reviewers always have an email; a dashboard user may have
+  // none on file, sent as "". Anything else must be a real address.
+  authorEmail: z.union([z.literal(""), z.email({ pattern: EMAIL_PATTERN }).max(IDENTITY_FIELD_MAX_LENGTH)]),
+  // A claim, not a fact: the handler keeps "team" only when the access
+  // policy vouches for the caller.
+  authorRole: z.enum(COMMENT_AUTHOR_ROLES).default("client"),
+  clientId: clientIdSchema,
+});
+
+export const commentDeleteSchema = z.object({
+  projectName: z.string().min(1).max(200),
+  feedbackId: z.string().min(1).max(200),
+  commentId: z.string().min(1).max(200),
 });
 
 export const feedbackPatchSchema = z.object({
@@ -180,9 +215,9 @@ export const getQuerySchema = z.object({
 // ---------------------------------------------------------------------------
 // Explicit public interfaces — decoupled from Zod to keep .d.ts clean.
 //
-// The create payload needs no local interface at all: the schema validates
-// core's `FeedbackPayload` wire shape, and the compile-time lock below keeps
-// the two identical. Only the wire shapes that exist solely at this HTTP
+// The create payloads need no local interface at all: the schemas validate
+// core's `FeedbackPayload` / `CommentPayload` / `CommentDeletePayload` wire
+// shapes, and the compile-time locks below keep them identical. Only the wire shapes that exist solely at this HTTP
 // boundary (PATCH / DELETE / GET query) are declared here.
 // ---------------------------------------------------------------------------
 
@@ -235,6 +270,16 @@ const _createSchemaMatchesPayload: AssertEqual<
   FeedbackPayload
 > = true;
 void _createSchemaMatchesPayload;
+const _commentSchemaMatchesPayload: AssertEqual<
+  Prettify<zod.z.infer<typeof commentCreateSchema>>,
+  CommentPayload
+> = true;
+void _commentSchemaMatchesPayload;
+const _commentDeleteSchemaMatchesPayload: AssertEqual<
+  Prettify<zod.z.infer<typeof commentDeleteSchema>>,
+  CommentDeletePayload
+> = true;
+void _commentDeleteSchemaMatchesPayload;
 const _patchSchemaMatchesInput: AssertEqual<
   Prettify<zod.z.infer<typeof feedbackPatchSchema>>,
   FeedbackPatchInput
