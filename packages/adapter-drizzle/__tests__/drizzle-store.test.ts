@@ -540,7 +540,7 @@ for (const dialect of dialects) {
         expect((await cleanup.getFeedbacks({ projectName: "site" })).total).toBe(0);
       });
 
-      it("discards the loser's upload and propagates the error when reading the winning row back rejects", async () => {
+      it("discards the loser's upload and reports a StorePersistenceError when reading the winning row back rejects", async () => {
         const { storage, uploads, deletions } = recordingStorage();
         const clientId = crypto.randomUUID();
         const lookupFailure = new Error("connection lost while reading the winning row back");
@@ -556,9 +556,15 @@ for (const dialect of dialects) {
           },
         );
 
-        await expect(
-          loser.createFeedbackIfAbsent(feedbackInput({ clientId, screenshotDataUrl: SCREENSHOT_DATA_URL })),
-        ).rejects.toMatchObject({ cause: lookupFailure });
+        const failure = await loser
+          .createFeedbackIfAbsent(feedbackInput({ clientId, screenshotDataUrl: SCREENSHOT_DATA_URL }))
+          .then(
+            () => null,
+            (error: unknown) => error,
+          );
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect(causeChain(failure)).toContain(lookupFailure);
 
         expect(uploads).toHaveLength(1);
         expect(deletions).toEqual([`https://cdn.example.com/${uploads[0]?.feedbackId}.jpg`]);
@@ -1291,6 +1297,59 @@ for (const dialect of dialects) {
         );
         expect(all.feedbacks.map((feedback) => feedback.id)).toEqual(newestFirst);
         expect(pages.flatMap((page) => page.feedbacks.map((feedback) => feedback.id))).toEqual(newestFirst);
+      });
+    });
+
+    describe("when the database is unreachable", () => {
+      const connectionFailure = new Error("connect ECONNREFUSED 127.0.0.1:5432");
+
+      it("reports a StorePersistenceError from every mutation, whatever call fails first", async () => {
+        const writer = database.createStore({ logger });
+        const stored = await writer.createFeedback(feedbackInput());
+        const comment = await writer.addComment(stored.id, commentInput());
+        const failing = (options: DrizzleStoreOptions = {}) =>
+          database.createStoreWithDriverInterceptor(() => Promise.reject(connectionFailure), { logger, ...options });
+        const store = failing();
+        const withDeleteHook = failing({ screenshotStorage: recordingStorage().storage });
+
+        const failures = await Promise.all(
+          [
+            () => store.createFeedback(feedbackInput()),
+            () => store.createFeedbackIfAbsent(feedbackInput()),
+            () => store.updateFeedback(stored.id, { status: "in_progress", resolvedAt: null }),
+            () => store.deleteFeedback(stored.id),
+            () => store.deleteAllFeedbacks("site"),
+            () => withDeleteHook.deleteAllFeedbacks("site"),
+            () => store.addComment(stored.id, commentInput()),
+            () => store.deleteComment(stored.id, comment.id),
+          ].map((mutation) =>
+            mutation().then(
+              () => null,
+              (error: unknown) => error,
+            ),
+          ),
+        );
+
+        for (const failure of failures) {
+          expect(isStorePersistence(failure)).toBe(true);
+          expect(causeChain(failure)).toContain(connectionFailure);
+        }
+      });
+
+      it("reports a StorePersistenceError when a comment inserts nothing and the lookups that follow fail", async () => {
+        // The insert of a comment on an unknown feedback writes nothing; telling why takes two more reads.
+        const store = database.createStoreWithDriverInterceptor(
+          (statementSql, run) => (isCommentWrite(statementSql) ? run() : Promise.reject(connectionFailure)),
+          { logger },
+        );
+
+        const failure = await store.addComment(crypto.randomUUID(), commentInput()).then(
+          () => null,
+          (error: unknown) => error,
+        );
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect(causeChain(failure)).toContain(connectionFailure);
       });
     });
 

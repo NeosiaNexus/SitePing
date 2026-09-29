@@ -193,7 +193,7 @@ Run the backfill in JavaScript, not with SQL `lower()`: the database's `lower()`
 
 ## Errors
 
-- A database failure on a write (read-only or full database, lost connection, rejected statement…) surfaces as `StorePersistenceError`, with the driver error as `cause`. Detect it with `isStorePersistence`.
+- A database failure during a mutation (read-only or full database, lost connection, rejected statement…) surfaces as `StorePersistenceError`, with the driver error as `cause` — the failure of a read the mutation makes too, such as the `clientId` lookup before an insert. Detect it with `isStorePersistence`.
 - `updateFeedback` reads the (immutable) annotations and the thread before updating the row, so no database call runs after the update commits: a failed read leaves the row untouched, and an applied update is never reported as failed because of a read that followed it.
 - `updateFeedback` and `deleteFeedback` on an unknown id throw `StoreNotFoundError`, and so do `addComment` on an unknown feedback and `deleteComment` of a comment that is not on that feedback's thread. `addComment` on a full thread throws `StoreLimitError`.
 

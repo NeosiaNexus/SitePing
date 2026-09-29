@@ -90,21 +90,22 @@ function isStoreContractError(error: unknown): boolean {
 }
 
 /**
- * Run a gateway write, reporting any database failure (read-only or full
- * database, lost connection, rejected statement…) as `StorePersistenceError`
- * — the `SitepingStore` mutation contract — with the driver error as `cause`.
+ * Run database calls a mutation makes (its write, or a read it depends on),
+ * reporting any database failure (read-only or full database, lost
+ * connection, rejected statement…) as `StorePersistenceError`, the
+ * `SitepingStore` mutation contract, with the driver error as `cause`.
  *
  * @param mutation - Store method being served, for the message.
  * @param identifiers - Minimal ids to debug the failure (never payload data).
- * @param write - The gateway write.
+ * @param run - The database calls.
  */
 async function persistMutation<Result>(
   mutation: DrizzleStoreMutation,
   identifiers: Record<string, string>,
-  write: () => Promise<Result>,
+  run: () => Promise<Result>,
 ): Promise<Result> {
   try {
-    return await write();
+    return await run();
   } catch (error) {
     if (isStoreContractError(error)) throw error;
     const context = Object.entries(identifiers)
@@ -164,16 +165,17 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * atomic across store instances and processes: of N concurrent calls, only
    * the one whose insert lands reports `created: true`.
    *
-   * @throws `StorePersistenceError` when the insert fails. When the insert
-   *   loses the race, the winning row is read back: if that read rejects, its
-   *   error propagates; if the row was deleted in the meantime, an `Error`
-   *   naming the `clientId` is thrown (the caller may retry the submission).
-   *   On every failure path, the screenshot this attempt uploaded is discarded
-   *   first — no committed row references it.
+   * @throws `StorePersistenceError` when a database call fails: the lookup
+   *   of the `clientId`, the insert, or — when the insert loses the race — the
+   *   read-back of the winning row. If that row was deleted in the meantime,
+   *   an `Error` naming the `clientId` is thrown (the caller may retry the
+   *   submission). On every failure path, the screenshot this attempt uploaded
+   *   is discarded first — no committed row references it.
    */
   async createFeedbackIfAbsent(submitted: FeedbackCreateInput): Promise<FeedbackCreateOutcome> {
     const data = toStorableValue(submitted);
-    const existing = await this.findByClientId(data.clientId);
+    const identifiers = { clientId: data.clientId };
+    const existing = await persistMutation("createFeedback", identifiers, () => this.findByClientId(data.clientId));
     if (existing) return { feedback: existing, created: false };
 
     // Fresh per attempt: racing creates of one clientId upload under distinct
@@ -195,7 +197,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
 
     let inserted: boolean;
     try {
-      inserted = await persistMutation("createFeedback", { clientId: data.clientId }, () =>
+      inserted = await persistMutation("createFeedback", identifiers, () =>
         this.gateway.insertFeedback(row, annotations),
       );
     } catch (error) {
@@ -212,10 +214,10 @@ export class DrizzleSitepingStore implements DrizzleStore {
     // screenshot, uploaded under its own id, so the one just uploaded is an
     // orphan no row references (screenshot URLs are unique per feedback id).
     // It is discarded however the winner lookup ends — found, deleted in the
-    // meantime, or rejected — and a lookup failure still propagates untouched.
+    // meantime, or rejected.
     let winner: FeedbackRecord | null;
     try {
-      winner = await this.findByClientId(data.clientId);
+      winner = await persistMutation("createFeedback", identifiers, () => this.findByClientId(data.clientId));
     } finally {
       await this.discardScreenshots([screenshotUrl], { clientId: data.clientId });
     }
@@ -337,21 +339,25 @@ export class DrizzleSitepingStore implements DrizzleStore {
    *
    * @throws `StoreNotFoundError` when the feedback does not exist.
    * @throws `StoreLimitError` when its thread already holds `MAX_COMMENTS_PER_FEEDBACK` comments.
-   * @throws `StorePersistenceError` when the insert fails.
+   * @throws `StorePersistenceError` when a database call fails.
    */
   async addComment(submittedFeedbackId: string, submitted: CommentCreateInput): Promise<CommentRecord> {
     const feedbackId = toStorableText(submittedFeedbackId);
     const data = toStorableValue(submitted);
     const comment = buildCommentRecord(data, { id: crypto.randomUUID(), feedbackId, now: this.now() });
-    const inserted = await persistMutation("addComment", { feedbackId, clientId: data.clientId }, () =>
+    const identifiers = { feedbackId, clientId: data.clientId };
+    const inserted = await persistMutation("addComment", identifiers, () =>
       this.gateway.insertComment(comment, MAX_COMMENTS_PER_FEEDBACK),
     );
     if (inserted) return comment;
 
     // Nothing written: a replay of the clientId, a missing feedback, or a full thread.
-    const replayed = await this.gateway.findCommentByClientId(data.clientId);
+    const replayed = await persistMutation("addComment", identifiers, () =>
+      this.gateway.findCommentByClientId(data.clientId),
+    );
     if (replayed) return replayed;
-    if ((await this.gateway.findProjectName(feedbackId)) === null) throw new StoreNotFoundError();
+    const projectName = await persistMutation("addComment", identifiers, () => this.gateway.findProjectName(feedbackId));
+    if (projectName === null) throw new StoreNotFoundError();
     throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
   }
 
