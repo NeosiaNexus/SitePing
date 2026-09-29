@@ -96,9 +96,9 @@ for (const [f, code] of sources) {
 }
 
 // esbuild escapes every non-ASCII character (its `charset: ascii` default),
-// and the Terser pass keeps it that way (`ascii_only`): a classic <script> is
-// decoded with the page's charset, so a raw UTF-8 byte in the IIFE would come
-// out garbled on a page that is not UTF-8.
+// and the Terser pass keeps it that way (`ascii_only`): a classic <script>
+// served without a charset is decoded with the page's, so a raw UTF-8 byte in
+// a self-hosted IIFE would come out garbled on a page that is not UTF-8.
 for (const [f, code] of sources) {
   const at = code.search(/[\u0080-\uffff]/);
   if (at !== -1) {
