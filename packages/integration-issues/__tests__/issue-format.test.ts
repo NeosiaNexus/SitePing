@@ -352,13 +352,15 @@ describe("formatIssue", () => {
     expect(body).not.toContain("## Open in the page");
   });
 
-  it("drops credentials from the deep link", () => {
+  it("drops a page URL's own credentials, from the Page section and the deep link", () => {
     const { body } = formatIssue(record({ url: "https://user:pass@acme.test/checkout" }), {
       ...options,
       siteUrl: "https://acme.test",
     });
 
     expect(liveMarkdown(body).links).toEqual(["https://acme.test/checkout?siteping=fb-1"]);
+    expect(body).toContain("## Page\n\n`https://acme.test/checkout`");
+    expect(body).not.toContain("pass");
   });
 
   it("keeps siteUrl's credentials out of the page URLs resolved against it", () => {

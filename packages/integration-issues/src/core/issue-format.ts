@@ -70,12 +70,11 @@ function withoutCredentials(url: URL): URL {
 
 /**
  * The deep link, only to a page of the site under review: the page URL is
- * the visitor's, and this is the one live link in the body. Credentials in
- * the URL are dropped.
+ * the visitor's, and this is the one live link in the body.
  */
 function buildSiteDeepLink(page: URL | null, feedbackId: string, param: string, site: URL | null): string | null {
   if (!page || page.origin !== site?.origin) return null;
-  const link = withoutCredentials(page);
+  const link = new URL(page);
   link.searchParams.set(param, feedbackId);
   return link.href;
 }
@@ -122,10 +121,11 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
   const title = `${ISSUE_TITLE_PREFIX} ${truncate(defuseReferences(message.replace(/\s+/g, " ").trim()), titleBudget)}`;
 
   // The widget records `location.pathname` by default: resolve it against the
-  // site, whose credentials a relative URL would otherwise copy into the issue.
+  // site, then drop credentials, the page's own and those a relative URL inherits.
   const pageUrl = redact(feedback.url);
   const site = options.siteUrl === undefined ? null : parseHttpUrl(options.siteUrl);
-  const page = parseHttpUrl(pageUrl, site ? withoutCredentials(site).href : undefined);
+  const resolved = parseHttpUrl(pageUrl, site?.href);
+  const page = resolved && withoutCredentials(resolved);
   const author = options.includeAuthorEmail ? `${feedback.authorName} <${feedback.authorEmail}>` : feedback.authorName;
   const deepLink =
     options.deepLinkParam === false ? null : buildSiteDeepLink(page, feedback.id, options.deepLinkParam, site);
