@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type {
+  CommentResponse,
   FeedbackResponse,
   SitepingConfig,
   SitepingInstance,
@@ -196,6 +197,31 @@ describe("useSiteping", () => {
     expect(onError).toHaveBeenCalledWith(boom);
     expect(onAnnotationStart).toHaveBeenCalledTimes(1);
     expect(onAnnotationEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps onCommentAdded fresh across rerenders and silent after unmount", () => {
+    const c1 = vi.fn();
+    const c2 = vi.fn();
+
+    function Host({ cb }: { cb: (comment: CommentResponse) => void }) {
+      useSiteping({ endpoint: "/api", projectName: "p", onCommentAdded: cb });
+      return null;
+    }
+
+    const { rerender, unmount } = render(<Host cb={c1} />);
+    rerender(<Host cb={c2} />);
+    expect(initSpy).toHaveBeenCalledTimes(1);
+
+    const reply = { id: "c-1" } as CommentResponse;
+    act(() => {
+      wiredConfig().onCommentAdded?.(reply);
+    });
+    expect(c2).toHaveBeenCalledWith(reply);
+    expect(c1).not.toHaveBeenCalled();
+
+    unmount();
+    wiredConfig().onCommentAdded?.(reply);
+    expect(c2).toHaveBeenCalledTimes(1);
   });
 
   it("keeps onError fresh across rerenders (was frozen at mount before)", () => {
