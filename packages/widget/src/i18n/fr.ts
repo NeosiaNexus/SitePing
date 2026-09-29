@@ -151,9 +151,8 @@ export const fr: Translations = {
   "detail.diagnostics.noEntries": "Aucune entrée",
 
   // Discussion thread (detail view)
-  "comments.title": "Réponses",
   "comments.placeholder": "Répondre à l'équipe...",
-  "comments.error": "Votre réponse n'a pas été envoyée. Réessayez.",
+  "comments.error": "Non envoyé. Réessayez.",
   "comments.team": "Équipe",
 
   // Keyboard shortcuts overlay

@@ -588,26 +588,23 @@ describe("DetailView", () => {
       expect(sections[3]!.style.animationDelay).toBe("120ms");
     });
 
-    it("puts the discussion thread right after the message and its screenshot, before the details", () => {
+    it("reads the discussion thread on from the message it answers", () => {
       const thread = document.createElement("div");
       setup.callbacks.buildThread = vi.fn(() => thread);
-      const fb = makeFeedback({ screenshotUrl: "https://cdn.example.com/s.jpg" });
+      const fb = makeFeedback();
       setup.view.show(fb, 1);
 
       expect(setup.callbacks.buildThread).toHaveBeenCalledWith(fb);
-      const sections = [...setup.view.element.querySelectorAll<HTMLElement>(".sp-detail-section")];
-      // status, message, screenshot, thread, metadata
-      expect(sections).toHaveLength(5);
-      expect(sections[3]!.firstElementChild).toBe(thread);
-      expect(sections[3]!.style.animationDelay).toBe("120ms");
-      expect(sections[4]!.textContent).toContain("Details");
+      const message = setup.view.element.querySelector(".sp-detail-message");
+      expect(message?.nextElementSibling).toBe(thread);
+      // status, message (with its thread), metadata
+      expect(setup.view.element.querySelectorAll(".sp-detail-section")).toHaveLength(3);
     });
 
-    it("leaves the thread section out when the feedback has none to show", () => {
+    it("leaves the message alone when the feedback has no thread to show", () => {
       setup.callbacks.buildThread = vi.fn(() => null);
       setup.view.show(makeFeedback(), 1);
-      // status, message, metadata
-      expect(setup.view.element.querySelectorAll(".sp-detail-section")).toHaveLength(3);
+      expect(setup.view.element.querySelector(".sp-detail-message")?.nextElementSibling).toBeNull();
     });
   });
 

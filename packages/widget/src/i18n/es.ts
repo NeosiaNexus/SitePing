@@ -152,9 +152,8 @@ export const es: Translations = {
   "detail.diagnostics.noEntries": "Sin entradas",
 
   // Discussion thread (detail view)
-  "comments.title": "Respuestas",
   "comments.placeholder": "Responder al equipo...",
-  "comments.error": "Tu respuesta no se envió. Inténtalo de nuevo.",
+  "comments.error": "No se envió. Inténtalo de nuevo.",
   "comments.team": "Equipo",
 
   // Keyboard shortcuts overlay

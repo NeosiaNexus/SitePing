@@ -17,7 +17,7 @@ export interface ThreadOptions {
   post: (body: string, clientId: string) => Promise<CommentResponse | null>;
 }
 
-/** The thread's section content — `null` when there is nothing to read and no way to reply. */
+/** The thread under the message — `null` when there is nothing to read and no way to reply. */
 export function buildThread(
   feedback: FeedbackResponse,
   { t, locale, canPost, post }: ThreadOptions,
@@ -27,8 +27,6 @@ export function buildThread(
   if (!canPost && comments.length === 0) return null;
 
   const root = el("div");
-  const title = el("div", { class: "sp-detail-section-title" });
-  setText(title, t("comments.title"));
   // Polite: a reply that lands is read out, not just drawn.
   const list = el("div", { "aria-live": "polite" });
   const add = (comment: CommentResponse): void => {
@@ -51,7 +49,7 @@ export function buildThread(
     list.appendChild(item);
   };
   for (const comment of comments) add(comment);
-  root.append(title, list);
+  root.appendChild(list);
   if (!canPost) return root;
 
   const input = document.createElement("textarea");

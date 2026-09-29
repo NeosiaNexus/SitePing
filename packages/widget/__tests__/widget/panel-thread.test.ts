@@ -83,8 +83,7 @@ describe("buildThread", () => {
   });
 
   it("renders the replies read-only when the backend takes none", () => {
-    const { root, replies, input } = mount(makeFeedback([makeComment()]), { canPost: false });
-    expect(root?.querySelector(".sp-detail-section-title")?.textContent).toBe(t("comments.title"));
+    const { replies, input } = mount(makeFeedback([makeComment()]), { canPost: false });
     expect(replies()).toHaveLength(1);
     expect(replies()[0]?.textContent).toContain("Is it 16 or 24 px?");
     expect(input()).toBeNull();
