@@ -764,7 +764,12 @@ describe("backend factories — timeoutMs", () => {
       timeoutMs,
     });
   const openCloudflareImages = (timeoutMs: number) =>
-    createCloudflareImagesObjectStore({ accountId: "account-1", apiToken: "cf-token", accountHash: "hash-1", timeoutMs });
+    createCloudflareImagesObjectStore({
+      accountId: "account-1",
+      apiToken: "cf-token",
+      accountHash: "hash-1",
+      timeoutMs,
+    });
 
   // What `Number(process.env.TIMEOUT_MS)` gives for a missing or mistyped variable, and delays no timer holds.
   it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5, 2 ** 31])(
