@@ -10,7 +10,7 @@ const ignore = (): void => {};
  *
  * Work on a feedback runs after the earlier work on that feedback. A
  * project task runs after every task of the project queued before it, and
- * before any queued after it.
+ * before any queued after it but a creation (see `forCreation`).
  */
 export function createTaskQueue() {
   const feedbackTails = new Map<string, Promise<void>>();
@@ -30,19 +30,38 @@ export function createTaskQueue() {
     });
   };
 
+  /** `task` after `project` and the feedback's earlier work; the project's later tasks wait for it. */
+  const queueOnFeedback = <T>(
+    projectName: string,
+    feedbackId: string,
+    project: Promise<void> | undefined,
+    task: () => Promise<T>,
+  ): Promise<T> => {
+    const { result, settled } = chain([project, feedbackTails.get(feedbackId)], task);
+    setTail(feedbackTails, feedbackId, settled);
+    const tasks = feedbackTasksByProject.get(projectName) ?? new Set();
+    feedbackTasksByProject.set(projectName, tasks.add(settled));
+    settled.then(() => {
+      tasks.delete(settled);
+      if (tasks.size === 0 && feedbackTasksByProject.get(projectName) === tasks) {
+        feedbackTasksByProject.delete(projectName);
+      }
+    });
+    return result;
+  };
+
   return {
     forFeedback<T>(projectName: string, feedbackId: string, task: () => Promise<T>): Promise<T> {
-      const { result, settled } = chain([projectTails.get(projectName), feedbackTails.get(feedbackId)], task);
-      setTail(feedbackTails, feedbackId, settled);
-      const tasks = feedbackTasksByProject.get(projectName) ?? new Set();
-      feedbackTasksByProject.set(projectName, tasks.add(settled));
-      settled.then(() => {
-        tasks.delete(settled);
-        if (tasks.size === 0 && feedbackTasksByProject.get(projectName) === tasks) {
-          feedbackTasksByProject.delete(projectName);
-        }
-      });
-      return result;
+      return queueOnFeedback(projectName, feedbackId, projectTails.get(projectName), task);
+    },
+
+    /**
+     * A new feedback's first task, which does not wait for its project's: a
+     * feedback stored while its project is being deleted goes with it, so
+     * waiting could not save its issue and would only hold the visitor's request.
+     */
+    forCreation<T>(projectName: string, feedbackId: string, task: () => Promise<T>): Promise<T> {
+      return queueOnFeedback(projectName, feedbackId, undefined, task);
     },
 
     forProject<T>(projectName: string, task: () => Promise<T>): Promise<T> {

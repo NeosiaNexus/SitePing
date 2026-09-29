@@ -189,7 +189,7 @@ export function createIssueTrackerHooks({
 
   return {
     onCreated: (feedback) =>
-      queue.forFeedback(feedback.projectName, feedback.id, async () => {
+      queue.forCreation(feedback.projectName, feedback.id, async () => {
         const content = customFormatIssue
           ? customFormatIssue(feedback, formatOptions)
           : formatIssue(feedback, formatOptions);

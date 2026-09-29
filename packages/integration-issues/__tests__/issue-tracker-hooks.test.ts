@@ -715,6 +715,22 @@ for (const provider of providers) {
         expect(humanComments()).toEqual([1]);
       });
 
+      it("answer a feedback sent while its project is being deleted, without waiting for the delete", async () => {
+        const handler = createHandler();
+        await send(handler);
+        const listing = fake.hold(/^GET \S+\/issues\?/);
+        const deletingAll = remove(handler, { projectName: "site", deleteAll: true });
+        await listing.reached;
+
+        const sending = send(handler);
+        const answered = await Promise.race([sending.then(() => true), pause(500).then(() => false)]);
+        listing.release();
+        await Promise.all([deletingAll, sending]);
+
+        expect(answered).toBe(true);
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(0);
+      });
+
       const whileTheIssueIsCreated = async (
         act: (handler: SitepingHandler, feedbackId: string) => Promise<Response>,
       ) => {
