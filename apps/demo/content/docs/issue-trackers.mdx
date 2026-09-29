@@ -165,7 +165,7 @@ The built-in trackers throw two errors that a custom `logger` can tell apart: `I
 
 ## How issues are found again
 
-Each body starts with the marker `<!-- siteping-feedback {"id":"…","project":"…"} -->`, which GitHub and GitLab do not display. Only that first line is read, so feedback text that imitates it is ignored. Edit the rest of the issue as you like, but keep that line first. The deletion comment starts the same way, with `<!-- siteping-feedback-deleted -->`: a retried delete looks for that line, not for the comment's text.
+Each body starts with the marker `<!-- siteping-feedback {"id":"…","project":"…"} -->`, which GitHub and GitLab do not display. Only that first line is read, so feedback text that imitates it is ignored. Edit the rest of the issue as you like, but keep that line first. The deletion comment starts the same way, with `<!-- siteping-feedback-deleted -->`: a retried delete looks for that line, not for the comment's text. Any comment that starts with it counts, whoever wrote it: on a public repository, anyone can post one to keep the deletion comment off an issue, which is still closed.
 
 Deployments that share a repository and a project name (staging and production, or a preview that copied the production `.env`) would find each other's issues, and a project delete on staging would close production's. Give each its own `instance`: the marker then ends with `"instance":"staging"`, and the hooks only touch issues opened under the same name, an unnamed deployment only those without one. Issues opened before a deployment was named, or renamed, keep the old name.
 

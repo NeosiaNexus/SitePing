@@ -2,7 +2,14 @@ import type { AnnotationRecord, FeedbackRecord } from "@siteping/core";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
 import { ISSUE_BODY_MAX_LENGTH, OVERSIZED_BODY_NOTE } from "../src/constants/issue-format.js";
-import { buildIssueMarker, formatIssue, type IssueFormatOptions, parseIssueMarker } from "../src/core/issue-format.js";
+import {
+  buildDeletionComment,
+  buildIssueMarker,
+  formatIssue,
+  type IssueFormatOptions,
+  isDeletionComment,
+  parseIssueMarker,
+} from "../src/core/issue-format.js";
 import { codeBlock } from "../src/core/markdown.js";
 
 describe("issue marker", () => {
@@ -125,6 +132,16 @@ function liveMarkdown(body: string) {
   walk(fromMarkdown(body) as MarkdownNode);
   return { ...live, text: live.text.join("\n") };
 }
+
+describe("deletion comment", () => {
+  it("is told by its first line alone, whatever the text below it", () => {
+    expect(isDeletionComment(buildDeletionComment("Feedback fb-1 was deleted."))).toBe(true);
+    expect(isDeletionComment("<!-- siteping-feedback-deleted -->\r\n\r\nDeleted.")).toBe(true);
+    // A reply quoting it, or naming its marker, is not it.
+    expect(isDeletionComment("Quoting the bot:\n<!-- siteping-feedback-deleted -->")).toBe(false);
+    expect(isDeletionComment("See <!-- siteping-feedback-deleted --> above")).toBe(false);
+  });
+});
 
 describe("formatIssue", () => {
   const payloads = [
