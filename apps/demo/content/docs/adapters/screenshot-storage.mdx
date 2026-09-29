@@ -92,7 +92,7 @@ export const objectStore = createS3ObjectStore({
 | `now` | the host clock | The clock that signs requests. S3 refuses a signature more than a few minutes off, so pass a corrected clock if the host's drifts |
 | `fetch` | `globalThis.fetch` | The fetch implementation, for tests or a proxy |
 
-Requests use path-style URLs (`<endpoint>/<bucket>/<key>`), which R2, AWS S3, B2 and MinIO all accept. Virtual-hosted-style addressing (`<bucket>.<endpoint>`) is not supported. Each object is stored with `Cache-Control: public, max-age=31536000, immutable`, since a key is never reused: a public bucket or CDN caches screenshots for good.
+Requests use path-style URLs (`<endpoint>/<bucket>/<key>`), which R2, AWS S3, B2 and MinIO all accept. Virtual-hosted-style addressing (`<bucket>.<endpoint>`) is not supported. Each object is stored with `Cache-Control: public, max-age=31536000, immutable`, since a key is never reused: a public bucket or CDN caches screenshots for good, [even once deleted](#what-delete-removes).
 
 ### Retries
 

@@ -92,7 +92,7 @@ export const objectStore = createS3ObjectStore({
 | `now` | l'horloge de l'hôte | L'horloge qui signe les requêtes. S3 refuse une signature décalée de plus de quelques minutes : passez une horloge corrigée si celle de l'hôte dérive |
 | `fetch` | `globalThis.fetch` | L'implémentation de fetch, pour les tests ou un proxy |
 
-Les requêtes utilisent des URL en style chemin (`<endpoint>/<bucket>/<clé>`), qu'acceptent R2, AWS S3, B2 et MinIO. L'adressage en style hôte virtuel (`<bucket>.<endpoint>`) n'est pas pris en charge. Chaque objet est stocké avec `Cache-Control: public, max-age=31536000, immutable`, puisqu'une clé n'est jamais réutilisée : un bucket public ou un CDN garde les captures en cache pour de bon.
+Les requêtes utilisent des URL en style chemin (`<endpoint>/<bucket>/<clé>`), qu'acceptent R2, AWS S3, B2 et MinIO. L'adressage en style hôte virtuel (`<bucket>.<endpoint>`) n'est pas pris en charge. Chaque objet est stocké avec `Cache-Control: public, max-age=31536000, immutable`, puisqu'une clé n'est jamais réutilisée : un bucket public ou un CDN garde les captures en cache pour de bon, [même une fois supprimées](#ce-que-supprime-delete).
 
 ### Nouvelles tentatives
 
