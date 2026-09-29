@@ -155,6 +155,7 @@ export const ja: Translations = {
   "comments.title": "返信",
   "comments.placeholder": "チームに返信...",
   "comments.error": "送信できませんでした。もう一度お試しください。",
+  "comments.full": "このスレッドは上限に達しました。これ以上返信できません。",
   "comments.team": "チーム",
 
   // Keyboard shortcuts overlay

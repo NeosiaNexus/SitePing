@@ -5,6 +5,7 @@ import {
   type FeedbackRecord,
   type FeedbackStatus,
   isClosedStatus,
+  isCommentGone,
   matchesFeedbackQuery,
   newClientId,
   type SitepingCapabilities,
@@ -945,10 +946,14 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     async (id: string, commentId: string): Promise<void> => {
       const record = heldRecord(id);
       if (!srcRef.current.removeComment || !record || !permissionsOf(record).canDeleteComment) return;
+      const drop = () => updateRecord(id, (f) => ({ ...f, comments: f.comments?.filter((c) => c.id !== commentId) }));
       try {
         await srcRef.current.removeComment(id, projectRef.current, commentId);
-        updateRecord(id, (f) => ({ ...f, comments: f.comments?.filter((c) => c.id !== commentId) }));
+        drop();
       } catch (cause) {
+        // Gone already — a teammate's delete, or ours whose answer was lost:
+        // what the user asked for holds, and a retry would only 404 again.
+        if (isCommentGone(cause)) return drop();
         const err = toError(cause);
         callbacksRef.current.onError?.(err);
         throw err;

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { CommentRecord } from "@siteping/core";
+import { type CommentRecord, SitepingValidationError } from "@siteping/core";
 import { act, cleanup, fireEvent } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -175,6 +175,19 @@ describe("Thread", () => {
     await act(async () => view.send()?.click());
     expect(onAdd.mock.calls[1]?.[1]).toBe(onAdd.mock.calls[0]?.[1]);
     expect(view.alert()?.textContent).toBe("");
+  });
+
+  it("says a full thread is full, rather than to try again", async () => {
+    const onAdd = vi.fn(async () => {
+      throw new SitepingValidationError("Failed to post comment: 409", 409);
+    });
+    const view = renderThread({ comments: [], onAdd });
+
+    await type(view.input(), "One too many");
+    await act(async () => view.send()?.click());
+
+    expect(view.alert()?.textContent).toBe(t("comments.full"));
+    expect(view.input()?.value).toBe("One too many");
   });
 
   it("gives an edited draft a new clientId after a failure, so a first attempt that landed cannot replace it", async () => {

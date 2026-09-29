@@ -157,6 +157,8 @@ export interface Translations {
   "comments.title": string;
   "comments.placeholder": string;
   "comments.error": string;
+  /** A reply refused because the thread holds its most client replies. */
+  "comments.full": string;
   /** Badge on a reply from the project team. */
   "comments.team": string;
 

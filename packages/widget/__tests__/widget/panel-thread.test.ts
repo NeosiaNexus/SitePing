@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { CommentResponse, FeedbackResponse } from "@siteping/core";
+import { type CommentResponse, type FeedbackResponse, StoreLimitError } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
 import { buildThread, type ThreadOptions } from "../../src/panel-thread.js";
@@ -236,6 +236,17 @@ describe("buildThread", () => {
     expect(resent).toBe(first);
     expect(error()!.textContent).toBe("");
     expect(replies()).toHaveLength(1);
+  });
+
+  it("says a full thread is full, rather than to try again", async () => {
+    const { post, input, send, error } = mount(makeFeedback([]));
+    post.mockRejectedValue(new StoreLimitError());
+    input()!.value = "One too many";
+    send()!.click();
+    await flush();
+
+    expect(error()!.textContent).toBe(t("comments.full"));
+    expect(input()!.value).toBe("One too many");
   });
 
   it("gives an edited draft a new clientId after a failure, so a first attempt that landed cannot replace it", async () => {

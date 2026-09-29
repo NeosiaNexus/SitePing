@@ -77,6 +77,8 @@ export interface Translations {
   "comments.send": string;
   "comments.delete": string;
   "comments.failed": string;
+  /** A reply refused because the thread is full. */
+  "comments.full": string;
   "comments.deleteConfirm": string;
   /** Announced when a reply comes in — `{name}` is its author. */
   "comments.added": string;

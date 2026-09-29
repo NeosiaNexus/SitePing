@@ -4,7 +4,13 @@
  * it ships in the lazily loaded panel chunk (its CSS lives in `DETAIL_CSS`).
  */
 
-import { COMMENT_BODY_MAX_LENGTH, type CommentResponse, type FeedbackResponse, newClientId } from "@siteping/core";
+import {
+  COMMENT_BODY_MAX_LENGTH,
+  type CommentResponse,
+  type FeedbackResponse,
+  isThreadFull,
+  newClientId,
+} from "@siteping/core";
 import { el, formatRelativeDate, isMacPlatform, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
 import { isCoarsePointer } from "./viewport.js";
@@ -148,19 +154,20 @@ export function buildThread(
     draft.sending = true;
     setText(error, "");
     showSending(rendered, true);
-    let failed = false;
+    let failed = "";
     let comment: CommentResponse | null = null;
     try {
       comment = await post(body, clientId);
-    } catch {
-      failed = true;
+    } catch (error) {
+      // Retrying won't help a full thread.
+      failed = t(isThreadFull(error) ? "comments.full" : "comments.error");
     }
     draft.sending = false;
     // The thread may have been drawn again meanwhile: settle the one on screen.
     const view = draft.view ?? rendered;
     showSending(view, false);
     // On failure the text stays in the field for another try.
-    setText(view.error, failed ? t("comments.error") : "");
+    setText(view.error, failed);
     if (comment) {
       view.add(comment);
       view.input.value = draft.text = "";

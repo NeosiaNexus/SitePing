@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { FeedbackPage, FeedbackRecord, SitepingStore } from "@siteping/core";
+import { SitepingValidationError, StoreNotFoundError } from "@siteping/core";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 import type { InboxRecord, InboxSource } from "../../src/types.js";
@@ -2108,6 +2109,34 @@ describe("useSitepingInbox — discussion thread", () => {
 
     await act(() => result.current.deleteComment("r1", "c-9"));
     expect(source.removeComment).toHaveBeenLastCalledWith("r1", "demo", "c-9");
+    expect(result.current.items.find((r) => r.id === "r1")?.comments).toEqual([]);
+  });
+
+  it.each([
+    ["a store", () => new StoreNotFoundError()],
+    [
+      "the endpoint",
+      () => new SitepingValidationError('Failed to delete comment: 404 {"error":"Comment not found"}', 404),
+    ],
+  ])("drops a reply %s says is gone already, without an error that no retry could clear", async (_, gone) => {
+    const reply = {
+      id: "c-9",
+      feedbackId: "r1",
+      body: "Spam",
+      authorName: "Bot",
+      authorEmail: "",
+      authorRole: "client" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-21T08:00:00Z"),
+    };
+    const source = threadedSource(demoRecords().map((r) => (r.id === "r1" ? { ...r, comments: [reply] } : r)));
+    source.removeComment.mockRejectedValueOnce(gone());
+    const onError = vi.fn();
+    const { result } = await ready({ projects: "demo", source, author, onError });
+
+    await act(() => result.current.deleteComment("r1", "c-9"));
+
+    expect(onError).not.toHaveBeenCalled();
     expect(result.current.items.find((r) => r.id === "r1")?.comments).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import { COMMENT_BODY_MAX_LENGTH, type FeedbackRecord, newClientId } from "@siteping/core";
+import { COMMENT_BODY_MAX_LENGTH, type FeedbackRecord, isThreadFull, newClientId } from "@siteping/core";
 import type { ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { formatAbsolute, formatRelativeTime, toDateTimeAttr } from "../format.js";
@@ -28,7 +28,8 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   const [draft, setDraft] = useState("");
   /** What is in flight — its button shows it (`aria-busy`). */
   const [busy, setBusy] = useState<"send" | "delete" | null>(null);
-  const [failed, setFailed] = useState(false);
+  /** What the last failure says, inline — retrying won't help a full thread. */
+  const [failed, setFailed] = useState<"comments.failed" | "comments.full" | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -56,13 +57,13 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
 
   const run = async (kind: "send" | "delete", action: () => Promise<void>): Promise<boolean> => {
     setBusy(kind);
-    setFailed(false);
+    setFailed(null);
     try {
       await action();
       return true;
-    } catch {
+    } catch (error) {
       // Already reported through `onError`; the thread says it inline.
-      setFailed(true);
+      setFailed(isThreadFull(error) ? "comments.full" : "comments.failed");
       return false;
     } finally {
       setBusy(null);
@@ -197,7 +198,7 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
         {announcement}
       </p>
       <p className="spd-thread-error" role="alert">
-        {failed ? t("comments.failed") : ""}
+        {failed ? t(failed) : ""}
       </p>
     </section>
   );

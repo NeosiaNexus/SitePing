@@ -9,7 +9,7 @@
  */
 
 import { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
-import type { FeedbackQuery } from "./types.js";
+import { type FeedbackQuery, isStoreLimit, isStoreNotFound } from "./types.js";
 
 /**
  * A fresh `clientId` for a write the server dedupes a resend of — a feedback,
@@ -82,7 +82,7 @@ export function withSearchParams(endpoint: string, params: URLSearchParams): str
 /**
  * Map a non-OK `Response` to the appropriate typed error:
  *   - 401 / 403 → `SitepingAuthError`
- *   - other 4xx → `SitepingValidationError`
+ *   - other 4xx → `SitepingValidationError`, with its `status`
  *   - 5xx (or anything else) → generic `SitepingError` (code `"SERVER"`)
  *
  * The response body is consumed via `.text()` so the caller keeps the
@@ -94,8 +94,25 @@ export async function errorFromResponse(response: Response, label: string): Prom
   const detail = text ? `${response.status} ${text}` : `${response.status}`;
   const message = `${label}: ${detail}`;
   if (response.status === 401 || response.status === 403) return new SitepingAuthError(message, response.status);
-  if (response.status >= 400 && response.status < 500) return new SitepingValidationError(message);
+  if (response.status >= 400 && response.status < 500) return new SitepingValidationError(message, response.status);
   return new SitepingError(message, "SERVER", false);
+}
+
+/**
+ * Whether a failed reply met a full thread — a store's `StoreLimitError`, or
+ * the endpoint's 409 (its other 409, a clientId reused on another feedback,
+ * never comes from clients that mint one per reply). Retrying won't help.
+ */
+export function isThreadFull(error: unknown): boolean {
+  return isStoreLimit(error) || (error instanceof SitepingValidationError && error.status === 409);
+}
+
+/**
+ * Whether a failed reply delete found nothing to delete — a store's
+ * `StoreNotFoundError`, or the endpoint's 404: it is gone already.
+ */
+export function isCommentGone(error: unknown): boolean {
+  return isStoreNotFound(error) || (error instanceof SitepingValidationError && error.status === 404);
 }
 
 /**

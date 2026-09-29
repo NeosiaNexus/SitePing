@@ -76,6 +76,7 @@ export const fr: Translations = {
   "comments.send": "Envoyer",
   "comments.delete": "Supprimer la réponse",
   "comments.failed": "Une erreur est survenue. Réessayez.",
+  "comments.full": "Ce fil est complet. Supprimez des réponses pour faire de la place.",
   "comments.deleteConfirm": "Supprimer cette réponse ?",
   "comments.added": "Réponse de {name}",
   "comments.deleted": "Réponse supprimée",

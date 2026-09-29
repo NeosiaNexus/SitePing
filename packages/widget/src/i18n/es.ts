@@ -156,6 +156,7 @@ export const es: Translations = {
   "comments.title": "Respuestas",
   "comments.placeholder": "Responder al equipo...",
   "comments.error": "No se envió. Inténtalo de nuevo.",
+  "comments.full": "Este hilo está completo. No se pueden enviar más respuestas.",
   "comments.team": "Equipo",
 
   // Keyboard shortcuts overlay

@@ -127,6 +127,8 @@ export {
 export {
   errorFromResponse,
   feedbackQueryToSearchParams,
+  isCommentGone,
+  isThreadFull,
   mergeRequestHeaders,
   networkErrorFromException,
   newClientId,
