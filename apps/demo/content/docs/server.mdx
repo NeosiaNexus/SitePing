@@ -136,7 +136,7 @@ Servers that predate them send none, and neither does store mode: clients then h
 
 ## Custom access
 
-A shared key suits a site and its dashboard. When reviewers log in, pass `access` instead: the handler asks your code who is calling and what they may do, from the standard `Request` — a session cookie, a JWT, a header set by your proxy.
+A shared key suits a site and its dashboard. When reviewers log in, pass `access` instead: the handler asks your code who is calling and what they may do, from the standard `Request` — a session cookie, a JWT, a header set by your proxy. Recipes follow for [OpenID Connect](#recipe-openid-connect) providers and [Better Auth](#recipe-better-auth).
 
 ```ts
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
@@ -175,7 +175,7 @@ Lists are also sent with `Cache-Control: no-store`, since they depend on who ask
 
 ### Recipe: OpenID Connect
 
-When reviewers sign in with an OpenID Connect provider — Keycloak, Microsoft Entra ID, Auth0, Zitadel… — the widget and the dashboard send its access token as a bearer, and `access` verifies it with [jose](https://github.com/panva/jose). Visitors without a token keep the public widget: they submit, read and reply, while administrators alone triage and read reviewer emails.
+When reviewers sign in with an OpenID Connect provider — Keycloak, Microsoft Entra ID, Auth0, Zitadel… — the widget and the dashboard send its access token as a bearer, and `access` verifies it with [jose](https://github.com/panva/jose). Visitors without a token keep the public widget: they submit, read and reply, while administrators alone triage and read reviewer emails. If your app signs them in to that provider through Better Auth, use the [Better Auth recipe](#recipe-better-auth) instead.
 
 ```ts
 // lib/siteping-access.ts
@@ -280,6 +280,7 @@ Roles are provider-specific, so `rolesOf` is yours to write:
 | Microsoft Entra ID | `roles` (app roles) | `payload.roles` |
 | Auth0 | None by default: add a claim in a post-login Action, e.g. `https://siteping.example/roles` | `payload["https://siteping.example/roles"]` |
 | Zitadel | `urn:zitadel:iam:org:project:roles`, an object keyed by role | `Object.keys(payload["urn:zitadel:iam:org:project:roles"] ?? {})` |
+| Better Auth ([jwt plugin](#from-another-origin)) | `role`, comma-separated | `typeof payload.role === "string" ? payload.role.split(",") : []` |
 
 #### Letting authors delete their own feedback
 
@@ -321,6 +322,160 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 ```
 
 `onCreated` never fails a submission: if its write fails, that author just cannot delete the feedback. A `sub` is unique per issuer only — with several providers, key the table on both — and `onDeleted` is the place to drop rows.
+
+### Recipe: Better Auth
+
+When your app signs users in with [Better Auth](https://www.better-auth.com), `access` asks it for the session: the widget and a `<SitepingInbox />` mounted in the app send its cookie with every request, so the client side needs no token. Its [admin plugin](https://www.better-auth.com/docs/plugins/admin) tells administrators apart — they triage and read reviewer emails — while everyone else, signed in or not, submits, reads and replies.
+
+This also covers an app that signs users in to an OpenID Connect provider — Keycloak, Microsoft Entra ID, Auth0… — through Better Auth's [Generic OAuth](https://www.better-auth.com/docs/plugins/generic-oauth) or [SSO](https://www.better-auth.com/docs/plugins/sso) plugin: those users hold a Better Auth session too. Keep the [OpenID Connect recipe](#recipe-openid-connect) for access tokens the endpoint verifies itself.
+
+```ts
+// lib/auth.ts — your Better Auth server
+import { betterAuth } from "better-auth";
+import { admin } from "better-auth/plugins";
+
+export const auth = betterAuth({
+  // …database, emailAndPassword, socialProviders as you have them
+  plugins: [admin()],
+});
+```
+
+```ts
+// lib/siteping-access.ts
+import type { SitepingAccessControl } from "@siteping/server";
+import { auth } from "@/lib/auth";
+
+export interface Reviewer {
+  id: string; // "" for a visitor without a session
+  name: string;
+  email: string;
+  isAdmin: boolean;
+}
+
+const VISITOR: Reviewer = { id: "", name: "", email: "", isAdmin: false };
+
+export const betterAuthAccess: SitepingAccessControl<Reviewer> = {
+  async authenticate(request) {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+      // Read from the database, never renewed here — see below.
+      query: { disableCookieCache: true, disableRefresh: true },
+    });
+    // No session: a visitor — unless the request sent a bearer token, which then answers 401.
+    if (!session) return /^Bearer(\s|$)/i.test(request.headers.get("Authorization") ?? "") ? null : VISITOR;
+    const { user } = session;
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.emailVerified ? user.email : "",
+      // The admin plugin stores several roles comma-separated.
+      isAdmin: user.role?.split(",").includes("admin") ?? false,
+    };
+  },
+  authorize: ({ principal, action }) =>
+    principal.isAdmin || action === "create" || action === "list" || action === "createComment",
+  canReadAuthorEmail: (principal) => principal.isAdmin,
+};
+```
+
+```ts
+// app/api/siteping/route.ts
+import { createSitepingHandler } from "@siteping/server";
+import { betterAuthAccess } from "@/lib/siteping-access";
+import { store } from "@/lib/siteping-store";
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  access: betterAuthAccess,
+  // A signed-in author's name, and verified email, come from the session.
+  beforeCreate: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name || input.authorName,
+    authorEmail: principal.email || input.authorEmail,
+  }),
+});
+```
+
+The session also spares signed-in users the widget's identity prompt: pass it as [`identity`](/docs/widget/configuration). The widget reads `identity` once, at init, so key the component on the account — a sign-in or a sign-out then remounts it:
+
+```tsx
+// app/feedback.tsx — mounted in your root layout
+"use client";
+import type { Identity } from "@siteping/widget";
+import { useSiteping } from "@siteping/widget/react";
+import { authClient } from "@/lib/auth-client"; // createAuthClient() from "better-auth/react"
+
+function Widget({ identity }: { identity: Identity | undefined }) {
+  useSiteping({ endpoint: "/api/siteping", projectName: "acme", identity });
+  return null;
+}
+
+export function Feedback() {
+  const { data: session, isPending } = authClient.useSession();
+  if (isPending) return null;
+  const user = session?.user;
+  return <Widget key={user?.id ?? "visitor"} identity={user && { name: user.name, email: user.email }} />;
+}
+```
+
+- **No session, a visitor; a dead token, a `401`.** Without a session the request is anonymous, so the public widget keeps working — also for someone whose cookie outlived a sign-out, an expiry or a ban, since the browser keeps sending it. A request whose `Bearer` token opens no session answers `401` instead: its client sent the token on purpose, and learns it no longer works. Any other `Authorization` stays a visitor: on a staging site behind HTTP Basic auth, the browser or the proxy attaches those credentials to every request.
+- **A database outage, a `500`.** When Better Auth cannot read its sessions, `getSession` throws: the handler logs it and answers `500` rather than downgrading everyone to a visitor. Visitors without a session cookie never reach the database.
+- **Read, never renewed.** A session older than Better Auth's `updateAge` gets renewed by the next `getSession`, which writes a later expiry and sets a new cookie — on a response SitePing never sends, so the browser's cookie would expire first. `disableRefresh` leaves the renewal to your app's own requests.
+- **A demotion applies at once.** With Better Auth's `session.cookieCache` on, `getSession` trusts the cached cookie until its `maxAge`: a role change or a revoked session would wait for it. `disableCookieCache` reads your `database` or `secondaryStorage` instead, as `getSession` does anyway without the cache. Without either, Better Auth is stateless and the signed cookie is the only session record: another instance — a serverless invocation, a replica — finds no session behind that flag, and serves your administrators as visitors. Drop `disableCookieCache` there; a demotion then waits for the cookie's `maxAge`.
+- **Administrators by role.** `isAdmin` reads the admin plugin's `role` — `setRole` with `["user", "admin"]` stores `"user,admin"`. The plugin's `adminUserIds` opens its own endpoints to users whatever their role: give those users the `admin` role too. To let someone triage without the plugin's user management, give them a role of your own (declared in the plugin's `roles`, if you configured some) and test that one.
+- **The author comes from the session.** `beforeCreate` stamps the user's name, and their email once `emailVerified` is true; otherwise the widget's value stays.
+- **Emails stay with administrators.** Since `canReadAuthorEmail` is set, it also decides [who speaks as the team](/docs/comments#who-speaks-as-the-team): administrators' replies from the inbox are marked `team`, everyone else's `client`.
+- **Cookies, and CSRF.** A browser attaches the session cookie to a forged cross-site request too; the [CSRF checks](#csrf-protection) stop those, with nothing to configure.
+- **One role, every project.** As in the OpenID Connect recipe, `admin` triages every project the endpoint serves and anyone lists any of them. To keep several clients apart, load the caller's projects in `authenticate` — for instance the slugs of their organizations, with Better Auth's organization plugin — and have `authorize` check `projectName` against them. To put reads behind sign-in too, return `null` instead of `VISITOR` — every request then needs a session, submissions included.
+- **Authors deleting their own feedback.** The OpenID Connect recipe's [owner table](#letting-authors-delete-their-own-feedback) works as is, with `principal.id` where it reads `principal.sub` — a Better Auth user id is unique in your app, so one column is enough.
+
+#### From another origin
+
+On another origin — the widget on a client's site — a page reaches your app without its cookie: the widget sends cookies to its own origin only. Add Better Auth's [bearer plugin](https://www.better-auth.com/docs/plugins/bearer) and send the session token with `headers`; the recipe needs no change, since the plugin turns the token back into the session `getSession` reads.
+
+```ts
+// lib/auth.ts
+import { admin, bearer } from "better-auth/plugins";
+
+export const auth = betterAuth({
+  // …
+  plugins: [admin(), bearer()],
+  trustedOrigins: ["https://client-site.com"], // where users sign in from
+});
+
+// app/api/siteping/route.ts
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  // Every site the widget runs on. The inbox stays on the endpoint's own origin.
+  allowedOrigins: ["https://client-site.com"],
+  access: betterAuthAccess,
+  // …beforeCreate as above
+});
+```
+
+The token arrives in the `set-auth-token` header of the sign-in response; the plugin's documentation shows how to keep it. On the page, `headers` sends it with every request, and `onError` drops it once it stops working:
+
+```ts
+function headers(): Record<string, string> {
+  const token = localStorage.getItem("bearer_token"); // where your auth client keeps it
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+initSiteping({
+  endpoint: "https://app.example.com/api/siteping",
+  projectName: "acme",
+  headers,
+  onError: (error) => {
+    // A dead token: drop it, and the next request goes out as a visitor.
+    if ((error as { code?: string }).code === "AUTH") localStorage.removeItem("bearer_token");
+  },
+});
+```
+
+- **The token is the whole session.** It is the session cookie's value, not a SitePing credential: it opens every Better Auth endpoint of your app, the admin plugin's included, from any origin, and whoever holds it keeps it alive, since Better Auth renews the session as it is used. Kept in `localStorage`, it is readable by every script on that page. So have administrators triage from the inbox mounted in your app, which sends the cookie, out of scripts' reach, and keeps their session on your origin; keep the bearer for reviewers who sign in on the client's site.
+- **Drop it once it stops working.** A stale cookie stays a visitor, but a dead token answers `401` to every request, submissions included, and nothing removes it from `localStorage` when the session expires or is revoked. Remove it on the widget's `AUTH` error, as above, and when the user signs out.
+
+When the SitePing endpoint runs apart from Better Auth — another service, an edge worker away from your database — verify tokens from Better Auth's [jwt plugin](https://www.better-auth.com/docs/plugins/jwt) with the [OpenID Connect recipe](#recipe-openid-connect) instead. The page fetches one from `/api/auth/token` with its session cookie and sends it with `headers`. `ISSUER` and `audience` are your Better Auth URL, unless you set the plugin's `jwt.issuer` and `jwt.audience`; the key set is at `/api/auth/jwks`, and tokens are signed `EdDSA`. The payload is the user record: `rolesOf` reads `role` (see the table above), administrators hold `admin`, and the email's verification is in `emailVerified`, not `email_verified`.
 
 ## Extension points
 
