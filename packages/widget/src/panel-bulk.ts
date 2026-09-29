@@ -6,7 +6,7 @@
  * spring animations and smooth transitions.
  */
 
-import { el, parseSvg, setButtonLoading, setText } from "./dom-utils.js";
+import { el, parseSvg, setButtonLoading, setHidden, setText } from "./dom-utils.js";
 import { type TFunction, tWithParams } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -326,9 +326,14 @@ export const BULK_CSS = /* css */ `
 // Callbacks
 // ---------------------------------------------------------------------------
 
+/** What the panel's triage actions need — reviewer mode withholds both. */
+export type TriagePermission = "canChangeStatus" | "canDelete";
+
 export interface BulkActionCallbacks {
   onResolve: (ids: string[]) => Promise<void>;
   onDelete: (ids: string[]) => Promise<void>;
+  /** False when a selected feedback refuses it — the bar hides that action. */
+  permits?: (ids: string[], permission: TriagePermission) => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -556,6 +561,10 @@ export class BulkActions {
 
     this.barElement.classList.toggle("sp-bulk-bar--visible", visible);
     setText(this.countLabel, tWithParams(this.t, "bulk.selected", { count }));
+    // Acting on part of a selection would surprise: an action some selected feedback refuses is not offered.
+    const ids = [...this.selected];
+    setHidden(this.resolveBtn, this.callbacks.permits?.(ids, "canChangeStatus") === false);
+    setHidden(this.deleteBtn, this.callbacks.permits?.(ids, "canDelete") === false);
     this.updateButtonLabels();
   }
 

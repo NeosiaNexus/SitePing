@@ -25,6 +25,8 @@ import type {
   CommentResponse,
   FeedbackCreateInput,
   FeedbackCreateOutcome,
+  FeedbackListPermissions,
+  FeedbackPermissions,
   FeedbackRecord,
   FeedbackResponse,
   FeedbackResponseList,
@@ -55,6 +57,15 @@ describe("SitepingConfig discriminated union", () => {
     // @ts-expect-error — apiKey is HTTP-mode only
     const storeWithApiKey: SitepingConfig = { projectName: "p", store, apiKey: "leaked" };
     void storeWithApiKey;
+  });
+
+  it("takes readOnly in both modes — a shared option, outside the union", () => {
+    expectTypeOf({ projectName: "p", endpoint: "/api", readOnly: true }).toExtend<SitepingConfig>();
+    expectTypeOf({ projectName: "p", store, readOnly: true }).toExtend<SitepingConfig>();
+
+    // @ts-expect-error — a flag, not a list of actions
+    const granular: SitepingConfig = { projectName: "p", store, readOnly: ["delete"] };
+    void granular;
   });
 });
 
@@ -99,7 +110,7 @@ describe("wire types derived from record types", () => {
     expectTypeOf<FeedbackResponse["resolvedAt"]>().toEqualTypeOf<string | null>();
     expectTypeOf<FeedbackResponse["annotations"]>().toEqualTypeOf<AnnotationResponse[]>();
     expectTypeOf<AnnotationResponse["createdAt"]>().toEqualTypeOf<string>();
-    expectTypeOf<keyof FeedbackResponse>().toEqualTypeOf<Exclude<keyof FeedbackRecord, "clientId">>();
+    expectTypeOf<keyof FeedbackResponse>().toEqualTypeOf<Exclude<keyof FeedbackRecord, "clientId"> | "permissions">();
     // Non-date fields pass through untouched.
     expectTypeOf<FeedbackResponse["screenshotRegion"]>().toEqualTypeOf<FeedbackRecord["screenshotRegion"]>();
   });
@@ -114,6 +125,19 @@ describe("wire types derived from record types", () => {
   it("advertises capabilities on the list, optional for servers that predate them", () => {
     expectTypeOf<FeedbackResponseList["capabilities"]>().toEqualTypeOf<SitepingCapabilities | undefined>();
     expectTypeOf<SitepingCapabilities>().toEqualTypeOf<{ comments: boolean; deleteComments?: boolean | undefined }>();
+  });
+
+  it("keeps the requester's permissions off the record, optional for servers that predate them", () => {
+    expectTypeOf<FeedbackResponse["permissions"]>().toEqualTypeOf<FeedbackPermissions | undefined>();
+    expectTypeOf<FeedbackPermissions>().toEqualTypeOf<{
+      canChangeStatus: boolean;
+      canDelete: boolean;
+      canComment: boolean;
+      canDeleteComment: boolean;
+    }>();
+    expectTypeOf<FeedbackResponseList["permissions"]>().toEqualTypeOf<FeedbackListPermissions | undefined>();
+    expectTypeOf<FeedbackListPermissions>().toEqualTypeOf<{ canDeleteAll: boolean }>();
+    expectTypeOf<FeedbackRecord>().not.toHaveProperty("permissions");
   });
 });
 

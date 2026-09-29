@@ -1971,4 +1971,34 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
   });
+
+  describe("readOnly", () => {
+    async function openCard(instance: ReturnType<typeof launch>): Promise<HTMLElement> {
+      mockGetFeedbacks.mockResolvedValue({ feedbacks: [makeFeedbackResponse({ id: "fb-1" })], total: 1 });
+      instance.open();
+      const shadow = document.querySelector("siteping-widget")!.shadowRoot!;
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-1"]')).not.toBeNull());
+      return shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
+    }
+
+    it("reaches the panel: its cards offer no resolve or delete", async () => {
+      const instance = launch(defaultConfig({ readOnly: true }));
+
+      const card = await openCard(instance);
+
+      expect(card.querySelector(".sp-btn-resolve")).toBeNull();
+      expect(card.querySelector(".sp-btn-delete")).toBeNull();
+      instance.destroy();
+    });
+
+    it("defaults to off", async () => {
+      const instance = launch(defaultConfig());
+
+      const card = await openCard(instance);
+
+      expect(card.querySelector(".sp-btn-resolve")).not.toBeNull();
+      expect(card.querySelector(".sp-btn-delete")).not.toBeNull();
+      instance.destroy();
+    });
+  });
 });

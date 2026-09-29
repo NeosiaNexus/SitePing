@@ -690,7 +690,7 @@ export const INBOX_CSS = `
   border-radius: var(--spd-radius-sm);
   white-space: nowrap;
 }
-.spd-status-menu-trigger:hover { background: var(--spd-raised); }
+button.spd-status-menu-trigger:hover { background: var(--spd-raised); }
 .spd-status-menu-trigger > svg { width: 13px; height: 13px; }
 .spd-status-menu-pop {
   position: absolute;

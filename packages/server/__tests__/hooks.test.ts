@@ -50,8 +50,8 @@ describe("createSitepingHandler — beforeCreate and presentFeedback", () => {
       store,
       access: {
         ...sessionAccess,
-        authorize: ({ projectName }) => {
-          authorizedProjects.push(projectName);
+        authorize: ({ projectName, dryRun }) => {
+          if (!dryRun) authorizedProjects.push(projectName);
           return true;
         },
       },

@@ -17,6 +17,7 @@ import {
   type CommentResponse,
   initSiteping,
   registerLocale,
+  type SitepingConfig,
   type SitepingPanelAction,
   type SitepingPanelActionContext,
   type SitepingPanelActionFeedback,
@@ -37,6 +38,14 @@ describe("initSiteping config modes", () => {
   it("rejects mixed modes", () => {
     // @ts-expect-error — endpoint and store are mutually exclusive
     initSiteping({ projectName: "p", endpoint: "/api", store });
+  });
+});
+
+describe("readOnly", () => {
+  it("is a shared option, in both modes", () => {
+    expectTypeOf(initSiteping).toBeCallableWith({ projectName: "p", endpoint: "/api/siteping", readOnly: true });
+    expectTypeOf(initSiteping).toBeCallableWith({ projectName: "p", store, readOnly: false });
+    expectTypeOf<SitepingConfig["readOnly"]>().toEqualTypeOf<boolean | undefined>();
   });
 });
 

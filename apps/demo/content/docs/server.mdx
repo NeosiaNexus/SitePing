@@ -119,6 +119,21 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 
 Under [`access`](#custom-access), `canReadAuthorEmail` decides instead, for every response — `POST` included.
 
+### What each requester may do
+
+Every feedback in a response — the list, the `PATCH` answer, the `POST` answer — carries `permissions`, and every list carries `permissions.canDeleteAll`:
+
+```json
+{ "permissions": { "canChangeStatus": false, "canDelete": false, "canComment": true, "canDeleteComment": false } }
+```
+
+They say what this requester would be allowed to do, so the [widget](/docs/widget/configuration#reviewer-mode) and the [dashboard](/docs/dashboard#read-only-and-permissions) hide the rest instead of offering a button that answers `401` or `403`. The server still checks every request.
+
+- Under the `apiKey` policy, an action is allowed when its method is: the key holder may do everything, and a visitor without it what `publicEndpoints` opens. With `["GET", "POST", "OPTIONS"]`, the usual setting for a public widget, a visitor reads and replies but cannot change a status or delete.
+- Under [`access`](#custom-access), `authorize` decides, per feedback.
+
+Servers that predate them send none, and neither does store mode: clients then hide nothing.
+
 ## Custom access
 
 A shared key suits a site and its dashboard. When reviewers log in, pass `access` instead: the handler asks your code who is calling and what they may do, from the standard `Request` — a session cookie, a JWT, a header set by your proxy.
@@ -141,9 +156,11 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 
 - **`authenticate`** runs on every method but `OPTIONS`, and resolves **who** is calling — an object, a string or a number, never a boolean. Anything falsy (`null`, `undefined`, `""`, `0`) answers `401`. A `true`/`false` check is a type error, and a plain-JavaScript `false` answers `401` too. Its return type types `principal` everywhere else.
 - **`authorize`** receives the `action` (`create`, `list`, `update`, `delete`, `deleteAll`, and `createComment` / `deleteComment` for [threads](/docs/comments)), the `projectName` and, for `update`, `delete` and the comment actions, the `feedbackId` — plus the `commentId` for `deleteComment`. It defaults to letting every authenticated caller through. PATCH and DELETE address records by id, so the factory refuses to start with an `authorize` over a store that lacks `verifyProjectOwnership` — every bundled store has it.
+- **`authorize` also fills in [`permissions`](#what-each-requester-may-do)**, asked with `dryRun: true`: `update`, `delete`, `createComment` and `deleteComment` for each feedback a response carries, and `deleteAll` once per list. Nothing is being done then — skip your audit log on dry runs. A dry-run `deleteComment` carries no `commentId`, its answer covering the whole thread: a per-author rule answers `false` there (`if (!commentId) return false`). Keep it fast: a page of 50 feedbacks takes 201 dry runs, 8 at a time — they share the response's `request`, so a policy that queries a database can cache per request, in a `WeakMap` keyed on it.
+- **A dry run is asked about an action, not a method.** Its `request` is the response's — a `GET` for a list, the `POST` or `PATCH` a write answers — and `authenticate` is not called again for it. Decide by `action`, never by `request.method`; and when `authenticate` admits visitors on some methods only, have `authorize` refuse them the other actions, or they are offered controls that answer `401`.
 - **`canReadAuthorEmail`** defaults to `true`.
 - **`canCommentAsTeam`** decides whether a comment that asks for the `team` role keeps it; any other is stamped `client`. It defaults to the `canReadAuthorEmail` answer when you set that callback, and to `false` when you set neither — see [who speaks as the team](/docs/comments#who-speaks-as-the-team).
-- A callback that throws answers a logged `500`.
+- A callback that throws answers a logged `500` — except `authorize` on a dry run: that permission is refused, the failure logged, and the response goes out.
 
 `access` replaces `apiKey`, `publicEndpoints`, `requireAuthForDestructive` and `redactUnauthenticatedEmails`: passing both is a type error. From a page on another origin, send the credential through the widget's `headers` option — the widget does not send cookies cross-origin.
 
@@ -191,7 +208,7 @@ One endpoint, five methods. All bodies are JSON.
 | Method | Purpose | Success |
 |---|---|---|
 | `POST` | Create feedback (widget submissions) — or [a comment](/docs/comments#post-a-comment), when the body has a `feedbackId` | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks or `onCreated` twice); a `clientId` already used by **another** project is refused with `409` |
-| `GET` | List feedbacks, each with its thread | `200` + `{ feedbacks, total, capabilities }`, with `Cache-Control: private, max-age=5` (`no-store` under `access`) |
+| `GET` | List feedbacks, each with its thread and [`permissions`](#what-each-requester-may-do) | `200` + `{ feedbacks, total, capabilities, permissions }`, with `Cache-Control: private, max-age=5` (`no-store` under `access`) |
 | `PATCH` | Change a status | `200` + updated record |
 | `DELETE` | Delete one or all — or [a comment](/docs/comments#delete-a-comment), when the body has a `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | CORS preflight | `204` |

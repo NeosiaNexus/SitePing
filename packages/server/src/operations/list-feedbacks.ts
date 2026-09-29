@@ -1,4 +1,4 @@
-import type { SitepingCapabilities, SitepingStore } from "@siteping/core";
+import type { FeedbackListPermissions, SitepingCapabilities, SitepingStore } from "@siteping/core";
 import { LIST_QUERY_KEYS } from "../constants.js";
 import type { Pipeline } from "../pipeline.js";
 import { getQuerySchema } from "../validation.js";
@@ -30,22 +30,29 @@ export function listFeedbacksOperation<Principal>({ store, pipeline }: ListFeedb
     if (!query.ok) return query.response;
 
     try {
-      const refusal = await pipeline.authorize(scope, { action: "list", projectName: query.value.projectName });
+      const { projectName } = query.value;
+      const refusal = await pipeline.authorize(scope, { action: "list", projectName });
       if (refusal) return refusal;
 
       // GET can be public (no apiKey, or "GET" in publicEndpoints for widget
       // hosts) — the scope redacts author emails unless the requester may read them.
       const page = await store.getFeedbacks(query.value);
+      const [feedbacks, canDeleteAll] = await Promise.all([
+        Promise.all(page.feedbacks.map((feedback) => pipeline.present(scope, feedback))),
+        pipeline.may(scope, "DELETE", { action: "deleteAll", projectName }),
+      ]);
       return pipeline.json(
         scope,
         {
           ...page,
-          feedbacks: page.feedbacks.map((feedback) => pipeline.present(scope, feedback)),
+          feedbacks,
           // Lets clients hide their comment composer, and delete buttons, up front instead of meeting a 501.
           capabilities: {
             comments: store.addComment !== undefined,
             deleteComments: store.deleteComment !== undefined,
           } satisfies SitepingCapabilities,
+          // And the actions this requester would be refused.
+          permissions: { canDeleteAll } satisfies FeedbackListPermissions,
         },
         { headers: { "Cache-Control": pipeline.listCacheControl } },
       );

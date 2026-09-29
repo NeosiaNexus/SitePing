@@ -1,5 +1,6 @@
 import {
   FEEDBACK_STATUSES,
+  type FeedbackPermissions,
   type FeedbackQuery,
   type FeedbackRecord,
   type FeedbackStatus,
@@ -10,7 +11,14 @@ import {
 } from "@siteping/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createEndpointSource, createStoreSource } from "./source.js";
-import type { InboxSource, InboxState, InboxStatusFilter, InboxTypeFilter, UseSitepingInboxOptions } from "./types.js";
+import type {
+  InboxRecord,
+  InboxSource,
+  InboxState,
+  InboxStatusFilter,
+  InboxTypeFilter,
+  UseSitepingInboxOptions,
+} from "./types.js";
 
 const DEFAULT_PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -82,7 +90,7 @@ function insertByCreatedAtDesc(list: FeedbackRecord[], record: FeedbackRecord): 
  *   `onError` callback.
  */
 export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
-  const { source, store, endpoint, apiKey, author, onStatusChange, onDelete, onError } = options;
+  const { source, store, endpoint, apiKey, author, readOnly, onStatusChange, onDelete, onError } = options;
 
   const projects = useMemo<readonly string[]>(
     () => (typeof options.projects === "string" ? [options.projects] : [...options.projects]),
@@ -139,6 +147,19 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const [pendingUndo, setPendingUndo] = useState<InboxState["pendingUndo"]>(null);
   /** What the last list advertised — the endpoint's store may keep no comments, or not delete them. */
   const [advertised, setAdvertised] = useState<SitepingCapabilities | undefined>(undefined);
+
+  const canComment = author !== undefined && src.addComment !== undefined && advertised?.comments !== false;
+  const canDeleteComment =
+    canComment && !readOnly && src.removeComment !== undefined && advertised?.deleteComments !== false;
+  const permissionsOf = useCallback(
+    ({ permissions }: InboxRecord): FeedbackPermissions => ({
+      canChangeStatus: !readOnly && permissions?.canChangeStatus !== false,
+      canDelete: !readOnly && permissions?.canDelete !== false,
+      canComment: canComment && permissions?.canComment !== false,
+      canDeleteComment: canDeleteComment && permissions?.canDeleteComment !== false,
+    }),
+    [readOnly, canComment, canDeleteComment],
+  );
 
   // Mirrors for stable mutation callbacks (avoid stale closures without dep churn).
   const itemsRef = useRef(items);
@@ -629,11 +650,11 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
   const applyStatusChange = useCallback(
     async (id: string, nextStatus: FeedbackStatus, isUndo: boolean): Promise<void> => {
-      const record =
+      const record: InboxRecord | null =
         itemsRef.current.find((f) => f.id === id) ??
         (undoRecordRef.current?.id === id ? undoRecordRef.current : null) ??
         (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
-      if (!record || record.status === nextStatus) {
+      if (!record || record.status === nextStatus || !permissionsOf(record).canChangeStatus) {
         if (isUndo) commitPendingUndo(null);
         return;
       }
@@ -683,7 +704,10 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const undoEntry = undoEntryRef.current;
 
       try {
-        const saved = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
+        const stored = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
+        // A source that saves the plain record leaves the listed permissions in force.
+        const saved =
+          stored.permissions || !record.permissions ? stored : { ...stored, permissions: record.permissions };
         // A later mutation on this feedback owns the row now — don't clobber its optimistic state.
         if (settleMutation(id, handle, true)) {
           // Place, not map: a page refetched meanwhile may still hold the
@@ -722,6 +746,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       }
     },
     [
+      permissionsOf,
       matchesBase,
       placeRecord,
       moveFocusAfterRemoval,
@@ -750,7 +775,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const record =
         itemsRef.current.find((f) => f.id === id) ??
         (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
-      if (!record) return;
+      if (!record || !permissionsOf(record).canDelete) return;
 
       const epoch = projectEpochRef.current;
       const undoBefore = {
@@ -811,6 +836,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       }
     },
     [
+      permissionsOf,
       matchesBase,
       placeRecord,
       moveFocusAfterRemoval,
@@ -854,11 +880,20 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     [commitItems, commitOpenedCache],
   );
 
+  /** The record `updateRecord` would reach — what a thread action reads the permissions of. */
+  const heldRecord = useCallback(
+    (id: string) =>
+      itemsRef.current.find((f) => f.id === id) ??
+      [openedCacheRef.current, undoRecordRef.current, inFlightRef.current.get(id)?.prev].find((f) => f?.id === id),
+    [],
+  );
+
   const addComment = useCallback(
     async (id: string, body: string, clientId = newClientId()): Promise<void> => {
       const replier = authorRef.current;
       const text = body.trim();
-      if (!srcRef.current.addComment || !replier || !text) return;
+      const record = heldRecord(id);
+      if (!srcRef.current.addComment || !replier || !text || !record || !permissionsOf(record).canComment) return;
       try {
         const comment = await srcRef.current.addComment(id, projectRef.current, {
           body: text,
@@ -876,26 +911,24 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         throw err;
       }
     },
-    [updateRecord],
+    [heldRecord, permissionsOf, updateRecord],
   );
 
   const deleteComment = useCallback(
     async (id: string, commentId: string): Promise<void> => {
-      if (!srcRef.current.removeComment) return;
+      const record = heldRecord(id);
+      if (!srcRef.current.removeComment || !record || !permissionsOf(record).canDeleteComment) return;
       try {
         await srcRef.current.removeComment(id, commentId, projectRef.current);
-        updateRecord(id, (record) => ({ ...record, comments: record.comments?.filter((c) => c.id !== commentId) }));
+        updateRecord(id, (f) => ({ ...f, comments: f.comments?.filter((c) => c.id !== commentId) }));
       } catch (cause) {
         const err = toError(cause);
         callbacksRef.current.onError?.(err);
         throw err;
       }
     },
-    [updateRecord],
+    [heldRecord, permissionsOf, updateRecord],
   );
-
-  const canComment = author !== undefined && src.addComment !== undefined && advertised?.comments !== false;
-  const canDeleteComment = canComment && src.removeComment !== undefined && advertised?.deleteComments !== false;
 
   // -------------------------------------------------------------------------
   // Public setters
@@ -958,6 +991,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     deleteFeedback,
     canComment,
     canDeleteComment,
+    permissionsOf,
     addComment,
     deleteComment,
     pendingUndo,

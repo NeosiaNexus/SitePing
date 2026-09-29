@@ -4,6 +4,13 @@ import { MAX_COMMENTS_PER_FEEDBACK } from "@siteping/core";
 export const MAX_ANNOTATIONS_PER_FEEDBACK = 50;
 
 /**
+ * Most `authorize` dry runs of one response in flight at once. A page of 100
+ * asks 401 of them, and a database policy's pool holds a handful of
+ * connections: unbounded, they would queue there, time out, and read as refusals.
+ */
+export const DRY_RUN_CONCURRENCY = 8;
+
+/**
  * `error` strings of the HTTP API. Part of the wire contract: the widget, the
  * dashboard and existing `@siteping/adapter-prisma` consumers match on some.
  */

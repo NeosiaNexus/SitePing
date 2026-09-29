@@ -31,6 +31,7 @@ Les options forment une union sur les trois modes de source : fournissez **exact
 | `onDelete` | `(feedback) => void` | — | Après confirmation du serveur |
 | `onError` | `(error) => void` | — | Chaque chargement ou mutation en échec |
 | `author` | `{ name, email? }` | — | Qui poste les réponses depuis cette inbox — voir [Fils de discussion](#fils-de-discussion). Sans lui, les fils sont en lecture seule |
+| `readOnly` | `boolean` | `false` | Aucun changement de statut ni aucune suppression, de feedback comme de réponse — voir [Permissions](#permissions) |
 
 Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions`, le socle commun `InboxSharedOptions` et l'union `UseSitepingInboxOptions` — pour qu'un composant d'enrobage n'accepte que le mode qu'il gère. En JavaScript pur, le comportement d'avant demeure : aucune source du tout lève toujours au rendu.
 
@@ -45,6 +46,8 @@ Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOpt
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
 
 **Fil de discussion** — `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)`, `deleteComment(id, commentId)` ; voir [plus bas](#fils-de-discussion).
+
+**Permissions** — `permissionsOf(record)` ; voir [plus bas](#permissions).
 
 ## `view` — l'algèbre des drapeaux en moins
 
@@ -86,7 +89,7 @@ Seul le dernier changement de statut est annulable (`pendingUndo` + `undo()`) ; 
 
 ## Fils de discussion
 
-Chaque feedback porte son fil dans `comments` (du plus ancien au plus récent). `canComment` indique si cette inbox peut poster des réponses : un `author` est fourni, la source implémente `addComment`, et la dernière liste n'a pas dit que l'endpoint ne garde aucun commentaire. `canDeleteComment` indique si elle peut aussi les supprimer : la source implémente en plus `removeComment`, et la dernière liste n'a pas dit que l'endpoint ne sait pas les supprimer.
+Chaque feedback porte son fil dans `comments` (du plus ancien au plus récent). `canComment` indique si cette inbox peut poster des réponses : un `author` est fourni, la source implémente `addComment`, et la dernière liste n'a pas dit que l'endpoint ne garde aucun commentaire. `canDeleteComment` indique si elle peut aussi les supprimer : l'inbox n'est pas en `readOnly`, la source implémente en plus `removeComment`, et la dernière liste n'a pas dit que l'endpoint ne sait pas les supprimer.
 
 Les réponses ne sont **pas** optimistes : `addComment` se résout une fois la réponse enregistrée par la source, et elle apparaît alors sur le feedback partout où le hook le détient — sa ligne, `opened`, et l'état vers lequel un changement de statut en cours reviendrait. Les deux actions relèvent l'erreur après `onError`, comme les mutations plus haut.
 
@@ -110,6 +113,16 @@ async function send(feedbackId: string) {
 ```
 
 La réponse part au nom d'`author` avec le rôle `team`, que le serveur ne garde que pour les appelants dont sa politique d'accès se porte garante — voir [le rôle équipe](/fr/docs/comments#le-rôle-équipe).
+
+## Permissions
+
+`permissionsOf(record)` dit ce que l'utilisateur peut faire d'un enregistrement ici — `{ canChangeStatus, canDelete, canComment, canDeleteComment }` : ce que `readOnly`, `canComment` et `canDeleteComment` permettent, moins ce que les `permissions` de l'enregistrement refusent. La source endpoint transmet celles du serveur (voir [ce que chaque appelant peut faire](/fr/docs/server#ce-que-chaque-appelant-peut-faire)) ; un enregistrement sans elles ne refuse rien. Affichez vos contrôles d'après elle :
+
+```tsx
+const { canChangeStatus, canDelete } = inbox.permissionsOf(item);
+```
+
+`changeStatus`, `undo`, `deleteFeedback`, `addComment` et `deleteComment` ne font rien sur un enregistrement qui les refuse : un appel égaré n'affiche jamais un changement optimiste que le serveur annulerait, ni n'envoie une requête qu'il refuserait. L'inbox ne fait que masquer : c'est le serveur qui décide de ce qu'il accepte.
 
 ## Pagination
 
