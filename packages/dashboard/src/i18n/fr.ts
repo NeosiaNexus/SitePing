@@ -69,6 +69,14 @@ export const fr: Translations = {
   "drawer.deleteConfirm": "Supprimer définitivement ? Action irréversible.",
   "drawer.deleteYes": "Supprimer",
 
+  // Discussion thread
+  "comments.title": "Réponses",
+  "comments.team": "Équipe",
+  "comments.placeholder": "Répondre au client…",
+  "comments.send": "Envoyer",
+  "comments.delete": "Supprimer la réponse",
+  "comments.failed": "Une erreur est survenue. Réessayez.",
+
   // Footer hint bar
   "hints.navigate": "naviguer",
   "hints.open": "ouvrir",

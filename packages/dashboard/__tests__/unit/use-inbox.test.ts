@@ -2,7 +2,7 @@
 
 import type { FeedbackPage, FeedbackRecord, SitepingStore } from "@siteping/core";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 import type { InboxSource } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
 import { deferred, makeRecord, makeSource, type TestSource } from "../helpers.js";
@@ -1672,5 +1672,170 @@ describe("useSitepingInbox — undo state after a failed mutation", () => {
 
     expect(source.setStatus).not.toHaveBeenCalled();
     expect(result.current.pendingUndo).toBeNull();
+  });
+});
+
+describe("useSitepingInbox — discussion thread", () => {
+  const author = { name: "Studio", email: "team@studio.example" };
+
+  /** A test source that keeps threads the way a comment-capable store does. */
+  function threadedSource(records = demoRecords()): TestSource & {
+    addComment: Mock<NonNullable<InboxSource["addComment"]>>;
+    removeComment: Mock<NonNullable<InboxSource["removeComment"]>>;
+  } {
+    const source = makeSource(records);
+    let seq = 0;
+    return Object.assign(source, {
+      addComment: vi.fn<NonNullable<InboxSource["addComment"]>>(async (feedbackId, _projectName, input) => ({
+        id: `c-${++seq}`,
+        feedbackId,
+        ...input,
+        createdAt: new Date("2026-07-21T09:00:00Z"),
+      })),
+      removeComment: vi.fn<NonNullable<InboxSource["removeComment"]>>(async () => {}),
+    });
+  }
+
+  async function ready(options: Parameters<typeof useSitepingInbox>[0]) {
+    const hook = renderHook(() => useSitepingInbox(options));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    return hook;
+  }
+
+  it("offers replies only with an author, a source that posts them, and an endpoint that keeps them", async () => {
+    const { result: noAuthor } = await ready({ projects: "demo", source: threadedSource() });
+    expect(noAuthor.current.canComment).toBe(false);
+
+    const { result: readOnlySource } = await ready({ projects: "demo", source: makeSource(demoRecords()), author });
+    expect(readOnlySource.current.canComment).toBe(false);
+
+    const { result: capable } = await ready({ projects: "demo", source: threadedSource(), author });
+    expect(capable.current.canComment).toBe(true);
+
+    const unadvertised = threadedSource();
+    const list = unadvertised.list.getMockImplementation()!;
+    unadvertised.list.mockImplementation(async (query) => ({
+      ...(await list(query)),
+      capabilities: { comments: false },
+    }));
+    const { result: advertisedOff } = await ready({ projects: "demo", source: unadvertised, author });
+    expect(advertisedOff.current.canComment).toBe(false);
+  });
+
+  it("posts as the team author and adds the stored reply to the row and the drawer", async () => {
+    const source = threadedSource();
+    const { result } = await ready({ projects: "demo", source, author });
+    act(() => result.current.openFeedback("r1"));
+
+    await act(() => result.current.addComment("r1", "  On it  ", "reply-1"));
+
+    expect(source.addComment).toHaveBeenCalledWith("r1", "demo", {
+      body: "On it",
+      authorName: "Studio",
+      authorEmail: "team@studio.example",
+      authorRole: "team",
+      clientId: "reply-1",
+    });
+    expect(result.current.items.find((r) => r.id === "r1")?.comments?.map((c) => c.body)).toEqual(["On it"]);
+    expect(result.current.opened?.comments?.map((c) => c.id)).toEqual(["c-1"]);
+  });
+
+  it("does not list a resent reply twice when a refetch already brought it in", async () => {
+    const source = threadedSource();
+    const { result } = await ready({ projects: "demo", source, author });
+    await act(() => result.current.addComment("r1", "Once", "reply-1"));
+    const stored = result.current.items.find((r) => r.id === "r1")?.comments?.[0];
+    // The server dedupes the resend on its clientId and answers with the stored reply.
+    source.addComment.mockResolvedValueOnce(stored!);
+
+    await act(() => result.current.addComment("r1", "Once", "reply-1"));
+
+    expect(result.current.items.find((r) => r.id === "r1")?.comments).toEqual([stored]);
+  });
+
+  it("sends an empty email for an author without one, and generates a clientId when none is given", async () => {
+    const source = threadedSource();
+    const { result } = await ready({ projects: "demo", source, author: { name: "Studio" } });
+
+    await act(() => result.current.addComment("r1", "Hello"));
+
+    const input = source.addComment.mock.calls[0]![2];
+    expect(input.authorEmail).toBe("");
+    expect(input.clientId).toMatch(/^[a-zA-Z0-9_-]+$/);
+  });
+
+  it("keeps a reply stored during a status change that then rolls back", async () => {
+    const source = threadedSource();
+    const change = deferred<FeedbackRecord>();
+    source.setStatus.mockReturnValueOnce(change.promise);
+    const onError = vi.fn();
+    const { result } = await ready({ projects: "demo", source, author, onError });
+
+    let failed!: Promise<void>;
+    act(() => {
+      failed = result.current.changeStatus("r1", "in_progress");
+    });
+    await act(() => result.current.addComment("r1", "Reply meanwhile"));
+    await act(async () => {
+      change.reject(new Error("boom"));
+      await failed.catch(() => {});
+    });
+
+    const r1 = result.current.items.find((r) => r.id === "r1");
+    expect(r1?.status).toBe("open");
+    expect(r1?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
+  });
+
+  it("reports a failed post through onError and rejects, leaving the thread as it was", async () => {
+    const source = threadedSource();
+    const failure = new Error("offline");
+    source.addComment.mockRejectedValueOnce(failure);
+    const onError = vi.fn();
+    const { result } = await ready({ projects: "demo", source, author, onError });
+
+    await act(async () => {
+      await expect(result.current.addComment("r1", "Lost")).rejects.toBe(failure);
+    });
+
+    expect(onError).toHaveBeenCalledWith(failure);
+    expect(result.current.items.find((r) => r.id === "r1")?.comments).toBeUndefined();
+  });
+
+  it("does nothing without an author or with a blank body", async () => {
+    const source = threadedSource();
+    const { result } = await ready({ projects: "demo", source });
+    await act(() => result.current.addComment("r1", "Hi"));
+    const { result: withAuthor } = await ready({ projects: "demo", source, author });
+    await act(() => withAuthor.current.addComment("r1", "   "));
+    expect(source.addComment).not.toHaveBeenCalled();
+  });
+
+  it("deletes a reply once the source confirms, and reports a failure without touching the thread", async () => {
+    const reply = {
+      id: "c-9",
+      feedbackId: "r1",
+      body: "Old",
+      authorName: "Alex",
+      authorEmail: "",
+      authorRole: "client" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-21T08:00:00Z"),
+    };
+    const records = demoRecords().map((r) => (r.id === "r1" ? { ...r, comments: [reply] } : r));
+    const source = threadedSource(records);
+    const failure = new Error("403");
+    source.removeComment.mockRejectedValueOnce(failure);
+    const onError = vi.fn();
+    const { result } = await ready({ projects: "demo", source, author, onError });
+
+    await act(async () => {
+      await expect(result.current.deleteComment("r1", "c-9")).rejects.toBe(failure);
+    });
+    expect(onError).toHaveBeenCalledWith(failure);
+    expect(result.current.items.find((r) => r.id === "r1")?.comments).toHaveLength(1);
+
+    await act(() => result.current.deleteComment("r1", "c-9"));
+    expect(source.removeComment).toHaveBeenLastCalledWith("r1", "c-9", "demo");
+    expect(result.current.items.find((r) => r.id === "r1")?.comments).toEqual([]);
   });
 });

@@ -964,6 +964,57 @@ export const INBOX_CSS = `
   font-variant-numeric: tabular-nums;
 }
 
+/* ----------------------------------------------------------------- thread */
+.spd-thread,
+.spd-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.spd-comment {
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--spd-border-strong);
+}
+.spd-comment[data-role="team"] { border-left-color: var(--spd-accent-bright); }
+.spd-comment-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--spd-text-3);
+}
+.spd-comment-author { font-weight: 600; color: var(--spd-text); }
+.spd-comment-team {
+  padding: 0 6px;
+  border-radius: var(--spd-radius-xs);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--spd-text);
+  background: color-mix(in srgb, var(--spd-accent) 18%, transparent);
+}
+.spd-comment-head time { margin-left: auto; }
+.spd-comment .spd-confirm { margin: 2px 0 6px; }
+.spd-thread-composer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.spd-thread-input {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  line-height: 1.5;
+  color: var(--spd-text);
+  background: var(--spd-raised);
+  border: 1px solid var(--spd-border-strong);
+  border-radius: var(--spd-radius-sm);
+  resize: vertical;
+}
+.spd-thread-input::placeholder { color: var(--spd-text-3); }
+.spd-thread-error { font-size: 12px; color: var(--spd-danger); }
+.spd-thread-error:empty { display: none; }
+
 /* ------------------------------------------------------------ danger zone */
 .spd-danger-zone {
   display: flex;

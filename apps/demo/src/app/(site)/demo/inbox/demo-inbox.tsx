@@ -93,6 +93,8 @@ export function DemoInbox() {
     accentColor: "#173CFF",
     locale,
     className: "h-full",
+    // Who the demo replies as: without an author, threads are read-only.
+    author: { name: "SitePing demo" },
   } as const;
 
   return (

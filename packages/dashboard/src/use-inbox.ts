@@ -5,6 +5,7 @@ import {
   type FeedbackStatus,
   isClosedStatus,
   matchesFeedbackQuery,
+  newClientId,
 } from "@siteping/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createEndpointSource, createStoreSource } from "./source.js";
@@ -78,7 +79,7 @@ function insertByCreatedAtDesc(list: FeedbackRecord[], record: FeedbackRecord): 
  *   `onError` callback.
  */
 export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
-  const { source, store, endpoint, apiKey, onStatusChange, onDelete, onError } = options;
+  const { source, store, endpoint, apiKey, author, onStatusChange, onDelete, onError } = options;
 
   const projects = useMemo<readonly string[]>(
     () => (typeof options.projects === "string" ? [options.projects] : [...options.projects]),
@@ -96,6 +97,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   headersRef.current = options.headers;
   const callbacksRef = useRef({ onStatusChange, onDelete, onError });
   callbacksRef.current = { onStatusChange, onDelete, onError };
+  const authorRef = useRef(author);
+  authorRef.current = author;
 
   const src = useMemo<InboxSource>(() => {
     if (source) return source;
@@ -131,6 +134,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [openedId, setOpenedId] = useState<string | null>(null);
   const [pendingUndo, setPendingUndo] = useState<InboxState["pendingUndo"]>(null);
+  /** Whether the last list advertised comments — the endpoint's store may keep none. */
+  const [commentsAdvertised, setCommentsAdvertised] = useState(true);
 
   // Mirrors for stable mutation callbacks (avoid stale closures without dep churn).
   const itemsRef = useRef(items);
@@ -315,6 +320,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const page = await src.list(query);
       if (token !== tokenRef.current) return;
       setExhausted(false);
+      setCommentsAdvertised(page.capabilities?.comments !== false);
       listGenRef.current += 1;
       rememberListed(queryBase, page.feedbacks);
       itemsRef.current = page.feedbacks;
@@ -807,6 +813,71 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   );
 
   // -------------------------------------------------------------------------
+  // Discussion thread — not optimistic: a reply shows once stored
+  // -------------------------------------------------------------------------
+
+  /**
+   * Rewrite one feedback wherever it is held: its row, the drawer, the undo
+   * record, and the base a status change still in flight rolls back to — so
+   * a rollback does not drop a reply stored meanwhile.
+   */
+  const updateRecord = useCallback(
+    (id: string, update: (record: FeedbackRecord) => FeedbackRecord) => {
+      if (itemsRef.current.some((f) => f.id === id)) {
+        commitItems(itemsRef.current.map((f) => (f.id === id ? update(f) : f)));
+      }
+      if (openedCacheRef.current?.id === id) commitOpenedCache(update(openedCacheRef.current));
+      if (undoRecordRef.current?.id === id) undoRecordRef.current = update(undoRecordRef.current);
+      for (let handle = inFlightRef.current.get(id) ?? null; handle; handle = handle.prior) {
+        handle.prev = update(handle.prev);
+      }
+    },
+    [commitItems, commitOpenedCache],
+  );
+
+  const addComment = useCallback(
+    async (id: string, body: string, clientId = newClientId()): Promise<void> => {
+      const replier = authorRef.current;
+      const text = body.trim();
+      if (!srcRef.current.addComment || !replier || !text) return;
+      try {
+        const comment = await srcRef.current.addComment(id, projectRef.current, {
+          body: text,
+          authorName: replier.name,
+          authorEmail: replier.email ?? "",
+          authorRole: "team",
+          clientId,
+        });
+        // A resend can answer with a reply a refetch has already brought in.
+        const others = (record: FeedbackRecord) => (record.comments ?? []).filter((c) => c.id !== comment.id);
+        updateRecord(id, (record) => ({ ...record, comments: [...others(record), comment] }));
+      } catch (cause) {
+        const err = toError(cause);
+        callbacksRef.current.onError?.(err);
+        throw err;
+      }
+    },
+    [updateRecord],
+  );
+
+  const deleteComment = useCallback(
+    async (id: string, commentId: string): Promise<void> => {
+      if (!srcRef.current.removeComment) return;
+      try {
+        await srcRef.current.removeComment(id, commentId, projectRef.current);
+        updateRecord(id, (record) => ({ ...record, comments: record.comments?.filter((c) => c.id !== commentId) }));
+      } catch (cause) {
+        const err = toError(cause);
+        callbacksRef.current.onError?.(err);
+        throw err;
+      }
+    },
+    [updateRecord],
+  );
+
+  const canComment = author !== undefined && src.addComment !== undefined && commentsAdvertised;
+
+  // -------------------------------------------------------------------------
   // Public setters
   // -------------------------------------------------------------------------
 
@@ -865,6 +936,9 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     closeFeedback,
     changeStatus,
     deleteFeedback,
+    canComment,
+    addComment,
+    deleteComment,
     pendingUndo,
     undo,
   };

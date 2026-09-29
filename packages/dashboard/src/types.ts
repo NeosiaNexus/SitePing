@@ -1,9 +1,12 @@
 import type {
+  CommentCreateInput,
+  CommentRecord,
   FeedbackPage,
   FeedbackQuery,
   FeedbackRecord,
   FeedbackStatus,
   FeedbackType,
+  SitepingCapabilities,
   SitepingLocale,
   SitepingStore,
 } from "@siteping/core";
@@ -23,8 +26,12 @@ import type { InboxTheme } from "./theme.js";
  * any backend (tRPC, GraphQL, server actions, …).
  */
 export interface InboxSource {
-  /** Paginated, filtered feedback query. Must resolve real `Date` objects on records. */
-  list(query: FeedbackQuery): Promise<FeedbackPage>;
+  /**
+   * Paginated, filtered feedback query. Must resolve real `Date` objects on
+   * records, their threads included. `capabilities.comments: false` makes
+   * threads read-only; left out, `addComment` alone decides.
+   */
+  list(query: FeedbackQuery): Promise<FeedbackPage & { capabilities?: SitepingCapabilities | undefined }>;
   /**
    * Persist a status change. Closure semantics (`resolvedAt`) are derived at
    * this edge — callers only pass the target status.
@@ -32,6 +39,13 @@ export interface InboxSource {
   setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<FeedbackRecord>;
   /** Permanently delete a feedback. */
   remove(id: string, projectName: string): Promise<void>;
+  /**
+   * Optional — post a reply on a feedback's thread and resolve the stored
+   * comment. A source without it has read-only threads.
+   */
+  addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord>;
+  /** Optional — delete a reply from a feedback's thread. */
+  removeComment?(feedbackId: string, commentId: string, projectName: string): Promise<void>;
 }
 
 /** Options accepted by `createEndpointSource`. */
@@ -72,6 +86,13 @@ export interface InboxSharedOptions {
   onDelete?: ((feedback: FeedbackRecord) => void) | undefined;
   /** Called on every load or mutation failure, with a typed `SitepingError` where available. */
   onError?: ((error: Error) => void) | undefined;
+  /**
+   * Who replies from this inbox — typically the signed-in team member. Without
+   * it, threads are read-only. Replies ask for the `team` role, which the
+   * server grants only to a caller its access policy vouches for (the
+   * `apiKey`, or `canCommentAsTeam`); any other reply is stored as `client`.
+   */
+  author?: { name: string; email?: string | undefined } | undefined;
 }
 
 /** Custom-source mode — bring your own `InboxSource` (tRPC, GraphQL, …). */
@@ -197,6 +218,21 @@ export interface InboxState {
   changeStatus(id: string, status: FeedbackStatus): Promise<void>;
   /** Optimistic delete (no undo — confirm in the UI) with rollback on error. Rejects after rolling back. */
   deleteFeedback(id: string): Promise<void>;
+  /**
+   * Whether replies can be posted and deleted: an `author` is set, the source
+   * implements `addComment`, and the endpoint advertises comments.
+   */
+  canComment: boolean;
+  /**
+   * Post a reply as `author`. Not optimistic: the thread shows it once the
+   * source has stored it. Rejects after `onError`. Pass the `clientId` of a
+   * failed attempt to resend it — the server answers with the stored reply
+   * if that attempt did land, instead of adding it twice; one is generated
+   * when omitted.
+   */
+  addComment(id: string, body: string, clientId?: string): Promise<void>;
+  /** Delete a reply once the source confirms it. Rejects after `onError`. */
+  deleteComment(id: string, commentId: string): Promise<void>;
   /** Last status change eligible for undo, or `null`. */
   pendingUndo: { id: string; previousStatus: FeedbackStatus } | null;
   /** Revert the pending status change. Clears `pendingUndo` without creating a new one. */
