@@ -155,7 +155,10 @@ function externallyStoredScreenshotRows(count: number, projectName = "site"): Ap
   });
 }
 
-/** An error followed by its `cause`s — Drizzle's PostgreSQL session wraps driver errors in a `DrizzleQueryError`. */
+/**
+ * An error followed by its `cause`s. The store reports a copy of the driver's error, so tests
+ * find the one they injected with `toContainEqual`.
+ */
 function causeChain(error: unknown): unknown[] {
   const chain: unknown[] = [];
   for (let current = error; current !== undefined && !chain.includes(current); ) {
@@ -614,7 +617,7 @@ for (const dialect of dialects) {
           );
 
         expect(isStorePersistence(failure)).toBe(true);
-        expect(causeChain(failure)).toContain(lookupFailure);
+        expect(causeChain(failure)).toContainEqual(lookupFailure);
 
         expect(uploads).toHaveLength(1);
         expect(deletions).toEqual([`https://cdn.example.com/${uploads[0]?.feedbackId}.jpg`]);
@@ -828,7 +831,7 @@ for (const dialect of dialects) {
         );
 
         expect(isStorePersistence(failure)).toBe(true);
-        expect(causeChain(failure)).toContain(readFailure);
+        expect(causeChain(failure)).toContainEqual(readFailure);
         const [unchanged] = (await database.createStore({ logger }).getFeedbacks({ projectName: "site" })).feedbacks;
         expect(unchanged).toMatchObject({ id: stored.id, status: "open", updatedAt: stored.updatedAt });
       });
@@ -899,7 +902,7 @@ for (const dialect of dialects) {
         );
 
         expect(isStorePersistence(failure)).toBe(true);
-        expect(causeChain(failure)).toContain(chunkFailure);
+        expect(causeChain(failure)).toContainEqual(chunkFailure);
         const remaining = await reader.getFeedbacks({ projectName: "site", limit: 50 });
         expect(remaining.total).toBe(rows.length - PROJECT_DELETE_CHUNK_SIZE);
         const remainingUrls = new Set(remaining.feedbacks.map((feedback) => feedback.screenshotUrl));
@@ -1285,7 +1288,7 @@ for (const dialect of dialects) {
 
       for (const failure of failures) {
         expect(isStorePersistence(failure)).toBe(true);
-        expect(causeChain(failure)).toContain(writeFailure);
+        expect(causeChain(failure)).toContainEqual(writeFailure);
       }
       expect((await writer.findByClientId(feedback.clientId))?.comments).toEqual([kept]);
     });
@@ -1492,8 +1495,31 @@ for (const dialect of dialects) {
 
         for (const failure of failures) {
           expect(isStorePersistence(failure)).toBe(true);
-          expect(causeChain(failure)).toContain(connectionFailure);
+          expect(causeChain(failure)).toContainEqual(connectionFailure);
         }
+      });
+
+      it.each([
+        ["a fetch-based driver's timeout", () => new DOMException("The operation timed out.", "TimeoutError")],
+        [
+          "an error that is its own cause",
+          () => {
+            const error = new Error("connection lost");
+            error.cause = error;
+            return error;
+          },
+        ],
+      ])("reports %s as a StorePersistenceError", async (_driverError, makeDriverError) => {
+        const driverError = makeDriverError();
+        const store = database.createStoreWithDriverInterceptor(() => Promise.reject(driverError), { logger });
+
+        const failure = await store.createFeedback(feedbackInput()).then(
+          () => null,
+          (error: unknown) => error,
+        );
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect((failure as Error).cause).toMatchObject({ name: driverError.name, message: driverError.message });
       });
 
       it("keeps the statements' parameters — the submission itself — out of the errors it reports", async () => {
@@ -1501,11 +1527,20 @@ for (const dialect of dialects) {
         const email = "jeanne.private@example.com";
         const text = "private-message";
         const screenshotDataUrl = `${SCREENSHOT_DATA_URL}privatepixels`;
-        // Drizzle wraps the driver's rejection in an error listing every bound parameter.
+        // Drizzle wraps the driver's rejection in an error listing every bound parameter, and
+        // drivers list them on their own errors too: PGlite as plain properties, postgres.js as
+        // hidden ones that cannot be deleted. PostgreSQL's `detail` may quote the whole row.
+        const parameters = [email, text, screenshotDataUrl];
+        const driverFailure = Object.defineProperties(new Error(connectionFailure.message), {
+          code: { value: "ECONNREFUSED", enumerable: true },
+          params: { value: parameters, enumerable: true },
+          parameters: { value: parameters },
+          detail: { value: `Failing row contains (${parameters.join(", ")}).`, enumerable: true },
+        });
         const store = database.createStoreWithDriverInterceptor(
           (statementSql, run) =>
             isFeedbackInsert(statementSql) || isCommentWrite(statementSql) || / like /i.test(statementSql)
-              ? Promise.reject(connectionFailure)
+              ? Promise.reject(driverFailure)
               : run(),
           { logger },
         );
@@ -1527,9 +1562,11 @@ for (const dialect of dialects) {
         );
 
         for (const failure of failures) {
-          expect(causeChain(failure)).toContain(connectionFailure);
-          const logged = inspect(failure, { depth: null });
-          for (const secret of [email, text, screenshotDataUrl]) expect(logged).not.toContain(secret);
+          expect(causeChain(failure)).toContainEqual(
+            expect.objectContaining({ message: connectionFailure.message, code: "ECONNREFUSED" }),
+          );
+          const logged = inspect(failure, { depth: null, showHidden: true });
+          for (const secret of parameters) expect(logged).not.toContain(secret);
         }
       });
 
@@ -1549,7 +1586,7 @@ for (const dialect of dialects) {
         );
 
         expect(isStorePersistence(failure)).toBe(true);
-        expect(causeChain(failure)).toContain(connectionFailure);
+        expect(causeChain(failure)).toContainEqual(connectionFailure);
       });
     });
 
@@ -1592,6 +1629,27 @@ for (const dialect of dialects) {
         expect(await database.countAnnotations()).toBe(annotationsBefore);
         expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
         expect(deletions).toHaveLength(1);
+      });
+
+      it("keeps the statement's parameters out of the database's own error", async () => {
+        const store = database.createStore({ logger });
+        const email = "jeanne.private@example.com";
+        const text = "private-message";
+        const screenshotDataUrl = `${SCREENSHOT_DATA_URL}privatepixels`;
+        restoreWrites = await database.rejectFeedbackWrites();
+
+        // PGlite lists the statement and every bound parameter on the error it throws.
+        const failure = await store
+          .createFeedback(feedbackInput({ authorEmail: email, message: text, screenshotDataUrl, annotations: [] }))
+          .then(
+            () => null,
+            (error: unknown) => error,
+          );
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect((failure as Error).cause).toHaveProperty("code", expect.any(String));
+        const logged = inspect(failure, { depth: null, showHidden: true });
+        for (const secret of [email, text, screenshotDataUrl]) expect(logged).not.toContain(secret);
       });
 
       it("leaves the whole project in place when its single-statement delete fails", async () => {

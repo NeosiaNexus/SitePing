@@ -94,7 +94,7 @@ function isStoreContractError(error: unknown): boolean {
  * Run database calls a mutation makes (its write, or a read it depends on),
  * reporting any database failure (read-only or full database, lost
  * connection, rejected statement…) as `StorePersistenceError`, the
- * `SitepingStore` mutation contract, with the driver's own error as `cause`.
+ * `SitepingStore` mutation contract, with the driver's error as `cause`.
  *
  * @param mutation - Store method being served, for the message.
  * @param identifiers - Minimal ids to debug the failure (never payload data).
