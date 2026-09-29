@@ -36,6 +36,8 @@ interface ProviderUnderTest {
   searchRequest: RegExp;
   /** Assert the provider-specific closed state for a feedback status. */
   expectClosedAs(issue: FakeTracker["issues"][number], status: "resolved" | "wont_fix"): void;
+  /** GitHub `state_reason` of a reopened issue; GitLab has none. */
+  reopenedReason: string | null;
   /** The permission a token that cannot label issues lacks. */
   labelPermission: RegExp;
 }
@@ -51,6 +53,7 @@ const providers: ProviderUnderTest[] = [
       expect(issue.isOpen).toBe(false);
       expect(issue.stateReason).toBe(status === "resolved" ? "completed" : "not_planned");
     },
+    reopenedReason: "reopened",
     labelPermission: /write access to acme\/site/,
   },
   {
@@ -60,6 +63,7 @@ const providers: ProviderUnderTest[] = [
       createGitLabTracker({ project: "acme/site", token: TOKEN, fetch: fake.fetch, ...options }),
     searchRequest: /^GET \S+[?&]search=/,
     expectClosedAs: (issue) => expect(issue.isOpen).toBe(false),
+    reopenedReason: null,
     labelPermission: /at least the Reporter role on acme\/site/,
   },
 ];
@@ -292,6 +296,20 @@ for (const provider of providers) {
 
       await patch(handler, resolved.id, "open");
       expect(fake.issues[0]?.isOpen).toBe(true);
+      expect(fake.issues[0]?.stateReason).toBe(provider.reopenedReason);
+    });
+
+    it("keeps the close reason of an issue already closed when its feedback is deleted", async () => {
+      const handler = createHandler();
+      const feedback = await send(handler);
+      await patch(handler, feedback.id, "resolved");
+      fake.requests.length = 0;
+
+      expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(200);
+
+      provider.expectClosedAs(fake.issues[0] as FakeTracker["issues"][number], "resolved");
+      expect(fake.requests.filter(({ method }) => method === "PATCH" || method === "PUT")).toEqual([]);
+      expect(fake.issues[0]?.comments.some((comment) => comment.includes("was deleted"))).toBe(true);
     });
 
     it("writes nothing when the issue is already in the requested state", async () => {
