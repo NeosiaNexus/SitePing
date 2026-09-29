@@ -533,6 +533,36 @@ describe("SitepingInbox — drawer", () => {
     }
   });
 
+  it("keeps the focus in the dialog when a reply is deleted from a thread that takes no new ones", async () => {
+    const reply = (id: string) => ({
+      id,
+      feedbackId: "o1",
+      body: `Reply ${id}`,
+      authorName: "Alex",
+      authorEmail: "",
+      authorRole: "client" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-20T10:07:00Z"),
+    });
+    const permissions = { canChangeStatus: true, canDelete: true, canComment: false, canDeleteComment: true };
+    const records = seed().map((r) => (r.id === "o1" ? { ...r, comments: [reply("c-1")], permissions } : r));
+    const source = Object.assign(makeSource(records), {
+      addComment: async () => reply("c-2"),
+      removeComment: async () => {},
+    });
+    render(<SitepingInbox source={source} projects="demo" theme="dark" author={{ name: "Studio" }} />);
+    await openFirst();
+    const dialog = screen.getByRole("dialog", { name: /Feedback details/ });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete reply" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(dialog.querySelector(".spd-thread")).toBeNull());
+
+    expect(document.activeElement).toBe(dialog);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Feedback details/ })).toBeNull());
+  });
+
   it("is a modal dialog in overlay (narrow) mode", async () => {
     renderInbox();
     await openFirst();

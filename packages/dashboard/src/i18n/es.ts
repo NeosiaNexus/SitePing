@@ -72,6 +72,9 @@ export const es: Translations = {
   "comments.send": "Enviar",
   "comments.delete": "Eliminar respuesta",
   "comments.failed": "Algo salió mal. Inténtalo de nuevo.",
+  "comments.deleteConfirm": "¿Eliminar esta respuesta?",
+  "comments.added": "Respuesta de {name}",
+  "comments.deleted": "Respuesta eliminada",
 
   // Keyboard hints
   "hints.navigate": "navegar",

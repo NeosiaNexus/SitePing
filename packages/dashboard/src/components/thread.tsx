@@ -1,7 +1,8 @@
 import { COMMENT_BODY_MAX_LENGTH, type FeedbackRecord, newClientId } from "@siteping/core";
 import type { ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { formatAbsolute, formatRelativeTime, toDateTimeAttr } from "../format.js";
+import { tWithParams } from "../i18n/index.js";
 import { useInboxUi } from "./context.js";
 import { TrashIcon } from "./icons.js";
 
@@ -29,6 +30,8 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   const [busy, setBusy] = useState<"send" | "delete" | null>(null);
   const [failed, setFailed] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  const sectionRef = useRef<HTMLElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // Stable, so it focuses the confirm button once, when the question appears.
   const focusOnMount = useCallback((button: HTMLButtonElement | null) => button?.focus(), []);
@@ -37,6 +40,18 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   // is another reply, with an id of its own.
   const sentRef = useRef<{ body: string; clientId: string } | null>(null);
   const comments = record.comments ?? [];
+  /** The replies drawn last render — what a reply coming in or going is told apart from. */
+  const shownRef = useRef<Set<string> | null>(null);
+  // Announced in a status of its own: the list holds the delete controls,
+  // whose question would be read out as news.
+  useEffect(() => {
+    const shown = shownRef.current;
+    shownRef.current = new Set(comments.map((c) => c.id));
+    if (!shown) return;
+    const added = comments.filter((c) => !shown.has(c.id)).at(-1);
+    if (added) setAnnouncement(tWithParams(t, "comments.added", { name: added.authorName }));
+    else if (shown.size > shownRef.current.size) setAnnouncement(t("comments.deleted"));
+  });
   if (!canComment && comments.length === 0) return null;
 
   const run = async (kind: "send" | "delete", action: () => Promise<void>): Promise<boolean> => {
@@ -68,9 +83,20 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   };
 
   const remove = async (commentId: string): Promise<void> => {
+    const index = comments.findIndex((c) => c.id === commentId);
+    const neighbor = comments[index + 1] ?? comments[index - 1];
+    const section = sectionRef.current;
+    // The focused confirm leaves with its reply: focus goes to the next
+    // reply's delete (else the previous one's), else the composer, else — the
+    // thread gone with its last reply — the drawer; never <body>, where the
+    // inbox's shortcuts stop. Found now: the thread may unmount meanwhile.
+    const next =
+      (neighbor && section?.querySelector<HTMLElement>(`[data-comment-delete="${CSS.escape(neighbor.id)}"]`)) ||
+      inputRef.current ||
+      section?.parentElement?.closest<HTMLElement>("[tabindex]");
     if (busy || !(await run("delete", () => onDelete(commentId)))) return;
     setConfirming(null);
-    inputRef.current?.focus();
+    next?.focus();
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
@@ -82,12 +108,11 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   };
 
   return (
-    <section className="spd-thread" aria-labelledby={titleId}>
+    <section ref={sectionRef} className="spd-thread" aria-labelledby={titleId}>
       <h3 id={titleId} className="spd-meta-label">
         {t("comments.title")}
       </h3>
-      {/* Polite: a reply that lands is read out, not just drawn. */}
-      <ol className="spd-thread-list" aria-live="polite">
+      <ol className="spd-thread-list">
         {comments.map((comment) => (
           <li key={comment.id} className="spd-comment" data-role={comment.authorRole}>
             <div className="spd-comment-head">
@@ -111,11 +136,13 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
             </div>
             {confirming === comment.id ? (
               <div className="spd-confirm">
+                <span id={`${titleId}q`}>{t("comments.deleteConfirm")}</span>
                 {/* Focus follows the question it answers. */}
                 <button
                   ref={focusOnMount}
                   type="button"
                   className="spd-btn-danger"
+                  aria-describedby={`${titleId}q`}
                   aria-busy={busy === "delete"}
                   onClick={() => void remove(comment.id)}
                 >
@@ -166,6 +193,9 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
           </button>
         </div>
       ) : null}
+      <p className="spd-sr-only" role="status">
+        {announcement}
+      </p>
       <p className="spd-thread-error" role="alert">
         {failed ? t("comments.failed") : ""}
       </p>

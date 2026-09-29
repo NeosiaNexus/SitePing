@@ -72,6 +72,9 @@ export const pt: Translations = {
   "comments.send": "Enviar",
   "comments.delete": "Excluir resposta",
   "comments.failed": "Algo deu errado. Tente novamente.",
+  "comments.deleteConfirm": "Excluir esta resposta?",
+  "comments.added": "Resposta de {name}",
+  "comments.deleted": "Resposta excluída",
 
   // Hints
   "hints.navigate": "navegar",

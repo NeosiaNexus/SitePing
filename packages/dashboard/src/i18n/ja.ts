@@ -76,6 +76,9 @@ export const ja: Translations = {
   "comments.send": "送信",
   "comments.delete": "返信を削除",
   "comments.failed": "問題が発生しました。もう一度お試しください。",
+  "comments.deleteConfirm": "この返信を削除しますか？",
+  "comments.added": "{name} さんからの返信",
+  "comments.deleted": "返信を削除しました",
 
   // Footer hint bar
   "hints.navigate": "移動",

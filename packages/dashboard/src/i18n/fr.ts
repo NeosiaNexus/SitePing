@@ -76,6 +76,9 @@ export const fr: Translations = {
   "comments.send": "Envoyer",
   "comments.delete": "Supprimer la réponse",
   "comments.failed": "Une erreur est survenue. Réessayez.",
+  "comments.deleteConfirm": "Supprimer cette réponse ?",
+  "comments.added": "Réponse de {name}",
+  "comments.deleted": "Réponse supprimée",
 
   // Footer hint bar
   "hints.navigate": "naviguer",

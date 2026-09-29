@@ -2,6 +2,7 @@
 
 import type { CommentRecord } from "@siteping/core";
 import { act, cleanup, fireEvent } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Thread } from "../../src/components/thread.js";
 import { createT } from "../../src/i18n/index.js";
@@ -51,6 +52,22 @@ function renderThread({
     alert: () => q<HTMLElement>('[role="alert"]'),
     replies: () => [...view.container.querySelectorAll(".spd-comment")],
   };
+}
+
+/** A thread over its own record, which its callbacks update like the inbox does. */
+function LiveThread({ initial, canComment }: { initial: CommentRecord[]; canComment: boolean }) {
+  const [comments, setComments] = useState(initial);
+  return (
+    <Thread
+      record={makeRecord({ id: "fb-1", comments })}
+      canComment={canComment}
+      canDelete
+      onAdd={async (body) =>
+        setComments((thread) => [...thread, makeComment({ id: `new-${thread.length}`, body, authorName: "Studio" })])
+      }
+      onDelete={async (id) => setComments((thread) => thread.filter((comment) => comment.id !== id))}
+    />
+  );
 }
 
 async function type(input: HTMLTextAreaElement | null, value: string): Promise<void> {
@@ -187,6 +204,50 @@ describe("Thread", () => {
     expect(confirm()?.getAttribute("aria-busy")).toBe("true");
     await act(async () => pending.resolve());
     expect(view.alert()?.textContent).toBe("");
+  });
+
+  it("announces a reply that comes in, and one that goes, in a status of its own — never the delete question", async () => {
+    const view = renderWithUi(<LiveThread initial={[makeComment({ id: "a" })]} canComment />);
+    const status = () => view.container.querySelector('[role="status"]');
+    expect(view.container.querySelector("[aria-live]")).toBeNull();
+    expect(status()?.textContent).toBe("");
+
+    await type(view.container.querySelector("textarea"), "Done");
+    await act(async () => view.container.querySelector<HTMLButtonElement>(".spd-thread-composer button")?.click());
+    expect(status()?.textContent).toBe("Reply from Studio");
+
+    await act(async () => view.container.querySelector<HTMLButtonElement>('[data-comment-delete="a"]')?.click());
+    const confirm = view.container.querySelector<HTMLButtonElement>(".spd-confirm .spd-btn-danger");
+    const question = view.container.querySelector(`#${CSS.escape(confirm?.getAttribute("aria-describedby") ?? "")}`);
+    expect(question?.textContent).toBe(t("comments.deleteConfirm"));
+    expect(confirm?.closest('[aria-live], [role="status"]')).toBeNull();
+
+    await act(async () => confirm?.click());
+    expect(status()?.textContent).toBe(t("comments.deleted"));
+  });
+
+  it("hands the focus to the next reply's delete, else the previous one's, else the drawer — never <body>", async () => {
+    const ids = ["a", "b", "c"];
+    const view = renderWithUi(
+      // The drawer: a focusable container around the thread.
+      <div className="drawer" tabIndex={-1}>
+        <LiveThread initial={ids.map((id) => makeComment({ id }))} canComment={false} />
+      </div>,
+    );
+    const trash = (id: string) => view.container.querySelector<HTMLButtonElement>(`[data-comment-delete="${id}"]`);
+    const remove = async (id: string) => {
+      await act(async () => trash(id)?.click());
+      await act(async () => view.container.querySelector<HTMLButtonElement>(".spd-confirm .spd-btn-danger")?.click());
+    };
+
+    await remove("b");
+    expect(document.activeElement).toBe(trash("c"));
+    await remove("c");
+    expect(document.activeElement).toBe(trash("a"));
+    // The thread leaves with its last reply, the composer being off.
+    await remove("a");
+    expect(view.container.querySelector("section")).toBeNull();
+    expect(document.activeElement).toBe(view.container.querySelector(".drawer"));
   });
 
   it("asks before deleting a reply, moving the focus to the question and back", async () => {
