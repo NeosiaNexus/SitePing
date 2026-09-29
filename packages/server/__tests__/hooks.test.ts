@@ -111,6 +111,37 @@ describe("createSitepingHandler — beforeCreate and presentFeedback", () => {
   });
 });
 
+describe("createSitepingHandler — presentFeedback and email redaction", () => {
+  it("still blanks reviewer emails after presentFeedback, on the feedback and on its thread", async () => {
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      access: { ...sessionAccess, canReadAuthorEmail: () => false },
+      // Returns the record untouched: redaction must not rely on it.
+      presentFeedback: (feedback) => feedback,
+    });
+    const created = await createFeedback(handler);
+    const reply = {
+      projectName: PROJECT,
+      feedbackId: created.id,
+      body: "Still broken",
+      authorName: "Bob",
+      authorEmail: "bob@example.com",
+      clientId: "reply-1",
+    };
+    expect((await handler.POST(jsonRequest("POST", reply))).status).toBe(201);
+
+    const listed = ((await (await handler.GET(listRequest())).json()) as { feedbacks: FeedbackRecord[] }).feedbacks[0];
+    const updated = (await (
+      await handler.PATCH(jsonRequest("PATCH", { id: created.id, projectName: PROJECT, status: "resolved" }))
+    ).json()) as FeedbackRecord;
+
+    for (const feedback of [listed, updated]) {
+      expect(feedback?.authorEmail).toBe("");
+      expect(feedback?.comments?.map((comment) => comment.authorEmail)).toEqual([""]);
+    }
+  });
+});
+
 describe("createSitepingHandler — lifecycle hooks", () => {
   it("runs onCreated once per new feedback with the principal, never on a replayed clientId", async () => {
     const onCreated = vi.fn();
