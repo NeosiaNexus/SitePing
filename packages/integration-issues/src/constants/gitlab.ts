@@ -1,6 +1,9 @@
 /** GitLab.com REST API root; override `apiBaseUrl` for self-managed instances. */
 export const GITLAB_API_BASE_URL = "https://gitlab.com/api/v4";
 
+/** A project's full path (`group/subgroup/project`), or its numeric id as a string. */
+export const GITLAB_PROJECT_PATTERN = /^(?!.*\.git$)(?:\d+|[\w.-]+(?:\/[\w.-]+)+)$/;
+
 /** Page size when listing issues or notes (GitLab's maximum). */
 export const GITLAB_PAGE_SIZE = 100;
 

@@ -4,6 +4,7 @@ import {
   GITHUB_API_BASE_URL,
   GITHUB_API_VERSION,
   GITHUB_PAGE_SIZE,
+  GITHUB_REPOSITORY_PATTERN,
   GITHUB_STATE_REASON,
   GITHUB_USER_AGENT,
 } from "../constants/github.js";
@@ -11,7 +12,7 @@ import { TRACKER_MAX_LISTED_PAGES } from "../constants/http.js";
 import { SITEPING_ISSUE_LABEL } from "../constants/issue-format.js";
 import { createJsonHttpClient, UnlabelledIssueError } from "../core/http-client.js";
 import type { IssueTracker, TrackedIssue } from "../core/issue-tracker.js";
-import { checkToken } from "../core/tracker-options.js";
+import { checkApiBaseUrl, checkPositiveInteger, checkToken } from "../core/tracker-options.js";
 
 export interface GitHubTrackerOptions {
   /** `owner/name` of the repository issues are created in. */
@@ -63,7 +64,13 @@ export function createGitHubTracker({
   timeoutMs,
   maxListedPages = TRACKER_MAX_LISTED_PAGES,
 }: GitHubTrackerOptions): IssueTracker {
+  if (!GITHUB_REPOSITORY_PATTERN.test(repository)) {
+    throw new Error(`[siteping] createGitHubTracker: repository must be "owner/name", got "${repository}"`);
+  }
   const credential = checkToken("createGitHubTracker", token);
+  checkApiBaseUrl("createGitHubTracker", apiBaseUrl);
+  checkPositiveInteger("createGitHubTracker", "timeoutMs", timeoutMs);
+  checkPositiveInteger("createGitHubTracker", "maxListedPages", maxListedPages);
   const request = createJsonHttpClient({
     tracker: "GitHub",
     baseUrl: apiBaseUrl,

@@ -3,13 +3,14 @@ import {
   GITLAB_API_BASE_URL,
   GITLAB_LABEL_SEPARATOR,
   GITLAB_PAGE_SIZE,
+  GITLAB_PROJECT_PATTERN,
   GITLAB_STATE_EVENT,
 } from "../constants/gitlab.js";
 import { TRACKER_MAX_LISTED_PAGES } from "../constants/http.js";
 import { SITEPING_ISSUE_LABEL } from "../constants/issue-format.js";
 import { createJsonHttpClient, UnlabelledIssueError } from "../core/http-client.js";
 import type { IssueTracker, TrackedIssue } from "../core/issue-tracker.js";
-import { checkToken } from "../core/tracker-options.js";
+import { checkApiBaseUrl, checkPositiveInteger, checkToken } from "../core/tracker-options.js";
 
 export interface GitLabTrackerOptions {
   /** Numeric project id or full path (`group/subgroup/project`). */
@@ -58,7 +59,17 @@ export function createGitLabTracker({
   timeoutMs,
   maxListedPages = TRACKER_MAX_LISTED_PAGES,
 }: GitLabTrackerOptions): IssueTracker {
+  const isProject =
+    typeof project === "number" ? Number.isSafeInteger(project) && project > 0 : GITLAB_PROJECT_PATTERN.test(project);
+  if (!isProject) {
+    throw new Error(
+      `[siteping] createGitLabTracker: project must be a numeric id or a full path like "group/project", got "${project}"`,
+    );
+  }
   const credential = checkToken("createGitLabTracker", token);
+  checkApiBaseUrl("createGitLabTracker", apiBaseUrl);
+  checkPositiveInteger("createGitLabTracker", "timeoutMs", timeoutMs);
+  checkPositiveInteger("createGitLabTracker", "maxListedPages", maxListedPages);
   const request = createJsonHttpClient({
     tracker: "GitLab",
     baseUrl: apiBaseUrl,

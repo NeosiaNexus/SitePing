@@ -13,6 +13,9 @@ export const GITHUB_ACCEPT_HEADER = "application/vnd.github+json";
  */
 export const GITHUB_USER_AGENT = "siteping-integration-issues";
 
+/** `owner/name`: letters, digits, `-`, `_` and `.`, without the `.git` of a clone URL. */
+export const GITHUB_REPOSITORY_PATTERN = /^[\w.-]+\/(?![\w.-]*\.git$)[\w.-]+$/;
+
 /** Page size when listing issues or comments (GitHub's maximum). */
 export const GITHUB_PAGE_SIZE = 100;
 

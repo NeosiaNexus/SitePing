@@ -111,6 +111,8 @@ Everything in the body comes from anonymous visitors, so it is quoted as code. T
 
 `createGitHubTracker` and `createGitLabTracker` also take `apiBaseUrl`, `fetch` (for a proxy or tests), `timeoutMs` (per request, default `5000`) and `maxListedPages` (default `10`, see [how issues are found again](#how-issues-are-found-again)).
 
+Both check their options when they are called, and throw on a value that could not work: a `repository` that is not `owner/name` (a `project` that is neither an id nor a full path), an `apiBaseUrl` that is not an absolute http(s) URL, a `timeoutMs` or `maxListedPages` that is not a positive integer (`Number()` of a misspelled variable is `NaN`), or a token that is empty or has a space, a line break or an invisible character inside. The error never quotes the token.
+
 `createIssueTrackerHooks` returns plain hooks, so you can add your own next to them:
 
 ```ts

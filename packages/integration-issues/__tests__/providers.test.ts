@@ -11,6 +11,8 @@ interface TrackerOptions {
   token: string;
   apiBaseUrl?: string;
   fetch?: typeof fetch;
+  timeoutMs?: number;
+  maxListedPages?: number;
 }
 
 const providers: Array<[string, (options: TrackerOptions) => IssueTracker]> = [
@@ -45,6 +47,25 @@ for (const [name, createTracker] of providers) {
         expect(() => createTracker({ token })).toThrow(/token must be a non-empty string of visible ASCII/);
         expect(() => createTracker({ token })).not.toThrow(/SECRET/);
       }
+    });
+
+    it("refuses option values that would fail every request, or silently list nothing", () => {
+      const refused = [
+        [{ apiBaseUrl: "github.acme.test/api/v3" }, /apiBaseUrl must be an absolute http\(s\) URL/],
+        [{ apiBaseUrl: "ftp://acme.test" }, /apiBaseUrl/],
+        [{ timeoutMs: Number("5s") }, /timeoutMs must be a positive integer, got NaN/],
+        [{ timeoutMs: 0 }, /timeoutMs/],
+        [{ timeoutMs: 2.5 }, /timeoutMs/],
+        [{ maxListedPages: Number("ten") }, /maxListedPages must be a positive integer, got NaN/],
+        [{ maxListedPages: -1 }, /maxListedPages/],
+      ] as const;
+
+      for (const [options, error] of refused) {
+        expect(() => createTracker({ token: TOKEN, ...options })).toThrow(error);
+      }
+      expect(() =>
+        createTracker({ token: TOKEN, apiBaseUrl: "https://acme.test/api", timeoutMs: 1, maxListedPages: 1 }),
+      ).not.toThrow();
     });
 
     it("sends a token read with a trailing line break, trimmed", async () => {
@@ -82,3 +103,25 @@ for (const [name, createTracker] of providers) {
     });
   });
 }
+
+describe("repository and project", () => {
+  it("refuses a GitHub repository that is not owner/name", () => {
+    for (const repository of ["", "acme", "acme/site/", "acme/site.git", "https://github.com/acme/site"]) {
+      expect(() => createGitHubTracker({ repository, token: TOKEN })).toThrow(/repository must be "owner\/name"/);
+    }
+    for (const repository of ["acme/site", "acme-corp/acme.github.io", "acme_emu/site_2"]) {
+      expect(() => createGitHubTracker({ repository, token: TOKEN })).not.toThrow();
+    }
+  });
+
+  it("refuses a GitLab project that is neither an id nor a full path", () => {
+    for (const project of ["", "site", "acme/site.git", "https://gitlab.com/acme/site", 0, 1.5, Number.NaN]) {
+      expect(() => createGitLabTracker({ project, token: TOKEN })).toThrow(
+        /project must be a numeric id or a full path/,
+      );
+    }
+    for (const project of ["acme/site", "acme/web/site.v2", "42", 42]) {
+      expect(() => createGitLabTracker({ project, token: TOKEN })).not.toThrow();
+    }
+  });
+});
