@@ -263,6 +263,9 @@ describe("createScreenshotServeHandler", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(response.headers.get("content-disposition")).toBeNull();
+    expect(response.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(JPEG_BYTES);
   });

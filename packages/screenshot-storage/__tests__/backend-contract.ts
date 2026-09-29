@@ -135,6 +135,9 @@ export function describeBackendContract(backend: BackendUnderTest): void {
 
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toBe("image/jpeg");
+        // Inline too, every response is sandboxed and never sniffed into another type.
+        expect(response.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+        expect(response.headers.get("x-content-type-options")).toBe("nosniff");
         expect(new Uint8Array(await response.arrayBuffer())).toEqual(JPEG_BYTES);
       });
 
