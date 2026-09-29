@@ -4661,6 +4661,7 @@ describe("Panel", () => {
       await refresh();
       expect(composer().readOnly).toBe(true);
       expect(composer().value).toBe("Here it is");
+      expect(shadow.querySelector(".sp-thread-foot button")!.getAttribute("aria-busy")).toBe("true");
 
       posting.resolve(reply);
       await vi.waitFor(() => expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1));

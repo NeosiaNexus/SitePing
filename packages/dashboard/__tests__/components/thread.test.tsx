@@ -138,7 +138,11 @@ describe("Thread", () => {
     // Read-only, not disabled, so the keyboard focus stays where it was.
     expect(view.input()?.readOnly).toBe(true);
     expect(view.send()?.disabled).toBe(false);
+    // Send says so: busy, and inert to clicks until the post settles.
+    expect(view.send()?.getAttribute("aria-busy")).toBe("true");
+    expect(view.send()?.getAttribute("aria-disabled")).toBe("true");
     await act(async () => pending.resolve());
+    expect(view.send()?.getAttribute("aria-busy")).toBe("false");
   });
 
   it("keeps the draft and says so when a post fails, then resends it under the same clientId", async () => {

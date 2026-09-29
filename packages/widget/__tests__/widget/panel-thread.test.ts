@@ -167,6 +167,24 @@ describe("buildThread", () => {
     expect(post).toHaveBeenCalledTimes(2);
   });
 
+  it("shows a post in flight on Send — busy, still focusable — until it settles", async () => {
+    const { post, input, send } = mount(makeFeedback([]));
+    let settle: (comment: CommentResponse) => void = () => {};
+    post.mockReturnValue(new Promise((resolve) => (settle = resolve)));
+    input()!.value = "Once";
+    send()!.click();
+    await flush();
+
+    expect(send()!.getAttribute("aria-busy")).toBe("true");
+    expect(send()!.getAttribute("aria-disabled")).toBe("true");
+    expect(send()!.disabled).toBe(false);
+
+    settle(makeComment());
+    await flush();
+    expect(send()!.getAttribute("aria-busy")).toBe("false");
+    expect(send()!.getAttribute("aria-disabled")).toBe("false");
+  });
+
   it("sends once while a post is in flight", async () => {
     const { post, input, send } = mount(makeFeedback([]));
     post.mockReturnValue(new Promise(() => {}));

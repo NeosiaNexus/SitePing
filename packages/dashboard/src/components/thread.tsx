@@ -25,7 +25,8 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   const { t, locale } = useInboxUi();
   const titleId = useId();
   const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
+  /** What is in flight — its button shows it (`aria-busy`). */
+  const [busy, setBusy] = useState<"send" | "delete" | null>(null);
   const [failed, setFailed] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -38,8 +39,8 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   const comments = record.comments ?? [];
   if (!canComment && comments.length === 0) return null;
 
-  const run = async (action: () => Promise<void>): Promise<boolean> => {
-    setBusy(true);
+  const run = async (kind: "send" | "delete", action: () => Promise<void>): Promise<boolean> => {
+    setBusy(kind);
     setFailed(false);
     try {
       await action();
@@ -49,7 +50,7 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
       setFailed(true);
       return false;
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -60,14 +61,14 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
     if (busy || !body) return;
     if (sentRef.current?.body !== body) sentRef.current = { body, clientId: newClientId() };
     const { clientId } = sentRef.current;
-    if (!(await run(() => onAdd(body, clientId)))) return;
+    if (!(await run("send", () => onAdd(body, clientId)))) return;
     setDraft("");
     sentRef.current = null;
     inputRef.current?.focus();
   };
 
   const remove = async (commentId: string): Promise<void> => {
-    if (busy || !(await run(() => onDelete(commentId)))) return;
+    if (busy || !(await run("delete", () => onDelete(commentId)))) return;
     setConfirming(null);
     inputRef.current?.focus();
   };
@@ -115,6 +116,7 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
                   ref={focusOnMount}
                   type="button"
                   className="spd-btn-danger"
+                  aria-busy={busy === "delete"}
                   onClick={() => void remove(comment.id)}
                 >
                   {t("drawer.deleteYes")}
@@ -149,11 +151,17 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
             placeholder={t("comments.placeholder")}
             aria-label={t("comments.placeholder")}
             aria-keyshortcuts="Control+Enter Meta+Enter"
-            readOnly={busy}
+            readOnly={busy !== null}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleKeyDown}
           />
-          <button type="button" className="spd-btn-primary" onClick={() => void send()}>
+          <button
+            type="button"
+            className="spd-btn-primary"
+            aria-busy={busy === "send"}
+            aria-disabled={busy !== null}
+            onClick={() => void send()}
+          >
             {t("comments.send")}
           </button>
         </div>

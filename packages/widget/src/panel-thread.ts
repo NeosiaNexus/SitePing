@@ -25,7 +25,26 @@ export interface ThreadDraft {
   sent?: { body: string; clientId: string } | undefined;
   sending?: boolean | undefined;
   /** The render on screen, which a reply that lands goes to — whichever render sent it. */
-  view?: { add(comment: CommentResponse): void; input: HTMLTextAreaElement; error: HTMLElement } | undefined;
+  view?: ThreadView | undefined;
+}
+
+interface ThreadView {
+  add(comment: CommentResponse): void;
+  input: HTMLTextAreaElement;
+  send: HTMLButtonElement;
+  error: HTMLElement;
+}
+
+/**
+ * Show a send in flight on a render: the field read-only, Send busy (a CSS
+ * spinner). Read-only and `aria-disabled` rather than disabled: a disabled
+ * control drops the keyboard focus, and the identity prompt could not hand
+ * it back on close.
+ */
+function showSending({ input, send }: ThreadView, sending: boolean): void {
+  input.readOnly = sending;
+  send.setAttribute("aria-busy", String(sending));
+  send.setAttribute("aria-disabled", String(sending));
 }
 
 export interface ThreadOptions {
@@ -85,7 +104,6 @@ export function buildThread(
   input.placeholder = t("comments.placeholder");
   input.setAttribute("aria-label", input.placeholder);
   input.value = draft.text;
-  input.readOnly = draft.sending === true;
   input.addEventListener("input", () => {
     draft.text = input.value;
   });
@@ -103,8 +121,9 @@ export function buildThread(
   // Filled on failure: an alert is announced when its text changes.
   const error = el("div", { class: "sp-thread-error", role: "alert" });
   root.append(input, foot, error);
-  const rendered = { add, input, error };
+  const rendered = { add, input, send, error };
   draft.view = rendered;
+  showSending(rendered, draft.sending === true);
 
   const submit = async (): Promise<void> => {
     draft.text = input.value;
@@ -114,9 +133,7 @@ export function buildThread(
     const { clientId } = draft.sent;
     draft.sending = true;
     setText(error, "");
-    // Read-only, and Send left enabled: a disabled control drops the keyboard
-    // focus, and the identity prompt could not hand it back on close.
-    input.readOnly = true;
+    showSending(rendered, true);
     let failed = false;
     let comment: CommentResponse | null = null;
     try {
@@ -127,7 +144,7 @@ export function buildThread(
     draft.sending = false;
     // The thread may have been drawn again meanwhile: settle the one on screen.
     const view = draft.view ?? rendered;
-    view.input.readOnly = false;
+    showSending(view, false);
     // On failure the text stays in the field for another try.
     setText(view.error, failed ? t("comments.error") : "");
     if (comment) {

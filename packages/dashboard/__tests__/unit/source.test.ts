@@ -297,6 +297,24 @@ describe("createEndpointSource — addComment() & removeComment()", () => {
     expect(JSON.parse(init.body as string)).toEqual({ projectName: "demo", feedbackId: "fb-1", commentId: "c-1" });
   });
 
+  it("gives up on a write that hangs, as a network error", async () => {
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(AbortSignal.abort(new DOMException("", "TimeoutError")));
+    // A request that never answers, but honours its signal as fetch does.
+    const fetchFn = vi.fn<typeof fetch>(
+      (_url, init) => new Promise((_resolve, reject) => init?.signal?.aborted && reject(init.signal.reason)),
+    );
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+
+    await expect(source.addComment?.("fb-1", "demo", input)).rejects.toBeInstanceOf(SitepingNetworkError);
+    await expect(source.removeComment?.("fb-1", "demo", "c-1")).rejects.toBeInstanceOf(SitepingNetworkError);
+    await expect(source.setStatus("fb-1", "demo", "resolved")).rejects.toBeInstanceOf(SitepingNetworkError);
+    await expect(source.remove("fb-1", "demo")).rejects.toBeInstanceOf(SitepingNetworkError);
+    expect(timeout).toHaveBeenCalledWith(30_000);
+    timeout.mockRestore();
+  });
+
   it("maps a refusal to its typed error", async () => {
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(403) });
     await expect(source.addComment?.("fb-1", "demo", input)).rejects.toBeInstanceOf(SitepingAuthError);
