@@ -151,8 +151,11 @@ export function createAccessGate<Principal extends SitepingPrincipal>(
     async authorize(context) {
       return access.authorize ? access.authorize(context) : true;
     },
+    // Speaking as the team is an impersonation privilege: without the host's
+    // word for it (its own callback, or the email access it grants), refuse.
     async canCommentAsTeam({ principal }, canReadAuthorEmail) {
-      return access.canCommentAsTeam ? access.canCommentAsTeam(principal) : canReadAuthorEmail;
+      if (access.canCommentAsTeam) return access.canCommentAsTeam(principal);
+      return access.canReadAuthorEmail ? canReadAuthorEmail : false;
     },
   };
 }

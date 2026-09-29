@@ -258,8 +258,12 @@ describe("comments — the team role", () => {
       expect(await claimTeam(handlerWith({ canCommentAsTeam }))).toBe("client");
     });
 
-    it("defaults to whoever may read reviewer emails", async () => {
-      expect(await claimTeam(handlerWith())).toBe("team");
+    it("is refused when the policy tells no team apart", async () => {
+      expect(await claimTeam(handlerWith())).toBe("client");
+      expect(await claimTeam(handlerWith(), { "x-staff": "yes" })).toBe("client");
+    });
+
+    it("defaults to whoever may read reviewer emails, when the policy says who does", async () => {
       expect(await claimTeam(handlerWith({ canReadAuthorEmail: ({ staff }) => staff }))).toBe("client");
       expect(await claimTeam(handlerWith({ canReadAuthorEmail: ({ staff }) => staff }), { "x-staff": "yes" })).toBe(
         "team",

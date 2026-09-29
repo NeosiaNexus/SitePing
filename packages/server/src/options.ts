@@ -46,8 +46,10 @@ export type SitepingPrincipal = object | string | number;
  *   answer and the POST answer alike. Defaults to `true`.
  * - `canCommentAsTeam` decides whether a comment that asks for the `team`
  *   role keeps it; otherwise it is stamped `client`. Defaults to the
- *   principal's `canReadAuthorEmail` answer: whoever may read reviewer
- *   emails is on the project side.
+ *   principal's `canReadAuthorEmail` answer when that callback is set
+ *   (whoever may read reviewer emails is on the project side), and to
+ *   `false` when neither is: a policy that does not tell the team apart
+ *   never lets a caller speak as the team.
  *
  * A throw from any of them answers a logged 500.
  */

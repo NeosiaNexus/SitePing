@@ -87,7 +87,7 @@ La liste `GET` ne change pas, à deux ajouts près : les `comments` de chaque fe
 Le widget poste depuis des navigateurs anonymes : l'`authorRole` qu'envoie une requête n'est donc qu'une prétention. Le handler ne garde `team` que lorsque votre politique d'accès se porte garante de l'appelant, et marque tout autre commentaire `client` :
 
 - **Avec la politique `apiKey`**, la requête doit porter `Authorization: Bearer <apiKey>`. Le `POST` public, une mauvaise clé et un handler sans `apiKey` obtiennent tous `client`. Un widget configuré avec `apiKey` envoie cette clé depuis le navigateur de chaque visiteur, qui pourrait alors poster au nom de l'équipe : gardez `apiKey` hors des widgets publics.
-- **Avec [`access`](/fr/docs/server#accès-personnalisé)**, c'est `canCommentAsTeam(principal)` qui décide. Par défaut, il reprend votre réponse à `canReadAuthorEmail` — qui peut lire les e-mails des relecteurs est du côté projet —, donc une politique qui distingue déjà les visiteurs n'a rien à ajouter.
+- **Avec [`access`](/fr/docs/server#accès-personnalisé)**, c'est `canCommentAsTeam(principal)` qui décide. Sans lui, c'est votre réponse à `canReadAuthorEmail` — qui peut lire les e-mails des relecteurs est du côté projet —, donc une politique qui distingue déjà les visiteurs n'a rien à ajouter. Une politique sans aucun des deux marque chaque commentaire `client` : écrire en tant qu'équipe permet de parler au nom de votre agence dans le fil, ce droit n'est donc jamais accordé par défaut.
 
 `authorize` voit deux actions de plus : `createComment` et `deleteComment`, avec le `feedbackId` — et le `commentId` pour une suppression.
 

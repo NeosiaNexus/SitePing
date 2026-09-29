@@ -87,7 +87,7 @@ The `GET` list is unchanged, with two additions: each feedback's `comments`, and
 The widget posts from anonymous browsers, so the `authorRole` a request sends is a claim. The handler keeps `team` only when your access policy vouches for the caller, and stamps every other comment `client`:
 
 - **Under the `apiKey` policy**, the request must carry `Authorization: Bearer <apiKey>`. The public `POST`, a wrong key, and a handler without an `apiKey` all get `client`. A widget configured with `apiKey` sends that key from every visitor's browser, so its visitors could post as the team: keep `apiKey` out of public widgets.
-- **Under [`access`](/docs/server#custom-access)**, `canCommentAsTeam(principal)` decides. It defaults to your `canReadAuthorEmail` answer — whoever may read reviewer emails is on the project side — so a policy that already tells visitors apart needs nothing more.
+- **Under [`access`](/docs/server#custom-access)**, `canCommentAsTeam(principal)` decides. Without it, your `canReadAuthorEmail` answer does — whoever may read reviewer emails is on the project side — so a policy that already tells visitors apart needs nothing more. A policy with neither callback stamps every comment `client`: posting as the team lets a caller speak for your agency in the thread, so it is never granted by default.
 
 `authorize` sees two more actions: `createComment` and `deleteComment`, with the `feedbackId` — and the `commentId` for a delete.
 
