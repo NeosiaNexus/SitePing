@@ -71,4 +71,3 @@ export function createJsonHttpClient({
     return (await response.json()) as Response;
   };
 }
-

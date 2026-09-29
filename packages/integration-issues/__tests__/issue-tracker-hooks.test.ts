@@ -9,6 +9,7 @@ import { createFakeGitHub, createFakeGitLab, type FakeTracker } from "./fake-tra
 
 const ENDPOINT = "http://localhost/api/siteping";
 const TOKEN = "tracker-secret-token";
+const JSON_HEADERS = { "Content-Type": "application/json" };
 
 const payload = {
   projectName: "site",
@@ -68,6 +69,7 @@ for (const provider of providers) {
       const response = await handler.POST(
         new Request(ENDPOINT, {
           method: "POST",
+          headers: JSON_HEADERS,
           body: JSON.stringify({ ...payload, clientId: crypto.randomUUID(), ...overrides }),
         }),
       );
@@ -77,11 +79,15 @@ for (const provider of providers) {
 
     const patch = (handler: SitepingHandler, id: string, status: string) =>
       handler.PATCH(
-        new Request(ENDPOINT, { method: "PATCH", body: JSON.stringify({ id, projectName: "site", status }) }),
+        new Request(ENDPOINT, {
+          method: "PATCH",
+          headers: JSON_HEADERS,
+          body: JSON.stringify({ id, projectName: "site", status }),
+        }),
       );
 
     const remove = (handler: SitepingHandler, body: Record<string, unknown>) =>
-      handler.DELETE(new Request(ENDPOINT, { method: "DELETE", body: JSON.stringify(body) }));
+      handler.DELETE(new Request(ENDPOINT, { method: "DELETE", headers: JSON_HEADERS, body: JSON.stringify(body) }));
 
     beforeEach(() => {
       fake = provider.createFake();
