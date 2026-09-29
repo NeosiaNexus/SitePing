@@ -5,8 +5,7 @@
  * `@siteping/core`.
  */
 
-import { describe, expect, it } from "vitest";
-import { buildFeedbackRecord, createCollectionStore, type FeedbackRecord, type SitepingStore } from "../src/index.js";
+import { createCollectionStore, type FeedbackRecord, type SitepingStore } from "../src/index.js";
 import { testSitepingStore } from "../src/testing.js";
 
 /** The simplest possible third-party adapter: a snapshot store over a plain array. */
@@ -23,28 +22,3 @@ function createArrayStore(): SitepingStore {
 }
 
 testSitepingStore(() => createArrayStore());
-
-describe("buildFeedbackRecord", () => {
-  // Query backends insert the record minus its annotations as the feedback
-  // row, so any key without a column (a thread) would break every insert.
-  it("builds no thread: stores that keep one add `comments` themselves", () => {
-    const record = buildFeedbackRecord(
-      {
-        projectName: "kit",
-        type: "bug",
-        message: "Broken",
-        status: "open",
-        url: "https://example.com",
-        viewport: "1280x720",
-        userAgent: "Mozilla/5.0",
-        authorName: "Alice",
-        authorEmail: "alice@example.com",
-        clientId: "kit-client",
-        annotations: [],
-      },
-      { id: "fb-1", annotationId: () => "ann-1" },
-    );
-
-    expect(record).not.toHaveProperty("comments");
-  });
-});

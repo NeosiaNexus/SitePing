@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildFeedbackRecord,
   type CommentCreateInput,
   createCollectionStore,
   type FeedbackCreateInput,
@@ -152,6 +153,16 @@ describe("createCollectionStore — snapshot immutability", () => {
     await expect(store.deleteComment(created.id, kept.id)).rejects.toThrow(StorePersistenceError);
 
     expect((await store.findByClientId("c1"))?.comments).toEqual([kept]);
+  });
+});
+
+describe("buildFeedbackRecord", () => {
+  // Query backends insert the record minus its annotations as the feedback
+  // row, so any key without a column (a thread) would break every insert.
+  it("builds no thread: stores that keep one add `comments` themselves", () => {
+    const record = buildFeedbackRecord(input("c1"), { id: "fb-1", annotationId: () => "ann-1" });
+
+    expect(record).not.toHaveProperty("comments");
   });
 });
 
