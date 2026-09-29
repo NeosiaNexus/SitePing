@@ -101,14 +101,33 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
     return response;
   }
 
-  async function write(label: string, method: "POST" | "PATCH" | "DELETE", payload: object): Promise<Response> {
-    return request(label, endpoint, {
-      method,
-      headers: await buildHeaders(true),
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
-    });
+  /**
+   * Send a write and read its answer within `WRITE_TIMEOUT_MS`. A controller
+   * and a timer rather than `AbortSignal.timeout`, which Safari lacks before 16.
+   */
+  async function write<T>(
+    label: string,
+    method: "POST" | "PATCH" | "DELETE",
+    payload: object,
+    read: (response: Response) => Promise<T>,
+  ): Promise<T> {
+    const headers = await buildHeaders(true);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), WRITE_TIMEOUT_MS);
+    try {
+      const response = await request(label, endpoint, {
+        method,
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      return await read(response);
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+  const ignoreBody = async (): Promise<void> => {};
 
   return {
     async list(query: FeedbackQuery) {
@@ -134,23 +153,33 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
     },
 
     async setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<InboxRecord> {
-      const response = await write("Failed to update feedback", "PATCH", { id, projectName, status });
-      return reviveRecord(await parseJsonAs<FeedbackResponse>(response));
+      const body = await write(
+        "Failed to update feedback",
+        "PATCH",
+        { id, projectName, status },
+        parseJsonAs<FeedbackResponse>,
+      );
+      return reviveRecord(body);
     },
 
     async remove(id: string, projectName: string): Promise<void> {
-      await write("Failed to delete feedback", "DELETE", { id, projectName });
+      await write("Failed to delete feedback", "DELETE", { id, projectName }, ignoreBody);
     },
 
     // Threads share the endpoint: a `feedbackId` routes a POST to one, a
     // `commentId` a DELETE.
     async addComment(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord> {
-      const response = await write("Failed to post comment", "POST", { ...input, projectName, feedbackId });
-      return reviveComment(await parseJsonAs<CommentResponse>(response));
+      const body = await write(
+        "Failed to post comment",
+        "POST",
+        { ...input, projectName, feedbackId },
+        parseJsonAs<CommentResponse>,
+      );
+      return reviveComment(body);
     },
 
     async removeComment(feedbackId: string, projectName: string, commentId: string): Promise<void> {
-      await write("Failed to delete comment", "DELETE", { projectName, feedbackId, commentId });
+      await write("Failed to delete comment", "DELETE", { projectName, feedbackId, commentId }, ignoreBody);
     },
   };
 }
