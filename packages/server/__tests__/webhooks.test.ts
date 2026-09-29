@@ -236,6 +236,18 @@ describe("buildWebhookPayload — untrusted input", () => {
       expect(urlField("https://shop.example/list?filter[status]")).toBe("https://shop.example/list?filter%5Bstatus%5D");
     });
 
+    it("tells the brackets it opened from a long trailer in linear time", () => {
+      expect(description("https://a.example/x_(y))].")).toBe("https://a.example/x_%28y%29)].");
+
+      const trailer = ")".repeat(50_000);
+      const started = performance.now();
+      const built = buildWebhookPayload("discord", { ...FEEDBACK, message: `https://a.example/${trailer}` });
+
+      // Quadratic, 50,000 closing parentheses took seconds; a visitor sends 5,000 per field.
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(built.embeds[0]?.description).toMatch(/^https:\/\/a\.example\/\)+…$/);
+    });
+
     it("keeps a URL typed into the message linkable while escaping the text around it", () => {
       expect(description("_Price_ is wrong on https://shop.example/product_42#price_box, please fix")).toBe(
         "\\_Price\\_ is wrong on https://shop.example/product_42#price_box, please fix",

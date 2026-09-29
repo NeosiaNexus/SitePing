@@ -239,13 +239,17 @@ const count = (text: string, char: string) => text.split(char).length - 1;
  * closing a bracket opened inside the URL stays in it (`…/Mercury_(planet)`).
  */
 function discordUrlUnits(url: string): string[] {
+  // Brackets the link opens minus those it closes, counted once and kept up
+  // to date as the trailer is dropped: recounting per character is quadratic.
+  const open = { ")": count(url, "(") - count(url, ")"), "]": count(url, "[") - count(url, "]") };
   let end = url.length;
   while (end > 0) {
     const last = url.charAt(end - 1);
     if (!DISCORD_LINK_TRAILER.includes(last)) break;
-    const opener = last === ")" ? "(" : last === "]" ? "[" : "";
-    const link = url.slice(0, end);
-    if (opener && count(link, opener) >= count(link, last)) break;
+    if (last === ")" || last === "]") {
+      if (open[last] >= 0) break;
+      open[last] += 1;
+    }
     end -= 1;
   }
   return [...Array.from(url.slice(0, end), encodeLinkChar), ...url.slice(end)];
