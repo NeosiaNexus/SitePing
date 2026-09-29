@@ -125,6 +125,7 @@ hooks: {
 - **À la création.** `onCreated` est attendu avant que le `POST` réponde : le widget attend donc une requête au gestionnaire, au plus `timeoutMs` (5 secondes par défaut). Si elle échoue (gestionnaire en panne, mauvais jeton, label retiré), le feedback est enregistré quand même et l'erreur part dans le `logger` du serveur sous la forme `[siteping] Hook onCreated failed`. Rien ne la rejoue : ce feedback n'a pas de ticket.
 - **Au changement de statut.** Un échec de synchronisation est journalisé de la même façon, et le nouveau statut est conservé.
 - **À la suppression.** `onDeleting` ferme le ticket avant que l'enregistrement parte. Si le gestionnaire échoue, le `DELETE` répond `502` et garde l'enregistrement : rejouez-le quand le gestionnaire est revenu. Le commentaire n'est laissé qu'une fois, même d'une tentative à l'autre.
+- **À la suppression d'un projet entier.** Les tickets du projet sont traités l'un après l'autre, avec jusqu'à trois requêtes chacun : fermer le ticket s'il est ouvert, lire ses commentaires, commenter. Un projet qui a beaucoup de tickets peut donc atteindre la limite de débit du gestionnaire (GitHub accepte environ 80 requêtes de création de contenu par minute) ou la durée maximale d'une fonction serverless. Le `DELETE` répond alors `502` et garde tous les enregistrements. Rejouez-le quelques minutes plus tard : un ticket déjà fermé et commenté ne coûte plus qu'une requête, donc chaque tentative va plus loin.
 
 ## Comment les tickets sont retrouvés
 

@@ -125,6 +125,7 @@ hooks: {
 - **Creating.** `onCreated` is awaited before the `POST` answers, so the widget waits for one tracker request, at most `timeoutMs` (5 seconds by default). If it fails (the tracker is down, the token is wrong, or the label was dropped), the feedback is stored anyway and the error goes to the server's `logger` as `[siteping] Hook onCreated failed`. Nothing retries it: that feedback has no issue.
 - **Changing a status.** A failed sync is logged the same way, and the new status is kept.
 - **Deleting.** `onDeleting` closes the issue before the record goes. If the tracker fails, the `DELETE` answers `502` and keeps the record: retry it once the tracker is back. The comment is left once, even across retries.
+- **Deleting a whole project.** The project's issues are handled one after the other, with up to three requests each: close the issue if it is open, read its comments, comment. A project with many issues can therefore hit the tracker's rate limit (GitHub allows about 80 content-creating requests a minute) or a serverless function's time limit. The `DELETE` then answers `502` and keeps every record. Retry it a few minutes later: an issue already closed and commented costs a single request, so each attempt gets further.
 
 ## How issues are found again
 
