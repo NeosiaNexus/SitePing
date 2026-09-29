@@ -43,9 +43,8 @@ export function createTaskQueue() {
     feedbackTasksByProject.set(projectName, tasks.add(settled));
     settled.then(() => {
       tasks.delete(settled);
-      if (tasks.size === 0 && feedbackTasksByProject.get(projectName) === tasks) {
-        feedbackTasksByProject.delete(projectName);
-      }
+      // Still the project's set: a set leaves the map only once empty, with none of its tasks left to settle.
+      if (tasks.size === 0) feedbackTasksByProject.delete(projectName);
     });
     return result;
   };
