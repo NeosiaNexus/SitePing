@@ -38,7 +38,8 @@ export type WebhookType = "slack" | "discord" | "generic";
  * - `type` — payload format. Defaults to `"generic"` (raw JSON).
  * - `headers` — extra headers merged on top of `Content-Type: application/json`.
  *   Useful for signed-payload schemes (`X-Signature`, bearer tokens, …).
- * - `timeoutMs` — abort the fetch after this many ms. Defaults to 5000.
+ * - `timeoutMs` — abort the fetch after this many ms: a positive integer of
+ *   at most 2,147,483,647, the longest delay a timer holds. Defaults to 5000.
  * - `onError` — invoked with the underlying error and the feedback id when
  *   the dispatch fails (network error, non-2xx, timeout). The webhook is
  *   fire-and-forget, so this is your only chance to observe failures. An
@@ -54,6 +55,35 @@ export interface WebhookConfig {
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
+
+/** Longest delay a timer holds: Node and browsers fire a longer one at once, which would abort every delivery. */
+const TIMER_MAX_DELAY_MS = 2_147_483_647;
+
+/** Why `timeoutMs` cannot bound a delivery, or `null` when it can (or is unset). */
+function timeoutProblem(timeoutMs: number | undefined): string | null {
+  if (
+    timeoutMs === undefined ||
+    (Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= TIMER_MAX_DELAY_MS)
+  ) {
+    return null;
+  }
+  return `timeoutMs must be a positive integer of at most ${TIMER_MAX_DELAY_MS}, got ${timeoutMs}`;
+}
+
+/**
+ * Refuse a webhook whose `timeoutMs` no timer holds, when the handler is
+ * created rather than on every delivery.
+ *
+ * @throws Error naming the webhook by its origin: its path may be a credential.
+ */
+export function checkWebhookTimeouts(configs: readonly WebhookConfig[]): void {
+  for (const config of configs) {
+    const problem = timeoutProblem(config.timeoutMs);
+    if (problem) {
+      throw new Error(`[siteping] createSitepingHandler: webhook to ${webhookOrigin(config.url)}: ${problem}.`);
+    }
+  }
+}
 
 /** Decimal RGB colour table used by Discord embeds — keyed by feedback type. */
 const DISCORD_COLORS: Readonly<Record<FeedbackType, number>> = {
@@ -356,8 +386,11 @@ export function buildWebhookPayload<T extends WebhookType | undefined>(
  * - POSTs with an `AbortSignal` timeout.
  * - On any error (network, non-2xx, timeout, exception), invokes
  *   `config.onError(err, feedbackId)` if provided; otherwise logs a one-liner.
+ *   A `timeoutMs` no timer holds is such an error: nothing is sent.
  */
 export async function dispatchWebhook(config: WebhookConfig, feedback: FeedbackRecord): Promise<void> {
+  const problem = timeoutProblem(config.timeoutMs);
+  if (problem) return reportError(config, new RangeError(problem), feedback.id);
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -19,7 +19,7 @@ import type {
   SitepingPrincipal,
 } from "./options.js";
 import { createPipeline, type Pipeline, type Scope } from "./pipeline.js";
-import type { WebhookConfig } from "./webhooks.js";
+import { checkWebhookTimeouts, type WebhookConfig } from "./webhooks.js";
 
 const consoleLogger: SitepingLogger = {
   error(message, context) {
@@ -80,7 +80,8 @@ function routeByBody<Principal>(
  * (sessions, JWTs, roles…) — see `SitepingAccessHandlerOptions`.
  *
  * @throws Error without a `store`; with a `maxBodyBytes` that is not a
- * positive integer; in production without `apiKey` (see
+ * positive integer, or a webhook `timeoutMs` no timer holds; in production
+ * without `apiKey` (see
  * `requireAuthForDestructive`); or with `access.authorize` over a store
  * without `verifyProjectOwnership`, since PATCH/DELETE could then reach a
  * record of a project the caller is not authorized for.
@@ -152,6 +153,7 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
       ? (webhooks as ReadonlyArray<WebhookConfig>)
       : [webhooks as WebhookConfig]
     : [];
+  checkWebhookTimeouts(webhookList);
 
   return {
     OPTIONS: (request: Request): Response => preflightResponse(request, allowedOrigins),

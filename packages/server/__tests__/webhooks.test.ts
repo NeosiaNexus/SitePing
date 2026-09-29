@@ -474,6 +474,19 @@ describe("dispatchWebhook", () => {
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain("sentry unreachable");
   });
 
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 31])(
+    "reports a timeoutMs of %s, which no timer holds, without sending anything",
+    async (timeoutMs) => {
+      const onError = vi.fn();
+
+      await dispatchWebhook({ url: "https://hooks.example.com", timeoutMs, onError }, FEEDBACK);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith(expect.any(RangeError), FEEDBACK.id);
+      expect(String(onError.mock.calls[0]?.[0])).toContain(`got ${timeoutMs}`);
+    },
+  );
+
   it("does not throw when the user-supplied onError itself throws", async () => {
     fetchSpy.mockRejectedValueOnce(new Error("boom"));
     const onError = vi.fn(() => {
@@ -568,6 +581,33 @@ describe("createSitepingHandler — webhooks option", () => {
     const urls = fetchSpy.mock.calls.map((c) => c[0]);
     expect(urls).toContain("https://slack.example.com");
     expect(urls).toContain("https://discord.example.com");
+  });
+
+  it.each([0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 31])(
+    "refuses to start with a webhook timeoutMs of %s, naming the webhook by its origin only",
+    (timeoutMs) => {
+      const create = () =>
+        createSitepingHandler({
+          store: new MemoryStore(),
+          webhooks: [
+            { url: "https://hooks.example.com" },
+            { url: "https://hooks.slack.com/services/T0/B0/SECRET", timeoutMs },
+          ],
+        });
+
+      expect(create).toThrow(
+        `[siteping] createSitepingHandler: webhook to https://hooks.slack.com: timeoutMs must be a positive integer of at most 2147483647, got ${timeoutMs}.`,
+      );
+    },
+  );
+
+  it("starts with the longest timeoutMs a timer holds", () => {
+    expect(() =>
+      createSitepingHandler({
+        store: new MemoryStore(),
+        webhooks: { url: "https://hooks.example.com", timeoutMs: 2 ** 31 - 1 },
+      }),
+    ).not.toThrow();
   });
 
   it("does not fire webhooks when POST fails validation", async () => {
