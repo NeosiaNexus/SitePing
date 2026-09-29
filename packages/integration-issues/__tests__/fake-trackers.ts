@@ -27,7 +27,11 @@ export interface FakeTracker {
 
 type Route = (request: Request, match: RegExpMatchArray, url: URL) => Promise<Response> | Response;
 
-function createFakeServer(routes: Array<[string, RegExp, Route]>, authorizationHeader: string) {
+function createFakeServer(
+  routes: Array<[string, RegExp, Route]>,
+  authorizationHeader: string,
+  requiredHeaders: readonly string[] = [],
+) {
   const issues: FakeIssue[] = [];
   const requests: FakeTracker["requests"] = [];
   const failures: Array<{ pattern: RegExp; status: number }> = [];
@@ -41,6 +45,9 @@ function createFakeServer(routes: Array<[string, RegExp, Route]>, authorizationH
       path: url.pathname,
       authorization: request.headers.get(authorizationHeader),
     });
+    if (requiredHeaders.some((header) => !request.headers.has(header))) {
+      return new Response(JSON.stringify({ message: "Request forbidden by administrative rules." }), { status: 403 });
+    }
     const failure = failures.find(({ pattern }) => pattern.test(`${request.method} ${url.pathname}`));
     if (failure) return new Response(JSON.stringify({ message: "fake failure" }), { status: failure.status });
     for (const [method, pattern, route] of routes) {
@@ -139,6 +146,8 @@ export function createFakeGitHub(repository: string): FakeTracker {
       ],
     ],
     "authorization",
+    // `new Request` adds no User-Agent, as on runtimes without a default one.
+    ["user-agent"],
   );
   return server;
 }

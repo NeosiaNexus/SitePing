@@ -7,6 +7,12 @@ export const GITHUB_API_VERSION = "2022-11-28";
 /** Media type GitHub recommends for REST requests. */
 export const GITHUB_ACCEPT_HEADER = "application/vnd.github+json";
 
+/**
+ * GitHub rejects REST requests without a User-Agent (403). Node sets one,
+ * but not every runtime's fetch does (Cloudflare Workers, for one).
+ */
+export const GITHUB_USER_AGENT = "siteping-integration-issues";
+
 /** Page size when listing issues or comments (GitHub's maximum). */
 export const GITHUB_PAGE_SIZE = 100;
 

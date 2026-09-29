@@ -5,6 +5,7 @@ import {
   GITHUB_API_VERSION,
   GITHUB_PAGE_SIZE,
   GITHUB_STATE_REASON,
+  GITHUB_USER_AGENT,
 } from "../constants/github.js";
 import { TRACKER_MAX_LISTED_PAGES } from "../constants/http.js";
 import { SITEPING_ISSUE_LABEL } from "../constants/issue-format.js";
@@ -56,6 +57,7 @@ export function createGitHubTracker({
     headers: {
       Accept: GITHUB_ACCEPT_HEADER,
       Authorization: `Bearer ${token}`,
+      "User-Agent": GITHUB_USER_AGENT,
       "X-GitHub-Api-Version": GITHUB_API_VERSION,
     },
     ...(fetch ? { fetch } : {}),
