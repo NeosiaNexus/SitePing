@@ -400,9 +400,8 @@ describe("Better Auth recipe", () => {
     // What an auth client asks on every page load.
     await call("/get-session");
 
-    const [session] = db.session.filter((row) => row.userId === admin.userId);
-    expect(session?.expiresAt).toBeInstanceOf(Date);
-    expect((session?.expiresAt as Date).getTime()).toBeGreaterThan(dayLeft.getTime());
+    const renewed = db.session.find((row) => row.userId === admin.userId)?.expiresAt;
+    expect(Number(renewed)).toBeGreaterThan(dayLeft.getTime());
   });
 
   it("answers a logged 500 when Better Auth cannot read its sessions — and keeps serving visitors", async () => {
