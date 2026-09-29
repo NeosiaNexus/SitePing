@@ -155,7 +155,7 @@ A comment's `authorEmail` is redacted exactly like the feedback's: blank unless 
 
 - **Reading replies from the widget.** With an `apiKey`, `publicEndpoints` defaults to `["POST", "OPTIONS"]`: `GET` needs the key, so a public widget can post a comment but not read the answer. Add `"GET"` to `publicEndpoints` to let reviewers read their threads — emails stay redacted.
 - **Rate limiting.** The public `POST` takes comments too: anyone who knows a feedback id and your project name can add one. Rate-limit `POST` in your framework or reverse proxy; the 100-comment cap bounds how large one thread can grow, not how fast.
-- **Notifications.** Webhooks and `onCreated` fire for new feedbacks only, not for comments.
+- **Notifications.** Webhooks and the [lifecycle hooks](/docs/server#extension-points) fire for feedbacks only: adding or deleting a comment runs none of them, and `onDeleting`'s target is always a feedback or a project. `beforeComment` is the one callback a comment runs.
 
 ## Enable threads on your store
 

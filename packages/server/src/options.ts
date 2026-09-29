@@ -82,7 +82,10 @@ export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
   canCommentAsTeam?(principal: Principal): boolean | Promise<boolean>;
 }
 
-/** What a DELETE removes: one record, or a whole project (`deleteAll`). */
+/**
+ * What a DELETE removes: one record, or a whole project (`deleteAll`) —
+ * never a comment, whose deletion runs no hook.
+ */
 export type SitepingDeletionTarget =
   | { kind: "single"; id: string; projectName: string }
   | { kind: "project"; projectName: string };

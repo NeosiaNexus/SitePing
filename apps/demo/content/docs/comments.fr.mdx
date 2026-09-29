@@ -155,7 +155,7 @@ L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback 
 
 - **Lire les réponses depuis le widget.** Avec une `apiKey`, `publicEndpoints` vaut par défaut `["POST", "OPTIONS"]` : `GET` exige la clé, donc un widget public peut poster un commentaire mais pas lire la réponse. Ajoutez `"GET"` à `publicEndpoints` pour que les relecteurs lisent leurs fils — les e-mails restent masqués.
 - **Limitation de débit.** Le `POST` public accepte aussi les commentaires : quiconque connaît l'id d'un feedback et le nom de votre projet peut en ajouter. Limitez le débit de `POST` dans votre framework ou votre reverse proxy ; la limite de 100 commentaires borne la taille d'un fil, pas sa vitesse de remplissage.
-- **Notifications.** Les webhooks et `onCreated` se déclenchent pour les nouveaux feedbacks seulement, pas pour les commentaires.
+- **Notifications.** Les webhooks et les [hooks de cycle de vie](/fr/docs/server#points-dextension) se déclenchent pour les feedbacks seulement : ajouter ou supprimer un commentaire n'en exécute aucun, et la cible d'`onDeleting` est toujours un feedback ou un projet. `beforeComment` est le seul callback qu'exécute un commentaire.
 
 ## Activer les fils sur votre store
 
