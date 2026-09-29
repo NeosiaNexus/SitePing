@@ -1635,7 +1635,7 @@ for (const dialect of dialects) {
   });
 
   describe(`DrizzleStore — ${dialect.name} with custom table names`, () => {
-    it("reads and writes through the renamed tables", async () => {
+    it("reads and writes through the renamed tables", { timeout: DATABASE_OPENING_TEST_TIMEOUT_MS }, async () => {
       const database = await dialect.open(CUSTOM_TABLE_NAMES);
       try {
         const store = database.createStore({ logger: { warn: () => {} } });
@@ -1652,7 +1652,7 @@ for (const dialect of dialects) {
       } finally {
         await database.close();
       }
-    }, DATABASE_OPENING_TEST_TIMEOUT_MS);
+    });
   });
 }
 
@@ -1676,46 +1676,36 @@ describe("DrizzleStore on a database built with withReplicas", () => {
     expect(await countPrimaryFeedbacks()).toBe(0);
   }
 
-  it(
-    "runs everything on the PostgreSQL primary, never on a read-only replica",
-    async () => {
-      const [primary, replica] = await Promise.all([createPgTestDatabase(), createPgTestDatabase()]);
-      try {
-        await replica.db.execute(sql`SET default_transaction_read_only = on`);
-        const { sitepingFeedbacks } = createSitepingPgTables();
-        const store = createPgSitepingStore(withPgReplicas(primary.db, [replica.db]), { logger: { warn: () => {} } });
+  it("runs everything on the PostgreSQL primary, never on a read-only replica", {
+    timeout: DATABASE_OPENING_TEST_TIMEOUT_MS,
+  }, async () => {
+    const [primary, replica] = await Promise.all([createPgTestDatabase(), createPgTestDatabase()]);
+    try {
+      await replica.db.execute(sql`SET default_transaction_read_only = on`);
+      const { sitepingFeedbacks } = createSitepingPgTables();
+      const store = createPgSitepingStore(withPgReplicas(primary.db, [replica.db]), { logger: { warn: () => {} } });
 
-        await expectEverythingOnThePrimary(
-          store,
-          async () => (await primary.db.select().from(sitepingFeedbacks)).length,
-        );
-      } finally {
-        await Promise.all([primary.close(), replica.close()]);
-      }
-    },
-    DATABASE_OPENING_TEST_TIMEOUT_MS,
-  );
+      await expectEverythingOnThePrimary(store, async () => (await primary.db.select().from(sitepingFeedbacks)).length);
+    } finally {
+      await Promise.all([primary.close(), replica.close()]);
+    }
+  });
 
-  it(
-    "runs everything on the libSQL primary, whose batches the replicated database lacks",
-    async () => {
-      const [primary, replica] = await Promise.all([createLibSQLTestDatabase(), createLibSQLTestDatabase()]);
-      try {
-        const { sitepingFeedbacks } = createSitepingSqliteTables();
-        const store = createLibSQLSitepingStore(withSQLiteReplicas(primary.db, [replica.db]), {
-          logger: { warn: () => {} },
-        });
+  it("runs everything on the libSQL primary, whose batches the replicated database lacks", {
+    timeout: DATABASE_OPENING_TEST_TIMEOUT_MS,
+  }, async () => {
+    const [primary, replica] = await Promise.all([createLibSQLTestDatabase(), createLibSQLTestDatabase()]);
+    try {
+      const { sitepingFeedbacks } = createSitepingSqliteTables();
+      const store = createLibSQLSitepingStore(withSQLiteReplicas(primary.db, [replica.db]), {
+        logger: { warn: () => {} },
+      });
 
-        await expectEverythingOnThePrimary(
-          store,
-          async () => (await primary.db.select().from(sitepingFeedbacks)).length,
-        );
-      } finally {
-        await Promise.all([primary.close(), replica.close()]);
-      }
-    },
-    DATABASE_OPENING_TEST_TIMEOUT_MS,
-  );
+      await expectEverythingOnThePrimary(store, async () => (await primary.db.select().from(sitepingFeedbacks)).length);
+    } finally {
+      await Promise.all([primary.close(), replica.close()]);
+    }
+  });
 });
 
 it("refuses a database from another SQLite driver, such as Cloudflare D1", () => {
