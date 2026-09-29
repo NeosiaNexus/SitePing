@@ -3,14 +3,16 @@ import {
   ANNOTATION_FIELD_MAX_LENGTH,
   ANNOTATIONS_LISTED,
   DIAGNOSTIC_ENTRIES_PER_KIND,
-  DIAGNOSTIC_MESSAGE_MAX_LENGTH,
+  DIAGNOSTIC_ENTRY_MAX_LENGTH,
   EMPTY_DIAGNOSTICS_PLACEHOLDER,
+  ISSUE_BODY_MAX_LENGTH,
   ISSUE_REFERENCE_MARKER,
   ISSUE_SECTION_HEADINGS,
   ISSUE_SECTION_SEPARATOR,
   ISSUE_TITLE_MAX_LENGTH,
   ISSUE_TITLE_PREFIX,
   MORE_ANNOTATIONS_TEMPLATE,
+  OVERSIZED_BODY_NOTE,
   TRUNCATION_SUFFIX,
 } from "../constants/issue-format.js";
 import { codeBlock, codeSpan, defuseReferences } from "./markdown.js";
@@ -48,13 +50,17 @@ function section(heading: string, content: string): string {
   return `## ${heading}${ISSUE_SECTION_SEPARATOR}${content}`;
 }
 
+function joinSections(sections: Array<string | null>): string {
+  return sections.filter((part): part is string => part !== null).join(ISSUE_SECTION_SEPARATOR);
+}
+
 /** Where each annotation points on the page — what a developer needs to find the element. */
 function buildAnnotations(feedback: FeedbackRecord, redact: (text: string) => string): string | null {
   if (feedback.annotations.length === 0) return null;
   const field = (value: string) => codeSpan(truncate(redact(value), ANNOTATION_FIELD_MAX_LENGTH));
   const lines = feedback.annotations.slice(0, ANNOTATIONS_LISTED).map((annotation) => {
     const text = annotation.textSnippet ? `, text ${field(annotation.textSnippet)}` : "";
-    return `- Element ${codeSpan(annotation.elementTag)}, selector ${field(annotation.cssSelector)}${text}`;
+    return `- Element ${field(annotation.elementTag)}, selector ${field(annotation.cssSelector)}${text}`;
   });
   const hidden = feedback.annotations.length - ANNOTATIONS_LISTED;
   if (hidden > 0) lines.push(MORE_ANNOTATIONS_TEMPLATE.replace("{count}", String(hidden)));
@@ -64,12 +70,13 @@ function buildAnnotations(feedback: FeedbackRecord, redact: (text: string) => st
 /** One block per kind: console messages and network URLs are visitor-controlled, and may span lines. */
 function buildDiagnostics(feedback: FeedbackRecord, redact: (text: string) => string): string[] {
   if (!feedback.diagnostics) return [];
+  const field = (value: string) => truncate(redact(value), DIAGNOSTIC_ENTRY_MAX_LENGTH);
   const consoleLines = feedback.diagnostics.console
     .slice(0, DIAGNOSTIC_ENTRIES_PER_KIND)
-    .map((entry) => `${entry.level}: ${truncate(redact(entry.message), DIAGNOSTIC_MESSAGE_MAX_LENGTH)}`);
+    .map((entry) => `${entry.level}: ${field(entry.message)}`);
   const networkLines = feedback.diagnostics.network
     .slice(0, DIAGNOSTIC_ENTRIES_PER_KIND)
-    .map((entry) => `${entry.method} ${entry.status} ${redact(entry.url)} (${entry.durationMs}ms)`);
+    .map((entry) => `${entry.method} ${entry.status} ${field(entry.url)} (${entry.durationMs}ms)`);
   const block = (lines: string[]) => (lines.length > 0 ? codeBlock(lines.join("\n")) : EMPTY_DIAGNOSTICS_PLACEHOLDER);
   return [
     section(ISSUE_SECTION_HEADINGS.consoleDiagnostics, block(consoleLines)),
@@ -99,21 +106,32 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
   // Inline `data:` screenshots (no ScreenshotStorage) are skipped: trackers do not render them.
   const screenshot = feedback.screenshotUrl ? parseHttpUrl(feedback.screenshotUrl) : null;
 
-  const sections = [
+  const summary = [
     section(ISSUE_SECTION_HEADINGS.message, codeBlock(message)),
     section(ISSUE_SECTION_HEADINGS.type, feedback.type),
     section(ISSUE_SECTION_HEADINGS.pageUrl, codeSpan(page?.href ?? pageUrl)),
     deepLink ? section(ISSUE_SECTION_HEADINGS.deepLink, `<${deepLink}>`) : null,
-    buildAnnotations(feedback, redact),
+  ];
+  const context = [
     section(ISSUE_SECTION_HEADINGS.author, codeSpan(redact(author))),
     section(ISSUE_SECTION_HEADINGS.viewport, codeSpan(feedback.viewport)),
     section(ISSUE_SECTION_HEADINGS.userAgent, codeSpan(redact(feedback.userAgent))),
     screenshot?.protocol === "https:"
       ? section(ISSUE_SECTION_HEADINGS.screenshot, `![${ISSUE_SECTION_HEADINGS.screenshot}](<${screenshot.href}>)`)
       : null,
-    ...buildDiagnostics(feedback, redact),
   ];
-  return { title, body: sections.filter((part): part is string => part !== null).join(ISSUE_SECTION_SEPARATOR) };
+  const body = joinSections([
+    ...summary,
+    buildAnnotations(feedback, redact),
+    ...context,
+    ...buildDiagnostics(feedback, redact),
+  ]);
+  // A quote grows with the backtick runs it holds, so a crafted feedback can
+  // outgrow the tracker's limit: keep what identifies it, leave the lists out.
+  return {
+    title,
+    body: body.length <= ISSUE_BODY_MAX_LENGTH ? body : joinSections([...summary, ...context, OVERSIZED_BODY_NOTE]),
+  };
 }
 
 /** Hidden marker on the first line of every issue body, linking it to its feedback. */

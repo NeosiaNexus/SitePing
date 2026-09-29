@@ -7,11 +7,11 @@ export const ISSUE_TITLE_PREFIX = "[SitePing]";
 /** Longest title every built-in tracker accepts (GitLab: 255, GitHub: 256). */
 export const ISSUE_TITLE_MAX_LENGTH = 255;
 
-/** Appended to a truncated title or diagnostic line. */
+/** Appended to a truncated title, annotation field or diagnostic entry. */
 export const TRUNCATION_SUFFIX = "...";
 
-/** Longest diagnostic message copied into the issue body, in characters. */
-export const DIAGNOSTIC_MESSAGE_MAX_LENGTH = 500;
+/** Longest console message or network URL copied into the issue body, in characters. */
+export const DIAGNOSTIC_ENTRY_MAX_LENGTH = 500;
 
 /** Diagnostic entries copied per kind (console / network). */
 export const DIAGNOSTIC_ENTRIES_PER_KIND = 5;
@@ -23,8 +23,15 @@ export const DIAGNOSTIC_ENTRIES_PER_KIND = 5;
  */
 export const ANNOTATIONS_LISTED = 10;
 
-/** Longest annotation selector or text snippet copied into the issue body, in characters. */
+/** Longest annotation element tag, selector or text snippet copied into the issue body, in characters. */
 export const ANNOTATION_FIELD_MAX_LENGTH = 300;
+
+/**
+ * Longest body the default format writes. GitHub refuses bodies over 65,536
+ * characters; the rest is room for the linking marker (about 1,300 characters
+ * with a 200-character project name, escaped).
+ */
+export const ISSUE_BODY_MAX_LENGTH = 60_000;
 
 /** Query parameter the widget reads to focus a feedback (`SitepingConfig.deepLink`). */
 export const DEFAULT_DEEP_LINK_PARAM = "siteping";
@@ -58,6 +65,9 @@ export const ISSUE_SECTION_HEADINGS = {
 
 /** Last line of a truncated annotation list; `{count}` is replaced. */
 export const MORE_ANNOTATIONS_TEMPLATE = "- and {count} more";
+
+/** Ends a body whose lists were left out to stay within `ISSUE_BODY_MAX_LENGTH`. */
+export const OVERSIZED_BODY_NOTE = "_Annotations and diagnostics left out: this feedback is too large for an issue._";
 
 /** Placeholder listed under a diagnostics heading with no entries. */
 export const EMPTY_DIAGNOSTICS_PLACEHOLDER = "- none";

@@ -1,7 +1,9 @@
 import type { AnnotationRecord, FeedbackRecord } from "@siteping/core";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
+import { ISSUE_BODY_MAX_LENGTH, OVERSIZED_BODY_NOTE } from "../src/constants/issue-format.js";
 import { buildIssueMarker, formatIssue, type IssueFormatOptions, parseIssueMarker } from "../src/core/issue-format.js";
+import { codeBlock } from "../src/core/markdown.js";
 
 describe("issue marker", () => {
   it("round-trips ids and project names with characters that need escaping", () => {
@@ -202,41 +204,63 @@ describe("formatIssue", () => {
     expect(liveMarkdown(body).text).not.toContain("octocat");
   });
 
-  it("caps the annotation list so the body stays under GitHub's 65,536-character limit", () => {
+  it("lists at most 10 annotations and truncates long fields and diagnostic entries", () => {
     const annotations = Array.from({ length: 50 }, () =>
-      annotation({ cssSelector: "div > ".repeat(333), textSnippet: "x".repeat(500) }),
+      annotation({ elementTag: "t".repeat(400), cssSelector: "div > ".repeat(333), textSnippet: "x".repeat(500) }),
     );
+    const networkUrl = `https://api.test/${"p".repeat(1980)}`;
     const diagnostics: FeedbackRecord["diagnostics"] = {
-      console: Array.from({ length: 50 }, () => ({
-        level: "error" as const,
-        timestamp: "t",
-        message: "m".repeat(600),
-      })),
-      network: Array.from({ length: 20 }, () => ({
-        url: `https://api.test/${"p".repeat(1980)}`,
-        method: "GET",
-        status: 500,
-        durationMs: 1,
-        timestamp: "t",
-      })),
+      console: [{ level: "error", timestamp: "t", message: "m".repeat(600) }],
+      network: [{ url: networkUrl, method: "GET", status: 500, durationMs: 1, timestamp: "t" }],
     };
 
-    const { body } = formatIssue(
-      record({
-        annotations,
-        diagnostics,
-        message: "`".repeat(5000),
-        url: `https://acme.test/${"u".repeat(1980)}`,
-        userAgent: "a".repeat(500),
-        authorName: "n".repeat(200),
-      }),
-      { ...options, includeAuthorEmail: true },
-    );
+    const { body } = formatIssue(record({ annotations, diagnostics }), options);
 
     expect(body.match(/^- Element /gm)).toHaveLength(10);
     expect(body).toContain("- and 40 more");
-    expect(body).toContain(`\`${"x".repeat(297)}...\``);
-    expect(body.length).toBeLessThan(65_536);
+    expect(body).toContain(`- Element \`${"t".repeat(297)}...\`, selector \``);
+    expect(body).toContain(`, text \`${"x".repeat(297)}...\``);
+    expect(body).toContain(`error: ${"m".repeat(497)}...\n`);
+    expect(body).toContain(`GET 500 ${networkUrl.slice(0, 497)}... (1ms)`);
+  });
+
+  it("stays under GitHub's body limit at the server's validation maxima, leaving the lists out", () => {
+    // Backtick runs make every quote wider than the text it holds.
+    const backticks = (length: number) => "`".repeat(length);
+    const feedback = record({
+      message: backticks(5000),
+      url: `https://acme.test/?${backticks(1981)}`,
+      authorName: backticks(200),
+      viewport: backticks(50),
+      userAgent: backticks(500),
+      annotations: Array.from({ length: 50 }, () =>
+        annotation({ elementTag: backticks(191), cssSelector: backticks(2000), textSnippet: backticks(500) }),
+      ),
+      diagnostics: {
+        console: Array.from({ length: 50 }, () => ({
+          level: "error" as const,
+          timestamp: "t",
+          message: backticks(600),
+        })),
+        network: Array.from({ length: 20 }, () => ({
+          url: backticks(2000),
+          method: backticks(20),
+          status: 599,
+          durationMs: 600_000,
+          timestamp: "t",
+        })),
+      },
+    });
+
+    const { body } = formatIssue(feedback, { ...options, includeAuthorEmail: true });
+    const marker = buildIssueMarker({ feedbackId: feedback.id, projectName: "<".repeat(200) });
+
+    expect(`${marker}\n\n${body}`.length).toBeLessThan(65_536);
+    expect(body.length).toBeLessThanOrEqual(ISSUE_BODY_MAX_LENGTH);
+    expect(body).toContain(codeBlock(feedback.message));
+    expect(body).not.toContain("## Annotations");
+    expect(body).not.toContain("## Console diagnostics");
+    expect(body.endsWith(`\n\n${OVERSIZED_BODY_NOTE}`)).toBe(true);
   });
 
   it("resolves the widget's default pathname URL against siteUrl", () => {
