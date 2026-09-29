@@ -7,9 +7,9 @@
 import type { SitepingStore } from "@siteping/core";
 import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
 import { describe, expectTypeOf, it } from "vitest";
-import { createGitHubTracker } from "../src/github/index.js";
-import { createGitLabTracker } from "../src/gitlab/index.js";
 import { createIssueTrackerHooks, type IssueTracker } from "../src/index.js";
+import { createGitHubTracker } from "../src/providers/github.js";
+import { createGitLabTracker } from "../src/providers/gitlab.js";
 
 declare const store: SitepingStore;
 declare const tracker: IssueTracker;

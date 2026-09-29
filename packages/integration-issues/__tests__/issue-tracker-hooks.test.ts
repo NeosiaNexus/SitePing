@@ -2,14 +2,14 @@ import { MemoryStore } from "@siteping/adapter-memory";
 import type { FeedbackRecord } from "@siteping/core";
 import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createGitHubTracker } from "../src/github/index.js";
-import { createGitLabTracker } from "../src/gitlab/index.js";
 import {
   createIssueTrackerHooks,
   type IssueTracker,
   type IssueTrackerHooksOptions,
   UnlabelledIssueError,
 } from "../src/index.js";
+import { createGitHubTracker } from "../src/providers/github.js";
+import { createGitLabTracker } from "../src/providers/gitlab.js";
 import { createFakeGitHub, createFakeGitLab, type FakeTracker } from "./fake-trackers.js";
 
 const ENDPOINT = "http://localhost/api/siteping";

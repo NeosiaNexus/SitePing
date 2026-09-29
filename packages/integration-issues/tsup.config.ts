@@ -8,8 +8,8 @@ export default defineConfig(
     platform: "neutral",
     entry: {
       index: "src/index.ts",
-      github: "src/github/index.ts",
-      gitlab: "src/gitlab/index.ts",
+      github: "src/providers/github.ts",
+      gitlab: "src/providers/gitlab.ts",
     },
     external: [/^@siteping\/server(\/|$)/],
   }),
