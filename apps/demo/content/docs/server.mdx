@@ -38,14 +38,30 @@ import { store } from "./siteping-store";
 const siteping = createSitepingHandler({ store, apiKey: process.env.SITEPING_API_KEY });
 
 const app = new Hono();
-app.on(["GET", "POST", "PATCH", "DELETE", "OPTIONS"], "/api/siteping", (c) =>
-  siteping[c.req.method as keyof typeof siteping](c.req.raw),
-);
+app.on(["GET", "POST", "PATCH", "DELETE", "OPTIONS"], "/api/siteping", (c) => {
+  // Hono runs GET routes for HEAD too, a method SitePing does not serve.
+  const handle = siteping[c.req.method as keyof typeof siteping];
+  return handle ? handle(c.req.raw) : c.body(null, 405);
+});
 
 export default app;
 ```
 
-The same dispatch works wherever a `Request` comes in: `Bun.serve`, `Deno.serve`, a Cloudflare Worker's `fetch`, Remix or SvelteKit endpoints.
+`Bun.serve`, `Deno.serve` and a Cloudflare Worker's `fetch` hand you every request, whatever its method — `HEAD` from an uptime monitor, `PUT`, anything: look the handler up among the five, and answer `405` to the rest:
+
+```ts
+const METHODS = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"] as const;
+
+function handleSiteping(request: Request): Response | Promise<Response> {
+  const method = METHODS.find((name) => name === request.method);
+  if (!method) return new Response(null, { status: 405, headers: { Allow: METHODS.join(", ") } });
+  return siteping[method](request);
+}
+
+Bun.serve({ fetch: handleSiteping });
+```
+
+Remix and SvelteKit endpoints export a function per method: have each call its own, `siteping.GET` from the `GET`.
 
 ### Express
 

@@ -38,14 +38,30 @@ import { store } from "./siteping-store";
 const siteping = createSitepingHandler({ store, apiKey: process.env.SITEPING_API_KEY });
 
 const app = new Hono();
-app.on(["GET", "POST", "PATCH", "DELETE", "OPTIONS"], "/api/siteping", (c) =>
-  siteping[c.req.method as keyof typeof siteping](c.req.raw),
-);
+app.on(["GET", "POST", "PATCH", "DELETE", "OPTIONS"], "/api/siteping", (c) => {
+  // Hono sert aussi HEAD par les routes GET, une méthode que SitePing ne sert pas.
+  const handle = siteping[c.req.method as keyof typeof siteping];
+  return handle ? handle(c.req.raw) : c.body(null, 405);
+});
 
 export default app;
 ```
 
-La même répartition fonctionne partout où arrive une `Request` : `Bun.serve`, `Deno.serve`, le `fetch` d'un Worker Cloudflare, les endpoints Remix ou SvelteKit.
+`Bun.serve`, `Deno.serve` et le `fetch` d'un Worker Cloudflare vous transmettent chaque requête, quelle que soit sa méthode — le `HEAD` d'une sonde de disponibilité, `PUT`, n'importe laquelle : cherchez le handler parmi les cinq, et répondez `405` aux autres :
+
+```ts
+const METHODS = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"] as const;
+
+function handleSiteping(request: Request): Response | Promise<Response> {
+  const method = METHODS.find((name) => name === request.method);
+  if (!method) return new Response(null, { status: 405, headers: { Allow: METHODS.join(", ") } });
+  return siteping[method](request);
+}
+
+Bun.serve({ fetch: handleSiteping });
+```
+
+Les endpoints Remix et SvelteKit exportent une fonction par méthode : faites appeler à chacune la sienne, `siteping.GET` depuis le `GET`.
 
 ### Express
 
