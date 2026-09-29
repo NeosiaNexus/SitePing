@@ -369,7 +369,11 @@ for (const provider of providers) {
         expect((await remove(capped(1), { projectName: "site", deleteAll: true })).status).toBe(502);
         expect(fake.issues[0]?.isOpen).toBe(true);
         expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
-        expect(reason()).toMatch(/project "site" may have SitePing issues past the ones listed.*maxListedPages/);
+        expect(reason()).toMatch(
+          new RegExp(
+            `^\\[siteping\\] ${provider.name}: project "site" may have SitePing issues past the ones listed.*maxListedPages`,
+          ),
+        );
 
         expect((await remove(capped(2), { projectName: "site", deleteAll: true })).status).toBe(200);
         expect(fake.issues[0]?.isOpen).toBe(false);
@@ -382,7 +386,11 @@ for (const provider of providers) {
 
         expect((await remove(capped(1), { id: feedback.id, projectName: "site" })).status).toBe(502);
         expect(fake.issues[0]?.isOpen).toBe(true);
-        expect(reason()).toMatch(/not among the SitePing issues listed.*maxListedPages/);
+        expect(reason()).toMatch(
+          new RegExp(
+            `^\\[siteping\\] ${provider.name}: the issue of feedback "${feedback.id}" is not among the SitePing issues listed`,
+          ),
+        );
       });
 
       it("trusts a search that answered: a feedback without an issue stays deletable", async () => {
