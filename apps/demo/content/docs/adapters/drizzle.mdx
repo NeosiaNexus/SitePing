@@ -205,7 +205,7 @@ Both entries re-export `StorePersistenceError`, `isStorePersistence`, `StoreNotF
 ## Limitations
 
 - **PostgreSQL and libSQL only.** There is no MySQL entry yet.
-- **libSQL only through `drizzle-orm/libsql`.** Other SQLite drivers (better-sqlite3, Cloudflare D1) are not supported.
+- **libSQL only through `drizzle-orm/libsql`** or its variants (`/web`, `/http`, `/ws`…). Other SQLite drivers (better-sqlite3, Cloudflare D1) are not supported: `createLibSQLSitepingStore` throws a `TypeError` when given their database, which the types of a Workers project may accept.
 - **One local libSQL file shared by several processes.** SQLite runs one writer at a time: set the client's busy timeout — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — so concurrent writes queue instead of failing with `SQLITE_BUSY`.
 - **Foreign keys on libSQL.** Cascades need `PRAGMA foreign_keys = ON`, which libSQL does not guarantee, so the store deletes annotations and comments explicitly alongside their feedback. Feedbacks you delete yourself outside the store need the same care.
 - **Search on rows without `message_search`** folds case the database's way (ASCII-only on libSQL, and on PostgreSQL under a `C` collation / `LC_CTYPE`) until you [backfill them](#text-search-and-non-ascii-case).

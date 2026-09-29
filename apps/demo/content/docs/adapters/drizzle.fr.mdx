@@ -205,7 +205,7 @@ Les deux entrées réexportent `StorePersistenceError`, `isStorePersistence`, `S
 ## Limites
 
 - **PostgreSQL et libSQL uniquement.** Il n'y a pas encore d'entrée MySQL.
-- **libSQL uniquement via `drizzle-orm/libsql`.** Les autres drivers SQLite (better-sqlite3, Cloudflare D1) ne sont pas pris en charge.
+- **libSQL uniquement via `drizzle-orm/libsql`** ou ses variantes (`/web`, `/http`, `/ws`…). Les autres drivers SQLite (better-sqlite3, Cloudflare D1) ne sont pas pris en charge : `createLibSQLSitepingStore` lève une `TypeError` quand on lui passe leur base, que les types d'un projet Workers peuvent accepter.
 - **Un fichier libSQL local partagé par plusieurs processus.** SQLite n'accepte qu'un écrivain à la fois : réglez le délai d'attente du client — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — pour que les écritures concurrentes patientent au lieu d'échouer avec `SQLITE_BUSY`.
 - **Clés étrangères sur libSQL.** Les cascades exigent `PRAGMA foreign_keys = ON`, que libSQL ne garantit pas : le store supprime donc explicitement les annotations et les commentaires avec leur feedback. Les feedbacks que vous supprimez vous-même hors du store demandent le même soin.
 - **La recherche sur les lignes sans `message_search`** replie la casse à la manière de la base (ASCII uniquement sur libSQL, et sur PostgreSQL sous une collation / un `LC_CTYPE` `C`) tant que vous ne les avez pas [remplies](#recherche-textuelle-et-casse-non-ascii).

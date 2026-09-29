@@ -9,6 +9,7 @@ import {
   type ScreenshotStorage,
 } from "@siteping/core";
 import { getTableName, sql } from "drizzle-orm";
+import { drizzle as drizzleD1 } from "drizzle-orm/d1";
 import { withReplicas as withPgReplicas } from "drizzle-orm/pg-core";
 import { withReplicas as withSQLiteReplicas } from "drizzle-orm/sqlite-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1650,6 +1651,13 @@ describe("DrizzleStore on a database built with withReplicas", () => {
     },
     DATABASE_OPENING_TEST_TIMEOUT_MS,
   );
+});
+
+it("refuses a database from another SQLite driver, such as Cloudflare D1", () => {
+  // Where @libsql/client's types do not resolve (a Workers project), the types accept it.
+  const d1 = drizzleD1({} as never) as unknown as Parameters<typeof createLibSQLSitepingStore>[0];
+
+  expect(() => createLibSQLSitepingStore(d1)).toThrow(/needs a database from drizzle-orm\/libsql/);
 });
 
 // Each entry bundles its own copy of core, so `instanceof` only matches the
