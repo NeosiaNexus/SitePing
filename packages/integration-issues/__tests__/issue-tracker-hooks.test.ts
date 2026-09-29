@@ -81,6 +81,16 @@ describe("createGitHubTracker", () => {
     expect(fake.issues[0]?.labels).toEqual(["SitePing"]);
     expect((await tracker.findSitepingIssues("marker")).issues).toHaveLength(1);
   });
+
+  it("reports a search that timed out on GitHub's side as truncated", async () => {
+    const tracker = createGitHubTracker({
+      repository: "acme/site",
+      token: TOKEN,
+      fetch: async () => Response.json({ total_count: 0, incomplete_results: true, items: [] }),
+    });
+
+    expect(await tracker.searchSitepingIssues?.("fb-1")).toEqual({ issues: [], truncated: true });
+  });
 });
 
 describe("createIssueTrackerHooks options", () => {
