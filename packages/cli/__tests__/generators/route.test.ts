@@ -22,6 +22,9 @@ describe("generateRoute", () => {
   });
 
   afterEach(() => {
+    // Drop an error a test staged but the code never consumed, so it can't
+    // fire at the next test's own setup write; the pass-through comes back.
+    vi.mocked(writeFileSync).mockReset();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 

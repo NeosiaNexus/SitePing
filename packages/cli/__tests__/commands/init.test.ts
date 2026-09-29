@@ -94,6 +94,10 @@ describe("initCommand", () => {
     process.chdir(originalCwd);
     rmSync(tmpDir, { recursive: true, force: true });
     vi.restoreAllMocks();
+    // restoreAllMocks only reaches vi.spyOn spies, not the node:fs mock's
+    // vi.fn: drop an error a test staged but the code never consumed, so it
+    // can't fire at the next test's own setup write.
+    vi.mocked(writeFileSync).mockReset();
   });
 
   // -------------------------------------------------------------------------
