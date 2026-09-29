@@ -315,6 +315,15 @@ describe("createEndpointSource — error mapping", () => {
     await expect(source.list({ projectName: "demo" })).rejects.toBeInstanceOf(ctor);
   });
 
+  it.each([401, 403] as const)(
+    "keeps the %i on the AUTH error, to tell a dead session from a refusal",
+    async (status) => {
+      const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(status) });
+      await expect(source.list({ projectName: "demo" })).rejects.toMatchObject({ code: "AUTH", status });
+      await expect(source.setStatus("fb-1", "demo", "resolved")).rejects.toMatchObject({ code: "AUTH", status });
+    },
+  );
+
   it("maps 5xx to SitepingError with code SERVER (not retryable)", async () => {
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(500, "kaboom") });
     await expect(source.list({ projectName: "demo" })).rejects.toMatchObject({
