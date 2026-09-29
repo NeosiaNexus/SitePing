@@ -1880,6 +1880,33 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
 
+    it("asks who is replying when nobody is known, posts as the answer and remembers it", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      mockAddComment.mockResolvedValue(reply);
+      const instance = launch(defaultConfig());
+
+      const shadow = await openThread(instance);
+      let modal: HTMLElement | null = null;
+      await vi.waitFor(() => {
+        modal = shadow.querySelector<HTMLElement>('[aria-labelledby^="sp-identity-title-"]');
+        expect(modal).not.toBeNull();
+      });
+      const [name, email] = modal!.querySelectorAll<HTMLInputElement>("input");
+      name!.value = "Alice";
+      email!.value = "alice@example.com";
+      [...modal!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Continue")!.click();
+
+      await vi.waitFor(() =>
+        expect(mockAddComment).toHaveBeenCalledWith(
+          "fb-1",
+          expect.objectContaining({ authorName: "Alice", authorEmail: "alice@example.com" }),
+        ),
+      );
+      expect(mockSaveIdentity).toHaveBeenCalledWith({ name: "Alice", email: "alice@example.com" });
+
+      instance.destroy();
+    });
+
     it("asks who is replying when nobody is known, and a dismissed prompt sends and reports nothing", async () => {
       mockGetIdentity.mockReturnValue(null);
       const onError = vi.fn();
