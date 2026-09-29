@@ -106,6 +106,7 @@ Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Le l
 | `redact` | `(text) => string` | aucun | Appliqué au message, à l'auteur, aux URL, au user agent, au texte des annotations et aux diagnostics avant qu'ils quittent votre serveur |
 | `includeAuthorEmail` | `boolean` | `false` | Ajoute l'e-mail du relecteur à côté de son nom |
 | `formatIssue` | `(feedback, defaults) => { title, body }` | intégré | Votre propre titre et votre propre Markdown. Le marqueur reste ajouté en première ligne. Citer le texte des visiteurs est alors à votre charge |
+| `onIssueCreated` | `(feedback, issue) => void` | — | Appelée avec chaque ticket ouvert (`issue.key`, `issue.url`), pour envoyer son lien dans une messagerie ou le garder, par exemple. Une exception est journalisée comme une création qui a échoué |
 | `instance` | `string` | — | Nom de ce déploiement quand plusieurs partagent un dépôt. Voir [comment les tickets sont retrouvés](#comment-les-tickets-sont-retrouvés) |
 | `syncStatus` | `boolean` | `true` | Ferme et rouvre le ticket quand le statut change |
 | `deletedCommentText` | `(feedbackId) => string` | ``SitePing feedback `<id>` was deleted.`` | Le commentaire laissé sur le ticket d'un feedback supprimé. Une suppression rejouée le retrouve par une première ligne cachée : le texte peut donc changer d'un appel à l'autre |
@@ -154,7 +155,7 @@ Implémentez `IssueTracker` pour Jira, Linear ou un outil interne. Les hooks gar
 import type { IssueTracker } from "@siteping/integration-issues";
 
 const tracker: IssueTracker = {
-  name: "Linear",
+  name: "Linear", // cité dans les erreurs des hooks
   // Stockez `body` tel quel : sa première ligne est le marqueur.
   async createIssue({ title, body, labels }) {
     return { key: "ENG-42", url: "https://linear.app/acme/issue/ENG-42" };

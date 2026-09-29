@@ -106,6 +106,7 @@ Everything in the body comes from anonymous visitors, so it is quoted as code. T
 | `redact` | `(text) => string` | none | Applied to the message, author, URLs, user agent, annotation text and diagnostics before they leave your server |
 | `includeAuthorEmail` | `boolean` | `false` | Add the reviewer's email next to their name |
 | `formatIssue` | `(feedback, defaults) => { title, body }` | built-in | Your own title and Markdown. The marker is still added as the first line. Quoting visitor text is then up to you |
+| `onIssueCreated` | `(feedback, issue) => void` | — | Called with each issue opened (`issue.key`, `issue.url`), to send its link to a chat or keep it, say. A throw is logged like a failed creation |
 | `instance` | `string` | — | Name of this deployment when several share one repository. See [how issues are found again](#how-issues-are-found-again) |
 | `syncStatus` | `boolean` | `true` | Close and reopen the issue when the status changes |
 | `deletedCommentText` | `(feedbackId) => string` | ``SitePing feedback `<id>` was deleted.`` | The comment left on the issue of a deleted feedback. A retried delete finds it by a hidden first line, so the text may change from one call to the next |
@@ -154,7 +155,7 @@ Implement `IssueTracker` for Jira, Linear or an internal tool. The hooks keep ev
 import type { IssueTracker } from "@siteping/integration-issues";
 
 const tracker: IssueTracker = {
-  name: "Linear",
+  name: "Linear", // named in the hooks' own errors
   // Store `body` exactly as given: its first line is the marker.
   async createIssue({ title, body, labels }) {
     return { key: "ENG-42", url: "https://linear.app/acme/issue/ENG-42" };

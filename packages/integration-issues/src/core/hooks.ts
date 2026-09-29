@@ -18,7 +18,7 @@ import {
   parseIssueMarker,
   projectMarkerFragment,
 } from "./issue-format.js";
-import type { IssueTracker, TrackedIssue } from "./issue-tracker.js";
+import type { IssueReference, IssueTracker, TrackedIssue } from "./issue-tracker.js";
 import { createTaskQueue } from "./task-queue.js";
 
 export interface IssueTrackerHooksOptions {
@@ -47,6 +47,11 @@ export interface IssueTrackerHooksOptions {
    * unnamed ones. An empty string counts as no name.
    */
   instance?: string | undefined;
+  /**
+   * Called with each issue opened, e.g. to send its link to a chat or keep
+   * it. A throw is logged like a failed creation.
+   */
+  onIssueCreated?: (feedback: FeedbackRecord, issue: IssueReference) => void | Promise<void>;
   /** Close / reopen the issue when the feedback status changes. Defaults to `true`. */
   syncStatus?: boolean;
   /**
@@ -95,6 +100,7 @@ export function createIssueTrackerHooks<Principal = never>({
   includeAuthorEmail = false,
   formatIssue: customFormatIssue,
   instance: instanceName,
+  onIssueCreated,
   syncStatus = true,
   deletedCommentText = defaultDeletedComment,
 }: IssueTrackerHooksOptions): SitepingLifecycleHooks<Principal> {
@@ -165,7 +171,12 @@ export function createIssueTrackerHooks<Principal = never>({
           ? customFormatIssue(feedback, formatOptions)
           : formatIssue(feedback, formatOptions);
         const marker = buildIssueMarker({ feedbackId: feedback.id, projectName: feedback.projectName, instance });
-        await tracker.createIssue({ title: content.title, body: `${marker}\n\n${content.body}`, labels: issueLabels });
+        const issue = await tracker.createIssue({
+          title: content.title,
+          body: `${marker}\n\n${content.body}`,
+          labels: issueLabels,
+        });
+        await onIssueCreated?.(feedback, issue);
       }),
     async onUpdated(feedback) {
       if (!syncStatus) return;

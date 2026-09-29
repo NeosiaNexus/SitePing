@@ -146,6 +146,17 @@ for (const provider of providers) {
       expect(fake.requests[0]?.authorization).toContain(TOKEN);
     });
 
+    it("hands each issue opened to onIssueCreated", async () => {
+      const opened: unknown[] = [];
+      const handler = createHandler({ onIssueCreated: (feedback, issue) => void opened.push([feedback.id, issue]) });
+
+      const feedback = await send(handler);
+
+      expect(opened).toEqual([
+        [feedback.id, { key: "1", url: expect.stringMatching(/\/acme\/site\/(-\/)?issues\/1$/) }],
+      ]);
+    });
+
     it("links relative page URLs through siteUrl", async () => {
       const handler = createHandler({ siteUrl: "https://acme.test" });
 
