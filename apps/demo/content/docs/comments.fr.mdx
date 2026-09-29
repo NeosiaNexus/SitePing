@@ -15,7 +15,7 @@ Le fil prolonge le message dans la vue détail d'un feedback, dans le panneau : 
 - **Qui répond** : le relecteur, résolu comme l'auteur d'un feedback — votre option `identity`, sinon celle enregistrée dans ce navigateur, sinon la fenêtre d'identification. La fermer n'envoie rien et ne signale rien ; le brouillon reste. Une réponse du widget est toujours enregistrée en `client`.
 - **L'envoi** : le bouton ou Ctrl/⌘+Entrée. Les pannes réseau et les 5xx sont réessayées comme pour un feedback, avec le même `clientId` : un réessai ne duplique jamais la réponse. Une réponse n'est jamais mise en file pour un chargement ultérieur : si elle échoue encore, le brouillon reste et le fil indique qu'elle n'est pas partie.
 - **Votre code en est informé** par `onCommentAdded` et l'événement `comment:added` (la charge utile : le commentaire enregistré, `CommentResponse`) ; un échec passe par `onError` et `feedback:error`, comme tout appel d'API.
-- **Lire la réponse** demande la liste : avec une `apiKey`, ajoutez `"GET"` à `publicEndpoints` — voir [Endpoints publics](#endpoints-publics-et-abus).
+- **Les fils demandent la liste** : le widget ouvre un fil depuis son panneau, que remplit une requête de liste. Avec une `apiKey`, ajoutez `"GET"` à `publicEndpoints`, sinon un widget sans clé ne peut ni lire ni répondre — voir [Endpoints publics](#endpoints-publics-et-abus).
 
 ## Dans le dashboard
 
@@ -153,7 +153,7 @@ L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback 
 
 ## Endpoints publics et abus
 
-- **Lire les réponses depuis le widget.** Avec une `apiKey`, `publicEndpoints` vaut par défaut `["POST", "OPTIONS"]` : `GET` exige la clé, donc un widget public peut poster un commentaire mais pas lire la réponse. Ajoutez `"GET"` à `publicEndpoints` pour que les relecteurs lisent leurs fils — les e-mails restent masqués.
+- **Les fils depuis un widget public.** Avec une `apiKey`, `publicEndpoints` vaut par défaut `["POST", "OPTIONS"]` : `GET` exige la clé, donc un widget sans clé ne peut pas charger son panneau, et les relecteurs ne peuvent ni lire un fil ni y répondre — seul un appel direct à l'API pourrait encore poster un commentaire. Ajoutez `"GET"` à `publicEndpoints` pour qu'ils utilisent leurs fils — les e-mails restent masqués.
 - **Limitation de débit.** Le `POST` public accepte aussi les commentaires : quiconque connaît l'id d'un feedback et le nom de votre projet peut en ajouter. Limitez le débit de `POST` dans votre framework ou votre reverse proxy ; la limite de 100 commentaires `client` borne la taille que le spam peut donner à un fil, pas sa vitesse de remplissage — et ne bloque jamais la réponse de votre équipe.
 - **Notifications.** Les webhooks et les [hooks de cycle de vie](/fr/docs/server#points-dextension) se déclenchent pour les feedbacks seulement : ajouter ou supprimer un commentaire n'en exécute aucun, et la cible d'`onDeleting` est toujours un feedback ou un projet. `beforeComment` est le seul callback qu'exécute un commentaire.
 

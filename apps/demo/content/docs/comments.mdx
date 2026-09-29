@@ -15,7 +15,7 @@ The thread reads on from the message in the panel's feedback detail view, oldest
 - **Who replies**: the reviewer, resolved like a feedback's author — your `identity` option, else the one saved in this browser, else the identity prompt. Dismissing the prompt sends nothing and reports nothing; the draft stays. A widget reply is always stored as `client`.
 - **Sending**: the button or Ctrl/⌘+Enter. Network failures and 5xx are retried like a feedback's, under the same `clientId`, so a retry never duplicates the reply. A reply is never queued for a later page load: if it still fails, the draft stays and the thread says it wasn't sent.
 - **Your code hears about it** through `onCommentAdded` and the `comment:added` event (payload: the stored comment, `CommentResponse`); a failure goes to `onError` and `feedback:error`, like any API call.
-- **Reading the answer** needs the list: with an `apiKey`, add `"GET"` to `publicEndpoints` — see [Public endpoints](#public-endpoints-and-abuse).
+- **Threads need the list**: the widget opens a thread from its panel, which a list request fills. With an `apiKey`, add `"GET"` to `publicEndpoints`, or a key-less widget can neither read nor reply — see [Public endpoints](#public-endpoints-and-abuse).
 
 ## In the dashboard
 
@@ -153,7 +153,7 @@ A comment's `authorEmail` is redacted exactly like the feedback's: blank unless 
 
 ## Public endpoints and abuse
 
-- **Reading replies from the widget.** With an `apiKey`, `publicEndpoints` defaults to `["POST", "OPTIONS"]`: `GET` needs the key, so a public widget can post a comment but not read the answer. Add `"GET"` to `publicEndpoints` to let reviewers read their threads — emails stay redacted.
+- **Threads from a public widget.** With an `apiKey`, `publicEndpoints` defaults to `["POST", "OPTIONS"]`: `GET` needs the key, so a key-less widget cannot load its panel, and reviewers can neither read a thread nor reply — only a direct API call could still post a comment. Add `"GET"` to `publicEndpoints` to let reviewers use their threads — emails stay redacted.
 - **Rate limiting.** The public `POST` takes comments too: anyone who knows a feedback id and your project name can add one. Rate-limit `POST` in your framework or reverse proxy; the cap of 100 `client` comments bounds how large spam can make one thread, not how fast — and never blocks your team's reply.
 - **Notifications.** Webhooks and the [lifecycle hooks](/docs/server#extension-points) fire for feedbacks only: adding or deleting a comment runs none of them, and `onDeleting`'s target is always a feedback or a project. `beforeComment` is the one callback a comment runs.
 
