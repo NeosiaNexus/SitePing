@@ -57,6 +57,8 @@ for (const [name, createTracker] of providers) {
         [{ timeoutMs: Number("5s") }, /timeoutMs must be a positive integer, got NaN/],
         [{ timeoutMs: 0 }, /timeoutMs/],
         [{ timeoutMs: 2.5 }, /timeoutMs/],
+        // Timers fire a longer delay at once.
+        [{ timeoutMs: 2 ** 31 }, /timeoutMs must be at most 2147483647, got 2147483648/],
         [{ maxListedPages: Number("ten") }, /maxListedPages must be a positive integer, got NaN/],
         [{ maxListedPages: -1 }, /maxListedPages/],
       ] as const;
@@ -67,6 +69,15 @@ for (const [name, createTracker] of providers) {
       expect(() =>
         createTracker({ token: TOKEN, apiBaseUrl: "https://acme.test/api", timeoutMs: 1, maxListedPages: 1 }),
       ).not.toThrow();
+      expect(() => createTracker({ token: TOKEN, timeoutMs: 2 ** 31 - 1 })).not.toThrow();
+    });
+
+    it("refuses an apiBaseUrl carrying credentials, without echoing them", () => {
+      // fetch would refuse it on every call, quoting it in an error the handler logs.
+      const apiBaseUrl = "https://ci:SECRET@tracker.acme.test/api";
+
+      expect(() => createTracker({ token: TOKEN, apiBaseUrl })).toThrow(/apiBaseUrl must not carry credentials/);
+      expect(() => createTracker({ token: TOKEN, apiBaseUrl })).not.toThrow(/SECRET/);
     });
 
     it("gives up on a request after timeoutMs", async () => {
