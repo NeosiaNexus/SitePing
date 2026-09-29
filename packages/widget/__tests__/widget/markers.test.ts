@@ -418,10 +418,10 @@ describe("MarkerManager", () => {
   // -------------------------------------------------------------------------
 
   describe("revealPin", () => {
-    let scrollIntoView: ReturnType<typeof vi.fn>;
+    let scrollIntoView = vi.fn<Element["scrollIntoView"]>();
     const original = Element.prototype.scrollIntoView;
     beforeEach(() => {
-      scrollIntoView = vi.fn();
+      scrollIntoView = vi.fn<Element["scrollIntoView"]>();
       Element.prototype.scrollIntoView = scrollIntoView; // jsdom lacks it
     });
     afterEach(() => {
