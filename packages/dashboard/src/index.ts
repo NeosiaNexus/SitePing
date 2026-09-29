@@ -2,6 +2,7 @@
 export type {
   CommentCreateInput,
   CommentRecord,
+  FeedbackPermissions,
   FeedbackRecord,
   FeedbackStatus,
   FeedbackType,
@@ -17,6 +18,8 @@ export type {
   EndpointSourceOptions,
   InboxCustomSourceOptions,
   InboxEndpointOptions,
+  InboxPage,
+  InboxRecord,
   InboxSharedOptions,
   InboxSource,
   InboxState,

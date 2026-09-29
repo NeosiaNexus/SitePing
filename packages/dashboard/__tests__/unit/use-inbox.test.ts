@@ -3,7 +3,7 @@
 import type { FeedbackPage, FeedbackRecord, SitepingStore } from "@siteping/core";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
-import type { InboxSource } from "../../src/types.js";
+import type { InboxRecord, InboxSource } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
 import { deferred, makeRecord, makeSource, type TestSource } from "../helpers.js";
 
@@ -2003,5 +2003,100 @@ describe("useSitepingInbox — discussion thread", () => {
     await act(() => result.current.deleteComment("r1", "c-9"));
     expect(source.removeComment).toHaveBeenLastCalledWith("r1", "c-9", "demo");
     expect(result.current.items.find((r) => r.id === "r1")?.comments).toEqual([]);
+  });
+});
+
+describe("useSitepingInbox — permissions and readOnly", () => {
+  const author = { name: "Studio" };
+  const ALL = { canChangeStatus: true, canDelete: true, canComment: true, canDeleteComment: true };
+  /** A reviewer who may reply on r1 and delete it, nothing else. */
+  const REVIEWER = { canChangeStatus: false, canDelete: true, canComment: true, canDeleteComment: false };
+
+  /** Demo records, r1 carrying `permissions` the way the endpoint source passes the server's on. */
+  function recordsWith(permissions: InboxRecord["permissions"]): InboxRecord[] {
+    return demoRecords().map((record) => (record.id === "r1" ? { ...record, permissions } : record));
+  }
+
+  function threaded(records: InboxRecord[]): InboxSource {
+    return Object.assign(makeSource(records), {
+      addComment: vi.fn<NonNullable<InboxSource["addComment"]>>(),
+      removeComment: vi.fn<NonNullable<InboxSource["removeComment"]>>(),
+    });
+  }
+
+  async function ready(options: Parameters<typeof useSitepingInbox>[0]) {
+    const hook = renderHook((props: Parameters<typeof useSitepingInbox>[0]) => useSitepingInbox(props), {
+      initialProps: options,
+    });
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    return hook;
+  }
+
+  const record = (items: readonly InboxRecord[], id: string) => items.find((r) => r.id === id)!;
+
+  it("ANDs each record's permissions with what the inbox can do", async () => {
+    const { result } = await ready({ projects: "demo", source: threaded(recordsWith(REVIEWER)), author });
+
+    expect(result.current.permissionsOf(record(result.current.items, "r1"))).toEqual(REVIEWER);
+    // A record without permissions (a store, an older server) refuses nothing.
+    expect(result.current.permissionsOf(record(result.current.items, "r2"))).toEqual(ALL);
+  });
+
+  it("in readOnly, refuses status changes and deletions, of feedbacks and of replies, but keeps replying", async () => {
+    const { result } = await ready({ projects: "demo", source: threaded(demoRecords()), author, readOnly: true });
+
+    expect(result.current.canComment).toBe(true);
+    expect(result.current.canDeleteComment).toBe(false);
+    expect(result.current.permissionsOf(record(result.current.items, "r2"))).toEqual({
+      canChangeStatus: false,
+      canDelete: false,
+      canComment: true,
+      canDeleteComment: false,
+    });
+  });
+
+  it("does nothing — no optimistic step, no request — on a status change or delete a record refuses", async () => {
+    const source = makeSource(recordsWith({ ...ALL, canChangeStatus: false, canDelete: false }));
+    const { result } = await ready({ projects: "demo", source });
+    const counts = result.current.counts;
+
+    await act(() => result.current.changeStatus("r1", "resolved"));
+    await act(() => result.current.deleteFeedback("r1"));
+
+    expect(source.setStatus).not.toHaveBeenCalled();
+    expect(source.remove).not.toHaveBeenCalled();
+    expect(record(result.current.items, "r1").status).toBe("open");
+    expect(result.current.counts).toEqual(counts);
+    expect(result.current.pendingUndo).toBeNull();
+  });
+
+  it("in readOnly, drops a pending undo instead of reverting", async () => {
+    const source = makeSource(demoRecords());
+    const { result, rerender } = await ready({ projects: "demo", source });
+    await act(() => result.current.changeStatus("r1", "resolved"));
+    expect(result.current.pendingUndo).toEqual({ id: "r1", previousStatus: "open" });
+
+    rerender({ projects: "demo", source, readOnly: true });
+    await act(() => result.current.undo());
+
+    expect(source.setStatus).toHaveBeenCalledTimes(1);
+    expect(result.current.pendingUndo).toBeNull();
+  });
+
+  it("takes the permissions a saved record comes back with", async () => {
+    const source = makeSource(recordsWith(ALL));
+    // Closing it, say, takes deletion away from this requester.
+    source.setStatus.mockImplementation(async (id, _projectName, status) => ({
+      ...record(source.records, id),
+      status,
+      permissions: { ...ALL, canDelete: false },
+    }));
+    const { result } = await ready({ projects: "demo", source });
+    act(() => result.current.setStatus("all"));
+    await waitFor(() => expect(result.current.items).toHaveLength(6));
+
+    await act(() => result.current.changeStatus("r1", "resolved"));
+
+    expect(result.current.permissionsOf(record(result.current.items, "r1")).canDelete).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import type {
   CommentCreateInput,
   CommentRecord,
-  FeedbackPage,
+  FeedbackPermissions,
   FeedbackQuery,
   FeedbackRecord,
   FeedbackStatus,
@@ -18,6 +18,25 @@ import type { InboxTheme } from "./theme.js";
 // ---------------------------------------------------------------------------
 
 /**
+ * A feedback as the inbox holds it: the stored record, plus what the
+ * requester may do with it when the source says — the endpoint source
+ * passes on the server's `permissions`. Without them, nothing is refused.
+ */
+export type InboxRecord = FeedbackRecord & { permissions?: FeedbackPermissions | undefined };
+
+/** What `InboxSource.list` resolves: a page of records and what the source supports. */
+export interface InboxPage {
+  feedbacks: InboxRecord[];
+  total: number;
+  /**
+   * `comments: false` makes threads read-only, and `deleteComments: false`
+   * hides their delete buttons; left out, `addComment` and `removeComment`
+   * alone decide.
+   */
+  capabilities?: SitepingCapabilities | undefined;
+}
+
+/**
  * Abstract data source consumed by `useSitepingInbox`.
  *
  * Two built-in factories exist — `createEndpointSource` (HTTP, talks to the
@@ -28,16 +47,15 @@ import type { InboxTheme } from "./theme.js";
 export interface InboxSource {
   /**
    * Paginated, filtered feedback query. Must resolve real `Date` objects on
-   * records, their threads included. `capabilities.comments: false` makes
-   * threads read-only, and `capabilities.deleteComments: false` hides their
-   * delete buttons; left out, `addComment` and `removeComment` alone decide.
+   * records, their threads included.
    */
-  list(query: FeedbackQuery): Promise<FeedbackPage & { capabilities?: SitepingCapabilities | undefined }>;
+  list(query: FeedbackQuery): Promise<InboxPage>;
   /**
-   * Persist a status change. Closure semantics (`resolvedAt`) are derived at
-   * this edge — callers only pass the target status.
+   * Persist a status change and resolve the saved record — with its
+   * `permissions`, when `list` gives them. Closure semantics (`resolvedAt`)
+   * are derived at this edge — callers only pass the target status.
    */
-  setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<FeedbackRecord>;
+  setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<InboxRecord>;
   /** Permanently delete a feedback. */
   remove(id: string, projectName: string): Promise<void>;
   /**
@@ -94,6 +112,13 @@ export interface InboxSharedOptions {
    * `apiKey`, or `canCommentAsTeam`); any other reply is stored as `client`.
    */
   author?: { name: string; email?: string | undefined } | undefined;
+  /**
+   * Hide status changes and deletions, of feedbacks and of replies — for a
+   * stakeholder who reads, and replies when `author` is set. The source's
+   * `permissions` hide what the server would refuse on top of it. It only
+   * hides: the server decides what it accepts.
+   */
+  readOnly?: boolean | undefined;
 }
 
 /** Custom-source mode — bring your own `InboxSource` (tRPC, GraphQL, …). */
@@ -170,7 +195,7 @@ export interface InboxState {
   search: string;
   setSearch(s: string): void;
   /** Currently loaded rows (page 1..n concatenated). */
-  items: FeedbackRecord[];
+  items: InboxRecord[];
   /** Total matching the current filters — `null` until the first page resolves. */
   total: number | null;
   /** Per-status tab counts — refreshed with the list; adjusted locally on mutations. */
@@ -207,7 +232,7 @@ export interface InboxState {
   /** Id of the feedback opened in the drawer, or `null`. */
   openedId: string | null;
   /** The opened record — survives leaving the filtered list while the drawer stays open. */
-  opened: FeedbackRecord | null;
+  opened: InboxRecord | null;
   /**
    * Open a feedback in the drawer and focus its row. `openedId` is set at once;
    * for an id not loaded yet (e.g. from a URL), `opened` stays `null` until
@@ -215,9 +240,16 @@ export interface InboxState {
    */
   openFeedback(id: string): void;
   closeFeedback(): void;
-  /** Optimistic status change with rollback on error. Rejects after rolling back. */
+  /**
+   * Optimistic status change with rollback on error. Rejects after rolling
+   * back. Does nothing on a record `permissionsOf` refuses it.
+   */
   changeStatus(id: string, status: FeedbackStatus): Promise<void>;
-  /** Optimistic delete (no undo — confirm in the UI) with rollback on error. Rejects after rolling back. */
+  /**
+   * Optimistic delete (no undo — confirm in the UI) with rollback on error.
+   * Rejects after rolling back. Does nothing on a record `permissionsOf`
+   * refuses it.
+   */
   deleteFeedback(id: string): Promise<void>;
   /**
    * Whether replies can be posted: an `author` is set, the source implements
@@ -225,10 +257,16 @@ export interface InboxState {
    */
   canComment: boolean;
   /**
-   * Whether replies can be deleted: `canComment`, the source implements
-   * `removeComment`, and the endpoint advertises their deletion.
+   * Whether replies can be deleted: `canComment`, not `readOnly`, the source
+   * implements `removeComment`, and the endpoint advertises their deletion.
    */
   canDeleteComment: boolean;
+  /**
+   * What the user may do with a record here: nothing `readOnly`,
+   * `canComment` or `canDeleteComment` rule out, nor anything its
+   * `permissions` refuse.
+   */
+  permissionsOf(record: InboxRecord): FeedbackPermissions;
   /**
    * Post a reply as `author`. Not optimistic: the thread shows it once the
    * source has stored it. Rejects after `onError`. Pass the `clientId` of a

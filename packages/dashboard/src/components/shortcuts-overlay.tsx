@@ -5,6 +5,8 @@ import { useInboxUi } from "./context.js";
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 interface ShortcutsOverlayProps {
+  /** False leaves out the status keys and undo. */
+  canChangeStatus: boolean;
   onClose: () => void;
 }
 
@@ -13,7 +15,7 @@ interface ShortcutsOverlayProps {
  * Esc or a click outside the card closes it, and Esc never bubbles to the
  * root (the overlay is always the topmost layer).
  */
-export function ShortcutsOverlay({ onClose }: ShortcutsOverlayProps): ReactElement {
+export function ShortcutsOverlay({ canChangeStatus, onClose }: ShortcutsOverlayProps): ReactElement {
   const { t } = useInboxUi();
   const overlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -55,10 +57,14 @@ export function ShortcutsOverlay({ onClose }: ShortcutsOverlayProps): ReactEleme
   const rows: Array<{ keys: string[]; label: string }> = [
     { keys: ["j", "k"], label: t("hints.navigate") },
     { keys: ["⏎"], label: t("hints.open") },
-    { keys: ["e"], label: t("hints.resolve") },
-    { keys: ["p"], label: t("hints.inProgress") },
-    { keys: ["x"], label: t("hints.wontFix") },
-    { keys: ["u"], label: t("inbox.undo") },
+    ...(canChangeStatus
+      ? [
+          { keys: ["e"], label: t("hints.resolve") },
+          { keys: ["p"], label: t("hints.inProgress") },
+          { keys: ["x"], label: t("hints.wontFix") },
+          { keys: ["u"], label: t("inbox.undo") },
+        ]
+      : []),
     { keys: ["r"], label: t("inbox.refresh") },
     { keys: ["/"], label: t("inbox.searchAria") },
     { keys: ["1–5"], label: t("inbox.statusFilter") },

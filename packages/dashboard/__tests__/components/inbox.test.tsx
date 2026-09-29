@@ -662,3 +662,53 @@ describe("SitepingInbox — chrome & theming", () => {
     });
   });
 });
+
+describe("SitepingInbox — permissions and readOnly", () => {
+  const REVIEWER = { canChangeStatus: false, canDelete: false, canComment: true, canDeleteComment: false };
+  const hintKeys = (container: HTMLElement) =>
+    [...container.querySelectorAll(".spd-hints kbd")].map((kbd) => kbd.textContent);
+
+  it("e, p and x do nothing on a row that refuses status changes — no request, no toast", async () => {
+    const records = seed().map((record) => (record.id === "o1" ? { ...record, permissions: REVIEWER } : record));
+    const { source } = renderInbox({}, records);
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+
+    for (const key of ["e", "p", "x"]) fireEvent.keyDown(listbox, { key });
+    await act(async () => {});
+
+    expect(source.setStatus).not.toHaveBeenCalled();
+    expect(screen.queryByText("Marked as resolved")).toBeNull();
+    expect(listRows()).toHaveLength(3);
+  });
+
+  it("leaves the status keys out of the hints and the cheat sheet when no listed row allows a change", async () => {
+    const { container } = renderInbox({ readOnly: true });
+    const listbox = await ready();
+    expect(hintKeys(container)).not.toContain("e");
+
+    fireEvent.keyDown(listbox, { key: "?" });
+    const sheet = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    const keys = [...sheet.querySelectorAll("kbd")].map((kbd) => kbd.textContent);
+    expect(keys).not.toContain("e");
+    expect(keys).not.toContain("u");
+    expect(keys).toEqual(expect.arrayContaining(["j", "/"]));
+
+    cleanup();
+    const { container: triage } = renderInbox();
+    await ready();
+    expect(hintKeys(triage)).toEqual(expect.arrayContaining(["e", "p", "x"]));
+  });
+
+  it("in readOnly, the drawer shows the status as text and offers no delete", async () => {
+    const { container } = renderInbox({ readOnly: true });
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    const dialog = await screen.findByRole("dialog", { name: /Feedback details/ });
+
+    expect(within(dialog).queryByRole("button", { name: "Open" })).toBeNull();
+    expect(dialog.querySelector('.spd-status-menu-trigger[data-status="open"]')?.textContent).toBe("Open");
+    expect(container.querySelector(".spd-danger-zone")).toBeNull();
+  });
+});
