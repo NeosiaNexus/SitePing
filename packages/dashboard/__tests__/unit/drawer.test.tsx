@@ -12,13 +12,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderDrawer(recordOverrides = {}, permissions: Partial<FeedbackPermissions> = {}) {
+function renderDrawer(recordOverrides = {}, permissions: Partial<FeedbackPermissions> = {}, overlay = false) {
   const record = makeRecord(recordOverrides);
   const onAddComment = vi.fn(async () => {});
   const { container } = renderWithUi(
     <Drawer
       record={record}
-      overlay={false}
+      overlay={overlay}
       deepLinkParam="siteping"
       onClose={vi.fn()}
       onChangeStatus={vi.fn()}
@@ -120,5 +120,42 @@ describe("Drawer — permissions", () => {
     expect(renderDrawer({}, { canDelete: false }).container.querySelector(".spd-danger-zone")).toBeNull();
     cleanup();
     expect(renderDrawer({}).container.querySelector(".spd-danger-zone")).not.toBeNull();
+  });
+});
+
+describe("Drawer — focus trap", () => {
+  // Without the status menu, the close button is the first focusable and the
+  // "Open on page" link the last.
+  function focusables(overlay: boolean) {
+    const { container } = renderDrawer({}, { canChangeStatus: false }, overlay);
+    return {
+      panel: container.querySelector(".spd-drawer") as HTMLElement,
+      first: container.querySelector(".spd-drawer-close") as HTMLElement,
+      last: container.querySelector(".spd-drawer-foot a") as HTMLElement,
+    };
+  }
+
+  it("wraps Tab and Shift+Tab inside the overlay dialog", () => {
+    const { panel, first, last } = focusables(true);
+    expect(document.activeElement).toBe(panel);
+
+    // Shift+Tab from the panel itself (focused on open) goes to the last focusable.
+    expect(fireEvent.keyDown(panel, { key: "Tab", shiftKey: true })).toBe(false);
+    expect(document.activeElement).toBe(last);
+    expect(fireEvent.keyDown(last, { key: "Tab" })).toBe(false);
+    expect(document.activeElement).toBe(first);
+    expect(fireEvent.keyDown(first, { key: "Tab", shiftKey: true })).toBe(false);
+    expect(document.activeElement).toBe(last);
+
+    // Between the ends, Tab is left to the browser.
+    first.focus();
+    expect(fireEvent.keyDown(first, { key: "Tab" })).toBe(true);
+  });
+
+  it("leaves Tab to the browser side by side", () => {
+    const { last } = focusables(false);
+    last.focus();
+    expect(fireEvent.keyDown(last, { key: "Tab" })).toBe(true);
+    expect(document.activeElement).toBe(last);
   });
 });
