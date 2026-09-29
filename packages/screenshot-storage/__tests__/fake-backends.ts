@@ -85,13 +85,26 @@ export function createFakeCloudflareImages({
   };
 }
 
+/** Lowercase hex SHA-256 of `body`, as S3 expects it in `x-amz-content-sha256`. */
+async function sha256Hex(body: Uint8Array): Promise<string> {
+  const hash = new Sha256();
+  hash.update(body);
+  return Buffer.from(await hash.digest()).toString("hex");
+}
+
 /**
  * Fake S3 that authenticates every request by re-signing it with AWS's own
  * `@smithy/signature-v4` and comparing signatures, as S3 does — so a signing
- * bug surfaces as a 403 exactly like against the real service.
+ * bug surfaces as a 403 exactly like against the real service. The signer
+ * takes the payload hash from the request's `x-amz-content-sha256` header as
+ * is, so the fake also checks that header against the body, as S3 does with
+ * a 400 `XAmzContentSHA256Mismatch`.
  *
  * `canListBucket: false` models credentials without `s3:ListBucket`: S3 then
  * answers a GET of a missing key with `403 AccessDenied` instead of `404 NoSuchKey`.
+ * `deleteMissingAnswers404: true` models S3-compatible services (Google Cloud
+ * Storage's XML API…) that answer a DELETE of a missing key with `404 NoSuchKey`,
+ * where S3 answers `204`.
  */
 export function createFakeS3({
   bucket,
@@ -99,12 +112,14 @@ export function createFakeS3({
   accessKeyId,
   secretAccessKey,
   canListBucket = true,
+  deleteMissingAnswers404 = false,
 }: {
   bucket: string;
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
   canListBucket?: boolean;
+  deleteMissingAnswers404?: boolean;
 }): FakeBackend {
   const objects: FakeBackend["objects"] = new Map();
   const requests: RecordedRequest[] = [];
@@ -159,6 +174,13 @@ export function createFakeS3({
         { status: 403 },
       );
     }
+    if (request.headers.get("x-amz-content-sha256") !== (await sha256Hex(body))) {
+      return new Response(
+        "<Error><Code>XAmzContentSHA256Mismatch</Code><Message>The provided 'x-amz-content-sha256' header does " +
+          "not match what was computed.</Message></Error>",
+        { status: 400 },
+      );
+    }
     const prefix = `/${bucket}/`;
     if (!url.pathname.startsWith(prefix)) return new Response(null, { status: 404 });
     const key = decodeURIComponent(url.pathname.slice(prefix.length));
@@ -182,7 +204,9 @@ export function createFakeS3({
       return new Response(object.bytes as Uint8Array<ArrayBuffer>, { headers: { "content-type": object.contentType } });
     }
     if (request.method === "DELETE") {
-      objects.delete(key);
+      if (!objects.delete(key) && deleteMissingAnswers404) {
+        return new Response("<Error><Code>NoSuchKey</Code></Error>", { status: 404 });
+      }
       return new Response(null, { status: 204 });
     }
     return new Response(null, { status: 405 });

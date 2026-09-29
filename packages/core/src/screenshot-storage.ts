@@ -78,6 +78,17 @@ export interface ScreenshotStorage {
 }
 
 /**
+ * Most `ScreenshotStorage.delete` calls one cleanup keeps in flight — a
+ * project delete may free thousands of objects, and firing them all at once
+ * can exhaust sockets (one per request with `fetch`) or memory and trip
+ * object-store rate limits. It stays under the 50 sockets the AWS SDK opens
+ * per client by default, yet a project delete, which waits for its cleanup,
+ * is not serialised: 1,000 objects take 32 rounds. Adapters run their
+ * deletes through `settleWithConcurrencyLimit` with this bound.
+ */
+export const SCREENSHOT_DELETE_CONCURRENCY = 32;
+
+/**
  * MIME type an adapter reports to {@link ScreenshotStorage.upload}: the one
  * an image data URL declares (`data:image/png;base64,…` → `image/png`),
  * limited to the JPEG, PNG and WebP the HTTP schema accepts. Stores are

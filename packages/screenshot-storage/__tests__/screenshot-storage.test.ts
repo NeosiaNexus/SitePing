@@ -138,10 +138,14 @@ describe("createScreenshotStorage — validation", () => {
   });
 
   it("accepts an image of exactly maxBytes with its base64 wrapped in MIME lines", async () => {
-    const wrappedBase64 = btoa("x".repeat(200)).replace(/.{76}/g, "$&\r\n");
-    await expect(storage().upload(`data:image/jpeg;base64,${wrappedBase64}`, UPLOAD_CONTEXT)).resolves.toHaveProperty(
-      "url",
-    );
+    // At the default size, the line breaks outgrow the slack of the header budget: only
+    // their own budget lets the raw data URL through.
+    const defaultStorage = createScreenshotStorage(createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL }));
+    const wrappedBase64 = btoa("x".repeat(1_125_000)).replace(/.{76}/g, "$&\r\n");
+
+    await expect(
+      defaultStorage.upload(`data:image/jpeg;base64,${wrappedBase64}`, UPLOAD_CONTEXT),
+    ).resolves.toHaveProperty("url");
   });
 
   it("accepts an image of exactly maxBytes", async () => {
@@ -213,6 +217,28 @@ describe("createScreenshotStorage — validation", () => {
     },
   );
 
+  it("refuses a payload of whitespace only, which decodes to an empty image", async () => {
+    const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
+
+    await expect(
+      createScreenshotStorage(objectStore).upload("data:image/jpeg;base64, \r\n", UPLOAD_CONTEXT),
+    ).rejects.toThrow(new InvalidScreenshotError("empty image"));
+    expect(objectStore.keys()).toEqual([]);
+  });
+
+  it("accepts a data URL whose type is written in upper case, as MIME types are case-insensitive", async () => {
+    const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
+
+    const { url } = await createScreenshotStorage(objectStore).upload(
+      `data:IMAGE/JPEG;base64,${JPEG_BASE64}`,
+      UPLOAD_CONTEXT,
+    );
+
+    const key = objectStore.keyFromUrl(url) ?? "";
+    expect(key).toMatch(/\.jpg$/);
+    expect(await objectStore.get?.(key)).toEqual({ bytes: JPEG_BYTES, contentType: "image/jpeg" });
+  });
+
   it("accepts uploads of a configured content type written in another case or with spaces", async () => {
     const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
     const storage = createScreenshotStorage(objectStore, { allowedContentTypes: [" IMAGE/GIF "] });
@@ -263,6 +289,9 @@ describe("createScreenshotServeHandler", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(response.headers.get("content-disposition")).toBeNull();
+    expect(response.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(JPEG_BYTES);
   });
@@ -580,6 +609,43 @@ describe("backend requests — error bodies", () => {
     }
   });
 
+  it("reports an upload S3 answers with a redirect as a definitive rejection, without reclaiming it", async () => {
+    // What S3 answers a path-style request sent to another region's endpoint: no Location, nothing stored.
+    const requests: string[] = [];
+    const uncertainKeys: string[] = [];
+    const objectStore = createS3ObjectStore({
+      endpoint: "https://s3.amazonaws.com",
+      bucket: "screens",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      accessKeyId: "AKIDEXAMPLE",
+      secretAccessKey: "s3-secret",
+      fetch: async (input, init) => {
+        requests.push(new Request(input, init).method);
+        return new Response(
+          "<Error><Code>PermanentRedirect</Code><Message>The bucket you are attempting to access must be " +
+            "addressed using the specified endpoint.</Message></Error>",
+          { status: 301 },
+        );
+      },
+    });
+    const storage = createScreenshotStorage(objectStore, {
+      logger: silentLogger(),
+      onUncertainUpload: (key) => {
+        uncertainKeys.push(key);
+      },
+    });
+
+    const failure = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => error);
+
+    expect(isScreenshotUploadRejected(failure)).toBe(true);
+    expect((failure as ScreenshotUploadRejectedError).cause).toMatchObject({
+      status: 301,
+      cause: expect.stringContaining("PermanentRedirect"),
+    });
+    expect(requests).toEqual(["PUT"]);
+    expect(uncertainKeys).toEqual([]);
+  });
+
   it("reports a Cloudflare Images error by the codes and messages of its errors", async () => {
     const fake = createFakeCloudflareImages({ accountId: "account-1", apiToken: "cf-token" });
     const objectStore = createCloudflareImagesObjectStore({
@@ -621,6 +687,29 @@ describe("createFilesystemObjectStore — keys", () => {
     await expect(objectStore.remove(key)).rejects.toThrow("refusing key");
 
     expect(readdirSync(parent)).toEqual([]);
+  });
+});
+
+describe("createS3ObjectStore — deletes", () => {
+  it("treats a 404 NoSuchKey answer to a delete as an object already gone", async () => {
+    const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };
+    const fake = createFakeS3({ bucket: "screens", region: "auto", ...credentials, deleteMissingAnswers404: true });
+    const objectStore = createS3ObjectStore({
+      endpoint: "https://storage.googleapis.com",
+      bucket: "screens",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      ...credentials,
+      fetch: fake.fetch,
+    });
+    const logger = silentLogger();
+    const storage = createScreenshotStorage(objectStore, { logger });
+    const { url } = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    await storage.delete?.(url);
+
+    await expect(storage.delete?.(url)).resolves.toBeUndefined();
+    await expect(objectStore.remove(`siteping-${"a".repeat(32)}.jpg`)).resolves.toBeUndefined();
+    expect(fake.requests.map(({ method }) => method)).toEqual(["PUT", "DELETE", "DELETE", "DELETE"]);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });
 
@@ -714,6 +803,258 @@ describe("backend requests — timeouts", () => {
     // Well under the 5 s default request timeout: a backend that ignored timeoutMs fails here.
     2_000,
   );
+});
+
+describe("backend requests — retries", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const SLOW_DOWN = "<Error><Code>SlowDown</Code><Message>Please reduce your request rate.</Message></Error>";
+  /** A failed attempt: a status, a whole response, or a network error. */
+  type Failure = number | Response | Error;
+
+  /** Wrap a fake backend's fetch so its first requests fail as listed, recording every method. */
+  function flaky(fake: FakeBackend, failures: Failure[]) {
+    const methods: string[] = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      methods.push(new Request(input, init).method);
+      const failure = failures.shift();
+      if (failure instanceof Error) throw failure;
+      if (failure instanceof Response) return failure;
+      if (failure !== undefined) return new Response(SLOW_DOWN, { status: failure });
+      return fake.fetch(input, init);
+    };
+    return { fetch, methods };
+  }
+
+  function openFlakyS3(failures: Failure[], timeoutMs?: number) {
+    const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };
+    const fake = createFakeS3({ bucket: "screens", region: "auto", ...credentials });
+    const { fetch, methods } = flaky(fake, failures);
+    const objectStore = createS3ObjectStore({
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      bucket: "screens",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      ...credentials,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      fetch,
+    });
+    return { fake, methods, storage: createScreenshotStorage(objectStore, { logger: silentLogger() }) };
+  }
+
+  function openFlakyCloudflareImages(failures: Failure[]) {
+    const fake = createFakeCloudflareImages({ accountId: "account-1", apiToken: "cf-token" });
+    const { fetch, methods } = flaky(fake, failures);
+    const objectStore = createCloudflareImagesObjectStore({
+      accountId: "account-1",
+      apiToken: "cf-token",
+      accountHash: "hash-1",
+      fetch,
+    });
+    return { fake, methods, storage: createScreenshotStorage(objectStore, { logger: silentLogger() }) };
+  }
+
+  it.each<[string, Failure[]]>([
+    ["a 503 SlowDown", [503]],
+    ["a 500 InternalError", [500]],
+    [
+      "a connection reset",
+      [new TypeError("fetch failed", { cause: Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }) })],
+    ],
+    ["a 429 and a 503", [429, 503]],
+  ])("stores an S3 upload that failed once with %s", async (_label, failures) => {
+    const attempts = failures.length + 1;
+    const { fake, methods, storage } = openFlakyS3(failures);
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).resolves.toHaveProperty("url");
+
+    expect(methods).toEqual(Array(attempts).fill("PUT"));
+    expect(fake.objects.size).toBe(1);
+  });
+
+  it("gives up after three attempts, then reclaims the upload", async () => {
+    const { fake, methods, storage } = openFlakyS3([503, 503, 503]);
+
+    const failure = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ status: 503, cause: "SlowDown: Please reduce your request rate." });
+    expect(isScreenshotUploadRejected(failure)).toBe(false);
+    expect(methods).toEqual(["PUT", "PUT", "PUT", "DELETE"]);
+    expect(fake.objects.size).toBe(0);
+  });
+
+  it("reports a refusal after an attempt that may have stored the upload as an unknown outcome, and reclaims it", async () => {
+    const { methods, storage } = openFlakyS3([500, 403]);
+
+    const failure = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => error);
+
+    expect(isScreenshotUploadRejected(failure)).toBe(false);
+    expect(failure).toMatchObject({ status: 403 });
+    expect(methods).toEqual(["PUT", "PUT", "DELETE"]);
+  });
+
+  it.each([
+    ["in seconds", "2"],
+    ["as an HTTP date", "Tue, 29 Sep 2026 12:00:02 GMT"],
+  ])("waits the Retry-After the backend asks for, %s", async (_label, retryAfter) => {
+    // Only the clock and the retry's timer are fake: signing and the fake S3 run on real promises.
+    vi.useFakeTimers({ now: new Date("2026-09-29T12:00:00Z"), toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const { methods, storage } = openFlakyS3([
+      new Response(SLOW_DOWN, { status: 503, headers: { "Retry-After": retryAfter } }),
+    ]);
+
+    const upload = storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    while (vi.getTimerCount() === 0) await new Promise((resolve) => setImmediate(resolve));
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(methods).toEqual(["PUT"]);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(upload).resolves.toHaveProperty("url");
+    expect(methods).toEqual(["PUT", "PUT"]);
+  });
+
+  it("does not retry when the Retry-After would outlast timeoutMs", async () => {
+    const { methods, storage } = openFlakyS3(
+      [new Response(SLOW_DOWN, { status: 503, headers: { "Retry-After": "60" } })],
+      1_000,
+    );
+    const startedAt = Date.now();
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).rejects.toMatchObject({ status: 503 });
+
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(methods).toEqual(["PUT", "DELETE"]);
+  });
+
+  it.each([
+    ["an S3", openFlakyS3, "PUT"],
+    ["a Cloudflare Images", openFlakyCloudflareImages, "POST"],
+  ] as const)("retries %s delete that failed once", async (_label, openFlaky, uploadMethod) => {
+    const failures: Failure[] = [];
+    const { fake, methods, storage } = openFlaky(failures);
+    const { url } = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    failures.push(503);
+
+    await storage.delete?.(url);
+
+    expect(methods).toEqual([uploadMethod, "DELETE", "DELETE"]);
+    expect(fake.objects.size).toBe(0);
+  });
+
+  it("retries a Cloudflare Images upload refused by a 429, which stored nothing", async () => {
+    const { fake, methods, storage } = openFlakyCloudflareImages([429]);
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).resolves.toHaveProperty("url");
+
+    expect(methods).toEqual(["POST", "POST"]);
+    expect(fake.objects.size).toBe(1);
+  });
+
+  it("does not repeat a Cloudflare Images upload that may have been stored, and reclaims it", async () => {
+    const { methods, storage } = openFlakyCloudflareImages([502]);
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).rejects.toMatchObject({ status: 502 });
+
+    expect(methods).toEqual(["POST", "DELETE"]);
+  });
+});
+
+describe("backend factories — timeoutMs", () => {
+  const openS3 = (timeoutMs: number) =>
+    createS3ObjectStore({
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      bucket: "screens",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      accessKeyId: "AKIDEXAMPLE",
+      secretAccessKey: "s3-secret",
+      timeoutMs,
+    });
+  const openCloudflareImages = (timeoutMs: number) =>
+    createCloudflareImagesObjectStore({
+      accountId: "account-1",
+      apiToken: "cf-token",
+      accountHash: "hash-1",
+      timeoutMs,
+    });
+
+  // What `Number(process.env.TIMEOUT_MS)` gives for a missing or mistyped variable, and delays no timer holds.
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5, 2 ** 31])(
+    "refuses timeoutMs %s, under which every request would fail without reaching the backend",
+    (timeoutMs) => {
+      const refusal = `timeoutMs must be an integer number of milliseconds from 1 to 2147483647, got ${String(timeoutMs)}`;
+      expect(() => openS3(timeoutMs)).toThrow(`[siteping] createS3ObjectStore: ${refusal}`);
+      expect(() => openCloudflareImages(timeoutMs)).toThrow(`[siteping] createCloudflareImagesObjectStore: ${refusal}`);
+    },
+  );
+
+  it("accepts the longest delay a timer holds", () => {
+    expect(() => openS3(2 ** 31 - 1)).not.toThrow();
+    expect(() => openCloudflareImages(2 ** 31 - 1)).not.toThrow();
+  });
+});
+
+describe("backend factories — required options", () => {
+  /** What `process.env.X!` passes when the variable is unset or empty. */
+  const unset = [undefined as unknown as string, "", "  "];
+  /** An option with a default is only filled in when undefined. */
+  const blank = ["", "  "];
+  const s3Options = {
+    endpoint: "https://account.r2.cloudflarestorage.com",
+    bucket: "screens",
+    publicBaseUrl: PUBLIC_BASE_URL,
+    accessKeyId: "AKIDEXAMPLE",
+    secretAccessKey: "s3-secret",
+  };
+  const cloudflareImagesOptions = { accountId: "account-1", apiToken: "cf-token", accountHash: "hash-1" };
+
+  it.each([
+    ["bucket", unset],
+    ["accessKeyId", unset],
+    ["secretAccessKey", unset],
+    ["region", blank],
+  ] as const)("createS3ObjectStore refuses a missing %s", (option, values) => {
+    for (const value of values) {
+      expect(() => createS3ObjectStore({ ...s3Options, [option]: value })).toThrow(
+        new Error(`[siteping] createS3ObjectStore: ${option} is required (a non-empty string)`),
+      );
+    }
+  });
+
+  it.each([
+    ["accountId", unset],
+    ["apiToken", unset],
+    ["accountHash", unset],
+    ["variant", blank],
+  ] as const)("createCloudflareImagesObjectStore refuses a missing %s", (option, values) => {
+    for (const value of values) {
+      expect(() => createCloudflareImagesObjectStore({ ...cloudflareImagesOptions, [option]: value })).toThrow(
+        new Error(`[siteping] createCloudflareImagesObjectStore: ${option} is required (a non-empty string)`),
+      );
+    }
+  });
+
+  it.each([
+    ["accountHash", "hash/1"],
+    ["accountHash", "hash?1"],
+    ["variant", "public#1"],
+    ["variant", "w=400 h=300"],
+  ] as const)(
+    "createCloudflareImagesObjectStore refuses the %s %j, which would break every delivery URL",
+    (option, value) => {
+      expect(() => createCloudflareImagesObjectStore({ ...cloudflareImagesOptions, [option]: value })).toThrow(
+        `${option} must be a single URL path segment`,
+      );
+    },
+  );
+
+  it("accepts a flexible variant", () => {
+    const objectStore = createCloudflareImagesObjectStore({ ...cloudflareImagesOptions, variant: "w=400,sharpen=3" });
+    const url = objectStore.urlFor("siteping-a.jpg");
+
+    expect(url).toBe("https://imagedelivery.net/hash-1/siteping-a.jpg/w=400,sharpen=3");
+    expect(objectStore.keyFromUrl(url)).toBe("siteping-a.jpg");
+  });
 });
 
 describe("createS3ObjectStore — a body cut short", () => {
@@ -813,6 +1154,71 @@ describe("createScreenshotStorage — uploads whose outcome is unknown", () => {
     await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).rejects.toBeInstanceOf(ObjectStoreRequestError);
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("onUncertainUpload failed"), {
       key: expect.stringMatching(/^siteping-[a-f0-9]{32}\.jpg$/),
+      error: expect.objectContaining({ message: "queue unavailable" }),
+    });
+  });
+
+  it("awaits an async hook, and logs its rejection instead of letting it escape", async () => {
+    const logger = silentLogger();
+    const { objectStore } = createLateCommittingObjectStore(0);
+    const storage = createScreenshotStorage(objectStore, {
+      // A durable queue that answers late, with an error.
+      onUncertainUpload: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        throw new Error("queue unavailable");
+      },
+      logger,
+    });
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).rejects.toBeInstanceOf(ObjectStoreRequestError);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("onUncertainUpload failed"), {
+      key: expect.stringMatching(/^siteping-[a-f0-9]{32}\.jpg$/),
+      error: expect.objectContaining({ message: "queue unavailable" }),
+    });
+  });
+
+  it("reports the upload error after 2 seconds when the removal and the hook stall, without waiting for them", async () => {
+    vi.useFakeTimers();
+    const logger = silentLogger();
+    const { objectStore: lateCommittingObjectStore } = createLateCommittingObjectStore(0);
+    const uncertainKeys: string[] = [];
+    let rejectHook: (error: Error) => void = () => {};
+    const storage = createScreenshotStorage(
+      // A black-holed backend: the removal never answers either.
+      { ...lateCommittingObjectStore, remove: () => new Promise<void>(() => {}) },
+      {
+        onUncertainUpload: (key) => {
+          uncertainKeys.push(key);
+          return new Promise<void>((_resolve, reject) => {
+            rejectHook = reject;
+          });
+        },
+        logger,
+      },
+    );
+    let failure: unknown;
+    const upload = storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => {
+      failure = error;
+    });
+
+    // The hook runs alongside the removal, not after it.
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(uncertainKeys).toHaveLength(1);
+    expect(failure).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await upload;
+    expect(failure).toBeInstanceOf(ObjectStoreRequestError);
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining("onUncertainUpload has not settled after 2000 ms"),
+      { key: uncertainKeys[0] },
+    );
+
+    // A hook that fails once the upload was reported is still logged, never unhandled.
+    rejectHook(new Error("queue unavailable"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(logger.warn).toHaveBeenLastCalledWith(expect.stringContaining("onUncertainUpload failed"), {
+      key: uncertainKeys[0],
       error: expect.objectContaining({ message: "queue unavailable" }),
     });
   });
