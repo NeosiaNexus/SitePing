@@ -806,6 +806,10 @@ describe("backend requests — timeouts", () => {
 });
 
 describe("backend requests — retries", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const SLOW_DOWN = "<Error><Code>SlowDown</Code><Message>Please reduce your request rate.</Message></Error>";
   /** A failed attempt: a status, a whole response, or a network error. */
   type Failure = number | Response | Error;
@@ -890,15 +894,23 @@ describe("backend requests — retries", () => {
     expect(methods).toEqual(["PUT", "PUT", "DELETE"]);
   });
 
-  it("waits the Retry-After the backend asks for", async () => {
+  it.each([
+    ["in seconds", "2"],
+    ["as an HTTP date", "Tue, 29 Sep 2026 12:00:02 GMT"],
+  ])("waits the Retry-After the backend asks for, %s", async (_label, retryAfter) => {
+    // Only the clock and the retry's timer are fake: signing and the fake S3 run on real promises.
+    vi.useFakeTimers({ now: new Date("2026-09-29T12:00:00Z"), toFake: ["setTimeout", "clearTimeout", "Date"] });
     const { methods, storage } = openFlakyS3([
-      new Response(SLOW_DOWN, { status: 503, headers: { "Retry-After": "1" } }),
+      new Response(SLOW_DOWN, { status: 503, headers: { "Retry-After": retryAfter } }),
     ]);
-    const startedAt = Date.now();
 
-    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).resolves.toHaveProperty("url");
+    const upload = storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    while (vi.getTimerCount() === 0) await new Promise((resolve) => setImmediate(resolve));
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(methods).toEqual(["PUT"]);
 
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_000);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(upload).resolves.toHaveProperty("url");
     expect(methods).toEqual(["PUT", "PUT"]);
   });
 
