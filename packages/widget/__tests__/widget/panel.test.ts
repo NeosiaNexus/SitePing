@@ -4641,7 +4641,15 @@ describe("Panel", () => {
       let refresh: () => Promise<void> = async () => {};
       rebuild(
         async () => identity,
-        [{ id: "jira", label: "Jira", onAction: (_fb, ctx) => void (refresh = ctx.refresh) }],
+        [
+          {
+            id: "jira",
+            label: "Jira",
+            onAction: (_fb, ctx) => {
+              refresh = ctx.refresh;
+            },
+          },
+        ],
       );
       const posting = deferredComment();
       apiClient.addComment.mockReturnValue(posting.promise);

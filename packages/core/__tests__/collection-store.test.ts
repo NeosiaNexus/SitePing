@@ -204,10 +204,11 @@ describe("createCollectionStore — threads are opt-in", () => {
     const store = jsonStore({ comments: true });
 
     const created = await store.createFeedback(input("c1"));
-    const added = await store.addComment(created.id, comment("k1"));
+    const added = await store.addComment?.(created.id, comment("k1"));
 
     expect(created.comments).toEqual([]);
-    expect((await store.findByClientId("c1"))?.comments?.map((c) => c.id)).toEqual([added.id]);
+    expect((await store.findByClientId("c1"))?.comments?.map((c) => c.id)).toEqual([added?.id]);
+    expect(added?.body).toBe("b");
   });
 });
 

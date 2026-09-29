@@ -1486,8 +1486,8 @@ export class Panel {
 
   /** A feedback's composer state, which outlives each render of its thread. */
   private draftOf(feedbackId: string): ThreadDraft {
-    let draft = this.threadDrafts.get(feedbackId);
-    if (!draft) this.threadDrafts.set(feedbackId, (draft = { text: "" }));
+    const draft = this.threadDrafts.get(feedbackId) ?? { text: "" };
+    this.threadDrafts.set(feedbackId, draft);
     return draft;
   }
 
