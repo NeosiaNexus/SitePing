@@ -9,6 +9,8 @@ import {
   type ScreenshotStorage,
 } from "@siteping/core";
 import { getTableName, sql } from "drizzle-orm";
+import { withReplicas as withPgReplicas } from "drizzle-orm/pg-core";
+import { withReplicas as withSQLiteReplicas } from "drizzle-orm/sqlite-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../src/constants/deletes.js";
 import { SCREENSHOT_DELETE_CONCURRENCY } from "../src/constants/screenshots.js";
@@ -21,6 +23,8 @@ import { createLibSQLTestDatabase, createPgTestDatabase, type DriverCallIntercep
 const SCREENSHOT_DATA_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
 /** Response cap of the size-limited driver — smaller than one inline screenshot in the tests using it. */
 const RESPONSE_SIZE_LIMIT_BYTES = 16 * 1024;
+/** Timeout of a test that opens its own databases — starting PGlite takes seconds on a loaded machine. */
+const DATABASE_OPENING_TEST_TIMEOUT_MS = 30_000;
 /** Time the injected test clocks start at, far from the real wall clock. */
 const FROZEN_TIME_MS = Date.parse("2026-01-01T00:00:00.000Z");
 const CUSTOM_TABLE_NAMES: SitepingTableNames = {
@@ -1585,6 +1589,68 @@ for (const dialect of dialects) {
     });
   });
 }
+
+describe("DrizzleStore on a database built with withReplicas", () => {
+  /**
+   * Everything the store does, checked against a replica that holds nothing: a write that
+   * reached it, or a read of the store's own writes from it, fails.
+   */
+  async function expectEverythingOnThePrimary(store: DrizzleStore, countPrimaryFeedbacks: () => Promise<number>) {
+    const created = await store.createFeedback(feedbackInput());
+    const comment = await store.addComment(created.id, commentInput());
+    expect(await countPrimaryFeedbacks()).toBe(1);
+    expect(await store.createFeedback(feedbackInput({ clientId: created.clientId }))).toMatchObject({ id: created.id });
+    expect(await store.findByClientId(created.clientId)).toEqual({ ...created, comments: [comment] });
+    expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
+    expect(await store.verifyProjectOwnership(created.id, "site")).toBe(true);
+    await store.updateFeedback(created.id, { status: "in_progress", resolvedAt: null });
+    await store.deleteFeedback(created.id);
+    await store.createFeedback(feedbackInput());
+    await store.deleteAllFeedbacks("site");
+    expect(await countPrimaryFeedbacks()).toBe(0);
+  }
+
+  it(
+    "runs everything on the PostgreSQL primary, never on a read-only replica",
+    async () => {
+      const [primary, replica] = await Promise.all([createPgTestDatabase(), createPgTestDatabase()]);
+      try {
+        await replica.db.execute(sql`SET default_transaction_read_only = on`);
+        const { sitepingFeedbacks } = createSitepingPgTables();
+        const store = createPgSitepingStore(withPgReplicas(primary.db, [replica.db]), { logger: { warn: () => {} } });
+
+        await expectEverythingOnThePrimary(
+          store,
+          async () => (await primary.db.select().from(sitepingFeedbacks)).length,
+        );
+      } finally {
+        await Promise.all([primary.close(), replica.close()]);
+      }
+    },
+    DATABASE_OPENING_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "runs everything on the libSQL primary, whose batches the replicated database lacks",
+    async () => {
+      const [primary, replica] = await Promise.all([createLibSQLTestDatabase(), createLibSQLTestDatabase()]);
+      try {
+        const { sitepingFeedbacks } = createSitepingSqliteTables();
+        const store = createLibSQLSitepingStore(withSQLiteReplicas(primary.db, [replica.db]), {
+          logger: { warn: () => {} },
+        });
+
+        await expectEverythingOnThePrimary(
+          store,
+          async () => (await primary.db.select().from(sitepingFeedbacks)).length,
+        );
+      } finally {
+        await Promise.all([primary.close(), replica.close()]);
+      }
+    },
+    DATABASE_OPENING_TEST_TIMEOUT_MS,
+  );
+});
 
 // Each entry bundles its own copy of core, so `instanceof` only matches the
 // classes exported by that entry: every error a store method throws must be one.

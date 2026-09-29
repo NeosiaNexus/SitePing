@@ -1,3 +1,4 @@
+import { primaryOf } from "../shared/replicas.js";
 import { DrizzleSitepingStore, type DrizzleStore, type DrizzleStoreOptions } from "../shared/store.js";
 import { type AnyLibSQLDatabase, createLibSQLGateway } from "./gateway.js";
 import { createSitepingSqliteTables, type SitepingSqliteTables } from "./tables.js";
@@ -21,7 +22,8 @@ export interface LibSQLSitepingStoreOptions extends DrizzleStoreOptions {
 }
 
 /**
- * `SitepingStore` on Turso / libSQL through Drizzle ORM.
+ * `SitepingStore` on Turso / libSQL through Drizzle ORM. Given a database
+ * built with `withReplicas`, it runs everything on the primary.
  *
  * @example
  * ```ts
@@ -37,5 +39,5 @@ export function createLibSQLSitepingStore(
   options: LibSQLSitepingStoreOptions = {},
 ): DrizzleStore {
   const { tables = createSitepingSqliteTables(), ...storeOptions } = options;
-  return new DrizzleSitepingStore(createLibSQLGateway(db, tables), storeOptions);
+  return new DrizzleSitepingStore(createLibSQLGateway(primaryOf(db), tables), storeOptions);
 }

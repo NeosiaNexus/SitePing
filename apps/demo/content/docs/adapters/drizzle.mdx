@@ -93,6 +93,8 @@ export const store = createPgSitepingStore(drizzle(process.env.DATABASE_URL!), {
 
 Every PostgreSQL driver works the same way — swap the `drizzle` import (`drizzle-orm/neon-http`, `drizzle-orm/postgres-js`, `drizzle-orm/pglite`…). The store never opens an interactive `db.transaction`: every write is a single statement, so drivers without interactive transactions, like Neon HTTP, are fully supported.
 
+A database built with Drizzle's `withReplicas(primary, replicas)` works on both dialects: the store runs everything on the primary, reads included, since it reads back its own writes and a replica may lag.
+
 ```ts
 // Turso / libSQL
 import { drizzle } from "drizzle-orm/libsql";
