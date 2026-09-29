@@ -260,7 +260,8 @@ async function headers(): Promise<Record<string, string>> {
 }
 
 initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "acme", headers });
-// Dashboard, on https://inbox.example.com: <SitepingInbox endpoint="https://api.example.com/api/siteping" projects="acme" headers={headers} />
+// Dashboard, on https://inbox.example.com:
+// <SitepingInbox endpoint="https://api.example.com/api/siteping" projects="acme" headers={headers} />
 ```
 
 - **An access token, never an ID token.** `audience` is the identifier your provider puts in `aud` for your API — Auth0's API identifier, or the audience a Keycloak audience mapper adds. An ID token is addressed to your client application instead, so it answers `401`. Auth0 issues a JWT access token only for an API audience, and Zitadel only when the application's token type is JWT.
