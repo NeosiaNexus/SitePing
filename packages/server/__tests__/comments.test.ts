@@ -575,12 +575,18 @@ describe("comments — authorization", () => {
 
     expect(posted.status).toBe(403);
     expect(deleted.status).toBe(403);
-    expect(authorize).toHaveBeenCalledWith(
+    // Dry runs, which fill in the POST answers' permissions, ask about these actions too: leave them out.
+    const decisions = authorize.mock.calls.map(([context]) => context).filter((context) => !context.dryRun);
+    expect(decisions).toEqual([
+      expect.objectContaining({ action: "create", projectName: PROJECT }),
       expect.objectContaining({ action: "createComment", projectName: PROJECT, feedbackId: feedback.id }),
-    );
-    expect(authorize).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "deleteComment", feedbackId: feedback.id, commentId: kept.id }),
-    );
+      expect.objectContaining({
+        action: "deleteComment",
+        projectName: PROJECT,
+        feedbackId: feedback.id,
+        commentId: kept.id,
+      }),
+    ]);
     expect((await store.findByClientId("uuid-123"))?.comments).toEqual([kept]);
   });
 
