@@ -101,7 +101,8 @@ describe("buildWebhookPayload", () => {
 
     await dispatchWebhook({ url: "https://hooks.example.com" }, { ...FEEDBACK, comments: [comment] });
 
-    const body = (fetchSpy.mock.calls[0]?.[1] as RequestInit).body as string;
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const body = init.body as string;
     const { clientId: _clientId, ...expected } = comment;
     expect(body).not.toContain(comment.clientId);
     expect((JSON.parse(body) as GenericWebhookPayload).comments).toEqual([
