@@ -58,6 +58,9 @@ export interface ThreadOptions {
   post: (body: string, clientId: string) => Promise<CommentResponse | null>;
 }
 
+/** Numbers the composer hints, whose ids the fields point at. */
+let hints = 0;
+
 /** The thread under the message — `null` when there is nothing to read and no way to reply. */
 export function buildThread(
   feedback: FeedbackResponse,
@@ -68,14 +71,21 @@ export function buildThread(
   if (!canPost && comments.length === 0) return null;
 
   const root = el("div");
+  // A labelled list: a screen reader hears where the replies start, and how
+  // many there are (`role` too: WebKit drops it from an unstyled list).
   // Polite: a reply that lands is read out, not just drawn.
-  const list = el("div", { "aria-live": "polite" });
+  const list = el("ol", {
+    class: "sp-thread-list",
+    role: "list",
+    "aria-label": t("comments.title"),
+    "aria-live": "polite",
+  });
   const shown = new Set<string>();
   const add = (comment: CommentResponse): void => {
     // A reload may have brought the reply in before its own answer did.
     if (shown.has(comment.id)) return;
     shown.add(comment.id);
-    const item = el("div", { class: "sp-detail-message sp-comment", "data-role": comment.authorRole });
+    const item = el("li", { class: "sp-detail-message sp-comment", "data-role": comment.authorRole });
     const head = el("div", { class: "sp-comment-head" });
     const author = el("span");
     setText(author, comment.authorName);
@@ -111,8 +121,12 @@ export function buildThread(
   const foot = el("div", { class: "sp-thread-foot" });
   // Left empty on touch screens, like the feedback form's hint: no hardware
   // keyboard to press the shortcut with. The span keeps Send on the right.
-  const hint = el("span");
-  if (!isCoarsePointer()) setText(hint, t(isMacPlatform() ? "popup.submitHintMac" : "popup.submitHintOther"));
+  const hint = el("span", { id: `sp-thread-hint-${++hints}` });
+  if (!isCoarsePointer()) {
+    setText(hint, t(isMacPlatform() ? "popup.submitHintMac" : "popup.submitHintOther"));
+    input.setAttribute("aria-describedby", hint.id);
+    input.setAttribute("aria-keyshortcuts", "Control+Enter Meta+Enter");
+  }
   const send = document.createElement("button");
   send.type = "button";
   send.className = "sp-btn-primary";

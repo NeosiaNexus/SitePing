@@ -434,6 +434,10 @@ export const DETAIL_CSS = /* css */ `
 
   /* ---- Thread Section ---- */
 
+  .sp-thread-list {
+    list-style: none;
+  }
+
   .sp-comment {
     margin-top: 8px;
     border-left-color: var(--sp-border);

@@ -152,6 +152,7 @@ export const ru: Translations = {
   "detail.diagnostics.noEntries": "Нет записей",
 
   // Discussion thread (detail view)
+  "comments.title": "Ответы",
   "comments.placeholder": "Ответить команде...",
   "comments.error": "Не отправлено. Попробуйте ещё раз.",
   "comments.team": "Команда",

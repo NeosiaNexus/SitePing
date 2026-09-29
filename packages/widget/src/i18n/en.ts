@@ -152,6 +152,7 @@ export const en: Translations = {
   "detail.diagnostics.noEntries": "No entries",
 
   // Discussion thread (detail view)
+  "comments.title": "Replies",
   "comments.placeholder": "Reply to the team...",
   "comments.error": "Not sent. Try again.",
   "comments.team": "Team",

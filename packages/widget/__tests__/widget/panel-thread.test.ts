@@ -92,6 +92,17 @@ describe("buildThread", () => {
     expect(input()).toBeNull();
   });
 
+  it("renders the replies as a labelled list, whose new items are read out", () => {
+    const { replies } = mount(makeFeedback([makeComment({ id: "a" }), makeComment({ id: "b" })]));
+    const list = replies()[0]?.parentElement;
+
+    expect(replies().map((reply) => reply.tagName)).toEqual(["LI", "LI"]);
+    expect(list?.tagName).toBe("OL");
+    expect(list?.getAttribute("role")).toBe("list");
+    expect(list?.getAttribute("aria-label")).toBe(t("comments.title"));
+    expect(list?.getAttribute("aria-live")).toBe("polite");
+  });
+
   it("renders bodies and names as text, never as markup", () => {
     const { replies } = mount(
       makeFeedback([makeComment({ authorName: "<b>Eve</b>", body: '<img src=x onerror="alert(1)">' })]),
@@ -119,14 +130,20 @@ describe("buildThread", () => {
     expect(input()?.maxLength).toBe(5000);
     expect(send()?.textContent).toBe(t("popup.submit"));
     // jsdom reports neither userAgentData nor a Mac platform.
-    expect(root?.querySelector(".sp-thread-foot span")?.textContent).toBe(t("popup.submitHintOther"));
+    const hint = root?.querySelector(".sp-thread-foot span");
+    expect(hint?.textContent).toBe(t("popup.submitHintOther"));
+    // The field names the hint as its description, and the shortcut itself.
+    expect(hint?.id).not.toBe("");
+    expect(input()?.getAttribute("aria-describedby")).toBe(hint?.id);
+    expect(input()?.getAttribute("aria-keyshortcuts")).toBe("Control+Enter Meta+Enter");
   });
 
   it("does not advertise the keyboard shortcut on touch screens", () => {
     mockMediaQueries(["(pointer: coarse)"]);
     try {
-      const { root, send } = mount(makeFeedback([]));
+      const { root, send, input } = mount(makeFeedback([]));
       expect(root?.querySelector(".sp-thread-foot span")?.textContent).toBe("");
+      expect(input()?.hasAttribute("aria-describedby")).toBe(false);
       expect(send()?.textContent).toBe(t("popup.submit"));
     } finally {
       mockMediaQueries([]);
