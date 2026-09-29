@@ -64,7 +64,7 @@ On a self-managed instance, pass `apiBaseUrl: "https://gitlab.acme.com/api/v4"`.
 | `wont_fix` | Closed as not planned | Closed |
 | Deleted | Closed as not planned, with a comment | Closed, with a comment |
 
-Moving between `open` and `in_progress` sends nothing: the issue is already open. With `syncStatus: false`, issues are only created and closed on delete.
+Moving between `open` and `in_progress` only looks the issue up, and writes nothing to an issue that is open. With `syncStatus: false`, issues are only created and closed on delete.
 
 The sync runs one way, from SitePing to the tracker: closing the issue on GitHub does not resolve the feedback.
 

@@ -263,7 +263,7 @@ for (const provider of providers) {
       expect(fake.issues[0]?.isOpen).toBe(true);
     });
 
-    it("sends nothing when the issue is already in the requested state", async () => {
+    it("writes nothing when the issue is already in the requested state", async () => {
       const handler = createHandler();
       const feedback = await send(handler);
       fake.requests.length = 0;
