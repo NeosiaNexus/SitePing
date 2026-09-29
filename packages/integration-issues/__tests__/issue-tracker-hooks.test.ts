@@ -565,6 +565,34 @@ for (const provider of providers) {
       expect(String((context as { error: Error }).error.message)).not.toContain(TOKEN);
     });
 
+    describe("keeps every record when a tracker call of the delete fails", () => {
+      const steps = [
+        ["the lookup", /^GET /],
+        ["closing the issue", /^(PATCH|PUT) /],
+        ["reading its comments", /^GET \S+\/(comments|notes)\?/],
+        ["commenting", /^POST \S+\/(comments|notes)$/],
+      ] as const;
+
+      for (const [step, pattern] of steps) {
+        for (const kind of ["single", "project"] as const) {
+          it(`${step}, deleting ${kind === "single" ? "one feedback" : "the project"}`, async () => {
+            const handler = createHandler();
+            const feedback = await send(handler);
+            await send(handler);
+            fake.failWhen(pattern, 503);
+
+            const response = await remove(
+              handler,
+              kind === "single" ? { id: feedback.id, projectName: "site" } : { projectName: "site", deleteAll: true },
+            );
+
+            expect(response.status).toBe(502);
+            expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(2);
+          });
+        }
+      }
+    });
+
     it("closes only the issues of the project on deleteAll", async () => {
       const handler = createHandler();
       await send(handler);
