@@ -678,7 +678,7 @@ describe("SitepingInbox — permissions and readOnly", () => {
     await act(async () => {});
 
     expect(source.setStatus).not.toHaveBeenCalled();
-    expect(screen.queryByText("Marked as resolved")).toBeNull();
+    expect(screen.queryByText(/^Marked as/)).toBeNull();
     expect(listRows()).toHaveLength(3);
   });
 
