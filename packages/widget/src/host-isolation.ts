@@ -23,7 +23,10 @@
  * Known limits: a native `<dialog>` opened with `showModal()` makes the rest
  * of the page inert with no attribute to undo, and capture-phase host
  * listeners for `mousedown`, `touchstart`, `click` or Tab still see the
- * widget's events (its own listeners need them).
+ * widget's events (its own listeners need them). So do capture-phase key
+ * listeners on `window` or `document` for the keys typed in a widget field:
+ * the surface stops those keys in the bubble phase only, which covers the
+ * usual shortcut handlers.
  */
 
 /** Events a host modal reads as an outside interaction, or cancels (wheel scroll locks). */
