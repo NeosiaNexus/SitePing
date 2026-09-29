@@ -511,8 +511,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+  # After the server, like adapter-prisma: the @siteping/server version its
+  # peer range pins must reach npm first.
   publish-integration-issues:
-    needs: [release-please, build]
+    needs: [release-please, build, publish-server]
     if: |
       !failure() && !cancelled() &&
       (needs.release-please.outputs.integration-issues-release_created == 'true' ||
@@ -543,6 +545,12 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+
+      # The @siteping/server peer is `workspace:^`, which npm cannot resolve:
+      # pin the server release this commit carries.
+      - name: Pin the @siteping/server peer dependency
+        run: npm pkg set "peerDependencies.@siteping/server=^$(node -p 'require("../server/package.json").version')"
+        working-directory: packages/integration-issues
 
       - name: Publish @siteping/integration-issues
         run: npm publish --access public --provenance

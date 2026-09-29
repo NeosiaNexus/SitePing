@@ -152,7 +152,7 @@
         "@siteping/server": "workspace:*",
       },
       "peerDependencies": {
-        "@siteping/server": ">=0.0.0",
+        "@siteping/server": "workspace:^",
       },
     },
     "packages/screenshot-storage": {

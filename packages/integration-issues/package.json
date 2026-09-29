@@ -79,6 +79,6 @@
     "@siteping/adapter-memory": "workspace:*"
   },
   "peerDependencies": {
-    "@siteping/server": ">=0.0.0"
+    "@siteping/server": "workspace:^"
   }
 }
