@@ -44,7 +44,12 @@ export interface BackendRequest {
   timeoutMs?: number;
   /** Statuses that count as success besides 2xx (e.g. 404 on delete = already gone). */
   acceptStatuses?: readonly number[];
-  /** A 4xx on this call means nothing was stored — report it as a definitive rejection. */
+  /**
+   * A 3xx or 4xx on this call means nothing was stored — report it as a
+   * definitive rejection. No backend stores an object it answers with a
+   * redirect: S3 answers `301 PermanentRedirect` to a path-style request sent
+   * to another region's endpoint (fetch follows the redirects it can).
+   */
   isUpload?: boolean;
   /**
    * The error code and message of a failed response's body, kept as the
@@ -55,7 +60,7 @@ export interface BackendRequest {
   describeError: (body: string) => string | undefined;
 }
 
-const HTTP_CLIENT_ERROR_MIN = 400; // standard HTTP ranges
+const HTTP_REDIRECTION_MIN = 300; // standard HTTP ranges
 const HTTP_SERVER_ERROR_MIN = 500;
 
 /** Fetch with a timeout; turns failures into `ObjectStoreRequestError` (or a definitive upload rejection). */
@@ -80,7 +85,7 @@ export async function sendBackendRequest({
   const failure = new ObjectStoreRequestError(backend, method, url.pathname, response.status, {
     cause: describeError(await response.text().catch(() => "")),
   });
-  if (isUpload && response.status >= HTTP_CLIENT_ERROR_MIN && response.status < HTTP_SERVER_ERROR_MIN) {
+  if (isUpload && response.status >= HTTP_REDIRECTION_MIN && response.status < HTTP_SERVER_ERROR_MIN) {
     throw new ScreenshotUploadRejectedError(failure.message, { cause: failure });
   }
   throw failure;

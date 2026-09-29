@@ -580,6 +580,43 @@ describe("backend requests — error bodies", () => {
     }
   });
 
+  it("reports an upload S3 answers with a redirect as a definitive rejection, without reclaiming it", async () => {
+    // What S3 answers a path-style request sent to another region's endpoint: no Location, nothing stored.
+    const requests: string[] = [];
+    const uncertainKeys: string[] = [];
+    const objectStore = createS3ObjectStore({
+      endpoint: "https://s3.amazonaws.com",
+      bucket: "screens",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      accessKeyId: "AKIDEXAMPLE",
+      secretAccessKey: "s3-secret",
+      fetch: async (input, init) => {
+        requests.push(new Request(input, init).method);
+        return new Response(
+          "<Error><Code>PermanentRedirect</Code><Message>The bucket you are attempting to access must be " +
+            "addressed using the specified endpoint.</Message></Error>",
+          { status: 301 },
+        );
+      },
+    });
+    const storage = createScreenshotStorage(objectStore, {
+      logger: silentLogger(),
+      onUncertainUpload: (key) => {
+        uncertainKeys.push(key);
+      },
+    });
+
+    const failure = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => error);
+
+    expect(isScreenshotUploadRejected(failure)).toBe(true);
+    expect((failure as ScreenshotUploadRejectedError).cause).toMatchObject({
+      status: 301,
+      cause: expect.stringContaining("PermanentRedirect"),
+    });
+    expect(requests).toEqual(["PUT"]);
+    expect(uncertainKeys).toEqual([]);
+  });
+
   it("reports a Cloudflare Images error by the codes and messages of its errors", async () => {
     const fake = createFakeCloudflareImages({ accountId: "account-1", apiToken: "cf-token" });
     const objectStore = createCloudflareImagesObjectStore({

@@ -211,7 +211,7 @@ Les stores appellent `delete(url)` quand un feedback est supprimé, et quand une
 
 ## Envois à l'issue incertaine
 
-Quand un envoi échoue sur un délai dépassé ou un `5xx`, le backend a pu stocker l'objet malgré tout. Le stockage supprime alors la clé tout de suite et relance l'erreur. Un backend qui valide l'envoi après cette suppression laisse un orphelin : `onUncertainUpload(key)` reçoit donc la clé. Mettez-la dans une tâche durable qui la supprime de nouveau quelques minutes plus tard avec `objectStore.remove(key)`. Un refus définitif (un `4xx`, comme des identifiants invalides) n'a rien stocké et n'est pas récupéré.
+Quand un envoi échoue sur un délai dépassé ou un `5xx`, le backend a pu stocker l'objet malgré tout. Le stockage supprime alors la clé tout de suite et relance l'erreur. Un backend qui valide l'envoi après cette suppression laisse un orphelin : `onUncertainUpload(key)` reçoit donc la clé. Mettez-la dans une tâche durable qui la supprime de nouveau quelques minutes plus tard avec `objectStore.remove(key)`. Un refus définitif n'a rien stocké et n'est pas récupéré : un `4xx`, comme des identifiants invalides, ou un `3xx`, comme le `301 PermanentRedirect` que renvoie AWS quand `endpoint` n'est pas la région du bucket.
 
 Une règle de cycle de vie qui fait expirer `siteping-*` ne remplace pas ce mécanisme : elle ne distingue pas les orphelins des captures qu'un feedback affiche encore. Elle ne convient donc que si vous voulez de toute façon que les captures expirent après une durée de conservation.
 
