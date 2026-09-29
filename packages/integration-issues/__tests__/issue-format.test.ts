@@ -103,24 +103,26 @@ describe("formatIssue", () => {
     expect(body).toContain(`\`\`\`\`\`text\n${message}\n\`\`\`\`\``);
   });
 
-  it("quotes every single-line field on one line", () => {
-    const hostile = (label: string) => `${label} ${payloads.join("\n")} \`\` \``;
+  for (const backticks of ["", " `` `"]) {
+    it(`quotes every single-line field on one line (${backticks ? "with" : "without"} backticks)`, () => {
+      const hostile = (label: string) => `${label} ${payloads.join("\n")}${backticks}`;
 
-    const { body } = formatIssue(
-      record({
-        authorName: hostile("name"),
-        userAgent: hostile("agent"),
-        viewport: hostile("viewport"),
-        url: `/checkout?q=${hostile("url")}`,
-      }),
-      { ...options, includeAuthorEmail: true },
-    );
-    const live = liveMarkdown(body);
+      const { body } = formatIssue(
+        record({
+          authorName: hostile("name"),
+          userAgent: hostile("agent"),
+          viewport: hostile("viewport"),
+          url: `/checkout?q=${hostile("url")}`,
+        }),
+        { ...options, includeAuthorEmail: true },
+      );
+      const live = liveMarkdown(body);
 
-    for (const leak of leaks) expect(live.text).not.toContain(leak);
-    expect(live.links).toEqual([]);
-    expect(live.images).toEqual([]);
-  });
+      for (const leak of leaks) expect(live.text).not.toContain(leak);
+      expect(live.links).toEqual([]);
+      expect(live.images).toEqual([]);
+    });
+  }
 
   it("quotes console messages and network URLs from the diagnostics", () => {
     const diagnostics: FeedbackRecord["diagnostics"] = {
