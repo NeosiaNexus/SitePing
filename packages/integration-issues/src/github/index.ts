@@ -81,7 +81,8 @@ export function createGitHubTracker({
 
     async createIssue({ title, body, labels }) {
       const issue = await request<GitHubIssue>({ method: "POST", path: issuesPath, body: { title, body, labels } });
-      const kept = issue.labels.map((label) => (typeof label === "string" ? label : label.name));
+      // Label names are case-insensitive: an existing `SitePing` label is attached and answered as is.
+      const kept = issue.labels.map((label) => (typeof label === "string" ? label : label.name)?.toLowerCase());
       if (labels.includes(SITEPING_ISSUE_LABEL) && !kept.includes(SITEPING_ISSUE_LABEL)) {
         throw new UnlabelledIssueError(
           "GitHub",

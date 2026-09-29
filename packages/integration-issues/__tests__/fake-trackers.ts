@@ -81,11 +81,18 @@ function page<Item>(items: Item[], url: URL): Item[] {
   return items.slice((pageNumber - 1) * perPage, pageNumber * perPage);
 }
 
-export function createFakeGitHub(repository: string): FakeTracker {
+export function createFakeGitHub(repository: string): FakeTracker & {
+  /** The repository already has this label: GitHub attaches it to a request that names it in any casing. */
+  useExistingLabel(name: string): void;
+} {
   const base = `/repos/${repository}/issues`;
   const escapedBase = base.replace(/[/.]/g, "\\$&");
   let server: ReturnType<typeof createFakeServer>;
   const find = (key: string | undefined) => server.issues.find((issue) => issue.key === key);
+  // GitHub matches label names case-insensitively and answers with the repository's casing.
+  const existingLabels: string[] = [];
+  const sameLabel = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const hasLabel = (issue: FakeIssue, name: string) => issue.labels.some((label) => sameLabel(label, name));
   const toGitHub = (issue: FakeIssue) => ({
     number: Number(issue.key),
     html_url: `https://github.com/${repository}/issues/${issue.key}`,
@@ -105,7 +112,7 @@ export function createFakeGitHub(repository: string): FakeTracker {
           const phrase = query.match(/"([^"]*)"/)?.[1] ?? "";
           const scoped = query.includes(`repo:${repository} `) && query.includes("in:body");
           const items = server.settings.searchLags || !scoped || !label ? [] : [...server.issues].reverse();
-          const found = items.filter((issue) => issue.labels.includes(label ?? "") && issue.body.includes(phrase));
+          const found = items.filter((issue) => hasLabel(issue, label ?? "") && issue.body.includes(phrase));
           return Response.json({ total_count: found.length, incomplete_results: false, items: found.map(toGitHub) });
         },
       ],
@@ -118,7 +125,9 @@ export function createFakeGitHub(repository: string): FakeTracker {
             key: String(server.issues.length + 1),
             title,
             body,
-            labels: server.settings.dropLabels ? [] : labels,
+            labels: server.settings.dropLabels
+              ? []
+              : labels.map((name) => existingLabels.find((existing) => sameLabel(existing, name)) ?? name),
             isOpen: true,
             stateReason: null,
             comments: [],
@@ -133,7 +142,7 @@ export function createFakeGitHub(repository: string): FakeTracker {
         (_request, _match, url) => {
           const label = url.searchParams.get("labels");
           // Newest first, like the real API's default sort.
-          const labelled = server.issues.filter((issue) => !label || issue.labels.includes(label)).reverse();
+          const labelled = server.issues.filter((issue) => !label || hasLabel(issue, label)).reverse();
           return Response.json(page(labelled, url).map(toGitHub));
         },
       ],
@@ -168,7 +177,7 @@ export function createFakeGitHub(repository: string): FakeTracker {
     // `new Request` adds no User-Agent, as on runtimes without a default one.
     ["user-agent"],
   );
-  return server;
+  return { ...server, useExistingLabel: (name) => existingLabels.push(name) };
 }
 
 export function createFakeGitLab(project: string): FakeTracker {

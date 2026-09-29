@@ -61,6 +61,19 @@ const providers: ProviderUnderTest[] = [
 
 const silentLogger = () => ({ error: vi.fn() });
 
+describe("createGitHubTracker", () => {
+  it("accepts the siteping label in the casing the repository already uses", async () => {
+    const fake = createFakeGitHub("acme/site");
+    fake.useExistingLabel("SitePing");
+    const tracker = createGitHubTracker({ repository: "acme/site", token: TOKEN, fetch: fake.fetch });
+
+    await tracker.createIssue({ title: "Title", body: "marker", labels: ["siteping"] });
+
+    expect(fake.issues[0]?.labels).toEqual(["SitePing"]);
+    expect(await tracker.findSitepingIssues("marker")).toHaveLength(1);
+  });
+});
+
 describe("createIssueTrackerHooks options", () => {
   it("refuses a siteUrl that cannot resolve page URLs", () => {
     const tracker = createGitHubTracker({ repository: "acme/site", token: TOKEN });
