@@ -162,6 +162,54 @@ describe("Panel — 'Mine' filter", () => {
     expect(listCalls().map((o) => o.page)).toEqual([1, 2]);
   });
 
+  it("stops at an empty page even when the total promises more", async () => {
+    own = new Set(["unreachable"]);
+    await panel.open();
+    client.getFeedbacks.mockImplementation(async (_project: string, options: GetFeedbacksOptions) => {
+      if (options.page === 1)
+        return { feedbacks: Array.from({ length: MAX_PAGE_LIMIT }, (_, i) => makeFeedback(`fb-${i}`)), total: 1000 };
+      if (options.page === 2) return { feedbacks: [], total: 1000 };
+      if (options.page !== undefined) throw new Error(`walked on to page ${options.page}`);
+      return { feedbacks: [], total: 0 }; // Page markers
+    });
+    client.getFeedbacks.mockClear();
+
+    toggle().click();
+
+    await vi.waitFor(() => expect(shadow.querySelector(".sp-empty")).not.toBeNull());
+    expect(listCalls().map((o) => o.page)).toEqual([1, 2]);
+  });
+
+  it("abandons a walk that a newer load superseded", async () => {
+    const all = Array.from({ length: 250 }, (_, i) => makeFeedback(`fb-${i}`));
+    own = new Set(["fb-200"]);
+    const serve = paginate(all);
+    let releasePage1!: () => void;
+    client.getFeedbacks.mockImplementation(async (project: string, options: GetFeedbacksOptions = {}) => {
+      if (options.page === 1 && options.limit === MAX_PAGE_LIMIT) {
+        await new Promise<void>((resolve) => {
+          releasePage1 = resolve;
+        });
+      }
+      return serve(project, options);
+    });
+    await panel.open();
+    client.getFeedbacks.mockClear();
+
+    toggle().click(); // The walk holds on its page 1
+    await vi.waitFor(() => expect(listCalls()).toHaveLength(1));
+    toggle().click(); // Released: the plain list reloads
+    await vi.waitFor(() => expect(listCalls()).toHaveLength(2));
+    releasePage1();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // fb-200 is on page 3, but the superseded walk never asks for page 2
+    expect(listCalls()).toEqual([
+      { page: 1, limit: MAX_PAGE_LIMIT, url: "/" },
+      { page: 1, limit: 20, url: "/" },
+    ]);
+  });
+
   it("lists a feedback once when a new one shifts it onto the next page mid-walk", async () => {
     const page1 = Array.from({ length: MAX_PAGE_LIMIT }, (_, i) => makeFeedback(`fb-${i}`));
     const shifted = page1.at(-1) as FeedbackResponse;
