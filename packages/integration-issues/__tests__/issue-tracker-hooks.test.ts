@@ -663,6 +663,17 @@ for (const provider of providers) {
       expect(error.message).toMatch(provider.labelPermission);
     });
 
+    it("deletes a feedback that never got an issue, writing nothing to the tracker", async () => {
+      fake.failWhen(/^POST /, 500);
+      const handler = createHandler();
+      const feedback = await send(handler);
+      fake.requests.length = 0;
+
+      expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(200);
+      expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(0);
+      expect(fake.requests.filter((request) => request.method !== "GET")).toEqual([]);
+    });
+
     it("still creates the feedback when opening the issue fails", async () => {
       fake.failWhen(/^POST /, 500);
       const handler = createHandler();
