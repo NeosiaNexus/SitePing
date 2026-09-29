@@ -5,6 +5,7 @@
 
 import type { CommentCreateInput, CommentRecord, FeedbackPage, SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
+import type { SitepingCapabilities } from "../../src/index.js";
 import type { InboxSource, InboxState, SitepingInboxProps, UseSitepingInboxOptions } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
 
@@ -50,6 +51,12 @@ describe("InboxSource", () => {
     expectTypeOf(legacy).toExtend<InboxSource>();
     expectTypeOf<NonNullable<InboxSource["addComment"]>>().toEqualTypeOf<
       (feedbackId: string, projectName: string, input: CommentCreateInput) => Promise<CommentRecord>
+    >();
+  });
+
+  it("names the capabilities list() may return through the package itself", () => {
+    expectTypeOf<Awaited<ReturnType<InboxSource["list"]>>["capabilities"]>().toEqualTypeOf<
+      SitepingCapabilities | undefined
     >();
   });
 });

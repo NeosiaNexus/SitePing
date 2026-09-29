@@ -72,7 +72,7 @@ The two building blocks behind the built-in modes are exported too — `createEn
 | What you're typing | Exports |
 |---|---|
 | Feedback data | `FeedbackRecord`, `FeedbackStatus`, `FeedbackType`, `SitepingStore`, plus the `FEEDBACK_STATUSES` / `FEEDBACK_TYPES` constants and `isClosedStatus()` |
-| Threads | `CommentRecord` (a stored reply), `CommentCreateInput` (what `addComment` receives) |
+| Threads | `CommentRecord` (a stored reply), `CommentCreateInput` (what `addComment` receives), `SitepingCapabilities` (what `list()` may advertise) |
 | Hook options | `UseSitepingInboxOptions` and its three members — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions` — plus the shared `InboxSharedOptions` |
 | Hook result | `InboxState`, `InboxStatusFilter`, `InboxTypeFilter` |
 | Sources | `InboxSource`, `EndpointSourceOptions` (the argument of `createEndpointSource`) |

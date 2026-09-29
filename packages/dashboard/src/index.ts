@@ -5,6 +5,7 @@ export type {
   FeedbackRecord,
   FeedbackStatus,
   FeedbackType,
+  SitepingCapabilities,
   SitepingStore,
 } from "@siteping/core";
 export { FEEDBACK_STATUSES, FEEDBACK_TYPES, isClosedStatus } from "@siteping/core";
