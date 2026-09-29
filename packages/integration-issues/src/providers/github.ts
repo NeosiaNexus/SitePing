@@ -11,6 +11,7 @@ import { TRACKER_MAX_LISTED_PAGES } from "../constants/http.js";
 import { SITEPING_ISSUE_LABEL } from "../constants/issue-format.js";
 import { createJsonHttpClient, UnlabelledIssueError } from "../core/http-client.js";
 import type { IssueTracker, TrackedIssue } from "../core/issue-tracker.js";
+import { checkToken } from "../core/tracker-options.js";
 
 export interface GitHubTrackerOptions {
   /** `owner/name` of the repository issues are created in. */
@@ -62,12 +63,13 @@ export function createGitHubTracker({
   timeoutMs,
   maxListedPages = TRACKER_MAX_LISTED_PAGES,
 }: GitHubTrackerOptions): IssueTracker {
+  const credential = checkToken("createGitHubTracker", token);
   const request = createJsonHttpClient({
     tracker: "GitHub",
     baseUrl: apiBaseUrl,
     headers: {
       Accept: GITHUB_ACCEPT_HEADER,
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${credential}`,
       "User-Agent": GITHUB_USER_AGENT,
       "X-GitHub-Api-Version": GITHUB_API_VERSION,
     },

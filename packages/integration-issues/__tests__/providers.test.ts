@@ -7,7 +7,13 @@ import { createGitLabTracker } from "../src/providers/gitlab.js";
 
 const TOKEN = "tracker-secret-token";
 
-const providers: Array<[string, (options: { token: string; apiBaseUrl?: string }) => IssueTracker]> = [
+interface TrackerOptions {
+  token: string;
+  apiBaseUrl?: string;
+  fetch?: typeof fetch;
+}
+
+const providers: Array<[string, (options: TrackerOptions) => IssueTracker]> = [
   ["GitHub", (options) => createGitHubTracker({ repository: "acme/site", ...options })],
   ["GitLab", (options) => createGitLabTracker({ project: "acme/site", ...options })],
 ];
@@ -34,6 +40,28 @@ afterEach(() => {
 
 for (const [name, createTracker] of providers) {
   describe(`${name} tracker`, () => {
+    it("refuses a token no header can carry, without echoing it", () => {
+      for (const token of ["", " \n", "SECRET\u200B", "SECRET\nsecond", "SECRET\rsecond", "SE CRET", "SECRET\0"]) {
+        expect(() => createTracker({ token })).toThrow(/token must be a non-empty string of visible ASCII/);
+        expect(() => createTracker({ token })).not.toThrow(/SECRET/);
+      }
+    });
+
+    it("sends a token read with a trailing line break, trimmed", async () => {
+      const authorization: Array<string | null> = [];
+      const tracker = createTracker({
+        token: `${TOKEN}\n`,
+        fetch: async (input, init) => {
+          authorization.push(new Request(input, init).headers.get("authorization"));
+          return Response.json([]);
+        },
+      });
+
+      await tracker.listComments({ key: "1", url: "" });
+
+      expect(authorization).toEqual([`Bearer ${TOKEN}`]);
+    });
+
     it("never forwards its token across a cross-origin redirect", async () => {
       const received: IncomingHttpHeaders[] = [];
       const elsewhere = await listen((_url, headers) => {

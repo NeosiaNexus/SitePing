@@ -9,6 +9,7 @@ import { TRACKER_MAX_LISTED_PAGES } from "../constants/http.js";
 import { SITEPING_ISSUE_LABEL } from "../constants/issue-format.js";
 import { createJsonHttpClient, UnlabelledIssueError } from "../core/http-client.js";
 import type { IssueTracker, TrackedIssue } from "../core/issue-tracker.js";
+import { checkToken } from "../core/tracker-options.js";
 
 export interface GitLabTrackerOptions {
   /** Numeric project id or full path (`group/subgroup/project`). */
@@ -57,12 +58,13 @@ export function createGitLabTracker({
   timeoutMs,
   maxListedPages = TRACKER_MAX_LISTED_PAGES,
 }: GitLabTrackerOptions): IssueTracker {
+  const credential = checkToken("createGitLabTracker", token);
   const request = createJsonHttpClient({
     tracker: "GitLab",
     baseUrl: apiBaseUrl,
     // Not `PRIVATE-TOKEN`: fetch forwards custom headers across a cross-origin
     // redirect (an SSO proxy, a moved instance), and strips `Authorization`.
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${credential}` },
     ...(fetch ? { fetch } : {}),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
   });
