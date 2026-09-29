@@ -175,7 +175,7 @@ Lists are also sent with `Cache-Control: no-store`, since they depend on who ask
 
 ### Recipe: OpenID Connect
 
-When reviewers sign in with an OpenID Connect provider — Keycloak, Microsoft Entra ID, Auth0, Zitadel… — the widget and the dashboard send its access token as a bearer, and `access` verifies it with [jose](https://github.com/panva/jose). Visitors without a token keep the public widget: they submit, read and reply, while administrators alone triage and read reviewer emails.
+When reviewers sign in with an OpenID Connect provider — Keycloak, Microsoft Entra ID, Auth0, Zitadel… — the widget and the dashboard send its access token as a bearer, and `access` verifies it with [jose](https://github.com/panva/jose). Visitors without a token keep the public widget: they submit, read and reply, while administrators alone triage and read reviewer emails. If your app signs them in to that provider through Better Auth, use the [Better Auth recipe](#recipe-better-auth) instead.
 
 ```ts
 // lib/siteping-access.ts
@@ -327,6 +327,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 
 When your app signs users in with [Better Auth](https://www.better-auth.com), `access` asks it for the session: the widget and a `<SitepingInbox />` mounted in the app send its cookie with every request, so the client side needs no token. Its [admin plugin](https://www.better-auth.com/docs/plugins/admin) tells administrators apart — they triage and read reviewer emails — while everyone else, signed in or not, submits, reads and replies.
 
+This also covers an app that signs users in to an OpenID Connect provider — Keycloak, Microsoft Entra ID, Auth0… — through Better Auth's [Generic OAuth](https://www.better-auth.com/docs/plugins/generic-oauth) or [SSO](https://www.better-auth.com/docs/plugins/sso) plugin: those users hold a Better Auth session too. Keep the [OpenID Connect recipe](#recipe-openid-connect) for access tokens the endpoint verifies itself.
 
 ```ts
 // lib/auth.ts — your Better Auth server

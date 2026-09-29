@@ -175,7 +175,7 @@ Les listes partent aussi avec `Cache-Control: no-store`, puisqu'elles dépendent
 
 ### Recette : OpenID Connect
 
-Quand les relecteurs se connectent via un fournisseur OpenID Connect — Keycloak, Microsoft Entra ID, Auth0, Zitadel… —, le widget et le dashboard envoient son jeton d'accès en bearer, et `access` le vérifie avec [jose](https://github.com/panva/jose). Les visiteurs sans jeton gardent le widget public : ils envoient, lisent et répondent, tandis que seuls les administrateurs trient et lisent les e-mails des relecteurs.
+Quand les relecteurs se connectent via un fournisseur OpenID Connect — Keycloak, Microsoft Entra ID, Auth0, Zitadel… —, le widget et le dashboard envoient son jeton d'accès en bearer, et `access` le vérifie avec [jose](https://github.com/panva/jose). Les visiteurs sans jeton gardent le widget public : ils envoient, lisent et répondent, tandis que seuls les administrateurs trient et lisent les e-mails des relecteurs. Si votre application les connecte à ce fournisseur via Better Auth, suivez plutôt la [recette Better Auth](#recette--better-auth).
 
 ```ts
 // lib/siteping-access.ts
@@ -327,6 +327,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 
 Quand votre application connecte ses utilisateurs avec [Better Auth](https://www.better-auth.com), `access` lui demande la session : le widget et un `<SitepingInbox />` monté dans l'application envoient son cookie à chaque requête, le client n'a donc besoin d'aucun jeton. Son [plugin admin](https://www.better-auth.com/docs/plugins/admin) distingue les administrateurs — ils trient et lisent les e-mails des relecteurs —, tandis que tous les autres, connectés ou non, envoient, lisent et répondent.
 
+Elle couvre aussi une application qui connecte ses utilisateurs à un fournisseur OpenID Connect — Keycloak, Microsoft Entra ID, Auth0… — via le plugin [Generic OAuth](https://www.better-auth.com/docs/plugins/generic-oauth) ou [SSO](https://www.better-auth.com/docs/plugins/sso) de Better Auth : ces utilisateurs ont eux aussi une session Better Auth. Gardez la [recette OpenID Connect](#recette--openid-connect) pour les jetons d'accès que l'endpoint vérifie lui-même.
 
 ```ts
 // lib/auth.ts — votre serveur Better Auth
