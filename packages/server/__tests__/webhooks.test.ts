@@ -2,7 +2,13 @@ import { MemoryStore } from "@siteping/adapter-memory";
 import { createCollectionStore, type FeedbackRecord } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSitepingHandler } from "../src/index.js";
-import { buildWebhookPayload, dispatchWebhook, dispatchWebhooks, type WebhookConfig } from "../src/webhooks.js";
+import {
+  buildWebhookPayload,
+  dispatchWebhook,
+  dispatchWebhooks,
+  type GenericWebhookPayload,
+  type WebhookConfig,
+} from "../src/webhooks.js";
 import { validPayloadNoAnnotations } from "./fixtures.js";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +85,28 @@ describe("buildWebhookPayload", () => {
     expect(payload).toEqual(expected);
     // clientId is the browser-local dedup secret — it never leaves the server.
     expect("clientId" in payload).toBe(false);
+  });
+
+  it("keeps each comment's clientId out of the generic payload too", async () => {
+    const comment = {
+      id: "comment-1",
+      feedbackId: FEEDBACK.id,
+      body: "Still broken",
+      authorName: "Bob",
+      authorEmail: "bob@example.com",
+      authorRole: "client" as const,
+      clientId: "secret-comment-client-id",
+      createdAt: new Date("2026-05-14T11:00:00Z"),
+    };
+
+    await dispatchWebhook({ url: "https://hooks.example.com" }, { ...FEEDBACK, comments: [comment] });
+
+    const body = (fetchSpy.mock.calls[0]?.[1] as RequestInit).body as string;
+    const { clientId: _clientId, ...expected } = comment;
+    expect(body).not.toContain(comment.clientId);
+    expect((JSON.parse(body) as GenericWebhookPayload).comments).toEqual([
+      { ...expected, createdAt: "2026-05-14T11:00:00.000Z" },
+    ]);
   });
 
   it("truncates excessively long messages for chat platforms", () => {

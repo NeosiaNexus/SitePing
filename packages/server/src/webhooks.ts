@@ -19,7 +19,14 @@
  *   surfaced without crashing the request.
  */
 
-import type { FeedbackRecord, FeedbackType } from "@siteping/core";
+import type {
+  CommentRecord,
+  CommentResponse,
+  FeedbackRecord,
+  FeedbackType,
+  Prettify,
+  Serialized,
+} from "@siteping/core";
 
 /** Supported webhook integrations — drives the JSON body shape. */
 export type WebhookType = "slack" | "discord" | "generic";
@@ -100,11 +107,20 @@ export interface DiscordWebhookPayload {
 }
 
 /**
- * Generic webhook body — the stored record as JSON. `clientId` is stripped like
- * on every other output: it is the browser-local dedup secret and the POST
- * replay path hands the full record to whoever presents it.
+ * Generic webhook body — the stored record as the receiver parses it: dates
+ * are ISO strings, and `clientId` is stripped like on every other output, on
+ * the record and on each comment of its thread. It is the browser-local
+ * dedup secret, and the POST replay path hands the full record to whoever
+ * presents it.
  */
-export type GenericWebhookPayload = Omit<FeedbackRecord, "clientId">;
+export type GenericWebhookPayload = Prettify<
+  Serialized<Omit<FeedbackRecord, "clientId" | "comments">> & { comments?: CommentResponse[] | undefined }
+>;
+
+/** What `buildGenericPayload` returns — {@link GenericWebhookPayload} before `JSON.stringify`. */
+type GenericWebhookBody = Omit<FeedbackRecord, "clientId" | "comments"> & {
+  comments?: Omit<CommentRecord, "clientId">[] | undefined;
+};
 
 /** Mapping from webhook type to its concrete body shape. */
 export interface WebhookPayloadMap {
@@ -304,10 +320,11 @@ function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
   };
 }
 
-/** Generic JSON body — the record minus its `clientId`. */
-function buildGenericPayload(feedback: FeedbackRecord): GenericWebhookPayload {
-  const { clientId: _clientId, ...payload } = feedback;
-  return payload;
+/** Generic JSON body — the record minus its `clientId`, and its comments minus theirs. */
+function buildGenericPayload(feedback: FeedbackRecord): GenericWebhookBody {
+  const { clientId: _clientId, comments, ...payload } = feedback;
+  if (!comments) return payload;
+  return { ...payload, comments: comments.map(({ clientId: _commentClientId, ...comment }) => comment) };
 }
 
 /**
@@ -319,7 +336,7 @@ function buildGenericPayload(feedback: FeedbackRecord): GenericWebhookPayload {
 export function buildWebhookPayload<T extends WebhookType | undefined>(
   type: T,
   feedback: FeedbackRecord,
-): T extends "slack" ? SlackWebhookPayload : T extends "discord" ? DiscordWebhookPayload : GenericWebhookPayload {
+): T extends "slack" ? SlackWebhookPayload : T extends "discord" ? DiscordWebhookPayload : GenericWebhookBody {
   switch (type) {
     case "slack":
       return buildSlackPayload(feedback) as never;
