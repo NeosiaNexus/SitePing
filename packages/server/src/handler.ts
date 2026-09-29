@@ -81,10 +81,10 @@ function routeByBody<Principal>(
  *
  * @throws Error without a `store`; with a `maxBodyBytes` that is not a
  * positive integer, or a webhook `timeoutMs` no timer holds; in production
- * without `apiKey` (see
- * `requireAuthForDestructive`); or with `access.authorize` over a store
- * without `verifyProjectOwnership`, since PATCH/DELETE could then reach a
- * record of a project the caller is not authorized for.
+ * without `apiKey` (see `requireAuthForDestructive`); or with
+ * `access.authorize` over a store without `verifyProjectOwnership`, since
+ * PATCH/DELETE could then reach a record of a project the caller is not
+ * authorized for.
  *
  * @example Next.js App Router — `app/api/siteping/route.ts`
  * ```ts
