@@ -75,7 +75,7 @@ The title is `[SitePing]` followed by the message on one line, truncated to 255 
 - **Message**
 - **Type**
 - **Page**, resolved against `siteUrl`
-- **Open in the page**: a link that opens the page with the feedback focused, once the widget's [`deepLink`](/docs/widget/configuration) option is on
+- **Open in the page**: a link that opens the page with the feedback focused, once the widget's [`deepLink`](/docs/widget/configuration) option is on. It is only added for a page on `siteUrl`'s origin, without the credentials a URL may carry
 - **Annotations**: element, CSS selector and text of up to 10 annotations
 - **Author**, **Viewport**, **User agent**
 - **Screenshot**, when it has an `https` URL
@@ -89,7 +89,7 @@ Some things are left out:
 - Screenshots stored inline as `data:` URLs, which is what happens without a [screenshot storage](/docs/adapters/screenshot-storage). Trackers do not render them.
 - Discussion [threads](/docs/comments).
 
-Everything in the body comes from anonymous visitors, so it is quoted as code. A message can contain `@octocat`, `#12`, `<!--`, a Markdown link or an image, and none of it notifies anyone, links to another issue, hides text or loads anything. In the title, a zero-width space follows each reference sigil (`@`, `#` and `GH-`, plus GitLab's `!`, `&`, `~`, `%` and `$`) and splits each `://`, since GitLab also turns a URL pointing at an issue or merge request into a reference. A bare commit SHA is left as typed: GitLab still links it when it names one of the project's own commits.
+Everything in the body comes from anonymous visitors, so it is quoted as code. The deep link is the only live link, and it only ever points to `siteUrl`: a visitor who sends another site's URL gets a quoted page and no link. A message can contain `@octocat`, `#12`, `<!--`, a Markdown link or an image, and none of it notifies anyone, links to another issue, hides text or loads anything. In the title, a zero-width space follows each reference sigil (`@`, `#` and `GH-`, plus GitLab's `!`, `&`, `~`, `%` and `$`) and splits each `://`, since GitLab also turns a URL pointing at an issue or merge request into a reference. A bare commit SHA is left as typed: GitLab still links it when it names one of the project's own commits.
 
 > **Public repositories.** An issue in a public repository is public: every feedback's message, page, user agent and diagnostics become readable by anyone. Prefer a private repository, and use `redact` for secrets that end up in URLs or console messages.
 
@@ -100,7 +100,7 @@ Everything in the body comes from anonymous visitors, so it is quoted as code. A
 | Option | Type | Default | What it does |
 |---|---|---|---|
 | `tracker` | `IssueTracker` | — | Required. `createGitHubTracker`, `createGitLabTracker` or [your own](#other-trackers) |
-| `siteUrl` | `string` | — | Origin of the site under review. The widget records `location.pathname` as the page URL by default: without `siteUrl`, issues show a bare path and have no deep link |
+| `siteUrl` | `string` | — | Origin of the site under review. The widget records `location.pathname` as the page URL by default, which resolves against it. The deep link only points to this origin: without `siteUrl`, issues have no deep link |
 | `deepLinkParam` | `string \| false` | `"siteping"` | Must match the widget's [`deepLink`](/docs/widget/configuration) `param`. `false` leaves the link out |
 | `labels` | `string[]` | `[]` | Extra labels. `siteping` is always added |
 | `redact` | `(text) => string` | none | Applied to the message, author, URLs, user agent, annotation text and diagnostics before they leave your server |

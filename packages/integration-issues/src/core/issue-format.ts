@@ -1,4 +1,4 @@
-import { buildDeepLink, type FeedbackRecord, parseHttpUrl } from "@siteping/core";
+import { type FeedbackRecord, parseHttpUrl } from "@siteping/core";
 import {
   ANNOTATION_FIELD_MAX_LENGTH,
   ANNOTATIONS_LISTED,
@@ -30,7 +30,10 @@ export interface IssueFormatOptions {
   deepLinkParam: string | false;
   /** Include the reviewer's email next to their name. Off by default: issues are often public. */
   includeAuthorEmail: boolean;
-  /** Base that relative page URLs resolve against, e.g. `https://acme.com`. */
+  /**
+   * Base that relative page URLs resolve against, e.g. `https://acme.com`,
+   * and the only origin the deep link may point to.
+   */
   siteUrl?: string | undefined;
 }
 
@@ -52,6 +55,21 @@ function section(heading: string, content: string): string {
 
 function joinSections(sections: Array<string | null>): string {
   return sections.filter((part): part is string => part !== null).join(ISSUE_SECTION_SEPARATOR);
+}
+
+/**
+ * The deep link, only to a page of the site under review: the page URL is
+ * the visitor's, and this is the one live link in the body. Credentials in
+ * the URL are dropped.
+ */
+function buildSiteDeepLink(page: URL | null, feedbackId: string, param: string, siteUrl?: string): string | null {
+  const site = siteUrl === undefined ? null : parseHttpUrl(siteUrl);
+  if (!page || page.origin !== site?.origin) return null;
+  const link = new URL(page);
+  link.username = "";
+  link.password = "";
+  link.searchParams.set(param, feedbackId);
+  return link.href;
 }
 
 /** Where each annotation points on the page — what a developer needs to find the element. */
@@ -102,7 +120,7 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
   const deepLink =
     options.deepLinkParam === false
       ? null
-      : buildDeepLink({ id: feedback.id, url: pageUrl }, options.deepLinkParam, options.siteUrl);
+      : buildSiteDeepLink(page, feedback.id, options.deepLinkParam, options.siteUrl);
   // Inline `data:` screenshots (no ScreenshotStorage) are skipped: trackers do not render them.
   const screenshot = feedback.screenshotUrl ? parseHttpUrl(feedback.screenshotUrl) : null;
 

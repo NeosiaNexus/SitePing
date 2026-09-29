@@ -133,7 +133,7 @@ describe("formatIssue", () => {
   it("quotes a hostile message so nothing in it renders, however it plays with backticks", () => {
     const message = ["````", ...payloads, "```", "``` @octocat", "~~~", "    @octocat"].join("\n");
 
-    const { body } = formatIssue(record({ message }), options);
+    const { body } = formatIssue(record({ message }), { ...options, siteUrl: "https://example.com" });
     const live = liveMarkdown(body);
 
     for (const leak of leaks) expect(live.text).not.toContain(leak);
@@ -264,7 +264,7 @@ describe("formatIssue", () => {
       },
     });
 
-    const { body } = formatIssue(feedback, { ...options, includeAuthorEmail: true });
+    const { body } = formatIssue(feedback, { ...options, includeAuthorEmail: true, siteUrl: "https://acme.test" });
     const marker = buildIssueMarker({ feedbackId: feedback.id, projectName: "<".repeat(200) });
 
     expect(`${marker}\n\n${body}`.length).toBeLessThan(65_536);
@@ -287,6 +287,34 @@ describe("formatIssue", () => {
 
     expect(liveMarkdown(body).links).toEqual([]);
     expect(body).toContain("## Page\n\n`/checkout`");
+  });
+
+  it("links only pages of siteUrl's origin, since the page URL is the visitor's", () => {
+    const linked = (url: string, siteUrl?: string) =>
+      liveMarkdown(formatIssue(record({ url }), { ...options, siteUrl }).body).links;
+
+    for (const url of [
+      "https://acme.test@evil.test/checkout",
+      "https://evil.test/login",
+      "//evil.test/login",
+      "/\\evil.test/login",
+      "http://acme.test/checkout",
+    ]) {
+      expect(linked(url, "https://acme.test")).toEqual([]);
+    }
+    expect(linked("https://acme.test/checkout")).toEqual([]);
+    expect(linked("https://acme.test/checkout", "https://acme.test/app/")).toEqual([
+      "https://acme.test/checkout?siteping=fb-1",
+    ]);
+  });
+
+  it("drops credentials from the deep link", () => {
+    const { body } = formatIssue(record({ url: "https://user:pass@acme.test/checkout" }), {
+      ...options,
+      siteUrl: "https://acme.test",
+    });
+
+    expect(liveMarkdown(body).links).toEqual(["https://acme.test/checkout?siteping=fb-1"]);
   });
 
   it("never links a non-http(s) page URL", () => {

@@ -75,7 +75,7 @@ Le titre est `[SitePing]` suivi du message sur une ligne, tronqué à 255 caract
 - **Message**
 - **Type**
 - **Page**, résolue par rapport à `siteUrl`
-- **Open in the page** : un lien qui ouvre la page avec le feedback mis en avant, une fois l'option [`deepLink`](/fr/docs/widget/configuration) du widget activée
+- **Open in the page** : un lien qui ouvre la page avec le feedback mis en avant, une fois l'option [`deepLink`](/fr/docs/widget/configuration) du widget activée. Il n'est ajouté que pour une page de l'origine de `siteUrl`, sans les identifiants qu'une URL peut porter
 - **Annotations** : élément, sélecteur CSS et texte de 10 annotations au plus
 - **Author**, **Viewport**, **User agent**
 - **Screenshot**, quand la capture a une URL `https`
@@ -89,7 +89,7 @@ Certaines choses restent dehors :
 - Les captures stockées en ligne comme URL `data:`, ce qui arrive sans [stockage des captures](/fr/docs/adapters/screenshot-storage). Les gestionnaires ne les affichent pas.
 - Les [fils de discussion](/fr/docs/comments).
 
-Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Un message peut contenir `@octocat`, `#12`, `<!--`, un lien Markdown ou une image : rien de tout cela ne notifie quelqu'un, ne pointe vers un autre ticket, ne masque du texte ni ne charge quoi que ce soit. Dans le titre, une espace sans chasse suit chaque signe de référence (`@`, `#` et `GH-`, plus `!`, `&`, `~`, `%` et `$` sur GitLab) et coupe chaque `://`, car GitLab transforme aussi en référence une URL qui pointe vers un ticket ou une merge request. Un SHA de commit seul est laissé tel quel : GitLab le lie toujours s'il désigne un commit du projet lui-même.
+Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Le lien direct est le seul lien actif, et il ne pointe jamais que vers `siteUrl` : un visiteur qui envoie l'URL d'un autre site obtient une page citée et aucun lien. Un message peut contenir `@octocat`, `#12`, `<!--`, un lien Markdown ou une image : rien de tout cela ne notifie quelqu'un, ne pointe vers un autre ticket, ne masque du texte ni ne charge quoi que ce soit. Dans le titre, une espace sans chasse suit chaque signe de référence (`@`, `#` et `GH-`, plus `!`, `&`, `~`, `%` et `$` sur GitLab) et coupe chaque `://`, car GitLab transforme aussi en référence une URL qui pointe vers un ticket ou une merge request. Un SHA de commit seul est laissé tel quel : GitLab le lie toujours s'il désigne un commit du projet lui-même.
 
 > **Dépôts publics.** Un ticket dans un dépôt public est public : le message, la page, le user agent et les diagnostics de chaque feedback deviennent lisibles par tous. Préférez un dépôt privé, et utilisez `redact` pour les secrets qui finissent dans des URL ou des messages de console.
 
@@ -100,7 +100,7 @@ Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Un m
 | Option | Type | Défaut | Ce qu'elle fait |
 |---|---|---|---|
 | `tracker` | `IssueTracker` | — | Obligatoire. `createGitHubTracker`, `createGitLabTracker` ou [le vôtre](#autres-gestionnaires) |
-| `siteUrl` | `string` | — | Origine du site en recette. Par défaut, le widget enregistre `location.pathname` comme URL de page : sans `siteUrl`, les tickets affichent un chemin nu et n'ont pas de lien direct |
+| `siteUrl` | `string` | — | Origine du site en recette. Par défaut, le widget enregistre `location.pathname` comme URL de page, résolue par rapport à elle. Le lien direct ne pointe que vers cette origine : sans `siteUrl`, les tickets n'ont pas de lien direct |
 | `deepLinkParam` | `string \| false` | `"siteping"` | Doit correspondre au `param` de l'option [`deepLink`](/fr/docs/widget/configuration) du widget. `false` retire le lien |
 | `labels` | `string[]` | `[]` | Labels en plus. `siteping` est toujours ajouté |
 | `redact` | `(text) => string` | aucun | Appliqué au message, à l'auteur, aux URL, au user agent, au texte des annotations et aux diagnostics avant qu'ils quittent votre serveur |

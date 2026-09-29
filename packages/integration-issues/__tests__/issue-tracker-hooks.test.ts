@@ -133,7 +133,7 @@ for (const provider of providers) {
     });
 
     it("opens one labelled issue per feedback, linked by a hidden marker", async () => {
-      const handler = createHandler({ labels: ["feedback"] });
+      const handler = createHandler({ labels: ["feedback"], siteUrl: "https://example.com" });
 
       const feedback = await send(handler);
 
