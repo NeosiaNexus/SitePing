@@ -327,6 +327,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 
 When your app signs users in with [Better Auth](https://www.better-auth.com), `access` asks it for the session: the widget and a `<SitepingInbox />` mounted in the app send its cookie with every request, so the client side needs no token. Its [admin plugin](https://www.better-auth.com/docs/plugins/admin) tells administrators apart — they triage and read reviewer emails — while everyone else, signed in or not, submits, reads and replies.
 
+
 ```ts
 // lib/auth.ts — your Better Auth server
 import { betterAuth } from "better-auth";
@@ -429,7 +430,7 @@ export function Feedback() {
 
 #### From another origin
 
-A page on another origin — the widget on a client's site, the inbox on its own domain — reaches your app without its cookie: the widget and the inbox send cookies to their own origin only. Add Better Auth's [bearer plugin](https://www.better-auth.com/docs/plugins/bearer) and send the session token with `headers`; the recipe needs no change, since the plugin turns the token back into the session `getSession` reads.
+On another origin — the widget on a client's site — a page reaches your app without its cookie: the widget sends cookies to its own origin only. Add Better Auth's [bearer plugin](https://www.better-auth.com/docs/plugins/bearer) and send the session token with `headers`; the recipe needs no change, since the plugin turns the token back into the session `getSession` reads.
 
 ```ts
 // lib/auth.ts
@@ -444,13 +445,14 @@ export const auth = betterAuth({
 // app/api/siteping/route.ts
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
+  // Every site the widget runs on. The inbox stays on the endpoint's own origin.
   allowedOrigins: ["https://client-site.com"],
   access: betterAuthAccess,
   // …beforeCreate as above
 });
 ```
 
-The token arrives in the `set-auth-token` header of the sign-in response; the plugin's documentation shows how to keep it. On the page, `headers` sends it with every request:
+The token arrives in the `set-auth-token` header of the sign-in response; the plugin's documentation shows how to keep it. On the page, `headers` sends it with every request, and `onError` drops it once it stops working:
 
 ```ts
 function headers(): Record<string, string> {
@@ -458,12 +460,19 @@ function headers(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-initSiteping({ endpoint: "https://app.example.com/api/siteping", projectName: "acme", headers });
-// Dashboard, on another origin:
-// <SitepingInbox endpoint="https://app.example.com/api/siteping" projects="acme" headers={headers} />
+initSiteping({
+  endpoint: "https://app.example.com/api/siteping",
+  projectName: "acme",
+  headers,
+  onError: (error) => {
+    // A dead token: drop it, and the next request goes out as a visitor.
+    if ((error as { code?: string }).code === "AUTH") localStorage.removeItem("bearer_token");
+  },
+});
 ```
 
-Kept in `localStorage`, the token is readable by every script on that page.
+- **The token is the whole session.** It is the session cookie's value, not a SitePing credential: it opens every Better Auth endpoint of your app, the admin plugin's included, from any origin, and whoever holds it keeps it alive, since Better Auth renews the session as it is used. Kept in `localStorage`, it is readable by every script on that page. So have administrators triage from the inbox mounted in your app, which sends the cookie, out of scripts' reach, and keeps their session on your origin; keep the bearer for reviewers who sign in on the client's site.
+- **Drop it once it stops working.** A stale cookie stays a visitor, but a dead token answers `401` to every request, submissions included, and nothing removes it from `localStorage` when the session expires or is revoked. Remove it on the widget's `AUTH` error, as above, and when the user signs out.
 
 When the SitePing endpoint runs apart from Better Auth — another service, an edge worker away from your database — verify tokens from Better Auth's [jwt plugin](https://www.better-auth.com/docs/plugins/jwt) with the [OpenID Connect recipe](#recipe-openid-connect) instead. The page fetches one from `/api/auth/token` with its session cookie and sends it with `headers`. `ISSUER` and `audience` are your Better Auth URL, unless you set the plugin's `jwt.issuer` and `jwt.audience`; the key set is at `/api/auth/jwks`, and tokens are signed `EdDSA`. The payload is the user record: `rolesOf` reads `role` (see the table above), administrators hold `admin`, and the email's verification is in `emailVerified`, not `email_verified`.
 

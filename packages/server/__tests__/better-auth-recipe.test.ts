@@ -342,8 +342,11 @@ describe("Better Auth recipe", () => {
     const { auth } = createAuth();
     const logger = { error: vi.fn() };
     const handler = handlerFor(auth, { logger });
+    const headers = await headersOf(auth);
 
-    expect((await list(handler, await headersOf(auth))).status).toBe(401);
+    expect((await list(handler, headers)).status).toBe(401);
+    // Submissions too, until the page drops the token.
+    expect((await handler.POST(send("POST", validPayloadNoAnnotations, headers))).status).toBe(401);
     expect(logger.error).not.toHaveBeenCalled();
   });
 
@@ -371,6 +374,33 @@ describe("Better Auth recipe", () => {
 
     expect(visible.feedbacks.map((f) => f.permissions)).toEqual([ALL_PERMISSIONS]);
     expect((await resolve(handler, created.id, fromClientSite)).status).toBe(200);
+  });
+
+  it("hands the bearer the whole session: admin endpoints, from any origin, renewed as it is used", async () => {
+    const { auth, db } = createAuth();
+    const member = await signIn(auth, MEMBER);
+    const admin = await signIn(auth, ADMIN);
+    // Six days into seven: past `updateAge`.
+    const dayLeft = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    for (const session of db.session) session.expiresAt = dayLeft;
+    const call = (path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) =>
+      auth.handler(
+        new Request(`${BASE_URL}/api/auth${path}`, { ...init, headers: { ...admin.bearer, ...init.headers } }),
+      );
+
+    const promoted = await call("/admin/set-role", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "https://evil.example" },
+      body: JSON.stringify({ userId: member.userId, role: "admin" }),
+    });
+    // What an auth client asks on every page load.
+    await call("/get-session");
+
+    expect(promoted.status).toBe(200);
+    expect(db.user.find((user) => user.id === member.userId)?.role).toBe("admin");
+    const [session] = db.session.filter((row) => row.userId === admin.userId);
+    expect(session?.expiresAt).toBeInstanceOf(Date);
+    expect((session?.expiresAt as Date).getTime()).toBeGreaterThan(dayLeft.getTime());
   });
 
   it("answers a logged 500 when Better Auth cannot read its sessions — and keeps serving visitors", async () => {

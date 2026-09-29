@@ -327,6 +327,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 
 Quand votre application connecte ses utilisateurs avec [Better Auth](https://www.better-auth.com), `access` lui demande la session : le widget et un `<SitepingInbox />` monté dans l'application envoient son cookie à chaque requête, le client n'a donc besoin d'aucun jeton. Son [plugin admin](https://www.better-auth.com/docs/plugins/admin) distingue les administrateurs — ils trient et lisent les e-mails des relecteurs —, tandis que tous les autres, connectés ou non, envoient, lisent et répondent.
 
+
 ```ts
 // lib/auth.ts — votre serveur Better Auth
 import { betterAuth } from "better-auth";
@@ -429,7 +430,7 @@ export function Feedback() {
 
 #### Depuis une autre origine
 
-Une page d'une autre origine — le widget sur le site d'un client, l'inbox sur son propre domaine — atteint votre application sans son cookie : le widget et l'inbox n'envoient de cookies qu'à leur propre origine. Ajoutez le [plugin bearer](https://www.better-auth.com/docs/plugins/bearer) de Better Auth et envoyez le jeton de session avec `headers` ; la recette ne change pas, puisque le plugin retransforme le jeton en la session que lit `getSession`.
+Sur une autre origine — le widget sur le site d'un client —, une page atteint votre application sans son cookie : le widget n'envoie de cookies qu'à sa propre origine. Ajoutez le [plugin bearer](https://www.better-auth.com/docs/plugins/bearer) de Better Auth et envoyez le jeton de session avec `headers` ; la recette ne change pas, puisque le plugin retransforme le jeton en la session que lit `getSession`.
 
 ```ts
 // lib/auth.ts
@@ -444,13 +445,14 @@ export const auth = betterAuth({
 // app/api/siteping/route.ts
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
+  // Chaque site où tourne le widget. L'inbox reste sur l'origine de l'endpoint.
   allowedOrigins: ["https://site-client.com"],
   access: betterAuthAccess,
   // …beforeCreate comme plus haut
 });
 ```
 
-Le jeton arrive dans l'en-tête `set-auth-token` de la réponse de connexion ; la documentation du plugin montre comment le garder. Sur la page, `headers` l'envoie à chaque requête :
+Le jeton arrive dans l'en-tête `set-auth-token` de la réponse de connexion ; la documentation du plugin montre comment le garder. Sur la page, `headers` l'envoie à chaque requête, et `onError` l'efface dès qu'il ne marche plus :
 
 ```ts
 function headers(): Record<string, string> {
@@ -458,12 +460,19 @@ function headers(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-initSiteping({ endpoint: "https://app.example.com/api/siteping", projectName: "acme", headers });
-// Dashboard, sur une autre origine :
-// <SitepingInbox endpoint="https://app.example.com/api/siteping" projects="acme" headers={headers} />
+initSiteping({
+  endpoint: "https://app.example.com/api/siteping",
+  projectName: "acme",
+  headers,
+  onError: (error) => {
+    // Un jeton mort : on l'efface, et la requête suivante part en visiteur.
+    if ((error as { code?: string }).code === "AUTH") localStorage.removeItem("bearer_token");
+  },
+});
 ```
 
-Gardé dans le `localStorage`, le jeton est lisible par tous les scripts de cette page.
+- **Le jeton, c'est toute la session.** C'est la valeur du cookie de session, pas un identifiant propre à SitePing : il ouvre tous les endpoints Better Auth de votre application, ceux du plugin admin compris, depuis n'importe quelle origine, et qui le détient le garde en vie, puisque Better Auth renouvelle la session à l'usage. Gardé dans le `localStorage`, il est lisible par tous les scripts de cette page. Faites donc trier les administrateurs depuis l'inbox montée dans votre application, qui envoie le cookie, hors de portée des scripts, et garde leur session sur votre origine ; réservez le bearer aux relecteurs qui se connectent sur le site du client.
+- **Effacez-le dès qu'il ne marche plus.** Un cookie périmé reste un visiteur, mais un jeton mort répond `401` à chaque requête, envois compris, et rien ne l'efface du `localStorage` quand la session expire ou est révoquée. Retirez-le sur l'erreur `AUTH` du widget, comme ci-dessus, et quand l'utilisateur se déconnecte.
 
 Quand l'endpoint SitePing tourne à l'écart de Better Auth — un autre service, un edge worker loin de votre base —, vérifiez plutôt les jetons du [plugin jwt](https://www.better-auth.com/docs/plugins/jwt) de Better Auth avec la [recette OpenID Connect](#recette--openid-connect). La page en obtient un sur `/api/auth/token` avec son cookie de session et l'envoie avec `headers`. `ISSUER` et `audience` valent l'URL de votre Better Auth, sauf si vous définissez les `jwt.issuer` et `jwt.audience` du plugin ; le jeu de clés est à `/api/auth/jwks`, et les jetons sont signés en `EdDSA`. Le payload est la fiche de l'utilisateur : `rolesOf` lit `role` (voir le tableau plus haut), les administrateurs portent `admin`, et la vérification de l'e-mail se lit dans `emailVerified`, pas `email_verified`.
 
