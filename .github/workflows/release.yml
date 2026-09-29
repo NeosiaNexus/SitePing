@@ -556,7 +556,7 @@ jobs:
       # ships with its fix.
       - name: Pin the @siteping/server peer dependency
         run: |
-          range=$(node -p 'const v = require("../server/package.json").version; `>=${v} <${parseInt(v, 10) + 1}.0.0`')
+          range=$(node -p 'const v = require("../server/package.json").version; ">=" + v + " <" + (parseInt(v, 10) + 1) + ".0.0"')
           npm pkg set "peerDependencies.@siteping/server=$range"
         working-directory: packages/integration-issues
 
