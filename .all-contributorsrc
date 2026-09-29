@@ -133,6 +133,16 @@
         "code",
         "platform"
       ]
+    },
+    {
+      "login": "petzkod5",
+      "name": "Dylan Petzko",
+      "avatar_url": "https://avatars.githubusercontent.com/u/62967026?v=4",
+      "profile": "https://petzko.sh",
+      "contributions": [
+        "code",
+        "ideas"
+      ]
     }
   ],
   "commitType": "docs"
