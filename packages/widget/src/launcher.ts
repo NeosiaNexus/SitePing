@@ -22,6 +22,7 @@ import { installHostIsolationGuard, isolateFromHost, registerEscapeLayer } from 
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
 import { getIdentity, type Identity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
+import { ownFeedback } from "./own-feedback.js";
 import type { Panel as PanelType } from "./panel.js";
 import { StoreClient } from "./store-client.js";
 import { buildStyles } from "./styles/base.js";
@@ -273,6 +274,12 @@ export function launch(config: SitepingConfig): SitepingInstance {
   if (config.onAnnotationStart) bus.on("annotation:start", config.onAnnotationStart);
   if (config.onAnnotationEnd) bus.on("annotation:end", config.onAnnotationEnd);
 
+  // Feedback sent from this browser, listed by the panel's "Mine" filter
+  const own = ownFeedback(config.projectName, config.endpoint);
+  bus.on("feedback:sent", (fb) => own.add(fb.id));
+  bus.on("feedback:deleted", (id) => own.remove(id));
+  bus.on("feedback:all-deleted", () => own.clear());
+
   // Bridge internal events to the public bus. The mapped-object type forces
   // one entry per public event — adding a key to SitepingPublicEvents
   // without bridging it here is a compile error, so `instance.on` can never
@@ -380,6 +387,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
           getScope,
           scopeAnnotationsByUrl,
           panelActions: config.panelActions,
+          ownFeedback: own,
         });
         return panelInstance;
       });

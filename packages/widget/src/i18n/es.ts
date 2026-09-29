@@ -49,6 +49,10 @@ export const es: Translations = {
   "scope.thisType": "Este tipo",
   "scope.all": "Todas las páginas",
 
+  // "Mine" toggle
+  "panel.filterMine": "Míos",
+  "panel.filterMineHint": "Solo los comentarios enviados desde este navegador",
+
   // FAB menu
   "fab.aria": "Siteping — Menú de comentarios",
   "fab.messages": "Mostrar barra lateral",

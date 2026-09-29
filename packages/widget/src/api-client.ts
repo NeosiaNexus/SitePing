@@ -16,6 +16,7 @@ import {
   withSearchParams,
 } from "@siteping/core";
 import type { Identity } from "./identity.js";
+import { ownFeedback } from "./own-feedback.js";
 
 /**
  * Abstract client interface used by the widget internals.
@@ -386,7 +387,14 @@ export async function flushRetryQueue(
               body: JSON.stringify(entry.payload),
               signal: controller.signal,
             });
-            if (res.ok) continue;
+            if (res.ok) {
+              // Sent from this browser after all: the panel's "Mine" filter lists it
+              const created: unknown = await res.json().catch(() => null);
+              if (hasOwn(created, "id") && typeof created.id === "string") {
+                ownFeedback(entry.payload.projectName, endpoint).add(created.id);
+              }
+              continue;
+            }
             if (isTransientStatus(res.status)) failed.push(entry);
             else rejected += 1;
           } catch {
