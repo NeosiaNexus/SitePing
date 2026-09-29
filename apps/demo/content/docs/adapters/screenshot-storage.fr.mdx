@@ -215,7 +215,11 @@ Les stores appellent `delete(url)` quand un feedback est supprimé, et quand une
 
 ## Envois à l'issue incertaine
 
-Quand un envoi échoue encore après ses nouvelles tentatives, sur un délai dépassé, une erreur réseau ou un `5xx`, le backend a pu stocker l'objet malgré tout. Le stockage supprime alors la clé tout de suite et relance l'erreur. Un backend qui valide l'envoi après cette suppression laisse un orphelin : `onUncertainUpload(key)` reçoit donc la clé. Mettez-la dans une tâche durable qui la supprime de nouveau quelques minutes plus tard avec `objectStore.remove(key)`. Un refus définitif n'a rien stocké et n'est pas récupéré : un `4xx`, comme des identifiants invalides, ou un `3xx`, comme le `301 PermanentRedirect` que renvoie AWS quand `endpoint` n'est pas la région du bucket.
+Quand un envoi échoue encore après ses nouvelles tentatives, sur un délai dépassé, une erreur réseau ou un `5xx`, le backend a pu stocker l'objet malgré tout. Le stockage supprime alors la clé tout de suite, avant de relancer l'erreur. Un backend qui valide l'envoi après cette suppression laisse un orphelin : `onUncertainUpload(key)` reçoit donc la clé au même moment. Mettez-la dans une tâche durable qui la supprime de nouveau quelques minutes plus tard avec `objectStore.remove(key)`.
+
+Le stockage attend la suppression et le hook 2 secondes au plus, puis relance l'erreur et les laisse finir en arrière-plan (un hook qui échoue plus tard est quand même journalisé). Un envoi en échec retient donc le feedback au plus `timeoutMs` plus 2 secondes, dans le délai de 10 secondes que le widget accorde à sa requête : limitez le hook à la mise en file, et gardez `timeoutMs` sous 8 secondes.
+
+Un refus définitif n'a rien stocké et n'est pas récupéré : un `4xx`, comme des identifiants invalides, ou un `3xx`, comme le `301 PermanentRedirect` que renvoie AWS quand `endpoint` n'est pas la région du bucket.
 
 Une règle de cycle de vie qui fait expirer `siteping-*` ne remplace pas ce mécanisme : elle ne distingue pas les orphelins des captures qu'un feedback affiche encore. Elle ne convient donc que si vous voulez de toute façon que les captures expirent après une durée de conservation.
 

@@ -1091,6 +1091,71 @@ describe("createScreenshotStorage — uploads whose outcome is unknown", () => {
     });
   });
 
+  it("awaits an async hook, and logs its rejection instead of letting it escape", async () => {
+    const logger = silentLogger();
+    const { objectStore } = createLateCommittingObjectStore(0);
+    const storage = createScreenshotStorage(objectStore, {
+      // A durable queue that answers late, with an error.
+      onUncertainUpload: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        throw new Error("queue unavailable");
+      },
+      logger,
+    });
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).rejects.toBeInstanceOf(ObjectStoreRequestError);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("onUncertainUpload failed"), {
+      key: expect.stringMatching(/^siteping-[a-f0-9]{32}\.jpg$/),
+      error: expect.objectContaining({ message: "queue unavailable" }),
+    });
+  });
+
+  it("reports the upload error after 2 seconds when the removal and the hook stall, without waiting for them", async () => {
+    vi.useFakeTimers();
+    const logger = silentLogger();
+    const { objectStore: lateCommittingObjectStore } = createLateCommittingObjectStore(0);
+    const uncertainKeys: string[] = [];
+    let rejectHook: (error: Error) => void = () => {};
+    const storage = createScreenshotStorage(
+      // A black-holed backend: the removal never answers either.
+      { ...lateCommittingObjectStore, remove: () => new Promise<void>(() => {}) },
+      {
+        onUncertainUpload: (key) => {
+          uncertainKeys.push(key);
+          return new Promise<void>((_resolve, reject) => {
+            rejectHook = reject;
+          });
+        },
+        logger,
+      },
+    );
+    let failure: unknown;
+    const upload = storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => {
+      failure = error;
+    });
+
+    // The hook runs alongside the removal, not after it.
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(uncertainKeys).toHaveLength(1);
+    expect(failure).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await upload;
+    expect(failure).toBeInstanceOf(ObjectStoreRequestError);
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining("onUncertainUpload has not settled after 2000 ms"),
+      { key: uncertainKeys[0] },
+    );
+
+    // A hook that fails once the upload was reported is still logged, never unhandled.
+    rejectHook(new Error("queue unavailable"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(logger.warn).toHaveBeenLastCalledWith(expect.stringContaining("onUncertainUpload failed"), {
+      key: uncertainKeys[0],
+      error: expect.objectContaining({ message: "queue unavailable" }),
+    });
+  });
+
   it("logs a backend remove that throws synchronously and still runs the hook and reports the upload error", async () => {
     const logger = silentLogger();
     const uncertainKeys: string[] = [];

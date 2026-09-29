@@ -20,6 +20,15 @@ export const DOWNLOAD_ONLY_CONTENT_TYPE = "application/octet-stream";
  */
 export const DEFAULT_MAX_SCREENSHOT_BYTES = 1_125_000;
 
+/**
+ * Longest an upload whose outcome is unknown waits for its reclaim — the
+ * immediate removal and `onUncertainUpload`, run side by side — before its
+ * error is rethrown, in milliseconds. The upload already spent up to its
+ * backend's `timeoutMs` (5 s by default), and the store still has to save the
+ * feedback before the widget abandons the request, 10 s after sending it.
+ */
+export const UNCERTAIN_UPLOAD_RECLAIM_TIMEOUT_MS = 2_000;
+
 /** Prefix of generated object keys; keeps SitePing objects recognizable in a shared bucket. */
 export const DEFAULT_KEY_PREFIX = "siteping-";
 
