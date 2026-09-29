@@ -172,6 +172,36 @@ describe("comments — POST", () => {
     expect(created).toMatchObject({ authorEmail: "", authorRole: "client" });
   });
 
+  it("stamps client when no role is sent, even by a caller who could speak as the team", async () => {
+    const keyed = createSitepingHandler({ store: new MemoryStore(), apiKey: API_KEY });
+    const staffed = createSitepingHandler({
+      store: new MemoryStore(),
+      access: { authenticate: () => ({ id: "staff" }), canCommentAsTeam: () => true },
+    });
+
+    for (const [handler, headers] of [
+      [keyed, BEARER],
+      [staffed, {}],
+    ] as const) {
+      const feedback = await createFeedback(handler, headers);
+      const { authorRole: _, ...withoutRole } = commentBody(feedback.id);
+      expect((await postComment(handler, withoutRole, headers)).authorRole).toBe("client");
+    }
+  });
+
+  it("answers 404 when the store itself finds no feedback, without verifyProjectOwnership", async () => {
+    // Optional on the contract, and the apiKey policy starts without it: the store's own miss answers.
+    const store: SitepingStore = Object.assign(Object.create(new MemoryStore()), { verifyProjectOwnership: undefined });
+    const logger = silentLogger();
+    const handler = createSitepingHandler({ store, apiKey: API_KEY, logger });
+
+    const response = await handler.POST(request("POST", commentBody("does-not-exist")));
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "Feedback not found" });
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
   it("answers 404 for an unknown feedback and for another project's, storing nothing", async () => {
     const store = new MemoryStore();
     const handler = createSitepingHandler({ store });
