@@ -1471,7 +1471,7 @@ describe("Popup on phones", () => {
     mockMediaQueries([]);
   });
 
-  it("docks to the bottom edge as a full-width sheet with a grab handle", () => {
+  it("docks to the bottom edge as a full-width sheet, with no grab handle it could not honour", () => {
     void popup.show(makeBounds({ top: 500, bottom: 550 }));
     const el = dialog();
     expect(el.style.top).toBe("auto");
@@ -1481,7 +1481,8 @@ describe("Popup on phones", () => {
     expect(el.style.width).toBe("auto");
     expect(el.style.borderRadius).toBe("20px 20px 0 0");
     expect(el.style.background).toBe("rgb(255, 255, 255)"); // solid colors.bg, not glass
-    expect((el.firstElementChild as HTMLElement).style.display).toBe("block");
+    // Only the panel sheet can be swiped away — no handle promising a drag here
+    expect(el.firstElementChild!.querySelector("button[data-type]")).not.toBeNull();
     // jsdom has no layout: the sheet reports its top as the viewport bottom
     expect(popup.sheetTop).toBe(window.innerHeight);
   });
@@ -1515,7 +1516,7 @@ describe("Popup on phones", () => {
       expect(dialog().style.bottom).toBe("300px");
       expect(dialog().style.maxHeight).toBe(`${window.innerHeight - 308}px`);
       // The keyboard covers the home indicator — no safe-area gap above it
-      expect(dialog().style.padding).toBe("8px 16px 16px");
+      expect(dialog().style.padding).toBe("16px");
 
       popup.dismiss();
       expect(dialog().style.transform).toBe("translateY(100%)");
@@ -1549,7 +1550,7 @@ describe("Popup on phones", () => {
     expect(el.style.right).toBe("");
     expect(el.style.bottom).toBe("");
     expect(el.style.top).toBe("158px");
-    expect((el.firstElementChild as HTMLElement).style.display).toBe("none");
+    expect(el.style.padding).toBe("16px");
     expect(popup.sheetTop).toBeNull();
     // Still a touch screen: finger-sized actions and 16px text
     expect(byText(t("popup.cancel")).style.height).toBe("44px");

@@ -332,26 +332,13 @@ export const MOBILE_CSS = /* css */ `
     }
 
     .sp-identity-modal {
-      position: relative;
       width: 100%;
       max-width: none;
       margin-bottom: var(--sp-kb, 0px);
-      padding: 30px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+      padding: 24px 20px calc(20px + env(safe-area-inset-bottom, 0px));
       border-radius: var(--sp-radius-xl) var(--sp-radius-xl) 0 0;
       background: var(--sp-bg);
       transform: translateY(100%);
-    }
-
-    .sp-identity-modal::before {
-      content: "";
-      position: absolute;
-      top: 8px;
-      left: 50%;
-      width: 36px;
-      height: 5px;
-      margin-left: -18px;
-      border-radius: 3px;
-      background: var(--sp-border);
     }
 
     .sp-identity-actions button {

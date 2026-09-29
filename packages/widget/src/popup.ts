@@ -64,7 +64,6 @@ type PopupSubmitHandler = (result: PopupResult) => Promise<void>;
  */
 export class Popup {
   private root: HTMLElement;
-  private handle: HTMLElement;
   private selectedType: FeedbackType | null = null;
   private textarea: HTMLTextAreaElement;
   private submitBtn: HTMLButtonElement;
@@ -144,11 +143,6 @@ export class Popup {
     this.root.setAttribute("data-siteping-ignore", "true");
     // The dialog `aria-label` is bound by `applyLabels()` at the end of the
     // constructor, alongside every other `t()`-derived string.
-
-    // Grab handle — only displayed in sheet mode.
-    this.handle = el("div", {
-      style: `width:36px;height:5px;border-radius:3px;margin:0 auto 12px;background:${this.colors.border};display:none;`,
-    });
 
     // Type selector grid (2x2). Labels are bound later by `applyLabels()` —
     // the constructor only builds the structure (icon + empty label span).
@@ -295,7 +289,6 @@ export class Popup {
     btnRow.appendChild(this.cancelBtn);
     btnRow.appendChild(this.submitBtn);
 
-    this.root.appendChild(this.handle);
     this.root.appendChild(this.typeRow);
     this.root.appendChild(this.textarea);
     this.root.appendChild(this.hint);
@@ -442,7 +435,6 @@ export class Popup {
   /** Card next to the annotated rect, or — on phones — a bottom sheet above the keyboard. */
   private layout(rectBounds: DOMRect, insets: ViewportInsets): void {
     const style = this.root.style;
-    this.handle.style.display = this.sheet ? "block" : "none";
     style.width = this.sheet ? "auto" : "300px";
     style.borderRadius = this.sheet ? "20px 20px 0 0" : "16px";
     style.background = this.sheet ? this.colors.bg : this.colors.glassBg;
@@ -461,7 +453,7 @@ export class Popup {
         style.bottom = `${inset}px`;
         style.maxHeight = `${visibleHeight - 8}px`;
         // The keyboard covers the home indicator — no safe-area gap above it.
-        style.padding = `8px 16px ${inset > 0 ? "16px" : "calc(16px + env(safe-area-inset-bottom, 0px))"}`;
+        style.padding = `16px 16px ${inset > 0 ? "16px" : "calc(16px + env(safe-area-inset-bottom, 0px))"}`;
       };
       fit(0);
       this.stopKeyboardTracking = trackKeyboardInset(fit);
