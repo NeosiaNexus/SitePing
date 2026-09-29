@@ -34,6 +34,7 @@ import {
   ICON_USER,
 } from "./icons.js";
 import type { MarkerManager } from "./markers.js";
+import type { OwnFeedback } from "./own-feedback.js";
 import { normalizePanelActions } from "./panel-actions.js";
 import { BulkActions } from "./panel-bulk.js";
 import { DetailView } from "./panel-detail.js";
@@ -105,7 +106,7 @@ export class Panel {
   private readonly initialScopeFilter: "this" | "template" | "all" = "this";
   /** "Mine" filter: only the feedback sent from this browser, whose ids the launcher remembers. */
   private mineOnly = false;
-  private readonly ownFeedbackIds: () => ReadonlySet<string>;
+  private readonly ownFeedback: Pick<OwnFeedback, "ids" | "remove">;
 
   constructor(
     shadowRoot: ShadowRoot,
@@ -120,13 +121,13 @@ export class Panel {
       getScope: () => PageScope;
       scopeAnnotationsByUrl: boolean;
       panelActions?: readonly SitepingPanelAction[] | undefined;
-      ownFeedbackIds?: (() => ReadonlySet<string>) | undefined;
+      ownFeedback?: Pick<OwnFeedback, "ids" | "remove"> | undefined;
     },
   ) {
     this.shadowRoot = shadowRoot;
     this.getScope = options?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
     this.scopeAnnotationsByUrl = options?.scopeAnnotationsByUrl ?? true;
-    this.ownFeedbackIds = options?.ownFeedbackIds ?? (() => new Set());
+    this.ownFeedback = options?.ownFeedback ?? { ids: () => new Set(), remove: () => {} };
 
     this.root = el("div", { class: "sp-panel" });
     this.root.setAttribute("role", "complementary");
@@ -684,19 +685,34 @@ export class Panel {
    * remembered id has turned up or none are left.
    */
   private async fetchOwnFeedbacks(options: GetFeedbacksOptions, signal: AbortSignal): Promise<FeedbackResponseList> {
-    const own = this.ownFeedbackIds();
+    const own = this.ownFeedback.ids();
     // By id: a feedback created mid-walk shifts the pages, so one can come twice
     const found = new Map<string, FeedbackResponse>();
+    const met = new Set<string>();
     let seen = 0;
+    let firstTotal: number | undefined;
+    let steady = true; // The total never changed: no page shifted under the walk
     for (let page = 1; found.size < own.size && !signal.aborted; page++) {
       const { feedbacks, total } = await this.client.getFeedbacks(this.projectName, {
         ...options,
         page,
         limit: MAX_PAGE_LIMIT,
       });
-      for (const feedback of feedbacks) if (own.has(feedback.id)) found.set(feedback.id, feedback);
+      firstTotal ??= total;
+      steady &&= total === firstTotal;
+      for (const feedback of feedbacks) {
+        met.add(feedback.id);
+        if (own.has(feedback.id)) found.set(feedback.id, feedback);
+      }
       seen += feedbacks.length;
       if (feedbacks.length === 0 || seen >= total) break;
+    }
+    // A steady walk that met every feedback of the project (no filter: only
+    // `page` and `limit` set) proves the remembered ids it missed deleted,
+    // from the dashboard say. Forgetting them lets the next walk stop early.
+    const wholeProject = Object.keys(options).every((key) => key === "page" || key === "limit");
+    if (wholeProject && steady && met.size === firstTotal) {
+      this.ownFeedback.remove(...[...own].filter((id) => !found.has(id)));
     }
     return { feedbacks: [...found.values()], total: found.size };
   }

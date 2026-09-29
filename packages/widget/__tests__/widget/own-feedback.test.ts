@@ -52,13 +52,14 @@ describe("ownFeedback", () => {
     expect(ids.slice(-2)).toEqual(["fb-0", "fb-500"]);
   });
 
-  it("forgets one id, and the whole list when cleared", () => {
+  it("forgets ids, one or several at once, and the whole list when cleared", () => {
     const own = ownFeedback("site");
-    own.add("fb-1");
-    own.add("fb-2");
+    for (const id of ["fb-1", "fb-2", "fb-3", "fb-4"]) own.add(id);
 
     own.remove("fb-1");
-    expect([...own.ids()]).toEqual(["fb-2"]);
+    expect([...own.ids()]).toEqual(["fb-2", "fb-3", "fb-4"]);
+    own.remove("fb-2", "unknown", "fb-4");
+    expect([...own.ids()]).toEqual(["fb-3"]);
 
     own.clear();
     expect(own.ids().size).toBe(0);

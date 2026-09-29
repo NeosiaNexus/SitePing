@@ -387,7 +387,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
           getScope,
           scopeAnnotationsByUrl,
           panelActions: config.panelActions,
-          ownFeedbackIds: own.ids,
+          ownFeedback: own,
         });
         return panelInstance;
       });

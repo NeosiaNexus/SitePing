@@ -93,7 +93,16 @@ describe("Panel — 'Mine' filter", () => {
       markers as never,
       t,
       "en",
-      { getScope: () => ({ url: "/", urlPattern: null }), scopeAnnotationsByUrl: true, ownFeedbackIds: () => own },
+      {
+        getScope: () => ({ url: "/", urlPattern: null }),
+        scopeAnnotationsByUrl: true,
+        ownFeedback: {
+          ids: () => own,
+          remove: (...ids) => {
+            for (const id of ids) own.delete(id);
+          },
+        },
+      },
     );
   });
 
@@ -208,6 +217,84 @@ describe("Panel — 'Mine' filter", () => {
       { page: 1, limit: MAX_PAGE_LIMIT, url: "/" },
       { page: 1, limit: 20, url: "/" },
     ]);
+  });
+
+  it("forgets the ids a walk of the whole project never met, so the next walk stops early", async () => {
+    const all = Array.from({ length: 250 }, (_, i) => makeFeedback(`fb-${i}`));
+    own = new Set(["fb-3", "deleted-elsewhere"]);
+    client.getFeedbacks.mockImplementation(paginate(all));
+    await panel.open();
+    shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!.click();
+    client.getFeedbacks.mockClear();
+
+    toggle().click();
+
+    await vi.waitFor(() => expect(cardIds()).toEqual(["fb-3"]));
+    expect(listCalls().map((o) => o.page)).toEqual([1, 2, 3]);
+    expect(own).toEqual(new Set(["fb-3"]));
+
+    client.getFeedbacks.mockClear();
+    await panel.refresh();
+
+    expect(cardIds()).toEqual(["fb-3"]);
+    expect(listCalls().map((o) => o.page)).toEqual([1]);
+  });
+
+  it.each([
+    ["the page scope", []],
+    ["a status filter", ['[data-scope-filter="all"]', '[data-status-filter="open"]']],
+  ])("keeps the ids a walk under %s did not meet: they may lie outside it", async (_filter, clicks) => {
+    const all = Array.from({ length: 150 }, (_, i) => makeFeedback(`fb-${i}`));
+    own = new Set(["fb-120", "outside"]);
+    client.getFeedbacks.mockImplementation(paginate(all));
+    await panel.open();
+    for (const selector of clicks) shadow.querySelector<HTMLButtonElement>(selector)!.click();
+    client.getFeedbacks.mockClear();
+
+    toggle().click();
+
+    await vi.waitFor(() => expect(cardIds()).toEqual(["fb-120"]));
+    expect(listCalls().map((o) => o.page)).toEqual([1, 2]);
+    expect(own).toEqual(new Set(["fb-120", "outside"]));
+  });
+
+  it("keeps the ids when the total changed mid-walk: the pages may have shifted past one", async () => {
+    const feedbacks = (from: number, to: number) =>
+      Array.from({ length: to - from }, (_, i) => makeFeedback(`fb-${from + i}`));
+    own = new Set(["fb-100"]);
+    await panel.open();
+    shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!.click();
+    // After page 1, feedback came and went: fb-100 slipped out of the walk's
+    // reach, and the walk still met as many feedbacks as page 1's total
+    client.getFeedbacks.mockImplementation(async (_project: string, options: GetFeedbacksOptions) => {
+      if (options.page === 1) return { feedbacks: feedbacks(0, 100), total: 150 };
+      if (options.page === 2) return { feedbacks: feedbacks(101, 151), total: 151 };
+      if (options.page === 3) return { feedbacks: [], total: 151 };
+      return { feedbacks: [], total: 0 }; // Page markers
+    });
+    client.getFeedbacks.mockClear();
+
+    toggle().click();
+
+    await vi.waitFor(() => expect(shadow.querySelector(".sp-empty")).not.toBeNull());
+    expect(listCalls().map((o) => o.page)).toEqual([1, 2, 3]);
+    expect(own).toEqual(new Set(["fb-100"]));
+  });
+
+  it("keeps the ids when the walk met fewer distinct feedbacks than the total", async () => {
+    const page = Array.from({ length: MAX_PAGE_LIMIT }, (_, i) => makeFeedback(`fb-${i}`));
+    own = new Set(["fb-150"]);
+    await panel.open();
+    shadow.querySelector<HTMLButtonElement>('[data-scope-filter="all"]')!.click();
+    // A backend that ignores `page` serves page 1 again: fb-150 was never on offer
+    client.getFeedbacks.mockResolvedValue({ feedbacks: page, total: 200 });
+    client.getFeedbacks.mockClear();
+
+    toggle().click();
+
+    await vi.waitFor(() => expect(shadow.querySelector(".sp-empty")).not.toBeNull());
+    expect(listCalls().map((o) => o.page)).toEqual([1, 2]);
+    expect(own).toEqual(new Set(["fb-150"]));
   });
 
   it("lists a feedback once when a new one shifts it onto the next page mid-walk", async () => {

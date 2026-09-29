@@ -6,7 +6,7 @@ export interface OwnFeedback {
   /** The remembered ids, read on every call so another tab's sends count too. */
   ids(): Set<string>;
   add(id: string): void;
-  remove(id: string): void;
+  remove(...ids: string[]): void;
   clear(): void;
 }
 
@@ -43,9 +43,11 @@ export function ownFeedback(projectName: string, endpoint?: string): OwnFeedback
       next.delete(id); // Re-sent: move it to the newest end
       write(next.add(id));
     },
-    remove(id) {
+    remove(...gone) {
       const next = ids();
-      if (next.delete(id)) write(next);
+      const size = next.size;
+      for (const id of gone) next.delete(id);
+      if (next.size < size) write(next);
     },
     clear: () => write(new Set()),
   };
