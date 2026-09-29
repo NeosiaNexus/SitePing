@@ -106,6 +106,7 @@ Everything in the body comes from anonymous visitors, so it is quoted as code. T
 | `redact` | `(text) => string` | none | Applied to the message, author, URLs, user agent, annotation text and diagnostics before they leave your server |
 | `includeAuthorEmail` | `boolean` | `false` | Add the reviewer's email next to their name |
 | `formatIssue` | `(feedback, defaults) => { title, body }` | built-in | Your own title and Markdown. The marker is still added as the first line. Quoting visitor text is then up to you |
+| `instance` | `string` | — | Name of this deployment when several share one repository. See [how issues are found again](#how-issues-are-found-again) |
 | `syncStatus` | `boolean` | `true` | Close and reopen the issue when the status changes |
 | `deletedCommentText` | `(feedbackId) => string` | ``SitePing feedback `<id>` was deleted.`` | The comment left on the issue of a deleted feedback. A retried delete finds it by a hidden first line, so the text may change from one call to the next |
 
@@ -136,6 +137,8 @@ The built-in trackers throw two errors that a custom `logger` can tell apart: `I
 ## How issues are found again
 
 Each body starts with the marker `<!-- siteping-feedback {"id":"…","project":"…"} -->`, which GitHub and GitLab do not display. Only that first line is read, so feedback text that imitates it is ignored. Edit the rest of the issue as you like, but keep that line first. The deletion comment starts the same way, with `<!-- siteping-feedback-deleted -->`: a retried delete looks for that line, not for the comment's text.
+
+Deployments that share a repository and a project name (staging and production, or a preview that copied the production `.env`) would find each other's issues, and a project delete on staging would close production's. Give each its own `instance`: the marker then ends with `"instance":"staging"`, and the hooks only touch issues opened under the same name, an unnamed deployment only those without one. Issues opened before a deployment was named, or renamed, keep the old name.
 
 To sync a status or delete one feedback, the tracker is first searched for the feedback id (GitHub's search API, GitLab's `search` parameter). If the search misses, the hooks list the `siteping` issues newest first. GitHub's search index lags a few seconds behind a new issue, and its rate limit is 30 searches a minute. Deleting a whole project always uses that listing.
 

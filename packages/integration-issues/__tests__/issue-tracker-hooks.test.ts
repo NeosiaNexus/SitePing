@@ -214,6 +214,30 @@ for (const provider of providers) {
       });
     });
 
+    it("keeps deployments that share a repository apart by instance", async () => {
+      const context = { request: new Request(ENDPOINT), principal: null };
+      const production = createIssueTrackerHooks<null>({ tracker: provider.createTracker(fake) });
+      const staging = createIssueTrackerHooks<null>({ tracker: provider.createTracker(fake), instance: "staging" });
+      // Separate stores may hand out the same id: production's issue is the newer match.
+      const feedback = await send(createHandler({ instance: "staging" }));
+      await production.onCreated?.(feedback, context);
+
+      expect(fake.issues.map((issue) => issue.body.split("\n", 1)[0])).toEqual([
+        `<!-- siteping-feedback {"id":"${feedback.id}","project":"site","instance":"staging"} -->`,
+        `<!-- siteping-feedback {"id":"${feedback.id}","project":"site"} -->`,
+      ]);
+
+      await staging.onUpdated?.({ ...feedback, status: "resolved" }, context);
+      expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, true]);
+
+      await production.onDeleting?.({ kind: "project", projectName: "site" }, context);
+      expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, false]);
+      expect(fake.issues.map((issue) => issue.comments.filter((comment) => !comment.startsWith("system:")))).toEqual([
+        [],
+        [expect.stringContaining("was deleted")],
+      ]);
+    });
+
     it("mirrors status changes on the issue", async () => {
       const handler = createHandler();
       const resolved = await send(handler);

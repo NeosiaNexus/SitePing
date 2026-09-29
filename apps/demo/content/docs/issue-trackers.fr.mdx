@@ -106,6 +106,7 @@ Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Le l
 | `redact` | `(text) => string` | aucun | Appliqué au message, à l'auteur, aux URL, au user agent, au texte des annotations et aux diagnostics avant qu'ils quittent votre serveur |
 | `includeAuthorEmail` | `boolean` | `false` | Ajoute l'e-mail du relecteur à côté de son nom |
 | `formatIssue` | `(feedback, defaults) => { title, body }` | intégré | Votre propre titre et votre propre Markdown. Le marqueur reste ajouté en première ligne. Citer le texte des visiteurs est alors à votre charge |
+| `instance` | `string` | — | Nom de ce déploiement quand plusieurs partagent un dépôt. Voir [comment les tickets sont retrouvés](#comment-les-tickets-sont-retrouvés) |
 | `syncStatus` | `boolean` | `true` | Ferme et rouvre le ticket quand le statut change |
 | `deletedCommentText` | `(feedbackId) => string` | ``SitePing feedback `<id>` was deleted.`` | Le commentaire laissé sur le ticket d'un feedback supprimé. Une suppression rejouée le retrouve par une première ligne cachée : le texte peut donc changer d'un appel à l'autre |
 
@@ -136,6 +137,8 @@ Les gestionnaires intégrés lèvent deux erreurs qu'un `logger` personnalisé p
 ## Comment les tickets sont retrouvés
 
 Chaque corps commence par le marqueur `<!-- siteping-feedback {"id":"…","project":"…"} -->`, que GitHub et GitLab n'affichent pas. Seule cette première ligne est lue, donc un texte de feedback qui l'imite est ignoré. Modifiez le reste du ticket comme vous voulez, mais gardez cette ligne en tête. Le commentaire de suppression commence de la même façon, par `<!-- siteping-feedback-deleted -->` : une suppression rejouée cherche cette ligne, pas le texte du commentaire.
+
+Des déploiements qui partagent un dépôt et un nom de projet (la recette et la production, ou une préversion qui a copié le `.env` de production) trouveraient les tickets les uns des autres, et la suppression d'un projet en recette fermerait ceux de la production. Donnez à chacun son `instance` : le marqueur se termine alors par `"instance":"staging"`, et les hooks ne touchent qu'aux tickets ouverts sous le même nom, un déploiement sans nom qu'à ceux qui n'en ont pas. Les tickets ouverts avant qu'un déploiement soit nommé, ou renommé, gardent l'ancien nom.
 
 Pour synchroniser un statut ou supprimer un feedback, le gestionnaire est d'abord interrogé par une recherche sur l'identifiant du feedback (l'API de recherche de GitHub, le paramètre `search` de GitLab). Si la recherche ne trouve rien, les hooks listent les tickets `siteping` du plus récent au plus ancien. L'index de recherche de GitHub a quelques secondes de retard sur un nouveau ticket, et sa limite est de 30 recherches par minute. La suppression d'un projet entier passe toujours par cette liste.
 

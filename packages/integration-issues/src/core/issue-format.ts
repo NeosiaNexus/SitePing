@@ -42,6 +42,8 @@ export interface IssueFormatOptions {
 export interface IssueLink {
   feedbackId: string;
   projectName: string;
+  /** The deployment that opened the issue, when it is named (`createIssueTrackerHooks`'s `instance`). */
+  instance?: string | undefined;
 }
 
 function truncate(value: string, maxLength: number): string {
@@ -154,8 +156,9 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
 }
 
 /** Hidden marker on the first line of every issue body, linking it to its feedback. */
-export function buildIssueMarker(link: IssueLink): string {
-  return `${ISSUE_REFERENCE_MARKER.prefix}${toMarkerJson({ id: link.feedbackId, project: link.projectName })}${ISSUE_REFERENCE_MARKER.suffix}`;
+export function buildIssueMarker({ feedbackId, projectName, instance }: IssueLink): string {
+  const payload = { id: feedbackId, project: projectName, ...(instance === undefined ? {} : { instance }) };
+  return `${ISSUE_REFERENCE_MARKER.prefix}${toMarkerJson(payload)}${ISSUE_REFERENCE_MARKER.suffix}`;
 }
 
 /** JSON safe inside an HTML comment: `<` and `>` are escaped so a value cannot close the comment early. */
@@ -188,8 +191,10 @@ export function parseIssueMarker(body: string): IssueLink | null {
   try {
     const parsed: unknown = JSON.parse(match[1]);
     if (typeof parsed !== "object" || parsed === null) return null;
-    const { id, project } = parsed as { id?: unknown; project?: unknown };
-    return typeof id === "string" && typeof project === "string" ? { feedbackId: id, projectName: project } : null;
+    const { id, project, instance } = parsed as { id?: unknown; project?: unknown; instance?: unknown };
+    if (typeof id !== "string" || typeof project !== "string") return null;
+    if (instance === undefined) return { feedbackId: id, projectName: project };
+    return typeof instance === "string" ? { feedbackId: id, projectName: project, instance } : null;
   } catch {
     return null; // A tampered or truncated marker is treated as absent.
   }

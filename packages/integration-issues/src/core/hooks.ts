@@ -13,6 +13,7 @@ import {
   formatIssue,
   type IssueContent,
   type IssueFormatOptions,
+  type IssueLink,
   isDeletionComment,
   parseIssueMarker,
   projectMarkerFragment,
@@ -39,6 +40,13 @@ export interface IssueTrackerHooksOptions {
   includeAuthorEmail?: boolean;
   /** Replace the default Markdown. The linking marker is prepended to whatever you return, as its first line. */
   formatIssue?: (feedback: FeedbackRecord, defaults: IssueFormatOptions) => IssueContent;
+  /**
+   * Name of this deployment when several share one repository (staging and
+   * production, say). It goes into each issue's marker, and the hooks only
+   * touch issues of the same name; an unnamed deployment only touches
+   * unnamed ones. An empty string counts as no name.
+   */
+  instance?: string | undefined;
   /** Close / reopen the issue when the feedback status changes. Defaults to `true`. */
   syncStatus?: boolean;
   /**
@@ -86,6 +94,7 @@ export function createIssueTrackerHooks<Principal = never>({
   deepLinkParam = DEFAULT_DEEP_LINK_PARAM,
   includeAuthorEmail = false,
   formatIssue: customFormatIssue,
+  instance: instanceName,
   syncStatus = true,
   deletedCommentText = defaultDeletedComment,
 }: IssueTrackerHooksOptions): SitepingLifecycleHooks<Principal> {
@@ -99,9 +108,15 @@ export function createIssueTrackerHooks<Principal = never>({
     siteUrl,
   };
   const issueLabels = [SITEPING_ISSUE_LABEL, ...labels.filter((label) => label !== SITEPING_ISSUE_LABEL)];
+  const instance = instanceName || undefined;
+  /** The issue's link, when this deployment opened it. */
+  const linkOf = (issue: TrackedIssue): IssueLink | null => {
+    const link = parseIssueMarker(issue.body);
+    return link?.instance === instance ? link : null;
+  };
 
   const issueOf = async (feedbackId: string): Promise<TrackedIssue | null> => {
-    const isLinked = (issue: TrackedIssue) => parseIssueMarker(issue.body)?.feedbackId === feedbackId;
+    const isLinked = (issue: TrackedIssue) => linkOf(issue)?.feedbackId === feedbackId;
     // `null` when the search failed: its miss then says nothing.
     const searched = await tracker.searchSitepingIssues?.(feedbackId).catch((error: unknown) => {
       // No answer at all: the tracker is down, and the listing would only wait out another timeout.
@@ -129,7 +144,7 @@ export function createIssueTrackerHooks<Principal = never>({
           "which deleting it would leave open. Raise maxListedPages to reach them.",
       );
     }
-    return listing.issues.filter((issue) => parseIssueMarker(issue.body)?.projectName === projectName);
+    return listing.issues.filter((issue) => linkOf(issue)?.projectName === projectName);
   };
 
   /** Close as not planned and leave the deletion comment once, even across retries. */
@@ -149,7 +164,7 @@ export function createIssueTrackerHooks<Principal = never>({
         const content = customFormatIssue
           ? customFormatIssue(feedback, formatOptions)
           : formatIssue(feedback, formatOptions);
-        const marker = buildIssueMarker({ feedbackId: feedback.id, projectName: feedback.projectName });
+        const marker = buildIssueMarker({ feedbackId: feedback.id, projectName: feedback.projectName, instance });
         await tracker.createIssue({ title: content.title, body: `${marker}\n\n${content.body}`, labels: issueLabels });
       }),
     async onUpdated(feedback) {
@@ -170,7 +185,7 @@ export function createIssueTrackerHooks<Principal = never>({
           })
         : queue.forProject(target.projectName, async () => {
             for (const issue of await issuesOfProject(target.projectName)) {
-              const link = parseIssueMarker(issue.body);
+              const link = linkOf(issue);
               if (link) await closeDeleted(issue, link.feedbackId);
             }
           }),

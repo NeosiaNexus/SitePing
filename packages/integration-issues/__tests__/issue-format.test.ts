@@ -22,6 +22,17 @@ describe("issue marker", () => {
     expect(parseIssueMarker(marker)).toEqual(link);
   });
 
+  it("round-trips the instance of a named deployment, and reads a marker without one as unnamed", () => {
+    const link = { feedbackId: "fb-1", projectName: "site", instance: "staging" };
+
+    expect(parseIssueMarker(buildIssueMarker(link))).toEqual(link);
+    expect(parseIssueMarker(buildIssueMarker({ ...link, instance: undefined }))).toEqual({
+      feedbackId: "fb-1",
+      projectName: "site",
+    });
+    expect(parseIssueMarker('<!-- siteping-feedback {"id":"fb-1","project":"site","instance":1} -->')).toBeNull();
+  });
+
   it("reads the first line only, whatever the line endings", () => {
     const link = { feedbackId: "fb-1", projectName: "site" };
     const marker = buildIssueMarker(link);
