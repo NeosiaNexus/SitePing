@@ -207,8 +207,9 @@ const KEY_SET_FAILURES = new Set(["ERR_JOSE_GENERIC", "ERR_JWKS_TIMEOUT", "ERR_J
 
 export const oidcAccess: SitepingAccessControl<Reviewer> = {
   async authenticate(request) {
-    const authorization = request.headers.get("Authorization");
-    if (!authorization) return VISITOR;
+    const authorization = request.headers.get("Authorization") ?? "";
+    // Seul un bearer est un identifiant : le Basic d'un site de recette reste un visiteur.
+    if (!/^Bearer(\s|$)/i.test(authorization)) return VISITOR;
     const token = /^Bearer (\S+)$/i.exec(authorization)?.[1];
     if (!token) return null;
     try {
@@ -273,12 +274,12 @@ initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "a
 ```
 
 - **Un jeton d'accès, jamais un ID token.** `audience` est l'identifiant que votre fournisseur place dans `aud` pour votre API — l'identifiant d'API d'Auth0, ou l'audience qu'ajoute un audience mapper Keycloak. Un ID token est adressé à votre application cliente : il répond donc `401`. Auth0 ne délivre un jeton d'accès JWT que pour une audience d'API, et Zitadel que si le type de jeton de l'application est JWT.
-- **Sans en-tête, un visiteur ; un mauvais, une `401`.** Sans `Authorization`, la requête est anonyme : le widget public continue de fonctionner. Un jeton malformé, expiré, forgé ou étranger répond `401` au lieu d'être rétrogradé en visiteur : un relecteur dont la session a expiré le voit, et le client peut rafraîchir le jeton.
+- **Sans bearer, un visiteur ; un mauvais, une `401`.** Sans jeton `Bearer`, la requête est anonyme : le widget public continue de fonctionner — derrière une authentification HTTP Basic aussi, dont le navigateur ou le proxy d'un site de recette joint les identifiants à chaque requête. Un jeton malformé, expiré, forgé ou étranger répond `401` au lieu d'être rétrogradé en visiteur : un relecteur dont la session a expiré le voit, et le client peut rafraîchir le jeton.
 - **Un fournisseur injoignable, une `500`.** Quand le jeu de clés ne peut pas être récupéré — erreur réseau, délai dépassé, réponse autre que `200`, pas de jeu de clés dedans —, `authenticate` lève : le handler le journalise et répond `500` plutôt que de déclarer tout jeton invalide. Les visiteurs, qui n'en envoient pas, ne sont pas touchés. jose met les clés en cache et les recharge pour un `kid` inconnu : une rotation des clés ne demande rien.
 - **Des algorithmes épinglés, en HTTPS.** `algorithms` liste ceux avec lesquels votre fournisseur signe : un jeton non signé ou `HS256` est refusé avant même la recherche d'une clé. Gardez l'issuer et le jeu de clés en `https://` : qui peut altérer le jeu de clés peut fabriquer des jetons d'administrateur.
 - **L'auteur vient du jeton.** `beforeCreate` reprend son nom, et son e-mail seulement quand `email_verified` vaut true ; sinon, les valeurs du widget restent. `beforeComment` fait de même pour les réponses : personne de connecté ne répond sous le nom d'un autre relecteur. Les jetons d'accès ne portent pas toujours ces claims : passez [`identity`](/fr/docs/widget/configuration) pour épargner la modale d'identité du widget aux utilisateurs connectés.
 - **Les e-mails restent aux administrateurs.** Comme `canReadAuthorEmail` est défini, il décide aussi [du rôle équipe](/fr/docs/comments#le-rôle-équipe) : les réponses des administrateurs sont marquées `team`, celles de tous les autres `client`.
-- **Un rôle, tous les projets.** Ce `authorize` ne lit jamais `projectName` : `siteping-admin` trie tous les projets que sert l'endpoint, et n'importe qui — visiteur ou membre — liste chacun d'eux, captures d'écran et diagnostics compris. Pour séparer plusieurs clients, donnez à chaque projet son propre rôle, comme `siteping-admin:acme` : gardez les rôles de l'appelant dans le principal, et faites tester à `authorize` `` roles.includes(`siteping-admin:${projectName}`) `` là où il teste `isAdmin`. `canReadAuthorEmail` ne reçoit pas le projet : réservez-le donc à un rôle qui les couvre tous. Pour réserver aussi les lectures aux utilisateurs connectés, renvoyez `null` au lieu de `VISITOR` quand l'en-tête manque — chaque requête exige alors un jeton, envois compris — et n'autorisez `list` que sur les projets de l'appelant.
+- **Un rôle, tous les projets.** Ce `authorize` ne lit jamais `projectName` : `siteping-admin` trie tous les projets que sert l'endpoint, et n'importe qui — visiteur ou membre — liste chacun d'eux, captures d'écran et diagnostics compris. Pour séparer plusieurs clients, donnez à chaque projet son propre rôle, comme `siteping-admin:acme` : gardez les rôles de l'appelant dans le principal, et faites tester à `authorize` `` roles.includes(`siteping-admin:${projectName}`) `` là où il teste `isAdmin`. `canReadAuthorEmail` ne reçoit pas le projet : réservez-le donc à un rôle qui les couvre tous. Pour réserver aussi les lectures aux utilisateurs connectés, renvoyez `null` au lieu de `VISITOR` quand aucun bearer n'arrive — chaque requête exige alors un jeton, envois compris — et n'autorisez `list` que sur les projets de l'appelant.
 
 Les rôles dépendent du fournisseur : `rolesOf` est à vous d'écrire.
 

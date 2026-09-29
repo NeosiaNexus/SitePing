@@ -56,8 +56,8 @@ const KEY_SET_FAILURES = new Set(["ERR_JOSE_GENERIC", "ERR_JWKS_TIMEOUT", "ERR_J
 function oidcAccess(jwks: JWTVerifyGetKey): SitepingAccessControl<Reviewer> {
   return {
     async authenticate(request) {
-      const authorization = request.headers.get("Authorization");
-      if (!authorization) return VISITOR;
+      const authorization = request.headers.get("Authorization") ?? "";
+      if (!/^Bearer(\s|$)/i.test(authorization)) return VISITOR;
       const token = /^Bearer (\S+)$/i.exec(authorization)?.[1];
       if (!token) return null;
       try {
@@ -314,14 +314,25 @@ describe("OpenID Connect recipe", () => {
       async () => bearer(new UnsecuredJWT({ ...ADMIN, iss: ISSUER, aud: AUDIENCE, exp: inFiveMinutes() }).encode()),
     ],
     ["garbage", async () => bearer("not-a-jwt")],
-    ["another scheme", async () => ({ Authorization: `Basic ${btoa("ada:secret")}` })],
     ["an empty bearer", async () => ({ Authorization: "Bearer " })],
+    ["a bare Bearer scheme", async () => ({ Authorization: "Bearer" })],
   ])("answers 401 to %s instead of treating it as a visitor", async (_, headers) => {
     const logger = { error: vi.fn() };
     const handler = handlerFor(remoteKeySet(), logger);
 
     expect((await list(handler, await headers())).status).toBe(401);
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("serves a staging site behind HTTP Basic auth, whose credentials ride on every request", async () => {
+    const handler = handlerFor(remoteKeySet());
+    const basic = { Authorization: `Basic ${btoa("client:staging-password")}` };
+
+    const created = await submit(handler, basic);
+    const visible = await page(handler, basic);
+
+    expect(created.permissions).toEqual(VISITOR_PERMISSIONS);
+    expect(visible.feedbacks.map((f) => f.permissions)).toEqual([VISITOR_PERMISSIONS]);
   });
 
   it.each<[string, FetchImplementation]>([
