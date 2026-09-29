@@ -136,7 +136,7 @@ Les serveurs qui les précèdent n'en envoient pas, le mode store non plus : les
 
 ## Accès personnalisé
 
-Une clé partagée convient à un site et à son dashboard. Quand les relecteurs se connectent, passez plutôt `access` : le handler demande à votre code qui appelle et ce qu'il peut faire, à partir de la `Request` standard — un cookie de session, un JWT, un en-tête posé par votre proxy.
+Une clé partagée convient à un site et à son dashboard. Quand les relecteurs se connectent, passez plutôt `access` : le handler demande à votre code qui appelle et ce qu'il peut faire, à partir de la `Request` standard — un cookie de session, un JWT, un en-tête posé par votre proxy. Des recettes suivent pour les fournisseurs [OpenID Connect](#recette--openid-connect) et pour [Better Auth](#recette--better-auth).
 
 ```ts
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
@@ -280,6 +280,7 @@ Les rôles dépendent du fournisseur : `rolesOf` est à vous d'écrire.
 | Microsoft Entra ID | `roles` (rôles d'application) | `payload.roles` |
 | Auth0 | Aucun par défaut : ajoutez un claim dans une Action post-login, par ex. `https://siteping.example/roles` | `payload["https://siteping.example/roles"]` |
 | Zitadel | `urn:zitadel:iam:org:project:roles`, un objet indexé par rôle | `Object.keys(payload["urn:zitadel:iam:org:project:roles"] ?? {})` |
+| Better Auth ([plugin jwt](#depuis-une-autre-origine)) | `role`, séparés par des virgules | `typeof payload.role === "string" ? payload.role.split(",") : []` |
 
 #### Laisser les auteurs supprimer leurs feedbacks
 
@@ -321,6 +322,150 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 ```
 
 `onCreated` ne fait jamais échouer un envoi : si son écriture échoue, l'auteur ne peut simplement pas supprimer ce feedback. Un `sub` n'est unique que pour un issuer — avec plusieurs fournisseurs, indexez la table sur les deux —, et c'est dans `onDeleted` qu'on supprime les lignes.
+
+### Recette : Better Auth
+
+Quand votre application connecte ses utilisateurs avec [Better Auth](https://www.better-auth.com), `access` lui demande la session : le widget et un `<SitepingInbox />` monté dans l'application envoient son cookie à chaque requête, le client n'a donc besoin d'aucun jeton. Son [plugin admin](https://www.better-auth.com/docs/plugins/admin) distingue les administrateurs — ils trient et lisent les e-mails des relecteurs —, tandis que tous les autres, connectés ou non, envoient, lisent et répondent.
+
+```ts
+// lib/auth.ts — votre serveur Better Auth
+import { betterAuth } from "better-auth";
+import { admin } from "better-auth/plugins";
+
+export const auth = betterAuth({
+  // …database, emailAndPassword, socialProviders tels que vous les avez
+  plugins: [admin()],
+});
+```
+
+```ts
+// lib/siteping-access.ts
+import type { SitepingAccessControl } from "@siteping/server";
+import { auth } from "@/lib/auth";
+
+export interface Reviewer {
+  id: string; // "" pour un visiteur sans session
+  name: string;
+  email: string;
+  isAdmin: boolean;
+}
+
+const VISITOR: Reviewer = { id: "", name: "", email: "", isAdmin: false };
+
+export const betterAuthAccess: SitepingAccessControl<Reviewer> = {
+  async authenticate(request) {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+      // Lue en base, jamais renouvelée ici — voir plus bas.
+      query: { disableCookieCache: true, disableRefresh: true },
+    });
+    // Pas de session : un visiteur — sauf si la requête a envoyé un jeton, qui répond alors 401.
+    if (!session) return request.headers.has("Authorization") ? null : VISITOR;
+    const { user } = session;
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.emailVerified ? user.email : "",
+      // Le plugin admin stocke plusieurs rôles séparés par des virgules.
+      isAdmin: user.role?.split(",").includes("admin") ?? false,
+    };
+  },
+  authorize: ({ principal, action }) =>
+    principal.isAdmin || action === "create" || action === "list" || action === "createComment",
+  canReadAuthorEmail: (principal) => principal.isAdmin,
+};
+```
+
+```ts
+// app/api/siteping/route.ts
+import { createSitepingHandler } from "@siteping/server";
+import { betterAuthAccess } from "@/lib/siteping-access";
+import { store } from "@/lib/siteping-store";
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  access: betterAuthAccess,
+  // Le nom d'un auteur connecté, et son e-mail vérifié, viennent de la session.
+  beforeCreate: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name || input.authorName,
+    authorEmail: principal.email || input.authorEmail,
+  }),
+});
+```
+
+La session épargne aussi aux utilisateurs connectés la modale d'identité du widget : passez-la en [`identity`](/fr/docs/widget/configuration). Le widget ne lit `identity` qu'une fois, à l'init : indexez donc le composant sur le compte — une connexion ou une déconnexion le remonte :
+
+```tsx
+// app/feedback.tsx — monté dans votre layout racine
+"use client";
+import type { Identity } from "@siteping/widget";
+import { useSiteping } from "@siteping/widget/react";
+import { authClient } from "@/lib/auth-client"; // createAuthClient() de "better-auth/react"
+
+function Widget({ identity }: { identity: Identity | undefined }) {
+  useSiteping({ endpoint: "/api/siteping", projectName: "acme", identity });
+  return null;
+}
+
+export function Feedback() {
+  const { data: session, isPending } = authClient.useSession();
+  if (isPending) return null;
+  const user = session?.user;
+  return <Widget key={user?.id ?? "visitor"} identity={user && { name: user.name, email: user.email }} />;
+}
+```
+
+- **Sans session, un visiteur ; un jeton mort, une `401`.** Sans session, la requête est anonyme : le widget public continue de fonctionner — y compris pour quelqu'un dont le cookie a survécu à une déconnexion, une expiration ou un bannissement, puisque le navigateur continue de l'envoyer. Une requête qui porte `Authorization` sans ouvrir de session répond `401` : son client a envoyé un jeton exprès, et apprend qu'il ne marche plus.
+- **Une base injoignable, une `500`.** Quand Better Auth ne peut pas lire ses sessions, `getSession` lève : le handler le journalise et répond `500` plutôt que de rétrograder tout le monde en visiteur. Les visiteurs sans cookie de session n'atteignent jamais la base.
+- **Lue, jamais renouvelée.** Une session plus vieille que l'`updateAge` de Better Auth est renouvelée par le `getSession` suivant, qui écrit une expiration plus lointaine et pose un nouveau cookie — sur une réponse que SitePing n'envoie jamais : le cookie du navigateur expirerait donc en premier. `disableRefresh` laisse le renouvellement aux requêtes de votre application.
+- **Une rétrogradation s'applique aussitôt.** Avec le `session.cookieCache` de Better Auth activé, `getSession` se fie au cookie en cache jusqu'à son `maxAge` : un changement de rôle ou une session révoquée l'attendraient. `disableCookieCache` lit la base, comme il le fait de toute façon sans le cache.
+- **Des administrateurs par rôle.** `isAdmin` lit le `role` du plugin admin — `setRole` avec `["user", "admin"]` stocke `"user,admin"`. Les `adminUserIds` du plugin ouvrent ses propres endpoints à des utilisateurs quel que soit leur rôle : donnez-leur aussi le rôle `admin`. Pour laisser quelqu'un trier sans la gestion des utilisateurs du plugin, donnez-lui un rôle à vous (déclaré dans les `roles` du plugin, si vous en avez configuré) et testez celui-là.
+- **L'auteur vient de la session.** `beforeCreate` reprend le nom de l'utilisateur, et son e-mail dès que `emailVerified` vaut true ; sinon, la valeur du widget reste.
+- **Les e-mails restent aux administrateurs.** Comme `canReadAuthorEmail` est défini, il décide aussi [du rôle équipe](/fr/docs/comments#le-rôle-équipe) : les réponses des administrateurs depuis l'inbox sont marquées `team`, celles de tous les autres `client`.
+- **Des cookies, donc du CSRF.** Un navigateur joint aussi le cookie de session à une requête intersite forgée ; les [protections CSRF](#protection-csrf) l'arrêtent, sans rien configurer.
+- **Un rôle, tous les projets.** Comme dans la recette OpenID Connect, `admin` trie tous les projets que sert l'endpoint, et n'importe qui liste chacun d'eux. Pour séparer plusieurs clients, chargez les projets de l'appelant dans `authenticate` — par exemple les slugs de ses organisations, avec le plugin organization de Better Auth — et faites vérifier `projectName` à `authorize`. Pour réserver aussi les lectures aux utilisateurs connectés, renvoyez `null` au lieu de `VISITOR` — chaque requête exige alors une session, envois compris.
+- **Des auteurs qui suppriment leurs feedbacks.** La [table des propriétaires](#laisser-les-auteurs-supprimer-leurs-feedbacks) de la recette OpenID Connect fonctionne telle quelle, avec `principal.id` là où elle lit `principal.sub` — un id d'utilisateur Better Auth est unique dans votre application : une colonne suffit.
+
+#### Depuis une autre origine
+
+Une page d'une autre origine — le widget sur le site d'un client, l'inbox sur son propre domaine — atteint votre application sans son cookie : le widget et l'inbox n'envoient de cookies qu'à leur propre origine. Ajoutez le [plugin bearer](https://www.better-auth.com/docs/plugins/bearer) de Better Auth et envoyez le jeton de session avec `headers` ; la recette ne change pas, puisque le plugin retransforme le jeton en la session que lit `getSession`.
+
+```ts
+// lib/auth.ts
+import { admin, bearer } from "better-auth/plugins";
+
+export const auth = betterAuth({
+  // …
+  plugins: [admin(), bearer()],
+  trustedOrigins: ["https://site-client.com"], // d'où les utilisateurs se connectent
+});
+
+// app/api/siteping/route.ts
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  allowedOrigins: ["https://site-client.com"],
+  access: betterAuthAccess,
+  // …beforeCreate comme plus haut
+});
+```
+
+Le jeton arrive dans l'en-tête `set-auth-token` de la réponse de connexion ; la documentation du plugin montre comment le garder. Sur la page, `headers` l'envoie à chaque requête :
+
+```ts
+function headers(): Record<string, string> {
+  const token = localStorage.getItem("bearer_token"); // là où votre client d'auth le garde
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+initSiteping({ endpoint: "https://app.example.com/api/siteping", projectName: "acme", headers });
+// Dashboard, sur une autre origine :
+// <SitepingInbox endpoint="https://app.example.com/api/siteping" projects="acme" headers={headers} />
+```
+
+Gardé dans le `localStorage`, le jeton est lisible par tous les scripts de cette page.
+
+Quand l'endpoint SitePing tourne à l'écart de Better Auth — un autre service, un edge worker loin de votre base —, vérifiez plutôt les jetons du [plugin jwt](https://www.better-auth.com/docs/plugins/jwt) de Better Auth avec la [recette OpenID Connect](#recette--openid-connect). La page en obtient un sur `/api/auth/token` avec son cookie de session et l'envoie avec `headers`. `ISSUER` et `audience` valent l'URL de votre Better Auth, sauf si vous définissez les `jwt.issuer` et `jwt.audience` du plugin ; le jeu de clés est à `/api/auth/jwks`, et les jetons sont signés en `EdDSA`. Le payload est la fiche de l'utilisateur : `rolesOf` lit `role` (voir le tableau plus haut), les administrateurs portent `admin`, et la vérification de l'e-mail se lit dans `emailVerified`, pas `email_verified`.
 
 ## Points d'extension
 
