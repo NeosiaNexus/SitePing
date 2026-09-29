@@ -18,11 +18,13 @@ export interface FakeIssue {
 export interface FakeTracker {
   fetch: typeof fetch;
   issues: FakeIssue[];
-  requests: Array<{ method: string; path: string; authorization: string | null }>;
-  /** Make every request whose `METHOD path` matches answer with this status. */
+  requests: Array<{ method: string; path: string; query: string; authorization: string | null }>;
+  /** Make every request whose `METHOD path?query` matches answer with this status. */
   failWhen(pattern: RegExp, status: number): void;
   /** Drop the labels of new issues, as the real APIs do for a token without the permission. */
   dropLabels(): void;
+  /** Make searches find nothing, like a search index that has not caught up yet. */
+  lagSearch(): void;
 }
 
 type Route = (request: Request, match: RegExpMatchArray, url: URL) => Promise<Response> | Response;
@@ -35,7 +37,7 @@ function createFakeServer(
   const issues: FakeIssue[] = [];
   const requests: FakeTracker["requests"] = [];
   const failures: Array<{ pattern: RegExp; status: number }> = [];
-  const settings = { dropLabels: false };
+  const settings = { dropLabels: false, searchLags: false };
 
   const fakeFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -43,12 +45,13 @@ function createFakeServer(
     requests.push({
       method: request.method,
       path: url.pathname,
+      query: url.search,
       authorization: request.headers.get(authorizationHeader),
     });
     if (requiredHeaders.some((header) => !request.headers.has(header))) {
       return new Response(JSON.stringify({ message: "Request forbidden by administrative rules." }), { status: 403 });
     }
-    const failure = failures.find(({ pattern }) => pattern.test(`${request.method} ${url.pathname}`));
+    const failure = failures.find(({ pattern }) => pattern.test(`${request.method} ${url.pathname}${url.search}`));
     if (failure) return new Response(JSON.stringify({ message: "fake failure" }), { status: failure.status });
     for (const [method, pattern, route] of routes) {
       const match = url.pathname.match(pattern);
@@ -65,6 +68,9 @@ function createFakeServer(
     failWhen: (pattern: RegExp, status: number) => failures.push({ pattern, status }),
     dropLabels: () => {
       settings.dropLabels = true;
+    },
+    lagSearch: () => {
+      settings.searchLags = true;
     },
   };
 }
@@ -90,6 +96,19 @@ export function createFakeGitHub(repository: string): FakeTracker {
 
   server = createFakeServer(
     [
+      [
+        "GET",
+        /^\/search\/issues$/,
+        (_request, _match, url) => {
+          const query = url.searchParams.get("q") ?? "";
+          const label = query.match(/label:(\S+)/)?.[1];
+          const phrase = query.match(/"([^"]*)"/)?.[1] ?? "";
+          const scoped = query.includes(`repo:${repository} `) && query.includes("in:body");
+          const items = server.settings.searchLags || !scoped || !label ? [] : [...server.issues].reverse();
+          const found = items.filter((issue) => issue.labels.includes(label ?? "") && issue.body.includes(phrase));
+          return Response.json({ total_count: found.length, incomplete_results: false, items: found.map(toGitHub) });
+        },
+      ],
       [
         "POST",
         new RegExp(`^${escapedBase}$`),
@@ -194,8 +213,14 @@ export function createFakeGitLab(project: string): FakeTracker {
         new RegExp(`^${escapedBase}$`),
         (_request, _match, url) => {
           const label = url.searchParams.get("labels");
+          const search = url.searchParams.get("search");
+          if (search !== null && (server.settings.searchLags || url.searchParams.get("in") !== "description")) {
+            return Response.json([]);
+          }
           // Newest first, like the real API's default sort.
-          const labelled = server.issues.filter((issue) => !label || issue.labels.includes(label)).reverse();
+          const labelled = server.issues
+            .filter((issue) => (!label || issue.labels.includes(label)) && issue.body.includes(search ?? ""))
+            .reverse();
           return Response.json(page(labelled, url).map(toGitLab));
         },
       ],

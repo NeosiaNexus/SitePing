@@ -42,7 +42,13 @@ export interface IssueTracker {
   listComments(reference: IssueReference): Promise<string[]>;
   /**
    * SitePing issues whose body contains `marker`, open or closed. Providers
-   * may narrow server-side (labels, search) and must return every match.
+   * may narrow server-side (labels) and must return every match they list.
    */
   findSitepingIssues(marker: string): Promise<TrackedIssue[]>;
+  /**
+   * Optional fast path to one feedback's issue: what a server-side search
+   * for `feedbackId` returns. Search indexes may lag behind a new issue or
+   * be rate limited, so a miss or a failure falls back to `findSitepingIssues`.
+   */
+  searchSitepingIssues?(feedbackId: string): Promise<TrackedIssue[]>;
 }

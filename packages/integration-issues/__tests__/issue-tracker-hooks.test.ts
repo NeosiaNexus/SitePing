@@ -26,7 +26,9 @@ const payload = {
 interface ProviderUnderTest {
   name: string;
   createFake(): FakeTracker;
-  createTracker(fake: FakeTracker): IssueTracker;
+  createTracker(fake: FakeTracker, options?: { maxListedPages: number }): IssueTracker;
+  /** Matches `METHOD path?query` of the provider's search request. */
+  searchRequest: RegExp;
   /** Assert the provider-specific closed state for a feedback status. */
   expectClosedAs(issue: FakeTracker["issues"][number], status: "resolved" | "wont_fix"): void;
   /** The permission a token that cannot label issues lacks. */
@@ -37,7 +39,9 @@ const providers: ProviderUnderTest[] = [
   {
     name: "GitHub",
     createFake: () => createFakeGitHub("acme/site"),
-    createTracker: (fake) => createGitHubTracker({ repository: "acme/site", token: TOKEN, fetch: fake.fetch }),
+    createTracker: (fake, options) =>
+      createGitHubTracker({ repository: "acme/site", token: TOKEN, fetch: fake.fetch, ...options }),
+    searchRequest: /^GET \/search\/issues\?/,
     expectClosedAs: (issue, status) => {
       expect(issue.isOpen).toBe(false);
       expect(issue.stateReason).toBe(status === "resolved" ? "completed" : "not_planned");
@@ -47,7 +51,9 @@ const providers: ProviderUnderTest[] = [
   {
     name: "GitLab",
     createFake: () => createFakeGitLab("acme/site"),
-    createTracker: (fake) => createGitLabTracker({ project: "acme/site", token: TOKEN, fetch: fake.fetch }),
+    createTracker: (fake, options) =>
+      createGitLabTracker({ project: "acme/site", token: TOKEN, fetch: fake.fetch, ...options }),
+    searchRequest: /^GET \S+[?&]search=/,
     expectClosedAs: (issue) => expect(issue.isOpen).toBe(false),
     labelPermission: /at least Reporter on acme\/site/,
   },
@@ -203,6 +209,68 @@ for (const provider of providers) {
 
       await patch(handler, resolved.id, "open");
       expect(fake.issues[0]?.isOpen).toBe(true);
+    });
+
+    it("sends nothing when the issue is already in the requested state", async () => {
+      const handler = createHandler();
+      const feedback = await send(handler);
+      fake.requests.length = 0;
+
+      await patch(handler, feedback.id, "in_progress");
+
+      expect(fake.requests.filter((request) => request.method !== "GET")).toEqual([]);
+    });
+
+    describe("finding a feedback's issue", () => {
+      const reads = () => fake.requests.filter((request) => request.method === "GET");
+
+      it("takes a single search request", async () => {
+        const handler = createHandler();
+        const feedbacks = [await send(handler), await send(handler), await send(handler)];
+        fake.requests.length = 0;
+
+        await patch(handler, feedbacks[1]?.id ?? "", "resolved");
+
+        expect(reads().map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+        ]);
+        expect(fake.issues.map((issue) => issue.isOpen)).toEqual([true, false, true]);
+      });
+
+      it("falls back to the label listing while the search index lags", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.lagSearch();
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("falls back to the label listing when the search fails", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.failWhen(provider.searchRequest, 403);
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("lists at most maxListedPages pages of 100 issues, newest first", async () => {
+        const feedback = await send(createHandler());
+        const [oldest] = fake.issues as [FakeTracker["issues"][number]];
+        for (let n = 2; n <= 101; n++) fake.issues.push({ ...oldest, key: String(n), body: "unrelated", comments: [] });
+        fake.lagSearch();
+        const listing = (maxListedPages: number) =>
+          createHandler({ tracker: provider.createTracker(fake, { maxListedPages }) });
+
+        await patch(listing(1), feedback.id, "resolved");
+        expect(oldest.isOpen).toBe(true);
+
+        await patch(listing(2), feedback.id, "resolved");
+        expect(oldest.isOpen).toBe(false);
+      });
     });
 
     it("leaves issues untouched on status changes when syncStatus is off", async () => {

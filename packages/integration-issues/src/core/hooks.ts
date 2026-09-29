@@ -1,4 +1,4 @@
-import { type FeedbackRecord, parseHttpUrl } from "@siteping/core";
+import { type FeedbackRecord, isClosedStatus, parseHttpUrl } from "@siteping/core";
 import type { SitepingDeletionTarget, SitepingLifecycleHooks } from "@siteping/server";
 import {
   DEFAULT_DEEP_LINK_PARAM,
@@ -94,8 +94,12 @@ export function createIssueTrackerHooks<Principal = never>({
   const issueLabels = [SITEPING_ISSUE_LABEL, ...labels.filter((label) => label !== SITEPING_ISSUE_LABEL)];
 
   const issueOf = async (feedbackId: string): Promise<TrackedIssue | null> => {
+    const isLinked = (issue: TrackedIssue) => parseIssueMarker(issue.body)?.feedbackId === feedbackId;
+    const searched = await tracker.searchSitepingIssues?.(feedbackId).catch(() => []);
+    const found = searched?.find(isLinked);
+    if (found) return found;
     const candidates = await tracker.findSitepingIssues(feedbackMarkerFragment(feedbackId));
-    return candidates.find((issue) => parseIssueMarker(issue.body)?.feedbackId === feedbackId) ?? null;
+    return candidates.find(isLinked) ?? null;
   };
 
   const issuesOfProject = async (projectName: string): Promise<TrackedIssue[]> => {
@@ -134,7 +138,10 @@ export function createIssueTrackerHooks<Principal = never>({
     async onUpdated(feedback) {
       if (!syncStatus) return;
       const issue = await issueOf(feedback.id);
-      if (issue) await tracker.updateIssueStatus(issue.reference, feedback.status);
+      // An open status on an open issue changes nothing; a closed one may still change the close reason.
+      if (issue && (isClosedStatus(feedback.status) || !issue.isOpen)) {
+        await tracker.updateIssueStatus(issue.reference, feedback.status);
+      }
     },
     onDeleting: closeDeletedTarget,
   };

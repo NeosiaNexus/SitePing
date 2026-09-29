@@ -19,6 +19,12 @@ export interface GitLabTrackerOptions {
   apiBaseUrl?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Pages of 100 issues listed, newest first, when the search misses and on
+   * a project-wide delete. Defaults to 10: an issue older than the 1,000
+   * newest SitePing issues is then out of reach.
+   */
+  maxListedPages?: number;
 }
 
 interface GitLabIssue {
@@ -27,6 +33,10 @@ interface GitLabIssue {
   description: string | null;
   state: "opened" | "closed";
   labels: string[];
+}
+
+function toTrackedIssue(issue: GitLabIssue, body: string): TrackedIssue {
+  return { reference: { key: String(issue.iid), url: issue.web_url }, body, isOpen: issue.state === "opened" };
 }
 
 interface GitLabNote {
@@ -45,6 +55,7 @@ export function createGitLabTracker({
   apiBaseUrl = GITLAB_API_BASE_URL,
   fetch,
   timeoutMs,
+  maxListedPages = TRACKER_MAX_LISTED_PAGES,
 }: GitLabTrackerOptions): IssueTracker {
   const request = createJsonHttpClient({
     tracker: "GitLab",
@@ -85,7 +96,7 @@ export function createGitLabTracker({
 
     async listComments(reference) {
       const bodies: string[] = [];
-      for (let page = 1; page <= TRACKER_MAX_LISTED_PAGES; page++) {
+      for (let page = 1; page <= maxListedPages; page++) {
         const notes = await request<GitLabNote[]>({
           method: "GET",
           path: `${issuesPath}/${reference.key}/notes`,
@@ -97,9 +108,24 @@ export function createGitLabTracker({
       return bodies;
     },
 
+    async searchSitepingIssues(feedbackId) {
+      const issues = await request<GitLabIssue[]>({
+        method: "GET",
+        path: issuesPath,
+        query: {
+          labels: SITEPING_ISSUE_LABEL,
+          state: "all",
+          search: feedbackId,
+          in: "description",
+          per_page: String(GITLAB_PAGE_SIZE),
+        },
+      });
+      return issues.flatMap((issue) => (issue.description ? [toTrackedIssue(issue, issue.description)] : []));
+    },
+
     async findSitepingIssues(marker) {
       const matches: TrackedIssue[] = [];
-      for (let page = 1; page <= TRACKER_MAX_LISTED_PAGES; page++) {
+      for (let page = 1; page <= maxListedPages; page++) {
         const issues = await request<GitLabIssue[]>({
           method: "GET",
           path: issuesPath,
@@ -107,11 +133,7 @@ export function createGitLabTracker({
         });
         for (const issue of issues) {
           if (!issue.description?.includes(marker)) continue;
-          matches.push({
-            reference: { key: String(issue.iid), url: issue.web_url },
-            body: issue.description,
-            isOpen: issue.state === "opened",
-          });
+          matches.push(toTrackedIssue(issue, issue.description));
         }
         if (issues.length < GITLAB_PAGE_SIZE) break;
       }

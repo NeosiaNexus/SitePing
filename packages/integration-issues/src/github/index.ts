@@ -21,6 +21,12 @@ export interface GitHubTrackerOptions {
   apiBaseUrl?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Pages of 100 issues listed, newest first, when the search misses (its
+   * index lags a few seconds behind a new issue). Defaults to 10: an issue
+   * older than the 1,000 newest SitePing issues is then out of reach.
+   */
+  maxListedPages?: number;
 }
 
 interface GitHubIssue {
@@ -34,6 +40,10 @@ interface GitHubIssue {
 
 interface GitHubComment {
   body: string | null;
+}
+
+function toTrackedIssue(issue: GitHubIssue, body: string): TrackedIssue {
+  return { reference: { key: String(issue.number), url: issue.html_url }, body, isOpen: issue.state === "open" };
 }
 
 /** GitHub issue state for a feedback status: closed as completed / not planned, or reopened. */
@@ -50,6 +60,7 @@ export function createGitHubTracker({
   apiBaseUrl = GITHUB_API_BASE_URL,
   fetch,
   timeoutMs,
+  maxListedPages = TRACKER_MAX_LISTED_PAGES,
 }: GitHubTrackerOptions): IssueTracker {
   const request = createJsonHttpClient({
     tracker: "GitHub",
@@ -91,7 +102,7 @@ export function createGitHubTracker({
 
     async listComments(reference) {
       const bodies: string[] = [];
-      for (let page = 1; page <= TRACKER_MAX_LISTED_PAGES; page++) {
+      for (let page = 1; page <= maxListedPages; page++) {
         const comments = await request<GitHubComment[]>({
           method: "GET",
           path: `${issuesPath}/${reference.key}/comments`,
@@ -103,10 +114,22 @@ export function createGitHubTracker({
       return bodies;
     },
 
+    async searchSitepingIssues(feedbackId) {
+      const { items } = await request<{ items: GitHubIssue[] }>({
+        method: "GET",
+        path: "/search/issues",
+        query: {
+          q: `repo:${repository} is:issue label:${SITEPING_ISSUE_LABEL} in:body "${feedbackId.replaceAll('"', "")}"`,
+          per_page: String(GITHUB_PAGE_SIZE),
+        },
+      });
+      return items.flatMap((issue) => (issue.body ? [toTrackedIssue(issue, issue.body)] : []));
+    },
+
     // Listed by label (consistent right after creation, unlike the search index).
     async findSitepingIssues(marker) {
       const matches: TrackedIssue[] = [];
-      for (let page = 1; page <= TRACKER_MAX_LISTED_PAGES; page++) {
+      for (let page = 1; page <= maxListedPages; page++) {
         const issues = await request<GitHubIssue[]>({
           method: "GET",
           path: issuesPath,
@@ -114,11 +137,7 @@ export function createGitHubTracker({
         });
         for (const issue of issues) {
           if (issue.pull_request || !issue.body?.includes(marker)) continue;
-          matches.push({
-            reference: { key: String(issue.number), url: issue.html_url },
-            body: issue.body,
-            isOpen: issue.state === "open",
-          });
+          matches.push(toTrackedIssue(issue, issue.body));
         }
         if (issues.length < GITHUB_PAGE_SIZE) break;
       }
