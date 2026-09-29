@@ -6,7 +6,7 @@ import {
   createIssueTrackerHooks,
   type IssueTracker,
   type IssueTrackerHooksOptions,
-  UnlabelledIssueError,
+  isUnlabelledIssueError,
 } from "../src/index.js";
 import { createGitHubTracker } from "../src/providers/github.js";
 import { createGitLabTracker } from "../src/providers/gitlab.js";
@@ -356,7 +356,7 @@ for (const provider of providers) {
       const [message, context] = logger.error.mock.calls[0] ?? [];
       expect(message).toContain("Hook onCreated failed");
       const { error } = context as { error: Error };
-      expect(error).toBeInstanceOf(UnlabelledIssueError);
+      expect(isUnlabelledIssueError(error)).toBe(true);
       expect(error.message).toMatch(/created issue #1 without its "siteping" label/);
       expect(error.message).toMatch(provider.labelPermission);
     });
