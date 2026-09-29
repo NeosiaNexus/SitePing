@@ -81,7 +81,7 @@ export async function initCommand(): Promise<void> {
   // Step 3: Next steps
   p.note(
     [
-      "1. Run: npx prisma db push",
+      "1. Run: npx prisma db push && npx prisma generate",
       "2. Set SITEPING_API_KEY in your environment (required in production)",
       "3. Add the widget to your layout:",
       "",

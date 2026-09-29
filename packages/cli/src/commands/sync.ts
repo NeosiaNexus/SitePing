@@ -43,7 +43,8 @@ export function syncCommand(options: SyncCommandOptions): void {
       );
     }
 
-    p.log.info("Don't forget to run: npx prisma db push");
+    // Prisma 7 no longer generates the client from `db push`.
+    p.log.info("Don't forget to run: npx prisma db push && npx prisma generate");
   } catch (error) {
     p.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);

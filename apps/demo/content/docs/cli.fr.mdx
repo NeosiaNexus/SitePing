@@ -45,7 +45,7 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 - réécrit les champs SitePing dont le type ou les attributs ont dérivé de la forme attendue — en gardant ce qui vous appartient (noms de colonne `@map`, noms de relation, `onUpdate` d'une relation, commentaires) ; un `@ignore` compte comme une dérive, car l'adapter écrit toutes les colonnes SitePing,
 - **ne touche jamais aux champs que vous avez ajoutés vous-même.**
 
-Quand quelque chose a changé, il vous rappelle de lancer `npx prisma db push`. Le lancer deux fois de suite ne fait rien.
+Quand quelque chose a changé, il vous rappelle de lancer `npx prisma db push` et `npx prisma generate` (Prisma 7 ne génère plus le client depuis `db push`). Le lancer deux fois de suite ne fait rien.
 
 > **Committez avant de le lancer.** `sync` réimprime tout le fichier de schéma, donc le formatage (lignes vides après les commentaires `//`, alignement des colonnes) est normalisé y compris sur vos propres modèles — les commentaires de documentation `///` restent attachés à ce qu'ils documentent. Un diff git propre rend les changements faciles à relire.
 

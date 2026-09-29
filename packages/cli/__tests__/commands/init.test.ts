@@ -349,6 +349,7 @@ model SitepingFeedback {
       await initCommand();
 
       expect(p.note).toHaveBeenCalledWith(expect.stringContaining("prisma db push"), "Next steps");
+      expect(p.note).toHaveBeenCalledWith(expect.stringContaining("prisma generate"), "Next steps");
     });
   });
 

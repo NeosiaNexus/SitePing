@@ -120,9 +120,10 @@ The `SitepingComment` model holds [discussion threads](/docs/comments). A schema
 ```bash
 npx @siteping/cli sync   # adds SitepingComment and SitepingFeedback.comments
 npx prisma db push       # or: npx prisma migrate dev --name siteping-comments
+npx prisma generate      # Prisma 7: neither command above regenerates the client
 ```
 
-Both commands regenerate the client. Apply the schema to the database before you deploy that client: it reads the comments table on every list, so until the table exists, lists answer `500` with the missing-table hint.
+On Prisma 5 and 6, `db push` and `migrate dev` also regenerate the client; Prisma 7 leaves that to `prisma generate`, harmless on 5 and 6. Skip it on 7 and the client has no `sitepingComment` delegate: threads stay off, with nothing logged. Apply the schema to the database before you deploy that client: it reads the comments table on every list, so until the table exists, lists answer `500` with the missing-table hint.
 
 A thread comes back oldest first. A post connects to its feedback, so an unknown feedback is a `404` on every provider, and the unique `clientId` makes a replayed post return the stored comment. The cap of 100 `client` comments is a count before the insert: posts racing for the last free slot may overshoot it.
 
