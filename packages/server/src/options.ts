@@ -215,15 +215,18 @@ export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions
   /**
    * Whether destructive endpoints (DELETE, PATCH) require `apiKey`.
    *
-   * Defaults to `true` and intentionally cannot be disabled in production:
-   * - `NODE_ENV === "production"` without `apiKey` throws at startup. The
-   *   factory refuses to return an unauthenticated destructive surface.
+   * Defaults to `true`:
+   * - `NODE_ENV === "production"` without `apiKey` throws at startup: the
+   *   factory refuses to return an unauthenticated destructive surface by
+   *   accident.
    * - `NODE_ENV !== "production"` without `apiKey` keeps the handler running
    *   for local dev/tests, but DELETE/PATCH return 401 until you set
    *   `apiKey` or explicitly opt out with `requireAuthForDestructive: false`.
    *
-   * Set to `false` only when you wrap the handler in your own auth
-   * middleware (session, OAuth, etc.) and want SitePing to stay open.
+   * `false` lifts both, in production too: without `apiKey`, anyone who
+   * reaches the endpoint may then PATCH and DELETE, `deleteAll` included.
+   * Set it only behind your own middleware that authenticates every method
+   * (session, OAuth, etc.).
    */
   requireAuthForDestructive?: boolean;
   /**

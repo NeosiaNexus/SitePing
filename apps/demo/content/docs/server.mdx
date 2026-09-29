@@ -93,7 +93,7 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 | `store` | `SitepingStore` | — | Required. [Prisma](/docs/adapters/prisma), [Drizzle](/docs/adapters/drizzle), [memory](/docs/adapters/memory) or [your own](/docs/adapters/writing-an-adapter) |
 | `apiKey` | `string` | — | Enables Bearer auth. Requests send `Authorization: Bearer <key>` |
 | `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` when `apiKey` is set | Methods that skip auth. **Passing a value replaces the default** — include `"POST"` yourself or the widget can no longer submit |
-| `requireAuthForDestructive` | `boolean` | `true` | Without an `apiKey`, PATCH and DELETE answer `401`. In `NODE_ENV=production` the factory refuses to start without an `apiKey` |
+| `requireAuthForDestructive` | `boolean` | `true` | Without an `apiKey`, PATCH and DELETE answer `401`. In `NODE_ENV=production` the factory refuses to start without an `apiKey`. `false` lifts both, production included: PATCH and DELETE, `deleteAll` too, are then open to anyone — only behind your own auth |
 | `redactUnauthenticatedEmails` | `boolean` | `true` | See [what responses expose](#what-responses-expose) |
 | `access` | `SitepingAccessControl` | — | Your own authentication instead of the four options above — see [custom access](#custom-access) |
 | `allowedOrigins` | `string[]` | — | Exact-match CORS allowlist. **No wildcard support** — `["*"]` matches nothing; unset means no CORS headers at all. Listed origins may send `Content-Type`, `Authorization`, and any custom header their preflight asks for (e.g. from the widget's `headers` option) |
@@ -110,7 +110,7 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 ## The security model, honestly
 
 - **Reads are public by default.** Without an `apiKey`, anyone who knows the URL can list feedbacks (with emails redacted — see below).
-- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key. That check reads `process.env.NODE_ENV`, so it only runs where `process` exists; elsewhere the `401` still applies.
+- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key, unless you opted out. That check reads `process.env.NODE_ENV`, so it only runs where `process` exists; elsewhere the `401` still applies.
 - `OPTIONS` is always public — preflights must work.
 - **Cross-project checks need the store.** PATCH and DELETE verify that the record belongs to the `projectName` they name through the store's optional `verifyProjectOwnership` — every bundled store and anything built on `createCollectionStore` implements it. A hand-written store that omits it skips the check: any caller who knows a feedback `id` can then modify it regardless of `projectName`, so implement the method (see [writing an adapter](/docs/adapters/writing-an-adapter#project-ownership)) or put the endpoint behind an `apiKey`.
 
