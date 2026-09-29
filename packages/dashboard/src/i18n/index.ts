@@ -1,5 +1,11 @@
 import type { FeedbackStatus, FeedbackType } from "@siteping/core";
-import { tWithParams as coreTWithParams, createI18n, interpolate } from "@siteping/core";
+import {
+  tWithParams as coreTWithParams,
+  createI18n,
+  FEEDBACK_STATUSES,
+  FEEDBACK_TYPES,
+  interpolate,
+} from "@siteping/core";
 import type { TFunction, TranslationKey, Translations } from "./types.js";
 
 export type { TFunction, TranslationKey, Translations } from "./types.js";
@@ -59,44 +65,24 @@ export const tWithParams: (
 /**
  * Returns the type label for a `FeedbackType` value.
  *
- * Maps API enum values (English) to localised display labels. Unknown
- * values fall through and render raw instead of crashing.
+ * Maps API enum values (English) to their `type.*` display label — a type
+ * added to core without one fails to compile here. Unknown values fall
+ * through and render raw instead of crashing.
  */
 export function getTypeLabel(type: FeedbackType | string, t: TFunction): string {
-  switch (type) {
-    case "question":
-      return t("type.question");
-    case "change":
-      return t("type.change");
-    case "bug":
-      return t("type.bug");
-    case "other":
-      return t("type.other");
-    default:
-      return type;
-  }
+  return FEEDBACK_TYPES.includes(type as FeedbackType) ? t(`type.${type as FeedbackType}`) : type;
 }
 
 /**
  * Returns the status label for a `FeedbackStatus` value or the `"all"`
  * pseudo-status used by the filter tabs.
  *
- * Maps API enum values (English) to localised display labels. Unknown
- * values fall through and render raw instead of crashing.
+ * Maps API enum values (English) to their `status.*` display label — a
+ * status added to core without one fails to compile here. Unknown values
+ * fall through and render raw instead of crashing.
  */
 export function getStatusLabel(status: FeedbackStatus | "all" | string, t: TFunction): string {
-  switch (status) {
-    case "all":
-      return t("status.all");
-    case "open":
-      return t("status.open");
-    case "in_progress":
-      return t("status.in_progress");
-    case "resolved":
-      return t("status.resolved");
-    case "wont_fix":
-      return t("status.wont_fix");
-    default:
-      return status;
-  }
+  return status === "all" || FEEDBACK_STATUSES.includes(status as FeedbackStatus)
+    ? t(`status.${status as FeedbackStatus | "all"}`)
+    : status;
 }

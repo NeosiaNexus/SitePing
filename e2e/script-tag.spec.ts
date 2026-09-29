@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 // The IIFE bundle (`dist/index.global.js`) is what a plain `<script src>` embed
-// runs, exactly as shipped — and the only bundle a second minifier (Terser)
-// goes over. Every other spec loads the ESM build, so this one drives the
-// script bundle end to end: the `SitePing` global, the stylesheet, the
+// runs, exactly as shipped — and the only widget bundle a second minifier
+// (Terser) goes over. Every other spec loads the ESM build, so this one drives
+// the script bundle end to end: the `SitePing` global, the stylesheet, the
 // lazily initialized panel, and a feedback with a screenshot (html2canvas-pro
 // is bundled into it).
 

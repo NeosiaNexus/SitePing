@@ -19,6 +19,7 @@
         "publint": "0.3.24",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
+        "terser": "^5.51.2",
         "tsup": "^8.5.1",
         "turbo": "^2.10.13",
         "typescript": "^5.9.3",
@@ -206,7 +207,6 @@
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
         "size-limit": "^14.0.0",
-        "terser": "^5.51.2",
       },
       "peerDependencies": {
         "react": ">=18",

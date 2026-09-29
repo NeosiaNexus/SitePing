@@ -2,7 +2,7 @@
   {
     "name": "ESM entry (dist/index.js, gzip)",
     "path": "dist/index.js",
-    "limit": "54 KB",
+    "limit": "36 KB",
     "gzip": true
   },
   {

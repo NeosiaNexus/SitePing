@@ -251,6 +251,18 @@ describe("SitepingInbox — keyboard", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull());
   });
 
+  it("keeps Tab and Shift+Tab on the shortcuts overlay, which holds nothing focusable", async () => {
+    renderInbox();
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "?" });
+    const overlay = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    expect(document.activeElement).toBe(overlay);
+
+    expect(fireEvent.keyDown(overlay, { key: "Tab" })).toBe(false);
+    expect(fireEvent.keyDown(overlay, { key: "Tab", shiftKey: true })).toBe(false);
+    expect(document.activeElement).toBe(overlay);
+  });
+
   it("number keys switch status tabs (4 → resolved)", async () => {
     renderInbox();
     const listbox = await ready();

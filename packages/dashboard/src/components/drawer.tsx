@@ -10,14 +10,12 @@ import {
   toDateTimeAttr,
 } from "../format.js";
 import { getStatusLabel, getTypeLabel } from "../i18n/index.js";
-import { STATUS_ICONS, useInboxUi } from "./context.js";
+import { STATUS_ICONS, trapTab, useInboxUi } from "./context.js";
 import { Diagnostics } from "./diagnostics.js";
 import { EvidenceCard } from "./evidence-card.js";
 import { CloseIcon, ExternalIcon, TrashIcon } from "./icons.js";
 import { StatusMenu } from "./status-menu.js";
 import { Thread } from "./thread.js";
-
-const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 interface DrawerProps {
   record: FeedbackRecord;
@@ -77,22 +75,7 @@ export function Drawer({
 
   // Focus trap — only in overlay mode; side-by-side keeps the natural tab order.
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
-    if (!overlay || event.key !== "Tab") return;
-    const root = panelRef.current;
-    if (!root) return;
-    const focusables = root.querySelectorAll<HTMLElement>(FOCUSABLE);
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    if (!first || !last) return;
-    // Focus can rest on the container itself (it takes focus on open); Shift+Tab
-    // from there must wrap to the last focusable, not escape behind the backdrop.
-    if (event.shiftKey && (document.activeElement === first || document.activeElement === root)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    if (overlay && event.key === "Tab" && panelRef.current) trapTab(event, panelRef.current);
   };
 
   const diagnostics = record.diagnostics;
