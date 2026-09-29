@@ -21,6 +21,8 @@ export interface FakeTracker {
   requests: Array<{ method: string; path: string; authorization: string | null }>;
   /** Make every request whose `METHOD path` matches answer with this status. */
   failWhen(pattern: RegExp, status: number): void;
+  /** Drop the labels of new issues, as the real APIs do for a token without the permission. */
+  dropLabels(): void;
 }
 
 type Route = (request: Request, match: RegExpMatchArray, url: URL) => Promise<Response> | Response;
@@ -29,6 +31,7 @@ function createFakeServer(routes: Array<[string, RegExp, Route]>, authorizationH
   const issues: FakeIssue[] = [];
   const requests: FakeTracker["requests"] = [];
   const failures: Array<{ pattern: RegExp; status: number }> = [];
+  const settings = { dropLabels: false };
 
   const fakeFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -50,8 +53,12 @@ function createFakeServer(routes: Array<[string, RegExp, Route]>, authorizationH
   return {
     issues,
     requests,
+    settings,
     fetch: fakeFetch,
     failWhen: (pattern: RegExp, status: number) => failures.push({ pattern, status }),
+    dropLabels: () => {
+      settings.dropLabels = true;
+    },
   };
 }
 
@@ -71,6 +78,7 @@ export function createFakeGitHub(repository: string): FakeTracker {
     html_url: `https://github.com/${repository}/issues/${issue.key}`,
     body: issue.body,
     state: issue.isOpen ? "open" : "closed",
+    labels: issue.labels.map((name) => ({ name })),
   });
 
   server = createFakeServer(
@@ -84,7 +92,7 @@ export function createFakeGitHub(repository: string): FakeTracker {
             key: String(server.issues.length + 1),
             title,
             body,
-            labels,
+            labels: server.settings.dropLabels ? [] : labels,
             isOpen: true,
             stateReason: null,
             comments: [],
@@ -145,6 +153,7 @@ export function createFakeGitLab(project: string): FakeTracker {
     web_url: `https://gitlab.com/${project}/-/issues/${issue.key}`,
     description: issue.body,
     state: issue.isOpen ? "opened" : "closed",
+    labels: issue.labels,
   });
 
   server = createFakeServer(
@@ -162,7 +171,7 @@ export function createFakeGitLab(project: string): FakeTracker {
             key: String(server.issues.length + 1),
             title,
             body: description,
-            labels: labels.split(","),
+            labels: server.settings.dropLabels ? [] : labels.split(","),
             isOpen: true,
             stateReason: null,
             comments: [],

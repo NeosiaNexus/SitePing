@@ -29,6 +29,8 @@ interface ProviderUnderTest {
   createTracker(fake: FakeTracker): IssueTracker;
   /** Assert the provider-specific closed state for a feedback status. */
   expectClosedAs(issue: FakeTracker["issues"][number], status: "resolved" | "wont_fix"): void;
+  /** The permission a token that cannot label issues lacks. */
+  labelPermission: RegExp;
 }
 
 const providers: ProviderUnderTest[] = [
@@ -40,12 +42,14 @@ const providers: ProviderUnderTest[] = [
       expect(issue.isOpen).toBe(false);
       expect(issue.stateReason).toBe(status === "resolved" ? "completed" : "not_planned");
     },
+    labelPermission: /write access to acme\/site/,
   },
   {
     name: "GitLab",
     createFake: () => createFakeGitLab("acme/site"),
     createTracker: (fake) => createGitLabTracker({ project: "acme/site", token: TOKEN, fetch: fake.fetch }),
     expectClosedAs: (issue) => expect(issue.isOpen).toBe(false),
+    labelPermission: /at least Reporter on acme\/site/,
   },
 ];
 
@@ -254,6 +258,20 @@ for (const provider of providers) {
       await remove(handler, { projectName: "site", deleteAll: true });
 
       expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, false, true]);
+    });
+
+    it("reports a token that cannot label issues, which lookups could never find", async () => {
+      fake.dropLabels();
+      const handler = createHandler();
+
+      await send(handler);
+
+      expect(fake.issues).toHaveLength(1);
+      const [message, context] = logger.error.mock.calls[0] ?? [];
+      expect(message).toContain("Hook onCreated failed");
+      const { error } = context as { error: Error };
+      expect(error.message).toMatch(/created issue #1 without its "siteping" label/);
+      expect(error.message).toMatch(provider.labelPermission);
     });
 
     it("still creates the feedback when opening the issue fails", async () => {

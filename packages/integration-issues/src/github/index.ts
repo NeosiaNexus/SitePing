@@ -8,7 +8,7 @@ import {
 } from "../constants/github.js";
 import { TRACKER_MAX_LISTED_PAGES } from "../constants/http.js";
 import { SITEPING_ISSUE_LABEL } from "../constants/issue-format.js";
-import { createJsonHttpClient } from "../core/http-client.js";
+import { createJsonHttpClient, UnlabelledIssueError } from "../core/http-client.js";
 import type { IssueTracker, TrackedIssue } from "../core/issue-tracker.js";
 
 export interface GitHubTrackerOptions {
@@ -27,6 +27,7 @@ interface GitHubIssue {
   html_url: string;
   body: string | null;
   state: "open" | "closed";
+  labels: Array<string | { name?: string }>;
   pull_request?: unknown;
 }
 
@@ -67,6 +68,14 @@ export function createGitHubTracker({
 
     async createIssue({ title, body, labels }) {
       const issue = await request<GitHubIssue>({ method: "POST", path: issuesPath, body: { title, body, labels } });
+      const kept = issue.labels.map((label) => (typeof label === "string" ? label : label.name));
+      if (labels.includes(SITEPING_ISSUE_LABEL) && !kept.includes(SITEPING_ISSUE_LABEL)) {
+        throw new UnlabelledIssueError(
+          "GitHub",
+          `#${issue.number}`,
+          `GitHub drops labels set by accounts without write access: give the token's account write access to ${repository}.`,
+        );
+      }
       return { key: String(issue.number), url: issue.html_url };
     },
 

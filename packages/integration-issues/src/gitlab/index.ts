@@ -7,7 +7,7 @@ import {
 } from "../constants/gitlab.js";
 import { TRACKER_MAX_LISTED_PAGES } from "../constants/http.js";
 import { SITEPING_ISSUE_LABEL } from "../constants/issue-format.js";
-import { createJsonHttpClient } from "../core/http-client.js";
+import { createJsonHttpClient, UnlabelledIssueError } from "../core/http-client.js";
 import type { IssueTracker, TrackedIssue } from "../core/issue-tracker.js";
 
 export interface GitLabTrackerOptions {
@@ -26,6 +26,7 @@ interface GitLabIssue {
   web_url: string;
   description: string | null;
   state: "opened" | "closed";
+  labels: string[];
 }
 
 interface GitLabNote {
@@ -63,6 +64,13 @@ export function createGitLabTracker({
         path: issuesPath,
         body: { title, description: body, labels: labels.join(GITLAB_LABEL_SEPARATOR) },
       });
+      if (labels.includes(SITEPING_ISSUE_LABEL) && !issue.labels.includes(SITEPING_ISSUE_LABEL)) {
+        throw new UnlabelledIssueError(
+          "GitLab",
+          `#${issue.iid}`,
+          `GitLab ignores labels set by members below the Reporter role: give the token at least Reporter on ${project}.`,
+        );
+      }
       return { key: String(issue.iid), url: issue.web_url };
     },
 

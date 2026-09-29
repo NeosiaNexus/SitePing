@@ -17,6 +17,20 @@ export class IssueTrackerRequestError extends Error {
   }
 }
 
+/**
+ * The tracker created the issue but dropped its `siteping` label, which
+ * every later lookup filters on: status changes and deletes would silently
+ * stop reaching it. Raised so the handler logs the missing permission.
+ */
+export class UnlabelledIssueError extends Error {
+  constructor(tracker: string, issue: string, remedy: string) {
+    super(
+      `[siteping] ${tracker} created issue ${issue} without its "siteping" label, so status changes and deletes cannot find it. ${remedy}`,
+    );
+    this.name = "UnlabelledIssueError";
+  }
+}
+
 export interface JsonHttpClientOptions {
   /** Provider name for error messages. */
   tracker: string;
