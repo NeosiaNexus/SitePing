@@ -76,6 +76,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint garanti */ }
 | Option | Signature | Déclenché quand |
 |---|---|---|
 | `onFeedbackSent` | `(feedback) => void` | Un feedback a été créé avec succès |
+| `onCommentAdded` | `(comment) => void` | Une réponse a été postée depuis le [fil de discussion](/fr/docs/comments#dans-le-widget) d'un feedback |
 | `onError` | `(error) => void` | Un envoi ou un chargement a échoué, ou une de vos [actions du panneau](/fr/docs/widget/panel-actions#erreurs) a levé une erreur — voir [gestion des erreurs](/fr/docs/widget#gérer-les-erreurs) |
 | `onOpen` / `onClose` | `() => void` | Le panneau s'est ouvert / fermé |
 | `onAnnotationStart` / `onAnnotationEnd` | `() => void` | Une session d'annotation a commencé / s'est terminée — mettez en pause vos bulles de chat ou vos overlays d'analytics ici |

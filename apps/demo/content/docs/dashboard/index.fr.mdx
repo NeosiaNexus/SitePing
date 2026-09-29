@@ -62,6 +62,16 @@ Les raccourcis exigent le focus à l'intérieur du composant (ils sont liés à 
 
 Quatre statuts : `open`, `in_progress`, `resolved`, `wont_fix`. Le dashboard peut les définir tous (les actions du widget, elles, restent binaires : résoudre/rouvrir). Clore un feedback (`resolved` ou `wont_fix`) horodate `resolvedAt` ; le rouvrir l'efface. Les changements de statut sont optimistes avec annulation ; **la suppression est définitive** — elle passe par une confirmation en ligne et n'a pas d'annulation.
 
+## Fils de discussion
+
+Le tiroir montre le fil du feedback ouvert — les réponses du relecteur depuis le widget, celles de votre équipe depuis ici. Passez `author` pour répondre et supprimer depuis l'inbox :
+
+```tsx
+<SitepingInbox projects="my-project" endpoint="/api/siteping" apiKey={KEY} author={{ name: "Alex" }} />
+```
+
+Sans `author`, les fils sont en lecture seule. Les réponses demandent le rôle `team`, que votre serveur n'accorde qu'aux appelants de confiance — les détails sont dans [Fils de discussion](/fr/docs/comments#dans-le-dashboard).
+
 ## Langues
 
 Les mêmes locales intégrées que le widget (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`, `ja`), l'anglais embarqué, le reste chargé à la demande, les étiquettes BCP-47 normalisées (`fr-CA` → `fr`), tout comme celles au format backend (`fr_FR` → `fr`).

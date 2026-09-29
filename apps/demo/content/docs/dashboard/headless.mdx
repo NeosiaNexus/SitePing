@@ -30,6 +30,7 @@ The options are a union over the three source modes: supply **exactly one** of `
 | `onStatusChange` | `(feedback, previousStatus) => void` | — | After the server confirms |
 | `onDelete` | `(feedback) => void` | — | After the server confirms |
 | `onError` | `(error) => void` | — | Every failed load or mutation |
+| `author` | `{ name, email? }` | — | Who posts replies from this inbox — see [Discussion threads](#discussion-threads). Without it, threads are read-only |
 
 Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions`, the shared `InboxSharedOptions`, and the `UseSitepingInboxOptions` union — so a wrapper component can accept just the mode it supports. Plain-JavaScript callers get the old behavior: no source at all still throws at render.
 
@@ -42,6 +43,8 @@ Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`
 **Focus & drawer** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (the open record — it stays available even if a filter removes its row), `openFeedback(id)`, `closeFeedback()`.
 
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
+
+**Discussion thread** — `canComment`, `addComment(id, body, clientId?)`, `deleteComment(id, commentId)`; see [below](#discussion-threads).
 
 ## `view` — skip the flag algebra
 
@@ -80,6 +83,31 @@ The UI updates immediately; if the server rejects, the hook rolls that feedback 
 ```
 
 Only the last status change is undoable (`pendingUndo` + `undo()`); delete is permanent, so gate it behind your own confirmation UI.
+
+## Discussion threads
+
+Each record carries its thread in `comments` (oldest first). `canComment` says whether this inbox may post and delete replies: an `author` is set, the source implements `addComment`, and the last list did not say the endpoint keeps no comments.
+
+Replies are **not** optimistic: `addComment` resolves once the source has stored the reply, which then shows on the record wherever the hook holds it — its row, `opened`, and the record a pending status change would roll back to. Both actions re-throw after `onError`, like the mutations above.
+
+```tsx
+const [draft, setDraft] = useState("");
+// One clientId per reply, kept across its resends: the server answers a
+// resend of a reply that did land with the stored one.
+const clientId = useRef(crypto.randomUUID());
+
+async function send(feedbackId: string) {
+  try {
+    await inbox.addComment(feedbackId, draft, clientId.current);
+    setDraft("");
+    clientId.current = crypto.randomUUID();
+  } catch {
+    // the draft stays — show an inline error
+  }
+}
+```
+
+The reply goes out as `author` with the `team` role, which the server keeps only for callers its access policy vouches for — see [who speaks as the team](/docs/comments#who-speaks-as-the-team).
 
 ## Pagination
 
