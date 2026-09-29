@@ -330,6 +330,21 @@ for (const provider of providers) {
         expect(fake.issues[0]?.isOpen).toBe(false);
       });
 
+      it("stops the fallback listing at the first page that is not full", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.lagSearch();
+        fake.requests.length = 0;
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(reads().map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
       it("falls back to the label listing when the search fails", async () => {
         const handler = createHandler();
         const feedback = await send(handler);
@@ -478,6 +493,24 @@ for (const provider of providers) {
       expect(issue?.comments.filter((comment) => !comment.startsWith("system:"))).toEqual([
         `<!-- siteping-feedback-deleted -->\n\nSitePing feedback \`${feedback.id}\` was deleted.`,
       ]);
+    });
+
+    it("finds its deletion comment past the first page of comments", async () => {
+      const handler = createHandler();
+      const feedback = await send(handler);
+      const [issue] = fake.issues as [FakeTracker["issues"][number]];
+      issue.comments.push(...Array.from({ length: 100 }, (_, n) => `Comment ${n}`));
+      const isDeletion = (comment: string) => comment.includes("was deleted");
+
+      await createIssueTrackerHooks({ tracker: provider.createTracker(fake) }).onDeleting({
+        kind: "single",
+        id: feedback.id,
+        projectName: "site",
+      });
+      expect(issue.comments.findIndex(isDeletion)).toBeGreaterThanOrEqual(100);
+
+      expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(200);
+      expect(issue.comments.filter(isDeletion)).toHaveLength(1);
     });
 
     const deletedTexts = [
