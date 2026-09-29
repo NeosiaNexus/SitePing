@@ -2070,6 +2070,18 @@ describe("useSitepingInbox — permissions and readOnly", () => {
     expect(result.current.pendingUndo).toBeNull();
   });
 
+  it("deletes no reply on a record that refuses it, nor on any in readOnly", async () => {
+    const source = threaded(recordsWith({ ...ALL, canDeleteComment: false }));
+    const { result, rerender } = await ready({ projects: "demo", source, author });
+
+    await act(() => result.current.deleteComment("r1", "c-1"));
+    await act(() => result.current.deleteComment("r2", "c-2"));
+    rerender({ projects: "demo", source, author, readOnly: true });
+    await act(() => result.current.deleteComment("r2", "c-2"));
+
+    expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r2", "c-2", "demo");
+  });
+
   it("in readOnly, drops a pending undo instead of reverting", async () => {
     const source = makeSource(demoRecords());
     const { result, rerender } = await ready({ projects: "demo", source });

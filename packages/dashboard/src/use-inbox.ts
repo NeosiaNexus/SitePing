@@ -904,17 +904,20 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
   const deleteComment = useCallback(
     async (id: string, commentId: string): Promise<void> => {
-      if (!srcRef.current.removeComment) return;
+      const record =
+        itemsRef.current.find((f) => f.id === id) ??
+        (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
+      if (!srcRef.current.removeComment || !record || !permissionsOf(record).canDeleteComment) return;
       try {
         await srcRef.current.removeComment(id, commentId, projectRef.current);
-        updateRecord(id, (record) => ({ ...record, comments: record.comments?.filter((c) => c.id !== commentId) }));
+        updateRecord(id, (f) => ({ ...f, comments: f.comments?.filter((c) => c.id !== commentId) }));
       } catch (cause) {
         const err = toError(cause);
         callbacksRef.current.onError?.(err);
         throw err;
       }
     },
-    [updateRecord],
+    [permissionsOf, updateRecord],
   );
 
   // -------------------------------------------------------------------------

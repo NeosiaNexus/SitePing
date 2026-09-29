@@ -277,7 +277,8 @@ export interface InboxState {
   addComment(id: string, body: string, clientId?: string): Promise<void>;
   /**
    * Delete a reply once the source confirms it. Rejects after `onError`.
-   * Does nothing for a source without `removeComment`.
+   * Does nothing for a record the inbox does not hold, or whose
+   * `permissionsOf` refuses it.
    */
   deleteComment(id: string, commentId: string): Promise<void>;
   /** Last status change eligible for undo, or `null`. */
