@@ -62,9 +62,9 @@ On a self-managed instance, pass `apiBaseUrl: "https://gitlab.acme.com/api/v4"`.
 | `open`, `in_progress` | Reopened | Reopened |
 | `resolved` | Closed as completed | Closed |
 | `wont_fix` | Closed as not planned | Closed |
-| Deleted | Closed as not planned, with a comment | Closed, with a comment |
+| Deleted | Closed as not planned if still open, with a comment. An issue already closed keeps its reason | Closed, with a comment |
 
-Moving between `open` and `in_progress` sends nothing: the issue is already open. With `syncStatus: false`, issues are only created and closed on delete.
+Moving between `open` and `in_progress` only looks the issue up, and writes nothing to an issue that is open. With `syncStatus: false`, issues are only created and closed on delete.
 
 The sync runs one way, from SitePing to the tracker: closing the issue on GitHub does not resolve the feedback.
 
@@ -74,8 +74,8 @@ The title is `[SitePing]` followed by the message on one line, truncated to 255 
 
 - **Message**
 - **Type**
-- **Page**, resolved against `siteUrl`
-- **Open in the page**: a link that opens the page with the feedback focused, once the widget's [`deepLink`](/docs/widget/configuration) option is on
+- **Page**, resolved against `siteUrl`, without the credentials a URL may carry
+- **Open in the page**: a link that opens the page with the feedback focused, once the widget's [`deepLink`](/docs/widget/configuration) option is on. It is only added for a page on `siteUrl`'s origin
 - **Annotations**: element, CSS selector and text of up to 10 annotations
 - **Author**, **Viewport**, **User agent**
 - **Screenshot**, when it has an `https` URL
@@ -89,9 +89,9 @@ Some things are left out:
 - Screenshots stored inline as `data:` URLs, which is what happens without a [screenshot storage](/docs/adapters/screenshot-storage). Trackers do not render them.
 - Discussion [threads](/docs/comments).
 
-Everything in the body comes from anonymous visitors, so it is quoted as code. A message can contain `@octocat`, `#12`, `<!--`, a Markdown link or an image, and none of it notifies anyone, links to another issue, hides text or loads anything. In the title, a zero-width space follows each reference sigil (`@`, `#` and `GH-`, plus GitLab's `!`, `&`, `~`, `%` and `$`) and splits each `://`, since GitLab also turns a URL pointing at an issue or merge request into a reference. A bare commit SHA is left as typed: GitLab still links it when it names one of the project's own commits.
+Everything in the body comes from anonymous visitors, so it is quoted as code. The deep link is the only live link, and it only ever points to `siteUrl`: a visitor who sends another site's URL gets a quoted page and no link. A message can contain `@octocat`, `#12`, `<!--`, a Markdown link or an image, and none of it notifies anyone, links to another issue, hides text or loads anything. In the title, a zero-width space follows each reference sigil (`@`, `#` and `GH-`, plus GitLab's `!`, `&`, `~`, `%` and `$`) and splits each `://`, since GitLab also turns a URL pointing at an issue or merge request into a reference. A bare commit SHA is left as typed: GitLab still links it when it names one of the project's own commits.
 
-> **Public repositories.** An issue in a public repository is public: every feedback's message, page, user agent and diagnostics become readable by anyone. Prefer a private repository, and use `redact` for secrets that end up in URLs or console messages.
+> **Public repositories.** An issue in a public repository is public: every feedback's message, page, reviewer name, user agent, diagnostics and screenshot become readable by anyone. The screenshot is embedded from its storage URL, which `redact` does not touch. Prefer a private repository, and use `redact` for secrets that end up in URLs or console messages. To leave screenshots out, [extend the default issue](#extending-the-default-issue) with `formatIssue({ ...feedback, screenshotUrl: null }, options)`.
 
 ## Options
 
@@ -100,42 +100,78 @@ Everything in the body comes from anonymous visitors, so it is quoted as code. A
 | Option | Type | Default | What it does |
 |---|---|---|---|
 | `tracker` | `IssueTracker` | — | Required. `createGitHubTracker`, `createGitLabTracker` or [your own](#other-trackers) |
-| `siteUrl` | `string` | — | Origin of the site under review. The widget records `location.pathname` as the page URL by default: without `siteUrl`, issues show a bare path and have no deep link |
+| `siteUrl` | `string` | — | Origin of the site under review. The widget records `location.pathname` as the page URL by default, which resolves against it. The deep link only points to this origin: without `siteUrl`, issues have no deep link. It must be an absolute http(s) URL such as `https://acme.com`: anything else throws when the hooks are built, so the route module fails to load |
 | `deepLinkParam` | `string \| false` | `"siteping"` | Must match the widget's [`deepLink`](/docs/widget/configuration) `param`. `false` leaves the link out |
 | `labels` | `string[]` | `[]` | Extra labels. `siteping` is always added |
-| `redact` | `(text) => string` | none | Applied to the message, author, URLs, user agent, annotation text and diagnostics before they leave your server |
+| `redact` | `(text) => string` | none | Applied by the built-in format to the message, author, page URL, user agent, annotation text and diagnostics before they leave your server. A custom `formatIssue` gets the feedback unredacted: call `options.redact` on what you copy, or [extend the default issue](#extending-the-default-issue). To redact before the feedback is even stored, use the server's [`beforeCreate`](/docs/server#extension-points) |
 | `includeAuthorEmail` | `boolean` | `false` | Add the reviewer's email next to their name |
-| `formatIssue` | `(feedback, defaults) => { title, body }` | built-in | Your own title and Markdown. The marker is still added as the first line. Quoting visitor text is then up to you |
+| `formatIssue` | `(feedback, options) => { title, body }` | built-in | Your own title and Markdown, or [the default extended](#extending-the-default-issue). The marker is still added as the first line. Quoting visitor text is then up to you |
+| `onIssueCreated` | `(feedback, issue) => void` | — | Called with each issue opened (`issue.key`, `issue.url`), to send its link to a chat or keep it, say. The visitor's `POST` waits for it, and so do the feedback's later status changes and deletes and its project's next delete, so it must not wait for one of those itself. A throw is logged like a failed creation |
+| `instance` | `string` | — | Name of this deployment when several share one repository. See [how issues are found again](#how-issues-are-found-again) |
 | `syncStatus` | `boolean` | `true` | Close and reopen the issue when the status changes |
-| `deletedCommentText` | `(feedbackId) => string` | ``SitePing feedback `<id>` was deleted.`` | The comment left on the issue of a deleted feedback |
+| `deletedCommentText` | `(feedbackId) => string` | ``SitePing feedback `<id>` was deleted.`` | The comment left on the issue of a deleted feedback. A retried delete finds it by a hidden first line, so the text may change from one call to the next |
 
 `createGitHubTracker` and `createGitLabTracker` also take `apiBaseUrl`, `fetch` (for a proxy or tests), `timeoutMs` (per request, default `5000`) and `maxListedPages` (default `10`, see [how issues are found again](#how-issues-are-found-again)).
 
-`createIssueTrackerHooks` returns plain hooks, so you can add your own next to them:
+Both check their options when they are called, and throw on a value that could not work: a `repository` that is not `owner/name` (a `project` that is neither an id nor a full path), an `apiBaseUrl` that is not an absolute http(s) URL or that carries credentials, a `timeoutMs` or `maxListedPages` that is not a positive integer (`Number()` of a misspelled variable is `NaN`), a `timeoutMs` over 2,147,483,647 (about 24 days, the longest delay a timer holds), or a token that is empty or has a space, a line break or an invisible character inside. The error never quotes the token, nor a refused `repository`, `project` or `apiBaseUrl`, which can carry one, as a clone URL does.
+
+`createIssueTrackerHooks` returns plain `onCreated`, `onUpdated` and `onDeleting` hooks, and you can add `onDeleted` next to them. To run code of your own on one of those three, call the integration's hook from yours: a hook of the same name spread after them replaces theirs, and TypeScript does not flag it.
 
 ```ts
-hooks: {
-  ...createIssueTrackerHooks({ tracker }),
-  onDeleted: (target) => audit.log("deleted", target),
-},
+const issues = createIssueTrackerHooks({ tracker });
+
+createSitepingHandler({
+  store,
+  hooks: {
+    ...issues,
+    async onCreated(feedback) {
+      try {
+        await issues.onCreated(feedback);
+      } finally {
+        await searchIndex.add(feedback); // runs even when the tracker fails, whose error is still logged
+      }
+    },
+    onDeleted: (target) => audit.log("deleted", target),
+  },
+});
+```
+
+### Extending the default issue
+
+The built-in format is exported as `formatIssue(feedback, options)`, and your `formatIssue` option receives those `options`: `redact`, `deepLinkParam`, `includeAuthorEmail` and `siteUrl`. Wrap it to add to the default issue instead of rewriting it, and the quoting of visitor text comes with it:
+
+```ts
+import { createIssueTrackerHooks, formatIssue } from "@siteping/integration-issues";
+
+createIssueTrackerHooks({
+  tracker,
+  formatIssue: (feedback, options) => {
+    const issue = formatIssue(feedback, options);
+    return { ...issue, body: `${issue.body}\n\n## Release\n\n${process.env.RELEASE_NAME}` };
+  },
+});
 ```
 
 ## Latency and failures
 
-- **Creating.** `onCreated` is awaited before the `POST` answers, so the widget waits for one tracker request, at most `timeoutMs` (5 seconds by default). If it fails (the tracker is down, the token is wrong, or the label was dropped), the feedback is stored anyway and the error goes to the server's `logger` as `[siteping] Hook onCreated failed`. Nothing retries it: that feedback has no issue.
-- **Changing a status.** A failed sync is logged the same way, and the new status is kept.
-- **Deleting.** `onDeleting` closes the issue before the record goes. If the tracker fails, the `DELETE` answers `502` and keeps the record: retry it once the tracker is back. The comment is left once, even across retries.
-- **Deleting a whole project.** The project's issues are handled one after the other, with up to three requests each: close the issue if it is open, read its comments, comment. A project with many issues can therefore hit the tracker's rate limit (GitHub allows about 80 content-creating requests a minute) or a serverless function's time limit. Every record is then kept: the `DELETE` answers `502` when the tracker refuses a request, or the platform's own timeout error (`504` on Vercel, for example) when the function is stopped. After a rate limit, retry a few minutes later: an issue already closed and commented costs a single read, so each attempt gets further. A time limit is different: every attempt reads the comments of the issues already handled again, so it never handles more issues than one run has time for, and retrying a project past that size never succeeds. Delete its feedback one at a time instead, or run that delete through a handler without these hooks and close its issues yourself.
+- **Creating.** `onCreated` is awaited before the `POST` answers, so the widget waits for one tracker request, at most `timeoutMs` (5 seconds by default), then for `onIssueCreated`. If it fails (the tracker is down, or the token is wrong), the feedback is stored anyway and the error goes to the server's `logger` as `[siteping] Hook onCreated failed`. Nothing retries it: that feedback has no issue. When the label was dropped, the issue does exist and the same error names the missing permission, but SitePing cannot find that issue again, so status changes and deletes never reach it. Fix the permission, then label or close those issues by hand.
+- **Changing a status.** The `PATCH` waits for the issue's [lookup](#how-issues-are-found-again), one search plus one listing request when the search misses (and up to `maxListedPages` more when it fails), then for one write, each request at most `timeoutMs`. A tracker that does not answer the search within `timeoutMs` is taken as down, and the lookup stops there. A search that fails at once (a refused connection, a rate limit) falls back to the listing. A failed sync is logged the same way, and the new status is kept.
+- **Deleting.** `onDeleting` looks the issue up the same way and closes it before the record goes. If the tracker fails, the `DELETE` answers `502` and keeps the record: retry it once the tracker is back. The comment is left once, even across retries.
+- **Deleting a whole project.** The project's issues are listed first, and the delete is refused when the listing stops at `maxListedPages` with issues left (see [how issues are found again](#how-issues-are-found-again)). They are then handled one after the other, with up to three requests each: close the issue if it is open, read its comments, comment. A project with many issues can therefore hit the tracker's rate limit (GitHub allows about 80 content-creating requests a minute) or a serverless function's time limit. Every record is then kept: the `DELETE` answers `502` when the tracker refuses a request, or the platform's own timeout error (`504` on Vercel, for example) when the function is stopped. After a rate limit, retry a few minutes later: an issue already closed and commented costs a single read, so each attempt gets further. A time limit is different: every attempt reads the comments of the issues already handled again, so it never handles more issues than one run has time for, and retrying a project past that size never succeeds. Delete its feedback one at a time instead, or run that delete through a handler without these hooks and close its issues yourself.
+- **Slow answers.** The widget gives up on a request after 10 seconds and retries it, so a request that lists many pages (a project delete, or a lookup whose search failed) can show an error for a change the server still makes. Keep `maxListedPages` to what the repository needs.
+- **Concurrent requests.** Within one server process, the hooks queue their tracker work: a feedback's status changes and deletes run in the order they came, after the creation of its issue, and a project delete runs after the work already started on that project. This holds for hooks built once, at module scope, as in the examples above. Separate instances (several serverless functions, say) can still interleave two requests on one feedback. In one process as in several, a feedback sent while its project is being deleted goes with the project, and its issue can be left open: its `POST` does not wait for the delete, which could not keep the issue from opening.
 
-The built-in trackers throw two errors that a custom `logger` can tell apart: `IssueTrackerRequestError` for a failed tracker request (it carries the method, path and status, never the token) and `UnlabelledIssueError` for an issue created without its `siteping` label. Match them with `isIssueTrackerRequestError(error)` and `isUnlabelledIssueError(error)`, exported next to them, rather than `instanceof`: in CommonJS, each entry point bundles its own copy of the error classes.
+The built-in trackers throw two errors that a custom `logger` can tell apart: `IssueTrackerRequestError` for a failed tracker request, an answer that is not JSON or is cut short by the timeout included (it carries the method, path and status, never the token) and `UnlabelledIssueError` for an issue created without its `siteping` label. Match them with `isIssueTrackerRequestError(error)` and `isUnlabelledIssueError(error)`, exported next to them, rather than `instanceof`: in CommonJS, each entry point bundles its own copy of the error classes.
 
 ## How issues are found again
 
-Each body starts with the marker `<!-- siteping-feedback {"id":"…","project":"…"} -->`, which GitHub and GitLab do not display. Only that first line is read, so feedback text that imitates it is ignored. Edit the rest of the issue as you like, but keep that line first.
+Each body starts with the marker `<!-- siteping-feedback {"id":"…","project":"…"} -->`, which GitHub and GitLab do not display. Only that first line is read, so feedback text that imitates it is ignored. Edit the rest of the issue as you like, but keep that line first. The deletion comment starts the same way, with `<!-- siteping-feedback-deleted -->`: a retried delete looks for that line, not for the comment's text. Any comment that starts with it counts, whoever wrote it: on a public repository, anyone can post one to keep the deletion comment off an issue, which is still closed.
 
-To sync a status or delete one feedback, the tracker is first searched for the feedback id (GitHub's search API, GitLab's `search` parameter). If the search misses, the hooks list the `siteping` issues newest first. GitHub's search index lags a few seconds behind a new issue, and its rate limit is 30 searches a minute. Deleting a whole project always uses that listing.
+Deployments that share a repository and a project name (staging and production, or a preview that copied the production `.env`) would find each other's issues, and a project delete on staging would close production's. Give each its own `instance`: the marker then ends with `"instance":"staging"`, and the hooks only touch issues opened under the same name, an unnamed deployment only those without one. Issues opened before a deployment was named, or renamed, keep the old name.
 
-The listing stops after `maxListedPages` pages of 100 issues. With the default of 10, the fallback cannot reach an issue older than the repository's 1,000 newest SitePing issues. Raise it for a larger backlog.
+To sync a status or delete one feedback, the tracker is first searched for the feedback id (GitHub's search API, GitLab's `search` parameter). If the search misses, the hooks list the first page of `siteping` issues, newest first: GitHub's search index lags a few seconds behind a new issue. A search that answered settles the rest, since it only misses issues too new for its index. When it failed (GitHub allows 30 searches a minute), or found more issues quoting the feedback id than it returned, the hooks list further. Deleting a whole project always lists every issue.
+
+The listing stops after `maxListedPages` pages of 100 issues, and it counts the SitePing issues of every project in the repository, closed ones included, so a repository outgrows it in time. Past that, the hooks do not guess. A project delete is refused with a `502` rather than leaving the older issues open, and so is a status sync or a delete whose issue the search did not settle and the listing did not reach. With the default of 10, the cap is the repository's 1,000 newest SitePing issues. Raise it for a larger backlog: only project deletes and the lookups the search does not settle list that far.
 
 Only labelled issues count. On GitHub and GitLab, an outsider cannot label an issue, so they cannot make one pass for SitePing's.
 
@@ -147,7 +183,7 @@ Implement `IssueTracker` for Jira, Linear or an internal tool. The hooks keep ev
 import type { IssueTracker } from "@siteping/integration-issues";
 
 const tracker: IssueTracker = {
-  name: "Linear",
+  name: "Linear", // named in the hooks' own errors
   // Store `body` exactly as given: its first line is the marker.
   async createIssue({ title, body, labels }) {
     return { key: "ENG-42", url: "https://linear.app/acme/issue/ENG-42" };
@@ -156,19 +192,25 @@ const tracker: IssueTracker = {
   async updateIssueStatus(reference, status) {},
   async addComment(reference, body) {},
   async listComments(reference) {
-    return []; // comment bodies
+    return []; // comment bodies, each first line as addComment received it
   },
-  // Every SitePing issue whose body contains `marker`, closed ones included.
-  async findSitepingIssues(marker) {
-    return []; // { reference, body, isOpen }
+  // Every SitePing issue whose body contains `marker`, closed ones included,
+  // newest first, no more than `maxPages` pages when it is set, and whether
+  // you stopped before the last one.
+  async findSitepingIssues(marker, { maxPages } = {}) {
+    return { issues: [], truncated: false }; // issues: { reference, body, isOpen }
   },
-  // Optional: a server-side search by feedback id, tried first.
+  // Optional, but without it lookups past your cap are refused (see below):
+  // a server-side search by feedback id, tried first, and whether it found
+  // more matches than it returned.
   async searchSitepingIssues(feedbackId) {
-    return [];
+    return { issues: [], truncated: false };
   },
 };
 ```
 
 Throw when a call fails, and the [failure rules](#latency-and-failures) above apply. Trackers that do not speak Markdown can shape the body with `formatIssue`.
+
+Without `searchSitepingIssues`, nothing settles a lookup past the newest page: every status change or delete whose issue is not there lists up to your cap, and once the tracker holds more SitePing issues than that, one whose issue is not listed is refused. That includes a feedback that never got an issue, which then cannot be deleted. Provide a search whenever the tracker has one.
 
 Syncing the other way, so that closing an issue resolves its feedback, needs a tracker webhook handler and is not built yet ([#318](https://github.com/NeosiaNexus/SitePing/issues/318)).

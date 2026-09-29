@@ -2,7 +2,14 @@ import type { AnnotationRecord, FeedbackRecord } from "@siteping/core";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
 import { ISSUE_BODY_MAX_LENGTH, OVERSIZED_BODY_NOTE } from "../src/constants/issue-format.js";
-import { buildIssueMarker, formatIssue, type IssueFormatOptions, parseIssueMarker } from "../src/core/issue-format.js";
+import {
+  buildDeletionComment,
+  buildIssueMarker,
+  formatIssue,
+  type IssueFormatOptions,
+  isDeletionComment,
+  parseIssueMarker,
+} from "../src/core/issue-format.js";
 import { codeBlock } from "../src/core/markdown.js";
 
 describe("issue marker", () => {
@@ -20,6 +27,17 @@ describe("issue marker", () => {
     expect(marker.indexOf(">")).toBe(marker.length - 1);
     expect(marker.lastIndexOf("<")).toBe(0);
     expect(parseIssueMarker(marker)).toEqual(link);
+  });
+
+  it("round-trips the instance of a named deployment, and reads a marker without one as unnamed", () => {
+    const link = { feedbackId: "fb-1", projectName: "site", instance: "staging" };
+
+    expect(parseIssueMarker(buildIssueMarker(link))).toEqual(link);
+    expect(parseIssueMarker(buildIssueMarker({ ...link, instance: undefined }))).toEqual({
+      feedbackId: "fb-1",
+      projectName: "site",
+    });
+    expect(parseIssueMarker('<!-- siteping-feedback {"id":"fb-1","project":"site","instance":1} -->')).toBeNull();
   });
 
   it("reads the first line only, whatever the line endings", () => {
@@ -115,6 +133,16 @@ function liveMarkdown(body: string) {
   return { ...live, text: live.text.join("\n") };
 }
 
+describe("deletion comment", () => {
+  it("is told by its first line alone, whatever the text below it", () => {
+    expect(isDeletionComment(buildDeletionComment("Feedback fb-1 was deleted."))).toBe(true);
+    expect(isDeletionComment("<!-- siteping-feedback-deleted -->\r\n\r\nDeleted.")).toBe(true);
+    // A reply quoting it, or naming its marker, is not it.
+    expect(isDeletionComment("Quoting the bot:\n<!-- siteping-feedback-deleted -->")).toBe(false);
+    expect(isDeletionComment("See <!-- siteping-feedback-deleted --> above")).toBe(false);
+  });
+});
+
 describe("formatIssue", () => {
   const payloads = [
     "@octocat",
@@ -133,7 +161,7 @@ describe("formatIssue", () => {
   it("quotes a hostile message so nothing in it renders, however it plays with backticks", () => {
     const message = ["````", ...payloads, "```", "``` @octocat", "~~~", "    @octocat"].join("\n");
 
-    const { body } = formatIssue(record({ message }), options);
+    const { body } = formatIssue(record({ message }), { ...options, siteUrl: "https://example.com" });
     const live = liveMarkdown(body);
 
     for (const leak of leaks) expect(live.text).not.toContain(leak);
@@ -186,6 +214,15 @@ describe("formatIssue", () => {
       "[SitePing] Ping @\u200Boctocat and @\u200Bacme/maintainers about #\u200B12 " +
         "and GH-\u200B5, !\u200B7, &\u200B3, ~\u200Bbug, %\u200Bv1, $\u200B4",
     );
+  });
+
+  it("keeps the title within the 255 characters every tracker accepts", () => {
+    for (const message of ["a".repeat(244), "a".repeat(245), "a".repeat(5000), "@".repeat(5000)]) {
+      const { title } = formatIssue(record({ message }), options);
+
+      expect(title.length).toBeLessThanOrEqual(255);
+    }
+    expect(formatIssue(record({ message: "a".repeat(5000) }), options).title).toBe(`[SitePing] ${"a".repeat(241)}...`);
   });
 
   it("breaks the URLs in the title, which GitLab would autolink into references", () => {
@@ -264,7 +301,7 @@ describe("formatIssue", () => {
       },
     });
 
-    const { body } = formatIssue(feedback, { ...options, includeAuthorEmail: true });
+    const { body } = formatIssue(feedback, { ...options, includeAuthorEmail: true, siteUrl: "https://acme.test" });
     const marker = buildIssueMarker({ feedbackId: feedback.id, projectName: "<".repeat(200) });
 
     expect(`${marker}\n\n${body}`.length).toBeLessThan(65_536);
@@ -287,6 +324,53 @@ describe("formatIssue", () => {
 
     expect(liveMarkdown(body).links).toEqual([]);
     expect(body).toContain("## Page\n\n`/checkout`");
+  });
+
+  it("links only pages of siteUrl's origin, since the page URL is the visitor's", () => {
+    const linked = (url: string, siteUrl?: string) =>
+      liveMarkdown(formatIssue(record({ url }), { ...options, siteUrl }).body).links;
+
+    for (const url of [
+      "https://acme.test@evil.test/checkout",
+      "https://evil.test/login",
+      "//evil.test/login",
+      "/\\evil.test/login",
+      "http://acme.test/checkout",
+    ]) {
+      expect(linked(url, "https://acme.test")).toEqual([]);
+    }
+    expect(linked("https://acme.test/checkout")).toEqual([]);
+    expect(linked("https://acme.test/checkout", "https://acme.test/app/")).toEqual([
+      "https://acme.test/checkout?siteping=fb-1",
+    ]);
+  });
+
+  it("leaves the deep link out with deepLinkParam: false", () => {
+    const { body } = formatIssue(record(), { ...options, deepLinkParam: false, siteUrl: "https://example.com" });
+
+    expect(liveMarkdown(body).links).toEqual([]);
+    expect(body).not.toContain("## Open in the page");
+  });
+
+  it("drops a page URL's own credentials, from the Page section and the deep link", () => {
+    const { body } = formatIssue(record({ url: "https://user:pass@acme.test/checkout" }), {
+      ...options,
+      siteUrl: "https://acme.test",
+    });
+
+    expect(liveMarkdown(body).links).toEqual(["https://acme.test/checkout?siteping=fb-1"]);
+    expect(body).toContain("## Page\n\n`https://acme.test/checkout`");
+    expect(body).not.toContain("pass");
+  });
+
+  it("keeps siteUrl's credentials out of the page URLs resolved against it", () => {
+    const { body } = formatIssue(record({ url: "/checkout" }), {
+      ...options,
+      siteUrl: "https://reviewer:s3cret@staging.acme.test",
+    });
+
+    expect(body).toContain("## Page\n\n`https://staging.acme.test/checkout`");
+    expect(body).not.toContain("s3cret");
   });
 
   it("never links a non-http(s) page URL", () => {

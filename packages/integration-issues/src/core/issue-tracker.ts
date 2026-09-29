@@ -20,6 +20,17 @@ export interface TrackedIssue {
   isOpen: boolean;
 }
 
+/** What `findSitepingIssues` or `searchSitepingIssues` listed. */
+export interface IssueListing {
+  issues: TrackedIssue[];
+  /**
+   * `true` when the provider stopped with matches left unlisted (at its
+   * page cap, or past the search's first page): an issue missing from
+   * `issues` may still exist.
+   */
+  truncated: boolean;
+}
+
 /**
  * The port a tracker provider implements. The provider owns its API, auth,
  * pagination and how feedback statuses map to its own issue states; the
@@ -38,17 +49,26 @@ export interface IssueTracker {
    */
   updateIssueStatus(reference: IssueReference, status: FeedbackStatus): Promise<void>;
   addComment(reference: IssueReference, body: string): Promise<void>;
-  /** Bodies of the issue's existing comments (used to keep comments idempotent). */
+  /**
+   * Bodies of the issue's existing comments, each first line as
+   * `addComment` received it: the hooks find their deletion comment by it.
+   */
   listComments(reference: IssueReference): Promise<string[]>;
   /**
-   * SitePing issues whose body contains `marker`, open or closed. Providers
-   * may narrow server-side (labels) and must return every match they list.
+   * SitePing issues whose body contains `marker`, open or closed, newest
+   * first. Providers may narrow server-side (labels), must return every
+   * match they list, and say whether they left issues unlisted. With
+   * `maxPages`, list no more pages than that: the hooks look at the newest
+   * issues first.
    */
-  findSitepingIssues(marker: string): Promise<TrackedIssue[]>;
+  findSitepingIssues(marker: string, options?: { maxPages?: number }): Promise<IssueListing>;
   /**
    * Optional fast path to one feedback's issue: what a server-side search
-   * for `feedbackId` returns. Search indexes may lag behind a new issue or
-   * be rate limited, so a miss or a failure falls back to `findSitepingIssues`.
+   * for `feedbackId` returns, and whether it found more than that. Search
+   * indexes may lag behind a new issue or be rate limited, so the hooks
+   * still list the newest issues after a miss, and further after a failure
+   * or a truncated answer. Without a search, every lookup the newest issues
+   * do not settle lists up to the provider's cap, and is refused past it.
    */
-  searchSitepingIssues?(feedbackId: string): Promise<TrackedIssue[]>;
+  searchSitepingIssues?(feedbackId: string): Promise<IssueListing>;
 }

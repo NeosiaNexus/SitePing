@@ -1,7 +1,8 @@
-import { buildDeepLink, type FeedbackRecord, parseHttpUrl } from "@siteping/core";
+import { type FeedbackRecord, parseHttpUrl } from "@siteping/core";
 import {
   ANNOTATION_FIELD_MAX_LENGTH,
   ANNOTATIONS_LISTED,
+  DELETED_FEEDBACK_COMMENT_MARKER,
   DIAGNOSTIC_ENTRIES_PER_KIND,
   DIAGNOSTIC_ENTRY_MAX_LENGTH,
   EMPTY_DIAGNOSTICS_PLACEHOLDER,
@@ -30,7 +31,10 @@ export interface IssueFormatOptions {
   deepLinkParam: string | false;
   /** Include the reviewer's email next to their name. Off by default: issues are often public. */
   includeAuthorEmail: boolean;
-  /** Base that relative page URLs resolve against, e.g. `https://acme.com`. */
+  /**
+   * Base that relative page URLs resolve against, e.g. `https://acme.com`,
+   * and the only origin the deep link may point to.
+   */
   siteUrl?: string | undefined;
 }
 
@@ -38,6 +42,8 @@ export interface IssueFormatOptions {
 export interface IssueLink {
   feedbackId: string;
   projectName: string;
+  /** The deployment that opened the issue, when it is named (`createIssueTrackerHooks`'s `instance`). */
+  instance?: string | undefined;
 }
 
 function truncate(value: string, maxLength: number): string {
@@ -52,6 +58,25 @@ function section(heading: string, content: string): string {
 
 function joinSections(sections: Array<string | null>): string {
   return sections.filter((part): part is string => part !== null).join(ISSUE_SECTION_SEPARATOR);
+}
+
+/** A copy of `url` without the credentials a URL may carry. */
+function withoutCredentials(url: URL): URL {
+  const copy = new URL(url);
+  copy.username = "";
+  copy.password = "";
+  return copy;
+}
+
+/**
+ * The deep link, only to a page of the site under review: the page URL is
+ * the visitor's, and this is the one live link in the body.
+ */
+function buildSiteDeepLink(page: URL | null, feedbackId: string, param: string, site: URL | null): string | null {
+  if (!page || page.origin !== site?.origin) return null;
+  const link = new URL(page);
+  link.searchParams.set(param, feedbackId);
+  return link.href;
 }
 
 /** Where each annotation points on the page — what a developer needs to find the element. */
@@ -95,14 +120,15 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
   const titleBudget = ISSUE_TITLE_MAX_LENGTH - ISSUE_TITLE_PREFIX.length - 1;
   const title = `${ISSUE_TITLE_PREFIX} ${truncate(defuseReferences(message.replace(/\s+/g, " ").trim()), titleBudget)}`;
 
-  // The widget records `location.pathname` by default: resolve it against the site.
+  // The widget records `location.pathname` by default: resolve it against the
+  // site, then drop credentials, the page's own and those a relative URL inherits.
   const pageUrl = redact(feedback.url);
-  const page = parseHttpUrl(pageUrl, options.siteUrl);
+  const site = options.siteUrl === undefined ? null : parseHttpUrl(options.siteUrl);
+  const resolved = parseHttpUrl(pageUrl, site?.href);
+  const page = resolved && withoutCredentials(resolved);
   const author = options.includeAuthorEmail ? `${feedback.authorName} <${feedback.authorEmail}>` : feedback.authorName;
   const deepLink =
-    options.deepLinkParam === false
-      ? null
-      : buildDeepLink({ id: feedback.id, url: pageUrl }, options.deepLinkParam, options.siteUrl);
+    options.deepLinkParam === false ? null : buildSiteDeepLink(page, feedback.id, options.deepLinkParam, site);
   // Inline `data:` screenshots (no ScreenshotStorage) are skipped: trackers do not render them.
   const screenshot = feedback.screenshotUrl ? parseHttpUrl(feedback.screenshotUrl) : null;
 
@@ -135,8 +161,9 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
 }
 
 /** Hidden marker on the first line of every issue body, linking it to its feedback. */
-export function buildIssueMarker(link: IssueLink): string {
-  return `${ISSUE_REFERENCE_MARKER.prefix}${toMarkerJson({ id: link.feedbackId, project: link.projectName })}${ISSUE_REFERENCE_MARKER.suffix}`;
+export function buildIssueMarker({ feedbackId, projectName, instance }: IssueLink): string {
+  const payload = { id: feedbackId, project: projectName, ...(instance === undefined ? {} : { instance }) };
+  return `${ISSUE_REFERENCE_MARKER.prefix}${toMarkerJson(payload)}${ISSUE_REFERENCE_MARKER.suffix}`;
 }
 
 /** JSON safe inside an HTML comment: `<` and `>` are escaped so a value cannot close the comment early. */
@@ -157,20 +184,33 @@ export function projectMarkerFragment(projectName: string): string {
   return `"project":${toMarkerJson(projectName)}`;
 }
 
+const firstLine = (text: string): string => text.split(/\r?\n/, 1)[0] ?? "";
+
 /**
  * The link stored on the first line of an issue body, or `null` when that
  * line is no (valid) marker. A marker anywhere else is visitor text.
  */
 export function parseIssueMarker(body: string): IssueLink | null {
-  const [firstLine = ""] = body.split(/\r?\n/, 1);
-  const match = ISSUE_REFERENCE_MARKER.pattern.exec(firstLine);
+  const match = ISSUE_REFERENCE_MARKER.pattern.exec(firstLine(body));
   if (!match?.[1]) return null;
   try {
     const parsed: unknown = JSON.parse(match[1]);
     if (typeof parsed !== "object" || parsed === null) return null;
-    const { id, project } = parsed as { id?: unknown; project?: unknown };
-    return typeof id === "string" && typeof project === "string" ? { feedbackId: id, projectName: project } : null;
+    const { id, project, instance } = parsed as { id?: unknown; project?: unknown; instance?: unknown };
+    if (typeof id !== "string" || typeof project !== "string") return null;
+    if (instance === undefined) return { feedbackId: id, projectName: project };
+    return typeof instance === "string" ? { feedbackId: id, projectName: project, instance } : null;
   } catch {
     return null; // A tampered or truncated marker is treated as absent.
   }
+}
+
+/** The comment left on a deleted feedback's issue: `text` below the hidden deletion marker. */
+export function buildDeletionComment(text: string): string {
+  return `${DELETED_FEEDBACK_COMMENT_MARKER}\n\n${text}`;
+}
+
+/** Whether a comment is the deletion comment, told by its first line only. */
+export function isDeletionComment(body: string): boolean {
+  return firstLine(body) === DELETED_FEEDBACK_COMMENT_MARKER;
 }

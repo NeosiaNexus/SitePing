@@ -53,6 +53,15 @@ export function isIssueTrackerRequestError(error: unknown): error is IssueTracke
 }
 
 /**
+ * Whether `error` is a tracker request that got no answer within
+ * `timeoutMs`, as opposed to one that failed at once (a refused or reset
+ * connection) or was refused with a status.
+ */
+export function isTrackerTimeout(error: unknown): boolean {
+  return isIssueTrackerRequestError(error) && error.cause instanceof Error && error.cause.name === "TimeoutError";
+}
+
+/**
  * Whether `error` reports an issue created without its `siteping` label,
  * matched on its stable `code` for the reason given on {@link isIssueTrackerRequestError}.
  *
@@ -113,6 +122,11 @@ export function createJsonHttpClient({
       });
     }
     if (response.status === 204) return undefined as Response;
-    return (await response.json()) as Response;
+    try {
+      return (await response.json()) as Response;
+    } catch (cause) {
+      // A body the timeout cut short, or not JSON (a proxy's login page).
+      throw new IssueTrackerRequestError(tracker, method, logPath, response.status, { cause });
+    }
   };
 }

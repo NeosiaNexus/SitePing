@@ -76,5 +76,12 @@ export const EMPTY_DIAGNOSTICS_PLACEHOLDER = "- none";
 /** Blank line between Markdown sections. */
 export const ISSUE_SECTION_SEPARATOR = "\n\n";
 
+/**
+ * First line of the comment left on a deleted feedback's issue, hidden like
+ * the issue marker. A retried delete looks for it rather than for the text
+ * below it, which `deletedCommentText` may vary and GitLab trims.
+ */
+export const DELETED_FEEDBACK_COMMENT_MARKER = "<!-- siteping-feedback-deleted -->";
+
 /** Comment left on an issue whose feedback was deleted; `{feedbackId}` is replaced. */
 export const DELETED_FEEDBACK_COMMENT_TEMPLATE = "SitePing feedback `{feedbackId}` was deleted.";

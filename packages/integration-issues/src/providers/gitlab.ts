@@ -3,12 +3,14 @@ import {
   GITLAB_API_BASE_URL,
   GITLAB_LABEL_SEPARATOR,
   GITLAB_PAGE_SIZE,
+  GITLAB_PROJECT_PATTERN,
   GITLAB_STATE_EVENT,
 } from "../constants/gitlab.js";
 import { TRACKER_MAX_LISTED_PAGES } from "../constants/http.js";
 import { SITEPING_ISSUE_LABEL } from "../constants/issue-format.js";
 import { createJsonHttpClient, UnlabelledIssueError } from "../core/http-client.js";
 import type { IssueTracker, TrackedIssue } from "../core/issue-tracker.js";
+import { checkApiBaseUrl, checkPositiveInteger, checkTimeout, checkToken } from "../core/tracker-options.js";
 
 export interface GitLabTrackerOptions {
   /** Numeric project id or full path (`group/subgroup/project`). */
@@ -20,9 +22,11 @@ export interface GitLabTrackerOptions {
   fetch?: typeof fetch;
   timeoutMs?: number | undefined;
   /**
-   * Pages of 100 issues listed, newest first, when the search misses and on
-   * a project-wide delete. Defaults to 10: an issue older than the 1,000
-   * newest SitePing issues is then out of reach.
+   * Most pages of 100 issues listed, newest first: on a project-wide delete,
+   * and to find a feedback's issue when the search fails. After a search
+   * that answered, one page is listed. Defaults to 10: past the 1,000 newest
+   * SitePing issues, a project delete is refused, and so is a lookup the
+   * search did not settle.
    */
   maxListedPages?: number | undefined;
 }
@@ -57,10 +61,22 @@ export function createGitLabTracker({
   timeoutMs,
   maxListedPages = TRACKER_MAX_LISTED_PAGES,
 }: GitLabTrackerOptions): IssueTracker {
+  const isProject =
+    typeof project === "number" ? Number.isSafeInteger(project) && project > 0 : GITLAB_PROJECT_PATTERN.test(project);
+  if (!isProject) {
+    // Not echoed: a clone URL may carry a token, and this error is logged.
+    throw new Error('[siteping] createGitLabTracker: project must be a numeric id or a full path like "group/project"');
+  }
+  const credential = checkToken("createGitLabTracker", token);
+  checkApiBaseUrl("createGitLabTracker", apiBaseUrl);
+  checkTimeout("createGitLabTracker", timeoutMs);
+  checkPositiveInteger("createGitLabTracker", "maxListedPages", maxListedPages);
   const request = createJsonHttpClient({
     tracker: "GitLab",
     baseUrl: apiBaseUrl,
-    headers: { "PRIVATE-TOKEN": token },
+    // Not `PRIVATE-TOKEN`: fetch forwards custom headers across a cross-origin
+    // redirect (an SSO proxy, a moved instance), and strips `Authorization`.
+    headers: { Authorization: `Bearer ${credential}` },
     ...(fetch ? { fetch } : {}),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
   });
@@ -120,12 +136,15 @@ export function createGitLabTracker({
           per_page: String(GITLAB_PAGE_SIZE),
         },
       });
-      return issues.flatMap((issue) => (issue.description ? [toTrackedIssue(issue, issue.description)] : []));
+      return {
+        issues: issues.flatMap((issue) => (issue.description ? [toTrackedIssue(issue, issue.description)] : [])),
+        truncated: issues.length === GITLAB_PAGE_SIZE,
+      };
     },
 
-    async findSitepingIssues(marker) {
+    async findSitepingIssues(marker, { maxPages = maxListedPages } = {}) {
       const matches: TrackedIssue[] = [];
-      for (let page = 1; page <= maxListedPages; page++) {
+      for (let page = 1; page <= Math.min(maxPages, maxListedPages); page++) {
         const issues = await request<GitLabIssue[]>({
           method: "GET",
           path: issuesPath,
@@ -135,9 +154,9 @@ export function createGitLabTracker({
           if (!issue.description?.includes(marker)) continue;
           matches.push(toTrackedIssue(issue, issue.description));
         }
-        if (issues.length < GITLAB_PAGE_SIZE) break;
+        if (issues.length < GITLAB_PAGE_SIZE) return { issues: matches, truncated: false };
       }
-      return matches;
+      return { issues: matches, truncated: true };
     },
   };
 }

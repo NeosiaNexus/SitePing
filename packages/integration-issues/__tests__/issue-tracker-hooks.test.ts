@@ -31,11 +31,13 @@ const payload = {
 interface ProviderUnderTest {
   name: string;
   createFake(): FakeTracker;
-  createTracker(fake: FakeTracker, options?: { maxListedPages: number }): IssueTracker;
+  createTracker(fake: FakeTracker, options?: { maxListedPages?: number; timeoutMs?: number }): IssueTracker;
   /** Matches `METHOD path?query` of the provider's search request. */
   searchRequest: RegExp;
   /** Assert the provider-specific closed state for a feedback status. */
   expectClosedAs(issue: FakeTracker["issues"][number], status: "resolved" | "wont_fix"): void;
+  /** GitHub `state_reason` of a reopened issue; GitLab has none. */
+  reopenedReason: string | null;
   /** The permission a token that cannot label issues lacks. */
   labelPermission: RegExp;
 }
@@ -51,6 +53,7 @@ const providers: ProviderUnderTest[] = [
       expect(issue.isOpen).toBe(false);
       expect(issue.stateReason).toBe(status === "resolved" ? "completed" : "not_planned");
     },
+    reopenedReason: "reopened",
     labelPermission: /write access to acme\/site/,
   },
   {
@@ -60,11 +63,15 @@ const providers: ProviderUnderTest[] = [
       createGitLabTracker({ project: "acme/site", token: TOKEN, fetch: fake.fetch, ...options }),
     searchRequest: /^GET \S+[?&]search=/,
     expectClosedAs: (issue) => expect(issue.isOpen).toBe(false),
+    reopenedReason: null,
     labelPermission: /at least the Reporter role on acme\/site/,
   },
 ];
 
 const silentLogger = () => ({ error: vi.fn() });
+
+/** The tracker without its optional search, like a custom one that has none. */
+const withoutSearch = ({ searchSitepingIssues: _, ...tracker }: IssueTracker): IssueTracker => tracker;
 
 describe("createGitHubTracker", () => {
   it("accepts the siteping label in the casing the repository already uses", async () => {
@@ -75,16 +82,29 @@ describe("createGitHubTracker", () => {
     await tracker.createIssue({ title: "Title", body: "marker", labels: ["siteping"] });
 
     expect(fake.issues[0]?.labels).toEqual(["SitePing"]);
-    expect(await tracker.findSitepingIssues("marker")).toHaveLength(1);
+    expect((await tracker.findSitepingIssues("marker")).issues).toHaveLength(1);
+  });
+
+  it("reports a search that timed out on GitHub's side as truncated", async () => {
+    const tracker = createGitHubTracker({
+      repository: "acme/site",
+      token: TOKEN,
+      fetch: async () => Response.json({ total_count: 0, incomplete_results: true, items: [] }),
+    });
+
+    expect(await tracker.searchSitepingIssues?.("fb-1")).toEqual({ issues: [], truncated: true });
   });
 });
 
 describe("createIssueTrackerHooks options", () => {
-  it("refuses a siteUrl that cannot resolve page URLs", () => {
+  it("refuses a siteUrl that cannot resolve page URLs, without echoing credentials it may carry", () => {
     const tracker = createGitHubTracker({ repository: "acme/site", token: TOKEN });
 
     expect(() => createIssueTrackerHooks({ tracker, siteUrl: "acme.test" })).toThrow(/siteUrl must be an absolute/);
     expect(() => createIssueTrackerHooks({ tracker, siteUrl: "ftp://acme.test" })).toThrow(/siteUrl/);
+    const withoutScheme = "reviewer:SECRET@staging.acme.test";
+    expect(() => createIssueTrackerHooks({ tracker, siteUrl: withoutScheme })).toThrow(/siteUrl must be an absolute/);
+    expect(() => createIssueTrackerHooks({ tracker, siteUrl: withoutScheme })).not.toThrow(/SECRET/);
   });
 });
 
@@ -126,6 +146,21 @@ for (const provider of providers) {
     const remove = (handler: SitepingHandler, body: Record<string, unknown>) =>
       handler.DELETE(new Request(ENDPOINT, { method: "DELETE", headers: JSON_HEADERS, body: JSON.stringify(body) }));
 
+    /** Pages of 100 SitePing issues of other feedbacks, newer than the issues already there. */
+    const addOtherIssues = (pages: number, body = "Another feedback's issue") => {
+      for (let n = 0; n < pages * 100; n++) {
+        fake.issues.push({
+          key: String(fake.issues.length + 1),
+          title: "Other",
+          body,
+          labels: ["siteping"],
+          isOpen: true,
+          stateReason: null,
+          comments: [],
+        });
+      }
+    };
+
     beforeEach(() => {
       fake = provider.createFake();
       store = new MemoryStore();
@@ -133,7 +168,7 @@ for (const provider of providers) {
     });
 
     it("opens one labelled issue per feedback, linked by a hidden marker", async () => {
-      const handler = createHandler({ labels: ["feedback"] });
+      const handler = createHandler({ labels: ["feedback"], siteUrl: "https://example.com" });
 
       const feedback = await send(handler);
 
@@ -146,12 +181,48 @@ for (const provider of providers) {
       expect(fake.requests[0]?.authorization).toContain(TOKEN);
     });
 
+    it("hands each issue opened to onIssueCreated", async () => {
+      const opened: unknown[] = [];
+      const handler = createHandler({ onIssueCreated: (feedback, issue) => void opened.push([feedback.id, issue]) });
+
+      const feedback = await send(handler);
+
+      expect(opened).toEqual([
+        [feedback.id, { key: "1", url: expect.stringMatching(/\/acme\/site\/(-\/)?issues\/1$/) }],
+      ]);
+    });
+
+    it("waits for onIssueCreated, and logs its failure like a failed creation", async () => {
+      const handler = createHandler({
+        onIssueCreated: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          throw new Error("chat is down");
+        },
+      });
+
+      await send(handler);
+
+      expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onCreated failed", {
+        error: expect.objectContaining({ message: "chat is down" }),
+      });
+    });
+
     it("links relative page URLs through siteUrl", async () => {
       const handler = createHandler({ siteUrl: "https://acme.test" });
 
       const feedback = await send(handler, { url: "/checkout" });
 
       expect(fake.issues[0]?.body).toContain(`<https://acme.test/checkout?siteping=${feedback.id}>`);
+    });
+
+    it("leaves the deep link out with deepLinkParam: false", async () => {
+      const handler = createHandler({ siteUrl: "https://example.com", deepLinkParam: false });
+
+      await send(handler);
+
+      expect(fake.issues[0]?.body).toContain("## Page");
+      expect(fake.issues[0]?.body).not.toContain("## Open in the page");
+      expect(fake.issues[0]?.body).not.toContain("?step=2&");
     });
 
     it("redacts free text and leaves the reviewer email out by default", async () => {
@@ -188,18 +259,49 @@ for (const provider of providers) {
       ] as const;
 
       for (const [field, forge] of forgeries) {
-        it(`in ${field} never takes over another feedback's issue`, async () => {
+        for (const lagging of [false, true]) {
+          it(`in ${field} never takes over another feedback's issue (search lagging: ${lagging})`, async () => {
+            const handler = createHandler();
+            const victim = await send(handler);
+            const attacker = await send(handler, forge(victim.id));
+            const [victimIssue, attackerIssue] = fake.issues;
+            // The listing returns the attacker's newer issue first.
+            if (lagging) fake.lagSearch();
+
+            await patch(handler, victim.id, "resolved");
+            expect(victimIssue?.isOpen).toBe(false);
+            expect(attackerIssue?.isOpen).toBe(true);
+
+            await remove(handler, { id: victim.id, projectName: "site" });
+            expect(attackerIssue?.comments).toEqual([]);
+
+            await patch(handler, attacker.id, "resolved");
+            expect(attackerIssue?.isOpen).toBe(false);
+          });
+        }
+      }
+
+      for (const lagging of [false, true]) {
+        it(`in an unlabelled issue opened on the tracker never takes over (search lagging: ${lagging})`, async () => {
           const handler = createHandler();
           const victim = await send(handler);
-          const attacker = await send(handler, forge(victim.id));
-          const [victimIssue, attackerIssue] = fake.issues;
+          fake.issues.push({
+            key: String(fake.issues.length + 1),
+            title: "Hijack",
+            body: `${forgedMarker(victim.id)}\n\nOpened by a stranger`,
+            labels: [],
+            isOpen: true,
+            stateReason: null,
+            comments: [],
+          });
+          if (lagging) fake.lagSearch();
 
           await patch(handler, victim.id, "resolved");
-          expect(victimIssue?.isOpen).toBe(false);
-          expect(attackerIssue?.isOpen).toBe(true);
+          expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, true]);
 
-          await patch(handler, attacker.id, "resolved");
-          expect(attackerIssue?.isOpen).toBe(false);
+          await remove(handler, { id: victim.id, projectName: "site" });
+          expect(fake.issues[1]?.comments).toEqual([]);
+          expect(fake.issues[0]?.comments.some((comment) => comment.includes("was deleted"))).toBe(true);
         });
       }
 
@@ -212,6 +314,41 @@ for (const provider of providers) {
 
         expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, true]);
       });
+    });
+
+    it("keeps deployments that share a repository apart by instance", async () => {
+      const production = createIssueTrackerHooks({ tracker: provider.createTracker(fake) });
+      const staging = createIssueTrackerHooks({ tracker: provider.createTracker(fake), instance: "staging" });
+      // Separate stores may hand out the same id: production's issue is the newer match.
+      const feedback = await send(createHandler({ instance: "staging" }));
+      await production.onCreated(feedback);
+
+      expect(fake.issues.map((issue) => issue.body.split("\n", 1)[0])).toEqual([
+        `<!-- siteping-feedback {"id":"${feedback.id}","project":"site","instance":"staging"} -->`,
+        `<!-- siteping-feedback {"id":"${feedback.id}","project":"site"} -->`,
+      ]);
+
+      await staging.onUpdated({ ...feedback, status: "resolved" });
+      expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, true]);
+
+      await production.onDeleting({ kind: "project", projectName: "site" });
+      expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, false]);
+      expect(fake.issues.map((issue) => issue.comments.filter((comment) => !comment.startsWith("system:")))).toEqual([
+        [],
+        [expect.stringContaining("was deleted")],
+      ]);
+    });
+
+    it("counts an empty instance as no name", async () => {
+      const feedback = await send(createHandler());
+      // What `instance: process.env.SITEPING_INSTANCE` gives when the variable is set but empty.
+      const handler = createHandler({ instance: "" });
+
+      await patch(handler, feedback.id, "resolved");
+      await send(handler);
+
+      expect(fake.issues[0]?.isOpen).toBe(false);
+      expect(fake.issues[1]?.body).not.toContain('"instance"');
     });
 
     it("mirrors status changes on the issue", async () => {
@@ -227,9 +364,23 @@ for (const provider of providers) {
 
       await patch(handler, resolved.id, "open");
       expect(fake.issues[0]?.isOpen).toBe(true);
+      expect(fake.issues[0]?.stateReason).toBe(provider.reopenedReason);
     });
 
-    it("sends nothing when the issue is already in the requested state", async () => {
+    it("keeps the close reason of an issue already closed when its feedback is deleted", async () => {
+      const handler = createHandler();
+      const feedback = await send(handler);
+      await patch(handler, feedback.id, "resolved");
+      fake.requests.length = 0;
+
+      expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(200);
+
+      provider.expectClosedAs(fake.issues[0] as FakeTracker["issues"][number], "resolved");
+      expect(fake.requests.filter(({ method }) => method === "PATCH" || method === "PUT")).toEqual([]);
+      expect(fake.issues[0]?.comments.some((comment) => comment.includes("was deleted"))).toBe(true);
+    });
+
+    it("writes nothing when the issue is already in the requested state", async () => {
       const handler = createHandler();
       const feedback = await send(handler);
       fake.requests.length = 0;
@@ -265,6 +416,97 @@ for (const provider of providers) {
         expect(fake.issues[0]?.isOpen).toBe(false);
       });
 
+      it("stops the fallback listing at the first page that is not full", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.lagSearch();
+        fake.requests.length = 0;
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(reads().map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("lists only the newest page for an issue the search index has not caught up with", async () => {
+        addOtherIssues(10);
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.lagSearch();
+        fake.requests.length = 0;
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(reads().map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
+        expect(fake.issues.at(-1)?.isOpen).toBe(false);
+      });
+
+      it("looks at the newest page first when the search fails", async () => {
+        addOtherIssues(10);
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.failWhen(provider.searchRequest, 403);
+        fake.requests.length = 0;
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(reads().map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
+        expect(fake.issues.at(-1)?.isOpen).toBe(false);
+      });
+
+      it("ends a lookup whose search failed at the newest page when that page holds every issue", async () => {
+        const handler = createHandler();
+        await send(handler);
+        fake.failWhen(/^POST /, 500);
+        const withoutIssue = await send(handler);
+        fake.failWhen(provider.searchRequest, 403);
+        fake.requests.length = 0;
+
+        expect((await remove(handler, { id: withoutIssue.id, projectName: "site" })).status).toBe(200);
+        expect(reads().map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
+      });
+
+      it("lists past the newest page when the search found more issues naming the feedback than it returned", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        // Visitor text can quote an id: a page URL carrying the widget's deep link, say.
+        addOtherIssues(1, `Seen on /checkout?siteping=${feedback.id}`);
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("finds the issue through the listing when the tracker has no search", async () => {
+        const feedback = await send(createHandler());
+
+        await patch(createHandler({ tracker: withoutSearch(provider.createTracker(fake)) }), feedback.id, "resolved");
+
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("falls back to the label listing when the search fails at once, without an answer", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.disconnectWhen(provider.searchRequest);
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
       it("falls back to the label listing when the search fails", async () => {
         const handler = createHandler();
         const feedback = await send(handler);
@@ -275,11 +517,28 @@ for (const provider of providers) {
         expect(fake.issues[0]?.isOpen).toBe(false);
       });
 
+      it("reaches closed issues through the listing too", async () => {
+        const handler = createHandler();
+        const resolved = await send(handler);
+        const reopened = await send(handler);
+        await patch(handler, resolved.id, "resolved");
+        await patch(handler, reopened.id, "resolved");
+        fake.lagSearch();
+
+        await patch(handler, reopened.id, "open");
+        expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, true]);
+
+        await remove(handler, { projectName: "site", deleteAll: true });
+        expect(
+          fake.issues.map((issue) => issue.comments.filter((comment) => !comment.startsWith("system:")).length),
+        ).toEqual([1, 1]);
+      });
+
       it("lists at most maxListedPages pages of 100 issues, newest first", async () => {
         const feedback = await send(createHandler());
         const [oldest] = fake.issues as [FakeTracker["issues"][number]];
         for (let n = 2; n <= 101; n++) fake.issues.push({ ...oldest, key: String(n), body: "unrelated", comments: [] });
-        fake.lagSearch();
+        fake.failWhen(provider.searchRequest, 403);
         const listing = (maxListedPages: number) =>
           createHandler({ tracker: provider.createTracker(fake, { maxListedPages }) });
 
@@ -288,6 +547,86 @@ for (const provider of providers) {
 
         await patch(listing(2), feedback.id, "resolved");
         expect(oldest.isOpen).toBe(false);
+      });
+    });
+
+    it("stops at the search when the tracker does not answer it, instead of waiting out the listing too", async () => {
+      const feedback = await send(createHandler());
+      const handler = createHandler({ tracker: provider.createTracker(fake, { timeoutMs: 50 }) });
+      fake.hang();
+      fake.requests.length = 0;
+
+      expect((await patch(handler, feedback.id, "resolved")).status).toBe(200);
+      expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(502);
+
+      const sent = fake.requests.map(({ method, path, query }) => `${method} ${path}${query}`);
+      expect(sent).toEqual([
+        expect.stringMatching(provider.searchRequest),
+        expect.stringMatching(provider.searchRequest),
+      ]);
+      expect(logger.error).toHaveBeenCalledTimes(2);
+    });
+
+    describe("past the listing cap", () => {
+      const capped = (maxListedPages: number) =>
+        createHandler({ tracker: provider.createTracker(fake, { maxListedPages }) });
+      const reason = () => String((logger.error.mock.calls[0]?.[1] as { error: Error } | undefined)?.error.message);
+
+      it("refuses a project delete that would leave issues unlisted, and open", async () => {
+        await send(createHandler());
+        addOtherIssues(1);
+
+        expect((await remove(capped(1), { projectName: "site", deleteAll: true })).status).toBe(502);
+        expect(fake.issues[0]?.isOpen).toBe(true);
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
+        expect(reason()).toMatch(
+          new RegExp(
+            `^\\[siteping\\] ${provider.name}: project "site" may have SitePing issues past the ones listed.*maxListedPages`,
+          ),
+        );
+
+        expect((await remove(capped(2), { projectName: "site", deleteAll: true })).status).toBe(200);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("refuses a delete whose search failed and whose issue it could not list", async () => {
+        const feedback = await send(createHandler());
+        addOtherIssues(1);
+        fake.failWhen(provider.searchRequest, 403);
+
+        expect((await remove(capped(1), { id: feedback.id, projectName: "site" })).status).toBe(502);
+        expect(fake.issues[0]?.isOpen).toBe(true);
+        expect(reason()).toMatch(
+          new RegExp(
+            `^\\[siteping\\] ${provider.name}: the issue of feedback "${feedback.id}" is not among the SitePing issues listed`,
+          ),
+        );
+      });
+
+      it("refuses, without a search, a lookup the listing cannot finish", async () => {
+        fake.failWhen(/^POST /, 500);
+        const feedback = await send(createHandler());
+        addOtherIssues(1);
+        logger.error.mockClear();
+        const handler = createHandler({ tracker: withoutSearch(provider.createTracker(fake, { maxListedPages: 1 })) });
+
+        expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(502);
+        expect(reason()).toMatch(/is not among the SitePing issues listed.*maxListedPages/);
+      });
+
+      it("trusts a search that answered past the newest page: a feedback without an issue stays deletable", async () => {
+        fake.failWhen(/^POST /, 500);
+        const feedback = await send(createHandler());
+        addOtherIssues(10);
+        logger.error.mockClear();
+        fake.requests.length = 0;
+
+        expect((await remove(createHandler(), { id: feedback.id, projectName: "site" })).status).toBe(200);
+        expect(logger.error).not.toHaveBeenCalled();
+        expect(fake.requests.map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
       });
     });
 
@@ -306,17 +645,169 @@ for (const provider of providers) {
       const [issue] = fake.issues;
 
       // First attempt: the comment lands, then the delete itself is retried.
-      await (createIssueTrackerHooks<null>({ tracker: provider.createTracker(fake) }).onDeleting?.(
-        { kind: "single", id: feedback.id, projectName: "site" },
-        { request: new Request(ENDPOINT), principal: null },
-      ) as Promise<void>);
+      await createIssueTrackerHooks({ tracker: provider.createTracker(fake) }).onDeleting({
+        kind: "single",
+        id: feedback.id,
+        projectName: "site",
+      });
       const response = await remove(handler, { id: feedback.id, projectName: "site" });
 
       expect(response.status).toBe(200);
       expect(issue?.isOpen).toBe(false);
       expect(issue?.comments.filter((comment) => !comment.startsWith("system:"))).toEqual([
-        `SitePing feedback \`${feedback.id}\` was deleted.`,
+        `<!-- siteping-feedback-deleted -->\n\nSitePing feedback \`${feedback.id}\` was deleted.`,
       ]);
+    });
+
+    it("finds its deletion comment past the first page of comments", async () => {
+      const handler = createHandler();
+      const feedback = await send(handler);
+      const [issue] = fake.issues as [FakeTracker["issues"][number]];
+      issue.comments.push(...Array.from({ length: 100 }, (_, n) => `Comment ${n}`));
+      const isDeletion = (comment: string) => comment.includes("was deleted");
+
+      await createIssueTrackerHooks({ tracker: provider.createTracker(fake) }).onDeleting({
+        kind: "single",
+        id: feedback.id,
+        projectName: "site",
+      });
+      expect(issue.comments.findIndex(isDeletion)).toBeGreaterThanOrEqual(100);
+
+      expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(200);
+      expect(issue.comments.filter(isDeletion)).toHaveLength(1);
+    });
+
+    const deletedTexts = [
+      ["ending in a line break, which GitLab trims", () => (id: string) => `Feedback ${id} was deleted.\r\n`],
+      [
+        "that differs on each attempt",
+        () => {
+          let attempt = 0;
+          return (id: string) => `Feedback ${id} deleted (attempt ${++attempt}).`;
+        },
+      ],
+    ] as const;
+
+    for (const [label, deletedCommentText] of deletedTexts) {
+      it(`leaves a single deletion comment across retries, with a text ${label}`, async () => {
+        const feedback = await send(createHandler());
+        const hooks = createIssueTrackerHooks({
+          tracker: provider.createTracker(fake),
+          deletedCommentText: deletedCommentText(),
+        });
+        const target = { kind: "single", id: feedback.id, projectName: "site" } as const;
+
+        await hooks.onDeleting(target);
+        await hooks.onDeleting(target);
+
+        expect(fake.issues[0]?.comments.filter((comment) => !comment.startsWith("system:"))).toHaveLength(1);
+      });
+    }
+
+    describe("concurrent requests", () => {
+      const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const humanComments = () =>
+        fake.issues.map((issue) => issue.comments.filter((comment) => !comment.startsWith("system:")).length);
+
+      it("apply status changes in the order they came, however the tracker answers interleave", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.delay(20);
+
+        const resolving = patch(handler, feedback.id, "resolved");
+        await pause(5);
+        await Promise.all([resolving, patch(handler, feedback.id, "open")]);
+
+        expect(fake.issues[0]?.isOpen).toBe(true);
+      });
+
+      it("leave one deletion comment when deletes of a feedback overlap", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.delay(10);
+
+        const responses = await Promise.all(
+          [1, 2].map(() => remove(handler, { id: feedback.id, projectName: "site" })),
+        );
+
+        expect(responses.map((response) => response.status)).toContain(200);
+        expect(humanComments()).toEqual([1]);
+      });
+
+      it("leave one deletion comment per issue when project deletes overlap", async () => {
+        const handler = createHandler();
+        await send(handler);
+        await send(handler);
+        fake.delay(10);
+
+        await Promise.all([1, 2].map(() => remove(handler, { projectName: "site", deleteAll: true })));
+
+        expect(humanComments()).toEqual([1, 1]);
+      });
+
+      it("leave one deletion comment when a feedback's delete overlaps its project's", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        const commenting = fake.hold(/^POST \S+\/(comments|notes)$/);
+
+        const deletingAll = remove(handler, { projectName: "site", deleteAll: true });
+        await commenting.reached;
+        const deleting = remove(handler, { id: feedback.id, projectName: "site" });
+        await pause(20);
+        commenting.release();
+        await Promise.all([deletingAll, deleting]);
+
+        expect(humanComments()).toEqual([1]);
+      });
+
+      it("answer a feedback sent while its project is being deleted, without waiting for the delete", async () => {
+        const handler = createHandler();
+        await send(handler);
+        const listing = fake.hold(/^GET \S+\/issues\?/);
+        const deletingAll = remove(handler, { projectName: "site", deleteAll: true });
+        await listing.reached;
+
+        const sending = send(handler);
+        const answered = await Promise.race([sending.then(() => true), pause(500).then(() => false)]);
+        listing.release();
+        await Promise.all([deletingAll, sending]);
+
+        expect(answered).toBe(true);
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(0);
+      });
+
+      const whileTheIssueIsCreated = async (
+        act: (handler: SitepingHandler, feedbackId: string) => Promise<Response>,
+      ) => {
+        const handler = createHandler();
+        const creation = fake.hold(/^POST \S+\/issues$/);
+        const sending = send(handler);
+        await creation.reached;
+        const [feedback] = (await store.getFeedbacks({ projectName: "site" })).feedbacks;
+        const acting = act(handler, feedback?.id ?? "");
+        // Time enough for the request's own tracker calls, had it not waited for the creation.
+        await pause(20);
+        creation.release();
+        await sending;
+        return (await acting).status;
+      };
+
+      it("close an issue still being created when its project is deleted", async () => {
+        expect(
+          await whileTheIssueIsCreated((handler) => remove(handler, { projectName: "site", deleteAll: true })),
+        ).toBe(200);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("close an issue still being created when its feedback is deleted", async () => {
+        expect(await whileTheIssueIsCreated((handler, id) => remove(handler, { id, projectName: "site" }))).toBe(200);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("sync the status of an issue still being created", async () => {
+        expect(await whileTheIssueIsCreated((handler, id) => patch(handler, id, "resolved"))).toBe(200);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
     });
 
     it("aborts the delete and keeps the feedback when the tracker fails", async () => {
@@ -335,15 +826,61 @@ for (const provider of providers) {
       expect(String((context as { error: Error }).error.message)).not.toContain(TOKEN);
     });
 
-    it("closes only the issues of the project on deleteAll", async () => {
+    for (const status of [401, 403, 404, 410, 422]) {
+      it(`treats a ${status} answer to a write as a failure`, async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.failWhen(/^(PATCH|PUT) /, status);
+
+        expect((await patch(handler, feedback.id, "resolved")).status).toBe(200);
+        expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onUpdated failed", expect.anything());
+        expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(502);
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
+      });
+    }
+
+    describe("keeps every record when a tracker call of the delete fails", () => {
+      const steps = [
+        ["the lookup", /^GET /],
+        ["closing the issue", /^(PATCH|PUT) /],
+        ["reading its comments", /^GET \S+\/(comments|notes)\?/],
+        ["commenting", /^POST \S+\/(comments|notes)$/],
+      ] as const;
+
+      for (const [step, pattern] of steps) {
+        for (const kind of ["single", "project"] as const) {
+          it(`${step}, deleting ${kind === "single" ? "one feedback" : "the project"}`, async () => {
+            const handler = createHandler();
+            const feedback = await send(handler);
+            await send(handler);
+            fake.failWhen(pattern, 503);
+
+            const response = await remove(
+              handler,
+              kind === "single" ? { id: feedback.id, projectName: "site" } : { projectName: "site", deleteAll: true },
+            );
+
+            expect(response.status).toBe(502);
+            expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(2);
+          });
+        }
+      }
+    });
+
+    it("closes only the issues of the project on deleteAll, each commented with its feedback", async () => {
       const handler = createHandler();
-      await send(handler);
-      await send(handler);
+      const first = await send(handler);
+      const second = await send(handler);
       await send(handler, { projectName: "other-site" });
 
       await remove(handler, { projectName: "site", deleteAll: true });
 
       expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, false, true]);
+      expect(fake.issues.map((issue) => issue.comments.filter((comment) => !comment.startsWith("system:")))).toEqual([
+        [`<!-- siteping-feedback-deleted -->\n\nSitePing feedback \`${first.id}\` was deleted.`],
+        [`<!-- siteping-feedback-deleted -->\n\nSitePing feedback \`${second.id}\` was deleted.`],
+        [],
+      ]);
     });
 
     it("reports a token that cannot label issues, which lookups could never find", async () => {
@@ -359,6 +896,17 @@ for (const provider of providers) {
       expect(isUnlabelledIssueError(error)).toBe(true);
       expect(error.message).toMatch(/created issue #1 without its "siteping" label/);
       expect(error.message).toMatch(provider.labelPermission);
+    });
+
+    it("deletes a feedback that never got an issue, writing nothing to the tracker", async () => {
+      fake.failWhen(/^POST /, 500);
+      const handler = createHandler();
+      const feedback = await send(handler);
+      fake.requests.length = 0;
+
+      expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(200);
+      expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(0);
+      expect(fake.requests.filter((request) => request.method !== "GET")).toEqual([]);
     });
 
     it("still creates the feedback when opening the issue fails", async () => {

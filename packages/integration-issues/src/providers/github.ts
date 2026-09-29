@@ -4,6 +4,7 @@ import {
   GITHUB_API_BASE_URL,
   GITHUB_API_VERSION,
   GITHUB_PAGE_SIZE,
+  GITHUB_REPOSITORY_PATTERN,
   GITHUB_STATE_REASON,
   GITHUB_USER_AGENT,
 } from "../constants/github.js";
@@ -11,6 +12,7 @@ import { TRACKER_MAX_LISTED_PAGES } from "../constants/http.js";
 import { SITEPING_ISSUE_LABEL } from "../constants/issue-format.js";
 import { createJsonHttpClient, UnlabelledIssueError } from "../core/http-client.js";
 import type { IssueTracker, TrackedIssue } from "../core/issue-tracker.js";
+import { checkApiBaseUrl, checkPositiveInteger, checkTimeout, checkToken } from "../core/tracker-options.js";
 
 export interface GitHubTrackerOptions {
   /** `owner/name` of the repository issues are created in. */
@@ -22,9 +24,11 @@ export interface GitHubTrackerOptions {
   fetch?: typeof fetch;
   timeoutMs?: number | undefined;
   /**
-   * Pages of 100 issues listed, newest first, when the search misses (its
-   * index lags a few seconds behind a new issue). Defaults to 10: an issue
-   * older than the 1,000 newest SitePing issues is then out of reach.
+   * Most pages of 100 issues listed, newest first: on a project-wide delete,
+   * and to find a feedback's issue when the search fails. After a search
+   * that answered, one page is listed (its index lags a few seconds behind a
+   * new issue). Defaults to 10: past the 1,000 newest SitePing issues, a
+   * project delete is refused, and so is a lookup the search did not settle.
    */
   maxListedPages?: number | undefined;
 }
@@ -36,6 +40,12 @@ interface GitHubIssue {
   state: "open" | "closed";
   labels: Array<string | { name?: string }>;
   pull_request?: unknown;
+}
+
+interface GitHubSearchResult {
+  total_count: number;
+  incomplete_results: boolean;
+  items: GitHubIssue[];
 }
 
 interface GitHubComment {
@@ -62,12 +72,20 @@ export function createGitHubTracker({
   timeoutMs,
   maxListedPages = TRACKER_MAX_LISTED_PAGES,
 }: GitHubTrackerOptions): IssueTracker {
+  if (!GITHUB_REPOSITORY_PATTERN.test(repository)) {
+    // Not echoed: a clone URL may carry a token, and this error is logged.
+    throw new Error('[siteping] createGitHubTracker: repository must be "owner/name"');
+  }
+  const credential = checkToken("createGitHubTracker", token);
+  checkApiBaseUrl("createGitHubTracker", apiBaseUrl);
+  checkTimeout("createGitHubTracker", timeoutMs);
+  checkPositiveInteger("createGitHubTracker", "maxListedPages", maxListedPages);
   const request = createJsonHttpClient({
     tracker: "GitHub",
     baseUrl: apiBaseUrl,
     headers: {
       Accept: GITHUB_ACCEPT_HEADER,
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${credential}`,
       "User-Agent": GITHUB_USER_AGENT,
       "X-GitHub-Api-Version": GITHUB_API_VERSION,
     },
@@ -116,7 +134,7 @@ export function createGitHubTracker({
     },
 
     async searchSitepingIssues(feedbackId) {
-      const { items } = await request<{ items: GitHubIssue[] }>({
+      const { items, total_count, incomplete_results } = await request<GitHubSearchResult>({
         method: "GET",
         path: "/search/issues",
         query: {
@@ -124,13 +142,17 @@ export function createGitHubTracker({
           per_page: String(GITHUB_PAGE_SIZE),
         },
       });
-      return items.flatMap((issue) => (issue.body ? [toTrackedIssue(issue, issue.body)] : []));
+      return {
+        issues: items.flatMap((issue) => (issue.body ? [toTrackedIssue(issue, issue.body)] : [])),
+        // `incomplete_results`: the query timed out on GitHub's side.
+        truncated: incomplete_results || total_count > items.length,
+      };
     },
 
     // Listed by label (consistent right after creation, unlike the search index).
-    async findSitepingIssues(marker) {
+    async findSitepingIssues(marker, { maxPages = maxListedPages } = {}) {
       const matches: TrackedIssue[] = [];
-      for (let page = 1; page <= maxListedPages; page++) {
+      for (let page = 1; page <= Math.min(maxPages, maxListedPages); page++) {
         const issues = await request<GitHubIssue[]>({
           method: "GET",
           path: issuesPath,
@@ -140,9 +162,9 @@ export function createGitHubTracker({
           if (issue.pull_request || !issue.body?.includes(marker)) continue;
           matches.push(toTrackedIssue(issue, issue.body));
         }
-        if (issues.length < GITHUB_PAGE_SIZE) break;
+        if (issues.length < GITHUB_PAGE_SIZE) return { issues: matches, truncated: false };
       }
-      return matches;
+      return { issues: matches, truncated: true };
     },
   };
 }
