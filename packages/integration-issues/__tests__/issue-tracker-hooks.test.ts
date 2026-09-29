@@ -169,6 +169,16 @@ for (const provider of providers) {
       expect(fake.issues[0]?.body).toContain(`<https://acme.test/checkout?siteping=${feedback.id}>`);
     });
 
+    it("leaves the deep link out with deepLinkParam: false", async () => {
+      const handler = createHandler({ siteUrl: "https://example.com", deepLinkParam: false });
+
+      await send(handler);
+
+      expect(fake.issues[0]?.body).toContain("## Page");
+      expect(fake.issues[0]?.body).not.toContain("## Open in the page");
+      expect(fake.issues[0]?.body).not.toContain("?step=2&");
+    });
+
     it("redacts free text and leaves the reviewer email out by default", async () => {
       const handler = createHandler({ redact: (text) => text.replace(/token=\S+/g, "token=[redacted]") });
 

@@ -328,6 +328,13 @@ describe("formatIssue", () => {
     ]);
   });
 
+  it("leaves the deep link out with deepLinkParam: false", () => {
+    const { body } = formatIssue(record(), { ...options, deepLinkParam: false, siteUrl: "https://example.com" });
+
+    expect(liveMarkdown(body).links).toEqual([]);
+    expect(body).not.toContain("## Open in the page");
+  });
+
   it("drops credentials from the deep link", () => {
     const { body } = formatIssue(record({ url: "https://user:pass@acme.test/checkout" }), {
       ...options,
