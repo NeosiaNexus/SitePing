@@ -27,9 +27,10 @@ export const ANNOTATIONS_LISTED = 10;
 export const ANNOTATION_FIELD_MAX_LENGTH = 300;
 
 /**
- * Longest body the default format writes. GitHub refuses bodies over 65,536
- * characters; the rest is room for the linking marker (about 1,300 characters
- * with a 200-character project name, escaped).
+ * Body length past which the default format leaves the annotations and
+ * diagnostics out. GitHub refuses bodies over 65,536 characters; the rest is
+ * room for the linking marker (about 1,300 characters with a 200-character
+ * project name, escaped).
  */
 export const ISSUE_BODY_MAX_LENGTH = 60_000;
 
