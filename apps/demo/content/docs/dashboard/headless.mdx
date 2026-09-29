@@ -122,7 +122,7 @@ The reply goes out as `author` with the `team` role, which the server keeps only
 const { canChangeStatus, canDelete } = inbox.permissionsOf(item);
 ```
 
-`changeStatus`, `undo`, `deleteFeedback` and `deleteComment` do nothing on a record that refuses them, so a stray call never flashes an optimistic change the server would roll back, nor sends a request it would refuse. The inbox only hides: the server decides what it accepts.
+`changeStatus`, `undo`, `deleteFeedback`, `addComment` and `deleteComment` do nothing on a record that refuses them, so a stray call never flashes an optimistic change the server would roll back, nor sends a request it would refuse. The inbox only hides: the server decides what it accepts.
 
 ## Pagination
 

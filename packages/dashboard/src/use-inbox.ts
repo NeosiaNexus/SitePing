@@ -877,11 +877,20 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     [commitItems, commitOpenedCache],
   );
 
+  /** The record `updateRecord` would reach — what a thread action reads the permissions of. */
+  const heldRecord = useCallback(
+    (id: string) =>
+      itemsRef.current.find((f) => f.id === id) ??
+      [openedCacheRef.current, undoRecordRef.current, inFlightRef.current.get(id)?.prev].find((f) => f?.id === id),
+    [],
+  );
+
   const addComment = useCallback(
     async (id: string, body: string, clientId = newClientId()): Promise<void> => {
       const replier = authorRef.current;
       const text = body.trim();
-      if (!srcRef.current.addComment || !replier || !text) return;
+      const record = heldRecord(id);
+      if (!srcRef.current.addComment || !replier || !text || !record || !permissionsOf(record).canComment) return;
       try {
         const comment = await srcRef.current.addComment(id, projectRef.current, {
           body: text,
@@ -899,14 +908,12 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         throw err;
       }
     },
-    [updateRecord],
+    [heldRecord, permissionsOf, updateRecord],
   );
 
   const deleteComment = useCallback(
     async (id: string, commentId: string): Promise<void> => {
-      const record =
-        itemsRef.current.find((f) => f.id === id) ??
-        (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
+      const record = heldRecord(id);
       if (!srcRef.current.removeComment || !record || !permissionsOf(record).canDeleteComment) return;
       try {
         await srcRef.current.removeComment(id, commentId, projectRef.current);
@@ -917,7 +924,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         throw err;
       }
     },
-    [permissionsOf, updateRecord],
+    [heldRecord, permissionsOf, updateRecord],
   );
 
   // -------------------------------------------------------------------------

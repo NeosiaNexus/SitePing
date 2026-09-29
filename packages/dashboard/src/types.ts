@@ -272,7 +272,8 @@ export interface InboxState {
    * source has stored it. Rejects after `onError`. Pass the `clientId` of a
    * failed attempt to resend it — the server answers with the stored reply
    * if that attempt did land, instead of adding it twice; one is generated
-   * when omitted.
+   * when omitted. Does nothing for a record the inbox does not hold, or
+   * whose `permissionsOf` refuses it.
    */
   addComment(id: string, body: string, clientId?: string): Promise<void>;
   /**

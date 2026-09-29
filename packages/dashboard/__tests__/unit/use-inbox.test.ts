@@ -2019,7 +2019,12 @@ describe("useSitepingInbox — permissions and readOnly", () => {
 
   function threaded(records: InboxRecord[]): InboxSource {
     return Object.assign(makeSource(records), {
-      addComment: vi.fn<NonNullable<InboxSource["addComment"]>>(),
+      addComment: vi.fn<NonNullable<InboxSource["addComment"]>>(async (feedbackId, _projectName, input) => ({
+        id: "c-new",
+        feedbackId,
+        ...input,
+        createdAt: new Date("2026-07-21T09:00:00Z"),
+      })),
       removeComment: vi.fn<NonNullable<InboxSource["removeComment"]>>(),
     });
   }
@@ -2080,6 +2085,21 @@ describe("useSitepingInbox — permissions and readOnly", () => {
     await act(() => result.current.deleteComment("r2", "c-2"));
 
     expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r2", "c-2", "demo");
+  });
+
+  it("posts no reply on a record that refuses it", async () => {
+    const source = threaded(recordsWith({ ...ALL, canComment: false }));
+    const { result } = await ready({ projects: "demo", source, author });
+
+    await act(() => result.current.addComment("r1", "Refused"));
+    await act(() => result.current.addComment("r2", "Allowed"));
+
+    expect(source.addComment).toHaveBeenCalledExactlyOnceWith(
+      "r2",
+      "demo",
+      expect.objectContaining({ body: "Allowed" }),
+    );
+    expect(record(result.current.items, "r2").comments?.map((c) => c.body)).toEqual(["Allowed"]);
   });
 
   it("in readOnly, drops a pending undo instead of reverting", async () => {

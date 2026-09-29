@@ -122,7 +122,7 @@ La réponse part au nom d'`author` avec le rôle `team`, que le serveur ne garde
 const { canChangeStatus, canDelete } = inbox.permissionsOf(item);
 ```
 
-`changeStatus`, `undo`, `deleteFeedback` et `deleteComment` ne font rien sur un enregistrement qui les refuse : un appel égaré n'affiche jamais un changement optimiste que le serveur annulerait, ni n'envoie une requête qu'il refuserait. L'inbox ne fait que masquer : c'est le serveur qui décide de ce qu'il accepte.
+`changeStatus`, `undo`, `deleteFeedback`, `addComment` et `deleteComment` ne font rien sur un enregistrement qui les refuse : un appel égaré n'affiche jamais un changement optimiste que le serveur annulerait, ni n'envoie une requête qu'il refuserait. L'inbox ne fait que masquer : c'est le serveur qui décide de ce qu'il accepte.
 
 ## Pagination
 
