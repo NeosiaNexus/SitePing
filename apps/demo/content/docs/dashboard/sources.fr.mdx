@@ -63,6 +63,10 @@ const source: InboxSource = {
 
 `list()` peut aussi renvoyer `capabilities: { comments: false }` pour mettre les fils en lecture seule face à un backend qui n'en garde pas, ou `deleteComments: false` pour masquer les boutons de suppression d'un backend qui ne sait pas supprimer les réponses ; en leur absence, `addComment` et `removeComment` seuls décident. Une source sans `removeComment` poste des réponses mais n'en supprime aucune. La source endpoint reprend les `capabilities` annoncées par le serveur (et passe en lecture seule face à un serveur qui n'annonce rien) ; la source store ne définit ces méthodes que si le store implémente `addComment` / `deleteComment`.
 
+### Permissions
+
+Un enregistrement peut porter `permissions` — `{ canChangeStatus, canDelete, canComment, canDeleteComment }`, ce que l'appelant peut en faire — depuis `list()` comme depuis `setStatus()`. L'inbox masque alors ce qu'elles refusent (voir [Permissions](/fr/docs/dashboard/headless#permissions)) ; un enregistrement sans elles ne refuse rien. La source endpoint transmet celles du serveur.
+
 Les deux briques qui sous-tendent les modes intégrés sont également exportées — `createEndpointSource({ endpoint, apiKey, headers })` et `createStoreSource(store)` — pour que vous puissiez les envelopper, les composer ou les décorer (par exemple ajouter de la journalisation autour du client HTTP) plutôt que de repartir de zéro.
 
 ## Des types sans dépendance supplémentaire
@@ -72,6 +76,7 @@ Les deux briques qui sous-tendent les modes intégrés sont également exportée
 | Ce que vous typez | Exports |
 |---|---|
 | Les données de feedback | `FeedbackRecord`, `FeedbackStatus`, `FeedbackType`, `SitepingStore`, ainsi que les constantes `FEEDBACK_STATUSES` / `FEEDBACK_TYPES` et `isClosedStatus()` |
+| Les permissions | `FeedbackPermissions` (ce que l'appelant peut faire d'un enregistrement), `InboxRecord` (un enregistrement avec ses `permissions` optionnelles), `InboxPage` (ce que résout `list()`) |
 | Les fils | `CommentRecord` (une réponse enregistrée), `CommentCreateInput` (ce que reçoit `addComment`), `SitepingCapabilities` (ce que `list()` peut annoncer) |
 | Les options du hook | `UseSitepingInboxOptions` et ses trois membres — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions` — plus le socle commun `InboxSharedOptions` |
 | Le retour du hook | `InboxState`, `InboxStatusFilter`, `InboxTypeFilter` |

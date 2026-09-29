@@ -31,6 +31,7 @@ The options are a union over the three source modes: supply **exactly one** of `
 | `onDelete` | `(feedback) => void` | — | After the server confirms |
 | `onError` | `(error) => void` | — | Every failed load or mutation |
 | `author` | `{ name, email? }` | — | Who posts replies from this inbox — see [Discussion threads](#discussion-threads). Without it, threads are read-only |
+| `readOnly` | `boolean` | `false` | No status change and no deletion, of feedbacks or of replies — see [Permissions](#permissions) |
 
 Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions`, the shared `InboxSharedOptions`, and the `UseSitepingInboxOptions` union — so a wrapper component can accept just the mode it supports. Plain-JavaScript callers get the old behavior: no source at all still throws at render.
 
@@ -45,6 +46,8 @@ Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
 
 **Discussion thread** — `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)`, `deleteComment(id, commentId)`; see [below](#discussion-threads).
+
+**Permissions** — `permissionsOf(record)`; see [below](#permissions).
 
 ## `view` — skip the flag algebra
 
@@ -86,7 +89,7 @@ Only the last status change is undoable (`pendingUndo` + `undo()`); delete is pe
 
 ## Discussion threads
 
-Each record carries its thread in `comments` (oldest first). `canComment` says whether this inbox may post replies: an `author` is set, the source implements `addComment`, and the last list did not say the endpoint keeps no comments. `canDeleteComment` says whether it may also delete them: the source implements `removeComment` too, and the last list did not say the endpoint cannot delete them.
+Each record carries its thread in `comments` (oldest first). `canComment` says whether this inbox may post replies: an `author` is set, the source implements `addComment`, and the last list did not say the endpoint keeps no comments. `canDeleteComment` says whether it may also delete them: the inbox is not `readOnly`, the source implements `removeComment` too, and the last list did not say the endpoint cannot delete them.
 
 Replies are **not** optimistic: `addComment` resolves once the source has stored the reply, which then shows on the record wherever the hook holds it — its row, `opened`, and the record a pending status change would roll back to. Both actions re-throw after `onError`, like the mutations above.
 
@@ -110,6 +113,16 @@ async function send(feedbackId: string) {
 ```
 
 The reply goes out as `author` with the `team` role, which the server keeps only for callers its access policy vouches for — see [who speaks as the team](/docs/comments#who-speaks-as-the-team).
+
+## Permissions
+
+`permissionsOf(record)` says what the user may do with a record here — `{ canChangeStatus, canDelete, canComment, canDeleteComment }`: what `readOnly`, `canComment` and `canDeleteComment` allow, minus what the record's `permissions` refuse. The endpoint source passes on the server's (see [what each requester may do](/docs/server#what-each-requester-may-do)); a record without them refuses nothing. Show your controls from it:
+
+```tsx
+const { canChangeStatus, canDelete } = inbox.permissionsOf(item);
+```
+
+`changeStatus`, `undo` and `deleteFeedback` do nothing on a record that refuses them, so a stray call never flashes an optimistic change the server would roll back. The inbox only hides: the server decides what it accepts.
 
 ## Pagination
 

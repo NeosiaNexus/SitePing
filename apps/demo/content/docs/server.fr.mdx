@@ -119,6 +119,21 @@ La limitation de débit n'est pas gérée ici : appliquez-la dans votre framewor
 
 Avec [`access`](#accès-personnalisé), c'est `canReadAuthorEmail` qui décide, pour toutes les réponses — `POST` compris.
 
+### Ce que chaque appelant peut faire
+
+Chaque feedback d'une réponse — la liste, la réponse au `PATCH`, la réponse au `POST` — porte `permissions`, et chaque liste porte `permissions.canDeleteAll` :
+
+```json
+{ "permissions": { "canChangeStatus": false, "canDelete": false, "canComment": true, "canDeleteComment": false } }
+```
+
+Elles disent ce que cet appelant aurait le droit de faire : le [widget](/fr/docs/widget/configuration#mode-relecteur) et le [dashboard](/fr/docs/dashboard#lecture-seule-et-permissions) masquent le reste, au lieu de proposer un bouton qui répond `401` ou `403`. Le serveur vérifie quand même chaque requête.
+
+- Avec la politique `apiKey`, une action est permise quand sa méthode l'est : le détenteur de la clé peut tout faire, et un visiteur sans elle ce que `publicEndpoints` ouvre. Avec `["GET", "POST", "OPTIONS"]`, le réglage habituel d'un widget public, un visiteur lit et répond, mais ne change pas de statut et ne supprime pas.
+- Avec [`access`](#accès-personnalisé), c'est `authorize` qui décide, feedback par feedback.
+
+Les serveurs qui les précèdent n'en envoient pas, le mode store non plus : les clients ne masquent alors rien.
+
 ## Accès personnalisé
 
 Une clé partagée convient à un site et à son dashboard. Quand les relecteurs se connectent, passez plutôt `access` : le handler demande à votre code qui appelle et ce qu'il peut faire, à partir de la `Request` standard — un cookie de session, un JWT, un en-tête posé par votre proxy.
@@ -141,6 +156,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 
 - **`authenticate`** tourne sur toutes les méthodes sauf `OPTIONS`, et résout **qui** appelle — un objet, une chaîne ou un nombre, jamais un booléen. Toute valeur falsy (`null`, `undefined`, `""`, `0`) répond `401`. Une vérification `true`/`false` est une erreur de type, et un `false` en JavaScript pur répond `401` lui aussi. Son type de retour type `principal` partout ailleurs.
 - **`authorize`** reçoit l'`action` (`create`, `list`, `update`, `delete`, `deleteAll`, et `createComment` / `deleteComment` pour les [fils](/fr/docs/comments)), le `projectName` et, pour `update`, `delete` et les actions de commentaire, le `feedbackId` — plus le `commentId` pour `deleteComment`. Par défaut, il laisse passer tout appelant authentifié. PATCH et DELETE désignent les enregistrements par id : la factory refuse donc de démarrer avec un `authorize` devant un store sans `verifyProjectOwnership` — tous les stores fournis l'implémentent.
+- **`authorize` remplit aussi les [`permissions`](#ce-que-chaque-appelant-peut-faire)**, interrogé avec `dryRun: true` : `update`, `delete`, `createComment` et `deleteComment` (sans `commentId`) pour chaque feedback d'une réponse, et `deleteAll` une fois par liste. Rien n'est fait à ce moment-là — sautez votre journal d'audit sur ces essais à blanc — et gardez-le rapide : une page de 50 feedbacks en demande 201.
 - **`canReadAuthorEmail`** vaut `true` par défaut.
 - **`canCommentAsTeam`** décide si un commentaire qui demande le rôle `team` le garde ; tout autre est marqué `client`. Par défaut, il reprend la réponse de `canReadAuthorEmail` quand vous définissez ce callback, et vaut `false` quand vous ne définissez aucun des deux — voir [le rôle équipe](/fr/docs/comments#le-rôle-équipe).
 - Un callback qui lève répond une `500` journalisée.
@@ -191,7 +207,7 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 | Méthode | Rôle | Succès |
 |---|---|---|
 | `POST` | Créer un feedback (envois du widget) — ou [un commentaire](/fr/docs/comments#poster-un-commentaire), quand le corps porte un `feedbackId` | `201` + l'enregistrement. Un `clientId` rejoué renvoie l'enregistrement existant au lieu d'échouer (et ne notifie jamais deux fois les webhooks ni `onCreated`) ; un `clientId` déjà utilisé par **un autre** projet est refusé avec `409` |
-| `GET` | Lister les feedbacks, chacun avec son fil | `200` + `{ feedbacks, total, capabilities }`, avec `Cache-Control: private, max-age=5` (`no-store` avec `access`) |
+| `GET` | Lister les feedbacks, chacun avec son fil et ses [`permissions`](#ce-que-chaque-appelant-peut-faire) | `200` + `{ feedbacks, total, capabilities, permissions }`, avec `Cache-Control: private, max-age=5` (`no-store` avec `access`) |
 | `PATCH` | Changer un statut | `200` + l'enregistrement mis à jour |
 | `DELETE` | Supprimer un ou tous — ou [un commentaire](/fr/docs/comments#supprimer-un-commentaire), quand le corps porte un `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | Préflight CORS | `204` |

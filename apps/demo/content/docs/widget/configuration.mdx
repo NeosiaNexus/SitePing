@@ -61,6 +61,14 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
 | `identity` | `{ name, email }` | — | Pre-fill the author (SSO apps): skips the identity modal entirely, never persisted to localStorage |
 | `panelActions` | array | — | Your own buttons and links in the feedback detail view — create a ticket, open it in your tracker. See [Panel actions](/docs/widget/panel-actions) |
 
+## Reviewer mode
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `readOnly` | `boolean` | `false` | Hide what triages feedback — resolve, reopen, delete, the bulk actions, "Delete all". Creating, browsing and replying stay |
+
+For a client who reviews while your team triages. On top of it, the widget hides what the server says this visitor may not do — its [`permissions`](/docs/server#what-each-requester-may-do) — so a public widget in front of an `apiKey` offers no button that would answer `401`, even without `readOnly`. Either way it only hides: the server decides what it accepts.
+
 ## Page scoping
 
 | Option | Type | Default | What it does |
