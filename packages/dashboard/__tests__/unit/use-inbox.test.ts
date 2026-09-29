@@ -1952,6 +1952,29 @@ describe("useSitepingInbox — discussion thread", () => {
     expect(result.current.opened?.comments?.map((c) => c.body)).toEqual(["Reply since"]);
   });
 
+  it("posts a reply on a record only the drawer still holds", async () => {
+    const source = threadedSource();
+    const { result } = await ready({ projects: "demo", source, author });
+    act(() => result.current.openFeedback("r1"));
+    act(() => result.current.setStatus("resolved"));
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
+
+    await act(() => result.current.addComment("r1", "Reply"));
+
+    expect(result.current.opened?.comments?.map((c) => c.body)).toEqual(["Reply"]);
+  });
+
+  it("posts a reply on a record only the pending undo still holds", async () => {
+    const source = threadedSource();
+    const { result } = await ready({ projects: "demo", source, author });
+    await act(() => result.current.changeStatus("r1", "resolved"));
+    expect(ids(result.current.items)).not.toContain("r1");
+
+    await act(() => result.current.addComment("r1", "Reply"));
+
+    expect(source.addComment).toHaveBeenCalledOnce();
+  });
+
   it("reports a failed post through onError and rejects, leaving the thread as it was", async () => {
     const source = threadedSource();
     const failure = new Error("offline");
