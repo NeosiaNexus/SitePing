@@ -7,4 +7,4 @@
 export const UNSTORABLE_CODE_UNITS = /\0|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
 /** U+FFFD, the Unicode replacement character — what stands for each unstorable code unit. */
-export const REPLACEMENT_CHARACTER = "�";
+export const REPLACEMENT_CHARACTER = "\uFFFD";

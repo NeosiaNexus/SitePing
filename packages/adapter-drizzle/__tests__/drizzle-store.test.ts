@@ -1163,12 +1163,12 @@ for (const dialect of dialects) {
         );
         const comment = await store.addComment(created.id, commentInput({ body: "Seen \uD83D\u0000" }));
 
-        expect(created.message).toBe("Total shows a�b");
-        expect(created.authorName).toBe("Zoe �");
-        expect(created.annotations[0]?.textSnippet).toBe("Pay�");
-        expect(created.diagnostics?.console[0]?.message).toBe(`${"x".repeat(498)}�`);
-        expect(created.diagnostics?.network[0]?.url).toBe("https://api.example.com/�");
-        expect(comment.body).toBe("Seen ��");
+        expect(created.message).toBe("Total shows a\uFFFDb");
+        expect(created.authorName).toBe("Zoe \uFFFD");
+        expect(created.annotations[0]?.textSnippet).toBe("Pay\uFFFD");
+        expect(created.diagnostics?.console[0]?.message).toBe(`${"x".repeat(498)}\uFFFD`);
+        expect(created.diagnostics?.network[0]?.url).toBe("https://api.example.com/\uFFFD");
+        expect(comment.body).toBe("Seen \uFFFD\uFFFD");
         expect(await store.findByClientId(created.clientId)).toEqual({ ...created, comments: [comment] });
       });
 
