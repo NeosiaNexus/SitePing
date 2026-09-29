@@ -180,22 +180,55 @@ describe("createSitepingHandler — access", () => {
     expect((await list(ADMIN))[0]).not.toHaveProperty("clientId");
   });
 
-  it("lets every authenticated principal read authorEmail when canReadAuthorEmail is not set", async () => {
+  it("blanks authorEmail for every principal when canReadAuthorEmail is not set", async () => {
     const handler = createSitepingHandler({ store: new MemoryStore(), access: sessionAccess() });
 
-    const created = await createFeedback(handler, GUEST);
-    const listed = ((await (await handler.GET(listRequest(GUEST))).json()) as { feedbacks: FeedbackRecord[] })
+    const created = await createFeedback(handler, ADMIN);
+    const listed = ((await (await handler.GET(listRequest(ADMIN))).json()) as { feedbacks: FeedbackRecord[] })
       .feedbacks[0];
     const updated = (await (
-      await handler.PATCH(jsonRequest("PATCH", { id: created.id, projectName: PROJECT, status: "resolved" }, GUEST))
+      await handler.PATCH(jsonRequest("PATCH", { id: created.id, projectName: PROJECT, status: "resolved" }, ADMIN))
     ).json()) as FeedbackRecord;
 
-    const { authorEmail } = validPayloadNoAnnotations;
-    expect([created.authorEmail, listed?.authorEmail, updated.authorEmail]).toEqual([
-      authorEmail,
-      authorEmail,
-      authorEmail,
-    ]);
+    expect([created.authorEmail, listed?.authorEmail, updated.authorEmail]).toEqual(["", "", ""]);
+  });
+
+  it("reveals authorEmail, and the team role, on a true answer only", async () => {
+    // A visitor principal lacks the flag its policy reads: JavaScript, or a principal typed `any`.
+    const VISITOR = { email: "" } as Reviewer;
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      access: {
+        authenticate: (request) => (request.headers.get("x-session") === ADMIN.email ? ADMIN : VISITOR),
+        canReadAuthorEmail: (principal) => principal.isAdmin,
+      },
+    });
+    const feedback = await createFeedback(handler);
+    const reply = (session?: Reviewer) =>
+      handler.POST(
+        jsonRequest(
+          "POST",
+          {
+            projectName: PROJECT,
+            feedbackId: feedback.id,
+            body: "Approved, ship it",
+            authorName: "Eve",
+            authorEmail: "eve@example.com",
+            authorRole: "team",
+            clientId: session ? "reply-admin" : "reply-visitor",
+          },
+          session,
+        ),
+      );
+
+    const visitorReply = (await (await reply()).json()) as { authorRole: string };
+    const adminReply = (await (await reply(ADMIN)).json()) as { authorRole: string };
+    const visitorList = ((await (await handler.GET(listRequest())).json()) as { feedbacks: FeedbackRecord[] })
+      .feedbacks[0];
+
+    expect(visitorList?.authorEmail).toBe("");
+    expect(visitorReply.authorRole).toBe("client");
+    expect(adminReply.authorRole).toBe("team");
   });
 
   it("applies the email permission to fresh and replayed POST responses", async () => {

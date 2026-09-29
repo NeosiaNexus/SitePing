@@ -157,7 +157,9 @@ export function createAccessGate<Principal extends SitepingPrincipal>(
       if (!principal) {
         return { ok: false, status: 401, error: ERROR_MESSAGES.unauthorized };
       }
-      return { ok: true, principal, canReadAuthorEmail: (await access.canReadAuthorEmail?.(principal)) ?? true };
+      // Emails are personal data: only a `true` answer reveals them — no
+      // callback, or `undefined` from a principal missing the flag, hides them.
+      return { ok: true, principal, canReadAuthorEmail: (await access.canReadAuthorEmail?.(principal)) === true };
     },
     // A dry run reuses the response's request, so `authenticate` is never asked
     // about another method: `authorize` decides, by action.
@@ -170,8 +172,7 @@ export function createAccessGate<Principal extends SitepingPrincipal>(
     // Speaking as the team is an impersonation privilege: without the host's
     // word for it (its own callback, or the email access it grants), refuse.
     async canCommentAsTeam({ principal }, canReadAuthorEmail) {
-      if (access.canCommentAsTeam) return access.canCommentAsTeam(principal);
-      return access.canReadAuthorEmail ? canReadAuthorEmail : false;
+      return access.canCommentAsTeam ? access.canCommentAsTeam(principal) : canReadAuthorEmail;
     },
   };
 }

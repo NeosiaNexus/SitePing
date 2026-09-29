@@ -63,13 +63,15 @@ export type SitepingPrincipal = object | string | number;
  *   `authorize` to refuse it the other actions.
  * - `canReadAuthorEmail` decides whether responses include `authorEmail`
  *   (reviewer PII), on feedbacks and their comments — the list, the PATCH
- *   answer and the POST answer alike. Defaults to `true`.
+ *   answer and the POST answer alike. Only `true` includes it: without the
+ *   callback, every response blanks it. A policy that serves anonymous
+ *   visitors resolves a principal for them too, so being authenticated says
+ *   nothing about who may read reviewers' emails.
  * - `canCommentAsTeam` decides whether a comment that asks for the `team`
  *   role keeps it; otherwise it is stamped `client`. Defaults to the
- *   principal's `canReadAuthorEmail` answer when that callback is set
- *   (whoever may read reviewer emails is on the project side), and to
- *   `false` when neither is: a policy that does not tell the team apart
- *   never lets a caller speak as the team.
+ *   principal's `canReadAuthorEmail` answer (whoever may read reviewer
+ *   emails is on the project side), so a policy that sets neither never
+ *   lets a caller speak as the team.
  *
  * A throw from any of them answers a logged 500.
  */
