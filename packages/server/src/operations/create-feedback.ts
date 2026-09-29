@@ -169,7 +169,7 @@ export function createFeedbackOperation<Principal>({
       if (feedback.projectName !== input.projectName) {
         return pipeline.error(scope, 409, ERROR_MESSAGES.clientIdUsedByAnotherProject);
       }
-      return pipeline.json(scope, pipeline.presentCreated(scope, feedback), { status: 201 });
+      return pipeline.json(scope, await pipeline.presentCreated(scope, feedback), { status: 201 });
     } catch (error) {
       return pipeline.fail(scope, FAILED_TO_CREATE, error);
     }

@@ -61,6 +61,14 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint garanti */ }
 | `identity` | `{ name, email }` | — | Pré-remplit l'auteur (applis avec SSO) : évite complètement la modale d'identité, jamais persisté dans le localStorage |
 | `panelActions` | tableau | — | Vos propres boutons et liens dans la vue détail d'un feedback — créer un ticket, l'ouvrir dans votre outil de suivi. Voir [Actions du panneau](/fr/docs/widget/panel-actions) |
 
+## Mode relecteur
+
+| Option | Type | Défaut | Ce que ça fait |
+|---|---|---|---|
+| `readOnly` | `boolean` | `false` | Masque ce qui trie les feedbacks — résoudre, rouvrir, supprimer, les actions groupées, « Tout supprimer ». Créer, parcourir et répondre restent possibles |
+
+Pour un client qui relit pendant que votre équipe trie. En plus, le widget masque ce que le serveur interdit à ce visiteur (ses [`permissions`](/fr/docs/server#ce-que-chaque-appelant-peut-faire)) : un widget public devant une `apiKey` ne propose aucun bouton qui répondrait `401`, même sans `readOnly`. Dans les deux cas, il ne fait que masquer : c'est le serveur qui décide de ce qu'il accepte.
+
 ## Cadrage par page
 
 | Option | Type | Défaut | Ce que ça fait |

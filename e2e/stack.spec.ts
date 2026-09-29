@@ -400,3 +400,53 @@ test.describe("Discussion thread across the widget and the inbox", () => {
     expect(after?.comments?.map((c) => c.body)).toEqual(["Done in the next deploy"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Permissions: what the server lets each requester do (#101)
+// ---------------------------------------------------------------------------
+
+test.describe("Permissions sent by the real handler", () => {
+  const KEYED = "/api/siteping-keyed";
+
+  test("a visitor without the key gets no triage action; the key holder's inbox has them", async ({
+    page,
+    request,
+  }, testInfo) => {
+    const project = projectFor(testInfo);
+    await seed(request, project, "Only the team triages this");
+
+    // The site's visitor: reads and replies, never resolves or deletes.
+    await openWidgetPage(page, { project, endpoint: KEYED });
+    await clickInShadow(page, ".sp-fab");
+    await clickInShadow(page, '[data-item-id="chat"]');
+    await clickInShadow(page, ".sp-card");
+    await page.waitForFunction(
+      () => !!document.querySelector("siteping-widget")?.shadowRoot?.querySelector(".sp-detail textarea"),
+    );
+    const offered = await page.evaluate(() => {
+      const shadow = document.querySelector("siteping-widget")?.shadowRoot;
+      return {
+        card: !!shadow?.querySelector(".sp-card .sp-btn-resolve, .sp-card .sp-btn-delete"),
+        detail: !!shadow?.querySelector(".sp-detail-btn-resolve, .sp-detail-btn-delete"),
+        deleteAll: shadow?.querySelector<HTMLElement>(".sp-btn-delete-all")?.style.display !== "none",
+      };
+    });
+    expect(offered).toEqual({ card: false, detail: false, deleteAll: false });
+
+    // An inbox without the key reads the status; with it, changes it.
+    await openInbox(page, { project, endpoint: KEYED });
+    await page.locator(".spd-list").focus();
+    await page.keyboard.press("j");
+    await page.keyboard.press("Enter");
+    const drawer = page.getByRole("region", { name: /Feedback details/ });
+    await expect(drawer.locator('span.spd-status-menu-trigger[data-status="open"]')).toBeVisible();
+    await expect(drawer.getByRole("button", { name: "Delete feedback" })).toHaveCount(0);
+
+    await openInbox(page, { project, endpoint: KEYED, apiKey: "e2e-key" });
+    await page.locator(".spd-list").focus();
+    await page.keyboard.press("j");
+    await page.keyboard.press("Enter");
+    await expect(drawer.getByRole("button", { name: "Open" })).toBeVisible();
+    await expect(drawer.getByRole("button", { name: "Delete feedback" })).toBeVisible();
+  });
+});

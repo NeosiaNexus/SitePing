@@ -14,14 +14,14 @@ import {
   toFeedbackUpdate,
   withSearchParams,
 } from "@siteping/core";
-import type { EndpointSourceOptions, InboxSource } from "./types.js";
+import type { EndpointSourceOptions, InboxRecord, InboxSource } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Date revival — API responses carry ISO strings, the inbox works with Dates
 // ---------------------------------------------------------------------------
 
-/** Convert a serialized `FeedbackResponse` into a `FeedbackRecord` with real `Date` objects. */
-function reviveRecord(response: FeedbackResponse): FeedbackRecord {
+/** Convert a serialized `FeedbackResponse` into a record with real `Date` objects, its `permissions` kept. */
+function reviveRecord(response: FeedbackResponse): InboxRecord {
   return {
     ...response,
     // API responses omit clientId (server-side dedupe concern) — not needed for triage.
@@ -117,7 +117,7 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
       };
     },
 
-    async setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<FeedbackRecord> {
+    async setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<InboxRecord> {
       const response = await request("Failed to update feedback", endpoint, {
         method: "PATCH",
         headers: await buildHeaders(true),

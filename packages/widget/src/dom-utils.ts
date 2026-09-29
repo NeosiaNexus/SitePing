@@ -80,6 +80,15 @@ export function onClickOutside(container: HTMLElement, onOutside: () => void): (
 }
 
 /**
+ * Hide or show an element. `hidden` alone loses to a class that sets
+ * `display`, and the panel's focus trap reads `style.display`.
+ */
+export function setHidden(element: HTMLElement, hidden: boolean): void {
+  element.hidden = hidden;
+  element.style.display = hidden ? "none" : "";
+}
+
+/**
  * Replace a button's children with a small spinner and disable it.
  * Returns a `restore` callback that swaps the original content back and
  * re-enables the button. Used by every async button (delete, resolve, …)

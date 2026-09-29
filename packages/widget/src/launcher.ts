@@ -409,6 +409,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
           panelActions: config.panelActions,
           ownFeedback: own,
           resolveIdentity,
+          readOnly: config.readOnly,
         });
         return panelInstance;
       });

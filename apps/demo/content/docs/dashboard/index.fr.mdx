@@ -72,6 +72,16 @@ Le tiroir montre le fil du feedback ouvert — les réponses du relecteur depuis
 
 Sans `author`, les fils sont en lecture seule. Les réponses demandent le rôle `team`, que votre serveur n'accorde qu'aux appelants de confiance — les détails sont dans [Fils de discussion](/fr/docs/comments#dans-le-dashboard).
 
+## Lecture seule et permissions
+
+`readOnly` masque les changements de statut et les suppressions, des feedbacks comme des réponses — pour une personne qui suit l'inbox, et répond quand `author` est défini :
+
+```tsx
+<SitepingInbox projects="my-project" endpoint="/api/siteping" readOnly />
+```
+
+L'inbox suit aussi ce que le serveur permet à chaque appelant sur chaque feedback — ses [`permissions`](/fr/docs/server#ce-que-chaque-appelant-peut-faire). Le tiroir affiche le statut en texte quand il ne peut pas changer et retire la suppression quand le feedback ne peut pas être supprimé, `e` / `p` / `x` passent un tel feedback, et les aides retirent les touches de statut quand aucun feedback listé ne permet de changement. Elle ne fait que masquer : c'est le serveur qui décide de ce qu'il accepte.
+
 ## Langues
 
 Les mêmes locales intégrées que le widget (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`, `ja`), l'anglais embarqué, le reste chargé à la demande, les étiquettes BCP-47 normalisées (`fr-CA` → `fr`), tout comme celles au format backend (`fr_FR` → `fr`).

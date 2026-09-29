@@ -87,10 +87,11 @@ describe("the principal", () => {
       store,
       access: {
         authenticate: sessionUser,
-        authorize: ({ principal, action, feedbackId, commentId }) => {
+        authorize: ({ principal, action, feedbackId, commentId, dryRun }) => {
           expectTypeOf(principal).toEqualTypeOf<Reviewer>();
           expectTypeOf(feedbackId).toEqualTypeOf<string | undefined>();
           expectTypeOf(commentId).toEqualTypeOf<string | undefined>();
+          expectTypeOf(dryRun).toEqualTypeOf<boolean | undefined>();
           return action === "create" || principal.isAdmin;
         },
         canReadAuthorEmail: (principal) => {

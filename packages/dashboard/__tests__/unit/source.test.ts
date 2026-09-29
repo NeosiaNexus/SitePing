@@ -157,6 +157,20 @@ describe("createEndpointSource — list()", () => {
     const page = await source.list({ projectName: "demo" });
     expect(page.feedbacks[0]?.resolvedAt).toBeNull();
   });
+
+  it("passes each record's permissions on, on lists and saved records alike", async () => {
+    const permissions = { canChangeStatus: false, canDelete: true, canComment: true, canDeleteComment: false };
+    const listed = createEndpointSource({
+      endpoint: ENDPOINT,
+      fetchFn: jsonFetch({ feedbacks: [makeResponse({ permissions }), makeResponse({ id: "legacy" })], total: 2 }),
+    });
+    const saved = createEndpointSource({ endpoint: ENDPOINT, fetchFn: jsonFetch(makeResponse({ permissions })) });
+
+    const page = await listed.list({ projectName: "demo" });
+
+    expect(page.feedbacks.map((f) => f.permissions)).toEqual([permissions, undefined]);
+    expect((await saved.setStatus("fb-resp-1", "demo", "resolved")).permissions).toEqual(permissions);
+  });
 });
 
 describe("createEndpointSource — auth & headers", () => {

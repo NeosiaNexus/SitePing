@@ -366,6 +366,21 @@ describe("Panel — 'Mine' filter", () => {
     expect(shadow.querySelector(".sp-detail textarea")).not.toBeNull();
   });
 
+  it("keeps 'Delete all' hidden: the walk passes on the list's permissions", async () => {
+    const all = [makeFeedback("theirs"), makeFeedback("mine")];
+    own = new Set(["mine"]);
+    client.getFeedbacks.mockImplementation(async (project: string, options?: GetFeedbacksOptions) => ({
+      ...(await paginate(all)(project, options)),
+      permissions: { canDeleteAll: false },
+    }));
+    await panel.open();
+
+    toggle().click();
+    await vi.waitFor(() => expect(cardIds()).toEqual(["mine"]));
+
+    expect(shadow.querySelector<HTMLElement>(".sp-btn-delete-all")!.style.display).toBe("none");
+  });
+
   it("leaves the page markers showing every feedback of the page", async () => {
     const all = [makeFeedback("theirs"), makeFeedback("mine")];
     own = new Set(["mine"]);

@@ -3655,7 +3655,7 @@ describe("Panel", () => {
       // Focus card via J
       shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
 
-      // Remove the resolve button to trigger `if (btn)` false branch (line 230)
+      // Remove the resolve button: the shortcut has nothing to press
       const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
       card.querySelector(".sp-btn-resolve")?.remove();
 
@@ -3688,8 +3688,7 @@ describe("Panel", () => {
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
       await panel.open();
 
-      // No card to focus → getFocusedFeedback returns undefined
-      // X key → if (fb) is false → no toggle
+      // No card to focus → X has no checkbox to press
       const initialSelected = shadow.querySelectorAll(".sp-card--selected").length;
       shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true }));
 
@@ -3715,7 +3714,7 @@ describe("Panel", () => {
       shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
       shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true }));
 
-      // Second R press while pending — covers the `!pendingMutations.has` false case (line 227)
+      // Second R press while pending — the busy button ignores it
       shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true }));
 
       await new Promise((r) => setTimeout(r, 20));
@@ -4607,6 +4606,165 @@ describe("Panel", () => {
       await vi.waitFor(() =>
         expect(shadow.querySelector('.sp-detail [role="alert"]')!.textContent).toBe(t("comments.error")),
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Server permissions and reviewer mode (#101)
+  // -------------------------------------------------------------------------
+
+  describe("permissions and reviewer mode", () => {
+    const VISITOR = { canChangeStatus: false, canDelete: false, canComment: true, canDeleteComment: false };
+    const OWNER = { ...VISITOR, canDelete: true };
+    const TRIAGER = { ...VISITOR, canChangeStatus: true };
+
+    function rebuild(readOnly: boolean): void {
+      panel.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      bus = new EventBus<WidgetEvents>();
+      apiClient = createMockApiClient();
+      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+        getScope: () => ({ url: "/", urlPattern: null }),
+        scopeAnnotationsByUrl: true,
+        readOnly,
+      });
+    }
+
+    const card = (id: string) => shadow.querySelector<HTMLElement>(`[data-feedback-id="${id}"]`)!;
+    const hidden = (selector: string) => shadow.querySelector<HTMLElement>(selector)!.style.display === "none";
+    const stubScrollOnCards = () => {
+      for (const c of shadow.querySelectorAll<HTMLElement>(".sp-card")) c.scrollIntoView = vi.fn();
+    };
+    const press = async (key: string) => {
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+      await new Promise((r) => setTimeout(r, 20));
+    };
+
+    it("leaves out what the server refuses, on cards, selection, shortcuts and Delete all", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1", permissions: VISITOR })],
+        total: 1,
+        permissions: { canDeleteAll: false },
+      });
+
+      await panel.open();
+      stubScrollOnCards();
+
+      expect(card("fb-1").querySelector(".sp-card-footer")).toBeNull();
+      expect(card("fb-1").querySelector(".sp-bulk-checkbox")).toBeNull();
+      expect(shadow.querySelector(".sp-bulk-select-all")).toBeNull();
+      expect(hidden(".sp-btn-delete-all")).toBe(true);
+      await press("j");
+      await press("r");
+      await press("d");
+      await press("x");
+      expect(apiClient.resolveFeedback).not.toHaveBeenCalled();
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalled();
+      expect(shadow.querySelector(".sp-card--selected")).toBeNull();
+    });
+
+    it("offers each action a feedback allows: an owner deletes, the D shortcut included, but never resolves", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1", permissions: OWNER })],
+        total: 1,
+      });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      stubScrollOnCards();
+
+      expect(card("fb-1").querySelector(".sp-btn-resolve")).toBeNull();
+      expect(card("fb-1").querySelector(".sp-btn-delete")).not.toBeNull();
+      await press("j");
+      await press("r");
+      expect(apiClient.resolveFeedback).not.toHaveBeenCalled();
+      await press("d");
+      expect(apiClient.deleteFeedback).toHaveBeenCalledWith("fb-1");
+    });
+
+    it("keeps Delete all hidden until a list allows it — an older server's silence does", async () => {
+      expect(hidden(".sp-btn-delete-all")).toBe(true);
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback()], total: 1 });
+
+      await panel.open();
+
+      expect(hidden(".sp-btn-delete-all")).toBe(false);
+      expect(card("fb-1").querySelector(".sp-btn-resolve")).not.toBeNull();
+      expect(card("fb-1").querySelector(".sp-btn-delete")).not.toBeNull();
+    });
+
+    it("hides a bulk action that part of the selection refuses, rather than acting on the rest", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [
+          makeFeedback({ id: "owned", permissions: OWNER }),
+          makeFeedback({ id: "triaged", permissions: TRIAGER }),
+        ],
+        total: 2,
+      });
+      await panel.open();
+
+      card("owned").querySelector<HTMLElement>(".sp-bulk-checkbox")!.click();
+      expect(hidden(".sp-bulk-btn-delete")).toBe(false);
+      expect(hidden(".sp-bulk-btn-resolve")).toBe(true);
+
+      card("triaged").querySelector<HTMLElement>(".sp-bulk-checkbox")!.click();
+      expect(hidden(".sp-bulk-btn-delete")).toBe(true);
+      expect(hidden(".sp-bulk-btn-resolve")).toBe(true);
+
+      card("owned").querySelector<HTMLElement>(".sp-bulk-checkbox")!.click();
+      expect(hidden(".sp-bulk-btn-delete")).toBe(true);
+      expect(hidden(".sp-bulk-btn-resolve")).toBe(false);
+    });
+
+    it("leaves out Resolve and Delete in the detail view when the server refuses them", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1", permissions: VISITOR })],
+        total: 1,
+        capabilities: { comments: true },
+      });
+      await panel.open();
+
+      card("fb-1").click();
+
+      const actions = shadow.querySelector(".sp-detail-actions")!;
+      expect(actions.querySelector(".sp-detail-btn-resolve")).toBeNull();
+      expect(actions.querySelector(".sp-detail-btn-delete")).toBeNull();
+      // Replying is not triage: the visitor may still answer.
+      expect(shadow.querySelector(".sp-detail textarea")).not.toBeNull();
+    });
+
+    it("closes the thread's composer on a feedback the server refuses replies on", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1", permissions: { ...VISITOR, canComment: false } })],
+        total: 1,
+        capabilities: { comments: true },
+      });
+      await panel.open();
+
+      card("fb-1").click();
+
+      expect(shadow.querySelector(".sp-detail textarea")).toBeNull();
+    });
+
+    it("in reviewer mode, triages nothing even when the server would allow it, and still replies", async () => {
+      rebuild(true);
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1" })],
+        total: 1,
+        capabilities: { comments: true },
+        permissions: { canDeleteAll: true },
+      });
+
+      await panel.open();
+
+      expect(card("fb-1").querySelector(".sp-card-footer")).toBeNull();
+      expect(card("fb-1").querySelector(".sp-bulk-checkbox")).toBeNull();
+      expect(hidden(".sp-btn-delete-all")).toBe(true);
+      card("fb-1").click();
+      expect(shadow.querySelector(".sp-detail-btn-resolve")).toBeNull();
+      expect(shadow.querySelector(".sp-detail-btn-delete")).toBeNull();
+      expect(shadow.querySelector(".sp-detail textarea")).not.toBeNull();
     });
   });
 });

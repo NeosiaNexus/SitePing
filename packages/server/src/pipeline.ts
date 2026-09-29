@@ -1,6 +1,6 @@
-import type { CommentRecord, FeedbackRecord } from "@siteping/core";
+import type { CommentRecord, FeedbackPermissions, FeedbackRecord } from "@siteping/core";
 import type { AccessGate, AccessOutcome } from "./access.js";
-import { ERROR_MESSAGES } from "./constants.js";
+import { DRY_RUN_CONCURRENCY, ERROR_MESSAGES } from "./constants.js";
 import { buildCorsHeaders, type CorsHeaders, withCors } from "./cors.js";
 import { csrfRefusal } from "./csrf.js";
 import type {
@@ -41,8 +41,11 @@ interface PipelineDependencies<Principal> {
 /** A comment as it goes on the wire. */
 export type WireComment = Omit<CommentRecord, "clientId">;
 
-/** A feedback as it goes on the wire — its thread always present. */
-export type WireFeedback = Omit<FeedbackRecord, "clientId" | "comments"> & { comments: WireComment[] };
+/** A feedback as it goes on the wire — its thread and the requester's permissions always present. */
+export type WireFeedback = Omit<FeedbackRecord, "clientId" | "comments"> & {
+  comments: WireComment[];
+  permissions: FeedbackPermissions;
+};
 
 /**
  * Serialize a comment for the HTTP wire — `clientId` stripped and
@@ -65,12 +68,33 @@ function toWireComment(comment: CommentRecord, includeEmail: boolean): WireComme
  * A store without comments leaves the thread out: it goes out as `[]`.
  * Never mutates the input — webhooks receive the same record object.
  */
-function toWireFeedback(feedback: FeedbackRecord, includeEmail: boolean, includeCommentEmails: boolean): WireFeedback {
+function toWireFeedback(
+  feedback: FeedbackRecord,
+  includeEmail: boolean,
+  includeCommentEmails: boolean,
+): Omit<WireFeedback, "permissions"> {
   const { clientId: _clientId, comments, ...wire } = feedback;
   return {
     ...wire,
     ...(includeEmail ? {} : { authorEmail: "" }),
     comments: (comments ?? []).map((comment) => toWireComment(comment, includeCommentEmails)),
+  };
+}
+
+/** Run tasks at most `size` at a time; a task that finishes hands its slot to the next one waiting. */
+function createSlots(size: number): <Result>(task: () => Promise<Result>) => Promise<Result> {
+  let running = 0;
+  const waiting: Array<() => void> = [];
+  return async (task) => {
+    if (running < size) running += 1;
+    else await new Promise<void>((resolve) => waiting.push(resolve));
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else running -= 1;
+    }
   };
 }
 
@@ -121,18 +145,75 @@ export function createPipeline<Principal>({
     return { ok: true, value: body };
   };
 
-  /** Wire shape of a record for this requester (`presentFeedback`, then redaction). */
-  const present = (scope: Scope<Principal>, feedback: FeedbackRecord, includeEmail = scope.canReadAuthorEmail) =>
-    toWireFeedback(
+  /** Requests whose failed dry run is logged already — one line per response, however many fail. */
+  const loggedDryRunFailures = new WeakSet<Request>();
+  /** Each request's dry-run slots — `DRY_RUN_CONCURRENCY` per response. */
+  const dryRunSlots = new WeakMap<Request, ReturnType<typeof createSlots>>();
+
+  /**
+   * Whether this requester may do what `target` describes: the policy admits
+   * the method it takes, and `authorize` allows it in a dry run — a few of a
+   * response's at a time. A dry run that throws refuses: a permission only
+   * hides a control, and the response it goes out with often answers a write
+   * that already happened.
+   */
+  const may = async (
+    scope: Scope<Principal>,
+    method: SitepingHttpMethod,
+    target: Omit<SitepingAuthorizationContext<Principal>, keyof SitepingRequestContext<Principal>>,
+  ): Promise<boolean> => {
+    const { request } = scope.context;
+    const slots = dryRunSlots.get(request) ?? createSlots(DRY_RUN_CONCURRENCY);
+    dryRunSlots.set(request, slots);
+    try {
+      return await slots(
+        async () =>
+          (await gate.admits(request, method)) && (await gate.authorize({ ...scope.context, ...target, dryRun: true })),
+      );
+    } catch (failure) {
+      if (!loggedDryRunFailures.has(request)) {
+        loggedDryRunFailures.add(request);
+        logger.error("[siteping] authorize failed on a dry run", {
+          error: failure,
+          action: target.action,
+          ...requestContext(request),
+        });
+      }
+      return false;
+    }
+  };
+
+  /** What this requester may do with a record — `permissions` on the wire. */
+  const permissions = async (scope: Scope<Principal>, feedback: FeedbackRecord): Promise<FeedbackPermissions> => {
+    const target = { projectName: feedback.projectName, feedbackId: feedback.id };
+    const [canChangeStatus, canDelete, canComment, canDeleteComment] = await Promise.all([
+      may(scope, "PATCH", { action: "update", ...target }),
+      may(scope, "DELETE", { action: "delete", ...target }),
+      may(scope, "POST", { action: "createComment", ...target }),
+      may(scope, "DELETE", { action: "deleteComment", ...target }),
+    ]);
+    return { canChangeStatus, canDelete, canComment, canDeleteComment };
+  };
+
+  /** Wire shape of a record for this requester (`presentFeedback`, then redaction), with its permissions. */
+  const present = async (
+    scope: Scope<Principal>,
+    feedback: FeedbackRecord,
+    includeEmail = scope.canReadAuthorEmail,
+  ): Promise<WireFeedback> => ({
+    ...toWireFeedback(
       presentFeedback ? presentFeedback(feedback, scope.context) : feedback,
       includeEmail,
       scope.canReadAuthorEmail,
-    );
+    ),
+    permissions: await permissions(scope, feedback),
+  });
 
   return {
     json,
     error,
     validate,
+    may,
     present,
 
     /**
