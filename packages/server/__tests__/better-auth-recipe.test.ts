@@ -64,7 +64,7 @@ function betterAuthAccess(auth: Auth): SitepingAccessControl<Reviewer> {
         headers: request.headers,
         query: { disableCookieCache: true, disableRefresh: true },
       });
-      if (!session) return request.headers.has("Authorization") ? null : VISITOR;
+      if (!session) return /^Bearer(\s|$)/i.test(request.headers.get("Authorization") ?? "") ? null : VISITOR;
       const { user } = session;
       return {
         id: user.id,
@@ -335,7 +335,6 @@ describe("Better Auth recipe", () => {
       },
     ],
     ["garbage", async () => ({ Authorization: "Bearer not-a-session-token.not-a-signature" })],
-    ["another scheme", async () => ({ Authorization: `Basic ${btoa("ada:secret")}` })],
     ["an empty bearer", async () => ({ Authorization: "Bearer " })],
   ])("answers 401 to %s instead of treating it as a visitor", async (_, headersOf) => {
     const { auth } = createAuth();
@@ -344,6 +343,19 @@ describe("Better Auth recipe", () => {
 
     expect((await list(handler, await headersOf(auth))).status).toBe(401);
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("serves a staging site behind HTTP Basic auth, whose credentials ride on every request", async () => {
+    const { auth } = createAuth();
+    const handler = handlerFor(auth);
+    // Attached by the browser, or forwarded by the proxy that asked for them.
+    const basic = { Authorization: `Basic ${btoa("client:staging-password")}` };
+    const { cookie } = await signIn(auth, ADMIN);
+
+    const created = await submit(handler, basic);
+
+    expect(created.permissions).toEqual(VISITOR_PERMISSIONS);
+    expect((await page(handler, { ...basic, ...cookie })).permissions).toEqual({ canDeleteAll: true });
   });
 
   it("takes the bearer plugin's token from another origin", async () => {

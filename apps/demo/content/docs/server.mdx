@@ -359,8 +359,8 @@ export const betterAuthAccess: SitepingAccessControl<Reviewer> = {
       // Read from the database, never renewed here — see below.
       query: { disableCookieCache: true, disableRefresh: true },
     });
-    // No session: a visitor — unless the request sent a token, which then answers 401.
-    if (!session) return request.headers.has("Authorization") ? null : VISITOR;
+    // No session: a visitor — unless the request sent a bearer token, which then answers 401.
+    if (!session) return /^Bearer(\s|$)/i.test(request.headers.get("Authorization") ?? "") ? null : VISITOR;
     const { user } = session;
     return {
       id: user.id,
@@ -416,7 +416,7 @@ export function Feedback() {
 }
 ```
 
-- **No session, a visitor; a dead token, a `401`.** Without a session the request is anonymous, so the public widget keeps working — also for someone whose cookie outlived a sign-out, an expiry or a ban, since the browser keeps sending it. A request that carries `Authorization` but opens no session answers `401` instead: its client sent a token on purpose, and learns it no longer works.
+- **No session, a visitor; a dead token, a `401`.** Without a session the request is anonymous, so the public widget keeps working — also for someone whose cookie outlived a sign-out, an expiry or a ban, since the browser keeps sending it. A request whose `Bearer` token opens no session answers `401` instead: its client sent the token on purpose, and learns it no longer works. Any other `Authorization` stays a visitor: on a staging site behind HTTP Basic auth, the browser or the proxy attaches those credentials to every request.
 - **A database outage, a `500`.** When Better Auth cannot read its sessions, `getSession` throws: the handler logs it and answers `500` rather than downgrading everyone to a visitor. Visitors without a session cookie never reach the database.
 - **Read, never renewed.** A session older than Better Auth's `updateAge` gets renewed by the next `getSession`, which writes a later expiry and sets a new cookie — on a response SitePing never sends, so the browser's cookie would expire first. `disableRefresh` leaves the renewal to your app's own requests.
 - **A demotion applies at once.** With Better Auth's `session.cookieCache` on, `getSession` trusts the cached cookie until its `maxAge`: a role change or a revoked session would wait for it. `disableCookieCache` reads the database, as it does anyway without the cache.
