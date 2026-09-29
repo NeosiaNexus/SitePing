@@ -233,6 +233,18 @@ describe("base URLs — validation", () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("deliveryBaseUrl"));
   });
 
+  it("warns about an S3 endpoint that ends with the bucket name, as R2's dashboard shows it", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    openS3("https://account.r2.cloudflarestorage.com/screens/", fetch);
+    openS3("https://minio.example.com/screens-proxy", fetch);
+    openS3("http://screens", fetch);
+
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('endpoint ends with the bucket name "screens"'),
+    );
+  });
+
   it("refuses a relative S3 endpoint and accepts a local http one without warning (MinIO)", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 

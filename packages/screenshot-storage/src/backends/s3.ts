@@ -15,9 +15,9 @@ import { encodeRfc3986, type SigV4Credentials, sha256Hex, signS3Request } from "
 
 export interface S3ObjectStoreOptions extends SigV4Credentials {
   /**
-   * S3 API endpoint: `https://s3.<region>.amazonaws.com`,
-   * `https://<account>.r2.cloudflarestorage.com`, `https://s3.<region>.backblazeb2.com`,
-   * your MinIO URL…
+   * S3 API endpoint, without the bucket: `https://s3.<region>.amazonaws.com`,
+   * `https://<account>.r2.cloudflarestorage.com` (`<account>.eu.r2…` for the
+   * EU jurisdiction), `https://s3.<region>.backblazeb2.com`, your MinIO URL…
    */
   endpoint: string;
   bucket: string;
@@ -105,6 +105,14 @@ export function createS3ObjectStore({
   assertTimeoutMs(factory, timeoutMs);
   const credentials: SigV4Credentials = { accessKeyId, secretAccessKey, ...(sessionToken ? { sessionToken } : {}) };
   const endpointBase = normalizeBaseUrl(endpoint, "endpoint");
+  // R2's dashboard shows its S3 API URL with the bucket appended: pasted as is,
+  // every object lands under `<bucket>/<key>`, and every screenshot URL 404s.
+  if (new URL(endpointBase).pathname.endsWith(`/${encodeRfc3986(bucket)}`)) {
+    console.warn(
+      `[siteping] endpoint ends with the bucket name "${bucket}": objects would be stored under "${bucket}/<key>", ` +
+        "not where publicBaseUrl reads them — remove the bucket from endpoint",
+    );
+  }
   // Without ListBucket, S3 hides a missing key behind 403 — see treatAccessDeniedAsMissing.
   const getMissingStatuses = treatAccessDeniedAsMissing
     ? [HTTP_STATUS_NOT_FOUND, HTTP_STATUS_FORBIDDEN]

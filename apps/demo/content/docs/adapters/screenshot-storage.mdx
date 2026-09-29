@@ -82,7 +82,7 @@ export const objectStore = createS3ObjectStore({
 
 | Option | Default | What it does |
 |---|---|---|
-| `endpoint` | required | The S3 API endpoint (`https://<account>.r2.cloudflarestorage.com`, `https://s3.<region>.amazonaws.com`, `https://s3.<region>.backblazeb2.com`, your MinIO URL). An absolute http(s) URL |
+| `endpoint` | required | The S3 API endpoint, without the bucket name (`https://<account>.r2.cloudflarestorage.com`, `https://s3.<region>.amazonaws.com`, `https://s3.<region>.backblazeb2.com`, your MinIO URL). An absolute http(s) URL. R2's dashboard shows its S3 API URL with the bucket at the end: remove it, or every object lands under `<bucket>/<key>` and every screenshot URL answers `404` (a warning flags it). A bucket under R2's EU jurisdiction takes `https://<account>.eu.r2.cloudflarestorage.com` |
 | `bucket` | required | The bucket name |
 | `region` | `"auto"` | The signing region: `auto` suits R2; on AWS, B2 and MinIO, use the region the bucket or server is configured with |
 | `accessKeyId`, `secretAccessKey`, `sessionToken` | required, optional | The credentials. `sessionToken` is for temporary (STS) credentials |
