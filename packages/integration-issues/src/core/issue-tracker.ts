@@ -20,6 +20,16 @@ export interface TrackedIssue {
   isOpen: boolean;
 }
 
+/** What `findSitepingIssues` listed. */
+export interface IssueListing {
+  issues: TrackedIssue[];
+  /**
+   * `true` when the provider stopped at its page cap with issues left
+   * unlisted: an issue missing from `issues` may still exist.
+   */
+  truncated: boolean;
+}
+
 /**
  * The port a tracker provider implements. The provider owns its API, auth,
  * pagination and how feedback statuses map to its own issue states; the
@@ -45,9 +55,10 @@ export interface IssueTracker {
   listComments(reference: IssueReference): Promise<string[]>;
   /**
    * SitePing issues whose body contains `marker`, open or closed. Providers
-   * may narrow server-side (labels) and must return every match they list.
+   * may narrow server-side (labels), must return every match they list, and
+   * say whether they left issues unlisted.
    */
-  findSitepingIssues(marker: string): Promise<TrackedIssue[]>;
+  findSitepingIssues(marker: string): Promise<IssueListing>;
   /**
    * Optional fast path to one feedback's issue: what a server-side search
    * for `feedbackId` returns. Search indexes may lag behind a new issue or

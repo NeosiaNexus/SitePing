@@ -75,7 +75,7 @@ describe("createGitHubTracker", () => {
     await tracker.createIssue({ title: "Title", body: "marker", labels: ["siteping"] });
 
     expect(fake.issues[0]?.labels).toEqual(["SitePing"]);
-    expect(await tracker.findSitepingIssues("marker")).toHaveLength(1);
+    expect((await tracker.findSitepingIssues("marker")).issues).toHaveLength(1);
   });
 });
 
@@ -306,6 +306,59 @@ for (const provider of providers) {
         expect.stringMatching(provider.searchRequest),
       ]);
       expect(logger.error).toHaveBeenCalledTimes(2);
+    });
+
+    describe("past the listing cap", () => {
+      /** Pages of newer SitePing issues, of other feedbacks. */
+      const addNewerIssues = (pages: number) => {
+        for (let n = 0; n < pages * 100; n++) {
+          fake.issues.push({
+            key: String(fake.issues.length + 1),
+            title: "Other",
+            body: "Another feedback's issue",
+            labels: ["siteping"],
+            isOpen: true,
+            stateReason: null,
+            comments: [],
+          });
+        }
+      };
+      const capped = (maxListedPages: number) =>
+        createHandler({ tracker: provider.createTracker(fake, { maxListedPages }) });
+      const reason = () => String((logger.error.mock.calls[0]?.[1] as { error: Error } | undefined)?.error.message);
+
+      it("refuses a project delete that would leave issues unlisted, and open", async () => {
+        await send(createHandler());
+        addNewerIssues(1);
+
+        expect((await remove(capped(1), { projectName: "site", deleteAll: true })).status).toBe(502);
+        expect(fake.issues[0]?.isOpen).toBe(true);
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
+        expect(reason()).toMatch(/project "site" may have SitePing issues past the ones listed.*maxListedPages/);
+
+        expect((await remove(capped(2), { projectName: "site", deleteAll: true })).status).toBe(200);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("refuses a delete whose search failed and whose issue it could not list", async () => {
+        const feedback = await send(createHandler());
+        addNewerIssues(1);
+        fake.failWhen(provider.searchRequest, 403);
+
+        expect((await remove(capped(1), { id: feedback.id, projectName: "site" })).status).toBe(502);
+        expect(fake.issues[0]?.isOpen).toBe(true);
+        expect(reason()).toMatch(/not among the SitePing issues listed.*maxListedPages/);
+      });
+
+      it("trusts a search that answered: a feedback without an issue stays deletable", async () => {
+        fake.failWhen(/^POST /, 500);
+        const feedback = await send(createHandler());
+        addNewerIssues(1);
+        logger.error.mockClear();
+
+        expect((await remove(capped(1), { id: feedback.id, projectName: "site" })).status).toBe(200);
+        expect(logger.error).not.toHaveBeenCalled();
+      });
     });
 
     it("leaves issues untouched on status changes when syncStatus is off", async () => {

@@ -127,7 +127,7 @@ hooks: {
 - **Creating.** `onCreated` is awaited before the `POST` answers, so the widget waits for one tracker request, at most `timeoutMs` (5 seconds by default). If it fails (the tracker is down, the token is wrong, or the label was dropped), the feedback is stored anyway and the error goes to the server's `logger` as `[siteping] Hook onCreated failed`. Nothing retries it: that feedback has no issue.
 - **Changing a status.** The `PATCH` waits for the issue's [lookup](#how-issues-are-found-again), one search plus up to `maxListedPages` listing requests when the search finds nothing, then for one write, each request at most `timeoutMs`. A tracker that does not answer the search at all is taken as down, and the lookup stops there. A failed sync is logged the same way, and the new status is kept.
 - **Deleting.** `onDeleting` looks the issue up the same way and closes it before the record goes. If the tracker fails, the `DELETE` answers `502` and keeps the record: retry it once the tracker is back. The comment is left once, even across retries.
-- **Deleting a whole project.** The project's issues are handled one after the other, with up to three requests each: close the issue if it is open, read its comments, comment. A project with many issues can therefore hit the tracker's rate limit (GitHub allows about 80 content-creating requests a minute) or a serverless function's time limit. Every record is then kept: the `DELETE` answers `502` when the tracker refuses a request, or the platform's own timeout error (`504` on Vercel, for example) when the function is stopped. After a rate limit, retry a few minutes later: an issue already closed and commented costs a single read, so each attempt gets further. A time limit is different: every attempt reads the comments of the issues already handled again, so it never handles more issues than one run has time for, and retrying a project past that size never succeeds. Delete its feedback one at a time instead, or run that delete through a handler without these hooks and close its issues yourself.
+- **Deleting a whole project.** The project's issues are listed first, and the delete is refused when the listing stops at `maxListedPages` with issues left (see [how issues are found again](#how-issues-are-found-again)). They are then handled one after the other, with up to three requests each: close the issue if it is open, read its comments, comment. A project with many issues can therefore hit the tracker's rate limit (GitHub allows about 80 content-creating requests a minute) or a serverless function's time limit. Every record is then kept: the `DELETE` answers `502` when the tracker refuses a request, or the platform's own timeout error (`504` on Vercel, for example) when the function is stopped. After a rate limit, retry a few minutes later: an issue already closed and commented costs a single read, so each attempt gets further. A time limit is different: every attempt reads the comments of the issues already handled again, so it never handles more issues than one run has time for, and retrying a project past that size never succeeds. Delete its feedback one at a time instead, or run that delete through a handler without these hooks and close its issues yourself.
 - **Slow answers.** The widget gives up on a request after 10 seconds and retries it, so a lookup that lists many pages can show an error for a change the server still makes. Keep `maxListedPages` to what the repository needs.
 - **Concurrent requests.** Within one server process, the hooks queue their tracker work: a feedback's status changes and deletes run in the order they came, after the creation of its issue, and a project delete runs after the work already started on that project. This holds for hooks built once, at module scope, as in the examples above. Separate instances (several serverless functions, say) can still interleave two requests on one feedback, and a feedback sent while its project is being deleted can end up deleted with its issue left open.
 
@@ -139,7 +139,7 @@ Each body starts with the marker `<!-- siteping-feedback {"id":"…","project":"
 
 To sync a status or delete one feedback, the tracker is first searched for the feedback id (GitHub's search API, GitLab's `search` parameter). If the search misses, the hooks list the `siteping` issues newest first. GitHub's search index lags a few seconds behind a new issue, and its rate limit is 30 searches a minute. Deleting a whole project always uses that listing.
 
-The listing stops after `maxListedPages` pages of 100 issues. With the default of 10, the fallback cannot reach an issue older than the repository's 1,000 newest SitePing issues. Raise it for a larger backlog.
+The listing stops after `maxListedPages` pages of 100 issues, and it counts the SitePing issues of every project in the repository. Past that, the hooks do not guess. A project delete is refused with a `502` rather than leaving the older issues open, and so is a status sync or a delete whose search failed and whose issue was not listed. A search that answered is trusted: it only misses issues too new for its index, which the first page lists. With the default of 10, the cap is the repository's 1,000 newest SitePing issues. Raise it for a larger backlog.
 
 Only labelled issues count. On GitHub and GitLab, an outsider cannot label an issue, so they cannot make one pass for SitePing's.
 
@@ -162,9 +162,10 @@ const tracker: IssueTracker = {
   async listComments(reference) {
     return []; // comment bodies, each first line as addComment received it
   },
-  // Every SitePing issue whose body contains `marker`, closed ones included.
+  // Every SitePing issue whose body contains `marker`, closed ones included,
+  // and whether you stopped before the last one.
   async findSitepingIssues(marker) {
-    return []; // { reference, body, isOpen }
+    return { issues: [], truncated: false }; // issues: { reference, body, isOpen }
   },
   // Optional: a server-side search by feedback id, tried first.
   async searchSitepingIssues(feedbackId) {

@@ -102,20 +102,34 @@ export function createIssueTrackerHooks<Principal = never>({
 
   const issueOf = async (feedbackId: string): Promise<TrackedIssue | null> => {
     const isLinked = (issue: TrackedIssue) => parseIssueMarker(issue.body)?.feedbackId === feedbackId;
+    // `null` when the search failed: its miss then says nothing.
     const searched = await tracker.searchSitepingIssues?.(feedbackId).catch((error: unknown) => {
       // No answer at all: the tracker is down, and the listing would only wait out another timeout.
       if (isIssueTrackerRequestError(error) && error.status === null) throw error;
-      return [];
+      return null;
     });
     const found = searched?.find(isLinked);
     if (found) return found;
-    const candidates = await tracker.findSitepingIssues(feedbackMarkerFragment(feedbackId));
-    return candidates.find(isLinked) ?? null;
+    const listing = await tracker.findSitepingIssues(feedbackMarkerFragment(feedbackId));
+    const listed = listing.issues.find(isLinked);
+    // A search that answered only misses issues too new for its index, which the first page lists.
+    if (listed || !listing.truncated || Array.isArray(searched)) return listed ?? null;
+    throw new Error(
+      `[siteping] ${tracker.name}: the issue of feedback "${feedbackId}" is not among the SitePing issues listed, ` +
+        "and more are left unlisted. Raise maxListedPages to reach it.",
+    );
   };
 
   const issuesOfProject = async (projectName: string): Promise<TrackedIssue[]> => {
-    const candidates = await tracker.findSitepingIssues(projectMarkerFragment(projectName));
-    return candidates.filter((issue) => parseIssueMarker(issue.body)?.projectName === projectName);
+    const listing = await tracker.findSitepingIssues(projectMarkerFragment(projectName));
+    // Refused rather than done in part: the issues past the cap would stay open once the records are gone.
+    if (listing.truncated) {
+      throw new Error(
+        `[siteping] ${tracker.name}: project "${projectName}" may have SitePing issues past the ones listed, ` +
+          "which deleting it would leave open. Raise maxListedPages to reach them.",
+      );
+    }
+    return listing.issues.filter((issue) => parseIssueMarker(issue.body)?.projectName === projectName);
   };
 
   /** Close as not planned and leave the deletion comment once, even across retries. */

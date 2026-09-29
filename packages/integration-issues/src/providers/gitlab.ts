@@ -23,8 +23,9 @@ export interface GitLabTrackerOptions {
   timeoutMs?: number | undefined;
   /**
    * Pages of 100 issues listed, newest first, when the search misses and on
-   * a project-wide delete. Defaults to 10: an issue older than the 1,000
-   * newest SitePing issues is then out of reach.
+   * a project-wide delete. Defaults to 10: past the 1,000 newest SitePing
+   * issues, a project delete is refused, and so is a lookup whose search
+   * failed.
    */
   maxListedPages?: number | undefined;
 }
@@ -150,9 +151,9 @@ export function createGitLabTracker({
           if (!issue.description?.includes(marker)) continue;
           matches.push(toTrackedIssue(issue, issue.description));
         }
-        if (issues.length < GITLAB_PAGE_SIZE) break;
+        if (issues.length < GITLAB_PAGE_SIZE) return { issues: matches, truncated: false };
       }
-      return matches;
+      return { issues: matches, truncated: true };
     },
   };
 }

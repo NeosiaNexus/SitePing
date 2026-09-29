@@ -25,8 +25,9 @@ export interface GitHubTrackerOptions {
   timeoutMs?: number | undefined;
   /**
    * Pages of 100 issues listed, newest first, when the search misses (its
-   * index lags a few seconds behind a new issue). Defaults to 10: an issue
-   * older than the 1,000 newest SitePing issues is then out of reach.
+   * index lags a few seconds behind a new issue) and on a project-wide
+   * delete. Defaults to 10: past the 1,000 newest SitePing issues, a
+   * project delete is refused, and so is a lookup whose search failed.
    */
   maxListedPages?: number | undefined;
 }
@@ -149,9 +150,9 @@ export function createGitHubTracker({
           if (issue.pull_request || !issue.body?.includes(marker)) continue;
           matches.push(toTrackedIssue(issue, issue.body));
         }
-        if (issues.length < GITHUB_PAGE_SIZE) break;
+        if (issues.length < GITHUB_PAGE_SIZE) return { issues: matches, truncated: false };
       }
-      return matches;
+      return { issues: matches, truncated: true };
     },
   };
 }
