@@ -25,6 +25,8 @@ export interface FakeTracker {
   dropLabels(): void;
   /** Make searches find nothing, like a search index that has not caught up yet. */
   lagSearch(): void;
+  /** Make every request whose `METHOD path?query` matches fail at once, like a refused or reset connection. */
+  disconnectWhen(pattern: RegExp): void;
   /** Never answer again, like a host that drops packets: a request only ends when its signal aborts it. */
   hang(): void;
   /** Make every request wait this long before the fake handles it, as over a network. */
@@ -54,6 +56,7 @@ function createFakeServer(
   const issues: FakeIssue[] = [];
   const requests: FakeTracker["requests"] = [];
   const failures: Array<{ pattern: RegExp; status: number }> = [];
+  const disconnections: RegExp[] = [];
   const holds: Array<{ pattern: RegExp; arrive(): void; released: Promise<void> }> = [];
   const settings = { dropLabels: false, searchLags: false, hangs: false, delayMs: 0 };
 
@@ -67,6 +70,7 @@ function createFakeServer(
       authorization: request.headers.get(authorizationHeader),
     });
     const route = `${request.method} ${url.pathname}${url.search}`;
+    if (disconnections.some((pattern) => pattern.test(route))) throw new TypeError("fetch failed");
     if (settings.hangs) return hangingFetch(input, init);
     if (settings.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, settings.delayMs));
     const held = holds.findIndex(({ pattern }) => pattern.test(route));
@@ -93,6 +97,7 @@ function createFakeServer(
     settings,
     fetch: fakeFetch,
     failWhen: (pattern: RegExp, status: number) => failures.push({ pattern, status }),
+    disconnectWhen: (pattern: RegExp) => disconnections.push(pattern),
     dropLabels: () => {
       settings.dropLabels = true;
     },

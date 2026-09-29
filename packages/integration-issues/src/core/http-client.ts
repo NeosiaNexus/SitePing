@@ -53,6 +53,15 @@ export function isIssueTrackerRequestError(error: unknown): error is IssueTracke
 }
 
 /**
+ * Whether `error` is a tracker request that got no answer within
+ * `timeoutMs`, as opposed to one that failed at once (a refused or reset
+ * connection) or was refused with a status.
+ */
+export function isTrackerTimeout(error: unknown): boolean {
+  return isIssueTrackerRequestError(error) && error.cause instanceof Error && error.cause.name === "TimeoutError";
+}
+
+/**
  * Whether `error` reports an issue created without its `siteping` label,
  * matched on its stable `code` for the reason given on {@link isIssueTrackerRequestError}.
  *

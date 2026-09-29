@@ -452,6 +452,16 @@ for (const provider of providers) {
         expect(fake.issues[0]?.isOpen).toBe(false);
       });
 
+      it("falls back to the label listing when the search fails at once, without an answer", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.disconnectWhen(provider.searchRequest);
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
       it("falls back to the label listing when the search fails", async () => {
         const handler = createHandler();
         const feedback = await send(handler);
