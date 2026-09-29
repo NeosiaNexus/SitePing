@@ -221,7 +221,7 @@ Quand un envoi échoue encore après ses nouvelles tentatives, sur un délai dé
 
 Le stockage attend la suppression et le hook 2 secondes au plus, puis relance l'erreur et les laisse finir en arrière-plan (un hook qui échoue plus tard est quand même journalisé). Un envoi en échec retient donc le feedback au plus `timeoutMs` plus 2 secondes, dans le délai de 10 secondes que le widget accorde à sa requête : limitez le hook à la mise en file, et gardez `timeoutMs` sous 8 secondes.
 
-Un refus définitif n'a rien stocké et n'est pas récupéré : un `4xx`, comme des identifiants invalides, ou un `3xx`, comme le `301 PermanentRedirect` que renvoie AWS quand `endpoint` n'est pas la région du bucket.
+Un refus définitif n'a rien stocké et n'est pas récupéré : un `4xx`, comme des identifiants invalides, ou un `3xx`, comme le `301 PermanentRedirect` que renvoie AWS quand `endpoint` n'est pas la région du bucket. Seule exception, le refus d'une nouvelle tentative : quand une tentative précédente du même envoi a échoué sur une erreur réseau ou un `5xx`, elle a pu stocker l'objet. L'issue est alors incertaine, et la clé est récupérée comme décrit plus haut.
 
 Une règle de cycle de vie qui fait expirer `siteping-*` ne remplace pas ce mécanisme : elle ne distingue pas les orphelins des captures qu'un feedback affiche encore. Elle ne convient donc que si vous voulez de toute façon que les captures expirent après une durée de conservation.
 

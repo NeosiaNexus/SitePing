@@ -221,7 +221,7 @@ When an upload still fails after its retries with a timeout, a network error or 
 
 The storage waits for the removal and the hook 2 seconds at most, then rethrows and leaves them to finish in the background (a hook that fails later is still logged). A failed upload thus holds the feedback at most `timeoutMs` plus 2 seconds, within the widget's 10-second request timeout: keep the hook to the enqueue, and `timeoutMs` under 8 seconds.
 
-A definitive refusal stored nothing and is not reclaimed: a `4xx`, such as bad credentials, or a `3xx`, such as the `301 PermanentRedirect` AWS answers when `endpoint` is not the bucket's region.
+A definitive refusal stored nothing and is not reclaimed: a `4xx`, such as bad credentials, or a `3xx`, such as the `301 PermanentRedirect` AWS answers when `endpoint` is not the bucket's region. The exception is a refusal of a retry: when an earlier attempt of the same upload failed with a network error or a `5xx`, that attempt may have stored the object, so the outcome is unknown and the key is reclaimed as above.
 
 An expiration lifecycle rule on `siteping-*` does not replace this: it cannot tell orphans from screenshots a feedback still shows, so it only fits if you want screenshots to expire after a retention period anyway.
 
