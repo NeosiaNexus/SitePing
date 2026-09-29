@@ -40,7 +40,7 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 
 `sync` merges the SitePing models into your Prisma schema without prompts, which makes it safe for CI and update scripts. It works at the AST level:
 
-- creates the two models if they are missing,
+- creates the two models if they are missing — in the database schema of the existing SitePing models (their `@@schema`) when your datasource declares several `schemas`,
 - adds any missing fields and `@@index` blocks,
 - rewrites SitePing fields whose type or attributes drifted from the expected shape — keeping the parts that are yours (`@map` column names, relation names, a relation's `onUpdate`, comments); an `@ignore` counts as drift, since the adapter writes every SitePing column,
 - **never touches fields you added yourself.**

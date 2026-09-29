@@ -169,6 +169,32 @@ describe("syncPrismaModels", () => {
     expect(syncPrismaModels(schemaPath)).toMatchObject({ addedModels: [], changes: [] });
   });
 
+  it("puts a model it adds in the database schema of the existing Siteping models", () => {
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+    syncPrismaModels(schemaPath);
+    // A multi-schema datasource, where Prisma requires @@schema on every model.
+    const beforeThreads = readFileSync(schemaPath, "utf-8")
+      .replace(/^\s*comments\s+SitepingComment\[\]\r?\n/m, "")
+      .replace(/model SitepingComment \{[^}]*\}\r?\n?/, "")
+      .replace('url      = env("DATABASE_URL")', 'url      = env("DATABASE_URL")\n  schemas  = ["public", "siteping"]')
+      .replace(/^(model Siteping(Feedback|Annotation) \{[^}]*)\}/gm, '$1  @@schema("siteping")\n}');
+    writeFileSync(schemaPath, beforeThreads);
+
+    expect(syncPrismaModels(schemaPath).addedModels).toEqual(["SitepingComment"]);
+
+    const output = readFileSync(schemaPath, "utf-8");
+    expect(output.match(/@@schema\("siteping"\)/g)).toHaveLength(3);
+    expect(output.slice(output.indexOf("model SitepingComment"))).toMatch(/^\s*@@schema\("siteping"\)$/m);
+    expect(syncPrismaModels(schemaPath)).toMatchObject({ addedModels: [], changes: [] });
+  });
+
+  it("adds no @@schema to a single-schema datasource", () => {
+    writeFileSync(schemaPath, MINIMAL_SCHEMA);
+    syncPrismaModels(schemaPath);
+
+    expect(readFileSync(schemaPath, "utf-8")).not.toContain("@@schema");
+  });
+
   it("preserves existing datasource and generator blocks", () => {
     writeFileSync(schemaPath, MINIMAL_SCHEMA);
 
