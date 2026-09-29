@@ -329,8 +329,31 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   );
   loadCountsRef.current = loadCounts;
 
+  /** The record `updateRecord` would reach — what a thread action reads the permissions of. */
+  const heldRecord = useCallback(
+    (id: string) =>
+      itemsRef.current.find((f) => f.id === id) ??
+      [openedCacheRef.current, undoRecordRef.current, inFlightRef.current.get(id)?.prev].find((f) => f?.id === id),
+    [],
+  );
+
+  /**
+   * Local thread writes (a reply stored, one deleted): a running count, and
+   * the last one per feedback. A response read before that write — a list,
+   * a status change's record — holds an older thread: the one kept here wins.
+   */
+  const threadWritesRef = useRef({ count: 0, last: new Map<string, number>() });
+  const keepLocalThread = useCallback(
+    <R extends FeedbackRecord>(record: R, since: number): R =>
+      (threadWritesRef.current.last.get(record.id) ?? 0) > since
+        ? { ...record, comments: heldRecord(record.id)?.comments }
+        : record,
+    [heldRecord],
+  );
+
   const load = useCallback(async (): Promise<void> => {
     const token = ++tokenRef.current;
+    const threadsSince = threadWritesRef.current.count;
     const countsToken = ++countsTokenRef.current;
     setLoading(true);
     setErrorState(null);
@@ -343,19 +366,20 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     try {
       const page = await src.list(query);
       if (token !== tokenRef.current) return;
+      const feedbacks = page.feedbacks.map((f) => keepLocalThread(f, threadsSince));
       setExhausted(false);
       setAdvertised(page.capabilities);
       listGenRef.current += 1;
-      rememberListed(queryBase, page.feedbacks);
-      itemsRef.current = page.feedbacks;
+      rememberListed(queryBase, feedbacks);
+      itemsRef.current = feedbacks;
       totalRef.current = page.total;
-      setItems(page.feedbacks);
+      setItems(feedbacks);
       setTotal(page.total);
       setLoading(false);
       // A focus left on a row the new list doesn't contain would point
       // aria-activedescendant at nothing and make Enter open an invisible drawer.
       const focused = focusedIdRef.current;
-      if (focused !== null && !page.feedbacks.some((f) => f.id === focused)) {
+      if (focused !== null && !feedbacks.some((f) => f.id === focused)) {
         focusedIdRef.current = null;
         setFocusedId(null);
       }
@@ -368,7 +392,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       return;
     }
     await loadCounts(queryBase, countsToken);
-  }, [src, queryBase, status, pageSize, loadCounts, rememberListed]);
+  }, [src, queryBase, status, pageSize, loadCounts, rememberListed, keepLocalThread]);
 
   useEffect(() => {
     void load();
@@ -382,6 +406,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     const token = ++loadMoreTokenRef.current;
     const mutationSeq = mutationSeqRef.current;
     const mutationPending = pendingMutationsRef.current > 0;
+    const threadsSince = threadWritesRef.current.count;
     const superseded = () => listToken !== tokenRef.current || token !== loadMoreTokenRef.current;
     setLoadingMore(true);
     try {
@@ -406,7 +431,9 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const seen = new Set(itemsRef.current.map((f) => f.id));
       // A row with a mutation in flight is that mutation's to place (on
       // success or rollback) — the page's copy may predate it.
-      const fresh = page.feedbacks.filter((f) => !seen.has(f.id) && !inFlightRef.current.has(f.id));
+      const fresh = page.feedbacks
+        .filter((f) => !seen.has(f.id) && !inFlightRef.current.has(f.id))
+        .map((f) => keepLocalThread(f, threadsSince));
       // Out of rows only when nothing new came back from a short page, or from
       // any page no racing mutation can explain — a duplicate-only page caused
       // by an in-flight removal must not end pagination for good.
@@ -426,7 +453,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     } finally {
       setLoadingMore(false);
     }
-  }, [loading, loadingMore, pageSize, rememberListed]);
+  }, [loading, loadingMore, pageSize, rememberListed, keepLocalThread]);
 
   // -------------------------------------------------------------------------
   // Focus & drawer
@@ -703,11 +730,15 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       }
       const undoEntry = undoEntryRef.current;
 
+      const threadsSince = threadWritesRef.current.count;
       try {
         const stored = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
-        // A source that saves the plain record leaves the listed permissions in force.
-        const saved =
-          stored.permissions || !record.permissions ? stored : { ...stored, permissions: record.permissions };
+        // A source that saves the plain record leaves the listed permissions in
+        // force; a reply stored or deleted meanwhile, the thread held here.
+        const saved = keepLocalThread(
+          stored.permissions || !record.permissions ? stored : { ...stored, permissions: record.permissions },
+          threadsSince,
+        );
         // A later mutation on this feedback owns the row now — don't clobber its optimistic state.
         if (settleMutation(id, handle, true)) {
           // Place, not map: a page refetched meanwhile may still hold the
@@ -756,6 +787,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       commitCounts,
       commitPendingUndo,
       commitOpenedCache,
+      keepLocalThread,
     ],
   );
 
@@ -854,9 +886,10 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   // -------------------------------------------------------------------------
 
   /**
-   * Rewrite one feedback wherever it is held: its row, the drawer, the undo
-   * record, and what a status change still in flight rolls back from and to —
-   * so a rollback does not drop a reply stored meanwhile. Each record object
+   * Rewrite one feedback's thread wherever it is held: its row, the drawer,
+   * the undo record, and what a status change still in flight rolls back from
+   * and to — so a rollback does not drop a reply stored meanwhile, and a
+   * response read before this write does not either. Each record object
    * gets one copy: a rollback recognizes the drawer it left by identity.
    */
   const updateRecord = useCallback(
@@ -876,16 +909,10 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         handle.prev = rewrite(handle.prev);
         if (handle.shown !== null) handle.shown = rewrite(handle.shown);
       }
+      const writes = threadWritesRef.current;
+      writes.last.set(id, ++writes.count);
     },
     [commitItems, commitOpenedCache],
-  );
-
-  /** The record `updateRecord` would reach — what a thread action reads the permissions of. */
-  const heldRecord = useCallback(
-    (id: string) =>
-      itemsRef.current.find((f) => f.id === id) ??
-      [openedCacheRef.current, undoRecordRef.current, inFlightRef.current.get(id)?.prev].find((f) => f?.id === id),
-    [],
   );
 
   const addComment = useCallback(

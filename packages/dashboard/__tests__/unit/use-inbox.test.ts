@@ -1810,6 +1810,89 @@ describe("useSitepingInbox — discussion thread", () => {
     expect(r1?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
   });
 
+  describe("against a response read before a reply was stored or deleted", () => {
+    const reply = {
+      id: "c-9",
+      feedbackId: "r1",
+      body: "Wrong thread",
+      authorName: "Studio",
+      authorEmail: "",
+      authorRole: "team" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-21T08:00:00Z"),
+    };
+    const bodies = (record: FeedbackRecord | null | undefined) => record?.comments?.map((c) => c.body);
+
+    it("keeps a reply stored during a status change that succeeds with the older thread", async () => {
+      const source = threadedSource();
+      const change = deferred<FeedbackRecord>();
+      source.setStatus.mockReturnValueOnce(change.promise);
+      const { result } = await ready({ projects: "demo", source, author });
+      act(() => result.current.setStatus("all"));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      act(() => result.current.openFeedback("r1"));
+
+      let changed!: Promise<void>;
+      act(() => {
+        changed = result.current.changeStatus("r1", "in_progress");
+      });
+      await act(() => result.current.addComment("r1", "Fixed, have a look"));
+      // The PATCH read the thread before the reply's insert committed.
+      await act(async () => {
+        change.resolve(makeRecord({ id: "r1", status: "in_progress", comments: [] }));
+        await changed;
+      });
+
+      expect(result.current.opened?.status).toBe("in_progress");
+      expect(bodies(result.current.opened)).toEqual(["Fixed, have a look"]);
+      expect(bodies(result.current.items.find((r) => r.id === "r1"))).toEqual(["Fixed, have a look"]);
+    });
+
+    it("keeps a reply deleted during a status change deleted", async () => {
+      const source = threadedSource(demoRecords().map((r) => (r.id === "r1" ? { ...r, comments: [reply] } : r)));
+      const change = deferred<FeedbackRecord>();
+      source.setStatus.mockReturnValueOnce(change.promise);
+      const { result } = await ready({ projects: "demo", source, author });
+      act(() => result.current.openFeedback("r1"));
+
+      let changed!: Promise<void>;
+      act(() => {
+        changed = result.current.changeStatus("r1", "in_progress");
+      });
+      await act(() => result.current.deleteComment("r1", "c-9"));
+      await act(async () => {
+        change.resolve(makeRecord({ id: "r1", status: "in_progress", comments: [reply] }));
+        await changed;
+      });
+
+      expect(bodies(result.current.opened)).toEqual([]);
+    });
+
+    it("keeps a reply stored while a refetch was in flight, then takes the next refetch's word", async () => {
+      const source = threadedSource();
+      const { result } = await ready({ projects: "demo", source, author });
+      const page = deferred<Awaited<ReturnType<InboxSource["list"]>>>();
+      const list = source.list.getMockImplementation()!;
+      const older = await list({ projectName: "demo", page: 1, limit: 50 });
+      source.list.mockReturnValueOnce(page.promise);
+
+      let refreshed!: Promise<void>;
+      act(() => {
+        refreshed = result.current.refresh();
+      });
+      await act(() => result.current.addComment("r1", "Posted meanwhile"));
+      await act(async () => {
+        page.resolve(older);
+        await refreshed;
+      });
+      expect(bodies(result.current.items.find((r) => r.id === "r1"))).toEqual(["Posted meanwhile"]);
+
+      // A list asked for after the reply is the server's word — a teammate may have deleted it.
+      await act(() => result.current.refresh());
+      expect(bodies(result.current.items.find((r) => r.id === "r1"))).toBeUndefined();
+    });
+  });
+
   it("rolls the drawer back with the reply when the opened record is not in the list", async () => {
     const source = threadedSource();
     const change = deferred<FeedbackRecord>();
