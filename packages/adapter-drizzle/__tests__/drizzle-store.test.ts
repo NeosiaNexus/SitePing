@@ -105,6 +105,14 @@ function isFeedbackDelete(statementSql: string): boolean {
   return statementSql.toLowerCase().includes(`delete from "${DEFAULT_SITEPING_TABLE_NAMES.feedbacks}"`);
 }
 
+/** Whether a driver call reads feedback rows. */
+function isFeedbackRead(statementSql: string): boolean {
+  const normalizedSql = statementSql.toLowerCase();
+  return (
+    normalizedSql.startsWith("select") && normalizedSql.includes(`from "${DEFAULT_SITEPING_TABLE_NAMES.feedbacks}"`)
+  );
+}
+
 /** Whether a driver call reads annotation rows. */
 function isAnnotationRead(statementSql: string): boolean {
   const normalizedSql = statementSql.toLowerCase();
@@ -1336,10 +1344,13 @@ for (const dialect of dialects) {
         }
       });
 
-      it("reports a StorePersistenceError when a comment inserts nothing and the lookups that follow fail", async () => {
-        // The insert of a comment on an unknown feedback writes nothing; telling why takes two more reads.
+      // A comment on an unknown feedback inserts nothing; telling why takes two more reads.
+      it.each([
+        ["the replay lookup", (statementSql: string) => !isCommentWrite(statementSql)],
+        ["the feedback lookup", isFeedbackRead],
+      ])("reports a StorePersistenceError when a comment inserts nothing and %s fails", async (_lookup, fails) => {
         const store = database.createStoreWithDriverInterceptor(
-          (statementSql, run) => (isCommentWrite(statementSql) ? run() : Promise.reject(connectionFailure)),
+          (statementSql, run) => (fails(statementSql) ? Promise.reject(connectionFailure) : run()),
           { logger },
         );
 
