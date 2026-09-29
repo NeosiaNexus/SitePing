@@ -70,5 +70,10 @@ export function createTaskQueue() {
       setTail(projectTails, projectName, settled);
       return result;
     },
+
+    /** Whether no task is queued or running. The queue then holds nothing, whatever it has run. */
+    get idle(): boolean {
+      return feedbackTails.size === 0 && projectTails.size === 0 && feedbackTasksByProject.size === 0;
+    },
   };
 }
