@@ -201,6 +201,21 @@ describe("buildThread", () => {
     expect(replies()).toHaveLength(1);
   });
 
+  it("gives an edited draft a new clientId after a failure, so a first attempt that landed cannot replace it", async () => {
+    const { post, input, send } = mount(makeFeedback([]));
+    post.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce(makeComment({ body: "24px" }));
+    input()!.value = "16px";
+    send()!.click();
+    await flush();
+    input()!.value = "24px";
+    send()!.click();
+    await flush();
+
+    const [[, first], [body, second]] = post.mock.calls as [[string, string], [string, string]];
+    expect(body).toBe("24px");
+    expect(second).not.toBe(first);
+  });
+
   it("gives the next reply a new clientId", async () => {
     const { post, input, send } = mount(makeFeedback([]));
     post.mockResolvedValue(makeComment());

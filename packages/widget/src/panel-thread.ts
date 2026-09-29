@@ -75,12 +75,16 @@ export function buildThread(
   root.append(input, foot, error);
 
   // One id per reply, kept across its resends: the server answers a resend of
-  // a reply that did land with the stored one instead of adding it twice.
-  let clientId = newClientId();
+  // a reply that did land with the stored one instead of adding it twice. An
+  // edited draft is another reply — under the first one's id, that landed
+  // first text would come back in its place.
+  let sent: { body: string; clientId: string } | undefined;
   let sending = false;
   const submit = async (): Promise<void> => {
     const body = input.value.trim();
     if (sending || !body) return;
+    if (sent?.body !== body) sent = { body, clientId: newClientId() };
+    const { clientId } = sent;
     sending = true;
     setText(error, "");
     // Read-only, and Send left enabled: a disabled control drops the keyboard
@@ -91,7 +95,7 @@ export function buildThread(
       if (comment) {
         add(comment);
         input.value = "";
-        clientId = newClientId();
+        sent = undefined;
       }
     } catch {
       // The text stays in the field for another try.

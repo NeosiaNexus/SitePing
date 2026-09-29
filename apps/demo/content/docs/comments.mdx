@@ -74,7 +74,7 @@ Content-Type: application/json
 }
 ```
 
-It answers `201` with the comment. `authorRole` is optional and defaults to `client`. `clientId` is required — `[a-zA-Z0-9_-]`, up to 200 characters: generate one per comment (`crypto.randomUUID()`) and resend the same one on a retry.
+It answers `201` with the comment. `authorRole` is optional and defaults to `client`. `clientId` is required — `[a-zA-Z0-9_-]`, up to 200 characters: generate one per comment (`crypto.randomUUID()`) and resend the same one on a retry of the same text. An edited reply is a new comment with a new `clientId`: the server matches on `clientId` alone, so a first attempt that did land would come back in its place. The widget and the dashboard do both.
 
 ### Delete a comment
 

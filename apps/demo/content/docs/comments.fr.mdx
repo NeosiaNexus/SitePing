@@ -74,7 +74,7 @@ Content-Type: application/json
 }
 ```
 
-Il répond `201` avec le commentaire. `authorRole` est optionnel et vaut `client` par défaut. `clientId` est obligatoire — `[a-zA-Z0-9_-]`, jusqu'à 200 caractères : générez-en un par commentaire (`crypto.randomUUID()`) et renvoyez le même en cas de relance.
+Il répond `201` avec le commentaire. `authorRole` est optionnel et vaut `client` par défaut. `clientId` est obligatoire — `[a-zA-Z0-9_-]`, jusqu'à 200 caractères : générez-en un par commentaire (`crypto.randomUUID()`) et renvoyez le même en cas de relance du même texte. Une réponse modifiée est un nouveau commentaire, avec un nouveau `clientId` : le serveur ne compare que le `clientId`, donc une première tentative bel et bien arrivée reviendrait à sa place. Le widget et le dashboard font les deux.
 
 ### Supprimer un commentaire
 

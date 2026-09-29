@@ -96,16 +96,21 @@ Les réponses ne sont **pas** optimistes : `addComment` se résout une fois la r
 ```tsx
 const [draft, setDraft] = useState("");
 // Un clientId par réponse, gardé entre ses renvois : le serveur répond au
-// renvoi d'une réponse déjà arrivée par celle qu'il a enregistrée.
-const clientId = useRef<string | null>(null);
+// renvoi d'une réponse déjà arrivée par celle qu'il a enregistrée. Un
+// brouillon modifié est une autre réponse, sinon ce premier texte reviendrait
+// à sa place.
+const sent = useRef<{ body: string; clientId: string } | null>(null);
 
 async function send(feedbackId: string) {
-  // crypto.randomUUID() n'existe qu'en contexte sécurisé (HTTPS, localhost).
-  clientId.current ??= crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (sent.current?.body !== draft) {
+    // crypto.randomUUID() n'existe qu'en contexte sécurisé (HTTPS, localhost).
+    const clientId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sent.current = { body: draft, clientId };
+  }
   try {
-    await inbox.addComment(feedbackId, draft, clientId.current);
+    await inbox.addComment(feedbackId, draft, sent.current.clientId);
     setDraft("");
-    clientId.current = null;
+    sent.current = null;
   } catch {
     // le brouillon reste — affichez une erreur en ligne
   }

@@ -32,8 +32,9 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   // Stable, so it focuses the confirm button once, when the question appears.
   const focusOnMount = useCallback((button: HTMLButtonElement | null) => button?.focus(), []);
   // One id per reply, kept across its resends: a resend of a reply that did
-  // land gets the stored one back instead of adding it twice.
-  const clientIdRef = useRef<string | null>(null);
+  // land gets the stored one back instead of adding it twice. An edited draft
+  // is another reply, with an id of its own.
+  const sentRef = useRef<{ body: string; clientId: string } | null>(null);
   const comments = record.comments ?? [];
   if (!canComment && comments.length === 0) return null;
 
@@ -57,11 +58,11 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   const send = async (): Promise<void> => {
     const body = draft.trim();
     if (busy || !body) return;
-    clientIdRef.current ??= newClientId();
-    const clientId = clientIdRef.current;
+    if (sentRef.current?.body !== body) sentRef.current = { body, clientId: newClientId() };
+    const { clientId } = sentRef.current;
     if (!(await run(() => onAdd(body, clientId)))) return;
     setDraft("");
-    clientIdRef.current = null;
+    sentRef.current = null;
     inputRef.current?.focus();
   };
 

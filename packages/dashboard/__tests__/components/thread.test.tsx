@@ -156,6 +156,20 @@ describe("Thread", () => {
     expect(view.alert()?.textContent).toBe("");
   });
 
+  it("gives an edited draft a new clientId after a failure, so a first attempt that landed cannot replace it", async () => {
+    const onAdd = vi.fn<(body: string, clientId: string) => Promise<void>>();
+    onAdd.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce(undefined);
+    const view = renderThread({ comments: [], onAdd });
+
+    await type(view.input(), "see v2");
+    await act(async () => view.send()?.click());
+    await type(view.input(), "see v3");
+    await act(async () => view.send()?.click());
+
+    expect(onAdd.mock.calls[1]?.[0]).toBe("see v3");
+    expect(onAdd.mock.calls[1]?.[1]).not.toBe(onAdd.mock.calls[0]?.[1]);
+  });
+
   it("asks before deleting a reply, moving the focus to the question and back", async () => {
     const view = renderThread({ comments: [makeComment()] });
     const trash = view.container.querySelector<HTMLButtonElement>("[data-comment-delete]");

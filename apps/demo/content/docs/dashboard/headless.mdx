@@ -96,16 +96,20 @@ Replies are **not** optimistic: `addComment` resolves once the source has stored
 ```tsx
 const [draft, setDraft] = useState("");
 // One clientId per reply, kept across its resends: the server answers a
-// resend of a reply that did land with the stored one.
-const clientId = useRef<string | null>(null);
+// resend of a reply that did land with the stored one. An edited draft is
+// another reply, or that first text would come back in its place.
+const sent = useRef<{ body: string; clientId: string } | null>(null);
 
 async function send(feedbackId: string) {
-  // crypto.randomUUID() exists only in secure contexts (HTTPS, localhost).
-  clientId.current ??= crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (sent.current?.body !== draft) {
+    // crypto.randomUUID() exists only in secure contexts (HTTPS, localhost).
+    const clientId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sent.current = { body: draft, clientId };
+  }
   try {
-    await inbox.addComment(feedbackId, draft, clientId.current);
+    await inbox.addComment(feedbackId, draft, sent.current.clientId);
     setDraft("");
-    clientId.current = null;
+    sent.current = null;
   } catch {
     // the draft stays — show an inline error
   }
