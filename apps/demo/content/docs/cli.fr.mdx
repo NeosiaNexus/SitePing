@@ -19,7 +19,7 @@ npx @siteping/cli init
 
 `init` vous guide à travers deux confirmations :
 
-1. **Synchroniser les modèles Prisma** — si un schéma est trouvé (voir [détection du schéma](#détection-du-schéma)), il propose d'ajouter les modèles `SitepingFeedback` et `SitepingAnnotation`.
+1. **Synchroniser les modèles Prisma** — si un schéma est trouvé (voir [détection du schéma](#détection-du-schéma)), il propose d'ajouter les modèles SitePing : `SitepingFeedback`, `SitepingAnnotation` et `SitepingComment` (les [fils de discussion](/fr/docs/comments)).
 2. **Générer la route API** — propose de créer une route Next.js App Router qui sert le widget. Le fichier va dans `app/api/siteping/route.ts`, ou `src/app/api/siteping/route.ts` si votre projet utilise une arborescence `src/`. Si `app/` et `src/app/` existent tous les deux, `app/` l'emporte — Next.js ignore alors lui-même `src/app/`. Une route existante — `route.ts`, `.tsx`, `.js` ou `.jsx` — n'est jamais écrasée.
 
 La route générée importe deux choses que vous devez fournir vous-même — le CLI n'installe rien :
@@ -40,12 +40,12 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 
 `sync` fusionne les modèles SitePing dans votre schéma Prisma sans poser de question, ce qui le rend sûr pour la CI et les scripts de mise à jour. Il travaille au niveau de l'AST :
 
-- crée les deux modèles s'ils sont absents — dans le schéma de base de données des modèles SitePing existants (leur `@@schema`) quand votre datasource en déclare plusieurs (`schemas`),
+- crée les modèles SitePing absents — dans le schéma de base de données des modèles SitePing existants (leur `@@schema`) quand votre datasource en déclare plusieurs (`schemas`),
 - ajoute les champs et blocs `@@index` manquants,
 - réécrit les champs SitePing dont le type ou les attributs ont dérivé de la forme attendue — en gardant ce qui vous appartient (noms de colonne `@map`, noms de relation, `onUpdate` d'une relation, commentaires) ; un `@ignore` compte comme une dérive, car l'adapter écrit toutes les colonnes SitePing,
 - **ne touche jamais aux champs que vous avez ajoutés vous-même.**
 
-Quand quelque chose a changé, il vous rappelle de lancer `npx prisma db push` et `npx prisma generate` (Prisma 7 ne génère plus le client depuis `db push`). Le lancer deux fois de suite ne fait rien.
+Quand quelque chose a changé, il vous rappelle de lancer `npx prisma db push` et `npx prisma generate` (Prisma 7 ne génère plus le client depuis `db push`). Un schéma existant reçoit ainsi `SitepingComment` et la relation `SitepingFeedback.comments` : appliquez-les avant de déployer — voir [les fils de discussion avec Prisma](/fr/docs/adapters/prisma#fils-de-discussion). Le lancer deux fois de suite ne fait rien.
 
 > **Committez avant de le lancer.** `sync` réimprime tout le fichier de schéma, donc le formatage (lignes vides après les commentaires `//`, alignement des colonnes) est normalisé y compris sur vos propres modèles — les commentaires de documentation `///` restent attachés à ce qu'ils documentent. Un diff git propre rend les changements faciles à relire.
 
@@ -60,7 +60,7 @@ npx @siteping/cli status --schema prisma/schema.prisma
 
 | Vérification | Ce qu'elle regarde |
 |---|---|
-| Schéma Prisma | Les deux modèles présents, chaque champ à jour — exactement le diff qu'applique `sync`, donc type, optionalité, attributs et leurs arguments (`@unique`, `@db.Text`, `onDelete: Cascade`, …) et blocs `@@index` comptent tous |
+| Schéma Prisma | Les trois modèles SitePing présents, chaque champ à jour — exactement le diff qu'applique `sync`, donc type, optionalité, attributs et leurs arguments (`@unique`, `@db.Text`, `onDelete: Cascade`, …) et blocs `@@index` comptent tous |
 | Route API | `api/siteping/route.ts` (ou `.tsx`, `.js`, `.jsx`) existe dans le répertoire app que sert Next.js — `app/`, ou `src/app/` en l'absence de `app/` |
 | Package | `@siteping/widget` listé dans votre `package.json` |
 | Intégration du widget | `initSiteping` référencé quelque part dans `src/`, `app/` ou `pages/` |

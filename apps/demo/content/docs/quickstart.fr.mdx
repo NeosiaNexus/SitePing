@@ -30,7 +30,7 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 npx @siteping/cli init
 ```
 
-Confirmez les deux questions : le CLI ajoute les deux modèles SitePing à votre schéma Prisma et génère la route API (`app/api/siteping/route.ts`, ou sous `src/app/` selon votre projet). Poussez ensuite le schéma vers votre base :
+Confirmez les deux questions : le CLI ajoute les modèles SitePing à votre schéma Prisma et génère la route API (`app/api/siteping/route.ts`, ou sous `src/app/` selon votre projet). Poussez ensuite le schéma vers votre base :
 
 ```bash
 npx prisma db push
