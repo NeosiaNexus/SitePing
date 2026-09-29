@@ -48,6 +48,44 @@ describe("createSitepingHandler — any store", () => {
     expect(await deleted.json()).toEqual({ deleted: true });
   });
 
+  it("stores every optional field a submission carries, and serves the page filters and pages", async () => {
+    const store = new MemoryStore();
+    const handler = createSitepingHandler({ store });
+    const now = "2026-09-29T10:00:00.000Z";
+    const extras = {
+      screenshotDataUrl: "data:image/jpeg;base64,/9j/4AAQ",
+      screenshotRegion: { xPct: 0.1, yPct: 0.2, wPct: 0.3, hPct: 0.4 },
+      diagnostics: {
+        console: [{ level: "error", timestamp: now, message: "boom" }],
+        network: [{ url: "https://api.example.com/cart", method: "GET", status: 500, durationMs: 12, timestamp: now }],
+      },
+    };
+    const submit = async (clientId: string, url: string, urlPattern: string | null, more = {}) => {
+      const body = { ...validPayloadNoAnnotations, clientId, url, urlPattern, ...more };
+      expect((await handler.POST(request("POST", body))).status).toBe(201);
+    };
+    await submit("a", "/orders/42", "/orders/:id", extras);
+    await submit("b", "/orders/43", "/orders/:id");
+    await submit("c", "/home", null);
+    const page = async (query: string) =>
+      (await (
+        await handler.GET(new Request(`${ENDPOINT}?projectName=${validPayloadNoAnnotations.projectName}&${query}`))
+      ).json()) as { feedbacks: FeedbackRecord[]; total: number };
+
+    const { screenshotDataUrl, ...stored } = extras;
+    expect(await store.findByClientId("a")).toMatchObject({
+      ...stored,
+      url: "/orders/42",
+      urlPattern: "/orders/:id",
+      screenshotUrl: screenshotDataUrl,
+    });
+    expect((await page("url=/orders/42")).feedbacks.map((f) => f.url)).toEqual(["/orders/42"]);
+    expect((await page("urlPattern=/orders/:id")).total).toBe(2);
+    const [first, second] = [await page("page=1&limit=1"), await page("page=2&limit=1")];
+    expect([first.total, first.feedbacks.length, second.feedbacks.length]).toEqual([3, 1, 1]);
+    expect(second.feedbacks[0]?.id).not.toBe(first.feedbacks[0]?.id);
+  });
+
   it("refuses to start without a store", () => {
     expect(() => createSitepingHandler({} as { store: SitepingStore })).toThrow(/requires a `store`/);
   });
