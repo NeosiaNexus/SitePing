@@ -239,6 +239,35 @@ describe("Thread", () => {
     expect(status()?.textContent).toBe(t("comments.deleted"));
   });
 
+  it("announces every reply that comes in or goes, the same message twice in a row included", async () => {
+    const view = renderWithUi(<LiveThread initial={["a", "b", "c"].map((id) => makeComment({ id }))} canComment />);
+    const status = () => view.container.querySelector('[role="status"]')?.textContent ?? "";
+    // A status is read out when its text changes: each event must change it.
+    const announced: string[] = [];
+    const next = () => {
+      expect(status()).not.toBe(announced.at(-1));
+      announced.push(status());
+    };
+
+    for (const id of ["a", "b"]) {
+      await act(async () => view.container.querySelector<HTMLButtonElement>(`[data-comment-delete="${id}"]`)?.click());
+      await act(async () => view.container.querySelector<HTMLButtonElement>(".spd-confirm .spd-btn-danger")?.click());
+      next();
+    }
+    for (const body of ["On it", "Done"]) {
+      await type(view.container.querySelector("textarea"), body);
+      await act(async () => view.container.querySelector<HTMLButtonElement>(".spd-thread-composer button")?.click());
+      next();
+    }
+
+    expect(announced.map((text) => text.trim())).toEqual([
+      t("comments.deleted"),
+      t("comments.deleted"),
+      "Reply from Studio",
+      "Reply from Studio",
+    ]);
+  });
+
   it("hands the focus to the next reply's delete, else the previous one's, else the drawer — never <body>", async () => {
     const ids = ["a", "b", "c"];
     const view = renderWithUi(

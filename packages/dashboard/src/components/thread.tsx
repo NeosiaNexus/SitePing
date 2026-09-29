@@ -44,14 +44,18 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
   /** The replies drawn last render — what a reply coming in or going is told apart from. */
   const shownRef = useRef<Set<string> | null>(null);
   // Announced in a status of its own: the list holds the delete controls,
-  // whose question would be read out as news.
+  // whose question would be read out as news. The same message twice in a
+  // row (a second delete) gets a trailing no-break space, so the status
+  // changes and is read again.
   useEffect(() => {
     const shown = shownRef.current;
     shownRef.current = new Set(comments.map((c) => c.id));
     if (!shown) return;
     const added = comments.filter((c) => !shown.has(c.id)).at(-1);
-    if (added) setAnnouncement(tWithParams(t, "comments.added", { name: added.authorName }));
-    else if (shown.size > shownRef.current.size) setAnnouncement(t("comments.deleted"));
+    const message = added
+      ? tWithParams(t, "comments.added", { name: added.authorName })
+      : shown.size > shownRef.current.size && t("comments.deleted");
+    if (message) setAnnouncement((last) => (last === message ? `${message} ` : message));
   });
   if (!canComment && comments.length === 0) return null;
 
