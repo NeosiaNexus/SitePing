@@ -69,6 +69,14 @@ export const ja: Translations = {
   "drawer.deleteConfirm": "完全に削除しますか？この操作は取り消せません。",
   "drawer.deleteYes": "削除",
 
+  // Discussion thread
+  "comments.title": "返信",
+  "comments.team": "チーム",
+  "comments.placeholder": "クライアントに返信…",
+  "comments.send": "送信",
+  "comments.delete": "返信を削除",
+  "comments.failed": "問題が発生しました。もう一度お試しください。",
+
   // Footer hint bar
   "hints.navigate": "移動",
   "hints.open": "開く",

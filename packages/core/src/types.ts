@@ -368,6 +368,14 @@ export interface SitepingBaseConfig {
    * `id` are skipped with a console warning. See {@link SitepingPanelAction}.
    */
   panelActions?: readonly SitepingPanelAction[] | undefined;
+  /**
+   * Reviewer mode: hide the actions that triage feedback — resolve, reopen,
+   * delete, the bulk actions, "Delete all" — and keep creating, browsing
+   * and replying. Defaults to `false`. The server's `permissions` hide
+   * what it would refuse on top of it. It only hides: the server decides
+   * what it accepts. Read once when the panel loads.
+   */
+  readOnly?: boolean | undefined;
 
   // Events
   /** Called when the feedback panel is opened. */
@@ -376,6 +384,8 @@ export interface SitepingBaseConfig {
   onClose?: (() => void) | undefined;
   /** Called after a feedback is successfully submitted. */
   onFeedbackSent?: ((feedback: FeedbackResponse) => void) | undefined;
+  /** Called after a reply is posted from the panel's discussion thread. */
+  onCommentAdded?: ((comment: CommentResponse) => void) | undefined;
   /**
    * Called when a feedback API call fails.
    *
@@ -499,6 +509,8 @@ export type SitepingUnsubscribe = () => void;
 export interface SitepingPublicEvents {
   "feedback:sent": [FeedbackResponse];
   "feedback:deleted": [FeedbackResponse["id"]];
+  /** A reply was posted from the panel's discussion thread. */
+  "comment:added": [CommentResponse];
   /**
    * A feedback API call failed. Same payload contract as
    * `SitepingConfig.onError` — a `SitepingError` subclass in HTTP mode,
@@ -722,6 +734,13 @@ export interface FeedbackRecord {
   updatedAt: Date;
   annotations: AnnotationRecord[];
   /**
+   * Discussion thread, oldest first. A store that implements
+   * `SitepingStore.addComment` returns it on every record; a store without
+   * comments may leave it out, which reads as an empty thread (HTTP handlers
+   * send `[]`).
+   */
+  comments?: CommentRecord[] | undefined;
+  /**
    * URL the widget renders as `<img src>`. Either an `https://...` from a
    * configured `ScreenshotStorage`, or a `data:image/jpeg;base64,...` URL
    * inline-persisted by adapters without storage. Null when no screenshot
@@ -771,6 +790,75 @@ export interface AnnotationRecord {
 }
 
 // ---------------------------------------------------------------------------
+// Comments — the discussion thread of a feedback
+// ---------------------------------------------------------------------------
+
+/**
+ * Who wrote a comment: `client` — the reviewer on the site (the widget) —
+ * or `team` — the project side (the dashboard). HTTP handlers stamp
+ * `client` unless the server's access policy vouches for the caller, so a
+ * visitor cannot pose as the team.
+ */
+export const COMMENT_AUTHOR_ROLES = ["client", "team"] as const;
+export type CommentAuthorRole = (typeof COMMENT_AUTHOR_ROLES)[number];
+
+/** Longest comment `body` the HTTP API accepts — the cap of a feedback `message`. */
+export const COMMENT_BODY_MAX_LENGTH = 5000;
+
+/**
+ * Most comments one thread holds. List responses embed whole threads, which
+ * are not paginated, so this bounds what one feedback weighs however much a
+ * public endpoint is spammed. Stores enforce it with `StoreLimitError`; a
+ * store without an atomic primitive may overshoot it by the posts that race
+ * the last free slot.
+ */
+export const MAX_COMMENTS_PER_FEEDBACK = 100;
+
+/** A persisted comment returned by the store. */
+export interface CommentRecord {
+  id: string;
+  /** The feedback whose thread holds this comment. */
+  feedbackId: string;
+  body: string;
+  authorName: string;
+  /**
+   * Author email, or `""` when the author has none on file (a dashboard
+   * user). HTTP handlers redact it exactly like `FeedbackRecord.authorEmail`.
+   */
+  authorEmail: string;
+  authorRole: CommentAuthorRole;
+  /** Client-generated id — `addComment` is idempotent on it, so a retried post never duplicates a reply. */
+  clientId: string;
+  createdAt: Date;
+}
+
+/** Input of `SitepingStore.addComment`. */
+export interface CommentCreateInput {
+  body: string;
+  authorName: string;
+  authorEmail: string;
+  authorRole: CommentAuthorRole;
+  clientId: string;
+}
+
+/**
+ * Body of a comment `POST`. `feedbackId` is what tells it apart from a
+ * feedback submission on the same endpoint; `projectName` scopes the write
+ * to that project's feedbacks.
+ */
+export interface CommentPayload extends CommentCreateInput {
+  projectName: string;
+  feedbackId: string;
+}
+
+/** Body of a comment `DELETE` — `commentId` is what tells it apart from a feedback delete. */
+export interface CommentDeletePayload {
+  projectName: string;
+  feedbackId: string;
+  commentId: string;
+}
+
+// ---------------------------------------------------------------------------
 // Store errors — throw these from adapter implementations
 // ---------------------------------------------------------------------------
 
@@ -815,6 +903,19 @@ export class StorePersistenceError extends Error {
   }
 }
 
+/**
+ * Thrown when a write would break a bound of the store contract — a thread
+ * already holding `MAX_COMMENTS_PER_FEEDBACK` comments. Handlers translate
+ * this to HTTP 409.
+ */
+export class StoreLimitError extends Error {
+  readonly code = "STORE_LIMIT" as const;
+  constructor(message = "Store limit reached", options?: ErrorOptions) {
+    super(message, options);
+    this.name = "StoreLimitError";
+  }
+}
+
 /** Shape of any ORM error that carries a Prisma-style `code` field. */
 type CodedError<C extends string = string> = { code: C };
 
@@ -855,6 +956,12 @@ export function isStoreDuplicate(
 export function isStorePersistence(error: unknown): error is StorePersistenceError | CodedError<"STORE_PERSISTENCE"> {
   if (error instanceof StorePersistenceError) return true;
   return hasErrorCode(error, "STORE_PERSISTENCE");
+}
+
+/** Type guard for `StoreLimitError`, matching on `code` for the same cross-bundle reason as {@link isStorePersistence}. */
+export function isStoreLimit(error: unknown): error is StoreLimitError | CodedError<"STORE_LIMIT"> {
+  if (error instanceof StoreLimitError) return true;
+  return hasErrorCode(error, "STORE_LIMIT");
 }
 
 // ---------------------------------------------------------------------------
@@ -972,6 +1079,32 @@ export interface SitepingStore {
    * leave it out.
    */
   createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
+  /**
+   * Optional — append a comment to the thread of feedback `feedbackId` and
+   * return it. Idempotent on `data.clientId`: when a comment with that
+   * `clientId` exists, on any thread, return it unchanged (HTTP handlers
+   * refuse a replay aimed at another thread).
+   *
+   * Throws `StoreNotFoundError` when the feedback does not exist,
+   * `StoreLimitError` when its thread already holds
+   * `MAX_COMMENTS_PER_FEEDBACK` comments, `StorePersistenceError` when the
+   * write cannot be persisted. A comment is not a change of the feedback
+   * itself: its `updatedAt` stays as it was.
+   *
+   * A store that implements it returns every feedback's thread on
+   * `FeedbackRecord.comments`, oldest first, and deletes a thread with its
+   * feedback. A store without it (and `deleteComment`) has no threads:
+   * HTTP handlers serve empty threads and answer comment writes with 501.
+   */
+  addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+  /**
+   * Optional — delete comment `commentId` from the thread of `feedbackId`.
+   * Scoped to that thread, which the caller was authorized for: throws
+   * `StoreNotFoundError` when the feedback does not exist or the comment is
+   * not on its thread, `StorePersistenceError` when the write cannot be
+   * persisted.
+   */
+  deleteComment?(feedbackId: string, commentId: string): Promise<void>;
 }
 
 /** Payload sent from the widget to the server when submitting feedback. */
@@ -1146,14 +1279,48 @@ export interface AnnotationPayload {
 /**
  * Feedback record as returned by the API — derived from
  * {@link FeedbackRecord}: dates are serialized to ISO strings and `clientId`
- * is omitted (server-side dedup concern, never exposed on the wire). Adding
- * a field to `FeedbackRecord` updates this type automatically.
+ * is omitted (server-side dedup concern, never exposed on the wire), on the
+ * record and on each comment of its thread. Adding a field to
+ * `FeedbackRecord` updates this type automatically.
  *
  * Note: `authorEmail` may be an empty string — HTTP adapters redact it for
  * unauthenticated requests; the full value requires a Bearer-authenticated
  * request.
  */
-export type FeedbackResponse = Prettify<Serialized<Omit<FeedbackRecord, "clientId">>>;
+export type FeedbackResponse = Prettify<
+  Serialized<Omit<FeedbackRecord, "clientId" | "comments">> & {
+    /** The thread, oldest first — always sent by `@siteping/server`, absent from servers that predate comments. */
+    comments?: CommentResponse[] | undefined;
+    /**
+     * What the requester may do with this feedback — always sent by
+     * `@siteping/server`. Absent from servers that predate it, and in store
+     * mode: nothing is refused then.
+     */
+    permissions?: FeedbackPermissions | undefined;
+  }
+>;
+
+/**
+ * What a requester may do with one feedback, as the server's access policy
+ * decides — so clients hide the actions it would refuse. The server still
+ * enforces every one of them.
+ */
+export interface FeedbackPermissions {
+  /** Change its status: resolve, reopen, … */
+  canChangeStatus: boolean;
+  /** Delete it. */
+  canDelete: boolean;
+  /** Reply in its thread. */
+  canComment: boolean;
+  /** Delete replies from its thread. */
+  canDeleteComment: boolean;
+}
+
+/** What a requester may do with a whole project, sent with each list. */
+export interface FeedbackListPermissions {
+  /** Delete every feedback of the project at once. */
+  canDeleteAll: boolean;
+}
 
 /**
  * Annotation record as returned by the API — {@link AnnotationRecord} with
@@ -1161,8 +1328,31 @@ export type FeedbackResponse = Prettify<Serialized<Omit<FeedbackRecord, "clientI
  */
 export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
 
+/**
+ * Comment as returned by the API — {@link CommentRecord} with `createdAt`
+ * serialized and `clientId` omitted, like on `FeedbackResponse`. Its
+ * `authorEmail` is redacted on the same terms as the feedback's.
+ */
+export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+
+/** What the store behind an endpoint supports — advertised on every list response. */
+export interface SitepingCapabilities {
+  /** Whether comments can be posted: the store implements `addComment`. */
+  comments: boolean;
+  /**
+   * Whether comments can be deleted: the store implements `deleteComment`.
+   * Sent by `@siteping/server`; a client that does not delete (the widget)
+   * leaves it out.
+   */
+  deleteComments?: boolean | undefined;
+}
+
 /** Paginated `FeedbackResponse` shape returned by the API. */
 export interface FeedbackResponseList {
   feedbacks: FeedbackResponse[];
   total: number;
+  /** Always sent by `@siteping/server` — absent from servers that predate it. */
+  capabilities?: SitepingCapabilities | undefined;
+  /** Always sent by `@siteping/server` — absent from servers that predate it. */
+  permissions?: FeedbackListPermissions | undefined;
 }

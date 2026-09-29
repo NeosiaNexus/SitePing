@@ -1,6 +1,9 @@
 import {
   type AnnotationRecord,
   type AnnotationResponse,
+  type CommentCreateInput,
+  type CommentRecord,
+  type CommentResponse,
   type FeedbackPayload,
   type FeedbackRecord,
   type FeedbackResponse,
@@ -14,9 +17,9 @@ import {
 import { type GetFeedbacksOptions, type WidgetClient, withTimeout } from "./api-client.js";
 
 /**
- * How long a send waits on `store.createFeedback`. First-party stores settle
- * at once, but a custom store may be network-backed, and the popup holds the
- * user until the send settles.
+ * How long a send waits on `store.createFeedback` (or a reply on
+ * `store.addComment`). First-party stores settle at once, but a custom store
+ * may be network-backed, and the popup holds the user until the send settles.
  */
 const STORE_WRITE_TIMEOUT_MS = 30_000;
 
@@ -42,18 +45,7 @@ export class StoreClient implements WidgetClient {
    * follows (see `write`).
    */
   async sendFeedback(payload: FeedbackPayload): Promise<FeedbackResponse> {
-    const record = await withTimeout(
-      this.write(payload),
-      STORE_WRITE_TIMEOUT_MS,
-      () =>
-        new SitepingError(
-          `Failed to send feedback: the store did not answer within ${STORE_WRITE_TIMEOUT_MS / 1000} s`,
-          "TIMEOUT",
-          true,
-        ),
-    );
-
-    return toResponse(record);
+    return toResponse(await bounded(this.write(payload), "Failed to send feedback"));
   }
 
   /**
@@ -102,7 +94,7 @@ export class StoreClient implements WidgetClient {
       urlPattern: options?.urlPattern,
     });
 
-    return { feedbacks: feedbacks.map(toResponse), total };
+    return { feedbacks: feedbacks.map(toResponse), total, capabilities: { comments: !!this.store.addComment } };
   }
 
   async resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse> {
@@ -117,6 +109,27 @@ export class StoreClient implements WidgetClient {
   async deleteAllFeedbacks(projectName: string): Promise<void> {
     await this.store.deleteAllFeedbacks(projectName);
   }
+
+  /** The panel only offers a reply when `getFeedbacks` advertised comments, i.e. the store implements `addComment`. */
+  async addComment(feedbackId: string, input: CommentCreateInput): Promise<CommentResponse> {
+    const label = "Failed to post comment";
+    if (!this.store.addComment) throw new SitepingError(`${label}: this store keeps no comments`, "SERVER", false);
+    return toCommentResponse(await bounded(this.store.addComment(feedbackId, input), label));
+  }
+}
+
+/** Settle like `write`, or fail as a retryable `TIMEOUT` once the store has kept the user waiting too long. */
+function bounded<T>(write: Promise<T>, label: string): Promise<T> {
+  return withTimeout(
+    write,
+    STORE_WRITE_TIMEOUT_MS,
+    () =>
+      new SitepingError(
+        `${label}: the store did not answer within ${STORE_WRITE_TIMEOUT_MS / 1000} s`,
+        "TIMEOUT",
+        true,
+      ),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -140,10 +153,15 @@ function toResponse(record: FeedbackRecord): FeedbackResponse {
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     annotations: record.annotations.map(toAnnotationResponse),
+    comments: record.comments?.map(toCommentResponse),
     screenshotUrl: record.screenshotUrl ?? null,
     screenshotRegion: record.screenshotRegion ?? null,
     diagnostics: record.diagnostics ?? null,
   };
+}
+
+function toCommentResponse({ clientId: _clientId, createdAt, ...comment }: CommentRecord): CommentResponse {
+  return { ...comment, createdAt: createdAt.toISOString() };
 }
 
 function toAnnotationResponse(ann: AnnotationRecord): AnnotationResponse {

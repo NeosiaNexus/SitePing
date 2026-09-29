@@ -43,12 +43,13 @@ const off = siteping.on("feedback:sent", (feedback) => { ... });
 siteping.destroy();               // démontage complet, restaure tous les globals patchés
 ```
 
-`on()` renvoie une fonction de désabonnement. Sept événements publics sont disponibles :
+`on()` renvoie une fonction de désabonnement. Huit événements publics sont disponibles :
 
 | Événement | Charge utile | Déclenché quand |
 |---|---|---|
 | `feedback:sent` | le feedback créé | Un envoi a réussi |
 | `feedback:deleted` | l'id du feedback | Un feedback a été supprimé |
+| `comment:added` | le commentaire enregistré | Une réponse a été postée depuis le [fil de discussion](/fr/docs/comments#dans-le-widget) d'un feedback |
 | `feedback:error` | l'`Error` | Un appel à l'API de feedback a échoué — même charge utile que le callback de config `onError`, qui reçoit en plus les échecs des [actions du panneau](/fr/docs/widget/panel-actions#erreurs) |
 | `panel:open` / `panel:close` | — | Le panneau s'est ouvert / fermé |
 | `annotation:start` / `annotation:end` | — | Une session d'annotation a commencé / s'est terminée. `end` se déclenche que l'utilisateur ait envoyé ou annulé, et les deux points d'entrée — le bouton flottant et les [commentaires au clic droit](/fr/docs/widget/right-click) — émettent la paire symétrique : de quoi mettre en pause vos bulles de chat ou vos overlays d'analytics entre les deux |
@@ -71,7 +72,7 @@ export function Feedback() {
 }
 ```
 
-Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint` ou une autre option structurelle demande un remontage ; changer un callback, non — **tous** les callbacks acceptés par la config (`onFeedbackSent`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) sont lus au moment de l'appel, donc un handler qui capture un état frais se déclenche avec cet état — tout comme les callbacks des [actions du panneau](/fr/docs/widget/panel-actions#react). Ils se taisent également après le démontage : une réponse tardive ne peut pas rappeler dans un arbre déjà démonté.
+Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint` ou une autre option structurelle demande un remontage ; changer un callback, non — **tous** les callbacks acceptés par la config (`onFeedbackSent`, `onCommentAdded`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) sont lus au moment de l'appel, donc un handler qui capture un état frais se déclenche avec cet état — tout comme les callbacks des [actions du panneau](/fr/docs/widget/panel-actions#react). Ils se taisent également après le démontage : une réponse tardive ne peut pas rappeler dans un arbre déjà démonté.
 
 ## Gérer les erreurs
 
@@ -93,6 +94,18 @@ Branchez sur `error.code`, pas sur `instanceof` — les classes d'erreur elles-m
 ## Les statuts, côté widget
 
 Un feedback a quatre statuts (`open`, `in_progress`, `resolved`, `wont_fix`). Le widget **affiche** les quatre mais ses propres actions sont volontairement binaires : résoudre et rouvrir. Les états intermédiaires appartiennent à votre flux de tri dans le [dashboard](/fr/docs/dashboard).
+
+## Filtrer le panneau
+
+Les filtres du panneau se combinent et ne restreignent que la liste — les marqueurs de la page continuent d'afficher les feedbacks de la page :
+
+- **Recherche** : cherche dans le texte du message.
+- **Type** : garde un seul type de feedback.
+- **Statut** : *Ouvert* couvre `open` et `in_progress`, *Résolu* couvre `resolved` et `wont_fix`.
+- **Portée** : *Cette page* (par défaut), *Ce type* — toutes les pages qui partagent le modèle de route courant, proposé quand [`getPageScope`](/fr/docs/widget/configuration#cadrage-par-page) renvoie un `urlPattern` — ou *Toutes les pages*.
+- **Mes feedbacks** : garde les feedbacks envoyés depuis ce navigateur.
+
+« Mes feedbacks » ne demande ni identité ni support côté serveur, en mode HTTP comme en mode `store`. Le widget retient l'identifiant de chaque feedback qu'il envoie — les 500 plus récents par projet et par endpoint, dans le `localStorage`, y compris ceux que la file d'attente hors ligne envoie plus tard — et filtre de son côté : il parcourt les pages de la liste jusqu'à les avoir tous trouvés, puis les affiche d'un coup. Le serveur ne peut pas le faire à sa place : son `GET` public [masque les emails des auteurs](/fr/docs/server#ce-que-les-réponses-exposent), et un filtre par email permettrait à n'importe qui de vérifier si une adresse a envoyé des feedbacks. « Mes feedbacks » veut donc dire *ce navigateur* : les feedbacks envoyés depuis un autre navigateur ou appareil, ou avant l'effacement des données du site, n'y figurent pas.
 
 ## Par-dessus vos modales
 

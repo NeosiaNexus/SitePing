@@ -197,6 +197,32 @@ test.describe("Widget against the real handler", () => {
           ?.textContent?.includes("Seeded for the panel") ?? false,
     );
   });
+
+  test("the panel's 'Mine' filter lists only the feedback sent from this browser, after a reload too", async ({
+    page,
+    request,
+  }, testInfo) => {
+    const project = projectFor(testInfo);
+    await seed(request, project, "Sent by someone else");
+    await openWidgetPage(page, { project });
+    expect((await annotateAndSend(page, "Sent from here")).status()).toBe(201);
+    const cardMessages = () =>
+      page.evaluate(() =>
+        [...(document.querySelector("siteping-widget")?.shadowRoot?.querySelectorAll(".sp-card-message") ?? [])].map(
+          (message) => message.textContent,
+        ),
+      );
+
+    for (const pageLoad of ["after the send", "after a reload"]) {
+      if (pageLoad === "after a reload") await openWidgetPage(page, { project });
+      await clickInShadow(page, ".sp-fab");
+      await clickInShadow(page, '[data-item-id="chat"]');
+      await expect.poll(cardMessages, { message: pageLoad }).toEqual(["Sent from here", "Sent by someone else"]);
+
+      await clickInShadow(page, ".sp-mine-toggle");
+      await expect.poll(cardMessages, { message: pageLoad }).toEqual(["Sent from here"]);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -285,5 +311,142 @@ test.describe("Dashboard inbox against the real handler", () => {
     await seed(request, project, "Tenant-scoped");
     await openInbox(page, { project, endpoint: "/api/siteping?tenant=acme" });
     await expect(rowMessages(page)).toHaveText(["Tenant-scoped"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Discussion thread: widget ↔ real handler ↔ inbox
+// ---------------------------------------------------------------------------
+
+/** The widget's detail view of the (only) seeded feedback, reached from the panel. */
+async function openWidgetThread(page: Page, project: string): Promise<void> {
+  await openWidgetPage(page, { project });
+  await clickInShadow(page, ".sp-fab");
+  await clickInShadow(page, '[data-item-id="chat"]');
+  await clickInShadow(page, ".sp-card");
+  await page.waitForFunction(
+    () => !!document.querySelector("siteping-widget")?.shadowRoot?.querySelector(".sp-detail textarea"),
+  );
+}
+
+/** The replies the widget's detail view shows, as text. */
+function widgetReplies(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    [...(document.querySelector("siteping-widget")?.shadowRoot?.querySelectorAll(".sp-comment") ?? [])].map(
+      (reply) => reply.textContent ?? "",
+    ),
+  );
+}
+
+test.describe("Discussion thread across the widget and the inbox", () => {
+  test("a reply goes from the widget to the inbox and back, and the inbox deletes one", async ({
+    page,
+    request,
+  }, testInfo) => {
+    const project = projectFor(testInfo);
+    const seeded = await seed(request, project, "Which font size?");
+
+    // The widget: the server advertises threads, so the reviewer can answer.
+    await openWidgetThread(page, project);
+    const posted = page.waitForResponse((r) => r.url().startsWith(API) && r.request().method() === "POST");
+    await page.evaluate(() => {
+      const shadow = document.querySelector("siteping-widget")?.shadowRoot;
+      const input = shadow?.querySelector<HTMLTextAreaElement>(".sp-detail textarea");
+      if (input) input.value = "  16 px, please  ";
+      shadow?.querySelector<HTMLButtonElement>(".sp-thread-foot button")?.click();
+    });
+    expect((await posted).status()).toBe(201);
+    await expect.poll(() => widgetReplies(page)).toEqual([expect.stringContaining("16 px, please")]);
+
+    // The inbox shows it in the drawer and answers.
+    await openInbox(page, { project, author: "Studio" });
+    await page.locator(".spd-list").focus();
+    await page.keyboard.press("j");
+    await page.keyboard.press("Enter");
+    // 1280 px wide: the drawer sits beside the list, a region rather than a dialog.
+    const drawer = page.getByRole("region", { name: /Feedback details/ });
+    await expect(drawer.locator(".spd-comment .spd-message")).toHaveText(["16 px, please"]);
+    await drawer.getByRole("textbox", { name: "Reply to the client…" }).fill("Done in the next deploy");
+    const answered = page.waitForResponse((r) => r.url().startsWith(API) && r.request().method() === "POST");
+    await drawer.getByRole("button", { name: "Send" }).click();
+    expect((await answered).status()).toBe(201);
+    await expect(drawer.locator(".spd-comment .spd-message")).toHaveText(["16 px, please", "Done in the next deploy"]);
+
+    const [stored] = await listFeedbacks(request, project);
+    expect(stored?.comments?.map((c) => [c.body, c.authorName, c.authorRole])).toEqual([
+      ["16 px, please", "E2E Tester", "client"],
+      // No apiKey on this handler: the role the inbox asks for is not kept.
+      ["Done in the next deploy", "Studio", "client"],
+    ]);
+
+    // Back on the site, the reviewer reads the answer.
+    await openWidgetThread(page, project);
+    await expect
+      .poll(() => widgetReplies(page))
+      .toEqual([expect.stringContaining("16 px, please"), expect.stringContaining("Done in the next deploy")]);
+
+    // The inbox deletes the first reply, after asking.
+    await openInbox(page, { project, author: "Studio" });
+    await page.locator(".spd-list").focus();
+    await page.keyboard.press("j");
+    await page.keyboard.press("Enter");
+    await drawer.getByRole("button", { name: "Delete reply" }).first().click();
+    const deleted = page.waitForResponse((r) => r.url().startsWith(API) && r.request().method() === "DELETE");
+    await drawer.getByRole("button", { name: "Delete", exact: true }).click();
+    expect((await deleted).status()).toBe(200);
+    await expect(drawer.locator(".spd-comment .spd-message")).toHaveText(["Done in the next deploy"]);
+    const [after] = await listFeedbacks(request, project);
+    expect(after?.id).toBe(seeded.id);
+    expect(after?.comments?.map((c) => c.body)).toEqual(["Done in the next deploy"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Permissions: what the server lets each requester do (#101)
+// ---------------------------------------------------------------------------
+
+test.describe("Permissions sent by the real handler", () => {
+  const KEYED = "/api/siteping-keyed";
+
+  test("a visitor without the key gets no triage action; the key holder's inbox has them", async ({
+    page,
+    request,
+  }, testInfo) => {
+    const project = projectFor(testInfo);
+    await seed(request, project, "Only the team triages this");
+
+    // The site's visitor: reads and replies, never resolves or deletes.
+    await openWidgetPage(page, { project, endpoint: KEYED });
+    await clickInShadow(page, ".sp-fab");
+    await clickInShadow(page, '[data-item-id="chat"]');
+    await clickInShadow(page, ".sp-card");
+    await page.waitForFunction(
+      () => !!document.querySelector("siteping-widget")?.shadowRoot?.querySelector(".sp-detail textarea"),
+    );
+    const offered = await page.evaluate(() => {
+      const shadow = document.querySelector("siteping-widget")?.shadowRoot;
+      return {
+        card: !!shadow?.querySelector(".sp-card .sp-btn-resolve, .sp-card .sp-btn-delete"),
+        detail: !!shadow?.querySelector(".sp-detail-btn-resolve, .sp-detail-btn-delete"),
+        deleteAll: shadow?.querySelector<HTMLElement>(".sp-btn-delete-all")?.style.display !== "none",
+      };
+    });
+    expect(offered).toEqual({ card: false, detail: false, deleteAll: false });
+
+    // An inbox without the key reads the status; with it, changes it.
+    await openInbox(page, { project, endpoint: KEYED });
+    await page.locator(".spd-list").focus();
+    await page.keyboard.press("j");
+    await page.keyboard.press("Enter");
+    const drawer = page.getByRole("region", { name: /Feedback details/ });
+    await expect(drawer.locator('span.spd-status-menu-trigger[data-status="open"]')).toBeVisible();
+    await expect(drawer.getByRole("button", { name: "Delete feedback" })).toHaveCount(0);
+
+    await openInbox(page, { project, endpoint: KEYED, apiKey: "e2e-key" });
+    await page.locator(".spd-list").focus();
+    await page.keyboard.press("j");
+    await page.keyboard.press("Enter");
+    await expect(drawer.getByRole("button", { name: "Open" })).toBeVisible();
+    await expect(drawer.getByRole("button", { name: "Delete feedback" })).toBeVisible();
   });
 });

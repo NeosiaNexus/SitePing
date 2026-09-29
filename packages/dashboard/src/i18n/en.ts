@@ -69,6 +69,14 @@ export const en: Translations = {
   "drawer.deleteConfirm": "Delete permanently? This cannot be undone.",
   "drawer.deleteYes": "Delete",
 
+  // Discussion thread
+  "comments.title": "Replies",
+  "comments.team": "Team",
+  "comments.placeholder": "Reply to the client…",
+  "comments.send": "Send",
+  "comments.delete": "Delete reply",
+  "comments.failed": "Something went wrong. Try again.",
+
   // Footer hint bar
   "hints.navigate": "navigate",
   "hints.open": "open",

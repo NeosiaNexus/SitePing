@@ -1,4 +1,4 @@
-import type { AnnotationRecord, FeedbackRecord } from "@siteping/core";
+import type { AnnotationRecord, CommentRecord, FeedbackRecord } from "@siteping/core";
 import { expectTypeOf, test } from "vitest";
 import type { LibSQLSitepingStoreOptions, SitepingSqliteTables } from "../src/libsql/index.js";
 import type { PgSitepingStoreOptions, SitepingPgTables } from "../src/pg/index.js";
@@ -7,27 +7,33 @@ import type { PgSitepingStoreOptions, SitepingPgTables } from "../src/pg/index.j
 // field added to the store contract cannot ship without its column. The tables
 // add only internal columns: `creationSequence` on PostgreSQL feedbacks
 // (tie-break of "newest first" — SQLite uses its implicit `rowid`), `position`
-// on annotations (submission order) and `messageSearch` on feedbacks
-// (Unicode-lowercased message searched).
-type FeedbackRow = Omit<FeedbackRecord, "annotations">;
+// on annotations (submission order) and comments (posting order), and
+// `messageSearch` on feedbacks (Unicode-lowercased message searched).
+type FeedbackRow = Omit<FeedbackRecord, "annotations" | "comments">;
 
 test("PostgreSQL tables match the core records", () => {
   type FeedbackSelect = SitepingPgTables["sitepingFeedbacks"]["$inferSelect"];
   type AnnotationSelect = SitepingPgTables["sitepingAnnotations"]["$inferSelect"];
+  type CommentSelect = SitepingPgTables["sitepingComments"]["$inferSelect"];
   expectTypeOf<Omit<FeedbackSelect, "creationSequence" | "messageSearch">>().toEqualTypeOf<FeedbackRow>();
   expectTypeOf<FeedbackSelect["creationSequence"]>().toEqualTypeOf<number>();
   expectTypeOf<FeedbackSelect["messageSearch"]>().toEqualTypeOf<string | null>();
   expectTypeOf<Omit<AnnotationSelect, "position">>().toEqualTypeOf<AnnotationRecord>();
   expectTypeOf<AnnotationSelect["position"]>().toEqualTypeOf<number>();
+  expectTypeOf<Omit<CommentSelect, "position">>().toEqualTypeOf<CommentRecord>();
+  expectTypeOf<CommentSelect["position"]>().toEqualTypeOf<number>();
 });
 
 test("SQLite / libSQL tables match the core records", () => {
   type FeedbackSelect = SitepingSqliteTables["sitepingFeedbacks"]["$inferSelect"];
   type AnnotationSelect = SitepingSqliteTables["sitepingAnnotations"]["$inferSelect"];
+  type CommentSelect = SitepingSqliteTables["sitepingComments"]["$inferSelect"];
   expectTypeOf<Omit<FeedbackSelect, "messageSearch">>().toEqualTypeOf<FeedbackRow>();
   expectTypeOf<FeedbackSelect["messageSearch"]>().toEqualTypeOf<string | null>();
   expectTypeOf<Omit<AnnotationSelect, "position">>().toEqualTypeOf<AnnotationRecord>();
   expectTypeOf<AnnotationSelect["position"]>().toEqualTypeOf<number>();
+  expectTypeOf<Omit<CommentSelect, "position">>().toEqualTypeOf<CommentRecord>();
+  expectTypeOf<CommentSelect["position"]>().toEqualTypeOf<number>();
 });
 
 test("store options accept an explicit undefined, like every other optional option", () => {

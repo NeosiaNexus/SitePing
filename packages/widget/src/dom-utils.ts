@@ -80,6 +80,15 @@ export function onClickOutside(container: HTMLElement, onOutside: () => void): (
 }
 
 /**
+ * Hide or show an element. `hidden` alone loses to a class that sets
+ * `display`, and the panel's focus trap reads `style.display`.
+ */
+export function setHidden(element: HTMLElement, hidden: boolean): void {
+  element.hidden = hidden;
+  element.style.display = hidden ? "none" : "";
+}
+
+/**
  * Replace a button's children with a small spinner and disable it.
  * Returns a `restore` callback that swaps the original content back and
  * re-enables the button. Used by every async button (delete, resolve, …)
@@ -96,6 +105,19 @@ export function setButtonLoading(btn: HTMLButtonElement): () => void {
     btn.replaceChildren(...snapshot);
     btn.disabled = false;
   };
+}
+
+/**
+ * Detect whether the host platform uses ⌘+Enter (macOS) vs Ctrl+Enter — the
+ * send shortcut hinted by the popup and the thread's composer. Resolved at
+ * call time so the popup can recompute its hint when the locale dictionary
+ * lands.
+ */
+export function isMacPlatform(): boolean {
+  const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
+  return uaData
+    ? uaData.platform === "macOS"
+    : (navigator.platform?.includes("Mac") ?? /Macintosh|Mac OS X/i.test(navigator.userAgent));
 }
 
 /** Format a relative date string using Intl.RelativeTimeFormat for locale support */

@@ -7,17 +7,19 @@
  * timestamps), filter/paginate with `applyFeedbackFilters`, and implement
  * the dedup/update/delete choreography of the `SitepingStore` contract.
  *
- * `buildFeedbackRecord` / `buildAnnotationRecord` cover the first part for
- * any adapter. `createCollectionStore` covers all of it: give it `load`,
- * `persist`, and `generateId`, and it returns a fully conformant
- * `SitepingStore` — writing a new snapshot adapter is ~20 lines plus its
- * storage specifics.
+ * `buildFeedbackRecord` / `buildAnnotationRecord` / `buildCommentRecord`
+ * cover the first part for any adapter. `createCollectionStore` covers all
+ * of it: give it `load`, `persist`, and `generateId`, and it returns a fully
+ * conformant `SitepingStore` — writing a new snapshot adapter is ~20 lines
+ * plus its storage specifics.
  */
 
 import { applyFeedbackFilters } from "./filters.js";
 import type {
   AnnotationCreateInput,
   AnnotationRecord,
+  CommentCreateInput,
+  CommentRecord,
   FeedbackCreateInput,
   FeedbackCreateOutcome,
   FeedbackPage,
@@ -26,7 +28,7 @@ import type {
   FeedbackUpdateInput,
   SitepingStore,
 } from "./types.js";
-import { StoreNotFoundError } from "./types.js";
+import { MAX_COMMENTS_PER_FEEDBACK, StoreLimitError, StoreNotFoundError } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Record construction
@@ -66,12 +68,31 @@ export function buildAnnotationRecord(
   };
 }
 
+/** Build a persisted `CommentRecord` from its create input — stamps identity, thread and timestamp. */
+export function buildCommentRecord(
+  input: CommentCreateInput,
+  ctx: { id: string; feedbackId: string; now?: Date },
+): CommentRecord {
+  return {
+    id: ctx.id,
+    feedbackId: ctx.feedbackId,
+    body: input.body,
+    authorName: input.authorName,
+    authorEmail: input.authorEmail,
+    authorRole: input.authorRole,
+    clientId: input.clientId,
+    createdAt: ctx.now ?? new Date(),
+  };
+}
+
 /**
  * Build a persisted `FeedbackRecord` (with its annotations) from a create
  * input — normalizes every optional field to `null` and stamps ids and
  * timestamps. Adapters without external screenshot storage keep the data
  * URL inline on `screenshotUrl`, which is what this helper does; adapters
  * with a `ScreenshotStorage` upload first and override `screenshotUrl`.
+ * It leaves `comments` out, so the record minus its `annotations` stays an
+ * insertable feedback row; a store with threads returns `comments: []` itself.
  */
 export function buildFeedbackRecord(
   input: FeedbackCreateInput,
@@ -130,7 +151,7 @@ export interface CollectionStoreBackend {
    * update.
    */
   persist(feedbacks: FeedbackRecord[]): void | Promise<void>;
-  /** Generate a unique id for a new feedback or annotation record. */
+  /** Generate a unique id for a new feedback, annotation or comment record. */
   generateId(): string;
 }
 
@@ -147,9 +168,10 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * The engine implements the whole store contract: clientId dedup (idempotent
  * create, with `createFeedbackIfAbsent` reporting inserts), newest-first
  * ordering, the standard filter/pagination pipeline, `StoreNotFoundError` on
- * missing update/delete, project-scoped bulk delete, and
- * `verifyProjectOwnership`. The snapshot returned by `load` is never
- * mutated: every write hands `persist` a new array, so a failed write leaves
+ * missing update/delete, project-scoped bulk delete,
+ * `verifyProjectOwnership`, and discussion threads (`addComment`,
+ * `deleteComment`) kept on each record. The snapshot returned by `load` is
+ * never mutated: every write hands `persist` a new array, so a failed write leaves
  * a cached snapshot exactly as it was. When `persist` fails during `createFeedback`
  * and the record carries an inline screenshot, the engine retries once
  * without the screenshot (by far the heaviest field) so the text feedback
@@ -157,9 +179,10 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * returning the record would claim a success that was never persisted.
  *
  * Mutations (`createFeedbackIfAbsent`, `createFeedback`, `updateFeedback`,
- * `deleteFeedback`, `deleteAllFeedbacks`) run one at a time through a queue
- * owned by the returned store, so concurrent calls — the widget's
- * `Promise.all` bulk resolve/delete — never start from the same snapshot and
+ * `deleteFeedback`, `deleteAllFeedbacks`, `addComment`, `deleteComment`) run
+ * one at a time through a queue owned by the returned store, so concurrent
+ * calls — the widget's `Promise.all` bulk resolve/delete, a comment posted
+ * while its feedback is resolved — never start from the same snapshot and
  * overwrite each other, and `createFeedbackIfAbsent` reports `created: true`
  * exactly once per `clientId`. A failed mutation rejects with its own error
  * and does not block the ones queued after it, but `load` and `persist` must
@@ -190,7 +213,7 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  */
 export function createCollectionStore(
   backend: CollectionStoreBackend,
-): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent">> {
+): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent" | "addComment" | "deleteComment">> {
   // Every mutation is a load → modify → persist cycle over the WHOLE
   // snapshot, so two interleaved mutations would start from the same
   // snapshot and the last persist would silently drop the other's change
@@ -223,10 +246,13 @@ export function createCollectionStore(
       const existing = feedbacks.find((f) => f.clientId === data.clientId);
       if (existing) return { feedback: existing, created: false };
 
-      const record = buildFeedbackRecord(data, {
-        id: backend.generateId(),
-        annotationId: () => backend.generateId(),
-      });
+      const record: FeedbackRecord = {
+        ...buildFeedbackRecord(data, {
+          id: backend.generateId(),
+          annotationId: () => backend.generateId(),
+        }),
+        comments: [],
+      };
 
       const next = [record, ...feedbacks];
       try {
@@ -285,5 +311,36 @@ export function createCollectionStore(
       const fb = (await backend.load()).find((f) => f.id === id);
       return fb !== undefined && fb.projectName === projectName;
     },
+
+    addComment: (feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> =>
+      mutate(async (feedbacks) => {
+        // ClientId dedup across every thread — idempotent, like createFeedback
+        const existing = feedbacks.flatMap((f) => f.comments ?? []).find((c) => c.clientId === data.clientId);
+        if (existing) return existing;
+
+        const current = feedbacks.find((f) => f.id === feedbackId);
+        if (!current) throw new StoreNotFoundError();
+        const thread = current.comments ?? [];
+        if (thread.length >= MAX_COMMENTS_PER_FEEDBACK) {
+          throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
+        }
+
+        const comment = buildCommentRecord(data, { id: backend.generateId(), feedbackId });
+        const updated: FeedbackRecord = { ...current, comments: [...thread, comment] };
+        await backend.persist(feedbacks.map((f) => (f === current ? updated : f)));
+        return comment;
+      }),
+
+    deleteComment: (feedbackId: string, commentId: string): Promise<void> =>
+      mutate(async (feedbacks) => {
+        const current = feedbacks.find((f) => f.id === feedbackId);
+        const thread = current?.comments ?? [];
+        // A comment of another thread is "not found" here: the caller was
+        // only authorized for this one.
+        if (!current || !thread.some((c) => c.id === commentId)) throw new StoreNotFoundError();
+
+        const updated: FeedbackRecord = { ...current, comments: thread.filter((c) => c.id !== commentId) };
+        await backend.persist(feedbacks.map((f) => (f === current ? updated : f)));
+      }),
   };
 }

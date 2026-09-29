@@ -1,6 +1,7 @@
 import {
   applyFeedbackFilters,
   buildFeedbackRecord,
+  type CommentCreateInput,
   type FeedbackCreateInput,
   isStorePersistence,
   type ScreenshotStorage,
@@ -20,7 +21,11 @@ const SCREENSHOT_DATA_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
 const RESPONSE_SIZE_LIMIT_BYTES = 16 * 1024;
 /** Time the injected test clocks start at, far from the real wall clock. */
 const FROZEN_TIME_MS = Date.parse("2026-01-01T00:00:00.000Z");
-const CUSTOM_TABLE_NAMES: SitepingTableNames = { feedbacks: "review_feedbacks", annotations: "review_annotations" };
+const CUSTOM_TABLE_NAMES: SitepingTableNames = {
+  feedbacks: "review_feedbacks",
+  annotations: "review_annotations",
+  comments: "review_comments",
+};
 
 function feedbackInput(overrides: Partial<FeedbackCreateInput> = {}): FeedbackCreateInput {
   return {
@@ -55,6 +60,17 @@ function feedbackInput(overrides: Partial<FeedbackCreateInput> = {}): FeedbackCr
         devicePixelRatio: 1,
       },
     ],
+    ...overrides,
+  };
+}
+
+function commentInput(overrides: Partial<CommentCreateInput> = {}): CommentCreateInput {
+  return {
+    body: "Fixed on staging",
+    authorName: "Bob",
+    authorEmail: "bob@example.com",
+    authorRole: "team",
+    clientId: crypto.randomUUID(),
     ...overrides,
   };
 }
@@ -94,6 +110,13 @@ function isAnnotationRead(statementSql: string): boolean {
   return (
     normalizedSql.startsWith("select") && normalizedSql.includes(`from "${DEFAULT_SITEPING_TABLE_NAMES.annotations}"`)
   );
+}
+
+/** Whether a driver call writes comment rows. */
+function isCommentWrite(statementSql: string): boolean {
+  const normalizedSql = statementSql.toLowerCase();
+  const table = `"${DEFAULT_SITEPING_TABLE_NAMES.comments}"`;
+  return normalizedSql.includes(`insert into ${table}`) || normalizedSql.includes(`delete from ${table}`);
 }
 
 /** Whether a driver call updates feedback rows. */
@@ -138,6 +161,7 @@ interface DialectUnderTest {
     /** A store on the same database whose driver calls all go through `intercept`. */
     createStoreWithDriverInterceptor(intercept: DriverCallInterceptor, options?: DrizzleStoreOptions): DrizzleStore;
     countAnnotations(): Promise<number>;
+    countComments(): Promise<number>;
     /** Write through the same `db` as the host application would — an insert and a bulk update, outside the store. */
     writeAsApplication(): Promise<void>;
     /** Insert one feedback row through the exported table, as the host application would — no internal column set. */
@@ -146,6 +170,8 @@ interface DialectUnderTest {
     insertFeedbacksAsApplication(rows: readonly ApplicationFeedbackRow[]): Promise<void>;
     /** Re-insert every annotation row in reverse physical order, as a dump/restore or a table rewrite may. */
     reverseAnnotationStorageOrder(): Promise<void>;
+    /** Re-insert every comment row in reverse physical order, as a dump/restore or a table rewrite may. */
+    reverseCommentStorageOrder(): Promise<void>;
     /**
      * Make the database's own case folding of `message` ASCII-only, as a PostgreSQL database
      * created with `LC_CTYPE = 'C'` does; resolves to the undo. SQLite's LIKE already folds
@@ -177,6 +203,7 @@ const dialects: DialectUnderTest[] = [
         createStoreWithDriverInterceptor: (intercept, options) =>
           createPgSitepingStore(database.withDriverCallInterceptor(intercept), { ...options, tables }),
         countAnnotations: async () => (await database.db.select().from(tables.sitepingAnnotations)).length,
+        countComments: async () => (await database.db.select().from(tables.sitepingComments)).length,
         async writeAsApplication() {
           await database.db.insert(tables.sitepingFeedbacks).values(applicationFeedbackRow());
           await database.db.update(tables.sitepingFeedbacks).set({ authorName: "Edited by the application" });
@@ -195,6 +222,11 @@ const dialects: DialectUnderTest[] = [
           const rows = await database.db.select().from(tables.sitepingAnnotations);
           await database.db.delete(tables.sitepingAnnotations);
           for (const row of rows.reverse()) await database.db.insert(tables.sitepingAnnotations).values(row);
+        },
+        async reverseCommentStorageOrder() {
+          const rows = await database.db.select().from(tables.sitepingComments);
+          await database.db.delete(tables.sitepingComments);
+          for (const row of rows.reverse()) await database.db.insert(tables.sitepingComments).values(row);
         },
         async foldMessageCaseAsciiOnly() {
           const alterMessageCollation = (collation: string) =>
@@ -233,6 +265,7 @@ const dialects: DialectUnderTest[] = [
         createStoreWithDriverInterceptor: (intercept, options) =>
           createLibSQLSitepingStore(database.withDriverCallInterceptor(intercept), { ...options, tables }),
         countAnnotations: async () => (await database.db.select().from(tables.sitepingAnnotations)).length,
+        countComments: async () => (await database.db.select().from(tables.sitepingComments)).length,
         async writeAsApplication() {
           await database.db.insert(tables.sitepingFeedbacks).values(applicationFeedbackRow());
           await database.db.update(tables.sitepingFeedbacks).set({ authorName: "Edited by the application" });
@@ -251,6 +284,11 @@ const dialects: DialectUnderTest[] = [
           const rows = await database.db.select().from(tables.sitepingAnnotations);
           await database.db.delete(tables.sitepingAnnotations);
           for (const row of rows.reverse()) await database.db.insert(tables.sitepingAnnotations).values(row);
+        },
+        async reverseCommentStorageOrder() {
+          const rows = await database.db.select().from(tables.sitepingComments);
+          await database.db.delete(tables.sitepingComments);
+          for (const row of rows.reverse()) await database.db.insert(tables.sitepingComments).values(row);
         },
         async foldMessageCaseAsciiOnly() {
           return async () => {};
@@ -691,22 +729,28 @@ for (const dialect of dialects) {
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
-    it("removes the annotations of deleted feedbacks, even where the database does not enforce foreign keys", async () => {
+    it("removes the annotations and comments of deleted feedbacks, even where the database does not enforce foreign keys", async () => {
       const restoreForeignKeys = await database.stopEnforcingForeignKeys();
       try {
         const store = database.createStore({ logger });
         // A delete hook switches deleteAllFeedbacks to its chunked path.
         const storeWithDeleteHook = database.createStore({ logger, screenshotStorage: recordingStorage().storage });
-        const single = await store.createFeedback(feedbackInput());
-        await store.createFeedback(feedbackInput({ projectName: "bulk" }));
-        await store.createFeedback(feedbackInput({ projectName: "chunked" }));
-        await store.createFeedback(feedbackInput({ projectName: "kept" }));
+        const created = [
+          await store.createFeedback(feedbackInput()),
+          await store.createFeedback(feedbackInput({ projectName: "bulk" })),
+          await store.createFeedback(feedbackInput({ projectName: "chunked" })),
+          await store.createFeedback(feedbackInput({ projectName: "kept" })),
+        ];
+        for (const feedback of created) await store.addComment(feedback.id, commentInput());
+        const [single] = created;
+        if (!single) throw new Error("fixture");
 
         await store.deleteFeedback(single.id);
         await store.deleteAllFeedbacks("bulk");
         await storeWithDeleteHook.deleteAllFeedbacks("chunked");
 
         expect(await database.countAnnotations()).toBe(1);
+        expect(await database.countComments()).toBe(1);
       } finally {
         await restoreForeignKeys();
       }
@@ -1007,6 +1051,61 @@ for (const dialect of dialects) {
       expect(reloaded?.annotations[0]).not.toHaveProperty("position");
     });
 
+    it("returns a thread in posting order, even posted within one millisecond and stored in another order", async () => {
+      const store = database.createStore({ logger, now: () => new Date(FROZEN_TIME_MS) });
+      const feedback = await store.createFeedback(feedbackInput());
+      const posted = [];
+      for (let index = 0; index < 4; index += 1) {
+        posted.push(await store.addComment(feedback.id, commentInput({ body: `Reply ${index}` })));
+      }
+
+      await database.reverseCommentStorageOrder();
+      const [reloaded] = (await store.getFeedbacks({ projectName: "site" })).feedbacks;
+
+      expect(reloaded?.comments).toEqual(posted);
+      expect(reloaded?.comments?.[0]).not.toHaveProperty("position");
+      expect(posted[0]?.createdAt.getTime()).toBe(FROZEN_TIME_MS);
+    });
+
+    it("reports a failed comment write as a StorePersistenceError carrying the driver error", async () => {
+      const writer = database.createStore({ logger });
+      const feedback = await writer.createFeedback(feedbackInput());
+      const kept = await writer.addComment(feedback.id, commentInput());
+      const writeFailure = new Error("connection lost while writing the comment");
+      const store = database.createStoreWithDriverInterceptor(
+        (statementSql, run) => (isCommentWrite(statementSql) ? Promise.reject(writeFailure) : run()),
+        { logger },
+      );
+
+      const failures = await Promise.all(
+        [() => store.addComment(feedback.id, commentInput()), () => store.deleteComment(feedback.id, kept.id)].map(
+          (mutation) =>
+            mutation().then(
+              () => null,
+              (error: unknown) => error,
+            ),
+        ),
+      );
+
+      for (const failure of failures) {
+        expect(isStorePersistence(failure)).toBe(true);
+        expect(causeChain(failure)).toContain(writeFailure);
+      }
+      expect((await writer.findByClientId(feedback.clientId))?.comments).toEqual([kept]);
+    });
+
+    it("stores one comment when separate store instances race on its clientId", async () => {
+      const feedback = await database.createStore({ logger }).createFeedback(feedbackInput());
+      const input = commentInput();
+
+      const results = await Promise.all(
+        Array.from({ length: 3 }, () => database.createStore({ logger }).addComment(feedback.id, input)),
+      );
+
+      for (const result of results) expect(result.id).toBe(results[0]?.id);
+      expect(await database.countComments()).toBe(1);
+    });
+
     it("stamps createdAt and updatedAt with the injected clock", async () => {
       let currentTime = FROZEN_TIME_MS;
       const store = database.createStore({ logger, now: () => new Date(currentTime) });
@@ -1184,15 +1283,36 @@ for (const dialect of dialects) {
       try {
         const store = database.createStore({ logger: { warn: () => {} } });
         const created = await store.createFeedback(feedbackInput());
+        const comment = await store.addComment(created.id, commentInput());
 
         const page = await store.getFeedbacks({ projectName: "site" });
 
         expect(page.feedbacks.map((feedback) => feedback.id)).toEqual([created.id]);
         expect(page.feedbacks[0]?.annotations).toHaveLength(1);
+        expect(page.feedbacks[0]?.comments).toEqual([comment]);
         expect(await database.countAnnotations()).toBe(1);
+        expect(await database.countComments()).toBe(1);
       } finally {
         await database.close();
       }
     });
   });
 }
+
+// Each entry bundles its own copy of core, so `instanceof` only matches the
+// classes exported by that entry: every error a store method throws must be one.
+it.each([
+  ["pg", () => import("../src/pg/index.js")],
+  ["libsql", () => import("../src/libsql/index.js")],
+])("the %s entry re-exports every store error its methods throw", async (_name, loadEntry) => {
+  const { isStorePersistence, StoreDuplicateError, StoreLimitError, StoreNotFoundError, StorePersistenceError } =
+    await import("@siteping/core");
+
+  expect(await loadEntry()).toMatchObject({
+    isStorePersistence,
+    StoreDuplicateError,
+    StoreLimitError,
+    StoreNotFoundError,
+    StorePersistenceError,
+  });
+});

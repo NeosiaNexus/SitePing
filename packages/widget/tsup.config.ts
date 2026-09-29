@@ -1,4 +1,8 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
+import { minify } from "terser";
 import { defineConfig } from "tsup";
+import { cssLiteralsPlugin } from "./scripts/css-literals.js";
 
 // Three parallel builds:
 //  - ESM+CJS main: ESM is code-split so dynamic imports (Panel, locale
@@ -6,9 +10,14 @@ import { defineConfig } from "tsup";
 //    CJS twin is a single file (splitting is ESM-only) for require()
 //    consumers — Jest setups, legacy bundlers (#220).
 //  - IIFE main: single global script for <script src> consumers — splitting is
-//    incompatible with IIFE, so everything is inlined.
+//    incompatible with IIFE, so everything is inlined. It is the one bundle
+//    browsers run exactly as shipped (no consumer bundler minifies it again),
+//    so Terser takes a second pass after esbuild's minifier (`terserPass`).
 //  - ESM+CJS React entry (`@siteping/widget/react`): React stays external so
 //    consumers pin their own version.
+//
+// `cssLiteralsPlugin` minifies the `/* css */`-marked template literals —
+// the stylesheet and inline styles — which the JS minifier ships verbatim.
 //
 // `esbuildOptions.pure` strips `console.debug` / `console.info` calls in the
 // production minifier — they're dev-only diagnostics. `console.warn` and
@@ -25,6 +34,24 @@ const pureCalls = ["console.debug", "console.info"] as const;
 // `scripts/verify-dist-guard.mjs` asserts this after every build.
 const keepNodeEnvLiteral = { "process.env.NODE_ENV": "process.env.NODE_ENV" } as const;
 
+// Terser runs on the finished file rather than through tsup's
+// `minify: "terser"`, which ships the esbuild output when Terser fails and
+// names that intermediate bundle by its absolute path in the source map.
+// Given esbuild's map, Terser chains the two maps itself and leaves the code
+// that has no original position unmapped.
+async function terserPass(file: string): Promise<void> {
+  const name = basename(file);
+  const [code, map] = await Promise.all([readFile(file, "utf8"), readFile(`${file}.map`, "utf8")]);
+  const result = await minify(
+    { [name]: code },
+    { compress: { passes: 2 }, sourceMap: { content: map, url: `${name}.map` } },
+  );
+  if (result.code === undefined || typeof result.map !== "string") {
+    throw new Error(`Terser returned no output for ${file}`);
+  }
+  await Promise.all([writeFile(file, result.code), writeFile(`${file}.map`, result.map)]);
+}
+
 export default defineConfig([
   {
     entry: ["src/index.ts"],
@@ -38,6 +65,7 @@ export default defineConfig([
     splitting: true,
     treeshake: "recommended",
     noExternal: ["@medv/finder", "@siteping/core"],
+    esbuildPlugins: [cssLiteralsPlugin],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
       o.define = { ...o.define, ...keepNodeEnvLiteral };
@@ -56,10 +84,12 @@ export default defineConfig([
     splitting: false,
     treeshake: "recommended",
     noExternal: ["@medv/finder", "@siteping/core"],
+    esbuildPlugins: [cssLiteralsPlugin],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
       o.define = { ...o.define, ...keepNodeEnvLiteral };
     },
+    onSuccess: () => terserPass("dist/index.global.js"),
   },
   {
     entry: ["src/react.ts"],
@@ -74,6 +104,7 @@ export default defineConfig([
     treeshake: "recommended",
     noExternal: ["@medv/finder", "@siteping/core"],
     external: ["react"],
+    esbuildPlugins: [cssLiteralsPlugin],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
       o.define = { ...o.define, ...keepNodeEnvLiteral };

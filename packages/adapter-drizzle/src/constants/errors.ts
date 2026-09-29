@@ -2,4 +2,10 @@
 export const DRIZZLE_STORE_MESSAGE_PREFIX = "[siteping] DrizzleStore";
 
 /** Store mutations whose database failures surface as `StorePersistenceError`. */
-export type DrizzleStoreMutation = "createFeedback" | "updateFeedback" | "deleteFeedback" | "deleteAllFeedbacks";
+export type DrizzleStoreMutation =
+  | "createFeedback"
+  | "updateFeedback"
+  | "deleteFeedback"
+  | "deleteAllFeedbacks"
+  | "addComment"
+  | "deleteComment";

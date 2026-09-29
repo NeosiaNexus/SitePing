@@ -494,6 +494,33 @@ describe("SitepingInbox — drawer", () => {
     expect(dl?.querySelectorAll("dd.spd-meta-value").length).toBeGreaterThanOrEqual(5);
   });
 
+  it("offers to delete a reply only when the source can delete it", async () => {
+    const reply = {
+      id: "c-1",
+      feedbackId: "o1",
+      body: "16 or 24 px?",
+      authorName: "Alex",
+      authorEmail: "",
+      authorRole: "client" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-20T10:07:00Z"),
+    };
+    const records = seed().map((r) => (r.id === "o1" ? { ...r, comments: [reply] } : r));
+    const addComment = async () => reply;
+    for (const [removeComment, offered] of [
+      [undefined, false],
+      [async () => {}, true],
+    ] as const) {
+      const source = Object.assign(makeSource(records), { addComment }, removeComment ? { removeComment } : {});
+      render(<SitepingInbox source={source} projects="demo" theme="dark" author={{ name: "Studio" }} />);
+      await openFirst();
+      const dialog = screen.getByRole("dialog", { name: /Feedback details/ });
+      expect(within(dialog).getByRole("textbox", { name: "Reply to the client…" })).toBeTruthy();
+      expect(within(dialog).queryByRole("button", { name: "Delete reply" }) !== null).toBe(offered);
+      cleanup();
+    }
+  });
+
   it("is a modal dialog in overlay (narrow) mode", async () => {
     renderInbox();
     await openFirst();
@@ -633,5 +660,67 @@ describe("SitepingInbox — chrome & theming", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]?.querySelector(".spd-row-message")?.textContent).toBe("Why are there two prices?");
     });
+  });
+});
+
+describe("SitepingInbox — permissions and readOnly", () => {
+  const REVIEWER = { canChangeStatus: false, canDelete: false, canComment: true, canDeleteComment: false };
+  const hintKeys = (container: HTMLElement) =>
+    [...container.querySelectorAll(".spd-hints kbd")].map((kbd) => kbd.textContent);
+
+  it("e, p and x do nothing on a row that refuses status changes — no request, no toast", async () => {
+    const records = seed().map((record) => (record.id === "o1" ? { ...record, permissions: REVIEWER } : record));
+    const { source } = renderInbox({}, records);
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" }); // focus o1
+
+    for (const key of ["e", "p", "x"]) fireEvent.keyDown(listbox, { key });
+    await act(async () => {});
+
+    expect(source.setStatus).not.toHaveBeenCalled();
+    expect(screen.queryByText(/^Marked as/)).toBeNull();
+    expect(listRows()).toHaveLength(3);
+  });
+
+  it("leaves the status keys out of the hints and the cheat sheet when no listed row allows a change", async () => {
+    const { container } = renderInbox({ readOnly: true });
+    const listbox = await ready();
+    expect(hintKeys(container)).not.toContain("e");
+
+    fireEvent.keyDown(listbox, { key: "?" });
+    const sheet = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    const keys = [...sheet.querySelectorAll("kbd")].map((kbd) => kbd.textContent);
+    expect(keys).not.toContain("e");
+    expect(keys).not.toContain("u");
+    expect(keys).toEqual(expect.arrayContaining(["j", "/"]));
+
+    cleanup();
+    const { container: triage } = renderInbox();
+    await ready();
+    expect(hintKeys(triage)).toEqual(expect.arrayContaining(["e", "p", "x"]));
+  });
+
+  it("keeps the status keys while any listed row allows a change", async () => {
+    const records = seed().map((record) => (record.id === "o1" ? { ...record, permissions: REVIEWER } : record));
+    const { container } = renderInbox({}, records);
+    const listbox = await ready();
+    expect(hintKeys(container)).toEqual(expect.arrayContaining(["e", "p", "x"]));
+
+    fireEvent.keyDown(listbox, { key: "?" });
+    const sheet = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    const keys = [...sheet.querySelectorAll("kbd")].map((kbd) => kbd.textContent);
+    expect(keys).toEqual(expect.arrayContaining(["e", "u"]));
+  });
+
+  it("in readOnly, the drawer shows the status as text and offers no delete", async () => {
+    const { container } = renderInbox({ readOnly: true });
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    const dialog = await screen.findByRole("dialog", { name: /Feedback details/ });
+
+    expect(within(dialog).queryByRole("button", { name: "Open" })).toBeNull();
+    expect(dialog.querySelector('.spd-status-menu-trigger[data-status="open"]')?.textContent).toBe("Open");
+    expect(container.querySelector(".spd-danger-zone")).toBeNull();
   });
 });

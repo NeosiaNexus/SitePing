@@ -46,7 +46,7 @@ export function updateFeedbackOperation<Principal>({
 
       // PATCH can be made public via publicEndpoints / requireAuthForDestructive:
       // false — the scope keeps the author's email out of the update response.
-      return pipeline.json(scope, pipeline.present(scope, feedback));
+      return pipeline.json(scope, await pipeline.present(scope, feedback));
     } catch (error) {
       if (isStoreNotFound(error)) return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);
       return pipeline.fail(scope, "[siteping] Failed to update feedback", error);

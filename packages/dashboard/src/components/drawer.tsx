@@ -1,4 +1,4 @@
-import type { FeedbackRecord, FeedbackStatus } from "@siteping/core";
+import type { FeedbackPermissions, FeedbackRecord, FeedbackStatus } from "@siteping/core";
 import type { ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -9,12 +9,13 @@ import {
   shortId,
   toDateTimeAttr,
 } from "../format.js";
-import { getTypeLabel } from "../i18n/index.js";
-import { useInboxUi } from "./context.js";
+import { getStatusLabel, getTypeLabel } from "../i18n/index.js";
+import { STATUS_ICONS, useInboxUi } from "./context.js";
 import { Diagnostics } from "./diagnostics.js";
 import { EvidenceCard } from "./evidence-card.js";
 import { CloseIcon, ExternalIcon, TrashIcon } from "./icons.js";
 import { StatusMenu } from "./status-menu.js";
+import { Thread } from "./thread.js";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -26,6 +27,10 @@ interface DrawerProps {
   onClose: () => void;
   onChangeStatus: (id: string, status: FeedbackStatus) => void;
   onDelete: (id: string) => void;
+  /** What the user may do with the record — see `InboxState.permissionsOf`. */
+  permissions: FeedbackPermissions;
+  onAddComment: (id: string, body: string, clientId: string) => Promise<void>;
+  onDeleteComment: (id: string, commentId: string) => Promise<void>;
 }
 
 /**
@@ -41,6 +46,9 @@ export function Drawer({
   onClose,
   onChangeStatus,
   onDelete,
+  permissions,
+  onAddComment,
+  onDeleteComment,
 }: DrawerProps): ReactElement {
   const { t, locale, focusList } = useInboxUi();
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -92,6 +100,7 @@ export function Drawer({
   // Null for non-http(s) record URLs — the link/CTA render as plain text / not at all.
   const pageUrl = resolveRecordUrl(record.url);
   const deepLink = buildDeepLink(record, deepLinkParam);
+  const StatusIcon = STATUS_ICONS[record.status];
 
   return (
     <>
@@ -122,7 +131,14 @@ export function Drawer({
               #{shortId(record.id)}
             </span>
           </div>
-          <StatusMenu status={record.status} onSelect={(status) => onChangeStatus(record.id, status)} />
+          {permissions.canChangeStatus ? (
+            <StatusMenu status={record.status} onSelect={(status) => onChangeStatus(record.id, status)} />
+          ) : (
+            <span className="spd-status-menu-trigger" data-status={record.status}>
+              <StatusIcon />
+              {getStatusLabel(record.status, t)}
+            </span>
+          )}
           <button
             ref={closeRef}
             type="button"
@@ -174,24 +190,33 @@ export function Drawer({
             </dd>
           </dl>
           {hasDiagnostics && diagnostics ? <Diagnostics diagnostics={diagnostics} /> : null}
-          <div className="spd-danger-zone">
-            {confirming ? (
-              <div className="spd-confirm">
-                <span>{t("drawer.deleteConfirm")}</span>
-                <button type="button" className="spd-btn-danger" onClick={() => onDelete(record.id)}>
-                  {t("drawer.deleteYes")}
+          <Thread
+            record={record}
+            canComment={permissions.canComment}
+            canDelete={permissions.canDeleteComment}
+            onAdd={(body, clientId) => onAddComment(record.id, body, clientId)}
+            onDelete={(commentId) => onDeleteComment(record.id, commentId)}
+          />
+          {permissions.canDelete ? (
+            <div className="spd-danger-zone">
+              {confirming ? (
+                <div className="spd-confirm">
+                  <span>{t("drawer.deleteConfirm")}</span>
+                  <button type="button" className="spd-btn-danger" onClick={() => onDelete(record.id)}>
+                    {t("drawer.deleteYes")}
+                  </button>
+                  <button type="button" className="spd-btn-ghost" onClick={() => setConfirming(false)}>
+                    {t("inbox.cancel")}
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="spd-btn-danger-ghost" onClick={() => setConfirming(true)}>
+                  <TrashIcon />
+                  {t("drawer.delete")}
                 </button>
-                <button type="button" className="spd-btn-ghost" onClick={() => setConfirming(false)}>
-                  {t("inbox.cancel")}
-                </button>
-              </div>
-            ) : (
-              <button type="button" className="spd-btn-danger-ghost" onClick={() => setConfirming(true)}>
-                <TrashIcon />
-                {t("drawer.delete")}
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          ) : null}
         </div>
         {deepLink ? (
           <div className="spd-drawer-foot">

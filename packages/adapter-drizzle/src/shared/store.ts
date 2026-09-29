@@ -1,5 +1,8 @@
 import {
+  buildCommentRecord,
   buildFeedbackRecord,
+  type CommentCreateInput,
+  type CommentRecord,
   clampPagination,
   type FeedbackCreateInput,
   type FeedbackCreateOutcome,
@@ -11,8 +14,10 @@ import {
   isStoreNotFound,
   isStorePersistence,
   isUnreachableOffset,
+  MAX_COMMENTS_PER_FEEDBACK,
   type ScreenshotStorage,
   type SitepingStore,
+  StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
   screenshotMimeType,
@@ -27,6 +32,7 @@ import {
 import { settleWithConcurrencyLimit } from "./concurrency.js";
 import type {
   AnnotationRow,
+  CommentRow,
   DeleteFeedbacksOptions,
   FeedbackFilter,
   FeedbackRow,
@@ -35,10 +41,11 @@ import type {
 
 /**
  * The store returned by the dialect factories — the full contract, including
- * the ownership check and the atomic `createFeedbackIfAbsent`.
+ * the ownership check, the atomic `createFeedbackIfAbsent` and discussion
+ * threads.
  */
 export type DrizzleStore = SitepingStore &
-  Required<Pick<SitepingStore, "verifyProjectOwnership" | "createFeedbackIfAbsent">>;
+  Required<Pick<SitepingStore, "verifyProjectOwnership" | "createFeedbackIfAbsent" | "addComment" | "deleteComment">>;
 
 /**
  * Where the store reports degraded-but-non-fatal situations (failed
@@ -62,8 +69,8 @@ export interface DrizzleStoreOptions {
    */
   logger?: DrizzleStoreLogger | undefined;
   /**
-   * Clock for record timestamps: `createdAt` of new feedbacks and `updatedAt`
-   * of status updates. Defaults to the system clock.
+   * Clock for record timestamps: `createdAt` of new feedbacks and comments,
+   * `updatedAt` of status updates. Defaults to the system clock.
    */
   now?: (() => Date) | undefined;
 }
@@ -106,6 +113,17 @@ async function persistMutation<Result>(
       cause: error,
     });
   }
+}
+
+/** Rows grouped by their `feedbackId`, each group in the order the rows came. */
+function groupByFeedback<Row extends { feedbackId: string }>(rows: readonly Row[]): Map<string, Row[]> {
+  const byFeedback = new Map<string, Row[]>();
+  for (const row of rows) {
+    const siblings = byFeedback.get(row.feedbackId);
+    if (siblings) siblings.push(row);
+    else byFeedback.set(row.feedbackId, [row]);
+  }
+  return byFeedback;
 }
 
 /** Whether a stored `screenshotUrl` points at an object the storage owns (inline data URLs were never uploaded). */
@@ -184,7 +202,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
       throw error;
     }
     if (inserted) {
-      return { feedback: { ...row, annotations }, created: true };
+      return { feedback: { ...row, annotations, comments: [] }, created: true };
     }
 
     // Lost a race against the same clientId: the stored row keeps its own
@@ -225,26 +243,27 @@ export class DrizzleSitepingStore implements DrizzleStore {
     }
 
     const { rows, total } = await this.gateway.findFeedbacks(filter, { limit, offset: skip });
-    return { feedbacks: await this.withAnnotations(rows), total };
+    return { feedbacks: await this.withRelations(rows), total };
   }
 
   async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
     const row = await this.gateway.findByClientId(clientId);
-    return row ? ((await this.withAnnotations([row]))[0] ?? null) : null;
+    return row ? ((await this.withRelations([row]))[0] ?? null) : null;
   }
 
   /**
-   * Update a feedback's status. Annotations never change after the insert, so
-   * they are read before the update: once the update commits, no database
-   * call is left that could fail and make the caller retry an applied update.
+   * Update a feedback's status. Its annotations and thread are read before the
+   * update — annotations never change after the insert, and the thread is the
+   * one at the time of the update: once the update commits, no database call
+   * is left that could fail and make the caller retry an applied update.
    *
    * @throws `StoreNotFoundError` when no row has that id.
-   * @throws `StorePersistenceError` when reading the annotations or the update
-   *   fails — a failed annotation read leaves the row untouched.
+   * @throws `StorePersistenceError` when reading the annotations, the thread
+   *   or the update fails — a failed read leaves the row untouched.
    */
   async updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
-    const { annotations, row } = await persistMutation("updateFeedback", { id }, async () => {
-      const annotations = await this.gateway.findAnnotations([id]);
+    const { relationsOf, row } = await persistMutation("updateFeedback", { id }, async () => {
+      const relationsOf = await this.readRelations([id]);
       // The gateway clamps updatedAt to the row's createdAt, which another
       // process whose clock runs ahead may have stamped later than this clock.
       const row = await this.gateway.updateStatus(id, {
@@ -252,10 +271,10 @@ export class DrizzleSitepingStore implements DrizzleStore {
         resolvedAt: data.resolvedAt,
         updatedAt: this.now(),
       });
-      return { annotations, row };
+      return { relationsOf, row };
     });
     if (!row) throw new StoreNotFoundError();
-    return { ...row, annotations };
+    return { ...row, ...relationsOf(id) };
   }
 
   async deleteFeedback(id: string): Promise<void> {
@@ -304,6 +323,37 @@ export class DrizzleSitepingStore implements DrizzleStore {
   }
 
   /**
+   * Add a comment as the last of its thread, in one statement that also
+   * checks the feedback, the thread cap and the `clientId` — atomic across
+   * store instances and processes, except that posts racing for the last
+   * free slot may overshoot the cap by the ones that run concurrently.
+   *
+   * @throws `StoreNotFoundError` when the feedback does not exist.
+   * @throws `StoreLimitError` when its thread already holds `MAX_COMMENTS_PER_FEEDBACK` comments.
+   * @throws `StorePersistenceError` when the insert fails.
+   */
+  async addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> {
+    const comment = buildCommentRecord(data, { id: crypto.randomUUID(), feedbackId, now: this.now() });
+    const inserted = await persistMutation("addComment", { feedbackId, clientId: data.clientId }, () =>
+      this.gateway.insertComment(comment, MAX_COMMENTS_PER_FEEDBACK),
+    );
+    if (inserted) return comment;
+
+    // Nothing written: a replay of the clientId, a missing feedback, or a full thread.
+    const replayed = await this.gateway.findCommentByClientId(data.clientId);
+    if (replayed) return replayed;
+    if ((await this.gateway.findProjectName(feedbackId)) === null) throw new StoreNotFoundError();
+    throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
+  }
+
+  async deleteComment(feedbackId: string, commentId: string): Promise<void> {
+    const deleted = await persistMutation("deleteComment", { feedbackId, commentId }, () =>
+      this.gateway.deleteComment(feedbackId, commentId),
+    );
+    if (!deleted) throw new StoreNotFoundError();
+  }
+
+  /**
    * Deletes read the removed screenshot URLs back only when a
    * `ScreenshotStorage.delete` hook can clean them up: without one there is
    * nothing to do with them, and inline data URLs would be materialized for
@@ -313,16 +363,26 @@ export class DrizzleSitepingStore implements DrizzleStore {
     return { collectScreenshotUrls: typeof this.screenshotStorage?.delete === "function" };
   }
 
-  private async withAnnotations(rows: readonly FeedbackRow[]): Promise<FeedbackRecord[]> {
+  private async withRelations(rows: readonly FeedbackRow[]): Promise<FeedbackRecord[]> {
     if (rows.length === 0) return [];
-    const annotations = await this.gateway.findAnnotations(rows.map((row) => row.id));
-    const byFeedback = new Map<string, AnnotationRow[]>();
-    for (const annotation of annotations) {
-      const siblings = byFeedback.get(annotation.feedbackId);
-      if (siblings) siblings.push(annotation);
-      else byFeedback.set(annotation.feedbackId, [annotation]);
-    }
-    return rows.map((row) => ({ ...row, annotations: byFeedback.get(row.id) ?? [] }));
+    const relationsOf = await this.readRelations(rows.map((row) => row.id));
+    return rows.map((row) => ({ ...row, ...relationsOf(row.id) }));
+  }
+
+  /** Read the annotations and threads of `feedbackIds`, then hand out each feedback's. */
+  private async readRelations(
+    feedbackIds: readonly string[],
+  ): Promise<(feedbackId: string) => { annotations: AnnotationRow[]; comments: CommentRow[] }> {
+    const [annotations, comments] = await Promise.all([
+      this.gateway.findAnnotations(feedbackIds),
+      this.gateway.findComments(feedbackIds),
+    ]);
+    const annotationsOf = groupByFeedback(annotations);
+    const commentsOf = groupByFeedback(comments);
+    return (feedbackId) => ({
+      annotations: annotationsOf.get(feedbackId) ?? [],
+      comments: commentsOf.get(feedbackId) ?? [],
+    });
   }
 
   /**

@@ -5,7 +5,7 @@ import type { WebhookConfig } from "./webhooks.js";
 export type SitepingHttpMethod = "GET" | "POST" | "PATCH" | "DELETE" | "OPTIONS";
 
 /** What a request does, as `SitepingAccessControl.authorize` sees it. */
-export type SitepingAction = "create" | "list" | "update" | "delete" | "deleteAll";
+export type SitepingAction = "create" | "list" | "update" | "delete" | "deleteAll" | "createComment" | "deleteComment";
 
 /** The request being served, and who sent it. */
 export interface SitepingRequestContext<Principal> {
@@ -19,8 +19,20 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
   action: SitepingAction;
   /** Project the request targets: the body's for writes, the query's for reads. */
   projectName: string;
-  /** Target record of `update` and `delete`. */
+  /** Target record of `update` and `delete`; the feedback whose thread `createComment` and `deleteComment` target. */
   feedbackId?: string;
+  /**
+   * Target comment of `deleteComment` — absent on a `dryRun`, whose answer
+   * covers the feedback's whole thread.
+   */
+  commentId?: string;
+  /**
+   * `true` when nothing is being done: the handler fills in the
+   * `permissions` of a response — see `SitepingAccessControl.authorize`.
+   * `request` is then the response's own (a `GET`, `POST` or `PATCH`),
+   * whatever `action` asks about: decide by `action`, not `request.method`.
+   */
+  dryRun?: boolean;
 }
 
 /**
@@ -38,10 +50,26 @@ export type SitepingPrincipal = object | string | number;
  * - `authorize` resolving `false` → 403. Defaults to allowing every
  *   authenticated principal. When set, the store must implement
  *   `verifyProjectOwnership`: PATCH/DELETE address records by id, and the
- *   check is what binds the authorized `projectName` to the record.
+ *   check is what binds the authorized `projectName` to the record. It is
+ *   also asked, with `dryRun: true`, to fill in the `permissions` of every
+ *   feedback a response carries — `update`, `delete`, `createComment` and
+ *   `deleteComment` (without a `commentId`) per feedback, plus `deleteAll`
+ *   once per list — so clients hide what it would refuse. A dry run that
+ *   throws refuses that permission (logged) rather than failing the
+ *   response. Keep it fast: a page of 50 feedbacks takes 201 dry runs, 8
+ *   at a time, sharing the one `request` — cache lookups per request. That
+ *   request is the response's whatever the action, and `authenticate` is
+ *   not asked again: a principal it admits on some methods only needs
+ *   `authorize` to refuse it the other actions.
  * - `canReadAuthorEmail` decides whether responses include `authorEmail`
- *   (reviewer PII) — the list, the PATCH answer and the POST answer alike.
- *   Defaults to `true`.
+ *   (reviewer PII), on feedbacks and their comments — the list, the PATCH
+ *   answer and the POST answer alike. Defaults to `true`.
+ * - `canCommentAsTeam` decides whether a comment that asks for the `team`
+ *   role keeps it; otherwise it is stamped `client`. Defaults to the
+ *   principal's `canReadAuthorEmail` answer when that callback is set
+ *   (whoever may read reviewer emails is on the project side), and to
+ *   `false` when neither is: a policy that does not tell the team apart
+ *   never lets a caller speak as the team.
  *
  * A throw from any of them answers a logged 500.
  */
@@ -49,6 +77,7 @@ export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
   authenticate(request: Request): Principal | null | undefined | Promise<Principal | null | undefined>;
   authorize?(context: SitepingAuthorizationContext<Principal>): boolean | Promise<boolean>;
   canReadAuthorEmail?(principal: Principal): boolean | Promise<boolean>;
+  canCommentAsTeam?(principal: Principal): boolean | Promise<boolean>;
 }
 
 /** What a DELETE removes: one record, or a whole project (`deleteAll`). */
@@ -124,7 +153,8 @@ export interface SitepingHandlerBaseOptions<Principal> {
   /**
    * Transform each record right before it is serialized in a response, e.g.
    * read-time redaction. `clientId` is stripped, and `authorEmail` blanked
-   * when the requester may not read it, afterwards.
+   * when the requester may not read it, afterwards — on the record and on
+   * each comment of its thread.
    */
   presentFeedback?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): FeedbackRecord;
   /** Lifecycle side effects — see `SitepingLifecycleHooks`. */
@@ -147,6 +177,8 @@ export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions
    *
    * - **When set:** every request not listed in `publicEndpoints` must include
    *   it. Requests without a valid token receive a 401 Unauthorized response.
+   *   Only a request carrying it may post a comment as the `team`; any other
+   *   comment is stamped `client`.
    * - **When not set:** the API is public — anyone can create and read
    *   feedbacks, and update or delete them once `requireAuthForDestructive`
    *   is turned off.
@@ -174,8 +206,9 @@ export interface SitepingApiKeyHandlerOptions extends SitepingHandlerBaseOptions
    */
   requireAuthForDestructive?: boolean;
   /**
-   * Blank `authorEmail` in GET/PATCH responses to requests that do not carry
-   * a valid `Authorization: Bearer <apiKey>` header. Defaults to `true`:
+   * Blank `authorEmail` — of feedbacks and of their comments — in GET/PATCH
+   * responses to requests that do not carry a valid
+   * `Authorization: Bearer <apiKey>` header. Defaults to `true`:
    * reviewer emails are PII and the widget needs GET to be reachable, so an
    * unauthenticated response must not enumerate them (issue #105).
    *

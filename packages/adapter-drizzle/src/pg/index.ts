@@ -3,7 +3,13 @@ import { type AnyPgDatabase, createPgGateway } from "./gateway.js";
 import { createSitepingPgTables, type SitepingPgTables } from "./tables.js";
 
 export type { FeedbackRecord, ScreenshotStorage, SitepingStore } from "@siteping/core";
-export { isStorePersistence, StoreDuplicateError, StoreNotFoundError, StorePersistenceError } from "@siteping/core";
+export {
+  isStorePersistence,
+  StoreDuplicateError,
+  StoreLimitError,
+  StoreNotFoundError,
+  StorePersistenceError,
+} from "@siteping/core";
 export { DEFAULT_SITEPING_TABLE_NAMES, type SitepingTableNames } from "../constants/table-names.js";
 export type { DrizzleStore, DrizzleStoreLogger, DrizzleStoreOptions } from "../shared/store.js";
 export type { AnyPgDatabase } from "./gateway.js";

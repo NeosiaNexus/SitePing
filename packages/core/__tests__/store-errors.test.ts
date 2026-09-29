@@ -3,9 +3,11 @@ import type { AnnotationPayload } from "../src/types.js";
 import {
   flattenAnnotation,
   isStoreDuplicate,
+  isStoreLimit,
   isStoreNotFound,
   isStorePersistence,
   StoreDuplicateError,
+  StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
 } from "../src/types.js";
@@ -228,6 +230,31 @@ describe("isStorePersistence", () => {
     expect(isStorePersistence(null)).toBe(false);
     expect(isStorePersistence(undefined)).toBe(false);
     expect(isStorePersistence("STORE_PERSISTENCE")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StoreLimitError / isStoreLimit
+// ---------------------------------------------------------------------------
+
+describe("StoreLimitError", () => {
+  it("carries the STORE_LIMIT code, its name and an optional cause", () => {
+    const cause = new Error("thread full");
+    const err = new StoreLimitError("A thread holds at most 100 comments", { cause });
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe("STORE_LIMIT");
+    expect(err.name).toBe("StoreLimitError");
+    expect(err.message).toBe("A thread holds at most 100 comments");
+    expect(err.cause).toBe(cause);
+    expect(new StoreLimitError().message).toBe("Store limit reached");
+  });
+
+  it("is matched by isStoreLimit, also by code alone (cross-bundle copies of core)", () => {
+    expect(isStoreLimit(new StoreLimitError())).toBe(true);
+    expect(isStoreLimit(Object.assign(new Error("x"), { code: "STORE_LIMIT" }))).toBe(true);
+    expect(isStoreLimit(new StoreNotFoundError())).toBe(false);
+    expect(isStoreLimit(new Error("oops"))).toBe(false);
+    expect(isStoreLimit(null)).toBe(false);
   });
 });
 

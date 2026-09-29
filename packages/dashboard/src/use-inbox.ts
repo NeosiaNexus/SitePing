@@ -1,14 +1,24 @@
 import {
   FEEDBACK_STATUSES,
+  type FeedbackPermissions,
   type FeedbackQuery,
   type FeedbackRecord,
   type FeedbackStatus,
   isClosedStatus,
   matchesFeedbackQuery,
+  newClientId,
+  type SitepingCapabilities,
 } from "@siteping/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createEndpointSource, createStoreSource } from "./source.js";
-import type { InboxSource, InboxState, InboxStatusFilter, InboxTypeFilter, UseSitepingInboxOptions } from "./types.js";
+import type {
+  InboxRecord,
+  InboxSource,
+  InboxState,
+  InboxStatusFilter,
+  InboxTypeFilter,
+  UseSitepingInboxOptions,
+} from "./types.js";
 
 const DEFAULT_PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -39,6 +49,8 @@ interface InFlight {
   prev: FeedbackRecord;
   /** Whether its row was listed before the step — a failure puts a row back only then. */
   wasListed: boolean;
+  /** The record the step put in the drawer — a failure restores the drawer only while it still shows it. */
+  shown: FeedbackRecord | null;
   /** Count deltas still to invert on failure, each tagged with the counts generation it was applied to. */
   undo: { deltas: CountDeltas; countsGen: number }[];
   /** List generation at the optimistic step — a page 1 committed since then already dropped the edit. */
@@ -78,7 +90,7 @@ function insertByCreatedAtDesc(list: FeedbackRecord[], record: FeedbackRecord): 
  *   `onError` callback.
  */
 export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
-  const { source, store, endpoint, apiKey, onStatusChange, onDelete, onError } = options;
+  const { source, store, endpoint, apiKey, author, readOnly, onStatusChange, onDelete, onError } = options;
 
   const projects = useMemo<readonly string[]>(
     () => (typeof options.projects === "string" ? [options.projects] : [...options.projects]),
@@ -96,6 +108,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   headersRef.current = options.headers;
   const callbacksRef = useRef({ onStatusChange, onDelete, onError });
   callbacksRef.current = { onStatusChange, onDelete, onError };
+  const authorRef = useRef(author);
+  authorRef.current = author;
 
   const src = useMemo<InboxSource>(() => {
     if (source) return source;
@@ -131,6 +145,21 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [openedId, setOpenedId] = useState<string | null>(null);
   const [pendingUndo, setPendingUndo] = useState<InboxState["pendingUndo"]>(null);
+  /** What the last list advertised — the endpoint's store may keep no comments, or not delete them. */
+  const [advertised, setAdvertised] = useState<SitepingCapabilities | undefined>(undefined);
+
+  const canComment = author !== undefined && src.addComment !== undefined && advertised?.comments !== false;
+  const canDeleteComment =
+    canComment && !readOnly && src.removeComment !== undefined && advertised?.deleteComments !== false;
+  const permissionsOf = useCallback(
+    ({ permissions }: InboxRecord): FeedbackPermissions => ({
+      canChangeStatus: !readOnly && permissions?.canChangeStatus !== false,
+      canDelete: !readOnly && permissions?.canDelete !== false,
+      canComment: canComment && permissions?.canComment !== false,
+      canDeleteComment: canDeleteComment && permissions?.canDeleteComment !== false,
+    }),
+    [readOnly, canComment, canDeleteComment],
+  );
 
   // Mirrors for stable mutation callbacks (avoid stale closures without dep churn).
   const itemsRef = useRef(items);
@@ -315,6 +344,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const page = await src.list(query);
       if (token !== tokenRef.current) return;
       setExhausted(false);
+      setAdvertised(page.capabilities);
       listGenRef.current += 1;
       rememberListed(queryBase, page.feedbacks);
       itemsRef.current = page.feedbacks;
@@ -526,11 +556,18 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
   /** Register an optimistic step, chained behind any mutation still pending on the same feedback. */
   const beginMutation = useCallback(
-    (id: string, prev: FeedbackRecord, wasListed: boolean, deltas: CountDeltas): InFlight => {
+    (
+      id: string,
+      prev: FeedbackRecord,
+      wasListed: boolean,
+      shown: FeedbackRecord | null,
+      deltas: CountDeltas,
+    ): InFlight => {
       const prior = inFlightRef.current.get(id) ?? null;
       const handle: InFlight = {
         prev,
         wasListed,
+        shown,
         undo: [{ deltas, countsGen: countsGenRef.current }],
         listGen: listGenRef.current,
         state: "pending",
@@ -587,7 +624,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
    * step already hold the server's view, so nothing is inverted in them.
    */
   const rollback = useCallback(
-    (id: string, handle: InFlight, optimistic: FeedbackRecord | null, focusMovedTo: string | null | undefined) => {
+    (id: string, handle: InFlight, focusMovedTo: string | null | undefined) => {
       if (handle.listGen === listGenRef.current) {
         // A row the step brought in (a drawer change, an undo) leaves again.
         const { removedAt, inserted } = placeRecord(id, handle.wasListed ? handle.prev : null);
@@ -606,18 +643,18 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         );
       }
       commitCounts(nextCounts);
-      if (optimistic !== null && openedCacheRef.current === optimistic) commitOpenedCache(handle.prev);
+      if (handle.shown !== null && openedCacheRef.current === handle.shown) commitOpenedCache(handle.prev);
     },
     [placeRecord, moveFocusAfterRemoval, commitCounts, commitOpenedCache],
   );
 
   const applyStatusChange = useCallback(
     async (id: string, nextStatus: FeedbackStatus, isUndo: boolean): Promise<void> => {
-      const record =
+      const record: InboxRecord | null =
         itemsRef.current.find((f) => f.id === id) ??
         (undoRecordRef.current?.id === id ? undoRecordRef.current : null) ??
         (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
-      if (!record || record.status === nextStatus) {
+      if (!record || record.status === nextStatus || !permissionsOf(record).canChangeStatus) {
         if (isUndo) commitPendingUndo(null);
         return;
       }
@@ -656,7 +693,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         wasFocused && removedAt !== -1 ? moveFocusAfterRemoval(itemsRef.current, removedAt) : undefined;
       if (openedCacheRef.current?.id === id) commitOpenedCache(optimistic);
       commitCounts(adjustCounts(countsRef.current, deltas));
-      const handle = beginMutation(id, record, wasListed, deltas);
+      const handle = beginMutation(id, record, wasListed, optimistic, deltas);
       if (isUndo) {
         commitPendingUndo(null);
         undoRecordRef.current = null;
@@ -667,7 +704,10 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const undoEntry = undoEntryRef.current;
 
       try {
-        const saved = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
+        const stored = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
+        // A source that saves the plain record leaves the listed permissions in force.
+        const saved =
+          stored.permissions || !record.permissions ? stored : { ...stored, permissions: record.permissions };
         // A later mutation on this feedback owns the row now — don't clobber its optimistic state.
         if (settleMutation(id, handle, true)) {
           // Place, not map: a page refetched meanwhile may still hold the
@@ -693,10 +733,11 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         const latest = settleMutation(id, handle, false);
         // After a project switch the list, counts and undo belong to another project.
         if (projectEpochRef.current === epoch) {
-          if (latest) rollback(id, handle, optimistic, focusMovedTo);
+          if (latest) rollback(id, handle, focusMovedTo);
           if (undoEntryRef.current === undoEntry) {
             commitPendingUndo(undoBefore.pending, undoBefore.entry);
-            undoRecordRef.current = undoBefore.record;
+            // `prev` holds the same record, with any reply stored meanwhile.
+            undoRecordRef.current = undoBefore.record?.id === id ? handle.prev : undoBefore.record;
           }
         }
         const err = toError(cause);
@@ -705,6 +746,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       }
     },
     [
+      permissionsOf,
       matchesBase,
       placeRecord,
       moveFocusAfterRemoval,
@@ -733,7 +775,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const record =
         itemsRef.current.find((f) => f.id === id) ??
         (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
-      if (!record) return;
+      if (!record || !permissionsOf(record).canDelete) return;
 
       const epoch = projectEpochRef.current;
       const undoBefore = {
@@ -755,7 +797,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const focusMovedTo =
         wasFocused && removedAt !== -1 ? moveFocusAfterRemoval(itemsRef.current, removedAt) : undefined;
       commitCounts(adjustCounts(countsRef.current, deltas));
-      const handle = beginMutation(id, record, wasListed, deltas);
+      const handle = beginMutation(id, record, wasListed, null, deltas);
       if (wasOpened) {
         openedIdRef.current = null;
         setOpenedId(null);
@@ -775,7 +817,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         const latest = settleMutation(id, handle, false);
         if (projectEpochRef.current === epoch) {
           if (latest) {
-            rollback(id, handle, null, focusMovedTo);
+            rollback(id, handle, focusMovedTo);
             // Reopen the drawer unless another feedback was opened meanwhile.
             if (wasOpened && openedIdRef.current === null) {
               commitOpenedCache(handle.prev);
@@ -785,7 +827,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
           }
           if (undoEntryRef.current === undoEntry) {
             commitPendingUndo(undoBefore.pending, undoBefore.entry);
-            undoRecordRef.current = undoBefore.record;
+            undoRecordRef.current = undoBefore.record?.id === id ? handle.prev : undoBefore.record;
           }
         }
         const err = toError(cause);
@@ -794,6 +836,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       }
     },
     [
+      permissionsOf,
       matchesBase,
       placeRecord,
       moveFocusAfterRemoval,
@@ -804,6 +847,87 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       commitPendingUndo,
       commitOpenedCache,
     ],
+  );
+
+  // -------------------------------------------------------------------------
+  // Discussion thread — not optimistic: a reply shows once stored
+  // -------------------------------------------------------------------------
+
+  /**
+   * Rewrite one feedback wherever it is held: its row, the drawer, the undo
+   * record, and what a status change still in flight rolls back from and to —
+   * so a rollback does not drop a reply stored meanwhile. Each record object
+   * gets one copy: a rollback recognizes the drawer it left by identity.
+   */
+  const updateRecord = useCallback(
+    (id: string, update: (record: FeedbackRecord) => FeedbackRecord) => {
+      const copies = new Map<FeedbackRecord, FeedbackRecord>();
+      const rewrite = (record: FeedbackRecord): FeedbackRecord => {
+        const copy = copies.get(record) ?? update(record);
+        copies.set(record, copy);
+        return copy;
+      };
+      if (itemsRef.current.some((f) => f.id === id)) {
+        commitItems(itemsRef.current.map((f) => (f.id === id ? rewrite(f) : f)));
+      }
+      if (openedCacheRef.current?.id === id) commitOpenedCache(rewrite(openedCacheRef.current));
+      if (undoRecordRef.current?.id === id) undoRecordRef.current = rewrite(undoRecordRef.current);
+      for (let handle = inFlightRef.current.get(id) ?? null; handle; handle = handle.prior) {
+        handle.prev = rewrite(handle.prev);
+        if (handle.shown !== null) handle.shown = rewrite(handle.shown);
+      }
+    },
+    [commitItems, commitOpenedCache],
+  );
+
+  /** The record `updateRecord` would reach — what a thread action reads the permissions of. */
+  const heldRecord = useCallback(
+    (id: string) =>
+      itemsRef.current.find((f) => f.id === id) ??
+      [openedCacheRef.current, undoRecordRef.current, inFlightRef.current.get(id)?.prev].find((f) => f?.id === id),
+    [],
+  );
+
+  const addComment = useCallback(
+    async (id: string, body: string, clientId = newClientId()): Promise<void> => {
+      const replier = authorRef.current;
+      const text = body.trim();
+      const record = heldRecord(id);
+      if (!srcRef.current.addComment || !replier || !text || !record || !permissionsOf(record).canComment) return;
+      try {
+        const comment = await srcRef.current.addComment(id, projectRef.current, {
+          body: text,
+          authorName: replier.name,
+          authorEmail: replier.email ?? "",
+          authorRole: "team",
+          clientId,
+        });
+        // A resend can answer with a reply a refetch has already brought in.
+        const others = (record: FeedbackRecord) => (record.comments ?? []).filter((c) => c.id !== comment.id);
+        updateRecord(id, (record) => ({ ...record, comments: [...others(record), comment] }));
+      } catch (cause) {
+        const err = toError(cause);
+        callbacksRef.current.onError?.(err);
+        throw err;
+      }
+    },
+    [heldRecord, permissionsOf, updateRecord],
+  );
+
+  const deleteComment = useCallback(
+    async (id: string, commentId: string): Promise<void> => {
+      const record = heldRecord(id);
+      if (!srcRef.current.removeComment || !record || !permissionsOf(record).canDeleteComment) return;
+      try {
+        await srcRef.current.removeComment(id, commentId, projectRef.current);
+        updateRecord(id, (f) => ({ ...f, comments: f.comments?.filter((c) => c.id !== commentId) }));
+      } catch (cause) {
+        const err = toError(cause);
+        callbacksRef.current.onError?.(err);
+        throw err;
+      }
+    },
+    [heldRecord, permissionsOf, updateRecord],
   );
 
   // -------------------------------------------------------------------------
@@ -865,6 +989,11 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     closeFeedback,
     changeStatus,
     deleteFeedback,
+    canComment,
+    canDeleteComment,
+    permissionsOf,
+    addComment,
+    deleteComment,
     pendingUndo,
     undo,
   };

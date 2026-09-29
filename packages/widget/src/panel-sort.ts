@@ -365,7 +365,7 @@ export class PanelSortControls {
 // CSS
 // ---------------------------------------------------------------------------
 
-export const SORT_CSS = `
+export const SORT_CSS = /* css */ `
   /* ============================
      Sort Controls Container
      ============================ */
@@ -491,10 +491,11 @@ export const SORT_CSS = `
   }
 
   /* ============================
-     Group by Page Toggle
+     Group by Page and "Mine" Toggles
      ============================ */
 
-  .sp-group-toggle {
+  .sp-group-toggle,
+  .sp-mine-toggle {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -511,26 +512,30 @@ export const SORT_CSS = `
     transition: all 0.2s ease;
   }
 
-  .sp-group-toggle svg {
+  .sp-group-toggle svg,
+  .sp-mine-toggle svg {
     width: 13px;
     height: 13px;
     flex-shrink: 0;
   }
 
-  .sp-group-toggle:hover {
+  .sp-group-toggle:hover,
+  .sp-mine-toggle:hover {
     border-color: var(--sp-accent);
     color: var(--sp-accent);
     background: var(--sp-accent-light);
   }
 
-  .sp-group-toggle--active {
+  .sp-group-toggle--active,
+  .sp-mine-toggle--active {
     background: var(--sp-accent-gradient);
     border-color: transparent;
     color: #fff;
     box-shadow: 0 2px 8px var(--sp-accent-glow);
   }
 
-  .sp-group-toggle--active:hover {
+  .sp-group-toggle--active:hover,
+  .sp-mine-toggle--active:hover {
     background: var(--sp-accent-gradient);
     border-color: transparent;
     color: #fff;
@@ -641,6 +646,7 @@ export const SORT_CSS = `
   @media (forced-colors: active) {
     .sp-sort-btn,
     .sp-group-toggle,
+    .sp-mine-toggle,
     .sp-sort-option,
     .sp-group-header {
       border: 2px solid ButtonText !important;
@@ -648,8 +654,16 @@ export const SORT_CSS = `
       color: ButtonText !important;
     }
 
+    /* A pressed toggle, like an active segment */
+    .sp-group-toggle--active,
+    .sp-mine-toggle--active {
+      background: Highlight !important;
+      color: HighlightText !important;
+    }
+
     .sp-sort-btn:focus-visible,
     .sp-group-toggle:focus-visible,
+    .sp-mine-toggle:focus-visible,
     .sp-sort-option:focus-visible,
     .sp-group-header:focus-visible {
       outline: 3px solid Highlight !important;

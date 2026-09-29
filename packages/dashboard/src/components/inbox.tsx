@@ -34,7 +34,8 @@ function toastStatusLabel(label: string, locale: string): string {
  *
  * Renders in plain DOM (no Shadow DOM) with all styles scoped under
  * `.spd-root`. Keyboard-first: j/k navigate, Enter opens, e/p/x change
- * status, u undoes, "?" shows the full cheat sheet.
+ * status, u undoes, "?" shows the full cheat sheet — the status keys only
+ * where the user may change a status.
  */
 export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   const {
@@ -204,7 +205,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     (status: FeedbackStatus, id: string | null) => {
       if (!id) return;
       const record = state.items.find((item) => item.id === id) ?? (state.opened?.id === id ? state.opened : null);
-      if (!record) return;
+      if (!record || !state.permissionsOf(record).canChangeStatus) return;
       void changeStatus(id, record.status === status ? "open" : status);
     },
     [state, changeStatus],
@@ -332,6 +333,8 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     [t, intlTag, notify, focusList],
   );
 
+  // The status keys do nothing where no listed feedback lets the user change its status.
+  const canChangeStatus = state.items.some((record) => state.permissionsOf(record).canChangeStatus);
   const showSkeleton = state.view === "loading";
   const showError = state.view === "error";
   const showEmpty = state.view === "empty";
@@ -398,6 +401,10 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
               onDelete={(id) => {
                 void deleteFeedback(id);
               }}
+              permissions={state.permissionsOf(state.opened)}
+              // Failures show in the thread itself, next to the kept draft.
+              onAddComment={state.addComment}
+              onDeleteComment={state.deleteComment}
             />
           ) : null}
         </div>
@@ -409,15 +416,19 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           <span className="spd-hint">
             <kbd className="spd-kbd">⏎</kbd> {t("hints.open")}
           </span>
-          <span className="spd-hint">
-            <kbd className="spd-kbd">e</kbd> {t("hints.resolve")}
-          </span>
-          <span className="spd-hint">
-            <kbd className="spd-kbd">p</kbd> {t("hints.inProgress")}
-          </span>
-          <span className="spd-hint">
-            <kbd className="spd-kbd">x</kbd> {t("hints.wontFix")}
-          </span>
+          {canChangeStatus ? (
+            <>
+              <span className="spd-hint">
+                <kbd className="spd-kbd">e</kbd> {t("hints.resolve")}
+              </span>
+              <span className="spd-hint">
+                <kbd className="spd-kbd">p</kbd> {t("hints.inProgress")}
+              </span>
+              <span className="spd-hint">
+                <kbd className="spd-kbd">x</kbd> {t("hints.wontFix")}
+              </span>
+            </>
+          ) : null}
           <span className="spd-hint">
             <kbd className="spd-kbd">?</kbd> {t("hints.help")}
           </span>
@@ -432,7 +443,9 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           }}
           onDismiss={dismissToast}
         />
-        {shortcutsOpen ? <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} /> : null}
+        {shortcutsOpen ? (
+          <ShortcutsOverlay canChangeStatus={canChangeStatus} onClose={() => setShortcutsOpen(false)} />
+        ) : null}
       </section>
     </InboxUiProvider>
   );

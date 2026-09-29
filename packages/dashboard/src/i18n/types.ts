@@ -69,6 +69,15 @@ export interface Translations {
   "drawer.deleteConfirm": string;
   "drawer.deleteYes": string;
 
+  // Discussion thread — deleting a reply reuses "drawer.deleteYes" and "inbox.cancel"
+  "comments.title": string;
+  /** Badge on a reply from the project team. */
+  "comments.team": string;
+  "comments.placeholder": string;
+  "comments.send": string;
+  "comments.delete": string;
+  "comments.failed": string;
+
   // Footer hint bar
   "hints.navigate": string;
   "hints.open": string;

@@ -24,11 +24,8 @@ const VALID_PRISMA_TYPES = new Set([
 // ---------------------------------------------------------------------------
 
 describe("SITEPING_MODELS structure", () => {
-  it("contains exactly 2 models: SitepingFeedback and SitepingAnnotation", () => {
-    const modelNames = Object.keys(SITEPING_MODELS);
-    expect(modelNames).toHaveLength(2);
-    expect(modelNames).toContain("SitepingFeedback");
-    expect(modelNames).toContain("SitepingAnnotation");
+  it("contains exactly 3 models: SitepingFeedback, SitepingAnnotation and SitepingComment", () => {
+    expect(Object.keys(SITEPING_MODELS)).toEqual(["SitepingFeedback", "SitepingAnnotation", "SitepingComment"]);
   });
 });
 
@@ -116,6 +113,12 @@ describe("SitepingFeedback model", () => {
     expect(fields.annotations.relation).toBeDefined();
     expect(fields.annotations.relation!.kind).toBe("1-to-many");
     expect(fields.annotations.relation!.model).toBe("SitepingAnnotation");
+  });
+
+  it("comments is a 1-to-many relation to SitepingComment", () => {
+    expect(fields.comments.type).toBe("SitepingComment");
+    expect(fields.comments.relation.kind).toBe("1-to-many");
+    expect(fields.comments.relation.model).toBe("SitepingComment");
   });
 
   it("has @@index([projectName]) for project-scoped queries", () => {
@@ -233,6 +236,49 @@ describe("SitepingAnnotation model", () => {
 
 // ---------------------------------------------------------------------------
 // Field type validation
+// ---------------------------------------------------------------------------
+// SitepingComment model
+// ---------------------------------------------------------------------------
+
+describe("SitepingComment model", () => {
+  const model = SITEPING_MODELS.SitepingComment;
+  const fields = model.fields;
+
+  it("has all expected fields", () => {
+    expect(Object.keys(fields)).toEqual([
+      "id",
+      "feedbackId",
+      "feedback",
+      "body",
+      "authorName",
+      "authorEmail",
+      "authorRole",
+      "clientId",
+      "createdAt",
+    ]);
+  });
+
+  it("feedback is a many-to-1 relation to SitepingFeedback with Cascade delete", () => {
+    expect(fields.feedback.relation).toEqual({
+      kind: "many-to-1",
+      model: "SitepingFeedback",
+      fields: ["feedbackId"],
+      references: ["id"],
+      onDelete: "Cascade",
+    });
+  });
+
+  it("body is Text, authorRole defaults to client, clientId is unique", () => {
+    expect(fields.body.nativeType).toBe("Text");
+    expect(fields.authorRole.default).toBe('"client"');
+    expect(fields.clientId.isUnique).toBe(true);
+  });
+
+  it("has @@index([feedbackId, createdAt]) — a thread is read oldest first", () => {
+    expect(model.indexes).toEqual([{ fields: ["feedbackId", "createdAt"] }]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 
 describe("Field type validity", () => {

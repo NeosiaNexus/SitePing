@@ -11,7 +11,7 @@
  */
 
 import type { AssertEqual } from "./type-utils.js";
-import type { AnnotationRecord, FeedbackRecord } from "./types.js";
+import type { AnnotationRecord, CommentRecord, FeedbackRecord } from "./types.js";
 
 /** Prisma scalar types supported by Siteping field definitions. */
 export type PrismaScalarType =
@@ -120,6 +120,10 @@ const _SITEPING_MODELS = {
         type: "SitepingAnnotation",
         relation: { kind: "1-to-many", model: "SitepingAnnotation" },
       },
+      comments: {
+        type: "SitepingComment",
+        relation: { kind: "1-to-many", model: "SitepingComment" },
+      },
     },
     indexes: [
       { fields: ["projectName"] },
@@ -164,6 +168,30 @@ const _SITEPING_MODELS = {
     },
     indexes: [{ fields: ["feedbackId"] }],
   },
+  SitepingComment: {
+    fields: {
+      id: { type: "String", isId: true, default: "cuid()" },
+      feedbackId: { type: "String" },
+      feedback: {
+        type: "SitepingFeedback",
+        relation: {
+          kind: "many-to-1",
+          model: "SitepingFeedback",
+          fields: ["feedbackId"],
+          references: ["id"],
+          onDelete: "Cascade",
+        },
+      },
+      body: { type: "String", nativeType: "Text" },
+      authorName: { type: "String" },
+      authorEmail: { type: "String" },
+      authorRole: { type: "String", default: '"client"' },
+      clientId: { type: "String", isUnique: true },
+      createdAt: { type: "DateTime", default: "now()" },
+    },
+    // A thread is read oldest first, one feedback at a time.
+    indexes: [{ fields: ["feedbackId", "createdAt"] }],
+  },
 } as const satisfies Record<string, ModelDef>;
 
 /** Map of Siteping models keyed by model name — frozen at runtime. */
@@ -193,3 +221,9 @@ const _annotationModelMatchesRecord: AssertEqual<
   keyof AnnotationRecord
 > = true;
 void _annotationModelMatchesRecord;
+
+const _commentModelMatchesRecord: AssertEqual<
+  Exclude<SitepingModelFieldName<"SitepingComment">, "feedback">,
+  keyof CommentRecord
+> = true;
+void _commentModelMatchesRecord;

@@ -48,6 +48,10 @@ export const en: Translations = {
   "scope.thisType": "This type",
   "scope.all": "All pages",
 
+  // "Mine" toggle
+  "panel.filterMine": "Mine",
+  "panel.filterMineHint": "Only the feedback sent from this browser",
+
   // FAB menu
   "fab.aria": "Siteping \u2014 Feedback menu",
   "fab.messages": "Show sidebar",
@@ -145,6 +149,11 @@ export const en: Translations = {
   "detail.diagnostics.expand": "Show diagnostics",
   "detail.diagnostics.collapse": "Hide diagnostics",
   "detail.diagnostics.noEntries": "No entries",
+
+  // Discussion thread (detail view)
+  "comments.placeholder": "Reply to the team...",
+  "comments.error": "Not sent. Try again.",
+  "comments.team": "Team",
 
   // Keyboard shortcuts overlay
   "shortcuts.title": "Keyboard shortcuts",

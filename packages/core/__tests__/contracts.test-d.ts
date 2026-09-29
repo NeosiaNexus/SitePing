@@ -18,11 +18,20 @@ import {
 } from "../src/index.js";
 import type {
   AnnotationResponse,
+  COMMENT_AUTHOR_ROLES,
+  CommentAuthorRole,
+  CommentCreateInput,
+  CommentRecord,
+  CommentResponse,
   FeedbackCreateInput,
   FeedbackCreateOutcome,
+  FeedbackListPermissions,
+  FeedbackPermissions,
   FeedbackRecord,
   FeedbackResponse,
+  FeedbackResponseList,
   FeedbackUpdateInput,
+  SitepingCapabilities,
   SitepingConfig,
   SitepingStore,
 } from "../src/types.js";
@@ -48,6 +57,15 @@ describe("SitepingConfig discriminated union", () => {
     // @ts-expect-error — apiKey is HTTP-mode only
     const storeWithApiKey: SitepingConfig = { projectName: "p", store, apiKey: "leaked" };
     void storeWithApiKey;
+  });
+
+  it("takes readOnly in both modes — a shared option, outside the union", () => {
+    expectTypeOf({ projectName: "p", endpoint: "/api", readOnly: true }).toExtend<SitepingConfig>();
+    expectTypeOf({ projectName: "p", store, readOnly: true }).toExtend<SitepingConfig>();
+
+    // @ts-expect-error — a flag, not a list of actions
+    const granular: SitepingConfig = { projectName: "p", store, readOnly: ["delete"] };
+    void granular;
   });
 });
 
@@ -92,17 +110,68 @@ describe("wire types derived from record types", () => {
     expectTypeOf<FeedbackResponse["resolvedAt"]>().toEqualTypeOf<string | null>();
     expectTypeOf<FeedbackResponse["annotations"]>().toEqualTypeOf<AnnotationResponse[]>();
     expectTypeOf<AnnotationResponse["createdAt"]>().toEqualTypeOf<string>();
-    expectTypeOf<keyof FeedbackResponse>().toEqualTypeOf<Exclude<keyof FeedbackRecord, "clientId">>();
+    expectTypeOf<keyof FeedbackResponse>().toEqualTypeOf<Exclude<keyof FeedbackRecord, "clientId"> | "permissions">();
     // Non-date fields pass through untouched.
     expectTypeOf<FeedbackResponse["screenshotRegion"]>().toEqualTypeOf<FeedbackRecord["screenshotRegion"]>();
+  });
+
+  it("serializes the thread and strips each comment's clientId too", () => {
+    expectTypeOf<FeedbackResponse["comments"]>().toEqualTypeOf<CommentResponse[] | undefined>();
+    expectTypeOf<keyof CommentResponse>().toEqualTypeOf<Exclude<keyof CommentRecord, "clientId">>();
+    expectTypeOf<CommentResponse["createdAt"]>().toEqualTypeOf<string>();
+    expectTypeOf<CommentResponse["authorRole"]>().toEqualTypeOf<CommentAuthorRole>();
+  });
+
+  it("advertises capabilities on the list, optional for servers that predate them", () => {
+    expectTypeOf<FeedbackResponseList["capabilities"]>().toEqualTypeOf<SitepingCapabilities | undefined>();
+    expectTypeOf<SitepingCapabilities>().toEqualTypeOf<{ comments: boolean; deleteComments?: boolean | undefined }>();
+  });
+
+  it("keeps the requester's permissions off the record, optional for servers that predate them", () => {
+    expectTypeOf<FeedbackResponse["permissions"]>().toEqualTypeOf<FeedbackPermissions | undefined>();
+    expectTypeOf<FeedbackPermissions>().toEqualTypeOf<{
+      canChangeStatus: boolean;
+      canDelete: boolean;
+      canComment: boolean;
+      canDeleteComment: boolean;
+    }>();
+    expectTypeOf<FeedbackResponseList["permissions"]>().toEqualTypeOf<FeedbackListPermissions | undefined>();
+    expectTypeOf<FeedbackListPermissions>().toEqualTypeOf<{ canDeleteAll: boolean }>();
+    expectTypeOf<FeedbackRecord>().not.toHaveProperty("permissions");
+  });
+});
+
+describe("discussion threads", () => {
+  it("pins the author roles", () => {
+    expectTypeOf<CommentAuthorRole>().toEqualTypeOf<"client" | "team">();
+    expectTypeOf<(typeof COMMENT_AUTHOR_ROLES)[number]>().toEqualTypeOf<CommentAuthorRole>();
+  });
+
+  it("keeps the thread optional on records, so stores without comments stay valid", () => {
+    expectTypeOf<Omit<FeedbackRecord, "comments">>().toExtend<FeedbackRecord>();
+    expectTypeOf<FeedbackRecord["comments"]>().toEqualTypeOf<CommentRecord[] | undefined>();
+  });
+
+  it("keeps addComment and deleteComment optional for minimal adapters", () => {
+    expectTypeOf<SitepingStore["addComment"]>().toEqualTypeOf<
+      ((feedbackId: string, data: CommentCreateInput) => Promise<CommentRecord>) | undefined
+    >();
+    expectTypeOf<SitepingStore["deleteComment"]>().toEqualTypeOf<
+      ((feedbackId: string, commentId: string) => Promise<void>) | undefined
+    >();
+    expectTypeOf<Omit<CollectionStore, "addComment" | "deleteComment">>().toExtend<CollectionStore>();
   });
 });
 
 describe("SitepingStore contract", () => {
-  it("is satisfied by the collection-store engine, including both optional members", () => {
+  it("is satisfied by the collection-store engine, including its optional members", () => {
     const engine = createCollectionStore({ load: () => [], persist: () => {}, generateId: () => "id" });
     expectTypeOf(engine).toExtend<SitepingStore>();
-    expectTypeOf(engine).toExtend<Required<Pick<SitepingStore, "verifyProjectOwnership" | "createFeedbackIfAbsent">>>();
+    expectTypeOf(engine).toExtend<
+      Required<
+        Pick<SitepingStore, "verifyProjectOwnership" | "createFeedbackIfAbsent" | "addComment" | "deleteComment">
+      >
+    >();
     expectTypeOf(engine.verifyProjectOwnership).returns.resolves.toEqualTypeOf<boolean>();
     expectTypeOf(engine.createFeedbackIfAbsent).returns.resolves.toEqualTypeOf<FeedbackCreateOutcome>();
   });

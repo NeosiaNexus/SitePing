@@ -11,9 +11,9 @@
  *    pagination, error contract) comes built-in — an adapter is ~20 lines
  *    plus its storage specifics.
  * 2. **Query backends** (SQL, ORMs): implement {@link SitepingStore}
- *    directly; {@link buildFeedbackRecord} / {@link buildAnnotationRecord}
- *    handle input→record construction, and the JSDoc on `SitepingStore`
- *    documents the exact error contract.
+ *    directly; {@link buildFeedbackRecord} / {@link buildAnnotationRecord} /
+ *    {@link buildCommentRecord} handle input→record construction, and the
+ *    JSDoc on `SitepingStore` documents the exact error contract.
  *
  * Either way, verify with the conformance suite from
  * `@siteping/adapter-kit/testing`:
@@ -39,6 +39,10 @@ export type {
   ClosedFeedbackStatus,
   CollectionStore,
   CollectionStoreBackend,
+  CommentAuthorRole,
+  CommentCreateInput,
+  CommentRecord,
+  CommentResponse,
   ConsoleDiagnosticEntry,
   ConsoleDiagnosticLevel,
   DiagnosticsSnapshot,
@@ -68,8 +72,10 @@ export type {
 export {
   applyFeedbackFilters,
   buildAnnotationRecord,
+  buildCommentRecord,
   buildFeedbackRecord,
   CLOSED_FEEDBACK_STATUSES,
+  COMMENT_AUTHOR_ROLES,
   CONSOLE_DIAGNOSTIC_LEVELS,
   clampPagination,
   createCollectionStore,
@@ -79,12 +85,15 @@ export {
   flattenAnnotation,
   isClosedStatus,
   isStoreDuplicate,
+  isStoreLimit,
   isStoreNotFound,
   isStorePersistence,
   isUnreachableOffset,
+  MAX_COMMENTS_PER_FEEDBACK,
   MAX_PAGE_LIMIT,
   OPEN_FEEDBACK_STATUSES,
   StoreDuplicateError,
+  StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
   toFeedbackUpdate,

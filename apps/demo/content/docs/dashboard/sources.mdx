@@ -44,6 +44,29 @@ const source: InboxSource = {
 };
 ```
 
+### Discussion threads
+
+Threads are optional in a custom source. Records carry theirs in `comments` (with `createdAt` as a `Date`, like the record's); to let the inbox post and delete replies, add the two thread methods:
+
+```ts
+const source: InboxSource = {
+  // …list, setStatus, remove as above
+  async addComment(feedbackId, projectName, input) {
+    // input: body, authorName, authorEmail, authorRole ("team"), clientId
+    return reviveDates(await trpc.siteping.addComment.mutate({ feedbackId, projectName, ...input }));
+  },
+  async removeComment(feedbackId, commentId, projectName) {
+    await trpc.siteping.removeComment.mutate({ feedbackId, commentId, projectName });
+  },
+};
+```
+
+`list()` may also return `capabilities: { comments: false }` to make threads read-only for a backend that keeps none, or `deleteComments: false` to hide the delete buttons of a backend that cannot delete replies; left out, `addComment` and `removeComment` alone decide. A source without `removeComment` posts replies but offers no delete. The endpoint source maps the server's advertised `capabilities` (and a server that advertises nothing to read-only); the store source defines the methods only when the store implements `addComment` / `deleteComment`.
+
+### Permissions
+
+A record may carry `permissions` — `{ canChangeStatus, canDelete, canComment, canDeleteComment }`, what the requester may do with it — from `list()` and from `setStatus()`. The inbox then hides what they refuse (see [Permissions](/docs/dashboard/headless#permissions)); a record without them refuses nothing. When `setStatus()` resolves a record without them, it keeps the ones `list()` gave. The endpoint source passes on the server's.
+
 The two building blocks behind the built-in modes are exported too — `createEndpointSource({ endpoint, apiKey, headers })` and `createStoreSource(store)` — so you can wrap, compose, or decorate them (e.g. add logging around the HTTP client) instead of starting from scratch.
 
 ## Types without extra dependencies
@@ -53,6 +76,8 @@ The two building blocks behind the built-in modes are exported too — `createEn
 | What you're typing | Exports |
 |---|---|
 | Feedback data | `FeedbackRecord`, `FeedbackStatus`, `FeedbackType`, `SitepingStore`, plus the `FEEDBACK_STATUSES` / `FEEDBACK_TYPES` constants and `isClosedStatus()` |
+| Permissions | `FeedbackPermissions` (what the requester may do with a record), `InboxRecord` (a record with its optional `permissions`), `InboxPage` (what `list()` resolves) |
+| Threads | `CommentRecord` (a stored reply), `CommentCreateInput` (what `addComment` receives), `SitepingCapabilities` (what `list()` may advertise) |
 | Hook options | `UseSitepingInboxOptions` and its three members — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions` — plus the shared `InboxSharedOptions` |
 | Hook result | `InboxState`, `InboxStatusFilter`, `InboxTypeFilter` |
 | Sources | `InboxSource`, `EndpointSourceOptions` (the argument of `createEndpointSource`) |

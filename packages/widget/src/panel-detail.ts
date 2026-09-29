@@ -18,7 +18,9 @@ import {
 } from "@siteping/core";
 import { el, parseSvg, setText } from "./dom-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
+import { ICON_USER } from "./icons.js";
 import { type PanelActionItem, safeHref, snapshotFeedback } from "./panel-actions.js";
+import type { TriagePermission } from "./panel-bulk.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -30,8 +32,6 @@ export const ICON_ARROW_LEFT = `<svg viewBox="0 0 24 24" fill="none" stroke="cur
 export const ICON_MAP_PIN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
 
 export const ICON_LINK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
-
-export const ICON_USER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 
 export const ICON_CALENDAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
 
@@ -430,6 +430,68 @@ export const DETAIL_CSS = /* css */ `
     background: var(--sp-glass-bg-heavy);
     white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  /* ---- Thread Section ---- */
+
+  .sp-comment {
+    margin-top: 8px;
+    border-left-color: var(--sp-border);
+  }
+
+  .sp-comment[data-role="team"] {
+    border-left-color: var(--sp-accent);
+  }
+
+  .sp-comment-head,
+  .sp-thread-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .sp-comment-head {
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .sp-comment-head .sp-badge {
+    background: var(--sp-accent-light);
+  }
+
+  .sp-comment-head time,
+  .sp-thread-foot,
+  .sp-thread-input::placeholder {
+    font-weight: 400;
+    color: var(--sp-text-secondary);
+  }
+
+  .sp-comment-head time {
+    margin-left: auto;
+  }
+
+  .sp-thread-input {
+    height: auto;
+    margin-top: 10px;
+    padding: 10px 14px;
+  }
+
+  .sp-thread-foot {
+    justify-content: space-between;
+    margin-top: 8px;
+  }
+
+  .sp-thread-error {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: var(--sp-radius);
+    background: var(--sp-type-bug-bg);
+    font-size: 12px;
+  }
+
+  .sp-thread-error:empty {
+    display: none;
   }
 
   /* ---- Screenshot Section ---- */
@@ -961,6 +1023,10 @@ export interface DetailCallbacks {
   onCustomAction: (action: SitepingPanelButtonAction, feedback: SitepingPanelActionFeedback) => Promise<void>;
   /** Reports a host `visible()`/`href()` that threw or an unsafe computed href — the action is hidden. */
   onCustomActionError: (error: unknown) => void;
+  /** The discussion thread, shown under the message — `null` when the feedback has none to show. */
+  buildThread?: (feedback: FeedbackResponse) => HTMLElement | null;
+  /** False leaves out Resolve/Reopen (`canChangeStatus`) or Delete (`canDelete`). */
+  permits?: (feedback: FeedbackResponse, permission: TriagePermission) => boolean;
 }
 
 /** An operation in flight on a feedback: a built-in button, or the host action it runs. */
@@ -1078,6 +1144,9 @@ export class DetailView {
     messageBlock.style.borderLeftColor = getTypeColor(feedback.type, this.colors);
     setText(messageBlock, feedback.message);
     messageSection.appendChild(messageBlock);
+    // The discussion thread reads on from the message it answers.
+    const thread = this.callbacks.buildThread?.(feedback);
+    if (thread) messageSection.appendChild(thread);
     this.content.appendChild(messageSection);
 
     // Section 2b: Screenshot (when captured)
@@ -1226,36 +1295,21 @@ export class DetailView {
     // Action buttons
     const actions = el("div", { class: "sp-detail-actions" });
 
-    // Resolve / Reopen
+    // Resolve / Reopen, and Delete — their content is what an operation restores
     this.resolveBtn = document.createElement("button");
     this.resolveBtn.type = "button";
-    if (isClosed) {
-      this.resolveBtn.className = "sp-detail-btn-reopen";
-      this.resolveBtn.appendChild(parseSvg(ICON_UNDO));
-      const span = document.createElement("span");
-      setText(span, this.t("detail.reopen"));
-      this.resolveBtn.appendChild(span);
-    } else {
-      this.resolveBtn.className = "sp-detail-btn-resolve";
-      this.resolveBtn.appendChild(parseSvg(ICON_CHECK));
-      const span = document.createElement("span");
-      setText(span, this.t("detail.resolve"));
-      this.resolveBtn.appendChild(span);
-    }
+    this.resolveBtn.className = isClosed ? "sp-detail-btn-reopen" : "sp-detail-btn-resolve";
+    this.restoreResolveBtn(feedback);
     this.resolveBtn.addEventListener("click", () => this.handleResolve());
 
-    // Delete
     this.deleteBtn = document.createElement("button");
     this.deleteBtn.type = "button";
     this.deleteBtn.className = "sp-detail-btn-delete";
-    this.deleteBtn.appendChild(parseSvg(ICON_TRASH));
-    const deleteSpan = document.createElement("span");
-    setText(deleteSpan, this.t("detail.delete"));
-    this.deleteBtn.appendChild(deleteSpan);
+    this.restoreDeleteBtn();
     this.deleteBtn.addEventListener("click", () => this.handleDelete());
 
-    actions.appendChild(this.resolveBtn);
-    actions.appendChild(this.deleteBtn);
+    if (this.callbacks.permits?.(feedback, "canChangeStatus") !== false) actions.appendChild(this.resolveBtn);
+    if (this.callbacks.permits?.(feedback, "canDelete") !== false) actions.appendChild(this.deleteBtn);
     container.appendChild(actions);
 
     this.buildCustomActions(container, feedback);

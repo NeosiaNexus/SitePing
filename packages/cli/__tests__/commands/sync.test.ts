@@ -210,7 +210,7 @@ model User {
     }
   });
 
-  it("logs only field-level changes when both models already exist (no model creation)", () => {
+  it("logs only field-level changes when every model already exists (no model creation)", () => {
     // Schema where both Siteping models are present but each has a single
     // field — exercises the `addedModels.length > 0` false branch (no model
     // additions logged) while still emitting per-field "added" success logs.
@@ -232,6 +232,10 @@ model SitepingFeedback {
 }
 
 model SitepingAnnotation {
+  id String @id @default(cuid())
+}
+
+model SitepingComment {
   id String @id @default(cuid())
 }
 `,

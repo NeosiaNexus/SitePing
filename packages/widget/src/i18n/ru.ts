@@ -48,6 +48,10 @@ export const ru: Translations = {
   "scope.thisType": "Этот тип",
   "scope.all": "Все страницы",
 
+  // "Mine" toggle
+  "panel.filterMine": "Мои",
+  "panel.filterMineHint": "Только отзывы, отправленные из этого браузера",
+
   // FAB menu
   "fab.aria": "Siteping — Меню обратной связи",
   "fab.messages": "Показать панель",
@@ -145,6 +149,11 @@ export const ru: Translations = {
   "detail.diagnostics.expand": "Показать диагностику",
   "detail.diagnostics.collapse": "Скрыть диагностику",
   "detail.diagnostics.noEntries": "Нет записей",
+
+  // Discussion thread (detail view)
+  "comments.placeholder": "Ответить команде...",
+  "comments.error": "Не отправлено. Попробуйте ещё раз.",
+  "comments.team": "Команда",
 
   // Keyboard shortcuts overlay
   "shortcuts.title": "Горячие клавиши",

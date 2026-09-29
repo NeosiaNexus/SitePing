@@ -1,7 +1,7 @@
-import type { AnnotationRecord, FeedbackQuery, FeedbackRecord, FeedbackStatus } from "@siteping/core";
+import type { AnnotationRecord, CommentRecord, FeedbackQuery, FeedbackRecord, FeedbackStatus } from "@siteping/core";
 
-/** A stored feedback row — the record without its annotations relation. */
-export type FeedbackRow = Omit<FeedbackRecord, "annotations">;
+/** A stored feedback row — the record without its annotations and comments relations. */
+export type FeedbackRow = Omit<FeedbackRecord, "annotations" | "comments">;
 
 /**
  * An annotation row as the store reads and writes it — identical to the
@@ -10,6 +10,13 @@ export type FeedbackRow = Omit<FeedbackRecord, "annotations">;
  * ordering.
  */
 export type AnnotationRow = AnnotationRecord;
+
+/**
+ * A comment row as the store reads and writes it — identical to the record.
+ * The tables also hold an internal `position` (posting index within the
+ * thread), which the insert assigns and reads use only as the ordering.
+ */
+export type CommentRow = CommentRecord;
 
 /** Filters of `getFeedbacks`, already normalized (bucket vs exact status resolved). */
 export interface FeedbackFilter {
@@ -44,6 +51,19 @@ export interface SitepingSqlGateway {
   countFeedbacks(filter: FeedbackFilter): Promise<number>;
   /** Annotations of the given feedbacks, each feedback's in submission order. */
   findAnnotations(feedbackIds: readonly string[]): Promise<AnnotationRow[]>;
+  /** Comments of the given feedbacks, each thread in posting order. */
+  findComments(feedbackIds: readonly string[]): Promise<CommentRow[]>;
+  /** The comment with this `clientId`, on any thread; `null` when there is none. */
+  findCommentByClientId(clientId: string): Promise<CommentRow | null>;
+  /**
+   * Insert a comment as the last of its thread, in one statement: nothing is
+   * written when its feedback does not exist, its thread already holds
+   * `maxComments`, or a comment with its `clientId` exists. Returns whether
+   * it was inserted.
+   */
+  insertComment(comment: CommentRow, maxComments: number): Promise<boolean>;
+  /** Delete one comment of one thread; `false` when that thread has no such comment. */
+  deleteComment(feedbackId: string, commentId: string): Promise<boolean>;
   findByClientId(clientId: string): Promise<FeedbackRow | null>;
   /**
    * Project of one row, `null` when no row has that id. Reads only that
@@ -59,16 +79,16 @@ export interface SitepingSqlGateway {
     id: string,
     update: { status: FeedbackStatus; resolvedAt: Date | null; updatedAt: Date },
   ): Promise<FeedbackRow | null>;
-  /** Delete one row and its annotations; `null` when no row has that id. */
+  /** Delete one row, its annotations and its comments; `null` when no row has that id. */
   deleteById(id: string, options: DeleteFeedbacksOptions): Promise<DeletedFeedbacks | null>;
   /**
-   * Delete every row of a project and their annotations atomically (one
+   * Delete every row of a project, their annotations and their comments atomically (one
    * statement or one batch), reading nothing back however many (possibly
    * inline, megabyte-sized) screenshots the rows hold.
    */
   deleteByProject(projectName: string): Promise<void>;
   /**
-   * Delete at most `chunkSize` rows of a project and their annotations
+   * Delete at most `chunkSize` rows of a project, their annotations and their comments
    * atomically (one statement or one batch), reading back their uploaded
    * screenshot URLs — the response stays bounded however large the project.
    * The chunk is picked in `id` order; `deletedCount` is `0` once the project

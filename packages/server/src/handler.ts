@@ -1,6 +1,9 @@
+import { hasOwn } from "@siteping/core";
 import { type AccessGate, createAccessGate, createApiKeyGate } from "./access.js";
 import { preflightResponse } from "./cors.js";
+import { createCommentOperation } from "./operations/create-comment.js";
 import { createFeedbackOperation } from "./operations/create-feedback.js";
+import { deleteCommentOperation } from "./operations/delete-comment.js";
 import { deleteFeedbackOperation } from "./operations/delete-feedback.js";
 import { listFeedbacksOperation } from "./operations/list-feedbacks.js";
 import { updateFeedbackOperation } from "./operations/update-feedback.js";
@@ -10,10 +13,11 @@ import type {
   SitepingHandler,
   SitepingHandlerBaseOptions,
   SitepingHandlerOptions,
+  SitepingHttpMethod,
   SitepingLogger,
   SitepingPrincipal,
 } from "./options.js";
-import { createPipeline } from "./pipeline.js";
+import { createPipeline, type Pipeline, type Scope } from "./pipeline.js";
 import type { WebhookConfig } from "./webhooks.js";
 
 const consoleLogger: SitepingLogger = {
@@ -21,6 +25,29 @@ const consoleLogger: SitepingLogger = {
     console.error(message, context);
   },
 };
+
+/** An operation on a request that passed the access gate, with its JSON body. */
+type BodyOperation<Principal> = (scope: Scope<Principal>, body: unknown) => Promise<Response>;
+
+/**
+ * One method, two resources: a JSON body carrying `commentKey` targets a
+ * comment, any other body a feedback — whose payloads never carry that key.
+ */
+function routeByBody<Principal>(
+  pipeline: Pipeline<Principal>,
+  method: SitepingHttpMethod,
+  commentKey: "feedbackId" | "commentId",
+  comment: BodyOperation<Principal>,
+  feedback: BodyOperation<Principal>,
+): (request: Request) => Promise<Response> {
+  return async (request) => {
+    const entry = await pipeline.enter(request, method);
+    if (!entry.ok) return entry.response;
+    const body = await pipeline.readJson(entry.value);
+    if (!body.ok) return body.response;
+    return (hasOwn(body.value, commentKey) ? comment : feedback)(entry.value, body.value);
+  };
+}
 
 /**
  * Create the SitePing HTTP API over any `SitepingStore`, using only the Fetch
@@ -102,22 +129,34 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
 
   return {
     OPTIONS: (request: Request): Response => preflightResponse(request, allowedOrigins),
-    POST: createFeedbackOperation({
-      store,
+    POST: routeByBody(
       pipeline,
-      webhooks: webhookList,
-      waitUntil,
-      beforeCreate,
-      // Bound so hooks written as class methods keep their `this`.
-      onCreated: hooks.onCreated?.bind(hooks),
-    }),
+      "POST",
+      "feedbackId",
+      createCommentOperation({ store, pipeline }),
+      createFeedbackOperation({
+        store,
+        pipeline,
+        webhooks: webhookList,
+        waitUntil,
+        beforeCreate,
+        // Bound so hooks written as class methods keep their `this`.
+        onCreated: hooks.onCreated?.bind(hooks),
+      }),
+    ),
     GET: listFeedbacksOperation({ store, pipeline }),
     PATCH: updateFeedbackOperation({ store, pipeline, onUpdated: hooks.onUpdated?.bind(hooks) }),
-    DELETE: deleteFeedbackOperation({
-      store,
+    DELETE: routeByBody(
       pipeline,
-      onDeleting: hooks.onDeleting?.bind(hooks),
-      onDeleted: hooks.onDeleted?.bind(hooks),
-    }),
+      "DELETE",
+      "commentId",
+      deleteCommentOperation({ store, pipeline }),
+      deleteFeedbackOperation({
+        store,
+        pipeline,
+        onDeleting: hooks.onDeleting?.bind(hooks),
+        onDeleted: hooks.onDeleted?.bind(hooks),
+      }),
+    ),
   };
 }

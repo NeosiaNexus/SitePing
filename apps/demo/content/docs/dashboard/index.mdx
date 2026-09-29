@@ -62,6 +62,26 @@ Shortcuts require focus inside the component (they're bound to it, not to `docum
 
 Four statuses: `open`, `in_progress`, `resolved`, `wont_fix`. The dashboard can set any of them (the widget's own actions stay binary — resolve/reopen). Closing a feedback (`resolved` or `wont_fix`) stamps `resolvedAt`; reopening clears it. Status changes are optimistic with undo; **delete is permanent** — it sits behind an inline confirmation and has no undo.
 
+## Discussion threads
+
+The drawer shows the opened feedback's thread — the reviewer's replies from the widget, your team's from here. Pass `author` to reply and delete from the inbox:
+
+```tsx
+<SitepingInbox projects="my-project" endpoint="/api/siteping" apiKey={KEY} author={{ name: "Alex" }} />
+```
+
+Without `author`, threads are read-only. Replies ask for the `team` role, which your server grants only to callers it trusts — the details are in [Discussion threads](/docs/comments#in-the-dashboard).
+
+## Read-only and permissions
+
+`readOnly` hides status changes and deletions, of feedbacks and of replies — for a stakeholder who follows the inbox, and replies when `author` is set:
+
+```tsx
+<SitepingInbox projects="my-project" endpoint="/api/siteping" readOnly />
+```
+
+The inbox also follows what the server says each requester may do with each feedback — its [`permissions`](/docs/server#what-each-requester-may-do). The drawer shows the status as text when it may not change and leaves out the delete when it may not be deleted, `e` / `p` / `x` skip such a feedback, and the hints leave the status keys out when no listed feedback allows a change. It only hides: the server decides what it accepts.
+
 ## Languages
 
 Same built-in locales as the widget (`en`, `fr`, `de`, `es`, `it`, `pt`, `ru`, `ja`), English bundled, the rest lazy-loaded, BCP-47 tags normalized (`fr-CA` → `fr`), and so are backend-style ones (`fr_FR` → `fr`).

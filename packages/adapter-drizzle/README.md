@@ -21,7 +21,7 @@ npm install @siteping/adapter-drizzle @siteping/server drizzle-orm
 ```ts
 // db/schema.ts — then `drizzle-kit generate` as usual
 import { createSitepingPgTables } from "@siteping/adapter-drizzle/pg";
-export const { sitepingFeedbacks, sitepingAnnotations } = createSitepingPgTables();
+export const { sitepingFeedbacks, sitepingAnnotations, sitepingComments } = createSitepingPgTables();
 
 // server
 import { drizzle } from "drizzle-orm/node-postgres";

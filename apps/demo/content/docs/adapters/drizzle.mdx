@@ -26,14 +26,14 @@ The adapter never creates tables at runtime: it gives you Drizzle table definiti
 // db/schema.ts — PostgreSQL
 import { createSitepingPgTables } from "@siteping/adapter-drizzle/pg";
 
-export const { sitepingFeedbacks, sitepingAnnotations } = createSitepingPgTables();
+export const { sitepingFeedbacks, sitepingAnnotations, sitepingComments } = createSitepingPgTables();
 ```
 
 ```ts
 // db/schema.ts — Turso / libSQL
 import { createSitepingSqliteTables } from "@siteping/adapter-drizzle/libsql";
 
-export const { sitepingFeedbacks, sitepingAnnotations } = createSitepingSqliteTables();
+export const { sitepingFeedbacks, sitepingAnnotations, sitepingComments } = createSitepingSqliteTables();
 ```
 
 Then generate and apply the migration as usual, with a `drizzle.config.ts` pointing at that schema (`dialect: "postgresql"` or `dialect: "turso"`):
@@ -45,7 +45,7 @@ npx drizzle-kit migrate    # applies it — or `npx drizzle-kit push` while prot
 
 ### What gets created
 
-Two tables, `siteping_feedbacks` and `siteping_annotations` by default. Annotations reference their feedback with `ON DELETE CASCADE`.
+Three tables, `siteping_feedbacks`, `siteping_annotations` and `siteping_comments` by default. Annotations and [comments](/docs/comments) reference their feedback with `ON DELETE CASCADE`.
 
 | Index | Columns |
 |---|---|
@@ -53,22 +53,25 @@ Two tables, `siteping_feedbacks` and `siteping_annotations` by default. Annotati
 | `<feedbacks>_project_status_created_idx` | `project_name`, `status`, `created_at` |
 | `<feedbacks>_project_url_idx` | `project_name`, `url` |
 | `<annotations>_feedback_id_idx` | `feedback_id` |
+| `<comments>_client_id_key` (unique) | `client_id` — arbitrates duplicate comments |
+| `<comments>_feedback_created_idx` | `feedback_id`, `created_at` |
 
 Column types follow the dialect: on PostgreSQL, JSON fields are `jsonb` and timestamps are `timestamptz(3)`; on libSQL, JSON fields are stored as text and timestamps as epoch milliseconds.
 
 ### Custom table names
 
-Pass `{ feedbacks, annotations }` to rename the tables (index names follow), and hand **the same tables** to the store through the `tables` option — otherwise it queries the default names:
+Pass `{ feedbacks, annotations, comments }` to rename the tables (index names follow), and hand **the same tables** to the store through the `tables` option — otherwise it queries the default names:
 
 ```ts
 // db/schema.ts
-export const { sitepingFeedbacks, sitepingAnnotations } = createSitepingPgTables({
+export const { sitepingFeedbacks, sitepingAnnotations, sitepingComments } = createSitepingPgTables({
   feedbacks: "client_feedbacks",
   annotations: "client_feedback_annotations",
+  comments: "client_feedback_comments",
 });
 
 // server
-const store = createPgSitepingStore(db, { tables: { sitepingFeedbacks, sitepingAnnotations } });
+const store = createPgSitepingStore(db, { tables: { sitepingFeedbacks, sitepingAnnotations, sitepingComments } });
 ```
 
 The defaults are exported as `DEFAULT_SITEPING_TABLE_NAMES`.
@@ -123,7 +126,7 @@ Both factories take the same options:
 | `tables` | `SitepingPgTables` / `SitepingSqliteTables` | default-named tables | The tables from your schema — required when you [renamed them](#custom-table-names) |
 | `screenshotStorage` | `ScreenshotStorage` | — | Upload screenshots elsewhere and store only the URL — see [screenshots](#screenshots) |
 | `logger` | `{ warn(message, context) }` | none — events are dropped | Degraded-but-non-fatal events: a failed upload (the feedback is saved without its screenshot), a failed cleanup, inline screenshots. The store never picks a logging backend itself — pass your application's logger, or `console` |
-| `now` | `() => Date` | the system clock | Clock for `createdAt` on create and `updatedAt` on status updates — inject one for tests or a controlled time source |
+| `now` | `() => Date` | the system clock | Clock for `createdAt` of new feedbacks and comments, and `updatedAt` on status updates — inject one for tests or a controlled time source |
 
 ## Screenshots
 
@@ -147,7 +150,8 @@ Both factories take the same options:
 
 - **Duplicate submissions are atomic.** The store implements `createFeedbackIfAbsent`: the unique `client_id` index plus `ON CONFLICT DO NOTHING` arbitrate concurrent submissions of the same feedback, across store instances and processes. Exactly one caller gets `created: true`, so the handler notifies your webhooks once, whichever server instance each request reached.
 - **Annotations land with their feedback, or not at all.** On PostgreSQL the feedback and its annotations are inserted by one statement (a data-modifying CTE). On libSQL, multi-statement writes go through `db.batch`, which runs as one transaction and never holds the write lock across an `await` — your application can keep writing to the same database concurrently.
-- **Ordering is stable.** Lists come back newest first. `createdAt` is the clock value at insert time, and rows created in the same millisecond — by one store instance, several processes, or your own code inserting through the exported tables — are ordered by an insertion ordinal the database itself assigns on every insert: the internal `creation_sequence` identity on PostgreSQL, SQLite's implicit `rowid` on libSQL. A later insert always lists first, and offset pages never overlap or skip rows.
+- **Comments land whole, or not at all.** A comment is inserted by one `INSERT … SELECT` that writes only when its feedback exists and its thread holds fewer than 100 comments, with `ON CONFLICT DO NOTHING` on `client_id`: a replayed post returns the stored comment, across store instances and processes. Posts racing for the last free slot may overshoot the cap.
+- **Ordering is stable.** Lists come back newest first. `createdAt` is the clock value at insert time, and rows created in the same millisecond — by one store instance, several processes, or your own code inserting through the exported tables — are ordered by an insertion ordinal the database itself assigns on every insert: the internal `creation_sequence` identity on PostgreSQL, SQLite's implicit `rowid` on libSQL. A later insert always lists first, and offset pages never overlap or skip rows. A thread reads oldest first, and comments posted within one millisecond keep their posting order through their `position`.
 - **`updatedAt` never precedes `createdAt`.** Status updates clamp it in SQL against the row's own timestamps, which holds across processes whose clocks disagree.
 - **Project ownership.** The store implements `verifyProjectOwnership`, so the handler answers `404` to a PATCH/DELETE addressing an id from another project.
 
@@ -157,7 +161,7 @@ The tables carry a few columns of the store's own, never part of the returned re
 
 | Column | Table | Purpose |
 |---|---|---|
-| `position` | annotations | Integer (default `0`) keeping each feedback's annotations in submission order — `annotations[0]` is the primary anchor |
+| `position` | annotations, comments | Integer (default `0`) keeping each feedback's annotations in submission order — `annotations[0]` is the primary anchor — and each thread in posting order: a comment insert takes one past the thread's highest |
 | `creation_sequence` | feedbacks (PostgreSQL only) | Breaks `created_at` ties: a `bigint` identity the database assigns on every insert, the store's or yours. libSQL has no such column — it orders by the implicit `rowid` |
 | `message_search` | feedbacks | Nullable text: the message lowercased in JavaScript, read by the text search — see below |
 
@@ -188,15 +192,15 @@ Run the backfill in JavaScript, not with SQL `lower()`: the database's `lower()`
 ## Errors
 
 - A database failure on a write (read-only or full database, lost connection, rejected statement…) surfaces as `StorePersistenceError`, with the driver error as `cause`. Detect it with `isStorePersistence`.
-- `updateFeedback` reads the (immutable) annotations before updating the row, so no database call runs after the update commits: a failed annotation read leaves the row untouched, and an applied update is never reported as failed because of a read that followed it.
-- `updateFeedback` and `deleteFeedback` on an unknown id throw `StoreNotFoundError`.
+- `updateFeedback` reads the (immutable) annotations and the thread before updating the row, so no database call runs after the update commits: a failed read leaves the row untouched, and an applied update is never reported as failed because of a read that followed it.
+- `updateFeedback` and `deleteFeedback` on an unknown id throw `StoreNotFoundError`, and so do `addComment` on an unknown feedback and `deleteComment` of a comment that is not on that feedback's thread. `addComment` on a full thread throws `StoreLimitError`.
 
-Both entries re-export `StorePersistenceError`, `isStorePersistence`, `StoreNotFoundError` and `StoreDuplicateError`, so you can catch them without another import.
+Both entries re-export `StorePersistenceError`, `isStorePersistence`, `StoreNotFoundError`, `StoreDuplicateError` and `StoreLimitError`, so you can catch them without another import.
 
 ## Limitations
 
 - **PostgreSQL and libSQL only.** There is no MySQL entry yet.
 - **libSQL only through `drizzle-orm/libsql`.** Other SQLite drivers (better-sqlite3, Cloudflare D1) are not supported.
 - **One local libSQL file shared by several processes.** SQLite runs one writer at a time: set the client's busy timeout — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — so concurrent writes queue instead of failing with `SQLITE_BUSY`.
-- **Foreign keys on libSQL.** Cascades need `PRAGMA foreign_keys = ON`, which libSQL does not guarantee, so the store deletes annotations explicitly alongside their feedback. Feedbacks you delete yourself outside the store need the same care.
+- **Foreign keys on libSQL.** Cascades need `PRAGMA foreign_keys = ON`, which libSQL does not guarantee, so the store deletes annotations and comments explicitly alongside their feedback. Feedbacks you delete yourself outside the store need the same care.
 - **Search on rows without `message_search`** folds case the database's way (ASCII-only on libSQL, and on PostgreSQL under a `C` collation / `LC_CTYPE`) until you [backfill them](#text-search-and-non-ascii-case).

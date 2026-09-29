@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { el, formatRelativeDate, parseSvg, setText } from "../../src/dom-utils.js";
+import { el, formatRelativeDate, parseSvg, setHidden, setText } from "../../src/dom-utils.js";
 
 // ---------------------------------------------------------------------------
 // formatRelativeDate
@@ -233,5 +233,23 @@ describe("setText", () => {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "text");
     setText(svg, "SVG text content");
     expect(svg.textContent).toBe("SVG text content");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setHidden
+// ---------------------------------------------------------------------------
+
+describe("setHidden", () => {
+  it("hides with the attribute and an inline display a class cannot override, then shows again", () => {
+    const button = el("button", { class: "sp-btn-delete-all", style: "display: inline-flex" }) as HTMLButtonElement;
+
+    setHidden(button, true);
+    expect(button.hidden).toBe(true);
+    expect(button.style.display).toBe("none");
+
+    setHidden(button, false);
+    expect(button.hidden).toBe(false);
+    expect(button.style.display).toBe("");
   });
 });
