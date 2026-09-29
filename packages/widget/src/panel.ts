@@ -42,7 +42,7 @@ import { BulkActions, type TriagePermission } from "./panel-bulk.js";
 import { DetailView } from "./panel-detail.js";
 import { createPageGroupHeader, groupFeedbacksByPage, PanelSortControls, sortFeedbacks } from "./panel-sort.js";
 import { PanelStats } from "./panel-stats.js";
-import { buildThread } from "./panel-thread.js";
+import { buildThread, type ThreadDraft } from "./panel-thread.js";
 import { focusCardByIndex, getFocusedCardIndex, KeyboardShortcuts } from "./shortcuts.js";
 import { getStatusBgColor, getStatusColor, getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 import { isCoarsePointer, isCompactViewport } from "./viewport.js";
@@ -92,6 +92,8 @@ export class Panel {
   private pendingMutations = new Set<string>();
   /** Whether the backend takes replies — advertised by the last list response. */
   private canComment = false;
+  /** Each feedback's composer state, by id — see `ThreadDraft`. */
+  private readonly threadDrafts = new Map<string, ThreadDraft>();
   /** Reviewer mode (`config.readOnly`): no triage action, whatever the server allows. */
   private readonly readOnly: boolean;
   /** The visitor a reply is posted as — `null` when they dismiss the identity prompt. */
@@ -306,6 +308,7 @@ export class Panel {
             t: this.t,
             locale,
             canPost: this.canComment && fb.permissions?.canComment !== false,
+            draft: this.draftOf(fb.id),
             post: (body, clientId) => this.postComment(fb, body, clientId),
           }),
       },
@@ -1481,6 +1484,13 @@ export class Panel {
     }
   }
 
+  /** A feedback's composer state, which outlives each render of its thread. */
+  private draftOf(feedbackId: string): ThreadDraft {
+    let draft = this.threadDrafts.get(feedbackId);
+    if (!draft) this.threadDrafts.set(feedbackId, (draft = { text: "" }));
+    return draft;
+  }
+
   /**
    * Post a reply as the visitor and add it to the cached feedback, so the
    * thread still holds it when the visitor comes back to this feedback.
@@ -1502,7 +1512,13 @@ export class Panel {
         authorEmail: identity.email,
         authorRole: "client",
       });
-      feedback.comments = [...(feedback.comments ?? []), comment];
+      // The list may have been reloaded meanwhile: the reply goes on the record
+      // it holds now, as well as on the one the thread was drawn from.
+      for (const record of new Set([feedback, this.feedbacks.find((f) => f.id === feedback.id)])) {
+        if (record && !record.comments?.some((c) => c.id === comment.id)) {
+          record.comments = [...(record.comments ?? []), comment];
+        }
+      }
       this.bus.emit("comment:added", comment);
       return comment;
     } catch (error) {

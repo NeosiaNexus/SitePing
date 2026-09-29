@@ -4503,7 +4503,10 @@ describe("Panel", () => {
       createdAt: new Date().toISOString(),
     };
 
-    function rebuild(resolveIdentity: () => Promise<typeof identity | null>): void {
+    function rebuild(
+      resolveIdentity: () => Promise<typeof identity | null>,
+      panelActions: SitepingPanelAction[] = [],
+    ): void {
       panel.destroy();
       shadow.host.remove();
       shadow = createShadowRoot();
@@ -4513,8 +4516,23 @@ describe("Panel", () => {
         getScope: () => ({ url: "/", urlPattern: null }),
         scopeAnnotationsByUrl: true,
         resolveIdentity,
+        panelActions,
       });
     }
+
+    const composer = () => shadow.querySelector<HTMLTextAreaElement>(".sp-detail textarea")!;
+    /** A post held open until the test answers it. */
+    const deferredComment = () => {
+      let resolve: (comment: CommentResponse) => void = () => {};
+      const promise = new Promise<CommentResponse>((settle) => {
+        resolve = settle;
+      });
+      return { promise, resolve };
+    };
+    const reopen = () => {
+      shadow.querySelector<HTMLButtonElement>(".sp-detail-back")!.click();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+    };
 
     async function openDetail(fb: FeedbackResponse, comments: boolean | undefined): Promise<void> {
       apiClient.getFeedbacks.mockResolvedValue({
@@ -4572,6 +4590,78 @@ describe("Panel", () => {
       shadow.querySelector<HTMLButtonElement>(".sp-detail-back")!.click();
       shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
       expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1);
+    });
+
+    it("keeps a reply on the record a list reload brought in", async () => {
+      rebuild(async () => identity);
+      apiClient.addComment.mockResolvedValue(reply);
+      await openDetail(makeFeedback({ id: "fb-1" }), true);
+      // A reload swaps every record for a fresh object — the host polling refresh(), an SPA navigation…
+      await panel.refresh();
+
+      await sendReply("Here it is");
+      await vi.waitFor(() => expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1));
+      reopen();
+
+      expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1);
+    });
+
+    it("keeps a reply that lands after Resolve reloaded the list", async () => {
+      rebuild(async () => identity);
+      const posting = deferredComment();
+      apiClient.addComment.mockReturnValue(posting.promise);
+      apiClient.resolveFeedback.mockResolvedValue(undefined);
+      await openDetail(makeFeedback({ id: "fb-1" }), true);
+      await sendReply("Here it is");
+      await vi.waitFor(() => expect(apiClient.addComment).toHaveBeenCalled());
+
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1", status: "resolved", comments: [] })],
+        total: 1,
+        capabilities: { comments: true },
+      });
+      shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-resolve")!.click();
+      await vi.waitFor(() => expect(apiClient.getFeedbacks).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(shadow.querySelector(".sp-detail")!.getAttribute("aria-hidden")).toBe("true"));
+      const added = vi.fn();
+      bus.on("comment:added", added);
+      posting.resolve(reply);
+      await vi.waitFor(() => expect(added).toHaveBeenCalled());
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+
+      expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1);
+    });
+
+    it("keeps the draft, and a reply in flight, across a panel action's refresh()", async () => {
+      let refresh: () => Promise<void> = async () => {};
+      rebuild(
+        async () => identity,
+        [{ id: "jira", label: "Jira", onAction: (_fb, ctx) => void (refresh = ctx.refresh) }],
+      );
+      const posting = deferredComment();
+      apiClient.addComment.mockReturnValue(posting.promise);
+      await openDetail(makeFeedback({ id: "fb-1" }), true);
+      shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!.click();
+      await vi.waitFor(() =>
+        expect(shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!.disabled).toBe(false),
+      );
+
+      composer().value = "draft text";
+      composer().dispatchEvent(new Event("input"));
+      await refresh();
+      expect(composer().value).toBe("draft text");
+
+      await sendReply("Here it is");
+      await vi.waitFor(() => expect(apiClient.addComment).toHaveBeenCalledOnce());
+      await refresh();
+      expect(composer().readOnly).toBe(true);
+      expect(composer().value).toBe("Here it is");
+
+      posting.resolve(reply);
+      await vi.waitFor(() => expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1));
+      expect(composer().readOnly).toBe(false);
+      expect(composer().value).toBe("");
+      expect(apiClient.addComment).toHaveBeenCalledOnce();
     });
 
     it("sends nothing and reports nothing when the visitor dismisses the identity prompt", async () => {

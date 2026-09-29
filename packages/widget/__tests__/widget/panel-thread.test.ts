@@ -47,7 +47,7 @@ function makeFeedback(comments?: CommentResponse[]): FeedbackResponse {
 
 function mount(feedback: FeedbackResponse, options: Partial<ThreadOptions> = {}) {
   const post = vi.fn<ThreadOptions["post"]>();
-  const root = buildThread(feedback, { t, locale: "en", canPost: true, post, ...options });
+  const root = buildThread(feedback, { t, locale: "en", canPost: true, draft: { text: "" }, post, ...options });
   if (root) document.body.appendChild(root);
   return {
     root,
@@ -71,13 +71,15 @@ afterEach(() => {
 
 describe("buildThread", () => {
   it("is left out when there is nothing to read and no way to reply", () => {
-    expect(buildThread(makeFeedback([]), { t, locale: "en", canPost: false, post: vi.fn() })).toBeNull();
+    expect(
+      buildThread(makeFeedback([]), { t, locale: "en", canPost: false, draft: { text: "" }, post: vi.fn() }),
+    ).toBeNull();
   });
 
   it("reads a feedback from a server that predates threads (no `comments` key) without throwing", () => {
     const feedback = makeFeedback();
     expect(feedback).not.toHaveProperty("comments");
-    expect(buildThread(feedback, { t, locale: "en", canPost: false, post: vi.fn() })).toBeNull();
+    expect(buildThread(feedback, { t, locale: "en", canPost: false, draft: { text: "" }, post: vi.fn() })).toBeNull();
     const { replies, input } = mount(feedback);
     expect(replies()).toHaveLength(0);
     expect(input()).not.toBeNull();

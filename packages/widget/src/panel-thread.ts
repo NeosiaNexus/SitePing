@@ -9,11 +9,32 @@ import { el, formatRelativeDate, isMacPlatform, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
 import { isCoarsePointer } from "./viewport.js";
 
+/**
+ * A feedback's composer, kept by the panel across renders of its thread: a
+ * list reload or a panel action's `refresh()` draws the detail view again,
+ * and the draft, a reply in flight and its clientId must outlive that.
+ */
+export interface ThreadDraft {
+  text: string;
+  /**
+   * The text last sent and its clientId, kept across its resends: the server
+   * answers a resend of a reply that did land with the stored one instead of
+   * adding it twice. An edited draft is another reply — under the first
+   * one's id, that landed first text would come back in its place.
+   */
+  sent?: { body: string; clientId: string } | undefined;
+  sending?: boolean | undefined;
+  /** The render on screen, which a reply that lands goes to — whichever render sent it. */
+  view?: { add(comment: CommentResponse): void; input: HTMLTextAreaElement; error: HTMLElement } | undefined;
+}
+
 export interface ThreadOptions {
   t: TFunction;
   locale: string;
   /** Whether the backend takes replies — the list response's `capabilities.comments`. */
   canPost: boolean;
+  /** This feedback's composer state. */
+  draft: ThreadDraft;
   /** Post a reply; `null` when the visitor dismissed the identity prompt. Rejects when it failed. */
   post: (body: string, clientId: string) => Promise<CommentResponse | null>;
 }
@@ -21,7 +42,7 @@ export interface ThreadOptions {
 /** The thread under the message — `null` when there is nothing to read and no way to reply. */
 export function buildThread(
   feedback: FeedbackResponse,
-  { t, locale, canPost, post }: ThreadOptions,
+  { t, locale, canPost, draft, post }: ThreadOptions,
 ): HTMLElement | null {
   // A server that predates threads sends no `comments` at all.
   const comments = feedback.comments ?? [];
@@ -30,7 +51,11 @@ export function buildThread(
   const root = el("div");
   // Polite: a reply that lands is read out, not just drawn.
   const list = el("div", { "aria-live": "polite" });
+  const shown = new Set<string>();
   const add = (comment: CommentResponse): void => {
+    // A reload may have brought the reply in before its own answer did.
+    if (shown.has(comment.id)) return;
+    shown.add(comment.id);
     const item = el("div", { class: "sp-detail-message sp-comment", "data-role": comment.authorRole });
     const head = el("div", { class: "sp-comment-head" });
     const author = el("span");
@@ -59,6 +84,11 @@ export function buildThread(
   input.maxLength = COMMENT_BODY_MAX_LENGTH;
   input.placeholder = t("comments.placeholder");
   input.setAttribute("aria-label", input.placeholder);
+  input.value = draft.text;
+  input.readOnly = draft.sending === true;
+  input.addEventListener("input", () => {
+    draft.text = input.value;
+  });
 
   const foot = el("div", { class: "sp-thread-foot" });
   // Left empty on touch screens, like the feedback form's hint: no hardware
@@ -73,36 +103,37 @@ export function buildThread(
   // Filled on failure: an alert is announced when its text changes.
   const error = el("div", { class: "sp-thread-error", role: "alert" });
   root.append(input, foot, error);
+  const rendered = { add, input, error };
+  draft.view = rendered;
 
-  // One id per reply, kept across its resends: the server answers a resend of
-  // a reply that did land with the stored one instead of adding it twice. An
-  // edited draft is another reply — under the first one's id, that landed
-  // first text would come back in its place.
-  let sent: { body: string; clientId: string } | undefined;
-  let sending = false;
   const submit = async (): Promise<void> => {
-    const body = input.value.trim();
-    if (sending || !body) return;
-    if (sent?.body !== body) sent = { body, clientId: newClientId() };
-    const { clientId } = sent;
-    sending = true;
+    draft.text = input.value;
+    const body = draft.text.trim();
+    if (draft.sending || !body) return;
+    if (draft.sent?.body !== body) draft.sent = { body, clientId: newClientId() };
+    const { clientId } = draft.sent;
+    draft.sending = true;
     setText(error, "");
     // Read-only, and Send left enabled: a disabled control drops the keyboard
     // focus, and the identity prompt could not hand it back on close.
     input.readOnly = true;
+    let failed = false;
+    let comment: CommentResponse | null = null;
     try {
-      const comment = await post(body, clientId);
-      if (comment) {
-        add(comment);
-        input.value = "";
-        sent = undefined;
-      }
+      comment = await post(body, clientId);
     } catch {
-      // The text stays in the field for another try.
-      setText(error, t("comments.error"));
-    } finally {
-      sending = false;
-      input.readOnly = false;
+      failed = true;
+    }
+    draft.sending = false;
+    // The thread may have been drawn again meanwhile: settle the one on screen.
+    const view = draft.view ?? rendered;
+    view.input.readOnly = false;
+    // On failure the text stays in the field for another try.
+    setText(view.error, failed ? t("comments.error") : "");
+    if (comment) {
+      view.add(comment);
+      view.input.value = draft.text = "";
+      draft.sent = undefined;
     }
   };
   send.addEventListener("click", () => void submit());
