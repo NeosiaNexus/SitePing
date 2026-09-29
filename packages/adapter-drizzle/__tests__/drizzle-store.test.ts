@@ -1652,7 +1652,7 @@ for (const dialect of dialects) {
       } finally {
         await database.close();
       }
-    });
+    }, DATABASE_OPENING_TEST_TIMEOUT_MS);
   });
 }
 
