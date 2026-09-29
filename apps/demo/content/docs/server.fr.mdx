@@ -41,7 +41,7 @@ const app = new Hono();
 app.on(["GET", "POST", "PATCH", "DELETE", "OPTIONS"], "/api/siteping", (c) => {
   // Hono sert aussi HEAD par les routes GET, une méthode que SitePing ne sert pas.
   const handle = siteping[c.req.method as keyof typeof siteping];
-  return handle ? handle(c.req.raw) : c.body(null, 405);
+  return handle ? handle(c.req.raw) : c.body(null, 405, { Allow: "GET, POST, PATCH, DELETE, OPTIONS" });
 });
 
 export default app;
@@ -80,7 +80,7 @@ const app = express();
 app.all("/api/siteping", express.raw({ type: () => true, limit: "4mb" }), async (req, res) => {
   const handle = siteping[req.method as keyof SitepingHandler];
   if (!handle) {
-    res.sendStatus(405);
+    res.set("Allow", "GET, POST, PATCH, DELETE, OPTIONS").sendStatus(405);
     return;
   }
   const headers = new Headers();
