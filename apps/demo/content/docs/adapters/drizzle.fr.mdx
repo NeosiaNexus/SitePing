@@ -58,6 +58,8 @@ Trois tables, `siteping_feedbacks`, `siteping_annotations` et `siteping_comments
 
 Les types de colonnes suivent le dialecte : sur PostgreSQL, les champs JSON sont en `jsonb` et les dates en `timestamptz(3)` ; sur libSQL, les champs JSON sont stockés en texte et les dates en millisecondes epoch.
 
+Une chaîne JavaScript peut contenir un caractère NUL, ou la moitié d'une paire de substitution — un texte coupé au milieu d'un emoji se termine par l'une d'elles. PostgreSQL ne stocke ni l'un ni l'autre : le store remplace donc chacun par U+FFFD, le caractère de remplacement Unicode, dans tout ce qu'il écrit, sur les deux dialectes, et un enregistrement se relit exactement tel qu'il a été renvoyé. Les termes de recherche, les filtres et les ids subissent le même remplacement, pour retrouver ce qui a été stocké à leur place.
+
 ### Noms de tables personnalisés
 
 Passez `{ feedbacks, annotations, comments }` pour renommer les tables (les noms d'index suivent), et donnez **les mêmes tables** au store via l'option `tables` — sinon il interroge les noms par défaut :

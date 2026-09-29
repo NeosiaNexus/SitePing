@@ -3,6 +3,7 @@ import {
   buildFeedbackRecord,
   type CommentCreateInput,
   type FeedbackCreateInput,
+  isStoreNotFound,
   isStorePersistence,
   type ScreenshotStorage,
 } from "@siteping/core";
@@ -1015,6 +1016,81 @@ for (const dialect of dialects) {
       const found = await store.getFeedbacks({ projectName: "site", search: "CHECKOUT BUTTON" });
 
       expect(found.total).toBe(1);
+    });
+
+    describe("with text holding NUL or an unpaired surrogate, which PostgreSQL cannot store", () => {
+      // The widget's console capture cuts a long line after 499 code units: past an emoji
+      // there, the line ends with a high surrogate whose low half was cut off.
+      const cutInsideEmoji = `${"x".repeat(498)}\u{1F680} deployed`.slice(0, 499);
+
+      it("stores feedbacks and comments with U+FFFD in their place, exactly as the store returns them", async () => {
+        const store = database.createStore({ logger });
+        const [template] = feedbackInput().annotations;
+        if (!template) throw new Error("feedbackInput() must provide an annotation template");
+
+        const created = await store.createFeedback(
+          feedbackInput({
+            message: "Total shows a\u0000b",
+            authorName: "Zoe \uDE00",
+            annotations: [{ ...template, textSnippet: "Pay\u0000" }],
+            diagnostics: {
+              console: [{ level: "warn", timestamp: "2026-01-01T00:00:00.000Z", message: cutInsideEmoji }],
+              network: [
+                { url: "https://api.example.com/\u0000", method: "GET", status: 0, durationMs: 1, timestamp: "t" },
+              ],
+            },
+          }),
+        );
+        const comment = await store.addComment(created.id, commentInput({ body: "Seen \uD83D\u0000" }));
+
+        expect(created.message).toBe("Total shows a�b");
+        expect(created.authorName).toBe("Zoe �");
+        expect(created.annotations[0]?.textSnippet).toBe("Pay�");
+        expect(created.diagnostics?.console[0]?.message).toBe(`${"x".repeat(498)}�`);
+        expect(created.diagnostics?.network[0]?.url).toBe("https://api.example.com/�");
+        expect(comment.body).toBe("Seen ��");
+        expect(await store.findByClientId(created.clientId)).toEqual({ ...created, comments: [comment] });
+      });
+
+      it("finds them by the same text in search and every filter, and nothing else", async () => {
+        const store = database.createStore({ logger });
+        const withNul = await store.createFeedback(
+          feedbackInput({ projectName: "site\u0000", message: "Total a\u0000b", url: "https://example.com/\u0000" }),
+        );
+        await store.createFeedback(feedbackInput({ projectName: "site\u0000", url: "https://example.com/\u0000" }));
+
+        const query = { projectName: "site\u0000", url: "https://example.com/\u0000" };
+
+        for (const search of ["a\u0000b", "\u0000"]) {
+          const found = await store.getFeedbacks({ ...query, search });
+          expect(found.feedbacks.map((feedback) => feedback.id)).toEqual([withNul.id]);
+        }
+        expect((await store.getFeedbacks(query)).total).toBe(2);
+        expect(await store.verifyProjectOwnership(withNul.id, "site\u0000")).toBe(true);
+      });
+
+      it("answers a lookup by an id or a project name holding one like any unknown one", async () => {
+        const store = database.createStore({ logger });
+        const stored = await store.createFeedback(feedbackInput());
+        const comment = await store.addComment(stored.id, commentInput());
+        const unknownId = `${stored.id}\u0000`;
+
+        expect(await store.findByClientId(`${stored.clientId}\u0000`)).toBeNull();
+        expect(await store.verifyProjectOwnership(unknownId, "site")).toBe(false);
+        expect(await store.verifyProjectOwnership(stored.id, "site\u0000")).toBe(false);
+        expect((await store.getFeedbacks({ projectName: "site\u0000" })).total).toBe(0);
+        for (const lookup of [
+          () => store.updateFeedback(unknownId, { status: "in_progress", resolvedAt: null }),
+          () => store.deleteFeedback(unknownId),
+          () => store.addComment(unknownId, commentInput()),
+          () => store.deleteComment(unknownId, comment.id),
+          () => store.deleteComment(stored.id, `${comment.id}\uDC00`),
+        ]) {
+          await expect(lookup()).rejects.toSatisfy(isStoreNotFound);
+        }
+        await store.deleteAllFeedbacks("site\u0000");
+        expect(await store.findByClientId(stored.clientId)).toEqual({ ...stored, comments: [comment] });
+      });
     });
 
     it("lets the host application write through the same database while the store writes", async () => {

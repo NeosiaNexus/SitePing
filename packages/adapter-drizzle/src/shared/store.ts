@@ -38,6 +38,7 @@ import type {
   FeedbackRow,
   SitepingSqlGateway,
 } from "./gateway.js";
+import { toStorableText, toStorableValue } from "./text.js";
 
 /**
  * The store returned by the dialect factories — the full contract, including
@@ -134,7 +135,8 @@ function isUploadedScreenshotUrl(url: string | null | undefined): url is string 
 /**
  * `SitepingStore` over a dialect gateway: ids, timestamps, clientId
  * idempotency, screenshot upload/cleanup and the error contract live here,
- * SQL lives in the gateway.
+ * SQL lives in the gateway. Every string a method receives goes through
+ * {@link toStorableText} before it reaches the gateway.
  * @internal
  */
 export class DrizzleSitepingStore implements DrizzleStore {
@@ -169,7 +171,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
    *   On every failure path, the screenshot this attempt uploaded is discarded
    *   first — no committed row references it.
    */
-  async createFeedbackIfAbsent(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome> {
+  async createFeedbackIfAbsent(submitted: FeedbackCreateInput): Promise<FeedbackCreateOutcome> {
+    const data = toStorableValue(submitted);
     const existing = await this.findByClientId(data.clientId);
     if (existing) return { feedback: existing, created: false };
 
@@ -224,7 +227,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
     return { feedback: winner, created: false };
   }
 
-  async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
+  async getFeedbacks(submittedQuery: FeedbackQuery): Promise<FeedbackPage> {
+    const query = toStorableValue(submittedQuery);
     const { limit, skip } = clampPagination(query);
     const filter: FeedbackFilter = { projectName: query.projectName };
     if (query.type) filter.type = query.type;
@@ -247,7 +251,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
   }
 
   async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
-    const row = await this.gateway.findByClientId(clientId);
+    const row = await this.gateway.findByClientId(toStorableText(clientId));
     return row ? ((await this.withRelations([row]))[0] ?? null) : null;
   }
 
@@ -261,7 +265,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * @throws `StorePersistenceError` when reading the annotations, the thread
    *   or the update fails — a failed read leaves the row untouched.
    */
-  async updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
+  async updateFeedback(submittedId: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
+    const id = toStorableText(submittedId);
     const { relationsOf, row } = await persistMutation("updateFeedback", { id }, async () => {
       const relationsOf = await this.readRelations([id]);
       // The gateway clamps updatedAt to the row's createdAt, which another
@@ -277,7 +282,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
     return { ...row, ...relationsOf(id) };
   }
 
-  async deleteFeedback(id: string): Promise<void> {
+  async deleteFeedback(submittedId: string): Promise<void> {
+    const id = toStorableText(submittedId);
     const deleted = await persistMutation("deleteFeedback", { id }, () =>
       this.gateway.deleteById(id, this.deleteOptions()),
     );
@@ -302,7 +308,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
    *   chunk committed although the driver reported an error, its rows are gone
    *   and their screenshots are left in the storage as orphans.
    */
-  async deleteAllFeedbacks(projectName: string): Promise<void> {
+  async deleteAllFeedbacks(submittedProjectName: string): Promise<void> {
+    const projectName = toStorableText(submittedProjectName);
     if (!this.deleteOptions().collectScreenshotUrls) {
       await persistMutation("deleteAllFeedbacks", { projectName }, () => this.gateway.deleteByProject(projectName));
       return;
@@ -319,7 +326,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
   }
 
   async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
-    return (await this.gateway.findProjectName(id)) === projectName;
+    return (await this.gateway.findProjectName(toStorableText(id))) === toStorableText(projectName);
   }
 
   /**
@@ -332,7 +339,9 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * @throws `StoreLimitError` when its thread already holds `MAX_COMMENTS_PER_FEEDBACK` comments.
    * @throws `StorePersistenceError` when the insert fails.
    */
-  async addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> {
+  async addComment(submittedFeedbackId: string, submitted: CommentCreateInput): Promise<CommentRecord> {
+    const feedbackId = toStorableText(submittedFeedbackId);
+    const data = toStorableValue(submitted);
     const comment = buildCommentRecord(data, { id: crypto.randomUUID(), feedbackId, now: this.now() });
     const inserted = await persistMutation("addComment", { feedbackId, clientId: data.clientId }, () =>
       this.gateway.insertComment(comment, MAX_COMMENTS_PER_FEEDBACK),
@@ -346,7 +355,9 @@ export class DrizzleSitepingStore implements DrizzleStore {
     throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
   }
 
-  async deleteComment(feedbackId: string, commentId: string): Promise<void> {
+  async deleteComment(submittedFeedbackId: string, submittedCommentId: string): Promise<void> {
+    const feedbackId = toStorableText(submittedFeedbackId);
+    const commentId = toStorableText(submittedCommentId);
     const deleted = await persistMutation("deleteComment", { feedbackId, commentId }, () =>
       this.gateway.deleteComment(feedbackId, commentId),
     );
