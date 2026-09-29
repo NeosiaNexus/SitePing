@@ -397,6 +397,21 @@ describe("OpenID Connect recipe — authors delete their own feedback", () => {
     expect((await remove(handler, own.id)).status).toBe(403);
     expect((await remove(handler, own.id, max)).status).toBe(200);
   });
+
+  it("never reads the table for a visitor, who may delete nothing", async () => {
+    const { handler, lookups } = ownerHandler();
+    const theirs = await submit(handler, bearer(await accessToken(MEMBER)));
+    const before = lookups();
+
+    const anonymous = await submit(handler);
+    const visible = await page(handler);
+    const removed = await remove(handler, theirs.id);
+
+    expect(anonymous.permissions?.canDelete).toBe(false);
+    expect(visible.feedbacks.map((f) => f.permissions?.canDelete)).toEqual([false, false]);
+    expect(removed.status).toBe(403);
+    expect(lookups()).toBe(before);
+  });
 });
 
 // ---- the recipe, as the docs print it ---------------------------------------
