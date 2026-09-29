@@ -217,6 +217,28 @@ describe("createScreenshotStorage — validation", () => {
     },
   );
 
+  it("refuses a payload of whitespace only, which decodes to an empty image", async () => {
+    const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
+
+    await expect(
+      createScreenshotStorage(objectStore).upload("data:image/jpeg;base64, \r\n", UPLOAD_CONTEXT),
+    ).rejects.toThrow(new InvalidScreenshotError("empty image"));
+    expect(objectStore.keys()).toEqual([]);
+  });
+
+  it("accepts a data URL whose type is written in upper case, as MIME types are case-insensitive", async () => {
+    const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
+
+    const { url } = await createScreenshotStorage(objectStore).upload(
+      `data:IMAGE/JPEG;base64,${JPEG_BASE64}`,
+      UPLOAD_CONTEXT,
+    );
+
+    const key = objectStore.keyFromUrl(url) ?? "";
+    expect(key).toMatch(/\.jpg$/);
+    expect(await objectStore.get?.(key)).toEqual({ bytes: JPEG_BYTES, contentType: "image/jpeg" });
+  });
+
   it("accepts uploads of a configured content type written in another case or with spaces", async () => {
     const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
     const storage = createScreenshotStorage(objectStore, { allowedContentTypes: [" IMAGE/GIF "] });
