@@ -10,7 +10,8 @@
 //      fold it — the exact regression that produced #104), and
 //   2. a simulated consumer production build CAN fold it (the literal is
 //      still in a define-replaceable position).
-// It also fails when a source map names a source by an absolute path.
+// It also fails when a bundle still carries a CSS comment (a build without
+// the css-literals plugin) or a source map names a source by an absolute path.
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -80,6 +81,19 @@ if (iife) {
   }
 }
 
+// The css-literals plugin strips the comments of the `/* css */`-marked
+// literals, and esbuild strips every JS comment but the `/*!` block of
+// bundled licenses: any other `/*` in a bundle is CSS shipped unminified.
+for (const [f, code] of sources) {
+  const at = code.search(/\/\*(?!!)/);
+  if (at !== -1) {
+    errors.push(
+      `${f}: unminified CSS \`${code.slice(at, at + 40).replace(/\s+/g, " ")}…\` — ` +
+        "check that every tsup build has `cssLiteralsPlugin` and the literal is marked `/* css */`",
+    );
+  }
+}
+
 // Source maps name their sources relative to the map. An absolute path would
 // publish the build machine's checkout path and tie the map to it.
 const ABSOLUTE = /^(?:[\\/]|[a-z][\w+.-]*:)/i;
@@ -96,5 +110,6 @@ if (errors.length > 0) {
   process.exit(1);
 }
 console.log(
-  `[verify-dist-guard] OK — ${LITERAL} literal intact and consumer-replaceable in all bundles, relative source map paths`,
+  `[verify-dist-guard] OK — ${LITERAL} literal intact and consumer-replaceable in all bundles, ` +
+    "CSS literals minified, source map paths relative",
 );
