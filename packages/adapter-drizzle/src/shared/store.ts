@@ -328,11 +328,11 @@ export class DrizzleSitepingStore implements DrizzleStore {
         await this.discardScreenshots(deleted.screenshotUrls);
         continue;
       }
-      // Neither a short nor an empty chunk means the project is empty: on
+      // A short or even empty chunk does not mean the project is empty: on
       // PostgreSQL, a concurrent delete may take some or all of the rows a chunk
       // picked (the statement waits for its locks, then skips the rows it
-      // removed). Only a project left empty ends the delete. The next chunk
-      // waits for the concurrent delete, so rows keep going; when none went
+      // removed). So only a project left empty ends the delete: the next chunk
+      // waits for the concurrent delete, and rows keep going. When none went
       // since the last empty chunk, nothing will remove them.
       const remaining = await persistMutation("deleteAllFeedbacks", { projectName }, () =>
         this.gateway.countFeedbacks({ projectName }),
