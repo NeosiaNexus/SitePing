@@ -450,13 +450,15 @@ export class Panel {
         // (either on themselves or any ancestor up to this.root) and elements
         // explicitly disabled. Without this filter, the trap can jump to a
         // button inside a closed detail view and effectively swallow the Tab
-        // key. We use a walk of style.display rather than `offsetParent`
+        // key. We walk the computed display rather than `offsetParent`
         // because the latter is unreliable in jsdom (always null without
-        // layout) and breaks unit tests.
+        // layout) and breaks unit tests. Computed, not inline: the touch layer
+        // hides the trailing shortcuts button from its stylesheet, and a
+        // hidden `last` let Tab walk out of the sheet onto the page.
         const isVisible = (el: HTMLElement): boolean => {
           let cur: HTMLElement | null = el;
           while (cur && cur !== this.root) {
-            if (cur.style.display === "none") return false;
+            if (getComputedStyle(cur).display === "none") return false;
             cur = cur.parentElement;
           }
           return true;
@@ -497,6 +499,11 @@ export class Panel {
   async open(): Promise<void> {
     if (this.isOpen) return;
     this.isOpen = true;
+    // Phones: a sheet over a scrim is a modal dialog, and says so to screen
+    // readers (VoiceOver then keeps to it); elsewhere the panel sits beside the page.
+    const modal = isCompactViewport();
+    this.root.setAttribute("role", modal ? "dialog" : "complementary");
+    modal ? this.root.setAttribute("aria-modal", "true") : this.root.removeAttribute("aria-modal");
     this.root.classList.add("sp-panel--open");
     this.scrim.classList.add("sp-scrim--open");
     this.root.setAttribute("aria-hidden", "false");

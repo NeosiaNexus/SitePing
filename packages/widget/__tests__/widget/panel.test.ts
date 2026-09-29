@@ -4829,6 +4829,39 @@ describe("Panel on phones", () => {
     Reflect.deleteProperty(window, "matchMedia");
   });
 
+  it("is a modal dialog on phones, and a complementary panel again when wide", async () => {
+    await panel.open();
+    expect(root().getAttribute("role")).toBe("dialog");
+    expect(root().getAttribute("aria-modal")).toBe("true");
+    panel.close();
+
+    mockMediaQueries([]);
+    await panel.open();
+    expect(root().getAttribute("role")).toBe("complementary");
+    expect(root().hasAttribute("aria-modal")).toBe(false);
+  });
+
+  it("keeps Tab inside the sheet when the trailing control is hidden by the stylesheet", async () => {
+    // The touch layer hides the shortcuts button from CSS, not inline: the
+    // trap must wrap from the last control the user can actually reach.
+    const sheet = document.createElement("style");
+    sheet.textContent = ".sp-shortcuts-hint { display: none; }";
+    shadow.appendChild(sheet);
+    await panel.open();
+    const reachable = Array.from(
+      root().querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+    ).filter((el) => !el.closest("[style*='display: none']") && !el.matches(".sp-shortcuts-hint"));
+    const last = reachable[reachable.length - 1]!;
+    expect(last.matches(".sp-shortcuts-hint")).toBe(false);
+
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+    const preventDefault = vi.spyOn(tab, "preventDefault");
+    Object.defineProperty(shadow, "activeElement", { value: last, configurable: true });
+    shadow.dispatchEvent(tab);
+
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
   it("dims the page with a scrim that closes the sheet on tap", async () => {
     await panel.open();
     const scrim = shadow.querySelector<HTMLElement>(".sp-scrim")!;
