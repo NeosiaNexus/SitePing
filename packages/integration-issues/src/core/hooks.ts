@@ -26,7 +26,11 @@ export interface IssueTrackerHooksOptions {
   tracker: IssueTracker;
   /** Extra labels on trackers that support them (the `siteping` label is always added). */
   labels?: readonly string[];
-  /** Redact secrets from free text before it leaves your server. Defaults to no redaction. */
+  /**
+   * Redact secrets from free text before it leaves your server. The
+   * built-in format applies it; a custom `formatIssue` gets it in its
+   * `options`, and the feedback unredacted. Defaults to no redaction.
+   */
   redact?: (text: string) => string;
   /**
    * Origin of the site the widget runs on, e.g. `https://acme.com`. The
