@@ -97,7 +97,7 @@ The hook returns `null` until it mounts, then the instance. Changing `endpoint` 
 
 ## Handling errors
 
-`onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, the last one only in `store` mode) and `retryable` (boolean):
+`onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, the last one only in `store` mode) and `retryable` (boolean). An `AUTH` error also carries the HTTP `status`: `401` when the credentials are missing or dead, `403` when they work and the server's policy refuses the request:
 
 ```ts
 initSiteping({

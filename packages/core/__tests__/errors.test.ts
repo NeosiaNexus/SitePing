@@ -56,19 +56,19 @@ describe("SitepingValidationError", () => {
 
 describe("SitepingAuthError", () => {
   it("has code AUTH and is not retryable", () => {
-    const err = new SitepingAuthError("401");
+    const err = new SitepingAuthError("401", 401);
     expect(err.code).toBe("AUTH");
     expect(err.retryable).toBe(false);
     expect(err.name).toBe("SitepingAuthError");
   });
 
   it("is instanceof SitepingError", () => {
-    const err = new SitepingAuthError("x");
+    const err = new SitepingAuthError("x", 403);
     expect(err).toBeInstanceOf(SitepingError);
   });
 
   it("is distinguishable from SitepingValidationError despite both not retryable", () => {
-    const auth = new SitepingAuthError("401");
+    const auth = new SitepingAuthError("401", 401);
     const validation = new SitepingValidationError("400");
     expect(auth).toBeInstanceOf(SitepingAuthError);
     expect(auth).not.toBeInstanceOf(SitepingValidationError);

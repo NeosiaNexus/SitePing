@@ -480,14 +480,14 @@ initSiteping({
   projectName: "acme",
   headers,
   onError: (error) => {
-    // Un jeton mort : on l'efface, et la requête suivante part en visiteur.
-    if ((error as { code?: string }).code === "AUTH") localStorage.removeItem("bearer_token");
+    // Un jeton mort, pas un refus 403 : on l'efface, et la requête suivante part en visiteur.
+    if ((error as { status?: number }).status === 401) localStorage.removeItem("bearer_token");
   },
 });
 ```
 
 - **Le jeton, c'est toute la session.** C'est la valeur du cookie de session, pas un identifiant propre à SitePing : il ouvre tous les endpoints Better Auth de votre application, ceux du plugin admin compris, depuis n'importe quelle origine, et qui le détient le garde en vie, puisque Better Auth renouvelle la session à l'usage. Gardé dans le `localStorage`, il est lisible par tous les scripts de cette page. Faites donc trier les administrateurs depuis l'inbox montée dans votre application, qui envoie le cookie, hors de portée des scripts, et garde leur session sur votre origine ; réservez le bearer aux relecteurs qui se connectent sur le site du client.
-- **Effacez-le dès qu'il ne marche plus.** Un cookie périmé reste un visiteur, mais un jeton mort répond `401` à chaque requête, envois compris, et rien ne l'efface du `localStorage` quand la session expire ou est révoquée. Retirez-le sur l'erreur `AUTH` du widget, comme ci-dessus, et quand l'utilisateur se déconnecte.
+- **Effacez-le dès qu'il ne marche plus.** Un cookie périmé reste un visiteur, mais un jeton mort répond `401` à chaque requête, envois compris, et rien ne l'efface du `localStorage` quand la session expire ou est révoquée. Retirez-le sur une `401`, comme ci-dessus, et quand l'utilisateur se déconnecte — pas sur toute erreur `AUTH` : une `403` signifie qu'`authorize` a refusé cette requête, sur un projet dont le relecteur n'est pas membre par exemple, et le jeton ouvre toujours sa session dans votre application.
 
 Quand l'endpoint SitePing tourne à l'écart de Better Auth — un autre service, un edge worker loin de votre base —, vérifiez plutôt les jetons du [plugin jwt](https://www.better-auth.com/docs/plugins/jwt) de Better Auth avec la [recette OpenID Connect](#recette--openid-connect). La page en obtient un sur `/api/auth/token` avec son cookie de session et l'envoie avec `headers`. `ISSUER` et `audience` valent l'URL de votre Better Auth, sauf si vous définissez les `jwt.issuer` et `jwt.audience` du plugin ; le jeu de clés est à `/api/auth/jwks`, et les jetons sont signés en `EdDSA`. Le payload est la fiche de l'utilisateur : `rolesOf` lit `role` (voir le tableau plus haut), les administrateurs portent `admin`, et la vérification de l'e-mail se lit dans `emailVerified`, pas `email_verified`.
 

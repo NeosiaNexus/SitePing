@@ -11,7 +11,7 @@ The inbox reads and writes through a small abstraction with three ways to supply
 <SitepingInbox projects="my-project" endpoint="/api/siteping" apiKey={KEY} />
 ```
 
-Talks to your [SitePing endpoint](/docs/server): `GET` for lists, `PATCH` for statuses, `DELETE` for removals, always with `cache: "no-store"`. Errors arrive typed by `code` (`AUTH` for 401/403, `VALIDATION` for other 4xx, `SERVER` for 5xx, `NETWORK` for fetch failures). There are deliberately **no retries** — a triage UI should tell you immediately.
+Talks to your [SitePing endpoint](/docs/server): `GET` for lists, `PATCH` for statuses, `DELETE` for removals, always with `cache: "no-store"`. Errors arrive typed by `code` (`AUTH` for 401/403, with that `status`, `VALIDATION` for other 4xx, `SERVER` for 5xx, `NETWORK` for fetch failures). There are deliberately **no retries** — a triage UI should tell you immediately.
 
 Behind your app's login, leave `apiKey` out: mounted on the endpoint's origin, the inbox sends your session cookie with every request, for a server [`access`](/docs/server#custom-access) policy to read — see the [Better Auth recipe](/docs/server#recipe-better-auth). From another origin, send a token with `headers`.
 

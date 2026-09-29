@@ -399,7 +399,8 @@ export interface SitepingBaseConfig {
    * `SitepingNetworkError`, `SitepingValidationError`, `SitepingAuthError`)
    * for HTTP-mode failures — host apps can `instanceof` to drive retry
    * logic, or read `error.code` (`"NETWORK" | "VALIDATION" | "AUTH" |
-   * "SERVER"`) and `error.retryable`. The type is widened to `Error` so
+   * "SERVER"`) and `error.retryable` — and an `AUTH` error's `status`
+   * (`401` for missing or dead credentials, `403` for a refusal). The type is widened to `Error` so
    * direct-store callers can still surface raw errors without breaking the
    * contract.
    *

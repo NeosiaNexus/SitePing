@@ -480,14 +480,14 @@ initSiteping({
   projectName: "acme",
   headers,
   onError: (error) => {
-    // A dead token: drop it, and the next request goes out as a visitor.
-    if ((error as { code?: string }).code === "AUTH") localStorage.removeItem("bearer_token");
+    // A dead token, not a 403 refusal: drop it, and the next request goes out as a visitor.
+    if ((error as { status?: number }).status === 401) localStorage.removeItem("bearer_token");
   },
 });
 ```
 
 - **The token is the whole session.** It is the session cookie's value, not a SitePing credential: it opens every Better Auth endpoint of your app, the admin plugin's included, from any origin, and whoever holds it keeps it alive, since Better Auth renews the session as it is used. Kept in `localStorage`, it is readable by every script on that page. So have administrators triage from the inbox mounted in your app, which sends the cookie, out of scripts' reach, and keeps their session on your origin; keep the bearer for reviewers who sign in on the client's site.
-- **Drop it once it stops working.** A stale cookie stays a visitor, but a dead token answers `401` to every request, submissions included, and nothing removes it from `localStorage` when the session expires or is revoked. Remove it on the widget's `AUTH` error, as above, and when the user signs out.
+- **Drop it once it stops working.** A stale cookie stays a visitor, but a dead token answers `401` to every request, submissions included, and nothing removes it from `localStorage` when the session expires or is revoked. Remove it on a `401`, as above, and when the user signs out — not on every `AUTH` error: a `403` means `authorize` refused that request, a project the reviewer isn't a member of, and the token still opens their session in your app.
 
 When the SitePing endpoint runs apart from Better Auth — another service, an edge worker away from your database — verify tokens from Better Auth's [jwt plugin](https://www.better-auth.com/docs/plugins/jwt) with the [OpenID Connect recipe](#recipe-openid-connect) instead. The page fetches one from `/api/auth/token` with its session cookie and sends it with `headers`. `ISSUER` and `audience` are your Better Auth URL, unless you set the plugin's `jwt.issuer` and `jwt.audience`; the key set is at `/api/auth/jwks`, and tokens are signed `EdDSA`. The payload is the user record: `rolesOf` reads `role` (see the table above), administrators hold `admin`, and the email's verification is in `emailVerified`, not `email_verified`.
 
