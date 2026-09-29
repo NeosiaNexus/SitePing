@@ -214,6 +214,30 @@ for (const provider of providers) {
         });
       }
 
+      for (const lagging of [false, true]) {
+        it(`in an unlabelled issue opened on the tracker never takes over (search lagging: ${lagging})`, async () => {
+          const handler = createHandler();
+          const victim = await send(handler);
+          fake.issues.push({
+            key: String(fake.issues.length + 1),
+            title: "Hijack",
+            body: `${forgedMarker(victim.id)}\n\nOpened by a stranger`,
+            labels: [],
+            isOpen: true,
+            stateReason: null,
+            comments: [],
+          });
+          if (lagging) fake.lagSearch();
+
+          await patch(handler, victim.id, "resolved");
+          expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, true]);
+
+          await remove(handler, { id: victim.id, projectName: "site" });
+          expect(fake.issues[1]?.comments).toEqual([]);
+          expect(fake.issues[0]?.comments.some((comment) => comment.includes("was deleted"))).toBe(true);
+        });
+      }
+
       it("never pulls another project's issue into a deleteAll", async () => {
         const handler = createHandler();
         await send(handler);
