@@ -91,6 +91,19 @@ describe("createJsonHttpClient", () => {
     expect((failure as Error).cause).toMatchObject({ name: "TimeoutError" });
   }, 1_000);
 
+  it("sends a body as JSON, and a request without one with no content type", async () => {
+    const contentTypes: Array<string | null> = [];
+    const request = client(async (input, init) => {
+      contentTypes.push(new Request(input, init).headers.get("content-type"));
+      return Response.json({});
+    });
+
+    await request({ method: "POST", path: "/issues", body: { title: "t" } });
+    await request({ method: "GET", path: "/issues" });
+
+    expect(contentTypes).toEqual(["application/json", null]);
+  });
+
   it("resolves an empty 204 answer to undefined", async () => {
     const request = client(async () => new Response(null, { status: 204 }));
 
