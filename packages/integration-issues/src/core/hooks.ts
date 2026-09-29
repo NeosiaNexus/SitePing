@@ -5,6 +5,7 @@ import {
   DELETED_FEEDBACK_COMMENT_TEMPLATE,
   SITEPING_ISSUE_LABEL,
 } from "../constants/issue-format.js";
+import { isIssueTrackerRequestError } from "./http-client.js";
 import {
   buildDeletionComment,
   buildIssueMarker,
@@ -101,7 +102,11 @@ export function createIssueTrackerHooks<Principal = never>({
 
   const issueOf = async (feedbackId: string): Promise<TrackedIssue | null> => {
     const isLinked = (issue: TrackedIssue) => parseIssueMarker(issue.body)?.feedbackId === feedbackId;
-    const searched = await tracker.searchSitepingIssues?.(feedbackId).catch(() => []);
+    const searched = await tracker.searchSitepingIssues?.(feedbackId).catch((error: unknown) => {
+      // No answer at all: the tracker is down, and the listing would only wait out another timeout.
+      if (isIssueTrackerRequestError(error) && error.status === null) throw error;
+      return [];
+    });
     const found = searched?.find(isLinked);
     if (found) return found;
     const candidates = await tracker.findSitepingIssues(feedbackMarkerFragment(feedbackId));

@@ -31,7 +31,7 @@ const payload = {
 interface ProviderUnderTest {
   name: string;
   createFake(): FakeTracker;
-  createTracker(fake: FakeTracker, options?: { maxListedPages: number }): IssueTracker;
+  createTracker(fake: FakeTracker, options?: { maxListedPages?: number; timeoutMs?: number }): IssueTracker;
   /** Matches `METHOD path?query` of the provider's search request. */
   searchRequest: RegExp;
   /** Assert the provider-specific closed state for a feedback status. */
@@ -289,6 +289,23 @@ for (const provider of providers) {
         await patch(listing(2), feedback.id, "resolved");
         expect(oldest.isOpen).toBe(false);
       });
+    });
+
+    it("stops at the search when the tracker does not answer it, instead of waiting out the listing too", async () => {
+      const feedback = await send(createHandler());
+      const handler = createHandler({ tracker: provider.createTracker(fake, { timeoutMs: 50 }) });
+      fake.hang();
+      fake.requests.length = 0;
+
+      expect((await patch(handler, feedback.id, "resolved")).status).toBe(200);
+      expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(502);
+
+      const sent = fake.requests.map(({ method, path, query }) => `${method} ${path}${query}`);
+      expect(sent).toEqual([
+        expect.stringMatching(provider.searchRequest),
+        expect.stringMatching(provider.searchRequest),
+      ]);
+      expect(logger.error).toHaveBeenCalledTimes(2);
     });
 
     it("leaves issues untouched on status changes when syncStatus is off", async () => {

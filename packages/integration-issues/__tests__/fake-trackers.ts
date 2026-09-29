@@ -25,6 +25,8 @@ export interface FakeTracker {
   dropLabels(): void;
   /** Make searches find nothing, like a search index that has not caught up yet. */
   lagSearch(): void;
+  /** Never answer again, like a host that drops packets: a request only ends when its signal aborts it. */
+  hang(): void;
   /** Make every request wait this long before the fake handles it, as over a network. */
   delay(ms: number): void;
   /** Hold the next request whose `METHOD path?query` matches until `release()`; `reached` settles when it arrives. */
@@ -42,7 +44,7 @@ function createFakeServer(
   const requests: FakeTracker["requests"] = [];
   const failures: Array<{ pattern: RegExp; status: number }> = [];
   const holds: Array<{ pattern: RegExp; arrive(): void; released: Promise<void> }> = [];
-  const settings = { dropLabels: false, searchLags: false, delayMs: 0 };
+  const settings = { dropLabels: false, searchLags: false, hangs: false, delayMs: 0 };
 
   const fakeFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -54,6 +56,11 @@ function createFakeServer(
       authorization: request.headers.get(authorizationHeader),
     });
     const route = `${request.method} ${url.pathname}${url.search}`;
+    if (settings.hangs) {
+      return new Promise<Response>((_resolve, reject) => {
+        request.signal.addEventListener("abort", () => reject(request.signal.reason));
+      });
+    }
     if (settings.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, settings.delayMs));
     const held = holds.findIndex(({ pattern }) => pattern.test(route));
     if (held >= 0) {
@@ -84,6 +91,9 @@ function createFakeServer(
     },
     lagSearch: () => {
       settings.searchLags = true;
+    },
+    hang: () => {
+      settings.hangs = true;
     },
     delay: (ms: number) => {
       settings.delayMs = ms;
