@@ -1,6 +1,6 @@
 import type { CommentRecord, FeedbackPermissions, FeedbackRecord } from "@siteping/core";
 import type { AccessGate, AccessOutcome } from "./access.js";
-import { ERROR_MESSAGES } from "./constants.js";
+import { DRY_RUN_CONCURRENCY, ERROR_MESSAGES } from "./constants.js";
 import { buildCorsHeaders, type CorsHeaders, withCors } from "./cors.js";
 import { csrfRefusal } from "./csrf.js";
 import type {
@@ -81,6 +81,23 @@ function toWireFeedback(
   };
 }
 
+/** Run tasks at most `size` at a time; a task that finishes hands its slot to the next one waiting. */
+function createSlots(size: number): <Result>(task: () => Promise<Result>) => Promise<Result> {
+  let running = 0;
+  const waiting: Array<() => void> = [];
+  return async (task) => {
+    if (running < size) running += 1;
+    else await new Promise<void>((resolve) => waiting.push(resolve));
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else running -= 1;
+    }
+  };
+}
+
 /** Where a request failed, for the log: method and path — never the query, headers or body. */
 function requestContext(request: Request): { method: string; path: string } {
   return { method: request.method, path: new URL(request.url).pathname };
@@ -130,12 +147,15 @@ export function createPipeline<Principal>({
 
   /** Requests whose failed dry run is logged already — one line per response, however many fail. */
   const loggedDryRunFailures = new WeakSet<Request>();
+  /** Each request's dry-run slots — `DRY_RUN_CONCURRENCY` per response. */
+  const dryRunSlots = new WeakMap<Request, ReturnType<typeof createSlots>>();
 
   /**
    * Whether this requester may do what `target` describes: the policy admits
-   * the method it takes, and `authorize` allows it in a dry run. A dry run
-   * that throws refuses: a permission only hides a control, and the response
-   * it goes out with often answers a write that already happened.
+   * the method it takes, and `authorize` allows it in a dry run — a few of a
+   * response's at a time. A dry run that throws refuses: a permission only
+   * hides a control, and the response it goes out with often answers a write
+   * that already happened.
    */
   const may = async (
     scope: Scope<Principal>,
@@ -143,9 +163,12 @@ export function createPipeline<Principal>({
     target: Omit<SitepingAuthorizationContext<Principal>, keyof SitepingRequestContext<Principal>>,
   ): Promise<boolean> => {
     const { request } = scope.context;
+    const slots = dryRunSlots.get(request) ?? createSlots(DRY_RUN_CONCURRENCY);
+    dryRunSlots.set(request, slots);
     try {
-      return (
-        (await gate.admits(request, method)) && (await gate.authorize({ ...scope.context, ...target, dryRun: true }))
+      return await slots(
+        async () =>
+          (await gate.admits(request, method)) && (await gate.authorize({ ...scope.context, ...target, dryRun: true })),
       );
     } catch (failure) {
       if (!loggedDryRunFailures.has(request)) {

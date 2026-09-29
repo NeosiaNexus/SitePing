@@ -186,6 +186,30 @@ describe("permissions — access policy", () => {
     expect(byId.get(theirs.id)).toEqual({ ...ALL, canChangeStatus: false, canDelete: false });
   });
 
+  it("runs a response's dry runs a few at a time, so a page cannot drain a database pool", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      access: access(async ({ dryRun }) => {
+        if (!dryRun) return true;
+        peak = Math.max(peak, ++inFlight);
+        // A lookup that takes a while, as a database query does.
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        inFlight -= 1;
+        return true;
+      }),
+    });
+    for (let i = 0; i < 20; i += 1) await create(handler);
+    peak = 0;
+
+    const page = await list(handler);
+
+    expect(page.feedbacks.map((f) => f.permissions)).toEqual(Array(20).fill(ALL));
+    expect(page.permissions).toEqual({ canDeleteAll: true });
+    expect(peak).toBe(8);
+  });
+
   it("allows everything to every authenticated principal without authorize", async () => {
     const handler = createSitepingHandler({ store: new MemoryStore(), access: access() });
 
