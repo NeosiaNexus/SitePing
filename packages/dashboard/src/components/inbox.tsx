@@ -9,7 +9,7 @@ import type { SitepingInboxProps } from "../types.js";
 import { useSitepingInbox } from "../use-inbox.js";
 import type { InboxUiContextValue } from "./context.js";
 import { InboxUiProvider } from "./context.js";
-import type { Drawer as DrawerComponent } from "./drawer.js";
+import { Drawer } from "./drawer.js";
 import { EmptyState, ErrorState } from "./empty-state.js";
 import { List } from "./list.js";
 import { ShortcutsOverlay } from "./shortcuts-overlay.js";
@@ -84,34 +84,6 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   // (runMutation), never from onError: onError also fires for loads, and
   // mutations overlap — shared flags mixed their outcomes up.
   const state = useSitepingInbox(props);
-
-  // The drawer shows only once a feedback is opened, so it ships in its own
-  // chunk, fetched as soon as the inbox mounts. A chunk that fails to load
-  // (offline, a stale deploy) must not take the inbox down: the feedback being
-  // opened closes, the failure goes to `onError`, and the next open fetches
-  // the chunk again.
-  const [Drawer, setDrawer] = useState<typeof DrawerComponent | null>(null);
-  const onErrorRef = useRef(props.onError);
-  onErrorRef.current = props.onError;
-  const openedId = state.opened?.id;
-  const { closeFeedback } = state;
-  useEffect(() => {
-    if (Drawer) return;
-    let live = true;
-    import("./drawer.js").then(
-      (module) => {
-        if (live) setDrawer(() => module.Drawer);
-      },
-      (cause: unknown) => {
-        if (!live || openedId === undefined) return;
-        closeFeedback();
-        onErrorRef.current?.(cause instanceof Error ? cause : new Error(String(cause)));
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [Drawer, openedId, closeFeedback]);
 
   /** Run a mutation; returns true when it succeeded, toasts the rollback when it didn't. */
   const runMutation = useCallback(
@@ -413,7 +385,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
               </>
             )}
           </div>
-          {state.opened && Drawer ? (
+          {state.opened ? (
             <Drawer
               key={state.opened.id}
               record={state.opened}

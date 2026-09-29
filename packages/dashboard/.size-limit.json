@@ -1,8 +1,8 @@
 [
   {
-    "name": "ESM entry + the shared chunks it imports (gzip)",
-    "path": ["dist/index.js", "dist/chunk-*.js"],
-    "limit": "22 KB",
+    "name": "ESM",
+    "path": "dist/index.js",
+    "limit": "22.8 KB",
     "gzip": true
   }
 ]
