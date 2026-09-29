@@ -199,19 +199,26 @@ for (const provider of providers) {
       ] as const;
 
       for (const [field, forge] of forgeries) {
-        it(`in ${field} never takes over another feedback's issue`, async () => {
-          const handler = createHandler();
-          const victim = await send(handler);
-          const attacker = await send(handler, forge(victim.id));
-          const [victimIssue, attackerIssue] = fake.issues;
+        for (const lagging of [false, true]) {
+          it(`in ${field} never takes over another feedback's issue (search lagging: ${lagging})`, async () => {
+            const handler = createHandler();
+            const victim = await send(handler);
+            const attacker = await send(handler, forge(victim.id));
+            const [victimIssue, attackerIssue] = fake.issues;
+            // The listing returns the attacker's newer issue first.
+            if (lagging) fake.lagSearch();
 
-          await patch(handler, victim.id, "resolved");
-          expect(victimIssue?.isOpen).toBe(false);
-          expect(attackerIssue?.isOpen).toBe(true);
+            await patch(handler, victim.id, "resolved");
+            expect(victimIssue?.isOpen).toBe(false);
+            expect(attackerIssue?.isOpen).toBe(true);
 
-          await patch(handler, attacker.id, "resolved");
-          expect(attackerIssue?.isOpen).toBe(false);
-        });
+            await remove(handler, { id: victim.id, projectName: "site" });
+            expect(attackerIssue?.comments).toEqual([]);
+
+            await patch(handler, attacker.id, "resolved");
+            expect(attackerIssue?.isOpen).toBe(false);
+          });
+        }
       }
 
       for (const lagging of [false, true]) {
