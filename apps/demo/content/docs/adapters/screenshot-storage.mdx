@@ -96,7 +96,7 @@ Requests use path-style URLs (`<endpoint>/<bucket>/<key>`), which R2, AWS S3, B2
 
 ### Retries
 
-A request that fails with a network error, a `5xx` or a `429` (S3's `SlowDown`, an R2 `InternalError`) is sent again, up to three attempts in all, after a short random wait or the `Retry-After` the backend asks for, as long as `timeoutMs` leaves time for it. A single transient failure would otherwise cost the feedback its screenshot. Sending a `PUT` again stores the same bytes under the same key, so a retry never leaves a second object behind.
+A request that fails with a network error, a `5xx` (S3's `503 SlowDown`, an R2 `500 InternalError`) or a `429` is sent again, up to three attempts in all, after a short random wait or the `Retry-After` the backend asks for, as long as `timeoutMs` leaves time for it. A single transient failure would otherwise cost the feedback its screenshot. Sending a `PUT` again stores the same bytes under the same key, so a retry never leaves a second object behind.
 
 ### Least-privilege credentials
 

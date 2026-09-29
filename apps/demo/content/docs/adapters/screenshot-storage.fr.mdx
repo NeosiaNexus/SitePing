@@ -96,7 +96,7 @@ Les requêtes utilisent des URL en style chemin (`<endpoint>/<bucket>/<clé>`), 
 
 ### Nouvelles tentatives
 
-Une requête qui échoue sur une erreur réseau, un `5xx` ou un `429` (le `SlowDown` de S3, une `InternalError` de R2) est renvoyée, jusqu'à trois tentatives en tout, après une courte attente aléatoire ou le `Retry-After` que demande le backend, tant que `timeoutMs` en laisse le temps. Sinon, un seul échec passager coûterait sa capture au feedback. Renvoyer un `PUT` stocke les mêmes octets sous la même clé : une nouvelle tentative ne laisse jamais de second objet.
+Une requête qui échoue sur une erreur réseau, un `5xx` (le `503 SlowDown` de S3, une `500 InternalError` de R2) ou un `429` est renvoyée, jusqu'à trois tentatives en tout, après une courte attente aléatoire ou le `Retry-After` que demande le backend, tant que `timeoutMs` en laisse le temps. Sinon, un seul échec passager coûterait sa capture au feedback. Renvoyer un `PUT` stocke les mêmes octets sous la même clé : une nouvelle tentative ne laisse jamais de second objet.
 
 ### Identifiants au moindre privilège
 
