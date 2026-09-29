@@ -32,7 +32,7 @@ Le commentaire, son type et son statut, la page (le **chemin** de l'URL uniqueme
 
 ## N'importe qui peut-il lire mon API de feedback ?
 
-Les lectures sont publiques par défaut, avec les e-mails des auteurs masqués pour les appelants non authentifiés, et `clientId` jamais exposé. Les appels destructifs (changements de statut, suppressions) exigent un `apiKey` d'origine — et en production, l'adapter serveur refuse de démarrer sans. [Détails](/fr/docs/server#le-modèle-de-sécurité-franchement).
+Les lectures sont publiques par défaut, avec les e-mails des auteurs masqués pour les appelants non authentifiés, et `clientId` jamais exposé. Les appels destructifs (changements de statut, suppressions) exigent un `apiKey` d'origine — et en production, l'adapter serveur refuse de démarrer sans. [Détails](/fr/docs/server#le-modèle-de-sécurité-franchement). Derrière votre propre connexion, l'[accès personnalisé](/fr/docs/server#accès-personnalisé) décide plutôt utilisateur par utilisateur, avec des recettes pour [Better Auth](/fr/docs/server#recette--better-auth) et [OpenID Connect](/fr/docs/server#recette--openid-connect).
 
 ## Que se passe-t-il si le réseau lâche en plein envoi ?
 

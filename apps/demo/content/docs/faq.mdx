@@ -32,7 +32,7 @@ The comment, its type and status, the page (the URL **path** only by default —
 
 ## Can anyone read my feedback API?
 
-Reads are public by default, with author emails redacted for unauthenticated callers, and `clientId` never exposed. Destructive calls (status changes, deletes) require an `apiKey` out of the box — and in production the server adapter refuses to start without one. [Details](/docs/server#the-security-model-honestly).
+Reads are public by default, with author emails redacted for unauthenticated callers, and `clientId` never exposed. Destructive calls (status changes, deletes) require an `apiKey` out of the box — and in production the server adapter refuses to start without one. [Details](/docs/server#the-security-model-honestly). Behind your own login, [custom access](/docs/server#custom-access) decides per user instead, with recipes for [Better Auth](/docs/server#recipe-better-auth) and [OpenID Connect](/docs/server#recipe-openid-connect).
 
 ## What happens if the network drops mid-submit?
 
