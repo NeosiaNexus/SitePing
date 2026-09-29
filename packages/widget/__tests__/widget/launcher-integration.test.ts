@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
+import { MemoryStore } from "@siteping/adapter-memory";
 import type { FeedbackPayload, FeedbackResponse, SitepingConfig, SitepingHttpConfig } from "@siteping/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockMatchMedia } from "../helpers.js";
 
 // jsdom does not implement window.matchMedia — provide a stub
@@ -25,6 +26,8 @@ vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
     };
   }),
   flushRetryQueue: vi.fn().mockResolvedValue(undefined),
+  // StoreClient's bound on a store write (store-mode tests)
+  withTimeout: (promise: Promise<unknown>) => promise,
 }));
 
 // Capture the EventBus instance that launch() creates so we can emit events on it.
@@ -105,6 +108,7 @@ vi.mock(new URL("../../src/identity.js", import.meta.url).pathname, () => ({
 import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
 import * as i18n from "../../src/i18n/index.js";
 import { launch } from "../../src/launcher.js";
+import { ownFeedback } from "../../src/own-feedback.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1747,6 +1751,73 @@ describe("launcher — annotation:complete integration", () => {
         apiKey: undefined,
         headers: undefined,
       });
+
+      instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // "Mine" filter — the feedback sent from this browser
+  // -------------------------------------------------------------------------
+
+  describe("feedback sent from this browser ('Mine' filter)", () => {
+    const shadow = () => document.querySelector("siteping-widget")!.shadowRoot!;
+    const cardIds = () => [...shadow().querySelectorAll<HTMLElement>(".sp-card")].map((c) => c.dataset.feedbackId);
+
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    afterEach(() => {
+      mockGetFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+    });
+
+    it("remembers a sent feedback's id for the project and endpoint, and forgets deleted ones", async () => {
+      mockSendFeedback.mockResolvedValue(makeFeedbackResponse({ id: "fb-mine" }));
+      const instance = launch(defaultConfig());
+      const own = ownFeedback("test-project", "/api/siteping");
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+      await vi.waitFor(() => expect([...own.ids()]).toEqual(["fb-mine"]));
+
+      capturedBus!.emit("feedback:deleted", "fb-mine");
+      expect(own.ids().size).toBe(0);
+
+      own.add("fb-other");
+      capturedBus!.emit("feedback:all-deleted");
+      expect(own.ids().size).toBe(0);
+
+      instance.destroy();
+    });
+
+    it("remembers the store's record in store mode", async () => {
+      const store = new MemoryStore();
+      const instance = launch({ store, projectName: "test-project", forceShow: true });
+
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => expect(ownFeedback("test-project").ids().size).toBe(1));
+      const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+      expect([...ownFeedback("test-project").ids()]).toEqual([feedbacks[0]?.id]);
+
+      instance.destroy();
+    });
+
+    it("hands them to the panel, whose 'Mine' toggle lists only this browser's feedback", async () => {
+      mockSendFeedback.mockResolvedValue(makeFeedbackResponse({ id: "fb-mine" }));
+      mockGetFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedbackResponse({ id: "fb-theirs" }), makeFeedbackResponse({ id: "fb-mine" })],
+        total: 2,
+      });
+      const instance = launch(defaultConfig());
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+      await vi.waitFor(() => expect(mockSendFeedback).toHaveBeenCalledOnce());
+
+      instance.open();
+      await vi.waitFor(() => expect(cardIds()).toHaveLength(2));
+      shadow().querySelector<HTMLButtonElement>(".sp-mine-toggle")!.click();
+
+      await vi.waitFor(() => expect(cardIds()).toEqual(["fb-mine"]));
 
       instance.destroy();
     });

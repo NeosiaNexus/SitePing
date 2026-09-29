@@ -48,6 +48,10 @@ export const fr: Translations = {
   "scope.thisType": "Ce type",
   "scope.all": "Toutes les pages",
 
+  // "Mine" toggle
+  "panel.filterMine": "Mes feedbacks",
+  "panel.filterMineHint": "Uniquement les feedbacks envoyés depuis ce navigateur",
+
   // FAB menu
   "fab.aria": "Siteping \u2014 Menu feedback",
   "fab.messages": "Afficher la barre latérale",

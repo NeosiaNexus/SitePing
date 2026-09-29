@@ -197,6 +197,32 @@ test.describe("Widget against the real handler", () => {
           ?.textContent?.includes("Seeded for the panel") ?? false,
     );
   });
+
+  test("the panel's 'Mine' filter lists only the feedback sent from this browser, after a reload too", async ({
+    page,
+    request,
+  }, testInfo) => {
+    const project = projectFor(testInfo);
+    await seed(request, project, "Sent by someone else");
+    await openWidgetPage(page, { project });
+    expect((await annotateAndSend(page, "Sent from here")).status()).toBe(201);
+    const cardMessages = () =>
+      page.evaluate(() =>
+        [...(document.querySelector("siteping-widget")?.shadowRoot?.querySelectorAll(".sp-card-message") ?? [])].map(
+          (message) => message.textContent,
+        ),
+      );
+
+    for (const pageLoad of ["after the send", "after a reload"]) {
+      if (pageLoad === "after a reload") await openWidgetPage(page, { project });
+      await clickInShadow(page, ".sp-fab");
+      await clickInShadow(page, '[data-item-id="chat"]');
+      await expect.poll(cardMessages, { message: pageLoad }).toEqual(["Sent from here", "Sent by someone else"]);
+
+      await clickInShadow(page, ".sp-mine-toggle");
+      await expect.poll(cardMessages, { message: pageLoad }).toEqual(["Sent from here"]);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

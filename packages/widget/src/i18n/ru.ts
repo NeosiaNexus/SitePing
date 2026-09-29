@@ -48,6 +48,10 @@ export const ru: Translations = {
   "scope.thisType": "Этот тип",
   "scope.all": "Все страницы",
 
+  // "Mine" toggle
+  "panel.filterMine": "Мои",
+  "panel.filterMineHint": "Только отзывы, отправленные из этого браузера",
+
   // FAB menu
   "fab.aria": "Siteping — Меню обратной связи",
   "fab.messages": "Показать панель",

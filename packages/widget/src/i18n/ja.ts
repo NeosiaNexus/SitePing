@@ -48,6 +48,10 @@ export const ja: Translations = {
   "scope.thisType": "このページ種別",
   "scope.all": "すべてのページ",
 
+  // "Mine" toggle
+  "panel.filterMine": "自分の",
+  "panel.filterMineHint": "このブラウザから送信したフィードバックのみ",
+
   // FAB menu
   "fab.aria": "Siteping — フィードバックメニュー",
   "fab.messages": "サイドバーを表示",

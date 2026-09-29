@@ -9,6 +9,7 @@ import {
 } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
+import { ownFeedback } from "../../src/own-feedback.js";
 
 /** Burn through resilientFetch's three backoffs (1s + 2s + 4s, ±500ms jitter) under fake timers. */
 async function drainRetryBackoff(): Promise<void> {
@@ -1072,6 +1073,43 @@ describe("flushRetryQueue", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(localStorage.removeItem).toHaveBeenCalledWith("siteping_retry_queue");
+  });
+
+  describe("a replay that lands", () => {
+    const payload = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "sent offline",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+      clientId: "offline-1",
+    };
+
+    beforeEach(() => {
+      localStorage.setItem("siteping_retry_queue", JSON.stringify([{ endpoint, payload }]));
+    });
+
+    it("remembers the created feedback as sent from this browser (the panel's 'Mine' filter)", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ id: "fb-offline" }), { status: 201 }));
+
+      await flushRetryQueue(endpoint);
+
+      expect([...ownFeedback("test", endpoint).ids()]).toEqual(["fb-offline"]);
+      expect(localStorage.getItem("siteping_retry_queue")).toBeNull();
+    });
+
+    it("is still dropped from the queue when its response body is unreadable", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("<html>", { status: 201 }));
+
+      await flushRetryQueue(endpoint);
+
+      expect(ownFeedback("test", endpoint).ids().size).toBe(0);
+      expect(localStorage.getItem("siteping_retry_queue")).toBeNull();
+    });
   });
 
   it("replays queued POSTs with auth headers computed at flush time", async () => {

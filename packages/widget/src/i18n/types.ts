@@ -48,6 +48,10 @@ export interface Translations {
   "scope.thisType": string;
   "scope.all": string;
 
+  // "Mine" toggle — only the feedback sent from this browser
+  "panel.filterMine": string;
+  "panel.filterMineHint": string;
+
   // FAB menu
   "fab.aria": string;
   "fab.messages": string;
