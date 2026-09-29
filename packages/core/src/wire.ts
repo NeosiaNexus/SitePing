@@ -9,8 +9,7 @@
  */
 
 import { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
-import { hasOwn } from "./type-utils.js";
-import { type FeedbackQuery, isStoreLimit, isStoreNotFound } from "./types.js";
+import type { FeedbackQuery } from "./types.js";
 
 /**
  * A fresh `clientId` for a write the server dedupes a resend of — a feedback,
@@ -100,10 +99,14 @@ export async function errorFromResponse(response: Response, label: string): Prom
 }
 
 /**
- * The HTTP status an error carries — `SitepingValidationError.status`, or a
- * custom source's own `status` field.
+ * An error's `status` (`SitepingValidationError.status`, or a custom
+ * source's) or `code` (a store error's) — read as a plain field, not through
+ * `instanceof`: an instance carries its code anyway, and the store error
+ * classes stay out of the browser bundles. Anything thrown is safe to read:
+ * a primitive has neither field, `null` and `undefined` are skipped.
  */
-const statusOf = (error: unknown): unknown => (hasOwn(error, "status") ? error.status : undefined);
+const fieldOf = (error: unknown, key: "status" | "code"): unknown =>
+  (error as Partial<Record<"status" | "code", unknown>> | null | undefined)?.[key];
 
 /**
  * Whether a failed reply met a full thread — a store's `StoreLimitError`, or
@@ -111,15 +114,16 @@ const statusOf = (error: unknown): unknown => (hasOwn(error, "status") ? error.s
  * never comes from clients that mint one per reply). Retrying won't help.
  */
 export function isThreadFull(error: unknown): boolean {
-  return isStoreLimit(error) || statusOf(error) === 409;
+  return fieldOf(error, "status") === 409 || fieldOf(error, "code") === "STORE_LIMIT";
 }
 
 /**
  * Whether a failed reply delete found nothing to delete — a store's
- * `StoreNotFoundError`, or a 404: it is gone already.
+ * `StoreNotFoundError`, or a 404: it is gone already. (Unlike
+ * `isStoreNotFound`, no Prisma `P2025`: a browser source never meets one.)
  */
 export function isCommentGone(error: unknown): boolean {
-  return isStoreNotFound(error) || statusOf(error) === 404;
+  return fieldOf(error, "status") === 404 || fieldOf(error, "code") === "STORE_NOT_FOUND";
 }
 
 /**

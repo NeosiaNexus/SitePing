@@ -83,6 +83,20 @@ describe("thread failures", () => {
     expect(isThreadFull(Object.assign(new Error("full"), { status: 409 }))).toBe(true);
     expect(isThreadFull(Object.assign(new Error("teapot"), { status: 418 }))).toBe(false);
   });
+
+  it("reads a store error's code, as another bundle's copy of core throws it", () => {
+    expect(isThreadFull(Object.assign(new Error("full"), { code: "STORE_LIMIT" }))).toBe(true);
+    expect(isCommentGone(Object.assign(new Error("gone"), { code: "STORE_NOT_FOUND" }))).toBe(true);
+    expect(isCommentGone(Object.assign(new Error("full"), { code: "STORE_LIMIT" }))).toBe(false);
+    expect(isThreadFull(Object.assign(new Error("gone"), { code: "STORE_NOT_FOUND" }))).toBe(false);
+  });
+
+  it("reads anything thrown, a primitive, null or undefined included", () => {
+    for (const thrown of [null, undefined, 404, "409", Symbol("x")]) {
+      expect(isThreadFull(thrown)).toBe(false);
+      expect(isCommentGone(thrown)).toBe(false);
+    }
+  });
 });
 
 describe("SitepingAuthError", () => {
