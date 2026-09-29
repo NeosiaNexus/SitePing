@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCloudflareImagesObjectStore } from "../src/backends/cloudflare-images.js";
 import { createS3ObjectStore } from "../src/backends/s3.js";
@@ -23,6 +24,16 @@ const openCloudflareImages = (deliveryBaseUrl: string) =>
     accountHash: "hash-1",
     deliveryBaseUrl,
   });
+
+/** What `run` throws, or `undefined` when it returns. */
+function thrownBy(run: () => unknown): unknown {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
 
 describe("createPublicUrlMapping — base URL trailing slashes", () => {
   it.each([
@@ -107,18 +118,50 @@ describe("base URLs — validation", () => {
   });
 
   it.each([
-    "/api/siteping/screenshots",
-    "app.example.com/screenshots",
-    "ftp://files.example.com/screenshots",
-    "javascript:alert(1)//",
-    "https://cdn.example.com/screens?v=1",
-    "https://cdn.example.com/screens#top",
-    "https://cdn.example.com/screens?",
-    "https://cdn.example.com/screens#",
-  ])("refuses the publicBaseUrl %s, under which keys would not resolve to the object", (publicBaseUrl) => {
-    expect(() => createPublicUrlMapping(publicBaseUrl)).toThrow(
-      `publicBaseUrl must be an absolute http(s) URL without a query or fragment, got "${publicBaseUrl}"`,
-    );
+    ["/api/siteping/screenshots", "must be an absolute http(s) URL"],
+    ["app.example.com/screenshots", "must be an absolute http(s) URL"],
+    ["ftp://files.example.com/screenshots", "must be an absolute http(s) URL"],
+    ["javascript:alert(1)//", "must be an absolute http(s) URL"],
+    ["https://cdn.example.com/screens?v=1", "must not contain a query or a fragment (? or #)"],
+    ["https://cdn.example.com/screens#top", "must not contain a query or a fragment (? or #)"],
+    ["https://cdn.example.com/screens?", "must not contain a query or a fragment (? or #)"],
+    ["https://cdn.example.com/screens#", "must not contain a query or a fragment (? or #)"],
+  ])("refuses the publicBaseUrl %s, under which keys would not resolve to the object", (publicBaseUrl, reason) => {
+    // The whole message: the option and the reason, never the refused value.
+    expect(() => createPublicUrlMapping(publicBaseUrl)).toThrow(new Error(`[siteping] publicBaseUrl ${reason}`));
+  });
+
+  describe("never quotes a refused value, which may carry a secret", () => {
+    const optionFactories: [string, (value: string) => unknown][] = [
+      ["publicBaseUrl", (value) => createPublicUrlMapping(value)],
+      ["endpoint", (value) => openS3(value, fetch)],
+      ["deliveryBaseUrl", (value) => openCloudflareImages(value)],
+    ];
+    const valuesWithSecrets = [
+      // Tokens the parser does not see as credentials.
+      "https://cdn.example.com/screens?token=SECRET",
+      "https://acct.blob.core.windows.net/screens?sv=2024&sig=SECRET",
+      "https://s3.example.com/?X-Amz-Security-Token=SECRET",
+      "https://cdn.example.com/screens#SECRET",
+      // A scheme-less value: `user:` parses as its scheme, so it has no password to find.
+      "user:SECRET@cdn.example.com/screens",
+      // Credentials in a URL that does not parse (bad port, a space in the host, no scheme).
+      "https://user:SECRET@cdn.example.com:99999/screens",
+      "https://user:SECRET@cdn exa.com/screens",
+      "//user:SECRET@cdn.example.com",
+      // Credentials under another scheme.
+      "ftp://user:SECRET@files.example.com",
+    ];
+
+    for (const [option, open] of optionFactories) {
+      it.each(valuesWithSecrets)(`${option}: %s`, (value) => {
+        const failure = thrownBy(() => open(value));
+
+        expect(failure).toBeInstanceOf(Error);
+        expect((failure as Error).message).toMatch(new RegExp(`^\\[siteping\\] ${option} must`));
+        expect(inspect(failure)).not.toContain("SECRET");
+      });
+    }
   });
 
   it.each([
