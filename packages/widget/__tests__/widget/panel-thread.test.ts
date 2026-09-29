@@ -4,6 +4,7 @@ import type { CommentResponse, FeedbackResponse } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
 import { buildThread, type ThreadOptions } from "../../src/panel-thread.js";
+import { mockMediaQueries } from "../helpers.js";
 
 const t = createT("en");
 
@@ -117,6 +118,17 @@ describe("buildThread", () => {
     expect(send()?.textContent).toBe(t("popup.submit"));
     // jsdom reports neither userAgentData nor a Mac platform.
     expect(root?.querySelector(".sp-thread-foot span")?.textContent).toBe(t("popup.submitHintOther"));
+  });
+
+  it("does not advertise the keyboard shortcut on touch screens", () => {
+    mockMediaQueries(["(pointer: coarse)"]);
+    try {
+      const { root, send } = mount(makeFeedback([]));
+      expect(root?.querySelector(".sp-thread-foot span")?.textContent).toBe("");
+      expect(send()?.textContent).toBe(t("popup.submit"));
+    } finally {
+      mockMediaQueries([]);
+    }
   });
 
   it("posts the trimmed text, appends the reply and clears the field", async () => {
