@@ -32,7 +32,13 @@ import {
   type SitepingPrincipal,
 } from "@siteping/server";
 
-export type { ScreenshotStorage, SitepingStore } from "@siteping/core";
+export type {
+  CommentCreateInput,
+  FeedbackCreateInput,
+  FeedbackRecord,
+  ScreenshotStorage,
+  SitepingStore,
+} from "@siteping/core";
 export {
   flattenAnnotation,
   isStorePersistence,
@@ -58,6 +64,7 @@ export type {
   SitepingAuthorizationContext,
   SitepingDeletionTarget,
   SitepingHandler,
+  SitepingHandlerBaseOptions,
   SitepingHttpMethod,
   SitepingLifecycleHooks,
   SitepingLogger,
@@ -722,6 +729,10 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
   options: PrismaAccessHandlerOptions<Principal>,
 ): SitepingHandler;
 export function createSitepingHandler(options: HandlerOptions): SitepingHandler;
+/** Options assembled at runtime, either policy. */
+export function createSitepingHandler<Principal extends SitepingPrincipal>(
+  options: HandlerOptions | PrismaAccessHandlerOptions<Principal>,
+): SitepingHandler;
 export function createSitepingHandler<Principal extends SitepingPrincipal>({
   prisma,
   store: providedStore,
