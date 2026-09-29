@@ -30,6 +30,8 @@ const siteping = initSiteping({
 4. **Largeur minimale (optionnelle)** — en dessous de `minViewportWidth`, il passe son tour avec `onSkip("mobile")`. La valeur par défaut, `0`, l'affiche à toutes les largeurs : les téléphones ont droit à la [mise en page compacte](#sur-téléphone-et-tablette). Également contourné par `forceShow`.
 5. **Validation de la config** — pas d'`endpoint`/`store`, ou pas de `projectName` ? Le widget affiche un `console.error` et ne fait rien. Ce cas-là n'appelle **pas** `onSkip` — regardez la console, pas le callback.
 
+> **Modifié en 0.11 :** `minViewportWidth` valait `768` par défaut, ce qui tenait le widget à l'écart des téléphones. Un site qui passe à la 0.11 sans l'avoir défini affiche désormais le widget sur téléphone aussi, et `onSkip("mobile")` ne se déclenche plus. Mettez `minViewportWidth: 768` pour garder l'ancien comportement. Avec `enableRightClickComment` activé, un appui long sur un téléphone Android ouvre aussi le composeur.
+
 ## Sur téléphone et tablette
 
 Le même widget s'adapte à l'écran sur lequel il arrive — il n'y a rien à configurer.

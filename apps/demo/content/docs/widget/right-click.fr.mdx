@@ -25,7 +25,7 @@ Le widget laisse la main au menu contextuel du navigateur dans tous ces cas, vé
 4. **L'interface de SitePing** — un clic droit sur le bouton, le panneau, les marqueurs ou tout élément marqué `data-siteping-ignore` est ignoré.
 5. **Pendant une annotation** — tant qu'une bulle de commentaire est déjà ouverte, le clic droit fonctionne normalement (pour pouvoir coller du texte dans la zone de saisie).
 
-Le clic droit à la souris, l'appui long tactile et l'appui long au stylet ouvrent tous le composeur — sur téléphone aussi, puisque le widget s'affiche par défaut à toutes les largeurs.
+Le clic droit à la souris et l'appui long au stylet ouvrent le composeur, tout comme l'appui long tactile sur Android, téléphones compris. Sur iPhone et iPad, un appui long ne déclenche jamais `contextmenu` ([bug WebKit 213953](https://bugs.webkit.org/show_bug.cgi?id=213953)) : on passe alors par le mode annotation du bouton flottant, où il suffit de toucher un élément pour le commenter.
 
 ## Ce que ça ouvre
 

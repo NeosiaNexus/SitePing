@@ -38,7 +38,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint garanti */ }
 | Option | Type | Défaut | Ce que ça fait |
 |---|---|---|---|
 | `forceShow` | `boolean` | `false` | Contourne les garde-fous production et taille d'écran (jamais celui du SSR) |
-| `minViewportWidth` | `number` | `0` | En dessous de cette largeur, le widget passe son tour avec `onSkip("mobile")`. La valeur par défaut l'affiche à toutes les largeurs — les téléphones ont droit à la [mise en page compacte](/fr/docs/widget#sur-téléphone-et-tablette) |
+| `minViewportWidth` | `number` | `0` | En dessous de cette largeur, le widget passe son tour avec `onSkip("mobile")`. La valeur par défaut l'affiche à toutes les largeurs — les téléphones ont droit à la [mise en page compacte](/fr/docs/widget#sur-téléphone-et-tablette). Avant la 0.11, elle valait `768` : remettez-la pour tenir le widget à l'écart des téléphones |
 | `position` | `"bottom-right"` \| `"bottom-left"` | `"bottom-right"` | Coin du bouton flottant |
 | `showAnnotationsToggle` | `boolean` | `true` | Mettez `false` pour retirer le bouton d'affichage des marqueurs du menu radial |
 

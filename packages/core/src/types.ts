@@ -260,7 +260,8 @@ export interface SitepingBaseConfig {
    *
    * Keyboard-triggered context menus (≣ Menu key, Shift+F10) always get the
    * native menu; only mouse right-click and touch/pen long-press open the
-   * composer.
+   * composer — a long-press only where the browser fires `contextmenu` for
+   * it, which iOS and iPadOS never do (see the note below).
    *
    * **Modifier-key escape hatch:** holding Shift, Ctrl, Alt, or Meta while
    * right-clicking always falls through to the native context menu, giving
@@ -271,7 +272,9 @@ export interface SitepingBaseConfig {
    *
    * Note: on Android, `contextmenu` fires on long-press — touch users open the
    * composer by long-pressing, on phones too since the widget renders at every
-   * width by default (see `minViewportWidth`).
+   * width by default (see `minViewportWidth`). On iPhone and iPad a long-press
+   * never fires `contextmenu` (WebKit bug 213953): users there open annotate
+   * mode from the floating button and tap the element.
    */
   enableRightClickComment?: boolean | undefined;
   /**

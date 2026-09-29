@@ -25,7 +25,7 @@ The widget yields to the browser's own context menu in all of these cases, check
 4. **SitePing's own UI** — right-clicking the button, panel, markers, or anything marked `data-siteping-ignore` is ignored.
 5. **Mid-annotation** — while a comment popup is already open, right-click works normally (so users can paste into the textarea).
 
-Mouse right-click, touch long-press, and pen long-press all open the composer — on phones as well, since the widget renders at every width by default.
+Mouse right-click and pen long-press open the composer, and so does a touch long-press on Android, phones included. On iPhone and iPad a long-press never fires `contextmenu` ([WebKit bug 213953](https://bugs.webkit.org/show_bug.cgi?id=213953)), so there the way in is the floating button's annotate mode: tap an element to comment on it.
 
 ## What it opens
 

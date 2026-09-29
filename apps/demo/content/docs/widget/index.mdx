@@ -30,6 +30,8 @@ const siteping = initSiteping({
 4. **Minimum width (opt-in)** — below `minViewportWidth` it skips with `onSkip("mobile")`. The default, `0`, renders at every width: phones get the [compact layout](#on-phones-and-tablets). Also bypassed by `forceShow`.
 5. **Config validation** — no `endpoint`/`store`, or no `projectName`? The widget logs a `console.error` and no-ops. This one does **not** call `onSkip` — check the console, not the callback.
 
+> **Changed in 0.11:** `minViewportWidth` used to default to `768`, which kept the widget off phones. A site that upgrades without setting it now shows the widget on phones too, and `onSkip("mobile")` no longer fires. Set `minViewportWidth: 768` to keep the previous behaviour. With `enableRightClickComment` on, a long-press on an Android phone now opens the composer as well.
+
 ## On phones and tablets
 
 The same widget adapts to the screen it lands on — there is nothing to configure.
