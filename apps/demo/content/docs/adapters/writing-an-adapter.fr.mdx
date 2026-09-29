@@ -139,7 +139,7 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 
 `addComment(feedbackId, data)` et `deleteComment(feedbackId, commentId)` sont optionnelles elles aussi. Sans elles, votre store n'a pas de fils : vos enregistrements peuvent omettre `comments`, le handler sert chaque feedback avec un fil vide et répond `501` aux écritures de commentaires. Implémentez les deux pour prendre en charge les [fils](/fr/docs/comments) :
 
-- Renvoyez le fil sur chaque enregistrement, dans `comments`, du plus ancien au plus récent — un tableau vide quand il n'y en a pas.
+- Renvoyez le fil sur chaque enregistrement, dans `comments`, du plus ancien au plus récent — un tableau vide quand il n'y en a pas, à commencer par l'enregistrement que renvoie `createFeedback`. `buildFeedbackRecord` omet `comments` pour que son enregistrement corresponde toujours à votre ligne de feedback : ajoutez `comments: []` vous-même.
 - `addComment` est idempotente sur `data.clientId` : quand un commentaire avec ce `clientId` existe, sur n'importe quel fil, renvoyez-le tel quel. Le handler refuse un envoi rejoué qui vise un autre feedback.
 - `deleteComment` se limite au fil qu'elle désigne, celui pour lequel l'appelant a été autorisé : un commentaire d'un autre fil est « introuvable ».
 - Un fil contient au plus `MAX_COMMENTS_PER_FEEDBACK` (100) commentaires, un commentaire ne touche pas à l'`updatedAt` du feedback, et supprimer un feedback supprime son fil.

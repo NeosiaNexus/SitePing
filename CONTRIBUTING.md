@@ -177,7 +177,8 @@ Two implementation strategies:
   `createCollectionStore({ load, persist, generateId })` from `@siteping/core`
   your three storage primitives and you get the complete store — clientId
   dedup, filtering/pagination, the error contract, `verifyProjectOwnership`,
-  `createFeedbackIfAbsent`, and the screenshot-drop retry on failed persists.
+  `createFeedbackIfAbsent`, discussion threads (`addComment` /
+  `deleteComment`), and the screenshot-drop retry on failed persists.
   `adapter-memory` is the ~80-line reference.
 - **Query backends** (SQL, ORMs): implement the 6 methods directly. Use
   `buildFeedbackRecord` / `buildAnnotationRecord` for input→record
@@ -186,9 +187,12 @@ Two implementation strategies:
   `updateFeedback`/`deleteFeedback` throw `StoreNotFoundError`,
   `deleteAllFeedbacks` is a no-op when empty, every lost write throws
   `StorePersistenceError`. Optionally implement `verifyProjectOwnership` so
-  HTTP handlers can reject cross-project PATCH/DELETE, and
+  HTTP handlers can reject cross-project PATCH/DELETE,
   `createFeedbackIfAbsent` when `createFeedback` returns the existing record
-  on a duplicate, so webhooks fire once per feedback.
+  on a duplicate, so webhooks fire once per feedback, and `addComment` /
+  `deleteComment` for discussion threads (`buildCommentRecord` builds a
+  comment; `buildFeedbackRecord` leaves `comments` out, so a store with
+  threads adds `comments: []` to the record it returns).
 
 Verify with the shared conformance suite (~67 tests — the scaffold pre-wires
 this file):

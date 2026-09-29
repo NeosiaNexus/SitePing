@@ -180,7 +180,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
       feedbackId: id,
       clientId: data.clientId,
     });
-    const { annotations, comments, ...feedback } = buildFeedbackRecord(data, {
+    const { annotations, ...feedback } = buildFeedbackRecord(data, {
       id,
       annotationId: () => crypto.randomUUID(),
       // The clock value as is: rows created in the same millisecond — by this
@@ -202,7 +202,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
       throw error;
     }
     if (inserted) {
-      return { feedback: { ...row, annotations, comments }, created: true };
+      return { feedback: { ...row, annotations, comments: [] }, created: true };
     }
 
     // Lost a race against the same clientId: the stored row keeps its own

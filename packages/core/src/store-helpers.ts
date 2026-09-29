@@ -91,6 +91,8 @@ export function buildCommentRecord(
  * timestamps. Adapters without external screenshot storage keep the data
  * URL inline on `screenshotUrl`, which is what this helper does; adapters
  * with a `ScreenshotStorage` upload first and override `screenshotUrl`.
+ * It leaves `comments` out, so the record minus its `annotations` stays an
+ * insertable feedback row; a store with threads returns `comments: []` itself.
  */
 export function buildFeedbackRecord(
   input: FeedbackCreateInput,
@@ -116,7 +118,6 @@ export function buildFeedbackRecord(
     annotations: input.annotations.map((ann) =>
       buildAnnotationRecord(ann, { id: ctx.annotationId(), feedbackId: ctx.id, now }),
     ),
-    comments: [],
     screenshotUrl: input.screenshotDataUrl ?? null,
     screenshotRegion: input.screenshotRegion ?? null,
     diagnostics: input.diagnostics ?? null,
@@ -245,10 +246,13 @@ export function createCollectionStore(
       const existing = feedbacks.find((f) => f.clientId === data.clientId);
       if (existing) return { feedback: existing, created: false };
 
-      const record = buildFeedbackRecord(data, {
-        id: backend.generateId(),
-        annotationId: () => backend.generateId(),
-      });
+      const record: FeedbackRecord = {
+        ...buildFeedbackRecord(data, {
+          id: backend.generateId(),
+          annotationId: () => backend.generateId(),
+        }),
+        comments: [],
+      };
 
       const next = [record, ...feedbacks];
       try {

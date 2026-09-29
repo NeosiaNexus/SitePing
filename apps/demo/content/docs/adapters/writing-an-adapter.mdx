@@ -139,7 +139,7 @@ Implement it whenever your store serves more than one project. When it's absent,
 
 `addComment(feedbackId, data)` and `deleteComment(feedbackId, commentId)` are optional too. Without them your store has no threads: your records can leave `comments` out, the handler serves every feedback with an empty thread and answers comment writes with `501`. Implement both to support [threads](/docs/comments):
 
-- Return the thread on every record, as `comments`, oldest first — an empty array when there is none.
+- Return the thread on every record, as `comments`, oldest first — an empty array when there is none, starting with the record `createFeedback` returns. `buildFeedbackRecord` leaves `comments` out so its record still maps to your feedback row: add `comments: []` yourself.
 - `addComment` is idempotent on `data.clientId`: when a comment with that `clientId` exists, on any thread, return it unchanged. The handler refuses a replay aimed at another feedback.
 - `deleteComment` is scoped to the thread it names, which the caller was authorized for: a comment of another thread is "not found".
 - A thread holds at most `MAX_COMMENTS_PER_FEEDBACK` (100) comments, a comment leaves the feedback's `updatedAt` alone, and deleting a feedback deletes its thread.

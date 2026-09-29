@@ -77,11 +77,7 @@ function commentInput(overrides: Partial<CommentCreateInput> = {}): CommentCreat
 
 /** A feedback row written by the host application itself, bypassing the store; `now` stamps its timestamps. */
 function applicationFeedbackRow(now?: Date) {
-  const {
-    annotations: _annotations,
-    comments: _comments,
-    ...row
-  } = buildFeedbackRecord(feedbackInput(), {
+  const { annotations: _annotations, ...row } = buildFeedbackRecord(feedbackInput(), {
     id: crypto.randomUUID(),
     annotationId: () => crypto.randomUUID(),
     ...(now ? { now } : {}),
