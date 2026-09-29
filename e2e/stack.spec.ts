@@ -409,6 +409,11 @@ test.describe("Typing in the widget's reply box", () => {
     const project = projectFor(testInfo);
     await seed(request, project, "Which font size?");
     await openWidgetThread(page, project);
+    // The detail view focuses its back button on the next frame: once it has,
+    // nothing takes the focus from the field.
+    await page.waitForFunction(() =>
+      document.querySelector("siteping-widget")?.shadowRoot?.activeElement?.classList.contains("sp-detail-back"),
+    );
     // DocSearch-style: `/` opens the page's search, `s` stars — outside text fields.
     await page.evaluate(() => {
       const fired: string[] = [];
