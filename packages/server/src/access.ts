@@ -159,7 +159,8 @@ export function createAccessGate<Principal extends SitepingPrincipal>(
       }
       return { ok: true, principal, canReadAuthorEmail: (await access.canReadAuthorEmail?.(principal)) ?? true };
     },
-    // `access.authenticate` never sees the method: whoever it admitted once, it admits on any.
+    // A dry run reuses the response's request, so `authenticate` is never asked
+    // about another method: `authorize` decides, by action.
     async admits() {
       return true;
     },

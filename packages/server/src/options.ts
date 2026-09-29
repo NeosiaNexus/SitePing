@@ -29,6 +29,8 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
   /**
    * `true` when nothing is being done: the handler fills in the
    * `permissions` of a response — see `SitepingAccessControl.authorize`.
+   * `request` is then the response's own (a `GET`, `POST` or `PATCH`),
+   * whatever `action` asks about: decide by `action`, not `request.method`.
    */
   dryRun?: boolean;
 }
@@ -54,8 +56,11 @@ export type SitepingPrincipal = object | string | number;
  *   `deleteComment` (without a `commentId`) per feedback, plus `deleteAll`
  *   once per list — so clients hide what it would refuse. A dry run that
  *   throws refuses that permission (logged) rather than failing the
- *   response. Keep it fast: a page of 50 feedbacks takes 201 dry runs, all
- *   at once, sharing the one `request` — cache lookups per request.
+ *   response. Keep it fast: a page of 50 feedbacks takes 201 dry runs, 8
+ *   at a time, sharing the one `request` — cache lookups per request. That
+ *   request is the response's whatever the action, and `authenticate` is
+ *   not asked again: a principal it admits on some methods only needs
+ *   `authorize` to refuse it the other actions.
  * - `canReadAuthorEmail` decides whether responses include `authorEmail`
  *   (reviewer PII), on feedbacks and their comments — the list, the PATCH
  *   answer and the POST answer alike. Defaults to `true`.
