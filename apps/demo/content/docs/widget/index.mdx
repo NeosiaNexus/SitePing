@@ -94,6 +94,18 @@ Branch on `error.code`, not `instanceof` — the error classes themselves are no
 
 Feedback has four statuses (`open`, `in_progress`, `resolved`, `wont_fix`). The widget **displays** all four but its own actions are deliberately binary: resolve and reopen. The in-between states belong to your triage workflow in the [dashboard](/docs/dashboard).
 
+## Filtering the panel
+
+The panel's filters combine, and narrow the list only — the markers on the page keep showing the page's feedback:
+
+- **Search** matches the message text.
+- **Type** keeps one feedback type.
+- **Status**: *Open* covers `open` and `in_progress`, *Resolved* covers `resolved` and `wont_fix`.
+- **Scope**: *This page* (the default), *This type* — every page sharing the current route template, offered when [`getPageScope`](/docs/widget/configuration#page-scoping) returns a `urlPattern` — or *All pages*.
+- **Mine** keeps the feedback sent from this browser.
+
+"Mine" needs no identity and no server support, in HTTP and `store` mode alike. The widget remembers the id of each feedback it sends — the 500 most recent per project and endpoint, in `localStorage`, those the offline queue sends later included — and filters on its side: it walks the list's pages until it has found them all, then shows them at once. The server can't do it for the widget: its public `GET` [blanks author emails](/docs/server#what-responses-expose), and a filter by email would let anyone check whether an address sent feedback. So "Mine" means *this browser*: feedback sent from another browser or device, or before the site's data was cleared, isn't listed.
+
 ## Over your modals
 
 Clients often need to report a problem *inside* a dialog. The widget stays usable on top of an open modal — tested against Radix / shadcn/ui `Dialog`, and built for any modal that works the same way (outside-click dismissal, focus trap, scroll lock, hidden siblings):
