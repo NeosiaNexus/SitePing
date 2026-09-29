@@ -123,6 +123,19 @@ La limitation de débit n'est pas gérée ici : appliquez-la dans votre framewor
 | `logger` | `{ error(message, context) }` | `console.error` | Où vont les échecs inattendus, avec la méthode et le chemin de la requête — et pour un hook en échec, le feedback ou la suppression qu'il concerne. Les échecs de webhook vont plutôt à leur propre [`onError`](#webhooks). Un logger qui lève ou rejette se rabat sur `console.error` |
 | `describeError` | `(error) => string \| undefined` | — | Le message d'une `500` au lieu de `"Internal server error"`, par exemple une indication « lancez vos migrations ». Ne renvoyez jamais les détails de l'erreur elle-même |
 
+`logger.error(message, context)` suit l'ordre de console et de winston. [pino](https://getpino.io) prend le contexte en premier, et ne sérialise une erreur que sous `err` : passé tel quel, il passe la vérification de types, puis journalise le message sans son contexte. Adaptez-le :
+
+```ts
+import pino from "pino";
+
+const log = pino();
+
+createSitepingHandler({
+  store,
+  logger: { error: (message, { error, ...context }) => log.error({ err: error, ...context }, message) },
+});
+```
+
 ## Le modèle de sécurité, franchement
 
 - **Les lectures sont publiques par défaut.** Sans `apiKey`, quiconque connaît l'URL peut lister les feedbacks (avec les e-mails masqués — voir plus bas).

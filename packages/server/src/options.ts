@@ -112,6 +112,10 @@ export interface SitepingLifecycleHooks<Principal> {
  * A logger that throws, or returns a promise that rejects (a log shipper
  * down), falls back to `console.error`: it never fails the request, nor
  * leaves a rejection unhandled.
+ *
+ * The arguments come in console's and winston's order. pino's `error` takes
+ * the context first and type-checks here anyway, then drops the context:
+ * adapt it — `{ error: (message, { error, ...context }) => log.error({ err: error, ...context }, message) }`.
  */
 export interface SitepingLogger {
   error(message: string, context: Record<string, unknown>): void | Promise<void>;
