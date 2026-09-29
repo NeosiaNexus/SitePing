@@ -5,7 +5,7 @@
  */
 
 import { COMMENT_BODY_MAX_LENGTH, type CommentResponse, type FeedbackResponse, newClientId } from "@siteping/core";
-import { el, formatRelativeDate, isMacPlatform, setButtonLoading, setText } from "./dom-utils.js";
+import { el, formatRelativeDate, isMacPlatform, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
 
 export interface ThreadOptions {
@@ -80,9 +80,9 @@ export function buildThread(
     if (sending || !body) return;
     sending = true;
     setText(error, "");
-    // Read-only, not disabled: a disabled field would drop the keyboard focus.
+    // Read-only, and Send left enabled: a disabled control drops the keyboard
+    // focus, and the identity prompt could not hand it back on close.
     input.readOnly = true;
-    const restore = setButtonLoading(send);
     try {
       const comment = await post(body, clientId);
       if (comment) {
@@ -96,7 +96,6 @@ export function buildThread(
     } finally {
       sending = false;
       input.readOnly = false;
-      restore();
     }
   };
   send.addEventListener("click", () => void submit());

@@ -384,12 +384,13 @@ export function launch(config: SitepingConfig): SitepingInstance {
    * The author of a write: the host's `identity`, then the one saved in this
    * browser, then the modal's answer (saved) — `null` when the visitor
    * dismisses the modal. Host-provided identity is not persisted: the host
-   * stays the source of truth on every render.
+   * stays the source of truth on every render. `overPopup`: the feedback
+   * popup is on screen (see `promptIdentity`).
    */
-  async function resolveIdentity(): Promise<Identity | null> {
+  async function resolveIdentity(overPopup = false): Promise<Identity | null> {
     const known = config.identity ?? getIdentity();
     if (known) return known;
-    const entered = await promptIdentity(shadow, t);
+    const entered = await promptIdentity(shadow, t, overPopup);
     if (entered) saveIdentity(entered);
     return entered;
   }
@@ -524,7 +525,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     try {
       const { annotation, type, message, clientId, screenshotDataUrl, screenshotRegion } = data;
 
-      const identity = await resolveIdentity();
+      const identity = await resolveIdentity(true);
       if (!identity) {
         // User cancelled the identity prompt. Emit `submission:cancelled`
         // (not `feedback:error`) so the popup's pending submit handler
@@ -811,21 +812,21 @@ export function launch(config: SitepingConfig): SitepingInstance {
  * Glassmorphism: frosted backdrop, glass modal, gradient CTA.
  * Returns null if the user cancels.
  */
-function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity | null> {
+function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean): Promise<Identity | null> {
   return new Promise((resolve) => {
     // Save the currently focused element to restore on close
     const previouslyFocused = (shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null;
 
-    // Move the shadow host to the end of <body> so the identity prompt wins
-    // the source-order tiebreak against the feedback popup. Both elements
-    // already sit at `Z_INDEX_MAX` (max int32 — no \"higher\"), and since #114
-    // the popup stays visible during submission, so it can be on screen at
-    // the moment `promptIdentity` runs. The popup is appended to `document.body`
-    // later than the host during init, which made it win when z-indices tied.
-    // Re-appending an existing node just moves it; no remount, no listener
-    // loss, no visual jitter when the popup isn't open. See issue #126.
+    // Over the feedback popup, move the shadow host to the end of <body> so
+    // the identity prompt wins the source-order tiebreak against it. Both
+    // elements already sit at `Z_INDEX_MAX` (max int32 — no \"higher\"), and
+    // since #114 the popup stays visible during submission. The popup is
+    // appended to `document.body` after the host, which made it win when
+    // z-indices tied (#126). Only then: a moved host loses every scroll
+    // position and the focus inside its shadow root, so a reply from the
+    // panel's thread would jump its detail view back to the top.
     const host = shadowRoot.host;
-    if (host.parentNode) host.parentNode.appendChild(host);
+    if (overPopup && host.parentNode) host.parentNode.appendChild(host);
 
     const backdrop = document.createElement("div");
     backdrop.style.cssText = /* css */ `

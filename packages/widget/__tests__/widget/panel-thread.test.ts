@@ -162,9 +162,11 @@ describe("buildThread", () => {
     input()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
     await flush();
     expect(post).toHaveBeenCalledOnce();
-    // Read-only rather than disabled, so the focus stays in the field.
+    // Read-only rather than disabled, and Send left enabled: a disabled
+    // control drops the keyboard focus.
     expect(input()!.readOnly).toBe(true);
     expect(input()!.disabled).toBe(false);
+    expect(send()!.disabled).toBe(false);
   });
 
   it("keeps the text and announces a failure, then resends it under the same clientId", async () => {

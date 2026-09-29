@@ -1854,7 +1854,9 @@ describe("launcher — annotation:complete integration", () => {
       await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-1"]')).not.toBeNull());
       shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
       shadow.querySelector<HTMLTextAreaElement>(".sp-detail textarea")!.value = "16 px, please";
-      shadow.querySelector<HTMLButtonElement>(".sp-thread-foot button")!.click();
+      const send = shadow.querySelector<HTMLButtonElement>(".sp-thread-foot button")!;
+      send.focus(); // as a real click does
+      send.click();
       return shadow;
     }
 
@@ -1922,13 +1924,28 @@ describe("launcher — annotation:complete integration", () => {
       });
       cancel!.click();
 
-      await vi.waitFor(() =>
-        expect(shadow.querySelector<HTMLButtonElement>(".sp-thread-foot button")!.disabled).toBe(false),
-      );
+      await vi.waitFor(() => expect(shadow.querySelector('[aria-labelledby^="sp-identity-title-"]')).toBeNull());
+      // The prompt hands the focus back to Send, which a send leaves enabled.
+      expect(shadow.activeElement).toBe(shadow.querySelector(".sp-thread-foot button"));
       expect(mockAddComment).not.toHaveBeenCalled();
       expect(onError).not.toHaveBeenCalled();
       expect(shadow.querySelector<HTMLTextAreaElement>(".sp-detail textarea")!.value).toBe("16 px, please");
       expect(mockSaveIdentity).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("leaves the shadow host in place: moving it would scroll the detail view back to the top", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+      const host = document.querySelector("siteping-widget")!;
+      const next = host.nextSibling;
+      expect(next).not.toBeNull();
+
+      const shadow = await openThread(instance);
+      await vi.waitFor(() => expect(shadow.querySelector('[aria-labelledby^="sp-identity-title-"]')).not.toBeNull());
+
+      expect(host.nextSibling).toBe(next);
 
       instance.destroy();
     });
