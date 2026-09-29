@@ -1,4 +1,4 @@
-import { StoreDuplicateError, StoreNotFoundError } from "@siteping/core";
+import { StoreDuplicateError, StoreNotFoundError, StoreValueTooLongError } from "@siteping/core";
 import { testSitepingStore } from "@siteping/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import { PrismaStore } from "../src/index.js";
@@ -136,6 +136,46 @@ describe("PrismaStore — store error translation", () => {
         annotations: [],
       }),
     ).rejects.toThrow(StoreDuplicateError);
+  });
+
+  it("createFeedback and addComment throw StoreValueTooLongError on P2000, a value longer than its column", async () => {
+    const original = prismaError("P2000");
+    const prisma = fakePrisma();
+    vi.spyOn(prisma.sitepingFeedback, "create").mockRejectedValue(original);
+    vi.spyOn(prisma.sitepingComment as NonNullable<typeof prisma.sitepingComment>, "create").mockRejectedValue(
+      original,
+    );
+    const store = new PrismaStore(prisma);
+
+    const created = await store
+      .createFeedback({
+        projectName: "p",
+        type: "bug",
+        message: "m",
+        status: "open",
+        url: "/",
+        viewport: "1x1",
+        userAgent: "ua".repeat(100),
+        authorName: "a",
+        authorEmail: "a@example.com",
+        clientId: "c1",
+        annotations: [],
+      })
+      .catch((e: unknown) => e);
+    const commented = await store
+      .addComment?.("fb-1", {
+        body: "b",
+        authorName: "a".repeat(195),
+        authorEmail: "",
+        authorRole: "client",
+        clientId: "c2",
+      })
+      .catch((e: unknown) => e);
+
+    for (const error of [created, commented]) {
+      expect(error).toBeInstanceOf(StoreValueTooLongError);
+      expect((error as Error).cause).toBe(original);
+    }
   });
 
   it("lets unrelated errors through untouched", async () => {

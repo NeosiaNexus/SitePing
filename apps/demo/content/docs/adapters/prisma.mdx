@@ -111,6 +111,8 @@ model SitepingComment {
 
 > `@db.Text` targets PostgreSQL and MySQL. SQLite and CockroachDB reject it, and plain `String` is already unbounded there — `sync` reads your datasource `provider` and leaves `@db.Text` out on those databases. Writing the schema by hand? Drop those attributes yourself.
 
+> On MySQL, a plain `String` is a `VARCHAR(191)`, shorter than what the server accepts for `url`, `urlPattern`, `userAgent`, names, emails and `clientId`. A value that does not fit — the user agent of Instagram's or Facebook's in-app browser, over 200 characters, a full page URL from `getPageScope` — makes the `POST` answer `422`, which the widget does not retry, and the handler logs `[siteping] A value is too long for the store`.
+
 ## Discussion threads
 
 The `SitepingComment` model holds [discussion threads](/docs/comments). A schema synced before it keeps working: without the model, the generated client has no `sitepingComment` delegate, so `PrismaStore` reads every thread empty and the handler answers comment writes with `501`. To turn threads on:

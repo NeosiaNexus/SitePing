@@ -6,6 +6,7 @@ import {
   type FeedbackResponseList,
   MAX_COMMENTS_PER_FEEDBACK,
   type SitepingStore,
+  StoreValueTooLongError,
 } from "@siteping/core";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -205,6 +206,23 @@ describe("comments — POST", () => {
     expect(await response.json()).toEqual({
       error: `Too many comments on this feedback (max ${MAX_COMMENTS_PER_FEEDBACK})`,
     });
+  });
+
+  it("answers 422 to a comment the store cannot hold, logged for the operator", async () => {
+    const store = new MemoryStore();
+    store.addComment = () => Promise.reject(new StoreValueTooLongError());
+    const logger = silentLogger();
+    const handler = createSitepingHandler({ store, logger });
+    const feedback = await createFeedback(handler);
+
+    const response = await handler.POST(request("POST", commentBody(feedback.id)));
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "A value is too long for this server's database" });
+    expect(logger.error).toHaveBeenCalledWith(
+      "[siteping] A value is too long for the store",
+      expect.objectContaining({ error: expect.any(StoreValueTooLongError) }),
+    );
   });
 
   it("reports a store failure as a logged 500", async () => {

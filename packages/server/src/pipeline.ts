@@ -339,6 +339,16 @@ export function createPipeline<Principal>({
       return gate.canCommentAsTeam(scope.context, scope.canReadAuthorEmail);
     },
 
+    /**
+     * Answer a value the store cannot hold with a 422, which a client does
+     * not retry, and log it: the database's columns are narrower than what
+     * the validation accepts, which only the operator can fix.
+     */
+    refuseTooLong(scope: Scope<Principal>, failure: unknown): Response {
+      logError(scope, "[siteping] A value is too long for the store", { error: failure });
+      return error(scope, 422, ERROR_MESSAGES.valueTooLong);
+    },
+
     /** Log an unexpected failure of an operation and answer its JSON 500. */
     fail(scope: Scope<Principal>, message: string, failure: unknown): Response {
       return fail(scope.context.request, scope, message, failure);

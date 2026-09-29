@@ -114,12 +114,14 @@ export {
   isStoreLimit,
   isStoreNotFound,
   isStorePersistence,
+  isStoreValueTooLong,
   MAX_COMMENTS_PER_FEEDBACK,
   OPEN_FEEDBACK_STATUSES,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
+  StoreValueTooLongError,
   toFeedbackUpdate,
 } from "./types.js";
 export {

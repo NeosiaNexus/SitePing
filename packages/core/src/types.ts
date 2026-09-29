@@ -922,6 +922,20 @@ export class StoreLimitError extends Error {
   }
 }
 
+/**
+ * Thrown when a value is longer than the store can hold, though the HTTP
+ * validation accepts it — on MySQL, Prisma maps a plain `String` to
+ * `VARCHAR(191)`. Handlers translate this to HTTP 422: the submission can
+ * never be stored as it is, so a client must not retry it.
+ */
+export class StoreValueTooLongError extends Error {
+  readonly code = "STORE_VALUE_TOO_LONG" as const;
+  constructor(message = "Value too long for the store", options?: ErrorOptions) {
+    super(message, options);
+    this.name = "StoreValueTooLongError";
+  }
+}
+
 /** Shape of any ORM error that carries a Prisma-style `code` field. */
 type CodedError<C extends string = string> = { code: C };
 
@@ -968,6 +982,14 @@ export function isStorePersistence(error: unknown): error is StorePersistenceErr
 export function isStoreLimit(error: unknown): error is StoreLimitError | CodedError<"STORE_LIMIT"> {
   if (error instanceof StoreLimitError) return true;
   return hasErrorCode(error, "STORE_LIMIT");
+}
+
+/** Type guard for `StoreValueTooLongError`, matching on `code` for the same cross-bundle reason as {@link isStorePersistence}. */
+export function isStoreValueTooLong(
+  error: unknown,
+): error is StoreValueTooLongError | CodedError<"STORE_VALUE_TOO_LONG"> {
+  if (error instanceof StoreValueTooLongError) return true;
+  return hasErrorCode(error, "STORE_VALUE_TOO_LONG");
 }
 
 // ---------------------------------------------------------------------------

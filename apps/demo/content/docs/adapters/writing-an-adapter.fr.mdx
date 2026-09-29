@@ -102,10 +102,11 @@ Les handlers et le dashboard déduisent leur comportement de ces erreurs : levez
 | `createFeedback` avec un `clientId` déjà utilisé | Renvoyez l'enregistrement existant (idempotent) ou levez `StoreDuplicateError`. Les deux sont valides, les handlers gèrent l'un comme l'autre |
 | `addComment` sur un feedback inconnu, `deleteComment` d'un commentaire absent du fil de ce feedback | Levez `StoreNotFoundError` — un 404 |
 | `addComment` sur un fil qui contient déjà 100 commentaires | Levez `StoreLimitError` — un 409 |
+| Une valeur plus longue que ce que tient votre base, bien que la validation HTTP l'accepte | Levez `StoreValueTooLongError` — un 422, que les clients ne rejouent pas |
 | Une mutation acceptée mais non persistée | Levez `StorePersistenceError` au lieu d'annoncer une réussite fantôme |
 | Résultat vide sur `getFeedbacks` / `findByClientId` | Ne levez pas — renvoyez un tableau vide ou `null` |
 
-Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma.
+Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma.
 
 ### Les sémantiques de requête à respecter
 

@@ -41,6 +41,7 @@ export const ERROR_MESSAGES = {
   commentsUnsupported: "Comments are not supported by this store",
   tooManyComments: `Too many comments on this feedback (max ${MAX_COMMENTS_PER_FEEDBACK})`,
   tooManyAnnotations: `Too many annotations (max ${MAX_ANNOTATIONS_PER_FEEDBACK})`,
+  valueTooLong: "A value is too long for this server's database",
   deletionAborted: "Deletion aborted: a linked resource could not be cleaned up",
   internalServerError: "Internal server error",
 } as const;

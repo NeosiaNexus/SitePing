@@ -21,6 +21,7 @@ import {
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
+  StoreValueTooLongError,
   screenshotMimeType,
   settleWithConcurrencyLimit,
 } from "@siteping/core";
@@ -46,6 +47,7 @@ export {
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
+  StoreValueTooLongError,
 } from "@siteping/core";
 export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "@siteping/server";
 
@@ -256,6 +258,8 @@ function toStoreError(error: unknown): unknown {
   if (error instanceof StoreNotFoundError || error instanceof StoreDuplicateError) return error;
   if (isStoreNotFound(error)) return new StoreNotFoundError(undefined, { cause: error });
   if (isStoreDuplicate(error)) return new StoreDuplicateError(undefined, { cause: error });
+  // P2000: longer than its column — a plain `String` is `VARCHAR(191)` on MySQL.
+  if (hasOwn(error, "code") && error.code === "P2000") return new StoreValueTooLongError(undefined, { cause: error });
   return error;
 }
 

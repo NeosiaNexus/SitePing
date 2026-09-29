@@ -4,6 +4,7 @@ import {
   type FeedbackRecord,
   flattenAnnotation,
   isStoreDuplicate,
+  isStoreValueTooLong,
   type SitepingStore,
 } from "@siteping/core";
 import { ERROR_MESSAGES, MAX_ANNOTATIONS_PER_FEEDBACK } from "../constants.js";
@@ -125,6 +126,7 @@ export function createFeedbackOperation<Principal>({
     try {
       outcome = await pending;
     } catch (error) {
+      if (isStoreValueTooLong(error)) return pipeline.refuseTooLong(scope, error);
       // Unique-constraint race: the same clientId landed between the replay
       // check above and the insert. The presenter still owns the record.
       // A failing lookup falls through to the JSON 500 — this catch must not

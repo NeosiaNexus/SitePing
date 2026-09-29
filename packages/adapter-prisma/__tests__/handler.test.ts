@@ -82,6 +82,22 @@ describe("createSitepingHandler", () => {
       expect(res.status).toBe(400);
     });
 
+    it("answers 422, which the widget never retries, to a value longer than its MySQL column", async () => {
+      // P2000: a 268-character in-app browser user agent in a VARCHAR(191).
+      prisma.sitepingFeedback.create.mockRejectedValue({ code: "P2000" });
+      const logger = { error: vi.fn() };
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify({ ...validPayloadNoAnnotations, userAgent: "u".repeat(268) }),
+      });
+
+      const res = await createSitepingHandler({ prisma, logger }).POST(req);
+
+      expect(res.status).toBe(422);
+      expect(await res.json()).toEqual({ error: "A value is too long for this server's database" });
+      expect(logger.error).toHaveBeenCalledWith("[siteping] A value is too long for the store", expect.anything());
+    });
+
     it("handles duplicate clientId gracefully", async () => {
       prisma.sitepingFeedback.create.mockRejectedValue({ code: "P2002" });
       prisma.sitepingFeedback.findUnique.mockResolvedValue({ id: "fb-1", ...validPayloadNoAnnotations });

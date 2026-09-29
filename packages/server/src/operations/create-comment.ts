@@ -1,4 +1,10 @@
-import { type CommentAuthorRole, isStoreLimit, isStoreNotFound, type SitepingStore } from "@siteping/core";
+import {
+  type CommentAuthorRole,
+  isStoreLimit,
+  isStoreNotFound,
+  isStoreValueTooLong,
+  type SitepingStore,
+} from "@siteping/core";
 import { ERROR_MESSAGES } from "../constants.js";
 import type { SitepingHandlerBaseOptions } from "../options.js";
 import type { Pipeline, Scope } from "../pipeline.js";
@@ -49,6 +55,7 @@ export function createCommentOperation<Principal>({
     } catch (error) {
       if (isStoreNotFound(error)) return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);
       if (isStoreLimit(error)) return pipeline.error(scope, 409, ERROR_MESSAGES.tooManyComments);
+      if (isStoreValueTooLong(error)) return pipeline.refuseTooLong(scope, error);
       return pipeline.fail(scope, "[siteping] Failed to add comment", error);
     }
   };
