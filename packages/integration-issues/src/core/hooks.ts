@@ -58,8 +58,9 @@ export interface IssueTrackerHooksOptions {
   instance?: string | undefined;
   /**
    * Called with each issue opened, e.g. to send its link to a chat or keep
-   * it. A throw is logged like a failed creation. The feedback's next status
-   * change or delete waits for it: it must not wait for one in turn.
+   * it. A throw is logged like a failed creation. The visitor's request
+   * waits for it, and so do the feedback's later status changes and deletes
+   * and its project's next delete: it must not wait for one in turn.
    */
   onIssueCreated?: (feedback: FeedbackRecord, issue: IssueReference) => void | Promise<void>;
   /** Close / reopen the issue when the feedback status changes. Defaults to `true`. */

@@ -189,6 +189,21 @@ for (const provider of providers) {
       ]);
     });
 
+    it("waits for onIssueCreated, and logs its failure like a failed creation", async () => {
+      const handler = createHandler({
+        onIssueCreated: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          throw new Error("chat is down");
+        },
+      });
+
+      await send(handler);
+
+      expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onCreated failed", {
+        error: expect.objectContaining({ message: "chat is down" }),
+      });
+    });
+
     it("links relative page URLs through siteUrl", async () => {
       const handler = createHandler({ siteUrl: "https://acme.test" });
 
@@ -319,6 +334,18 @@ for (const provider of providers) {
         [],
         [expect.stringContaining("was deleted")],
       ]);
+    });
+
+    it("counts an empty instance as no name", async () => {
+      const feedback = await send(createHandler());
+      // What `instance: process.env.SITEPING_INSTANCE` gives when the variable is set but empty.
+      const handler = createHandler({ instance: "" });
+
+      await patch(handler, feedback.id, "resolved");
+      await send(handler);
+
+      expect(fake.issues[0]?.isOpen).toBe(false);
+      expect(fake.issues[1]?.body).not.toContain('"instance"');
     });
 
     it("mirrors status changes on the issue", async () => {
