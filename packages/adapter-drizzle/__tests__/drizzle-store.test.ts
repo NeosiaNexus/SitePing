@@ -977,6 +977,25 @@ for (const dialect of dialects) {
       });
     });
 
+    it("deletes a project in one driver call when no screenshot cleanup needs its rows", async () => {
+      const writer = database.createStore({ logger });
+      await writer.createFeedback(feedbackInput());
+      await writer.createFeedback(feedbackInput());
+      let driverCalls = 0;
+      const store = database.createStoreWithDriverInterceptor(
+        (_statementSql, run) => {
+          driverCalls += 1;
+          return run();
+        },
+        { logger },
+      );
+
+      await store.deleteAllFeedbacks("site");
+
+      expect(driverCalls).toBe(1);
+      expect((await writer.getFeedbacks({ projectName: "site" })).total).toBe(0);
+    });
+
     it("deletes feedbacks with inline screenshots through a size-capped driver when no cleanup hook exists", async () => {
       // Each inline screenshot alone is larger than the driver accepts in a response.
       const inlineScreenshot = `${SCREENSHOT_DATA_URL}${"A".repeat(RESPONSE_SIZE_LIMIT_BYTES)}`;
@@ -1018,7 +1037,8 @@ for (const dialect of dialects) {
       await store.createFeedback(feedbackInput({ message: "Discount shows 100% off" }));
       await store.createFeedback(feedbackInput({ message: "Discount shows 1000 off" }));
       await store.createFeedback(feedbackInput({ message: "Field user_name is empty" }));
-      await store.createFeedback(feedbackInput({ message: "Field username is empty" }));
+      // As long as the match: an unescaped `_` would match its `X`.
+      await store.createFeedback(feedbackInput({ message: "Field userXname is empty" }));
 
       const percent = await store.getFeedbacks({ projectName: "site", search: "100%" });
       const underscore = await store.getFeedbacks({ projectName: "site", search: "user_name" });
@@ -1364,6 +1384,29 @@ for (const dialect of dialects) {
         expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(created.updatedAt.getTime());
       });
 
+      it("never moves updatedAt backwards when an instance whose clock lags updates after one whose clock runs ahead", async () => {
+        const laggingStore = database.createStore({ logger, now: frozenClock });
+        const aheadStore = database.createStore({ logger, now: () => new Date(FROZEN_TIME_MS + 10_000) });
+        const created = await laggingStore.createFeedback(feedbackInput());
+
+        const aheadUpdate = await aheadStore.updateFeedback(created.id, { status: "in_progress", resolvedAt: null });
+        const laggingUpdate = await laggingStore.updateFeedback(created.id, { status: "open", resolvedAt: null });
+
+        expect(aheadUpdate.updatedAt.getTime()).toBe(FROZEN_TIME_MS + 10_000);
+        expect(laggingUpdate.updatedAt.getTime()).toBe(FROZEN_TIME_MS + 10_000);
+      });
+
+      it("raises updatedAt to createdAt on a row the host application stamped updatedAt before createdAt", async () => {
+        const row = { ...applicationFeedbackRow(frozenClock()), createdAt: new Date(FROZEN_TIME_MS + 10_000) };
+        await database.insertFeedbackAsApplication(row);
+
+        const updated = await database
+          .createStore({ logger, now: frozenClock })
+          .updateFeedback(row.id, { status: "in_progress", resolvedAt: null });
+
+        expect(updated.updatedAt.getTime()).toBe(FROZEN_TIME_MS + 10_000);
+      });
+
       it("lists feedbacks created in the same millisecond by separate store instances newest first, across pages", async () => {
         // Each instance issues createdAt from the same frozen clock, so all of them stamp the same value —
         // as several serverless invocations writing within one millisecond would.
@@ -1549,6 +1592,28 @@ for (const dialect of dialects) {
         expect(await database.countAnnotations()).toBe(annotationsBefore);
         expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
         expect(deletions).toHaveLength(1);
+      });
+
+      it("leaves the whole project in place when its single-statement delete fails", async () => {
+        // No delete hook: the project goes in one statement (PostgreSQL) or one batch (libSQL).
+        const store = database.createStore({ logger });
+        const stored = await store.createFeedback(feedbackInput());
+        await store.addComment(stored.id, commentInput());
+        const annotationsBefore = await database.countAnnotations();
+        const commentsBefore = await database.countComments();
+        restoreWrites = await database.rejectFeedbackWrites();
+
+        const failure = await store.deleteAllFeedbacks("site").then(
+          () => null,
+          (error: unknown) => error,
+        );
+        await restoreWrites();
+        restoreWrites = undefined;
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
+        expect(await database.countAnnotations()).toBe(annotationsBefore);
+        expect(await database.countComments()).toBe(commentsBefore);
       });
 
       it("keeps the screenshot of a failed insert when a contract-breaking storage shares its URL with another feedback", async () => {
