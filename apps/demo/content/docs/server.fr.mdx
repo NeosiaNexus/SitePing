@@ -173,6 +173,151 @@ Un navigateur joint aussi les cookies à une requête cross-site forgée : avec 
 
 Les listes partent aussi avec `Cache-Control: no-store`, puisqu'elles dépendent de qui demande. La politique `apiKey` n'a besoin ni de l'un ni de l'autre : sa clé voyage dans un en-tête qu'aucune requête forgée ne peut poser.
 
+### Recette : OpenID Connect
+
+Quand les relecteurs se connectent via un fournisseur OpenID Connect — Keycloak, Microsoft Entra ID, Auth0, Zitadel… —, le widget et le dashboard envoient son jeton d'accès en bearer, et `access` le vérifie avec [jose](https://github.com/panva/jose). Les visiteurs sans jeton gardent le widget public : ils envoient, lisent et répondent, tandis que seuls les administrateurs trient et lisent les e-mails des relecteurs.
+
+```ts
+// lib/siteping-access.ts
+import type { SitepingAccessControl } from "@siteping/server";
+import { createRemoteJWKSet, errors, type JWTPayload, jwtVerify } from "jose";
+
+// Tous deux tirés de https://id.example.com/realms/acme/.well-known/openid-configuration
+const ISSUER = "https://id.example.com/realms/acme";
+const jwks = createRemoteJWKSet(new URL(`${ISSUER}/protocol/openid-connect/certs`));
+
+export interface Reviewer {
+  sub: string; // "" pour un visiteur sans jeton
+  name: string;
+  email: string;
+  isAdmin: boolean;
+}
+
+const VISITOR: Reviewer = { sub: "", name: "", email: "", isAdmin: false };
+
+// Là où votre fournisseur place les rôles : ici les rôles de realm de Keycloak — voir le tableau plus bas.
+function rolesOf(payload: JWTPayload): unknown {
+  return (payload.realm_access as { roles?: unknown } | undefined)?.roles;
+}
+
+// Le jeu de clés en panne, lent ou illisible : une indisponibilité, pas un mauvais jeton.
+const KEY_SET_FAILURES = new Set(["ERR_JOSE_GENERIC", "ERR_JWKS_TIMEOUT", "ERR_JWKS_INVALID"]);
+
+export const oidcAccess: SitepingAccessControl<Reviewer> = {
+  async authenticate(request) {
+    const authorization = request.headers.get("Authorization");
+    if (!authorization) return VISITOR;
+    const token = /^Bearer (\S+)$/i.exec(authorization)?.[1];
+    if (!token) return null;
+    try {
+      const { payload } = await jwtVerify(token, jwks, {
+        issuer: ISSUER,
+        audience: "siteping-api", // celle de votre API, jamais le client id
+        algorithms: ["RS256", "PS256", "ES256", "EdDSA"],
+        requiredClaims: ["exp"],
+      });
+      if (!payload.sub) return null;
+      const roles = rolesOf(payload);
+      return {
+        sub: payload.sub,
+        name: typeof payload.name === "string" ? payload.name : "",
+        email: payload.email_verified === true && typeof payload.email === "string" ? payload.email : "",
+        isAdmin: Array.isArray(roles) && roles.includes("siteping-admin"),
+      };
+    } catch (error) {
+      if (error instanceof errors.JOSEError && !KEY_SET_FAILURES.has(error.code)) return null; // → 401
+      throw error; // → 500 journalisée
+    }
+  },
+  authorize: ({ principal, action }) =>
+    principal.isAdmin || action === "create" || action === "list" || action === "createComment",
+  canReadAuthorEmail: (principal) => principal.isAdmin,
+};
+```
+
+```ts
+// app/api/siteping/route.ts
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  allowedOrigins: ["https://site-client.com"],
+  access: oidcAccess,
+  // Le nom d'un auteur connecté, et son e-mail vérifié, viennent du jeton.
+  beforeCreate: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name || input.authorName,
+    authorEmail: principal.email || input.authorEmail,
+  }),
+});
+```
+
+Côté client, `headers` s'exécute avant chaque requête : il envoie donc toujours le jeton courant — rafraîchi, ou absent après une déconnexion :
+
+```ts
+async function headers(): Promise<Record<string, string>> {
+  const token = await getAccessToken(); // fourni par votre bibliothèque cliente OIDC
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "acme", headers });
+// Dashboard : <SitepingInbox endpoint="https://api.example.com/api/siteping" projects="acme" headers={headers} />
+```
+
+- **Un jeton d'accès, jamais un ID token.** `audience` est l'identifiant que votre fournisseur place dans `aud` pour votre API — l'identifiant d'API d'Auth0, ou l'audience qu'ajoute un audience mapper Keycloak. Un ID token est adressé à votre application cliente : il répond donc `401`. Auth0 ne délivre un jeton d'accès JWT que pour une audience d'API, et Zitadel que si le type de jeton de l'application est JWT.
+- **Sans en-tête, un visiteur ; un mauvais, une `401`.** Sans `Authorization`, la requête est anonyme : le widget public continue de fonctionner. Un jeton malformé, expiré, forgé ou étranger répond `401` au lieu d'être rétrogradé en visiteur : un relecteur dont la session a expiré le voit, et le client peut rafraîchir le jeton.
+- **Un fournisseur injoignable, une `500`.** Quand le jeu de clés ne peut pas être récupéré — erreur réseau, délai dépassé, réponse autre que `200`, pas de jeu de clés dedans —, `authenticate` lève : le handler le journalise et répond `500` plutôt que de déclarer tout jeton invalide. Les visiteurs, qui n'en envoient pas, ne sont pas touchés. jose met les clés en cache et les recharge pour un `kid` inconnu : une rotation des clés ne demande rien.
+- **Des algorithmes asymétriques, en HTTPS.** `algorithms` limite les signatures à celles de votre fournisseur : un jeton non signé, ou un jeton `HS256` signé avec un secret partagé, est refusé. Gardez l'issuer et le jeu de clés en `https://` : qui peut altérer le jeu de clés peut fabriquer des jetons d'administrateur.
+- **L'auteur vient du jeton.** `beforeCreate` reprend son nom, et son e-mail seulement quand `email_verified` vaut true ; sinon, les valeurs du widget restent. Les jetons d'accès ne portent pas toujours ces claims : passez [`identity`](/fr/docs/widget/configuration) pour épargner la modale d'identité du widget aux utilisateurs connectés.
+- **Les e-mails restent aux administrateurs.** Comme `canReadAuthorEmail` est défini, il décide aussi [du rôle équipe](/fr/docs/comments#le-rôle-équipe) : les réponses des administrateurs sont marquées `team`, celles de tous les autres `client`.
+
+Les rôles dépendent du fournisseur : `rolesOf` est à vous d'écrire.
+
+| Fournisseur | Rôles dans le jeton d'accès | `rolesOf(payload)` renvoie |
+|---|---|---|
+| Keycloak | `realm_access.roles` (rôles de realm), `resource_access.<client>.roles` (rôles de client) | Comme ci-dessus |
+| Microsoft Entra ID | `roles` (rôles d'application) | `payload.roles` |
+| Auth0 | Aucun par défaut : ajoutez un claim dans une Action post-login, par ex. `https://siteping.example/roles` | `payload["https://siteping.example/roles"]` |
+| Zitadel | `urn:zitadel:iam:org:project:roles`, un objet indexé par rôle | `Object.keys(payload["urn:zitadel:iam:org:project:roles"] ?? {})` |
+
+#### Laisser les auteurs supprimer leurs feedbacks
+
+Le store n'enregistre aucun propriétaire : tenez votre propre table, remplie par `onCreated`, qui voit le principal, et lue par `authorize`. Une liste interroge sur chaque feedback qu'elle contient — 50 essais à blanc de `delete` pour une page de 50 — : lisez donc les ids de l'appelant une fois par requête, dans une `WeakMap` indexée sur elle :
+
+```ts
+const ownerships = new WeakMap<Request, Promise<Set<string>>>();
+
+/** Les ids envoyés par `sub`, lus une fois par requête. */
+function submittedBy(request: Request, sub: string): Promise<Set<string>> {
+  let ids = ownerships.get(request);
+  if (!ids) {
+    ids = db.feedbackOwner
+      .findMany({ where: { sub }, select: { feedbackId: true } })
+      .then((rows) => new Set(rows.map((row) => row.feedbackId)));
+    ownerships.set(request, ids);
+  }
+  return ids;
+}
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  access: {
+    ...oidcAccess,
+    authorize: async ({ principal, action, feedbackId = "", request }) =>
+      principal.isAdmin ||
+      action === "create" ||
+      action === "list" ||
+      action === "createComment" ||
+      (action === "delete" && principal.sub !== "" && (await submittedBy(request, principal.sub)).has(feedbackId)),
+  },
+  hooks: {
+    onCreated: async (feedback, { principal }) => {
+      if (principal.sub) await db.feedbackOwner.create({ data: { sub: principal.sub, feedbackId: feedback.id } });
+    },
+  },
+});
+```
+
+`onCreated` ne fait jamais échouer un envoi : si son écriture échoue, l'auteur ne peut simplement pas supprimer ce feedback. Un `sub` n'est unique que pour un issuer — avec plusieurs fournisseurs, indexez la table sur les deux —, et c'est dans `onDeleted` qu'on supprime les lignes.
+
 ## Points d'extension
 
 ```ts
