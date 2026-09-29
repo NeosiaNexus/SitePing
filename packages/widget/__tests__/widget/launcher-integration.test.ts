@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { MemoryStore } from "@siteping/adapter-memory";
-import type { FeedbackPayload, FeedbackResponse, SitepingConfig, SitepingHttpConfig } from "@siteping/core";
+import type {
+  CommentResponse,
+  FeedbackPayload,
+  FeedbackResponse,
+  SitepingConfig,
+  SitepingHttpConfig,
+} from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockMatchMedia } from "../helpers.js";
 
@@ -14,6 +20,7 @@ mockMatchMedia(false);
 
 const mockSendFeedback = vi.fn<(payload: FeedbackPayload) => Promise<FeedbackResponse>>();
 const mockGetFeedbacks = vi.fn().mockResolvedValue({ feedbacks: [], total: 0 });
+const mockAddComment = vi.fn();
 
 vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
   ApiClient: vi.fn(function (this: unknown) {
@@ -23,6 +30,7 @@ vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
       resolveFeedback: vi.fn(),
       deleteFeedback: vi.fn(),
       deleteAllFeedbacks: vi.fn(),
+      addComment: mockAddComment,
     };
   }),
   flushRetryQueue: vi.fn().mockResolvedValue(undefined),
@@ -1105,7 +1113,7 @@ describe("launcher — annotation:complete integration", () => {
       capturedBus!.emit("annotation:complete", { ...data, message: "Second submission" });
 
       // Only one sendFeedback call should be made (guard blocks second)
-      expect(mockSendFeedback).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(mockSendFeedback).toHaveBeenCalledTimes(1));
 
       // Resolve the first call to release the guard
       resolveFirst(makeFeedbackResponse());
@@ -1818,6 +1826,82 @@ describe("launcher — annotation:complete integration", () => {
       shadow().querySelector<HTMLButtonElement>(".sp-mine-toggle")!.click();
 
       await vi.waitFor(() => expect(cardIds()).toEqual(["fb-mine"]));
+
+      instance.destroy();
+    });
+  });
+
+  describe("discussion thread", () => {
+    const reply: CommentResponse = {
+      id: "c-1",
+      feedbackId: "fb-1",
+      body: "16 px, please",
+      authorName: "Host User",
+      authorEmail: "host@example.com",
+      authorRole: "client",
+      createdAt: new Date().toISOString(),
+    };
+
+    /** Open the panel on one feedback whose server takes replies, then its detail view. */
+    async function openThread(instance: ReturnType<typeof launch>): Promise<ShadowRoot> {
+      mockGetFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedbackResponse({ id: "fb-1" })],
+        total: 1,
+        capabilities: { comments: true },
+      });
+      instance.open();
+      const shadow = document.querySelector("siteping-widget")!.shadowRoot!;
+      await vi.waitFor(() => expect(shadow.querySelector('[data-feedback-id="fb-1"]')).not.toBeNull());
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+      shadow.querySelector<HTMLTextAreaElement>(".sp-detail textarea")!.value = "16 px, please";
+      shadow.querySelector<HTMLButtonElement>(".sp-thread-foot button")!.click();
+      return shadow;
+    }
+
+    it("posts under the host's identity and reports the reply on onCommentAdded and comment:added", async () => {
+      mockAddComment.mockResolvedValue(reply);
+      const onCommentAdded = vi.fn();
+      const listener = vi.fn();
+      const instance = launch(
+        defaultConfig({ identity: { name: "Host User", email: "host@example.com" }, onCommentAdded }),
+      );
+      instance.on("comment:added", listener);
+
+      await openThread(instance);
+
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledWith(reply));
+      expect(onCommentAdded).toHaveBeenCalledWith(reply);
+      expect(mockAddComment).toHaveBeenCalledWith(
+        "fb-1",
+        expect.objectContaining({ authorName: "Host User", authorEmail: "host@example.com", authorRole: "client" }),
+      );
+      expect(mockGetIdentity).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
+
+    it("asks who is replying when nobody is known, and a dismissed prompt sends and reports nothing", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const onError = vi.fn();
+      const instance = launch(defaultConfig({ onError }));
+
+      const shadow = await openThread(instance);
+      let cancel: HTMLButtonElement | undefined;
+      await vi.waitFor(() => {
+        cancel = [...shadow.querySelectorAll<HTMLButtonElement>('[aria-modal="true"] button')].find(
+          (b) => b.textContent === "Cancel",
+        );
+        expect(cancel).toBeDefined();
+      });
+      cancel!.click();
+
+      await vi.waitFor(() =>
+        expect(shadow.querySelector<HTMLButtonElement>(".sp-thread-foot button")!.disabled).toBe(false),
+      );
+      expect(mockAddComment).not.toHaveBeenCalled();
+      expect(onError).not.toHaveBeenCalled();
+      expect(shadow.querySelector<HTMLTextAreaElement>(".sp-detail textarea")!.value).toBe("16 px, please");
+      expect(mockSaveIdentity).not.toHaveBeenCalled();
 
       instance.destroy();
     });

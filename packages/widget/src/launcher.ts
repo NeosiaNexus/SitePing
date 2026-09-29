@@ -266,6 +266,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   if (config.onOpen) bus.on("open", config.onOpen);
   if (config.onClose) bus.on("close", config.onClose);
   if (config.onFeedbackSent) bus.on("feedback:sent", config.onFeedbackSent);
+  if (config.onCommentAdded) bus.on("comment:added", config.onCommentAdded);
   if (config.onError) bus.on("feedback:error", config.onError);
   if (config.onError) bus.on("panel:action-error", config.onError);
   // A failing panel action is a bug in the host's own code, with no widget UI
@@ -287,6 +288,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   const publicBridges: { [K in keyof SitepingPublicEvents]: () => void } = {
     "feedback:sent": () => bus.on("feedback:sent", (fb) => publicBus.emit("feedback:sent", fb)),
     "feedback:deleted": () => bus.on("feedback:deleted", (id) => publicBus.emit("feedback:deleted", id)),
+    "comment:added": () => bus.on("comment:added", (comment) => publicBus.emit("comment:added", comment)),
     "feedback:error": () => bus.on("feedback:error", (err) => publicBus.emit("feedback:error", err)),
     "panel:open": () => bus.on("open", () => publicBus.emit("panel:open")),
     "panel:close": () => bus.on("close", () => publicBus.emit("panel:close")),
@@ -377,6 +379,21 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // initial load racing the first navigation) could render a stale page's
   // markers out of order, since markers.render() is a full clear-and-rebuild.
   let markerGeneration = 0;
+
+  /**
+   * The author of a write: the host's `identity`, then the one saved in this
+   * browser, then the modal's answer (saved) — `null` when the visitor
+   * dismisses the modal. Host-provided identity is not persisted: the host
+   * stays the source of truth on every render.
+   */
+  async function resolveIdentity(): Promise<Identity | null> {
+    const known = config.identity ?? getIdentity();
+    if (known) return known;
+    const entered = await promptIdentity(shadow, t);
+    if (entered) saveIdentity(entered);
+    return entered;
+  }
+
   async function loadPanel(): Promise<PanelType | null> {
     if (destroyed) return null;
     if (panelInstance) return panelInstance;
@@ -388,6 +405,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
           scopeAnnotationsByUrl,
           panelActions: config.panelActions,
           ownFeedback: own,
+          resolveIdentity,
         });
         return panelInstance;
       });
@@ -506,21 +524,14 @@ export function launch(config: SitepingConfig): SitepingInstance {
     try {
       const { annotation, type, message, clientId, screenshotDataUrl, screenshotRegion } = data;
 
-      // Ensure identity — config wins (host-provided), then localStorage,
-      // then prompt the user as a last resort. Host-provided identity is
-      // not persisted: the host stays the source of truth on every render.
-      let identity = config.identity ?? getIdentity();
+      const identity = await resolveIdentity();
       if (!identity) {
-        identity = await promptIdentity(shadow, t);
-        if (!identity) {
-          // User cancelled the identity prompt. Emit `submission:cancelled`
-          // (not `feedback:error`) so the popup's pending submit handler
-          // unblocks and restores the form — cancelling a prompt is a benign
-          // user action, so `config.onError` must not fire for it.
-          bus.emit("submission:cancelled");
-          return;
-        }
-        saveIdentity(identity);
+        // User cancelled the identity prompt. Emit `submission:cancelled`
+        // (not `feedback:error`) so the popup's pending submit handler
+        // unblocks and restores the form — cancelling a prompt is a benign
+        // user action, so `config.onError` must not fire for it.
+        bus.emit("submission:cancelled");
+        return;
       }
 
       // Use scope.url as the single source of truth — same identifier the

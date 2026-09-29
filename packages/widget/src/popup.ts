@@ -1,6 +1,6 @@
 import type { FeedbackType } from "@siteping/core";
 import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
-import { el, parseSvg, setText } from "./dom-utils.js";
+import { el, isMacPlatform, parseSvg, setText } from "./dom-utils.js";
 import { isolateFromHost, setSurfaceInert } from "./host-isolation.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
@@ -20,18 +20,6 @@ const TYPE_LABEL_KEYS: Record<FeedbackType, keyof Translations> = {
   bug: "type.bug",
   other: "type.other",
 };
-
-/**
- * Detect whether the host platform uses ⌘+Enter (macOS) vs Ctrl+Enter.
- * Resolved at call time so we can recompute the popup hint when the locale
- * dictionary lands.
- */
-function isMacPlatform(): boolean {
-  const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
-  return uaData
-    ? uaData.platform === "macOS"
-    : (navigator.platform?.includes("Mac") ?? /Macintosh|Mac OS X/i.test(navigator.userAgent));
-}
 
 /**
  * The popup's open/close animation. Declared once: `show()` swaps it for

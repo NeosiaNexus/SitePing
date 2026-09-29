@@ -150,6 +150,12 @@ export const en: Translations = {
   "detail.diagnostics.collapse": "Hide diagnostics",
   "detail.diagnostics.noEntries": "No entries",
 
+  // Discussion thread (detail view)
+  "comments.title": "Replies",
+  "comments.placeholder": "Reply to the team...",
+  "comments.error": "Your reply wasn't sent. Try again.",
+  "comments.team": "Team",
+
   // Keyboard shortcuts overlay
   "shortcuts.title": "Keyboard shortcuts",
   "shortcuts.navigate": "Navigate feedbacks",

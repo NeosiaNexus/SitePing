@@ -1,5 +1,6 @@
 import {
   CLOSED_FEEDBACK_STATUSES,
+  type CommentResponse,
   FEEDBACK_STATUSES,
   type FeedbackResponse,
   type FeedbackResponseList,
@@ -33,6 +34,7 @@ import {
   ICON_UNDO,
   ICON_USER,
 } from "./icons.js";
+import type { Identity } from "./identity.js";
 import type { MarkerManager } from "./markers.js";
 import type { OwnFeedback } from "./own-feedback.js";
 import { normalizePanelActions } from "./panel-actions.js";
@@ -40,6 +42,7 @@ import { BulkActions } from "./panel-bulk.js";
 import { DetailView } from "./panel-detail.js";
 import { createPageGroupHeader, groupFeedbacksByPage, PanelSortControls, sortFeedbacks } from "./panel-sort.js";
 import { PanelStats } from "./panel-stats.js";
+import { buildThread } from "./panel-thread.js";
 import { focusCardByIndex, getFocusedCardIndex, KeyboardShortcuts } from "./shortcuts.js";
 import { getStatusBgColor, getStatusColor, getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
@@ -84,6 +87,10 @@ export class Panel {
   private pendingScrollId: string | null = null;
   /** Tracks feedback IDs with in-flight mutations to prevent spam-click race conditions */
   private pendingMutations = new Set<string>();
+  /** Whether the backend takes replies — advertised by the last list response. */
+  private canComment = false;
+  /** The visitor a reply is posted as — `null` when they dismiss the identity prompt. */
+  private readonly resolveIdentity: () => Promise<Identity | null>;
 
   // New feature modules
   private readonly stats: PanelStats;
@@ -122,9 +129,11 @@ export class Panel {
       scopeAnnotationsByUrl: boolean;
       panelActions?: readonly SitepingPanelAction[] | undefined;
       ownFeedback?: Pick<OwnFeedback, "ids" | "remove"> | undefined;
+      resolveIdentity?: () => Promise<Identity | null>;
     },
   ) {
     this.shadowRoot = shadowRoot;
+    this.resolveIdentity = options?.resolveIdentity ?? (async () => null);
     this.getScope = options?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
     this.scopeAnnotationsByUrl = options?.scopeAnnotationsByUrl ?? true;
     this.ownFeedback = options?.ownFeedback ?? { ids: () => new Set(), remove: () => {} };
@@ -270,6 +279,13 @@ export class Panel {
           }
         },
         onCustomActionError: (error) => this.reportActionError(error),
+        buildThread: (fb) =>
+          buildThread(fb, {
+            t: this.t,
+            locale,
+            canPost: this.canComment,
+            post: (body, clientId) => this.postComment(fb, body, clientId),
+          }),
       },
       this.t,
       locale,
@@ -591,7 +607,8 @@ export class Panel {
         ? this.fetchOwnFeedbacks(options, signal)
         : this.client.getFeedbacks(this.projectName, options);
       if (!listIsMarkerQuery) void this.loadPageMarkers(scope, signal);
-      let { feedbacks, total } = await listRequest;
+      const first = await listRequest;
+      let { feedbacks, total } = first;
       let page = 1;
       while (page < pages && feedbacks.length < total && !signal.aborted) {
         page++;
@@ -603,6 +620,8 @@ export class Panel {
       this.currentPage = page;
       this.feedbacks = feedbacks;
       this.totalFeedbacks = total;
+      // Absent from a server that predates threads — which then has none.
+      this.canComment = first.capabilities?.comments === true;
       this.stats.update(feedbacks, total);
       this.bulk.reset();
       this.renderList();
@@ -1388,6 +1407,36 @@ export class Panel {
         },
         { once: true },
       );
+    }
+  }
+
+  /**
+   * Post a reply as the visitor and add it to the cached feedback, so the
+   * thread still holds it when the visitor comes back to this feedback.
+   * Resolves `null` when they dismissed the identity prompt — nothing was
+   * sent, and nothing went wrong.
+   */
+  private async postComment(
+    feedback: FeedbackResponse,
+    body: string,
+    clientId: string,
+  ): Promise<CommentResponse | null> {
+    const identity = await this.resolveIdentity();
+    if (!identity) return null;
+    try {
+      const comment = await this.client.addComment(feedback.id, {
+        body,
+        clientId,
+        authorName: identity.name,
+        authorEmail: identity.email,
+        authorRole: "client",
+      });
+      feedback.comments = [...(feedback.comments ?? []), comment];
+      this.bus.emit("comment:added", comment);
+      return comment;
+    } catch (error) {
+      this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
+      throw error;
     }
   }
 

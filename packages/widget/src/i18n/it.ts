@@ -152,6 +152,12 @@ export const it: Translations = {
   "detail.diagnostics.collapse": "Nascondi diagnostica",
   "detail.diagnostics.noEntries": "Nessuna voce",
 
+  // Discussion thread (detail view)
+  "comments.title": "Risposte",
+  "comments.placeholder": "Rispondi al team...",
+  "comments.error": "La tua risposta non è stata inviata. Riprova.",
+  "comments.team": "Team",
+
   // Keyboard shortcuts overlay
   "shortcuts.title": "Scorciatoie da tastiera",
   "shortcuts.navigate": "Naviga i feedback",

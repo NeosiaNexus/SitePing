@@ -831,6 +831,31 @@ describe("launch", () => {
     });
   });
 
+  describe("comment:added public bridge", () => {
+    it("forwards a posted reply to onCommentAdded and to instance.on listeners", () => {
+      const onCommentAdded = vi.fn();
+      const instance = launch(defaultConfig({ onCommentAdded }));
+      const listener = vi.fn();
+      instance.on("comment:added", listener);
+      const reply = {
+        id: "c-1",
+        feedbackId: "fb-1",
+        body: "Thanks",
+        authorName: "Alice",
+        authorEmail: "",
+        authorRole: "client" as const,
+        createdAt: "2026-01-15T10:00:00.000Z",
+      };
+
+      annotatorCapture.bus!.emit("comment:added", reply);
+
+      expect(onCommentAdded).toHaveBeenCalledWith(reply);
+      expect(listener).toHaveBeenCalledWith(reply);
+
+      instance.destroy();
+    });
+  });
+
   // -------------------------------------------------------------------------
   // adoptedStyleSheets branch (modern browsers)
   // -------------------------------------------------------------------------
