@@ -138,10 +138,14 @@ describe("createScreenshotStorage — validation", () => {
   });
 
   it("accepts an image of exactly maxBytes with its base64 wrapped in MIME lines", async () => {
-    const wrappedBase64 = btoa("x".repeat(200)).replace(/.{76}/g, "$&\r\n");
-    await expect(storage().upload(`data:image/jpeg;base64,${wrappedBase64}`, UPLOAD_CONTEXT)).resolves.toHaveProperty(
-      "url",
-    );
+    // At the default size, the line breaks outgrow the slack of the header budget: only
+    // their own budget lets the raw data URL through.
+    const defaultStorage = createScreenshotStorage(createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL }));
+    const wrappedBase64 = btoa("x".repeat(1_125_000)).replace(/.{76}/g, "$&\r\n");
+
+    await expect(
+      defaultStorage.upload(`data:image/jpeg;base64,${wrappedBase64}`, UPLOAD_CONTEXT),
+    ).resolves.toHaveProperty("url");
   });
 
   it("accepts an image of exactly maxBytes", async () => {
