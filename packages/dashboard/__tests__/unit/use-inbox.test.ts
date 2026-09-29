@@ -1873,6 +1873,35 @@ describe("useSitepingInbox — discussion thread", () => {
     expect(r1?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
   });
 
+  it("an undo after a failed delete still carries a reply stored during that delete", async () => {
+    const source = threadedSource();
+    const { result } = await ready({ projects: "demo", source, author, onError: vi.fn() });
+    act(() => result.current.openFeedback("r1"));
+    await act(() => result.current.changeStatus("r1", "resolved"));
+
+    const removal = deferred<void>();
+    source.remove.mockReturnValueOnce(removal.promise);
+    let failed!: Promise<void>;
+    act(() => {
+      failed = result.current.deleteFeedback("r1");
+    });
+    await act(() => result.current.addComment("r1", "Reply meanwhile"));
+    await act(async () => {
+      removal.reject(new Error("boom"));
+      await failed.catch(() => {});
+    });
+    expect(result.current.pendingUndo).toEqual({ id: "r1", previousStatus: "open" });
+
+    source.setStatus.mockReturnValueOnce(deferred<FeedbackRecord>().promise);
+    act(() => {
+      void result.current.undo();
+    });
+
+    const r1 = result.current.items.find((r) => r.id === "r1");
+    expect(r1?.status).toBe("open");
+    expect(r1?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
+  });
+
   it("reports a failed post through onError and rejects, leaving the thread as it was", async () => {
     const source = threadedSource();
     const failure = new Error("offline");
