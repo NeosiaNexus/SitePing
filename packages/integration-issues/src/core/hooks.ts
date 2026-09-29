@@ -27,7 +27,7 @@ export interface IssueTrackerHooksOptions {
   deepLinkParam?: string | false;
   /** Include reviewer emails in issues. Defaults to `false` — issues are often public. */
   includeAuthorEmail?: boolean;
-  /** Replace the default Markdown. The linking marker is appended to whatever you return. */
+  /** Replace the default Markdown. The linking marker is prepended to whatever you return, as its first line. */
   formatIssue?: (feedback: FeedbackRecord, defaults: IssueFormatOptions) => IssueContent;
   /** Close / reopen the issue when the feedback status changes. Defaults to `true`. */
   syncStatus?: boolean;
@@ -111,7 +111,7 @@ export function createIssueTrackerHooks({
         ? customFormatIssue(feedback, formatOptions)
         : formatIssue(feedback, formatOptions);
       const marker = buildIssueMarker({ feedbackId: feedback.id, projectName: feedback.projectName });
-      await tracker.createIssue({ title: content.title, body: `${content.body}\n\n${marker}`, labels: issueLabels });
+      await tracker.createIssue({ title: content.title, body: `${marker}\n\n${content.body}`, labels: issueLabels });
     },
     async onUpdated(feedback) {
       if (!syncStatus) return;

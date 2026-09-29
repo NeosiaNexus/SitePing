@@ -5,7 +5,16 @@ describe("issue marker", () => {
   it("round-trips ids and project names with characters that need escaping", () => {
     const link = { feedbackId: 'id-with-"quotes"', projectName: "Site --> <!-- tricky" };
 
-    expect(parseIssueMarker(`Body text\n\n${buildIssueMarker(link)}`)).toEqual(link);
+    expect(parseIssueMarker(`${buildIssueMarker(link)}\n\nBody text`)).toEqual(link);
+  });
+
+  it("reads the first line only, whatever the line endings", () => {
+    const link = { feedbackId: "fb-1", projectName: "site" };
+    const marker = buildIssueMarker(link);
+
+    expect(parseIssueMarker(`${marker}\r\n\r\nBody edited on the tracker`)).toEqual(link);
+    expect(parseIssueMarker(`Visitor text\n\n${marker}`)).toBeNull();
+    expect(parseIssueMarker(`Visitor text ${marker}`)).toBeNull();
   });
 
   it("treats missing, truncated or malformed markers as absent", () => {

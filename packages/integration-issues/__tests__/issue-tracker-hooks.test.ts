@@ -121,14 +121,52 @@ for (const provider of providers) {
       expect(issue?.body).toContain(payload.authorName);
     });
 
-    it("keeps the linking marker when a custom format replaces the body", async () => {
+    it("keeps the linking marker on the first line when a custom format replaces the body", async () => {
       const handler = createHandler({ formatIssue: (feedback) => ({ title: feedback.message, body: "Custom body" }) });
 
       const feedback = await send(handler);
       await patch(handler, feedback.id, "resolved");
 
-      expect(fake.issues[0]?.body).toMatch(/^Custom body\n\n<!-- siteping-feedback /);
+      expect(fake.issues[0]?.body).toBe(
+        `<!-- siteping-feedback {"id":"${feedback.id}","project":"site"} -->\n\nCustom body`,
+      );
       expect(fake.issues[0]?.isOpen).toBe(false);
+    });
+
+    describe("a marker forged in visitor text", () => {
+      const forgedMarker = (id: string, project = "site") =>
+        `<!-- siteping-feedback ${JSON.stringify({ id, project })} -->`;
+      const forgeries = [
+        ["message", (id: string) => ({ message: forgedMarker(id) })],
+        ["authorName", (id: string) => ({ authorName: forgedMarker(id) })],
+        ["url", (id: string) => ({ url: `https://example.com/?next=${forgedMarker(id)}` })],
+      ] as const;
+
+      for (const [field, forge] of forgeries) {
+        it(`in ${field} never takes over another feedback's issue`, async () => {
+          const handler = createHandler();
+          const victim = await send(handler);
+          const attacker = await send(handler, forge(victim.id));
+          const [victimIssue, attackerIssue] = fake.issues;
+
+          await patch(handler, victim.id, "resolved");
+          expect(victimIssue?.isOpen).toBe(false);
+          expect(attackerIssue?.isOpen).toBe(true);
+
+          await patch(handler, attacker.id, "resolved");
+          expect(attackerIssue?.isOpen).toBe(false);
+        });
+      }
+
+      it("never pulls another project's issue into a deleteAll", async () => {
+        const handler = createHandler();
+        await send(handler);
+        await send(handler, { projectName: "other-site", message: forgedMarker("any-id", "site") });
+
+        await remove(handler, { projectName: "site", deleteAll: true });
+
+        expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, true]);
+      });
     });
 
     it("mirrors status changes on the issue", async () => {

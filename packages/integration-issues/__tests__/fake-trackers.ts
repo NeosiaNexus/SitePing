@@ -98,7 +98,8 @@ export function createFakeGitHub(repository: string): FakeTracker {
         new RegExp(`^${escapedBase}$`),
         (_request, _match, url) => {
           const label = url.searchParams.get("labels");
-          const labelled = server.issues.filter((issue) => !label || issue.labels.includes(label));
+          // Newest first, like the real API's default sort.
+          const labelled = server.issues.filter((issue) => !label || issue.labels.includes(label)).reverse();
           return Response.json(page(labelled, url).map(toGitHub));
         },
       ],
@@ -175,7 +176,8 @@ export function createFakeGitLab(project: string): FakeTracker {
         new RegExp(`^${escapedBase}$`),
         (_request, _match, url) => {
           const label = url.searchParams.get("labels");
-          const labelled = server.issues.filter((issue) => !label || issue.labels.includes(label));
+          // Newest first, like the real API's default sort.
+          const labelled = server.issues.filter((issue) => !label || issue.labels.includes(label)).reverse();
           return Response.json(page(labelled, url).map(toGitLab));
         },
       ],

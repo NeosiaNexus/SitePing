@@ -94,7 +94,7 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
   return { title, body: sections.filter((part): part is string => part !== null).join(ISSUE_SECTION_SEPARATOR) };
 }
 
-/** Hidden marker appended to every issue body, linking it to its feedback. */
+/** Hidden marker on the first line of every issue body, linking it to its feedback. */
 export function buildIssueMarker(link: IssueLink): string {
   return `${ISSUE_REFERENCE_MARKER.prefix}${toMarkerJson({ id: link.feedbackId, project: link.projectName })}${ISSUE_REFERENCE_MARKER.suffix}`;
 }
@@ -117,9 +117,13 @@ export function projectMarkerFragment(projectName: string): string {
   return `"project":${toMarkerJson(projectName)}`;
 }
 
-/** The link stored in an issue body, or `null` when it has no (valid) marker. */
+/**
+ * The link stored on the first line of an issue body, or `null` when that
+ * line is no (valid) marker. A marker anywhere else is visitor text.
+ */
 export function parseIssueMarker(body: string): IssueLink | null {
-  const match = ISSUE_REFERENCE_MARKER.pattern.exec(body);
+  const [firstLine = ""] = body.split(/\r?\n/, 1);
+  const match = ISSUE_REFERENCE_MARKER.pattern.exec(firstLine);
   if (!match?.[1]) return null;
   try {
     const parsed: unknown = JSON.parse(match[1]);

@@ -23,13 +23,15 @@ export const DEFAULT_DEEP_LINK_PARAM = "siteping";
 export const EMBEDDABLE_SCREENSHOT_URL_PREFIX = "https://";
 
 /**
- * Hidden marker linking an issue to its feedback. The JSON payload carries
- * the feedback id and project so references resolve from the issue alone.
+ * Hidden marker linking an issue to its feedback, always the first line of
+ * the body. The JSON payload carries the feedback id and project so
+ * references resolve from the issue alone. Only that line is parsed: the
+ * rest of the body quotes visitor text, which may imitate the marker.
  */
 export const ISSUE_REFERENCE_MARKER = {
   prefix: "<!-- siteping-feedback ",
   suffix: " -->",
-  pattern: /<!-- siteping-feedback (\{.*?\}) -->/,
+  pattern: /^<!-- siteping-feedback (\{.*\}) -->$/,
 } as const;
 
 /** Section headings of the default issue body. */
