@@ -1,4 +1,5 @@
-// Post-build invariants for the production guard (issue #104).
+// Post-build invariants of the shipped dist/, starting with the production
+// guard (issue #104).
 //
 // The guard's whole value depends on a build artifact property no unit test
 // can see: the literal `process.env.NODE_ENV` must survive our own
@@ -9,6 +10,7 @@
 //      fold it — the exact regression that produced #104), and
 //   2. a simulated consumer production build CAN fold it (the literal is
 //      still in a define-replaceable position).
+// It also fails when a source map names a source by an absolute path.
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -78,9 +80,21 @@ if (iife) {
   }
 }
 
+// Source maps name their sources relative to the map. An absolute path would
+// publish the build machine's checkout path and tie the map to it.
+const ABSOLUTE = /^(?:[\\/]|[a-z][\w+.-]*:)/i;
+for (const f of readdirSync(distDir).filter((f) => f.endsWith(".map"))) {
+  const { sources } = JSON.parse(readFileSync(join(distDir, f), "utf8"));
+  for (const source of sources.filter((s) => ABSOLUTE.test(s))) {
+    errors.push(`${f}: absolute path in \`sources\`: ${source}`);
+  }
+}
+
 if (errors.length > 0) {
   console.error("[verify-dist-guard] FAILED:");
   for (const e of errors) console.error(`  - ${e}`);
   process.exit(1);
 }
-console.log(`[verify-dist-guard] OK — ${LITERAL} literal intact and consumer-replaceable in all bundles`);
+console.log(
+  `[verify-dist-guard] OK — ${LITERAL} literal intact and consumer-replaceable in all bundles, relative source map paths`,
+);
