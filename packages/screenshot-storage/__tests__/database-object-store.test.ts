@@ -81,11 +81,12 @@ describe("createDatabaseObjectStore", () => {
       gateway: { insertRow: failing, deleteRowByKey: failing, findRowByKey: failing },
     });
 
-    for (const [statement, run] of [
+    const queries: [statement: string, run: () => Promise<unknown> | undefined][] = [
       ["INSERT", () => store.put({ key: "shot.png", bytes, contentType: "image/png" })],
       ["DELETE", () => store.remove("shot.png")],
       ["SELECT", () => store.get?.("shot.png")],
-    ] as const) {
+    ];
+    for (const [statement, run] of queries) {
       const failure = await Promise.resolve()
         .then(run)
         .catch((error: unknown) => error);
