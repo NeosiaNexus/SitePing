@@ -122,6 +122,13 @@ export interface SitepingHandlerBaseOptions<Principal> {
    */
   allowedOrigins?: ReadonlyArray<string> | undefined;
   /**
+   * Largest request body accepted, in bytes — 4 MiB by default, twice the
+   * largest submission the validation accepts. A longer body answers 413:
+   * refused on its `Content-Length`, or once that many bytes have streamed
+   * in, before any of it is parsed.
+   */
+  maxBodyBytes?: number | undefined;
+  /**
    * Outgoing webhooks fired after a feedback is successfully persisted.
    *
    * Pass a single config or an array — every entry receives a POST with a

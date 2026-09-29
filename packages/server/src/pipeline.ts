@@ -36,6 +36,7 @@ interface PipelineDependencies<Principal> {
   logger: SitepingLogger;
   describeError: SitepingHandlerBaseOptions<Principal>["describeError"];
   presentFeedback: SitepingHandlerBaseOptions<Principal>["presentFeedback"];
+  maxBodyBytes: number;
 }
 
 /** A comment as it goes on the wire. */
@@ -98,6 +99,38 @@ function createSlots(size: number): <Result>(task: () => Promise<Result>) => Pro
   };
 }
 
+/**
+ * A request body as text, or `null` past `maxBytes`: refused on its
+ * `Content-Length` before any byte is read, and counted as it streams in
+ * otherwise, so an oversized body is never held in memory whole.
+ */
+async function readText(request: Request, maxBytes: number): Promise<string | null> {
+  if (Number(request.headers.get("Content-Length")) > maxBytes) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let received = 0;
+  for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+    received += chunk.value.byteLength;
+    if (received > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    text += decoder.decode(chunk.value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+/** `text` parsed as JSON, or `null` when it is not JSON. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 /** Where a request failed, for the log: method and path — never the query, headers or body. */
 function requestContext(request: Request): { method: string; path: string } {
   return { method: request.method, path: new URL(request.url).pathname };
@@ -114,6 +147,7 @@ export function createPipeline<Principal>({
   logger,
   describeError,
   presentFeedback,
+  maxBodyBytes,
 }: PipelineDependencies<Principal>) {
   const json = (scope: Pick<Scope<Principal>, "corsHeaders">, body: unknown, init?: ResponseInit): Response =>
     withCors(Response.json(body, init), scope.corsHeaders);
@@ -138,9 +172,12 @@ export function createPipeline<Principal>({
     return { ok: false, response: json(scope, { errors: formatValidationErrors(parsed.error) }, { status: 400 }) };
   };
 
-  /** Read a JSON body, not validated yet. */
+  /** Read a JSON body of at most `maxBodyBytes`, not validated yet. */
   const readJson = async (scope: Scope<Principal>): Promise<Step<unknown>> => {
-    const body: unknown = await scope.context.request.json().catch(() => null);
+    // A body that cannot be read (already consumed, a broken stream) is no JSON.
+    const text = await readText(scope.context.request, maxBodyBytes).catch(() => "");
+    if (text === null) return { ok: false, response: error(scope, 413, ERROR_MESSAGES.bodyTooLarge) };
+    const body = parseJson(text);
     if (!body) return { ok: false, response: error(scope, 400, ERROR_MESSAGES.invalidJson) };
     return { ok: true, value: body };
   };

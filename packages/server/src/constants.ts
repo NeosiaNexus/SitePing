@@ -4,6 +4,13 @@ import { MAX_COMMENTS_PER_FEEDBACK } from "@siteping/core";
 export const MAX_ANNOTATIONS_PER_FEEDBACK = 50;
 
 /**
+ * Default `maxBodyBytes`: twice the largest submission the validation
+ * accepts — a 1.5 MB screenshot, 50 annotations and full diagnostics come
+ * to about 2 MB.
+ */
+export const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+/**
  * Most issues a validation 400 lists. Fifty annotations of `{}` alone make a
  * thousand: listing them all would answer a small body with a large one.
  */
@@ -22,6 +29,7 @@ export const DRY_RUN_CONCURRENCY = 8;
  */
 export const ERROR_MESSAGES = {
   invalidJson: "Invalid JSON",
+  bodyTooLarge: "Request body too large",
   unauthorized: "Unauthorized",
   apiKeyRequiredForDestructive: "apiKey required for destructive operations",
   forbidden: "Forbidden",

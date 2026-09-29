@@ -1,5 +1,6 @@
 import { hasOwn } from "@siteping/core";
 import { type AccessGate, createAccessGate, createApiKeyGate } from "./access.js";
+import { DEFAULT_MAX_BODY_BYTES } from "./constants.js";
 import { preflightResponse } from "./cors.js";
 import { createCommentOperation } from "./operations/create-comment.js";
 import { createFeedbackOperation } from "./operations/create-feedback.js";
@@ -62,7 +63,8 @@ function routeByBody<Principal>(
  * Access is either the built-in `apiKey` policy or your own `access` policy
  * (sessions, JWTs, roles…) — see `SitepingAccessHandlerOptions`.
  *
- * @throws Error without a `store`; in production without `apiKey` (see
+ * @throws Error without a `store`; with a `maxBodyBytes` that is not a
+ * positive integer; in production without `apiKey` (see
  * `requireAuthForDestructive`); or with `access.authorize` over a store
  * without `verifyProjectOwnership`, since PATCH/DELETE could then reach a
  * record of a project the caller is not authorized for.
@@ -100,9 +102,15 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
     hooks = {},
     logger = consoleLogger,
     describeError,
+    maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   } = options as SitepingHandlerBaseOptions<Principal>;
   if (!store) {
     throw new Error("[siteping] createSitepingHandler requires a `store`.");
+  }
+  if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes <= 0) {
+    throw new Error(
+      `[siteping] createSitepingHandler: \`maxBodyBytes\` must be a positive integer, got ${maxBodyBytes}.`,
+    );
   }
   // A custom `authorize` may scope callers to projects, but PATCH/DELETE
   // address records by id: without the ownership check, the project a caller
@@ -118,7 +126,7 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
   const gate = options.access
     ? createAccessGate(options.access)
     : (createApiKeyGate(options) as AccessGate<unknown> as AccessGate<Principal>);
-  const pipeline = createPipeline({ gate, allowedOrigins, logger, describeError, presentFeedback });
+  const pipeline = createPipeline({ gate, allowedOrigins, logger, describeError, presentFeedback, maxBodyBytes });
   // Normalised once so every POST skips the allocation; an empty list
   // short-circuits dispatch.
   const webhookList: ReadonlyArray<WebhookConfig> = webhooks

@@ -1,9 +1,14 @@
 import { MemoryStore } from "@siteping/adapter-memory";
-import type { FeedbackRecord } from "@siteping/core";
+import {
+  ANCHOR_ELEMENT_ID_MAX,
+  ANCHOR_ELEMENT_TAG_MAX,
+  type FeedbackRecord,
+  IDENTITY_FIELD_MAX_LENGTH,
+} from "@siteping/core";
 import { describe, expect, it, vi } from "vitest";
-import { MAX_VALIDATION_ISSUES } from "../src/constants.js";
+import { DEFAULT_MAX_BODY_BYTES, MAX_VALIDATION_ISSUES } from "../src/constants.js";
 import { createSitepingHandler, type SitepingLogger, type SitepingStore } from "../src/index.js";
-import { validPayloadNoAnnotations } from "./fixtures.js";
+import { validAnnotation, validPayloadNoAnnotations } from "./fixtures.js";
 
 const ENDPOINT = "http://localhost/api/siteping";
 const API_KEY = "a-secret-key";
@@ -110,6 +115,141 @@ describe("createSitepingHandler — validation errors", () => {
     expect(response.status).toBe(400);
     const { errors } = (await response.json()) as { errors: unknown[] };
     expect(errors).toHaveLength(MAX_VALIDATION_ISSUES);
+  });
+});
+
+describe("createSitepingHandler — request body size", () => {
+  const CHUNK_BYTES = 64 * 1024;
+  const encode = (body: unknown) => new TextEncoder().encode(JSON.stringify(body));
+  const text = (length: number) => "a".repeat(length);
+
+  /** A request whose body streams in `CHUNK_BYTES` at a time, counting the bytes the handler pulls. */
+  function streamed(method: string, bytes: Uint8Array, headers: Record<string, string> = {}) {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled >= bytes.length) return controller.close();
+        const chunk = bytes.subarray(pulled, pulled + CHUNK_BYTES);
+        pulled += chunk.length;
+        controller.enqueue(chunk);
+      },
+    });
+    // `duplex` is required for a streamed body, and missing from TypeScript's RequestInit.
+    const init = { method, headers, body, duplex: "half" } as RequestInit;
+    return { request: new Request(ENDPOINT, init), pulled: () => pulled };
+  }
+
+  /** A submission twice the default cap, in a field the validation would only refuse once parsed. */
+  const oversized = () => encode({ ...validPayloadNoAnnotations, message: text(2 * DEFAULT_MAX_BODY_BYTES) });
+
+  /** The largest submission the validation accepts: every field at its cap. */
+  function largestSubmission() {
+    const annotation = {
+      ...validAnnotation,
+      anchor: {
+        cssSelector: text(2000),
+        xpath: text(2000),
+        textSnippet: text(500),
+        elementTag: text(ANCHOR_ELEMENT_TAG_MAX),
+        elementId: text(ANCHOR_ELEMENT_ID_MAX),
+        textPrefix: text(200),
+        textSuffix: text(200),
+        fingerprint: text(200),
+        neighborText: text(500),
+        anchorKey: text(200),
+      },
+    };
+    return {
+      projectName: text(200),
+      type: "question",
+      message: text(5000),
+      url: text(2000),
+      urlPattern: text(2000),
+      viewport: text(50),
+      userAgent: text(500),
+      authorName: text(IDENTITY_FIELD_MAX_LENGTH),
+      authorEmail: `${text(64)}@${text(63)}.${text(63)}.de`,
+      annotations: Array.from({ length: 50 }, () => annotation),
+      clientId: text(200),
+      screenshotDataUrl: `data:image/jpeg;base64,${text(1_500_000 - 23)}`,
+      screenshotRegion: { xPct: 0, yPct: 0, wPct: 1, hPct: 1 },
+      diagnostics: {
+        console: Array.from({ length: 50 }, () => ({ level: "error", timestamp: text(50), message: text(600) })),
+        network: Array.from({ length: 20 }, () => ({
+          url: text(2000),
+          method: text(20),
+          status: 599,
+          durationMs: 600_000,
+          timestamp: text(50),
+        })),
+      },
+    };
+  }
+
+  it("refuses a body whose Content-Length is over the cap before reading it", async () => {
+    const handler = createSitepingHandler({ store: new MemoryStore(), apiKey: API_KEY });
+    const bytes = oversized();
+    const auth = { Authorization: `Bearer ${API_KEY}` };
+
+    for (const method of ["POST", "PATCH", "DELETE"] as const) {
+      const { request, pulled } = streamed(method, bytes, { ...auth, "Content-Length": String(bytes.length) });
+
+      const response = await handler[method](request);
+
+      expect(response.status).toBe(413);
+      expect(await response.json()).toEqual({ error: "Request body too large" });
+      // A stream may queue its first chunk before anyone reads it.
+      expect(pulled()).toBeLessThanOrEqual(CHUNK_BYTES);
+    }
+  });
+
+  it("stops reading a body of unknown length once it passes the cap", async () => {
+    const store = new MemoryStore();
+    const handler = createSitepingHandler({ store, apiKey: API_KEY });
+    const bytes = oversized();
+    const { request, pulled } = streamed("POST", bytes);
+
+    const response = await handler.POST(request);
+
+    expect(response.status).toBe(413);
+    // The chunk that crosses the cap, and the next one the stream queues ahead.
+    expect(pulled()).toBeLessThanOrEqual(DEFAULT_MAX_BODY_BYTES + 2 * CHUNK_BYTES);
+    expect((await store.getFeedbacks({ projectName: validPayloadNoAnnotations.projectName })).total).toBe(0);
+  });
+
+  it("accepts the largest submission the validation accepts, which the default cap holds twice", async () => {
+    const handler = createSitepingHandler({ store: new MemoryStore(), apiKey: API_KEY });
+    const bytes = encode(largestSubmission());
+    const { request } = streamed("POST", bytes, { "Content-Length": String(bytes.length) });
+
+    const response = await handler.POST(request);
+
+    expect(response.status).toBe(201);
+    expect(bytes.length * 2).toBeLessThanOrEqual(DEFAULT_MAX_BODY_BYTES);
+  });
+
+  it("answers the 413 with the request's CORS headers, and takes another cap through maxBodyBytes", async () => {
+    const origin = "https://client-site.example";
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      allowedOrigins: [origin],
+      maxBodyBytes: 1000,
+    });
+
+    const small = await handler.POST(request("POST", validPayloadNoAnnotations, { Origin: origin }));
+    const large = await handler.POST(
+      request("POST", { ...validPayloadNoAnnotations, clientId: "uuid-456", message: text(1000) }, { Origin: origin }),
+    );
+
+    expect(small.status).toBe(201);
+    expect(large.status).toBe(413);
+    expect(large.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])("refuses to start with maxBodyBytes %s", (value) => {
+    expect(() => createSitepingHandler({ store: new MemoryStore(), maxBodyBytes: value })).toThrow(
+      /`maxBodyBytes` must be a positive integer/,
+    );
   });
 });
 
