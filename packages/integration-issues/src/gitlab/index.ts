@@ -79,7 +79,7 @@ export function createGitLabTracker({
         throw new UnlabelledIssueError(
           "GitLab",
           `#${issue.iid}`,
-          `GitLab ignores labels set by members below the Reporter role: give the token at least Reporter on ${project}.`,
+          `GitLab ignores labels set by Guest members: give the token at least the Reporter role on ${project}.`,
         );
       }
       return { key: String(issue.iid), url: issue.web_url };

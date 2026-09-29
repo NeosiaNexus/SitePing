@@ -129,7 +129,7 @@ function toMarkerJson(value: unknown): string {
   );
 }
 
-/** Substring identifying one feedback's issue — providers may use it to search server-side. */
+/** Substring of the marker of one feedback's issue — providers pre-filter listings with it. */
 export function feedbackMarkerFragment(feedbackId: string): string {
   return `"id":${toMarkerJson(feedbackId)}`;
 }

@@ -51,8 +51,8 @@ const defaultDeletedComment = (feedbackId: string): string =>
  * a comment on `onDeleting` — a failure there aborts the delete, so the
  * feedback survives until its issue could be cleaned up.
  *
- * Issues are linked to feedbacks by a hidden marker in their body, so no
- * extra column is needed in your database.
+ * Issues are linked to feedbacks by a hidden marker on the first line of
+ * their body, so no extra column is needed in your database.
  *
  * The hooks never read the principal, so they fit either access policy
  * without widening the one the handler infers.

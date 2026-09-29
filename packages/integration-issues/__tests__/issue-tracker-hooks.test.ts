@@ -55,7 +55,7 @@ const providers: ProviderUnderTest[] = [
       createGitLabTracker({ project: "acme/site", token: TOKEN, fetch: fake.fetch, ...options }),
     searchRequest: /^GET \S+[?&]search=/,
     expectClosedAs: (issue) => expect(issue.isOpen).toBe(false),
-    labelPermission: /at least Reporter on acme\/site/,
+    labelPermission: /at least the Reporter role on acme\/site/,
   },
 ];
 
