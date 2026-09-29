@@ -1786,6 +1786,93 @@ describe("useSitepingInbox — discussion thread", () => {
     expect(r1?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
   });
 
+  it("rolls the drawer back with the reply when the opened record is not in the list", async () => {
+    const source = threadedSource();
+    const change = deferred<FeedbackRecord>();
+    source.setStatus.mockReturnValueOnce(change.promise);
+    const { result } = await ready({ projects: "demo", source, author, onError: vi.fn() });
+    act(() => result.current.openFeedback("r1"));
+    act(() => result.current.setStatus("resolved"));
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
+
+    let failed!: Promise<void>;
+    act(() => {
+      failed = result.current.changeStatus("r1", "in_progress");
+    });
+    await act(() => result.current.addComment("r1", "Reply meanwhile"));
+    await act(async () => {
+      change.reject(new Error("boom"));
+      await failed.catch(() => {});
+    });
+
+    expect(result.current.opened?.status).toBe("open");
+    expect(result.current.opened?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
+  });
+
+  it("rolls chained status changes back with the reply, one step at a time", async () => {
+    const source = threadedSource();
+    const first = deferred<FeedbackRecord>();
+    const second = deferred<FeedbackRecord>();
+    source.setStatus.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { result } = await ready({ projects: "demo", source, author, onError: vi.fn() });
+    act(() => result.current.openFeedback("r1"));
+    act(() => result.current.setStatus("wont_fix"));
+    await waitFor(() => expect(ids(result.current.items)).toEqual(["r6"]));
+
+    let firstFailed!: Promise<void>;
+    let secondFailed!: Promise<void>;
+    act(() => {
+      firstFailed = result.current.changeStatus("r1", "in_progress");
+    });
+    act(() => {
+      secondFailed = result.current.changeStatus("r1", "resolved");
+    });
+    await act(() => result.current.addComment("r1", "Reply meanwhile"));
+    await act(async () => {
+      second.reject(new Error("boom"));
+      await secondFailed.catch(() => {});
+    });
+    expect(result.current.opened?.status).toBe("in_progress");
+    await act(async () => {
+      first.reject(new Error("boom"));
+      await firstFailed.catch(() => {});
+    });
+
+    expect(result.current.opened?.status).toBe("open");
+    expect(result.current.opened?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
+  });
+
+  it("an undo after a failed change still carries a reply stored during that change", async () => {
+    const source = threadedSource();
+    const { result } = await ready({ projects: "demo", source, author, onError: vi.fn() });
+    act(() => result.current.openFeedback("r1"));
+    await act(() => result.current.changeStatus("r1", "resolved"));
+    expect(ids(result.current.items)).not.toContain("r1");
+
+    const change = deferred<FeedbackRecord>();
+    source.setStatus.mockReturnValueOnce(change.promise);
+    let failed!: Promise<void>;
+    act(() => {
+      failed = result.current.changeStatus("r1", "in_progress");
+    });
+    await act(() => result.current.addComment("r1", "Reply meanwhile"));
+    await act(async () => {
+      change.reject(new Error("boom"));
+      await failed.catch(() => {});
+    });
+    expect(result.current.pendingUndo).toEqual({ id: "r1", previousStatus: "open" });
+
+    // Held in flight: what the undo shows is built from the undo record alone.
+    source.setStatus.mockReturnValueOnce(deferred<FeedbackRecord>().promise);
+    act(() => {
+      void result.current.undo();
+    });
+
+    const r1 = result.current.items.find((r) => r.id === "r1");
+    expect(r1?.status).toBe("open");
+    expect(r1?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
+  });
+
   it("reports a failed post through onError and rejects, leaving the thread as it was", async () => {
     const source = threadedSource();
     const failure = new Error("offline");

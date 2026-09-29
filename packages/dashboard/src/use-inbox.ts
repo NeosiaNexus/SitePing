@@ -40,6 +40,8 @@ interface InFlight {
   prev: FeedbackRecord;
   /** Whether its row was listed before the step — a failure puts a row back only then. */
   wasListed: boolean;
+  /** The record the step put in the drawer — a failure restores the drawer only while it still shows it. */
+  shown: FeedbackRecord | null;
   /** Count deltas still to invert on failure, each tagged with the counts generation it was applied to. */
   undo: { deltas: CountDeltas; countsGen: number }[];
   /** List generation at the optimistic step — a page 1 committed since then already dropped the edit. */
@@ -532,11 +534,18 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
   /** Register an optimistic step, chained behind any mutation still pending on the same feedback. */
   const beginMutation = useCallback(
-    (id: string, prev: FeedbackRecord, wasListed: boolean, deltas: CountDeltas): InFlight => {
+    (
+      id: string,
+      prev: FeedbackRecord,
+      wasListed: boolean,
+      shown: FeedbackRecord | null,
+      deltas: CountDeltas,
+    ): InFlight => {
       const prior = inFlightRef.current.get(id) ?? null;
       const handle: InFlight = {
         prev,
         wasListed,
+        shown,
         undo: [{ deltas, countsGen: countsGenRef.current }],
         listGen: listGenRef.current,
         state: "pending",
@@ -593,7 +602,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
    * step already hold the server's view, so nothing is inverted in them.
    */
   const rollback = useCallback(
-    (id: string, handle: InFlight, optimistic: FeedbackRecord | null, focusMovedTo: string | null | undefined) => {
+    (id: string, handle: InFlight, focusMovedTo: string | null | undefined) => {
       if (handle.listGen === listGenRef.current) {
         // A row the step brought in (a drawer change, an undo) leaves again.
         const { removedAt, inserted } = placeRecord(id, handle.wasListed ? handle.prev : null);
@@ -612,7 +621,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         );
       }
       commitCounts(nextCounts);
-      if (optimistic !== null && openedCacheRef.current === optimistic) commitOpenedCache(handle.prev);
+      if (handle.shown !== null && openedCacheRef.current === handle.shown) commitOpenedCache(handle.prev);
     },
     [placeRecord, moveFocusAfterRemoval, commitCounts, commitOpenedCache],
   );
@@ -662,7 +671,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         wasFocused && removedAt !== -1 ? moveFocusAfterRemoval(itemsRef.current, removedAt) : undefined;
       if (openedCacheRef.current?.id === id) commitOpenedCache(optimistic);
       commitCounts(adjustCounts(countsRef.current, deltas));
-      const handle = beginMutation(id, record, wasListed, deltas);
+      const handle = beginMutation(id, record, wasListed, optimistic, deltas);
       if (isUndo) {
         commitPendingUndo(null);
         undoRecordRef.current = null;
@@ -699,10 +708,11 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         const latest = settleMutation(id, handle, false);
         // After a project switch the list, counts and undo belong to another project.
         if (projectEpochRef.current === epoch) {
-          if (latest) rollback(id, handle, optimistic, focusMovedTo);
+          if (latest) rollback(id, handle, focusMovedTo);
           if (undoEntryRef.current === undoEntry) {
             commitPendingUndo(undoBefore.pending, undoBefore.entry);
-            undoRecordRef.current = undoBefore.record;
+            // `prev` holds the same record, with any reply stored meanwhile.
+            undoRecordRef.current = undoBefore.record?.id === id ? handle.prev : undoBefore.record;
           }
         }
         const err = toError(cause);
@@ -761,7 +771,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const focusMovedTo =
         wasFocused && removedAt !== -1 ? moveFocusAfterRemoval(itemsRef.current, removedAt) : undefined;
       commitCounts(adjustCounts(countsRef.current, deltas));
-      const handle = beginMutation(id, record, wasListed, deltas);
+      const handle = beginMutation(id, record, wasListed, null, deltas);
       if (wasOpened) {
         openedIdRef.current = null;
         setOpenedId(null);
@@ -781,7 +791,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         const latest = settleMutation(id, handle, false);
         if (projectEpochRef.current === epoch) {
           if (latest) {
-            rollback(id, handle, null, focusMovedTo);
+            rollback(id, handle, focusMovedTo);
             // Reopen the drawer unless another feedback was opened meanwhile.
             if (wasOpened && openedIdRef.current === null) {
               commitOpenedCache(handle.prev);
@@ -791,7 +801,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
           }
           if (undoEntryRef.current === undoEntry) {
             commitPendingUndo(undoBefore.pending, undoBefore.entry);
-            undoRecordRef.current = undoBefore.record;
+            undoRecordRef.current = undoBefore.record?.id === id ? handle.prev : undoBefore.record;
           }
         }
         const err = toError(cause);
@@ -818,18 +828,26 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
   /**
    * Rewrite one feedback wherever it is held: its row, the drawer, the undo
-   * record, and the base a status change still in flight rolls back to — so
-   * a rollback does not drop a reply stored meanwhile.
+   * record, and what a status change still in flight rolls back from and to —
+   * so a rollback does not drop a reply stored meanwhile. Each record object
+   * gets one copy: a rollback recognizes the drawer it left by identity.
    */
   const updateRecord = useCallback(
     (id: string, update: (record: FeedbackRecord) => FeedbackRecord) => {
+      const copies = new Map<FeedbackRecord, FeedbackRecord>();
+      const rewrite = (record: FeedbackRecord): FeedbackRecord => {
+        const copy = copies.get(record) ?? update(record);
+        copies.set(record, copy);
+        return copy;
+      };
       if (itemsRef.current.some((f) => f.id === id)) {
-        commitItems(itemsRef.current.map((f) => (f.id === id ? update(f) : f)));
+        commitItems(itemsRef.current.map((f) => (f.id === id ? rewrite(f) : f)));
       }
-      if (openedCacheRef.current?.id === id) commitOpenedCache(update(openedCacheRef.current));
-      if (undoRecordRef.current?.id === id) undoRecordRef.current = update(undoRecordRef.current);
+      if (openedCacheRef.current?.id === id) commitOpenedCache(rewrite(openedCacheRef.current));
+      if (undoRecordRef.current?.id === id) undoRecordRef.current = rewrite(undoRecordRef.current);
       for (let handle = inFlightRef.current.get(id) ?? null; handle; handle = handle.prior) {
-        handle.prev = update(handle.prev);
+        handle.prev = rewrite(handle.prev);
+        if (handle.shown !== null) handle.shown = rewrite(handle.shown);
       }
     },
     [commitItems, commitOpenedCache],
