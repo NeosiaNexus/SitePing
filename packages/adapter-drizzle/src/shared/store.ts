@@ -325,6 +325,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
         this.gateway.deleteProjectChunk(projectName, PROJECT_DELETE_CHUNK_SIZE),
       );
       if (deleted.deletedCount > 0) {
+        remainingAfterEmptyChunk = Number.POSITIVE_INFINITY;
         await this.discardScreenshots(deleted.screenshotUrls);
         continue;
       }
@@ -332,8 +333,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
       // PostgreSQL, a concurrent delete may take some or all of the rows a chunk
       // picked (the statement waits for its locks, then skips the rows it
       // removed). So only a project left empty ends the delete: the next chunk
-      // waits for the concurrent delete, and rows keep going. When none went
-      // since the last empty chunk, nothing will remove them.
+      // waits for the concurrent delete, and rows keep going. When two empty
+      // chunks in a row leave no fewer rows, nothing will remove them.
       const remaining = await persistMutation("deleteAllFeedbacks", { projectName }, () =>
         this.gateway.countFeedbacks({ projectName }),
       );

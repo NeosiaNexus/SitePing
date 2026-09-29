@@ -961,6 +961,28 @@ for (const dialect of dialects) {
         expect((await database.createStore({ logger }).getFeedbacks({ projectName: "site" })).total).toBe(0);
       });
 
+      it("finishes the project when feedback keeps arriving between its chunks", async () => {
+        const writer = database.createStore({ logger });
+        await writer.createFeedback(feedbackInput());
+        let chunks = 0;
+        const store = database.createStoreWithDriverInterceptor(
+          async (statementSql, run) => {
+            const result = await run();
+            if (!isFeedbackDelete(statementSql)) return result;
+            chunks += 1;
+            // A submission lands right after each chunk that finds the project empty.
+            if (chunks === 2 || chunks === 4) await writer.createFeedback(feedbackInput());
+            return result;
+          },
+          { screenshotStorage: recordingStorage().storage, logger },
+        );
+
+        await store.deleteAllFeedbacks("site");
+
+        expect(chunks).toBeGreaterThan(4);
+        expect((await writer.getFeedbacks({ projectName: "site" })).total).toBe(0);
+      });
+
       it("fails instead of retrying forever when the database keeps rows it is told to delete", async () => {
         const store = database.createStore({ screenshotStorage: recordingStorage().storage, logger });
         await store.createFeedback(feedbackInput());
