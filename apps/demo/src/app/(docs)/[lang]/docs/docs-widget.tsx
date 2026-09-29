@@ -3,10 +3,11 @@
 import { useEffect } from "react";
 
 /**
- * The widget's own desktop threshold. `forceShow` (which the docs site needs,
- * being a production build) bypasses the built-in viewport guard along with the
- * production one — so we re-apply it here rather than serve phone readers a
- * widget the docs themselves describe as desktop-only.
+ * The docs site keeps its dogfood widget off phone-width screens: a phone
+ * reader is reading, and a floating button over a narrow page gets in the way.
+ * The widget itself renders at every width by default, with a phone layout.
+ * `forceShow` (which the docs site needs, being a production build) bypasses
+ * `minViewportWidth` along with the production guard, so the check lives here.
  */
 const MIN_VIEWPORT_WIDTH = 768;
 

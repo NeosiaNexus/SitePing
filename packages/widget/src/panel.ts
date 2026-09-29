@@ -45,6 +45,7 @@ import { PanelStats } from "./panel-stats.js";
 import { buildThread } from "./panel-thread.js";
 import { focusCardByIndex, getFocusedCardIndex, KeyboardShortcuts } from "./shortcuts.js";
 import { getStatusBgColor, getStatusColor, getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
+import { isCoarsePointer, isCompactViewport } from "./viewport.js";
 
 /** Non-terminal statuses — complement of `CLOSED_FEEDBACK_STATUSES`; backs the panel's "Open" tab bucket. */
 const OPEN_FEEDBACK_STATUSES: readonly FeedbackStatus[] = FEEDBACK_STATUSES.filter((s) => !isClosedStatus(s));
@@ -52,6 +53,7 @@ const OPEN_FEEDBACK_STATUSES: readonly FeedbackStatus[] = FEEDBACK_STATUSES.filt
 /**
  * Side panel (400px) with feedback history, filters, search, stats,
  * sort/group, bulk actions, export, detail view, and keyboard shortcuts.
+ * On phones it is a bottom sheet over a scrim — swipe its header down to close.
  *
  * Lives inside the Shadow DOM.
  * Glassmorphism: glass background, staggered card animations,
@@ -59,6 +61,7 @@ const OPEN_FEEDBACK_STATUSES: readonly FeedbackStatus[] = FEEDBACK_STATUSES.filt
  */
 export class Panel {
   private root: HTMLElement;
+  private scrim: HTMLElement;
   private listContainer: HTMLElement;
   private searchInput: HTMLInputElement;
   private closeBtn: HTMLButtonElement;
@@ -141,6 +144,10 @@ export class Panel {
     this.getScope = options?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
     this.scopeAnnotationsByUrl = options?.scopeAnnotationsByUrl ?? true;
     this.ownFeedback = options?.ownFeedback ?? { ids: () => new Set(), remove: () => {} };
+
+    // Phone layout: dims the page behind the sheet; a tap on it closes the panel.
+    this.scrim = el("div", { class: "sp-scrim" });
+    this.scrim.addEventListener("click", () => this.close());
 
     this.root = el("div", { class: "sp-panel" });
     this.root.setAttribute("role", "complementary");
@@ -274,8 +281,15 @@ export class Panel {
           if (fb.annotations.length > 0) {
             const ann = fb.annotations[0];
             if (!ann) return;
-            window.scrollTo({ left: ann.scrollX, top: ann.scrollY, behavior: "smooth" });
-            this.markers.pinHighlight(fb);
+            // Follow the live pin: the stored offsets come from the author's
+            // layout and miss on another screen size. They remain the fallback
+            // when no pin is on screen (anchor lost, or markers hidden).
+            if (!this.markers.revealPin(fb.id)) {
+              window.scrollTo({ left: ann.scrollX, top: ann.scrollY, behavior: "smooth" });
+              this.markers.pinHighlight(fb);
+            }
+            // The phone sheet covers the page it just scrolled — get out of the way.
+            if (isCompactViewport()) this.close();
           }
         },
         onCustomAction: async (action, fb) => {
@@ -327,7 +341,9 @@ export class Panel {
     this.root.appendChild(this.detail.element);
     this.root.appendChild(this.shortcuts.helpOverlay);
     this.root.appendChild(this.shortcuts.hintButton);
+    shadowRoot.appendChild(this.scrim);
     shadowRoot.appendChild(this.root);
+    this.attachSheetDrag();
 
     // --- Event delegation on listContainer ---
 
@@ -434,13 +450,15 @@ export class Panel {
         // (either on themselves or any ancestor up to this.root) and elements
         // explicitly disabled. Without this filter, the trap can jump to a
         // button inside a closed detail view and effectively swallow the Tab
-        // key. We use a walk of style.display rather than `offsetParent`
+        // key. We walk the computed display rather than `offsetParent`
         // because the latter is unreliable in jsdom (always null without
-        // layout) and breaks unit tests.
+        // layout) and breaks unit tests. Computed, not inline: the touch layer
+        // hides the trailing shortcuts button from its stylesheet, and a
+        // hidden `last` let Tab walk out of the sheet onto the page.
         const isVisible = (el: HTMLElement): boolean => {
           let cur: HTMLElement | null = el;
           while (cur && cur !== this.root) {
-            if (cur.style.display === "none") return false;
+            if (getComputedStyle(cur).display === "none") return false;
             cur = cur.parentElement;
           }
           return true;
@@ -481,18 +499,21 @@ export class Panel {
   async open(): Promise<void> {
     if (this.isOpen) return;
     this.isOpen = true;
+    // Phones: a sheet over a scrim is a modal dialog, and says so to screen
+    // readers (VoiceOver then keeps to it); elsewhere the panel sits beside the page.
+    const modal = isCompactViewport();
+    this.root.setAttribute("role", modal ? "dialog" : "complementary");
+    modal ? this.root.setAttribute("aria-modal", "true") : this.root.removeAttribute("aria-modal");
     this.root.classList.add("sp-panel--open");
+    this.scrim.classList.add("sp-scrim--open");
     this.root.setAttribute("aria-hidden", "false");
     this.bus.emit("open");
     this.shortcuts.enable(this.shadowRoot);
     await this.loadFeedbacks();
-    // Move focus into the panel (search input or close button)
+    // Move focus into the panel. Touch: the close button — focusing the
+    // search field would throw the keyboard over the list.
     requestAnimationFrame(() => {
-      if (this.searchInput) {
-        this.searchInput.focus();
-      } else {
-        this.closeBtn.focus();
-      }
+      (isCoarsePointer() ? this.closeBtn : this.searchInput).focus();
     });
   }
 
@@ -500,6 +521,7 @@ export class Panel {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.root.classList.remove("sp-panel--open");
+    this.scrim.classList.remove("sp-scrim--open");
     this.root.setAttribute("aria-hidden", "true");
     this.bus.emit("close");
     this.shortcuts.disable();
@@ -508,6 +530,50 @@ export class Panel {
     // Restore focus to the FAB
     const fab = (this.root.getRootNode() as ShadowRoot).querySelector<HTMLButtonElement>(".sp-fab");
     fab?.focus();
+  }
+
+  /**
+   * Swipe-down-to-close for the phone sheet. Only the headers (panel and
+   * detail) are drag handles, so scrolling the list never dismisses it.
+   */
+  private attachSheetDrag(): void {
+    let startY = 0;
+    let startTime = 0;
+    let offset = 0;
+    let dragging = false;
+    this.root.addEventListener("pointerdown", (e) => {
+      const target = e.target as Element;
+      if (
+        e.pointerType === "mouse" ||
+        !isCompactViewport() ||
+        target.closest("button") ||
+        !target.closest(".sp-panel-header, .sp-detail-header")
+      )
+        return;
+      dragging = true;
+      startY = e.clientY;
+      startTime = e.timeStamp;
+      offset = 0;
+      this.root.style.transition = "none";
+      this.root.setPointerCapture?.(e.pointerId);
+    });
+    this.root.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      offset = Math.max(0, e.clientY - startY);
+      this.root.style.transform = `translateY(${offset}px)`;
+    });
+    const release = (e: PointerEvent) => {
+      if (!dragging) return;
+      dragging = false;
+      // Hand the transform back to the stylesheet: the sheet animates from
+      // where the finger left it, to closed or back to open.
+      this.root.style.transition = "";
+      this.root.style.transform = "";
+      const flick = offset > 40 && offset / Math.max(1, e.timeStamp - startTime) > 0.5;
+      if (flick || offset > this.root.offsetHeight / 4) this.close();
+    };
+    this.root.addEventListener("pointerup", release);
+    this.root.addEventListener("pointercancel", release);
   }
 
   private showLoading(): void {
@@ -1408,6 +1474,10 @@ export class Panel {
         },
         { once: true },
       );
+      // Phones: the sheet hides the pin that was tapped — open its details
+      // rather than leaving the user to find the card in the list.
+      const feedback = this.feedbacks.find((f) => f.id === feedbackId);
+      if (feedback && isCompactViewport()) this.detail.show(feedback, Number(card.dataset.number));
     }
   }
 
@@ -1494,6 +1564,7 @@ export class Panel {
     this.exportBtn.destroy();
     this.shortcuts.destroy();
     this.detail.destroy();
+    this.scrim.remove();
     this.root.remove();
   }
 }

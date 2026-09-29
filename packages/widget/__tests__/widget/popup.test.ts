@@ -5,7 +5,7 @@ import { POPUP_HIDE_TRANSITION_MS } from "../../src/constants.js";
 import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
 import { Popup } from "../../src/popup.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
-import { mockMatchMedia } from "../helpers.js";
+import { mockMatchMedia, mockMediaQueries, mockVisualViewport, PHONE_MEDIA } from "../helpers.js";
 
 // jsdom does not implement window.matchMedia — provide a stub
 Object.defineProperty(window, "matchMedia", {
@@ -1448,5 +1448,140 @@ describe("Popup platform detection", () => {
       if (originalPlatform) Object.defineProperty(navigator, "platform", originalPlatform);
       if (originalUserAgent) Object.defineProperty(navigator, "userAgent", originalUserAgent);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phone layout — bottom sheet
+// ---------------------------------------------------------------------------
+
+describe("Popup on phones", () => {
+  let popup: Popup;
+  const dialog = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label]')!;
+  const byText = (text: string) =>
+    Array.from(dialog().querySelectorAll<HTMLElement>("div, button")).find((el) => el.textContent === text)!;
+
+  beforeEach(() => {
+    mockMediaQueries(PHONE_MEDIA);
+    popup = new Popup(colors, t);
+  });
+
+  afterEach(() => {
+    popup.destroy();
+    mockMediaQueries([]);
+  });
+
+  it("docks to the bottom edge as a full-width sheet, with no grab handle it could not honour", () => {
+    void popup.show(makeBounds({ top: 500, bottom: 550 }));
+    const el = dialog();
+    expect(el.style.top).toBe("auto");
+    expect(el.style.left).toBe("0px");
+    expect(el.style.right).toBe("0px");
+    expect(el.style.bottom).toBe("0px");
+    expect(el.style.width).toBe("auto");
+    expect(el.style.borderRadius).toBe("20px 20px 0 0");
+    expect(el.style.background).toBe("rgb(255, 255, 255)"); // solid colors.bg, not glass
+    // Only the panel sheet can be swiped away — no handle promising a drag here
+    expect(el.firstElementChild!.querySelector("button[data-type]")).not.toBeNull();
+    // jsdom has no layout: the sheet reports its top as the viewport bottom
+    expect(popup.sheetTop).toBe(window.innerHeight);
+  });
+
+  it("sizes controls for fingers and drops the keyboard-shortcut hint", () => {
+    void popup.show(makeBounds());
+    const cancel = byText(t("popup.cancel"));
+    const submit = cancel.nextElementSibling as HTMLElement;
+    expect(cancel.style.height).toBe("48px");
+    expect(submit.style.height).toBe("48px");
+    expect(cancel.style.flexGrow).toBe("1");
+    expect(submit.style.flexGrow).toBe("2");
+    const textarea = dialog().querySelector("textarea")!;
+    // iOS zooms the page into any field under 16px on focus
+    expect(textarea.style.fontSize).toBe("16px");
+    // The ⌘/Ctrl+Enter hint sits right under the textarea
+    expect((textarea.nextElementSibling as HTMLElement).style.display).toBe("none");
+  });
+
+  it("focuses the first type button, keeping the keyboard down until the user picks a field", async () => {
+    void popup.show(makeBounds());
+    const firstType = dialog().querySelector<HTMLButtonElement>("button[data-type]")!;
+    await vi.waitFor(() => expect(document.activeElement).toBe(firstType));
+  });
+
+  it("rides above the on-screen keyboard, and stops tracking it once closed", () => {
+    const vv = mockVisualViewport();
+    try {
+      void popup.show(makeBounds());
+      vv.keyboard(300);
+      expect(dialog().style.bottom).toBe("300px");
+      expect(dialog().style.maxHeight).toBe(`${window.innerHeight - 308}px`);
+      // The keyboard covers the home indicator — no safe-area gap above it
+      expect(dialog().style.padding).toBe("16px");
+
+      popup.dismiss();
+      expect(dialog().style.transform).toBe("translateY(100%)");
+      vv.keyboard(120);
+      expect(dialog().style.bottom).toBe("300px");
+    } finally {
+      vv.restore();
+    }
+  });
+
+  it("stops tracking the keyboard on destroy", () => {
+    const vv = mockVisualViewport();
+    try {
+      void popup.show(makeBounds());
+      const el = dialog();
+      popup.destroy();
+      vv.keyboard(200);
+      expect(el.style.bottom).toBe("0px");
+    } finally {
+      vv.restore();
+    }
+  });
+
+  it("goes back to the anchored card when the viewport is no longer compact", () => {
+    void popup.show(makeBounds());
+    popup.dismiss();
+    mockMediaQueries(["(pointer: coarse)"]); // a tablet: touch, but wide
+    void popup.show(makeBounds());
+    const el = dialog();
+    expect(el.style.width).toBe("300px");
+    expect(el.style.right).toBe("");
+    expect(el.style.bottom).toBe("");
+    expect(el.style.top).toBe("158px");
+    expect(el.style.padding).toBe("16px");
+    expect(popup.sheetTop).toBeNull();
+    // Still a touch screen: finger-sized actions and 16px text
+    expect(byText(t("popup.cancel")).style.height).toBe("44px");
+    expect(el.querySelector("textarea")!.style.fontSize).toBe("16px");
+  });
+
+  it("reports no sheet while closed", () => {
+    expect(popup.sheetTop).toBeNull();
+  });
+});
+
+describe("Popup placement", () => {
+  let popup: Popup;
+
+  beforeEach(() => {
+    popup = new Popup(colors, t);
+  });
+
+  afterEach(() => {
+    popup.destroy();
+  });
+
+  it("places the card from its measured size, not a fixed estimate", () => {
+    const el = document.querySelector<HTMLElement>('[role="dialog"][aria-label]')!;
+    // Touch sizing makes the card taller than the no-layout fallback size
+    Object.defineProperty(el, "offsetWidth", { value: 334, configurable: true });
+    Object.defineProperty(el, "offsetHeight", { value: 300, configurable: true });
+    // Below: 558 + 300 > 768 - 8 → flips above: 500 - 8 - 300
+    void popup.show(makeBounds({ top: 500, bottom: 550 }));
+    expect(el.style.top).toBe("192px");
+    // It fits the viewport, so no height cap
+    expect(el.style.maxHeight).toBe("");
   });
 });

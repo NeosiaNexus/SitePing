@@ -72,6 +72,13 @@ const HTML = `<!DOCTYPE html>
     .section p { color: #666; line-height: 1.6; }
     #target-element { background: #e8f4ff; padding: 20px; border-radius: 8px; }
     .tall { height: 1200px; }
+    .pricing { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 20px; }
+    /* Phone-sized fixture for mobile.spec.ts — a page that fits its viewport */
+    @media (max-width: 600px) {
+      body { padding: 16px; }
+      .hero, .section { padding: 24px 20px; }
+      .pricing { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -106,7 +113,7 @@ const HTML = `<!DOCTYPE html>
   </div>
   <div class="section">
     <h2>Tarification</h2>
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 20px;">
+    <div class="pricing">
       <div style="background: #f9f9f9; padding: 24px; border-radius: 8px; text-align: center;">
         <h3 style="margin: 0 0 8px;">Gratuit</h3>
         <p style="font-size: 2em; margin: 0; font-weight: bold;">0€</p>

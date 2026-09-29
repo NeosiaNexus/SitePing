@@ -221,22 +221,25 @@ describe("launch", () => {
     // bypasses the mobile guard too — so every test that exercises the
     // threshold opts out of it. destroy() runs in finally so a failing
     // assertion can't leak the launcher's module-level singleton.
-    it("returns a no-op instance when viewport is narrow (< 768px)", () => {
-      withViewportWidth(600, () => {
-        const instance = launch(defaultConfig({ forceShow: false }));
+    it("renders on a phone-sized viewport by default (compact layout, no threshold)", () => {
+      withViewportWidth(375, () => {
+        const onSkip = vi.fn();
+        const instance = launch(defaultConfig({ forceShow: false, onSkip }));
         try {
-          expect(document.querySelector("siteping-widget")).toBeNull();
+          expect(document.querySelector("siteping-widget")).not.toBeNull();
+          expect(onSkip).not.toHaveBeenCalled();
         } finally {
           instance.destroy();
         }
       });
     });
 
-    it("calls onSkip with 'mobile' reason on narrow viewport", () => {
+    it("calls onSkip with 'mobile' reason below an explicit minViewportWidth", () => {
       withViewportWidth(500, () => {
         const onSkip = vi.fn();
-        const instance = launch(defaultConfig({ forceShow: false, onSkip }));
+        const instance = launch(defaultConfig({ forceShow: false, minViewportWidth: 768, onSkip }));
         try {
+          expect(document.querySelector("siteping-widget")).toBeNull();
           expect(onSkip).toHaveBeenCalledWith("mobile");
         } finally {
           instance.destroy();
@@ -260,7 +263,7 @@ describe("launch", () => {
     it("forceShow bypasses the mobile guard (#103)", () => {
       withViewportWidth(600, () => {
         const onSkip = vi.fn();
-        const instance = launch(defaultConfig({ forceShow: true, onSkip }));
+        const instance = launch(defaultConfig({ forceShow: true, minViewportWidth: 768, onSkip }));
         try {
           expect(document.querySelector("siteping-widget")).not.toBeNull();
           expect(onSkip).not.toHaveBeenCalled();
@@ -294,18 +297,20 @@ describe("launch", () => {
       });
     });
 
-    it("falls back to the 768px default when minViewportWidth is not a finite number", () => {
+    it("falls back to the default (render at every width) when minViewportWidth is not a finite number", () => {
       withViewportWidth(600, () => {
-        // NaN (e.g. Number('768px') from an untyped script-tag consumer) is not
-        // nullish, and `innerWidth < NaN` is always false — without validation
-        // it would silently disable the guard.
-        const onSkip = vi.fn();
-        const instance = launch(defaultConfig({ forceShow: false, minViewportWidth: Number.NaN, onSkip }));
-        try {
-          expect(document.querySelector("siteping-widget")).toBeNull();
-          expect(onSkip).toHaveBeenCalledWith("mobile");
-        } finally {
-          instance.destroy();
+        // NaN (e.g. Number('768px') from an untyped script-tag consumer) and
+        // Infinity are not nullish — without validation Infinity would hide
+        // the widget at every width.
+        for (const minViewportWidth of [Number.NaN, Number.POSITIVE_INFINITY]) {
+          const onSkip = vi.fn();
+          const instance = launch(defaultConfig({ forceShow: false, minViewportWidth, onSkip }));
+          try {
+            expect(document.querySelector("siteping-widget")).not.toBeNull();
+            expect(onSkip).not.toHaveBeenCalled();
+          } finally {
+            instance.destroy();
+          }
         }
       });
     });

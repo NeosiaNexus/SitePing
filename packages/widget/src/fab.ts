@@ -4,6 +4,7 @@ import type { EventBus, WidgetEvents } from "./events.js";
 import { registerEscapeLayer } from "./host-isolation.js";
 import { type TFunction, type Translations, tWithParams } from "./i18n/index.js";
 import { ICON_CLOSE, ICON_EDIT, ICON_EYE, ICON_EYE_OFF, ICON_LIST, ICON_SITEPING } from "./icons.js";
+import { isCoarsePointer } from "./viewport.js";
 
 /** Closed set of radial menu item ids — keeps the label lookup exhaustive. */
 type RadialItemId = "chat" | "annotate" | "toggle-annotations";
@@ -15,6 +16,8 @@ interface RadialItem {
 }
 
 const ITEM_GAP = 54;
+/** Touch items are 48px (styles/mobile.ts) — keep a 12px gap between them. */
+const ITEM_GAP_TOUCH = 60;
 
 // Stable mapping between radial item ids and their translation keys. The
 // label is fully derived from this map via `t()`, so the constructor and
@@ -33,6 +36,7 @@ const ITEM_LABEL_KEYS: Record<RadialItemId, keyof Translations> = {
  */
 export class Fab {
   private root: HTMLElement;
+  private scrim: HTMLElement;
   private fab: HTMLButtonElement;
   private radialContainer: HTMLElement;
   private badgeEl: HTMLElement | null = null;
@@ -47,7 +51,6 @@ export class Fab {
     private readonly t: TFunction,
   ) {
     const position = config.position ?? "bottom-right";
-    const isRight = position === "bottom-right";
 
     // Vertical stack above the FAB. Icons:
     // - list  → opens the feedback sidebar (panel of feedbacks).
@@ -94,15 +97,19 @@ export class Fab {
 
       const label = document.createElement("span");
       label.className = "sp-radial-label";
-      label.style.cssText = isRight
-        ? "position:absolute; right:54px; top:50%; transform:translateY(-50%); white-space:nowrap;"
-        : "position:absolute; left:54px; top:50%; transform:translateY(-50%); white-space:nowrap;";
       btn.appendChild(label);
 
       this.radialContainer.appendChild(btn);
     }
 
+    // Phone layout: dims the page behind the open speed dial so its labels
+    // read over any content (CSS renders it on compact viewports only).
+    this.scrim = document.createElement("div");
+    this.scrim.className = "sp-scrim";
+    this.scrim.addEventListener("click", () => this.close());
+
     this.root = document.createElement("div");
+    this.root.appendChild(this.scrim);
     this.root.appendChild(this.radialContainer);
     this.root.appendChild(this.fab);
     shadowRoot.appendChild(this.root);
@@ -231,11 +238,13 @@ export class Fab {
     this.isOpen = true;
     this.setFabIcon(ICON_CLOSE);
     this.fab.setAttribute("aria-expanded", "true");
+    this.scrim.classList.add("sp-scrim--open");
 
+    const gap = isCoarsePointer() ? ITEM_GAP_TOUCH : ITEM_GAP;
     const buttons = this.radialContainer.querySelectorAll<HTMLButtonElement>(".sp-radial-item");
     buttons.forEach((btn, i) => {
       // Stack vertically above the FAB with initial offset + gap
-      const y = -(16 + ITEM_GAP * (i + 1));
+      const y = -(16 + gap * (i + 1));
       btn.style.transform = `translate(0px, ${y}px) scale(1)`;
       btn.classList.add("sp-radial-item--open");
     });
@@ -251,6 +260,7 @@ export class Fab {
     this.isOpen = false;
     this.setFabIcon(ICON_SITEPING);
     this.fab.setAttribute("aria-expanded", "false");
+    this.scrim.classList.remove("sp-scrim--open");
 
     const buttons = this.radialContainer.querySelectorAll<HTMLButtonElement>(".sp-radial-item");
     buttons.forEach((btn) => {

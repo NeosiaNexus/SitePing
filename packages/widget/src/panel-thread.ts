@@ -7,6 +7,7 @@
 import { COMMENT_BODY_MAX_LENGTH, type CommentResponse, type FeedbackResponse, newClientId } from "@siteping/core";
 import { el, formatRelativeDate, isMacPlatform, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
+import { isCoarsePointer } from "./viewport.js";
 
 export interface ThreadOptions {
   t: TFunction;
@@ -60,8 +61,10 @@ export function buildThread(
   input.setAttribute("aria-label", input.placeholder);
 
   const foot = el("div", { class: "sp-thread-foot" });
+  // Left empty on touch screens, like the feedback form's hint: no hardware
+  // keyboard to press the shortcut with. The span keeps Send on the right.
   const hint = el("span");
-  setText(hint, t(isMacPlatform() ? "popup.submitHintMac" : "popup.submitHintOther"));
+  if (!isCoarsePointer()) setText(hint, t(isMacPlatform() ? "popup.submitHintMac" : "popup.submitHintOther"));
   const send = document.createElement("button");
   send.type = "button";
   send.className = "sp-btn-primary";

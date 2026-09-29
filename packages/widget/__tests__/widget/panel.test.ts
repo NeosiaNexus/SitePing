@@ -13,7 +13,7 @@ import { installHostIsolationGuard, isolateFromHost } from "../../src/host-isola
 import { createT, tWithParams } from "../../src/i18n/index.js";
 import { Panel } from "../../src/panel.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
-import { createShadowRoot, trackClickListeners } from "../helpers.js";
+import { createShadowRoot, mockMediaQueries, PHONE_MEDIA, trackClickListeners } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -35,6 +35,8 @@ function createMockMarkers() {
     render: vi.fn(),
     highlight: vi.fn(),
     pinHighlight: vi.fn(),
+    // No live pin by default — "Go to annotation" falls back to the stored offsets.
+    revealPin: vi.fn().mockReturnValue(false),
     addFeedback: vi.fn(),
     destroy: vi.fn(),
     count: 0,
@@ -4763,6 +4765,247 @@ describe("Panel", () => {
       expect(shadow.querySelector(".sp-detail-btn-resolve")).toBeNull();
       expect(shadow.querySelector(".sp-detail-btn-delete")).toBeNull();
       expect(shadow.querySelector(".sp-detail textarea")).not.toBeNull();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phone layout — bottom sheet
+// ---------------------------------------------------------------------------
+
+describe("Panel on phones", () => {
+  let shadow: ShadowRoot;
+  let bus: EventBus<WidgetEvents>;
+  let panel: Panel;
+  let apiClient: ReturnType<typeof createMockApiClient>;
+  let markers: ReturnType<typeof createMockMarkers>;
+
+  const colors = buildThemeColors();
+  const t = createT("en");
+  const annotation = {
+    id: "ann-1",
+    feedbackId: "fb-1",
+    cssSelector: "div",
+    xpath: "/html/body/div",
+    textSnippet: "",
+    elementTag: "DIV",
+    elementId: null,
+    textPrefix: "",
+    textSuffix: "",
+    fingerprint: "0:0:0",
+    neighborText: "",
+    anchorKey: null,
+    xPct: 0,
+    yPct: 0,
+    wPct: 1,
+    hPct: 1,
+    scrollX: 0,
+    scrollY: 900,
+    viewportW: 1440,
+    viewportH: 900,
+    devicePixelRatio: 1,
+    createdAt: new Date().toISOString(),
+  };
+
+  const root = () => shadow.querySelector<HTMLElement>(".sp-panel")!;
+
+  /** Dispatch a touch pointer event (bubbling, like a real one) at viewport y. */
+  function pointer(type: string, target: Element, clientY: number, pointerType = "touch"): void {
+    target.dispatchEvent(new PointerEvent(type, { bubbles: true, clientY, pointerId: 1, pointerType }));
+  }
+
+  beforeEach(() => {
+    mockMediaQueries(PHONE_MEDIA);
+    shadow = createShadowRoot();
+    bus = new EventBus<WidgetEvents>();
+    apiClient = createMockApiClient();
+    markers = createMockMarkers();
+    panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "en");
+  });
+
+  afterEach(() => {
+    panel.destroy();
+    shadow.host.remove();
+    Reflect.deleteProperty(window, "matchMedia");
+  });
+
+  it("is a modal dialog on phones, and a complementary panel again when wide", async () => {
+    await panel.open();
+    expect(root().getAttribute("role")).toBe("dialog");
+    expect(root().getAttribute("aria-modal")).toBe("true");
+    panel.close();
+
+    mockMediaQueries([]);
+    await panel.open();
+    expect(root().getAttribute("role")).toBe("complementary");
+    expect(root().hasAttribute("aria-modal")).toBe(false);
+  });
+
+  it("keeps Tab inside the sheet when the trailing control is hidden by the stylesheet", async () => {
+    // The touch layer hides the shortcuts button from CSS, not inline: the
+    // trap must wrap from the last control the user can actually reach.
+    const sheet = document.createElement("style");
+    sheet.textContent = ".sp-shortcuts-hint { display: none; }";
+    shadow.appendChild(sheet);
+    await panel.open();
+    const reachable = Array.from(
+      root().querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+    ).filter((el) => !el.closest("[style*='display: none']") && !el.matches(".sp-shortcuts-hint"));
+    const last = reachable[reachable.length - 1]!;
+    expect(last.matches(".sp-shortcuts-hint")).toBe(false);
+
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true });
+    const preventDefault = vi.spyOn(tab, "preventDefault");
+    Object.defineProperty(shadow, "activeElement", { value: last, configurable: true });
+    shadow.dispatchEvent(tab);
+
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it("dims the page with a scrim that closes the sheet on tap", async () => {
+    await panel.open();
+    const scrim = shadow.querySelector<HTMLElement>(".sp-scrim")!;
+    expect(scrim.classList.contains("sp-scrim--open")).toBe(true);
+
+    scrim.click();
+    expect(panel.isCurrentlyOpen).toBe(false);
+    expect(scrim.classList.contains("sp-scrim--open")).toBe(false);
+  });
+
+  it("focuses the close button on open, so the keyboard does not cover the list", async () => {
+    await panel.open();
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    expect(shadow.activeElement).toBe(shadow.querySelector(".sp-panel-close"));
+  });
+
+  it("opens the tapped pin's details straight away", async () => {
+    const fb = makeFeedback({ id: "fb-pin", message: "Pin me" });
+    apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+    await panel.open();
+    shadow.querySelector<HTMLElement>('[data-feedback-id="fb-pin"]')!.scrollIntoView = vi.fn();
+
+    document.dispatchEvent(new CustomEvent("sp-marker-click", { detail: { feedbackId: "fb-pin" } }));
+
+    const detail = shadow.querySelector<HTMLElement>(".sp-detail")!;
+    expect(detail.classList.contains("sp-detail--visible")).toBe(true);
+    expect(detail.querySelector(".sp-detail-title")!.textContent).toBe(tWithParams(t, "detail.title", { number: 1 }));
+  });
+
+  it("'Go to annotation' follows the live pin, then gets the sheet out of the way", async () => {
+    const fb = makeFeedback({ id: "fb-1", url: "/", annotations: [annotation] });
+    apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+    markers.revealPin.mockReturnValue(true);
+    const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    try {
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+      shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-goto")!.click();
+
+      expect(markers.revealPin).toHaveBeenCalledWith("fb-1");
+      // The author's stored offsets (desktop layout) are only a fallback
+      expect(scrollSpy).not.toHaveBeenCalled();
+      expect(markers.pinHighlight).not.toHaveBeenCalled();
+      expect(panel.isCurrentlyOpen).toBe(false);
+    } finally {
+      scrollSpy.mockRestore();
+    }
+  });
+
+  describe("swipe down to close", () => {
+    beforeEach(async () => {
+      await panel.open();
+      Object.defineProperty(root(), "offsetHeight", { value: 800, configurable: true });
+    });
+
+    it("follows the finger from the header and closes past a quarter of the sheet", () => {
+      // A slow drag (250 px over a second): only the distance can close it,
+      // not the flick rule. jsdom's own timeStamps are ~0 ms apart.
+      const now = vi.spyOn(Event.prototype, "timeStamp", "get");
+      try {
+        const title = shadow.querySelector(".sp-panel-title")!;
+        now.mockReturnValue(0);
+        pointer("pointerdown", title, 100);
+        pointer("pointermove", title, 350);
+        expect(root().style.transform).toBe("translateY(250px)");
+        expect(root().style.transition).toBe("none");
+
+        now.mockReturnValue(1000);
+        pointer("pointerup", title, 350);
+        expect(panel.isCurrentlyOpen).toBe(false);
+        // Handed back to the stylesheet, which animates the rest of the way
+        expect(root().style.transform).toBe("");
+        expect(root().style.transition).toBe("");
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("never drags the sheet upward", () => {
+      const title = shadow.querySelector(".sp-panel-title")!;
+      pointer("pointerdown", title, 300);
+      pointer("pointermove", title, 120);
+      expect(root().style.transform).toBe("translateY(0px)");
+      pointer("pointercancel", title, 120);
+      expect(panel.isCurrentlyOpen).toBe(true);
+    });
+
+    it("springs back after a short, slow drag", () => {
+      const now = vi.spyOn(Event.prototype, "timeStamp", "get");
+      try {
+        const title = shadow.querySelector(".sp-panel-title")!;
+        now.mockReturnValue(0);
+        pointer("pointerdown", title, 100);
+        pointer("pointermove", title, 190);
+        now.mockReturnValue(1000);
+        pointer("pointerup", title, 190);
+        expect(panel.isCurrentlyOpen).toBe(true);
+        expect(root().style.transform).toBe("");
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("closes on a quick flick even when it is short", () => {
+      const now = vi.spyOn(Event.prototype, "timeStamp", "get");
+      try {
+        const title = shadow.querySelector(".sp-panel-title")!;
+        now.mockReturnValue(0);
+        pointer("pointerdown", title, 100);
+        pointer("pointermove", title, 160);
+        now.mockReturnValue(60);
+        pointer("pointerup", title, 160);
+        expect(panel.isCurrentlyOpen).toBe(false);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("drags from the detail view's header too", () => {
+      const fbHeader = shadow.querySelector(".sp-detail-header")!;
+      pointer("pointerdown", fbHeader, 100);
+      pointer("pointermove", fbHeader, 500);
+      pointer("pointerup", fbHeader, 500);
+      expect(panel.isCurrentlyOpen).toBe(false);
+    });
+
+    it("ignores mouse drags, drags starting on a button, and drags on the list", () => {
+      const title = shadow.querySelector(".sp-panel-title")!;
+      pointer("pointerdown", title, 100, "mouse");
+      pointer("pointerdown", shadow.querySelector(".sp-panel-close")!, 100);
+      pointer("pointerdown", shadow.querySelector(".sp-list")!, 100);
+      pointer("pointermove", title, 500);
+      pointer("pointerup", title, 500);
+      expect(root().style.transform).toBe("");
+      expect(panel.isCurrentlyOpen).toBe(true);
+    });
+
+    it("stays put in the desktop layout", () => {
+      mockMediaQueries([]);
+      const title = shadow.querySelector(".sp-panel-title")!;
+      pointer("pointerdown", title, 100);
+      pointer("pointermove", title, 500);
+      pointer("pointerup", title, 500);
+      expect(panel.isCurrentlyOpen).toBe(true);
     });
   });
 });

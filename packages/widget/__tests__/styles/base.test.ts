@@ -28,4 +28,20 @@ describe("buildStyles", () => {
     expect(buildStyles(buildThemeColors("#0066ff", "dark"))).toContain("color-scheme: dark");
     expect(buildStyles(buildThemeColors("#0066ff", "light"))).toContain("color-scheme: light");
   });
+
+  // The phone layer overrides desktop rules of equal specificity, so it only
+  // works while it comes last — e.g. the sheet's translateY must beat the
+  // drawer's translateX from the animation layer.
+  it("appends the phone layer after the desktop rules it overrides", () => {
+    const css = buildStyles(buildThemeColors());
+    expect(css.lastIndexOf("transform: translateY(105%)")).toBeGreaterThan(
+      css.lastIndexOf("transform: translateX(110%)"),
+    );
+    expect(css.indexOf("@media (max-width: 640px)")).toBeGreaterThan(css.lastIndexOf(".sp-detail-btn-goto"));
+  });
+
+  it("dims the page behind phone sheets with a theme-aware scrim", () => {
+    expect(buildStyles(buildThemeColors("#0066ff", "light"))).toContain("--sp-scrim: rgba(15, 23, 42, 0.32)");
+    expect(buildStyles(buildThemeColors("#0066ff", "dark"))).toContain("--sp-scrim: rgba(0, 0, 0, 0.5)");
+  });
 });

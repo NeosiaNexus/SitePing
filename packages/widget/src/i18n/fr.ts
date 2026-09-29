@@ -62,6 +62,7 @@ export const fr: Translations = {
   "annotator.instruction":
     "Tracez un rectangle sur la zone \u00e0 commenter \u2014 ou appuyez sur Entr\u00e9e pour commenter le dernier \u00e9l\u00e9ment actif",
   "annotator.instantInstruction": "Commenter l'endroit cliqu\u00e9",
+  "annotator.touchInstruction": "Touchez un \u00e9l\u00e9ment ou faites glisser pour s\u00e9lectionner une zone",
   "annotator.cancel": "Annuler",
 
   // Popup

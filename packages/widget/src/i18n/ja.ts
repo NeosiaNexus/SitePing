@@ -62,6 +62,7 @@ export const ja: Translations = {
   "annotator.instruction":
     "コメントしたい範囲を四角で囲んでください — または Enter キーで最後にフォーカスした要素にコメントできます",
   "annotator.instantInstruction": "クリックした箇所にコメント",
+  "annotator.touchInstruction": "要素をタップするか、ドラッグして範囲を選択してください",
   "annotator.cancel": "キャンセル",
 
   // Popup

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { findAnchorElement, generateAnchor, rectToPercentages } from "../../src/dom/anchor";
+import { deepElementFromPoint, findAnchorElement, generateAnchor, rectToPercentages } from "../../src/dom/anchor";
 
 // jsdom polyfill — @medv/finder uses CSS.escape internally
 if (typeof CSS === "undefined") {
@@ -406,6 +406,14 @@ describe("findAnchorElement — open shadow roots (#177)", () => {
     stubElementFromPoint(document, () => host);
 
     expect(findAnchorElement(rect)).toBe(host);
+  });
+
+  it("deepElementFromPoint returns the element under the point inside open roots (the tap path)", () => {
+    const { host, shadow, inner } = openComponent();
+    stubElementFromPoint(document, () => host);
+    stubElementFromPoint(shadow, () => inner);
+
+    expect(deepElementFromPoint(60, 60)).toBe(inner);
   });
 
   it("treats a closed shadow root as opaque", () => {

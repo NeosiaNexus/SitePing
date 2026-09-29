@@ -3,7 +3,7 @@ title: Widget
 description: Install the feedback widget, understand when it shows, and control it from your app.
 ---
 
-The widget is the part your clients see: a floating button that lets them draw a rectangle on the page, type a comment, and send it — pinned to the exact element.
+The widget is the part your clients see: a floating button that lets them draw a rectangle on the page — or, on a phone, tap an element — type a comment, and send it, pinned to the exact element.
 
 ```bash
 npm i @siteping/widget
@@ -18,7 +18,7 @@ const siteping = initSiteping({
 });
 ```
 
-`initSiteping` is the package's main runtime export, alongside the two i18n helpers (`registerLocale`, `loadLocale`) and the TypeScript types. It weighs about **30 KB gzipped** (ESM), lazy-loads its heavier parts (panel, locales, screenshot engine), and renders inside a closed Shadow DOM so your page styles and the widget's never collide.
+`initSiteping` is the package's main runtime export, alongside the two i18n helpers (`registerLocale`, `loadLocale`) and the TypeScript types. It weighs about **34 KB gzipped** (ESM), lazy-loads its heavier parts (panel, locales, screenshot engine), and renders inside a closed Shadow DOM so your page styles and the widget's never collide.
 
 ## When the widget shows — and when it doesn't
 
@@ -27,8 +27,29 @@ const siteping = initSiteping({
 1. **Server-side rendering** — no `window`? The widget skips with `onSkip("ssr")`. Never bypassed.
 2. **Already initialized** — a second `initSiteping()` call returns the *existing* instance (one widget per page). `destroy()` resets this.
 3. **Production** — when `process.env.NODE_ENV === "production"`, the widget skips with `onSkip("production")`. This is the "clients see it during review, visitors never do" default. Bypass with `forceShow: true` for staging/preview environments. Note: only `process.env.NODE_ENV` is read — no `import.meta.env`.
-4. **Small viewports** — below `minViewportWidth` (default **768 px**) it skips with `onSkip("mobile")`. Also bypassed by `forceShow`.
+4. **Minimum width (opt-in)** — below `minViewportWidth` it skips with `onSkip("mobile")`. The default, `0`, renders at every width: phones get the [compact layout](#on-phones-and-tablets). Also bypassed by `forceShow`.
 5. **Config validation** — no `endpoint`/`store`, or no `projectName`? The widget logs a `console.error` and no-ops. This one does **not** call `onSkip` — check the console, not the callback.
+
+> **Changed in 0.11:** `minViewportWidth` used to default to `768`, which kept the widget off phones. A site that upgrades without setting it now shows the widget on phones too, and `onSkip("mobile")` no longer fires. Set `minViewportWidth: 768` to keep the previous behaviour. With `enableRightClickComment` on, a long-press on an Android phone now opens the composer as well.
+
+## On phones and tablets
+
+The same widget adapts to the screen it lands on — there is nothing to configure.
+
+**Touch screens** (any size):
+
+- **Tap an element to comment on it**, or drag to select an area. The instruction bar says so instead of mentioning the Enter key.
+- The floating menu shows its labels (there is no hover to reveal them), and every control is sized for a finger.
+- Form fields use 16 px text, so iOS Safari doesn't zoom the page when one is focused.
+
+**Phones** (viewport up to 640 px wide, or a touch screen up to 500 px tall — a phone held sideways):
+
+- The feedback form is a **bottom sheet** that stays above the on-screen keyboard. If it would cover what the client just selected, the page scrolls so the selection stays in view.
+- The feedback panel is a bottom sheet over the dimmed page — close it with the ✕, by tapping the page, or by swiping its header down. Filters fit on one scrollable row, and the type and sort menus open as action sheets.
+- Tapping a pin on the page opens that feedback's details directly. **Go to annotation** closes the sheet and scrolls to the pin, wherever the page's layout put it on this screen.
+- The name-and-email prompt is a bottom sheet too.
+
+The layout respects the notch and home indicator when your page sets `viewport-fit=cover` in its viewport meta tag. To keep the widget off small screens altogether, set `minViewportWidth` (for example `768`).
 
 ## The instance
 

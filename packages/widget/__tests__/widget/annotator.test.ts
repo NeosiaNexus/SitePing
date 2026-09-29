@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
-import { mockMatchMedia } from "../helpers.js";
+import { mockMatchMedia, mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Stubs — jsdom lacks matchMedia
@@ -52,6 +52,10 @@ const popupMocks = vi.hoisted(() => {
     isOpenState: false,
     /** True while the last `onSubmit` is pending — the real popup refuses to close then. */
     submitInFlight: false,
+    /** Viewport y where the popup's phone sheet starts — null when not a sheet. */
+    sheetTop: null as number | null,
+    /** Anchor rect passed to the last `show()` call. */
+    lastRect: null as DOMRect | null,
   };
 });
 
@@ -62,8 +66,9 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
     return {
       show: vi
         .fn()
-        .mockImplementation((_rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
+        .mockImplementation((rect: DOMRect, onSubmit?: (r: { type: string; message: string }) => Promise<void>) => {
           popupMocks.showCount += 1;
+          popupMocks.lastRect = rect;
           popupMocks.isOpenState = true;
           // The real popup awaits its `onSubmit` callback before resolving so
           // the spinner stays visible until feedback:sent or feedback:error
@@ -107,6 +112,9 @@ vi.mock(new URL("../../src/popup.js", import.meta.url).pathname, () => ({
       get isOpen() {
         return popupMocks.isOpenState;
       },
+      get sheetTop() {
+        return popupMocks.sheetTop;
+      },
     };
   }),
 }));
@@ -124,6 +132,8 @@ vi.mock(new URL("../../src/screenshot.js", import.meta.url).pathname, () => ({
 
 // Mock anchor helpers to avoid @medv/finder dependency in jsdom
 vi.mock(new URL("../../src/dom/anchor.js", import.meta.url).pathname, () => ({
+  // No shadow roots here: the hit test is the document's own
+  deepElementFromPoint: vi.fn((x: number, y: number) => document.elementFromPoint(x, y)),
   findAnchorElement: vi.fn().mockReturnValue(document.body),
   generateAnchor: vi.fn().mockReturnValue({
     cssSelector: "body",
@@ -140,7 +150,7 @@ vi.mock(new URL("../../src/dom/anchor.js", import.meta.url).pathname, () => ({
 }));
 
 import { Annotator } from "../../src/annotator.js";
-import { generateAnchor } from "../../src/dom/anchor.js";
+import { deepElementFromPoint, generateAnchor } from "../../src/dom/anchor.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -186,6 +196,8 @@ describe("Annotator", () => {
     popupMocks.submitInFlight = false;
     popupMocks.destroyCount = 0;
     popupMocks.showCount = 0;
+    popupMocks.sheetTop = null;
+    popupMocks.lastRect = null;
     screenshotMocks.captureAnnotatedScreenshot.mockReset();
     screenshotMocks.captureAnnotatedScreenshot.mockResolvedValue(null);
     ({ annotator, bus } = createAnnotator());
@@ -1700,6 +1712,294 @@ describe("Annotator", () => {
       // Still URL-safe for the server's clientId pattern: "<timestamp>-<random>".
       expect(completeListener.mock.calls[0]![0].clientId).toMatch(/^\d+-[a-z0-9]+$/);
       vi.restoreAllMocks();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Touch screens and phones
+// ---------------------------------------------------------------------------
+
+describe("Annotator on touch screens", () => {
+  let annotator: Annotator;
+  let bus: EventBus<WidgetEvents>;
+  const originalElementFromPoint = document.elementFromPoint;
+
+  /** A touchstart + touchend pair — `to` defaults to `from` (a tap). */
+  function touch(overlay: HTMLElement, from: { x: number; y: number }, to = from): void {
+    const start = new Event("touchstart", { bubbles: true, cancelable: true });
+    Object.defineProperty(start, "touches", { value: [{ clientX: from.x, clientY: from.y }] });
+    overlay.dispatchEvent(start);
+    const end = new Event("touchend", { bubbles: true });
+    Object.defineProperty(end, "changedTouches", { value: [{ clientX: to.x, clientY: to.y }] });
+    overlay.dispatchEvent(end);
+  }
+
+  /** A page element with a fixed box, returned by elementFromPoint. */
+  function pageElement(tag = "p", rect = { x: 10, y: 600, width: 200, height: 40 }): HTMLElement {
+    const el = document.createElement(tag);
+    document.body.appendChild(el);
+    el.getBoundingClientRect = () => new DOMRect(rect.x, rect.y, rect.width, rect.height);
+    return el;
+  }
+
+  beforeEach(() => {
+    popupMocks.nextResult = { type: "bug", message: "Test message" };
+    popupMocks.keepShowPending = false;
+    popupMocks.isOpenState = false;
+    popupMocks.showCount = 0;
+    popupMocks.sheetTop = null;
+    popupMocks.lastRect = null;
+    popupMocks.capturedOnSubmit = null;
+    screenshotMocks.captureAnnotatedScreenshot.mockReset();
+    screenshotMocks.captureAnnotatedScreenshot.mockResolvedValue(null);
+    vi.mocked(generateAnchor).mockClear();
+    vi.mocked(deepElementFromPoint).mockClear();
+    ({ annotator, bus } = createAnnotator());
+  });
+
+  afterEach(() => {
+    annotator.destroy();
+    document.elementFromPoint = originalElementFromPoint;
+    mockMediaQueries([]);
+    document.body.replaceChildren();
+  });
+
+  it("a tap comments on the element under the finger, as a full-bounds rect", async () => {
+    const target = pageElement();
+    document.elementFromPoint = vi.fn(() => target);
+    const complete = vi.fn();
+    bus.on("annotation:complete", complete);
+
+    bus.emit("annotation:start");
+    const overlay = findOverlay()!;
+    touch(overlay, { x: 60, y: 620 }, { x: 64, y: 623 });
+
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce());
+    expect(document.elementFromPoint).toHaveBeenCalledWith(64, 623);
+    expect(generateAnchor).toHaveBeenCalledWith(target);
+    expect(complete.mock.calls[0]![0].annotation.rect).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
+    expect(popupMocks.lastRect).toMatchObject({ x: 10, y: 600, width: 200, height: 40 });
+    // The overlay was made click-through only for the hit test
+    expect(overlay.style.pointerEvents).toBe("auto");
+  });
+
+  it("a tap on an icon selects the element hosting the SVG", async () => {
+    const button = pageElement("button");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    svg.appendChild(path);
+    button.appendChild(svg);
+    document.elementFromPoint = vi.fn(() => path);
+
+    bus.emit("annotation:start");
+    touch(findOverlay()!, { x: 60, y: 620 });
+
+    await vi.waitFor(() => expect(generateAnchor).toHaveBeenCalledWith(button));
+  });
+
+  it("a tap inside an open shadow root selects the element under the finger, not its host", async () => {
+    const host = pageElement("div", { x: 0, y: 560, width: 400, height: 120 });
+    const button = document.createElement("button");
+    host.attachShadow({ mode: "open" }).appendChild(button);
+    button.getBoundingClientRect = () => new DOMRect(10, 600, 200, 40);
+    vi.mocked(deepElementFromPoint).mockReturnValueOnce(button);
+
+    bus.emit("annotation:start");
+    touch(findOverlay()!, { x: 60, y: 620 });
+
+    await vi.waitFor(() => expect(generateAnchor).toHaveBeenCalledWith(button));
+    expect(deepElementFromPoint).toHaveBeenCalledWith(60, 620);
+    expect(popupMocks.lastRect).toMatchObject({ x: 10, y: 600, width: 200, height: 40 });
+  });
+
+  it("a tap on the page root or on widget chrome selects nothing", async () => {
+    const marker = document.createElement("div");
+    const markers = document.createElement("div");
+    markers.id = "siteping-markers";
+    markers.appendChild(marker);
+    document.body.appendChild(markers);
+    // Real boxes, as in a browser — jsdom's 0×0 rects would stop annotateElement
+    // before the guards under test are ever reached.
+    const box = () => new DOMRect(10, 600, 200, 40);
+    marker.getBoundingClientRect = box;
+    document.body.getBoundingClientRect = box;
+
+    try {
+      for (const hit of [document.body, marker, null]) {
+        document.elementFromPoint = vi.fn(() => hit);
+        bus.emit("annotation:start");
+        touch(findOverlay()!, { x: 60, y: 620 });
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(popupMocks.showCount).toBe(0);
+      // The session stays open for another try
+      expect(findOverlay()).not.toBeNull();
+    } finally {
+      Reflect.deleteProperty(document.body, "getBoundingClientRect");
+    }
+  });
+
+  it("a slide too thin to frame an area comments on the element instead of being dropped", async () => {
+    const target = pageElement();
+    document.elementFromPoint = vi.fn(() => target);
+
+    bus.emit("annotation:start");
+    // 200×6 px: a finger along a line of text
+    touch(findOverlay()!, { x: 20, y: 620 }, { x: 220, y: 626 });
+
+    await vi.waitFor(() => expect(popupMocks.showCount).toBe(1));
+    expect(generateAnchor).toHaveBeenCalledWith(target);
+    expect(popupMocks.lastRect).toMatchObject({ x: 10, y: 600, width: 200, height: 40 });
+  });
+
+  it("a second tap while the form is open does not open another one (#163)", async () => {
+    popupMocks.keepShowPending = true;
+    const target = pageElement();
+    document.elementFromPoint = vi.fn(() => target);
+
+    bus.emit("annotation:start");
+    touch(findOverlay()!, { x: 60, y: 620 });
+    await vi.waitFor(() => expect(popupMocks.showCount).toBe(1));
+    popupMocks.isOpenState = true;
+
+    touch(findOverlay()!, { x: 62, y: 621 });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(popupMocks.showCount).toBe(1);
+  });
+
+  it("captures only the visible part of a tapped element taller than the screen", async () => {
+    annotator.destroy();
+    bus = new EventBus<WidgetEvents>();
+    annotator = new Annotator(colors, bus, t, true);
+    const section = pageElement("section", { x: 0, y: -400, width: 390, height: 3000 });
+    document.elementFromPoint = vi.fn(() => section);
+
+    bus.emit("annotation:start");
+    touch(findOverlay()!, { x: 60, y: 300 });
+
+    // The mock popup submits straight away
+    await vi.waitFor(() => expect(screenshotMocks.captureAnnotatedScreenshot).toHaveBeenCalledOnce());
+    // The annotation still covers the whole element
+    expect(popupMocks.lastRect).toMatchObject({ x: 0, y: -400, width: 390, height: 3000 });
+    expect(screenshotMocks.captureAnnotatedScreenshot.mock.calls[0]![0]).toMatchObject({
+      x: 0,
+      y: 0,
+      width: 390,
+      height: window.innerHeight,
+    });
+  });
+
+  it("a drag still selects an area", async () => {
+    document.elementFromPoint = vi.fn();
+    bus.emit("annotation:start");
+    touch(findOverlay()!, { x: 20, y: 100 }, { x: 220, y: 180 });
+    await vi.waitFor(() => expect(popupMocks.showCount).toBe(1));
+    expect(document.elementFromPoint).not.toHaveBeenCalled();
+    expect(popupMocks.lastRect).toMatchObject({ x: 20, y: 100, width: 200, height: 80 });
+  });
+
+  it("explains tap-or-drag on touch screens, with a finger-sized Cancel", () => {
+    mockMediaQueries(["(pointer: coarse)"]);
+    bus.emit("annotation:start");
+    const cancel = Array.from(document.body.querySelectorAll("button")).find(
+      (b) => b.textContent === t("annotator.cancel"),
+    )!;
+    expect(cancel.parentElement!.textContent).toContain(t("annotator.touchInstruction"));
+    expect(cancel.style.height).toBe("40px");
+    // The overlay's accessible name still announces the Enter route (#162),
+    // for a tablet with a keyboard and the screen reader on it.
+    expect(findOverlay()!.getAttribute("aria-label")).toBe(t("annotator.instruction"));
+  });
+
+  it("uses a solid toolbar on phones, clear of the notch", () => {
+    mockMediaQueries(PHONE_MEDIA);
+    bus.emit("annotation:start");
+    const cancel = Array.from(document.body.querySelectorAll("button")).find(
+      (b) => b.textContent === t("annotator.cancel"),
+    )!;
+    const toolbar = cancel.parentElement!;
+    expect(toolbar.style.background).toBe("rgb(255, 255, 255)");
+    expect(toolbar.style.padding).toContain("safe-area-inset-top");
+  });
+
+  describe("keeping the selection above the phone sheet", () => {
+    let scrollY = 0;
+    const scrollBy = vi.fn((options: ScrollToOptions) => {
+      scrollY += options.top ?? 0;
+    });
+
+    beforeEach(() => {
+      scrollY = 0;
+      scrollBy.mockClear();
+      Object.defineProperty(window, "scrollY", { configurable: true, get: () => scrollY });
+      window.scrollBy = scrollBy as unknown as typeof window.scrollBy;
+      popupMocks.keepShowPending = true;
+      popupMocks.nextResult = null;
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(window, "scrollY");
+    });
+
+    function highlight(): HTMLElement {
+      return findOverlay()!.querySelector<HTMLElement>("div")!;
+    }
+
+    it("scrolls a covered selection into view and moves the highlight with it", async () => {
+      popupMocks.sheetTop = 500;
+      const target = pageElement("p", { x: 10, y: 600, width: 200, height: 40 });
+      document.elementFromPoint = vi.fn(() => target);
+
+      bus.emit("annotation:start");
+      touch(findOverlay()!, { x: 60, y: 620 });
+
+      // bottom 640 + 16 - sheet top 500
+      await vi.waitFor(() => expect(scrollBy).toHaveBeenCalledWith({ top: 156, behavior: "instant" }));
+      expect(highlight().style.top).toBe("444px");
+    });
+
+    it("never scrolls the selection's top under the toolbar", async () => {
+      popupMocks.sheetTop = 400;
+      const target = pageElement("section", { x: 0, y: 150, width: 390, height: 500 });
+      document.elementFromPoint = vi.fn(() => target);
+
+      bus.emit("annotation:start");
+      touch(findOverlay()!, { x: 60, y: 300 });
+
+      await vi.waitFor(() => expect(scrollBy).toHaveBeenCalledWith({ top: 78, behavior: "instant" }));
+    });
+
+    it("leaves the page alone when nothing is covered, or when the form is not a sheet", async () => {
+      for (const sheetTop of [700, null]) {
+        popupMocks.sheetTop = sheetTop;
+        popupMocks.showCount = 0;
+        const target = pageElement();
+        document.elementFromPoint = vi.fn(() => target);
+        bus.emit("annotation:start");
+        touch(findOverlay()!, { x: 60, y: 620 });
+        await vi.waitFor(() => expect(popupMocks.showCount).toBe(1));
+        annotator.destroy();
+        ({ annotator, bus } = createAnnotator());
+      }
+      expect(scrollBy).not.toHaveBeenCalled();
+    });
+
+    it("captures the screenshot on the same content after the reveal scroll", async () => {
+      annotator.destroy();
+      bus = new EventBus<WidgetEvents>();
+      annotator = new Annotator(colors, bus, t, true);
+      popupMocks.sheetTop = 500;
+      const target = pageElement("p", { x: 10, y: 600, width: 200, height: 40 });
+      document.elementFromPoint = vi.fn(() => target);
+
+      bus.emit("annotation:start");
+      touch(findOverlay()!, { x: 60, y: 620 });
+      await vi.waitFor(() => expect(scrollBy).toHaveBeenCalled());
+
+      void popupMocks.capturedOnSubmit!({ type: "bug", message: "covered" }).catch(() => {});
+      await vi.waitFor(() => expect(screenshotMocks.captureAnnotatedScreenshot).toHaveBeenCalledOnce());
+      expect(screenshotMocks.captureAnnotatedScreenshot.mock.calls[0]![0]).toMatchObject({ x: 10, y: 444 });
     });
   });
 });

@@ -12,7 +12,7 @@ import {
 } from "@siteping/core";
 import { Annotator } from "./annotator.js";
 import { ApiClient, flushRetryQueue, type WidgetClient } from "./api-client.js";
-import { MOBILE_BREAKPOINT, PAGE_SIZE, Z_INDEX_MAX } from "./constants.js";
+import { DEFAULT_MIN_VIEWPORT_WIDTH, PAGE_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { ConsoleBuffer } from "./diagnostics/console-buffer.js";
 import { NetworkBuffer } from "./diagnostics/network-buffer.js";
 import { EventBus, type WidgetEvents } from "./events.js";
@@ -28,6 +28,7 @@ import { StoreClient } from "./store-client.js";
 import { buildStyles } from "./styles/base.js";
 import { buildThemeColors } from "./styles/theme.js";
 import { Tooltip } from "./tooltip.js";
+import { trackKeyboardInset } from "./viewport.js";
 
 /** Singleton guard — prevents duplicate widgets from overlapping */
 let instance: SitepingInstance | null = null;
@@ -167,19 +168,20 @@ export function launch(config: SitepingConfig): SitepingInstance {
     return skippedInstance();
   }
 
-  // Guard: desktop only (viewport below the threshold = hidden). forceShow
-  // bypasses this just like the production guard above; minViewportWidth lets
-  // hosts tune (or disable, with 0) the threshold. Non-finite values (NaN from
-  // an untyped script-tag consumer, Infinity) would silently break the `<`
-  // comparison — fail back to the default instead. See issue #103.
+  // Guard: optional minimum viewport width. The widget has a phone layout, so
+  // the default (0) renders everywhere — hosts opt in to hiding it on small
+  // screens with `minViewportWidth`. forceShow bypasses this just like the
+  // production guard above. Non-finite values (NaN from an untyped script-tag
+  // consumer, Infinity) would silently break the `<` comparison — fail back
+  // to the default instead. See issue #103.
   const minViewportWidth =
     typeof config.minViewportWidth === "number" && Number.isFinite(config.minViewportWidth)
       ? config.minViewportWidth
-      : MOBILE_BREAKPOINT;
+      : DEFAULT_MIN_VIEWPORT_WIDTH;
   if (!config.forceShow && window.innerWidth < minViewportWidth) {
     const reason = "mobile";
     console.info(
-      `[siteping] Widget not loaded: viewport width < ${minViewportWidth}px (mobile not supported). Use forceShow: true or lower minViewportWidth to override.`,
+      `[siteping] Widget not loaded: viewport width < ${minViewportWidth}px (minViewportWidth). Use forceShow: true or lower minViewportWidth to override.`,
     );
     config.onSkip?.(reason);
     return skippedInstance();
@@ -810,7 +812,8 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
 /**
  * Show a modal identity form inside the Shadow DOM.
- * Glassmorphism: frosted backdrop, glass modal, gradient CTA.
+ * Glassmorphism: frosted backdrop, glass modal, gradient CTA — a bottom sheet
+ * on phones (`styles/mobile.ts`), lifted above the on-screen keyboard.
  * Returns null if the user cancels.
  */
 function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean): Promise<Identity | null> {
@@ -830,30 +833,10 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
     if (overPopup && host.parentNode) host.parentNode.appendChild(host);
 
     const backdrop = document.createElement("div");
-    backdrop.style.cssText = /* css */ `
-      position:fixed;inset:0;
-      background:var(--sp-identity-overlay);
-      backdrop-filter:blur(8px);
-      -webkit-backdrop-filter:blur(8px);
-      display:flex;align-items:center;justify-content:center;
-      z-index:${Z_INDEX_MAX};
-      opacity:0;transition:opacity 0.25s ease;
-    `;
+    backdrop.className = "sp-identity-backdrop";
 
     const modal = document.createElement("div");
-    modal.style.cssText = /* css */ `
-      width:340px;padding:28px;border-radius:var(--sp-radius-xl);
-      background:var(--sp-identity-bg);
-      backdrop-filter:blur(var(--sp-blur-heavy));
-      -webkit-backdrop-filter:blur(var(--sp-blur-heavy));
-      border:1px solid var(--sp-glass-border);
-      box-shadow:0 16px 48px var(--sp-shadow), 0 8px 16px var(--sp-shadow);
-      font-family:var(--sp-font, "Inter",system-ui,-apple-system,sans-serif);
-      color:var(--sp-text);
-      transform:translateY(12px) scale(0.97);
-      transition:transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      -webkit-font-smoothing:antialiased;
-    `;
+    modal.className = "sp-identity-modal";
 
     const titleId = `sp-identity-title-${Date.now()}`;
     modal.setAttribute("role", "dialog");
@@ -893,13 +876,16 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
     emailInput.placeholder = t("identity.emailPlaceholder");
 
     const btnRow = document.createElement("div");
-    btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:20px;";
+    btnRow.className = "sp-identity-actions";
+
+    // The phone sheet sits at the bottom edge — keep it above the keyboard.
+    const stopKeyboardTracking = trackKeyboardInset((inset) => modal.style.setProperty("--sp-kb", `${inset}px`));
 
     const closeModal = (result: Identity | null) => {
       backdrop.removeEventListener("keydown", onKeydown);
       unregisterEscapeLayer();
-      backdrop.style.opacity = "0";
-      modal.style.transform = "translateY(12px) scale(0.97)";
+      stopKeyboardTracking();
+      backdrop.classList.remove("sp-identity--open");
       setTimeout(() => {
         backdrop.remove();
         previouslyFocused?.focus();
@@ -990,8 +976,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
 
     // Animate in
     requestAnimationFrame(() => {
-      backdrop.style.opacity = "1";
-      modal.style.transform = "translateY(0) scale(1)";
+      backdrop.classList.add("sp-identity--open");
       nameInput.focus();
     });
   });

@@ -11,6 +11,7 @@ import {
   type ViewportInsets,
 } from "./popup-placement.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
+import { isCoarsePointer, isCompactViewport, trackKeyboardInset } from "./viewport.js";
 
 // Map each feedback type to its translation key, so `refreshLabels()` can
 // re-localize the existing type buttons without re-rendering the popup.
@@ -57,6 +58,8 @@ type PopupSubmitHandler = (result: PopupResult) => Promise<void>;
  *
  * Glassmorphism design: frosted glass background, soft shadows,
  * pill-shaped type buttons, gradient submit button.
+ * On phones it is a solid bottom sheet that rides above the on-screen
+ * keyboard instead of a card floating over the annotated area.
  * Lives outside Shadow DOM.
  */
 export class Popup {
@@ -86,6 +89,9 @@ export class Popup {
   private hideTimeoutId: ReturnType<typeof setTimeout> | null = null;
   /** WAAPI handle for the running spinner — cancelled when submitting ends. */
   private spinnerAnimation: Animation | null = null;
+  /** Rendered as a bottom sheet — decided per `show()` from the viewport. */
+  private sheet = false;
+  private stopKeyboardTracking: (() => void) | null = null;
 
   /**
    * True from `show()` until its promise settles — through typing, the
@@ -96,6 +102,11 @@ export class Popup {
    */
   get isOpen(): boolean {
     return this.resolve !== null;
+  }
+
+  /** Where the open bottom sheet begins (viewport y), or null when not shown as a sheet. */
+  get sheetTop(): number | null {
+    return this.sheet && this.isOpen ? window.innerHeight - this.root.offsetHeight : null;
   }
 
   constructor(
@@ -361,30 +372,22 @@ export class Popup {
       // Save focus to restore on close
       this.previouslyFocused = document.activeElement as HTMLElement | null;
 
-      // Lay the popup out (still transparent) so placement uses its real size
-      // — it varies with the locale's label lengths, font metrics and the
-      // host's box-sizing. Any height cap from a previous show is dropped
-      // first so the natural height is what gets measured.
+      const touch = isCoarsePointer();
+      this.sheet = isCompactViewport();
+      // Finger-sized actions; 16px text so iOS doesn't zoom the page on focus.
+      // No ⌘/Ctrl+Enter hint without a hardware keyboard.
+      const buttonHeight = this.sheet ? "48px" : touch ? "44px" : "34px";
+      this.cancelBtn.style.height = buttonHeight;
+      this.submitBtn.style.height = buttonHeight;
+      this.cancelBtn.style.flex = this.sheet ? "1" : "";
+      this.submitBtn.style.flex = this.sheet ? "2" : "";
+      this.textarea.style.fontSize = touch ? "16px" : "13px";
+      this.textarea.style.minHeight = this.sheet ? "96px" : "72px";
+      this.hint.style.display = touch ? "none" : "";
+      this.root.style.transform = this.hiddenTransform();
       setSurfaceInert(this.root, false);
       this.root.style.display = "block";
-      this.root.style.maxHeight = "";
-      this.root.style.overflowY = "";
-      const { top, left, maxHeight } = computePopupPosition(
-        rectBounds,
-        this.measure(),
-        { width: window.innerWidth, height: window.innerHeight },
-        insets,
-      );
-      this.root.style.top = `${top}px`;
-      this.root.style.left = `${left}px`;
-      if (maxHeight !== null) {
-        // Taller than the usable band (short viewport, high zoom, long
-        // localized labels): cap it and let it scroll, starting from the top
-        // so the type buttons that enable Send are in view.
-        this.root.style.maxHeight = `${Math.max(0, maxHeight - this.verticalChromeHeight())}px`;
-        this.root.style.overflowY = "auto";
-        this.root.scrollTop = 0;
-      }
+      this.layout(rectBounds, insets);
 
       // Install focus trap. Escape cancels from any control, not only the
       // textarea, and bubbles on so the annotator ends the session too.
@@ -417,14 +420,75 @@ export class Popup {
 
       this.root.style.transition = prefersReducedMotion() ? "none" : POPUP_TRANSITION;
 
-      // Trigger animation
+      // Trigger animation. Touch: focus the first type button rather than
+      // the textarea, so the keyboard doesn't cover the sheet before the user
+      // has even picked a type.
       this.showFrame = requestAnimationFrame(() => {
         this.showFrame = null;
         this.root.style.opacity = "1";
         this.root.style.transform = "translateY(0) scale(1)";
-        this.textarea.focus();
+        (touch ? this.typeRow.querySelector("button") : this.textarea)?.focus();
       });
     });
+  }
+
+  /** Card next to the annotated rect, or — on phones — a bottom sheet above the keyboard. */
+  private layout(rectBounds: DOMRect, insets: ViewportInsets): void {
+    const style = this.root.style;
+    style.width = this.sheet ? "auto" : "300px";
+    style.borderRadius = this.sheet ? "20px 20px 0 0" : "16px";
+    style.background = this.sheet ? this.colors.bg : this.colors.glassBg;
+    style.boxShadow = this.sheet
+      ? `0 -8px 32px ${this.colors.shadow}`
+      : `0 8px 32px ${this.colors.shadow}, 0 2px 8px ${this.colors.shadow}`;
+    style.overscrollBehavior = this.sheet ? "contain" : "";
+    this.stopKeyboardTracking?.();
+    this.stopKeyboardTracking = null;
+    if (this.sheet) {
+      style.top = "auto";
+      style.left = "0";
+      style.right = "0";
+      style.overflowY = "auto";
+      const fit = (inset: number, visibleHeight = window.innerHeight) => {
+        style.bottom = `${inset}px`;
+        style.maxHeight = `${visibleHeight - 8}px`;
+        // The keyboard covers the home indicator — no safe-area gap above it.
+        style.padding = `16px 16px ${inset > 0 ? "16px" : "calc(16px + env(safe-area-inset-bottom, 0px))"}`;
+      };
+      fit(0);
+      this.stopKeyboardTracking = trackKeyboardInset(fit);
+      return;
+    }
+    style.right = "";
+    style.bottom = "";
+    style.padding = "16px";
+
+    // Laid out while still transparent so placement uses its real size — it
+    // varies with the locale's label lengths, font metrics, touch sizing and
+    // the host's box-sizing. Any height cap from a previous show is dropped
+    // first so the natural height is what gets measured.
+    style.maxHeight = "";
+    style.overflowY = "";
+    const { top, left, maxHeight } = computePopupPosition(
+      rectBounds,
+      this.measure(),
+      { width: window.innerWidth, height: window.innerHeight },
+      insets,
+    );
+    style.top = `${top}px`;
+    style.left = `${left}px`;
+    if (maxHeight !== null) {
+      // Taller than the usable band (short viewport, high zoom, long
+      // localized labels): cap it and let it scroll, starting from the top
+      // so the type buttons that enable Send are in view.
+      style.maxHeight = `${Math.max(0, maxHeight - this.verticalChromeHeight())}px`;
+      style.overflowY = "auto";
+      this.root.scrollTop = 0;
+    }
+  }
+
+  private hiddenTransform(): string {
+    return this.sheet ? "translateY(100%)" : "translateY(8px) scale(0.98)";
   }
 
   /** Rendered size, ignoring the entry transform; falls back when there is no layout. */
@@ -637,8 +701,10 @@ export class Popup {
     // Make sure the submitting decoration doesn't leak into the next show()
     if (this.submittingState) this.exitSubmittingState();
     this.onSubmit = null;
+    this.stopKeyboardTracking?.();
+    this.stopKeyboardTracking = null;
     this.root.style.opacity = "0";
-    this.root.style.transform = "translateY(8px) scale(0.98)";
+    this.root.style.transform = this.hiddenTransform();
     // Restore focus to the previously focused element
     this.previouslyFocused?.focus();
     this.previouslyFocused = null;
@@ -679,6 +745,8 @@ export class Popup {
       this.root.removeEventListener("keydown", this.onKeydownTrap);
       this.onKeydownTrap = null;
     }
+    this.stopKeyboardTracking?.();
+    this.stopKeyboardTracking = null;
     this.root.remove();
   }
 }

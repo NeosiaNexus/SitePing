@@ -7,6 +7,7 @@ import { isolateFromHost } from "../../src/host-isolation.js";
 import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 import type { Tooltip } from "../../src/tooltip.js";
+import { mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mock resolveAnnotation — avoids the full DOM resolution chain in jsdom
@@ -409,6 +410,55 @@ describe("MarkerManager", () => {
       const highlights = container.querySelectorAll<HTMLElement>(":scope > div:not([data-feedback-id])");
       expect(highlights.length).toBeGreaterThan(0);
       expect(marker.style.animation).toContain("sp-pulse-ring");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // revealPin — the panel's "Go to annotation"; false sends it to the stored offsets
+  // -------------------------------------------------------------------------
+
+  describe("revealPin", () => {
+    let scrollIntoView = vi.fn<Element["scrollIntoView"]>();
+    const original = Element.prototype.scrollIntoView;
+    beforeEach(() => {
+      scrollIntoView = vi.fn<Element["scrollIntoView"]>();
+      Element.prototype.scrollIntoView = scrollIntoView; // jsdom lacks it
+    });
+    afterEach(() => {
+      Element.prototype.scrollIntoView = original;
+    });
+
+    it("scrolls to a pin that is on screen", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+
+      expect(markers.revealPin("fb-1")).toBe(true);
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+    });
+
+    it("returns false when the anchor no longer resolves (every pin hidden)", () => {
+      mockState.returnNull = true;
+      markers.render([makeFeedback({ id: "fb-orphan" })]);
+
+      expect(markers.revealPin("fb-orphan")).toBe(false);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      // The public focusFeedback contract is unchanged: the entry exists
+      expect(markers.focusFeedback("fb-orphan")).toBe(true);
+    });
+
+    it("returns false while the markers are hidden with the eye toggle", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      bus.emit("annotations:toggle", false);
+
+      expect(markers.revealPin("fb-1")).toBe(false);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+
+      bus.emit("annotations:toggle", true);
+      expect(markers.revealPin("fb-1")).toBe(true);
+    });
+
+    it("returns false for an unknown id", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      expect(markers.revealPin("nope")).toBe(false);
     });
   });
 
@@ -2087,5 +2137,64 @@ describe("MarkerManager", () => {
       // We at least ensure no crash.
       expect(() => m.buildClusters()).not.toThrow();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Touch screens and phones
+// ---------------------------------------------------------------------------
+
+describe("MarkerManager on touch screens", () => {
+  let bus: EventBus<WidgetEvents>;
+  let tooltip: Tooltip;
+  let markers: MarkerManager;
+  const pin = () => document.querySelector<HTMLElement>("#siteping-markers [data-feedback-id]")!;
+
+  beforeEach(() => {
+    bus = new EventBus<WidgetEvents>();
+    tooltip = createMockTooltip();
+    mockState.confidence = 1;
+    mockState.returnNull = false;
+    mockState.rectQueue = [];
+    mockState.nullSchedule = [];
+  });
+
+  afterEach(() => {
+    markers.destroy();
+    Reflect.deleteProperty(window, "matchMedia");
+    mockState.element?.remove();
+    mockState.element = null;
+  });
+
+  it("widens a pin's hit area for fingers without resizing the 26px pin", () => {
+    mockMediaQueries(["(pointer: coarse)"]);
+    markers = new MarkerManager(colors, tooltip, bus, t);
+    markers.render([makeFeedback()]);
+    const hitArea = pin().querySelector<HTMLElement>("span")!;
+    expect(hitArea.style.position).toBe("absolute");
+    expect(hitArea.getAttribute("style")).toContain("-9px");
+    expect(pin().style.width).toBe("26px");
+    expect(pin().textContent).toBe("1");
+  });
+
+  it("adds no hit-area element for a mouse", () => {
+    markers = new MarkerManager(colors, tooltip, bus, t);
+    markers.render([makeFeedback()]);
+    expect(pin().querySelector("span")).toBeNull();
+  });
+
+  it("hides the tooltip when a pin tap opens the phone sheet over the page", () => {
+    mockMediaQueries(PHONE_MEDIA);
+    markers = new MarkerManager(colors, tooltip, bus, t);
+    markers.render([makeFeedback()]);
+    pin().click();
+    expect(tooltip.hide).toHaveBeenCalled();
+  });
+
+  it("keeps the tooltip on wider screens, where the panel sits beside the page", () => {
+    markers = new MarkerManager(colors, tooltip, bus, t);
+    markers.render([makeFeedback()]);
+    pin().click();
+    expect(tooltip.hide).not.toHaveBeenCalled();
   });
 });
