@@ -12,7 +12,9 @@
  * - {@link isolateFromHost} stops those events as they bubble out of the
  *   surface — document listeners in the bubble phase never see the widget's
  *   own interactions, while the widget's listeners on the surface still run —
- *   and strips a host-set `inert` / `aria-hidden` from it.
+ *   and strips a host-set `inert` / `aria-hidden` from it. Keys typed in a
+ *   widget field stop there too (Tab and Escape excepted): a host's
+ *   single-key shortcuts would otherwise fire, and swallow the character.
  * - {@link installHostIsolationGuard} covers the host listeners that run
  *   before the surface: capture-phase ones on `document`, and the `focusout`
  *   fired on the host element that focus leaves for the widget. It acts only
@@ -68,6 +70,26 @@ const isSurfaceTarget = (target: EventTarget | null): boolean => target instance
 const stopAtSurface = (event: Event): void => event.stopPropagation();
 
 /**
+ * Keep a key typed in a widget field from the page. Host shortcuts (`/` for
+ * search, `j`/`k`, `s`…) skip text fields by their target, but an event from
+ * a closed shadow tree reaches the page retargeted to its host, a plain
+ * element: the shortcut fires and its `preventDefault()` drops the character.
+ * Tab and Escape pass — focus traps and Escape layers read them.
+ */
+const keepTypingInWidget = (event: Event): void => {
+  const { key } = event as KeyboardEvent;
+  const field = focusedTarget(event as KeyboardEvent);
+  if (
+    key !== "Tab" &&
+    key !== "Escape" &&
+    field instanceof HTMLElement &&
+    (field.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(field.tagName))
+  ) {
+    event.stopPropagation();
+  }
+};
+
+/**
  * Register `surface` as widget UI: host document listeners stop seeing its
  * outside-interaction events, and host-set `inert` / `aria-hidden` on it is
  * removed now and whenever it comes back. Pass the shadow root when
@@ -79,6 +101,7 @@ export function isolateFromHost(surface: HTMLElement, shadowRoot?: ShadowRoot): 
   for (const type of OUTSIDE_INTERACTION_EVENTS) {
     surface.addEventListener(type, stopAtSurface, { passive: true });
   }
+  for (const type of ["keydown", "keypress", "keyup"]) surface.addEventListener(type, keepTypingInWidget);
   const unhide = (): void => {
     for (const name of HOST_HIDING_ATTRIBUTES) {
       if (name !== "inert" || !ownInert.has(surface)) surface.removeAttribute(name);

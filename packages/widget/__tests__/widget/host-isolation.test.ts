@@ -135,6 +135,48 @@ describe("host isolation", () => {
       expect(onDocument.mock.calls[0]?.[0].target).toBe(hostInput);
     });
 
+    it.each(["keydown", "keypress", "keyup"])(
+      "keeps %s typed in a field of a closed shadow root from the page's shortcuts — Tab and Escape excepted",
+      (type) => {
+        const { shadowRoot, shadowButton } = mountClosedShadowSurface(true);
+        const field = document.createElement("textarea");
+        shadowRoot.appendChild(field);
+        // A host shortcut: it skips text fields, but only sees the retargeted host.
+        const onDocument = vi.fn((event: Event) => {
+          const target = event.target as HTMLElement;
+          if (target.tagName !== "TEXTAREA" && (event as KeyboardEvent).key === "/") event.preventDefault();
+        });
+        listenOnDocument(type as "keydown", onDocument, false);
+        const press = (target: HTMLElement, key: string): KeyboardEvent => {
+          target.focus();
+          const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true, composed: true });
+          target.dispatchEvent(event);
+          return event;
+        };
+
+        const slash = press(field, "/");
+        press(field, "Tab");
+        press(field, "Escape");
+        press(shadowButton, "/");
+
+        expect(slash.defaultPrevented).toBe(false);
+        expect(onDocument.mock.calls.map(([event]) => (event as KeyboardEvent).key)).toEqual(["Tab", "Escape", "/"]);
+      },
+    );
+
+    it("keeps keys typed in a light-DOM surface's field from the page, never keys typed in its own fields", () => {
+      const field = document.createElement("input");
+      surface.appendChild(field);
+      const onDocument = vi.fn();
+      listenOnDocument("keydown", onDocument, false);
+
+      field.dispatchEvent(new KeyboardEvent("keydown", { key: "s", bubbles: true }));
+      hostInput.dispatchEvent(new KeyboardEvent("keydown", { key: "s", bubbles: true }));
+
+      expect(onDocument).toHaveBeenCalledTimes(1);
+      expect(onDocument.mock.calls[0]?.[0].target).toBe(hostInput);
+    });
+
     it("keeps a scroll lock's document wheel listener from cancelling scrolling on a surface", () => {
       listenOnDocument("wheel", (event) => event.preventDefault(), false);
 
