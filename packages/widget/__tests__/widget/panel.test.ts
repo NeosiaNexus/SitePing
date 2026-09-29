@@ -4597,6 +4597,11 @@ describe("Panel", () => {
       apiClient.addComment.mockResolvedValue(reply);
       await openDetail(makeFeedback({ id: "fb-1" }), true);
       // A reload swaps every record for a fresh object — the host polling refresh(), an SPA navigation…
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1" })],
+        total: 1,
+        capabilities: { comments: true },
+      });
       await panel.refresh();
 
       await sendReply("Here it is");
