@@ -67,7 +67,7 @@ describe("createDatabaseObjectStore", () => {
 
   it("reports a failed query by statement and key, with the code and first line of the driver's error only", async () => {
     // What Drizzle throws: its message and `params` quote every bound value, the image bytes included.
-    const driverError = Object.assign(new Error("relation \"siteping_screenshots\" does not exist"), { code: "42P01" });
+    const driverError = Object.assign(new Error('relation "siteping_screenshots" does not exist'), { code: "42P01" });
     const queryError = Object.assign(new Error(`Failed query: insert into …\nparams: shot.png,image/png,${bytes}`), {
       params: ["shot.png", "image/png", bytes],
       cause: driverError,
