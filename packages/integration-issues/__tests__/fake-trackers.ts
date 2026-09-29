@@ -163,7 +163,11 @@ export function createFakeGitHub(repository: string): FakeTracker & {
           const scoped = query.includes(`repo:${repository} `) && query.includes("in:body");
           const items = server.settings.searchLags || !scoped || !label ? [] : [...server.issues].reverse();
           const found = items.filter((issue) => hasLabel(issue, label ?? "") && issue.body.includes(phrase));
-          return Response.json({ total_count: found.length, incomplete_results: false, items: found.map(toGitHub) });
+          return Response.json({
+            total_count: found.length,
+            incomplete_results: false,
+            items: page(found, url).map(toGitHub),
+          });
         },
       ],
       [

@@ -141,18 +141,23 @@ export function createIssueTrackerHooks({
 
   const issueOf = async (feedbackId: string): Promise<TrackedIssue | null> => {
     const isLinked = (issue: TrackedIssue) => linkOf(issue)?.feedbackId === feedbackId;
+    const marker = feedbackMarkerFragment(feedbackId);
     // `null` when the search failed: its miss then says nothing.
     const searched = await tracker.searchSitepingIssues?.(feedbackId).catch((error: unknown) => {
       // No answer at all: the tracker is down, and the listing would only wait out another timeout.
       if (isIssueTrackerRequestError(error) && error.status === null) throw error;
       return null;
     });
-    const found = searched?.find(isLinked);
+    const found = searched?.issues.find(isLinked);
     if (found) return found;
-    const listing = await tracker.findSitepingIssues(feedbackMarkerFragment(feedbackId));
+    // The newest page holds the issues too new for the search index, and a recent feedback's issue.
+    const newest = await tracker.findSitepingIssues(marker, { maxPages: 1 });
+    const recent = newest.issues.find(isLinked);
+    // A search that returned every match leaves no older issue to find.
+    if (recent || !newest.truncated || searched?.truncated === false) return recent ?? null;
+    const listing = await tracker.findSitepingIssues(marker);
     const listed = listing.issues.find(isLinked);
-    // A search that answered only misses issues too new for its index, which the first page lists.
-    if (listed || !listing.truncated || Array.isArray(searched)) return listed ?? null;
+    if (listed || !listing.truncated) return listed ?? null;
     throw new Error(
       `[siteping] ${tracker.name}: the issue of feedback "${feedbackId}" is not among the SitePing issues listed, ` +
         "and more are left unlisted. Raise maxListedPages to reach it.",

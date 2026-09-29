@@ -130,6 +130,21 @@ for (const provider of providers) {
     const remove = (handler: SitepingHandler, body: Record<string, unknown>) =>
       handler.DELETE(new Request(ENDPOINT, { method: "DELETE", headers: JSON_HEADERS, body: JSON.stringify(body) }));
 
+    /** Pages of 100 SitePing issues of other feedbacks, newer than the issues already there. */
+    const addOtherIssues = (pages: number, body = "Another feedback's issue") => {
+      for (let n = 0; n < pages * 100; n++) {
+        fake.issues.push({
+          key: String(fake.issues.length + 1),
+          title: "Other",
+          body,
+          labels: ["siteping"],
+          isOpen: true,
+          stateReason: null,
+          comments: [],
+        });
+      }
+    };
+
     beforeEach(() => {
       fake = provider.createFake();
       store = new MemoryStore();
@@ -373,6 +388,49 @@ for (const provider of providers) {
         expect(fake.issues[0]?.isOpen).toBe(false);
       });
 
+      it("lists only the newest page for an issue the search index has not caught up with", async () => {
+        addOtherIssues(10);
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.lagSearch();
+        fake.requests.length = 0;
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(reads().map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
+        expect(fake.issues.at(-1)?.isOpen).toBe(false);
+      });
+
+      it("looks at the newest page first when the search fails", async () => {
+        addOtherIssues(10);
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.failWhen(provider.searchRequest, 403);
+        fake.requests.length = 0;
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(reads().map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
+        expect(fake.issues.at(-1)?.isOpen).toBe(false);
+      });
+
+      it("lists past the newest page when the search found more issues naming the feedback than it returned", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        // Visitor text can quote an id: a page URL carrying the widget's deep link, say.
+        addOtherIssues(1, `Seen on /checkout?siteping=${feedback.id}`);
+
+        await patch(handler, feedback.id, "resolved");
+
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
       it("falls back to the label listing when the search fails", async () => {
         const handler = createHandler();
         const feedback = await send(handler);
@@ -404,7 +462,7 @@ for (const provider of providers) {
         const feedback = await send(createHandler());
         const [oldest] = fake.issues as [FakeTracker["issues"][number]];
         for (let n = 2; n <= 101; n++) fake.issues.push({ ...oldest, key: String(n), body: "unrelated", comments: [] });
-        fake.lagSearch();
+        fake.failWhen(provider.searchRequest, 403);
         const listing = (maxListedPages: number) =>
           createHandler({ tracker: provider.createTracker(fake, { maxListedPages }) });
 
@@ -434,27 +492,13 @@ for (const provider of providers) {
     });
 
     describe("past the listing cap", () => {
-      /** Pages of newer SitePing issues, of other feedbacks. */
-      const addNewerIssues = (pages: number) => {
-        for (let n = 0; n < pages * 100; n++) {
-          fake.issues.push({
-            key: String(fake.issues.length + 1),
-            title: "Other",
-            body: "Another feedback's issue",
-            labels: ["siteping"],
-            isOpen: true,
-            stateReason: null,
-            comments: [],
-          });
-        }
-      };
       const capped = (maxListedPages: number) =>
         createHandler({ tracker: provider.createTracker(fake, { maxListedPages }) });
       const reason = () => String((logger.error.mock.calls[0]?.[1] as { error: Error } | undefined)?.error.message);
 
       it("refuses a project delete that would leave issues unlisted, and open", async () => {
         await send(createHandler());
-        addNewerIssues(1);
+        addOtherIssues(1);
 
         expect((await remove(capped(1), { projectName: "site", deleteAll: true })).status).toBe(502);
         expect(fake.issues[0]?.isOpen).toBe(true);
@@ -471,7 +515,7 @@ for (const provider of providers) {
 
       it("refuses a delete whose search failed and whose issue it could not list", async () => {
         const feedback = await send(createHandler());
-        addNewerIssues(1);
+        addOtherIssues(1);
         fake.failWhen(provider.searchRequest, 403);
 
         expect((await remove(capped(1), { id: feedback.id, projectName: "site" })).status).toBe(502);
@@ -483,14 +527,19 @@ for (const provider of providers) {
         );
       });
 
-      it("trusts a search that answered: a feedback without an issue stays deletable", async () => {
+      it("trusts a search that answered past the newest page: a feedback without an issue stays deletable", async () => {
         fake.failWhen(/^POST /, 500);
         const feedback = await send(createHandler());
-        addNewerIssues(1);
+        addOtherIssues(10);
         logger.error.mockClear();
+        fake.requests.length = 0;
 
-        expect((await remove(capped(1), { id: feedback.id, projectName: "site" })).status).toBe(200);
+        expect((await remove(createHandler(), { id: feedback.id, projectName: "site" })).status).toBe(200);
         expect(logger.error).not.toHaveBeenCalled();
+        expect(fake.requests.map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
       });
     });
 

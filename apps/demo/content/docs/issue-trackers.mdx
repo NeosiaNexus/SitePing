@@ -155,10 +155,10 @@ createIssueTrackerHooks({
 ## Latency and failures
 
 - **Creating.** `onCreated` is awaited before the `POST` answers, so the widget waits for one tracker request, at most `timeoutMs` (5 seconds by default). If it fails (the tracker is down, or the token is wrong), the feedback is stored anyway and the error goes to the server's `logger` as `[siteping] Hook onCreated failed`. Nothing retries it: that feedback has no issue. When the label was dropped, the issue does exist and the same error names the missing permission, but SitePing cannot find that issue again, so status changes and deletes never reach it. Fix the permission, then label or close those issues by hand.
-- **Changing a status.** The `PATCH` waits for the issue's [lookup](#how-issues-are-found-again), one search plus up to `maxListedPages` listing requests when the search finds nothing, then for one write, each request at most `timeoutMs`. A tracker that does not answer the search at all is taken as down, and the lookup stops there. A failed sync is logged the same way, and the new status is kept.
+- **Changing a status.** The `PATCH` waits for the issue's [lookup](#how-issues-are-found-again), one search plus one listing request when the search misses (and up to `maxListedPages` more when it fails), then for one write, each request at most `timeoutMs`. A tracker that does not answer the search at all is taken as down, and the lookup stops there. A failed sync is logged the same way, and the new status is kept.
 - **Deleting.** `onDeleting` looks the issue up the same way and closes it before the record goes. If the tracker fails, the `DELETE` answers `502` and keeps the record: retry it once the tracker is back. The comment is left once, even across retries.
 - **Deleting a whole project.** The project's issues are listed first, and the delete is refused when the listing stops at `maxListedPages` with issues left (see [how issues are found again](#how-issues-are-found-again)). They are then handled one after the other, with up to three requests each: close the issue if it is open, read its comments, comment. A project with many issues can therefore hit the tracker's rate limit (GitHub allows about 80 content-creating requests a minute) or a serverless function's time limit. Every record is then kept: the `DELETE` answers `502` when the tracker refuses a request, or the platform's own timeout error (`504` on Vercel, for example) when the function is stopped. After a rate limit, retry a few minutes later: an issue already closed and commented costs a single read, so each attempt gets further. A time limit is different: every attempt reads the comments of the issues already handled again, so it never handles more issues than one run has time for, and retrying a project past that size never succeeds. Delete its feedback one at a time instead, or run that delete through a handler without these hooks and close its issues yourself.
-- **Slow answers.** The widget gives up on a request after 10 seconds and retries it, so a lookup that lists many pages can show an error for a change the server still makes. Keep `maxListedPages` to what the repository needs.
+- **Slow answers.** The widget gives up on a request after 10 seconds and retries it, so a request that lists many pages (a project delete, or a lookup whose search failed) can show an error for a change the server still makes. Keep `maxListedPages` to what the repository needs.
 - **Concurrent requests.** Within one server process, the hooks queue their tracker work: a feedback's status changes and deletes run in the order they came, after the creation of its issue, and a project delete runs after the work already started on that project. This holds for hooks built once, at module scope, as in the examples above. Separate instances (several serverless functions, say) can still interleave two requests on one feedback, and a feedback sent while its project is being deleted can end up deleted with its issue left open.
 
 The built-in trackers throw two errors that a custom `logger` can tell apart: `IssueTrackerRequestError` for a failed tracker request, an answer that is not JSON or is cut short by the timeout included (it carries the method, path and status, never the token) and `UnlabelledIssueError` for an issue created without its `siteping` label. Match them with `isIssueTrackerRequestError(error)` and `isUnlabelledIssueError(error)`, exported next to them, rather than `instanceof`: in CommonJS, each entry point bundles its own copy of the error classes.
@@ -169,9 +169,9 @@ Each body starts with the marker `<!-- siteping-feedback {"id":"…","project":"
 
 Deployments that share a repository and a project name (staging and production, or a preview that copied the production `.env`) would find each other's issues, and a project delete on staging would close production's. Give each its own `instance`: the marker then ends with `"instance":"staging"`, and the hooks only touch issues opened under the same name, an unnamed deployment only those without one. Issues opened before a deployment was named, or renamed, keep the old name.
 
-To sync a status or delete one feedback, the tracker is first searched for the feedback id (GitHub's search API, GitLab's `search` parameter). If the search misses, the hooks list the `siteping` issues newest first. GitHub's search index lags a few seconds behind a new issue, and its rate limit is 30 searches a minute. Deleting a whole project always uses that listing.
+To sync a status or delete one feedback, the tracker is first searched for the feedback id (GitHub's search API, GitLab's `search` parameter). If the search misses, the hooks list the first page of `siteping` issues, newest first: GitHub's search index lags a few seconds behind a new issue. A search that answered settles the rest, since it only misses issues too new for its index. When it failed (GitHub allows 30 searches a minute), or found more issues quoting the feedback id than it returned, the hooks list further. Deleting a whole project always lists every issue.
 
-The listing stops after `maxListedPages` pages of 100 issues, and it counts the SitePing issues of every project in the repository. Past that, the hooks do not guess. A project delete is refused with a `502` rather than leaving the older issues open, and so is a status sync or a delete whose search failed and whose issue was not listed. A search that answered is trusted: it only misses issues too new for its index, which the first page lists. With the default of 10, the cap is the repository's 1,000 newest SitePing issues. Raise it for a larger backlog.
+The listing stops after `maxListedPages` pages of 100 issues, and it counts the SitePing issues of every project in the repository, closed ones included, so a repository outgrows it in time. Past that, the hooks do not guess. A project delete is refused with a `502` rather than leaving the older issues open, and so is a status sync or a delete whose issue the search did not settle and the listing did not reach. With the default of 10, the cap is the repository's 1,000 newest SitePing issues. Raise it for a larger backlog: only project deletes and the lookups the search does not settle list that far.
 
 Only labelled issues count. On GitHub and GitLab, an outsider cannot label an issue, so they cannot make one pass for SitePing's.
 
@@ -195,13 +195,15 @@ const tracker: IssueTracker = {
     return []; // comment bodies, each first line as addComment received it
   },
   // Every SitePing issue whose body contains `marker`, closed ones included,
-  // and whether you stopped before the last one.
-  async findSitepingIssues(marker) {
+  // newest first, no more than `maxPages` pages when it is set, and whether
+  // you stopped before the last one.
+  async findSitepingIssues(marker, { maxPages } = {}) {
     return { issues: [], truncated: false }; // issues: { reference, body, isOpen }
   },
-  // Optional: a server-side search by feedback id, tried first.
+  // Optional: a server-side search by feedback id, tried first, and whether
+  // it found more matches than it returned.
   async searchSitepingIssues(feedbackId) {
-    return [];
+    return { issues: [], truncated: false };
   },
 };
 ```

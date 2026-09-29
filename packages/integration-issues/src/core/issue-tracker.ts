@@ -20,12 +20,13 @@ export interface TrackedIssue {
   isOpen: boolean;
 }
 
-/** What `findSitepingIssues` listed. */
+/** What `findSitepingIssues` or `searchSitepingIssues` listed. */
 export interface IssueListing {
   issues: TrackedIssue[];
   /**
-   * `true` when the provider stopped at its page cap with issues left
-   * unlisted: an issue missing from `issues` may still exist.
+   * `true` when the provider stopped with matches left unlisted (at its
+   * page cap, or past the search's first page): an issue missing from
+   * `issues` may still exist.
    */
   truncated: boolean;
 }
@@ -54,15 +55,20 @@ export interface IssueTracker {
    */
   listComments(reference: IssueReference): Promise<string[]>;
   /**
-   * SitePing issues whose body contains `marker`, open or closed. Providers
-   * may narrow server-side (labels), must return every match they list, and
-   * say whether they left issues unlisted.
+   * SitePing issues whose body contains `marker`, open or closed, newest
+   * first. Providers may narrow server-side (labels), must return every
+   * match they list, and say whether they left issues unlisted. With
+   * `maxPages`, list no more pages than that: the hooks look at the newest
+   * issues first.
    */
-  findSitepingIssues(marker: string): Promise<IssueListing>;
+  findSitepingIssues(marker: string, options?: { maxPages?: number }): Promise<IssueListing>;
   /**
    * Optional fast path to one feedback's issue: what a server-side search
-   * for `feedbackId` returns. Search indexes may lag behind a new issue or
-   * be rate limited, so a miss or a failure falls back to `findSitepingIssues`.
+   * for `feedbackId` returns, and whether it found more than that. Search
+   * indexes may lag behind a new issue or be rate limited, so the hooks
+   * still list the newest issues after a miss, and further after a failure
+   * or a truncated answer. Without a search, every lookup the newest issues
+   * do not settle lists up to the provider's cap.
    */
-  searchSitepingIssues?(feedbackId: string): Promise<TrackedIssue[]>;
+  searchSitepingIssues?(feedbackId: string): Promise<IssueListing>;
 }
