@@ -113,7 +113,7 @@ async function persistMutation<Result>(
     const context = Object.entries(identifiers)
       .map(([name, value]) => `${name}=${value}`)
       .join(" ");
-    throw new StorePersistenceError(`${DRIZZLE_STORE_MESSAGE_PREFIX}.${mutation} failed to write (${context})`, {
+    throw new StorePersistenceError(`${DRIZZLE_STORE_MESSAGE_PREFIX}.${mutation} failed (${context})`, {
       cause: error,
     });
   }
