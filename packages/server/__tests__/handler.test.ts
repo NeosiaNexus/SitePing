@@ -1,6 +1,7 @@
 import { MemoryStore } from "@siteping/adapter-memory";
 import type { FeedbackRecord } from "@siteping/core";
 import { describe, expect, it, vi } from "vitest";
+import { MAX_VALIDATION_ISSUES } from "../src/constants.js";
 import { createSitepingHandler, type SitepingLogger, type SitepingStore } from "../src/index.js";
 import { validPayloadNoAnnotations } from "./fixtures.js";
 
@@ -67,6 +68,48 @@ describe("createSitepingHandler — apiKey", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("createSitepingHandler — validation errors", () => {
+  const many = (length: number) => Array.from({ length }, () => ({}));
+
+  it.each<[string, Record<string, unknown>]>([
+    ["annotations", { annotations: many(10_000) }],
+    ["diagnostics.console", { diagnostics: { console: many(10_000), network: [] } }],
+    ["diagnostics.network", { diagnostics: { console: [], network: many(10_000) } }],
+  ])("refuses an oversized %s on its length alone, in one issue", async (field, overrides) => {
+    const handler = createSitepingHandler({ store: new MemoryStore(), apiKey: API_KEY });
+
+    const response = await handler.POST(request("POST", { ...validPayloadNoAnnotations, ...overrides }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ errors: [{ field, message: expect.stringMatching(/^Too big/) }] });
+  });
+
+  it("refuses an oversized statuses filter on its length alone", async () => {
+    const handler = createSitepingHandler({ store: new MemoryStore() });
+    const statuses = Array.from({ length: 4000 }, () => "x").join(",");
+
+    const response = await handler.GET(
+      new Request(`${ENDPOINT}?projectName=${validPayloadNoAnnotations.projectName}&statuses=${statuses}`),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      errors: [{ field: "statuses", message: expect.stringMatching(/^Too big/) }],
+    });
+  });
+
+  it(`lists at most ${MAX_VALIDATION_ISSUES} issues`, async () => {
+    const handler = createSitepingHandler({ store: new MemoryStore() });
+
+    // Fifty empty annotations: a missing field each, twenty-odd per annotation.
+    const response = await handler.POST(request("POST", { ...validPayloadNoAnnotations, annotations: many(50) }));
+
+    expect(response.status).toBe(400);
+    const { errors } = (await response.json()) as { errors: unknown[] };
+    expect(errors).toHaveLength(MAX_VALIDATION_ISSUES);
   });
 });
 

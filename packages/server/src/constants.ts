@@ -4,6 +4,12 @@ import { MAX_COMMENTS_PER_FEEDBACK } from "@siteping/core";
 export const MAX_ANNOTATIONS_PER_FEEDBACK = 50;
 
 /**
+ * Most issues a validation 400 lists. Fifty annotations of `{}` alone make a
+ * thousand: listing them all would answer a small body with a large one.
+ */
+export const MAX_VALIDATION_ISSUES = 20;
+
+/**
  * Most `authorize` dry runs of one response in flight at once. A page of 100
  * asks 401 of them, and a database policy's pool holds a handful of
  * connections: unbounded, they would queue there, time out, and read as refusals.
