@@ -9,7 +9,7 @@ import { safeDecodeURIComponent } from "./safe-decode-uri-component.js";
  * legacy or corrupt record never makes `delete` throw.
  *
  * @throws Error when `publicBaseUrl` is not an absolute http(s) URL; warns
- *   when it is not https, since the widget's panel only shows https screenshots.
+ *   when it is plain http off this machine, which the widget's panel does not show.
  */
 export function createPublicUrlMapping(publicBaseUrl: string) {
   const base = normalizeBaseUrl(publicBaseUrl, "publicBaseUrl");

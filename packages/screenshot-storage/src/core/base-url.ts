@@ -48,18 +48,31 @@ export function normalizeBaseUrl(value: string, option: string): string {
 }
 
 /**
- * Warn, at configuration time, when screenshot URLs will not be `https`: the
- * widget's panel only renders `https://` (and inline `data:`) screenshots, so
- * an `http://localhost` setup would otherwise lose them there silently — the
- * dashboard still shows them.
+ * Whether `hostname` is this machine: the hosts the widget's panel also shows
+ * plain-http screenshots from, for a local MinIO or dev server — the same
+ * list as the widget's `isLoopbackHttp` (`packages/widget/src/panel-detail.ts`).
+ *
+ * @param hostname - Hostname of a parsed URL (lowercase, IPv6 in brackets).
+ */
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "[::1]"
+  );
+}
+
+/**
+ * Warn, at configuration time, when the widget's panel will not show the
+ * screenshot URLs: it renders `https://` ones, and plain `http://` ones only
+ * on this machine. Any other `http://` base would lose them there silently,
+ * and on a dashboard served over https too, as mixed content.
  *
  * @param base - A base URL normalized by {@link normalizeBaseUrl}, whose scheme is lowercase.
  * @param option - Name of the option, for the warning.
  */
 export function warnUnlessHttps(base: string, option: string): void {
-  if (base.startsWith("https://")) return;
+  if (base.startsWith("https://") || isLoopbackHostname(new URL(base).hostname)) return;
   console.warn(
-    `[siteping] ${option} "${base}" is not https: the widget's panel only shows https screenshots, ` +
-      "so they will be missing there (the dashboard shows them).",
+    `[siteping] ${option} "${base}" is neither https nor on this machine: the widget's panel will not show ` +
+      "its screenshots, and a dashboard served over https blocks them as mixed content.",
   );
 }

@@ -189,17 +189,40 @@ describe("base URLs — validation", () => {
     },
   );
 
-  it("warns that an http publicBaseUrl hides screenshots from the widget's panel", () => {
+  it("warns that an http publicBaseUrl off this machine hides screenshots from the widget's panel", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    createPublicUrlMapping("http://localhost:3000/api/siteping/screenshots");
+    createPublicUrlMapping("http://minio.internal:9000/screenshots");
     createPublicUrlMapping("https://app.example.com/api/siteping/screenshots");
 
-    expect(warn).toHaveBeenCalledOnce();
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('"http://localhost:3000/api/siteping/screenshots" is not https'),
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('"http://minio.internal:9000/screenshots" is neither https nor on this machine'),
     );
   });
+
+  it.each([
+    "http://localhost:3000/api/siteping/screenshots",
+    "http://minio.localhost/screenshots",
+    "http://127.0.0.1:9000/screenshots",
+    "http://[::1]:9000/screenshots",
+  ])("does not warn about the publicBaseUrl %s, whose screenshots the widget's panel shows in development", (base) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    createPublicUrlMapping(base);
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each(["http://localhost.example.com/screenshots", "http://127.0.0.2/screenshots"])(
+    "still warns about the publicBaseUrl %s, which is not this machine to the widget",
+    (base) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      createPublicUrlMapping(base);
+
+      expect(warn).toHaveBeenCalledOnce();
+    },
+  );
 
   it("checks the Cloudflare Images deliveryBaseUrl the same way", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

@@ -27,7 +27,7 @@ export interface S3ObjectStoreOptions extends SigV4Credentials {
    * Public URL objects are read from: the bucket's public domain, a CDN in
    * front of it, or `createScreenshotServeHandler` when the bucket is private.
    * An absolute URL, https in production: the widget's panel only shows
-   * https screenshots.
+   * https screenshots, and plain http ones on this machine.
    */
   publicBaseUrl: string;
   fetch?: typeof fetch | undefined;
