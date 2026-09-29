@@ -53,13 +53,6 @@ async function parseJsonAs<T>(response: Response): Promise<T> {
 // ---------------------------------------------------------------------------
 
 /**
- * How long a write may hang before it fails — a status change, a delete, a
- * reply. Without a bound, a stalled request keeps its control busy until the
- * drawer closes; nothing retries here, so the bound is generous.
- */
-const WRITE_TIMEOUT_MS = 30_000;
-
-/**
  * Build an `InboxSource` talking HTTP to a Siteping endpoint (e.g. the
  * `@siteping/adapter-prisma` request handlers mounted at `/api/siteping`).
  *
@@ -101,34 +94,6 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
     return response;
   }
 
-  /**
-   * Send a write and read its answer within `WRITE_TIMEOUT_MS`. A controller
-   * and a timer rather than `AbortSignal.timeout`, which Safari lacks before 16.
-   */
-  async function write<T>(
-    label: string,
-    method: "POST" | "PATCH" | "DELETE",
-    payload: object,
-    read: (response: Response) => Promise<T>,
-  ): Promise<T> {
-    const headers = await buildHeaders(true);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), WRITE_TIMEOUT_MS);
-    try {
-      const response = await request(label, endpoint, {
-        method,
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      return await read(response);
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  const ignoreBody = async (): Promise<void> => {};
-
   return {
     async list(query: FeedbackQuery) {
       // Shared serializer from core — the previous local copy silently
@@ -153,33 +118,39 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
     },
 
     async setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<InboxRecord> {
-      const body = await write(
-        "Failed to update feedback",
-        "PATCH",
-        { id, projectName, status },
-        parseJsonAs<FeedbackResponse>,
-      );
-      return reviveRecord(body);
+      const response = await request("Failed to update feedback", endpoint, {
+        method: "PATCH",
+        headers: await buildHeaders(true),
+        body: JSON.stringify({ id, projectName, status }),
+      });
+      return reviveRecord(await parseJsonAs<FeedbackResponse>(response));
     },
 
     async remove(id: string, projectName: string): Promise<void> {
-      await write("Failed to delete feedback", "DELETE", { id, projectName }, ignoreBody);
+      await request("Failed to delete feedback", endpoint, {
+        method: "DELETE",
+        headers: await buildHeaders(true),
+        body: JSON.stringify({ id, projectName }),
+      });
     },
 
     // Threads share the endpoint: a `feedbackId` routes a POST to one, a
     // `commentId` a DELETE.
     async addComment(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord> {
-      const body = await write(
-        "Failed to post comment",
-        "POST",
-        { ...input, projectName, feedbackId },
-        parseJsonAs<CommentResponse>,
-      );
-      return reviveComment(body);
+      const response = await request("Failed to post comment", endpoint, {
+        method: "POST",
+        headers: await buildHeaders(true),
+        body: JSON.stringify({ ...input, projectName, feedbackId }),
+      });
+      return reviveComment(await parseJsonAs<CommentResponse>(response));
     },
 
     async removeComment(feedbackId: string, projectName: string, commentId: string): Promise<void> {
-      await write("Failed to delete comment", "DELETE", { projectName, feedbackId, commentId }, ignoreBody);
+      await request("Failed to delete comment", endpoint, {
+        method: "DELETE",
+        headers: await buildHeaders(true),
+        body: JSON.stringify({ projectName, feedbackId, commentId }),
+      });
     },
   };
 }

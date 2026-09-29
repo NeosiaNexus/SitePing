@@ -76,10 +76,6 @@ export const en: Translations = {
   "comments.send": "Send",
   "comments.delete": "Delete reply",
   "comments.failed": "Something went wrong. Try again.",
-  "comments.full": "This thread is full. Delete replies to make room.",
-  "comments.deleteConfirm": "Delete this reply?",
-  "comments.added": "Reply from {name}",
-  "comments.deleted": "Reply deleted",
 
   // Footer hint bar
   "hints.navigate": "navigate",

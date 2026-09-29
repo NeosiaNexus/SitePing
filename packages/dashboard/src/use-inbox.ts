@@ -24,6 +24,12 @@ import type {
 const DEFAULT_PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
 
+/**
+ * Every local thread write (a reply stored, one deleted) takes the next
+ * number, in every inbox on the page: only their order counts.
+ */
+let threadWriteCount = 0;
+
 /** Debounced-search + counts keys — the 4 statuses plus the "all" tab. */
 const COUNT_KEYS: readonly ("all" | FeedbackStatus)[] = ["all", ...FEEDBACK_STATUSES];
 
@@ -339,22 +345,23 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   );
 
   /**
-   * Local thread writes (a reply stored, one deleted): a running count, and
-   * the last one per feedback. A response read before that write — a list,
-   * a status change's record — holds an older thread: the one kept here wins.
+   * The number of each feedback's last local thread write. A response read
+   * before that write — a list, a page, a status change's record — holds an
+   * older thread: the one kept here wins. Call `keepThreads()` when a request
+   * starts, and pass each record it brings back to the function it returns.
    */
-  const threadWritesRef = useRef({ count: 0, last: new Map<string, number>() });
-  const keepLocalThread = useCallback(
-    <R extends FeedbackRecord>(record: R, since: number): R =>
-      (threadWritesRef.current.last.get(record.id) ?? 0) > since
+  const threadWritesRef = useRef(new Map<string, number>());
+  const keepThreads = useCallback(() => {
+    const since = threadWriteCount;
+    return <R extends FeedbackRecord>(record: R): R =>
+      (threadWritesRef.current.get(record.id) ?? 0) > since
         ? { ...record, comments: heldRecord(record.id)?.comments }
-        : record,
-    [heldRecord],
-  );
+        : record;
+  }, [heldRecord]);
 
   const load = useCallback(async (): Promise<void> => {
     const token = ++tokenRef.current;
-    const threadsSince = threadWritesRef.current.count;
+    const keepThread = keepThreads();
     const countsToken = ++countsTokenRef.current;
     setLoading(true);
     setErrorState(null);
@@ -367,7 +374,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     try {
       const page = await src.list(query);
       if (token !== tokenRef.current) return;
-      const feedbacks = page.feedbacks.map((f) => keepLocalThread(f, threadsSince));
+      const feedbacks = page.feedbacks.map(keepThread);
       setExhausted(false);
       setAdvertised(page.capabilities);
       listGenRef.current += 1;
@@ -393,7 +400,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       return;
     }
     await loadCounts(queryBase, countsToken);
-  }, [src, queryBase, status, pageSize, loadCounts, rememberListed, keepLocalThread]);
+  }, [src, queryBase, status, pageSize, loadCounts, rememberListed, keepThreads]);
 
   useEffect(() => {
     void load();
@@ -407,7 +414,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     const token = ++loadMoreTokenRef.current;
     const mutationSeq = mutationSeqRef.current;
     const mutationPending = pendingMutationsRef.current > 0;
-    const threadsSince = threadWritesRef.current.count;
+    const keepThread = keepThreads();
     const superseded = () => listToken !== tokenRef.current || token !== loadMoreTokenRef.current;
     setLoadingMore(true);
     try {
@@ -432,9 +439,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const seen = new Set(itemsRef.current.map((f) => f.id));
       // A row with a mutation in flight is that mutation's to place (on
       // success or rollback) — the page's copy may predate it.
-      const fresh = page.feedbacks
-        .filter((f) => !seen.has(f.id) && !inFlightRef.current.has(f.id))
-        .map((f) => keepLocalThread(f, threadsSince));
+      const fresh = page.feedbacks.filter((f) => !seen.has(f.id) && !inFlightRef.current.has(f.id)).map(keepThread);
       // Out of rows only when nothing new came back from a short page, or from
       // any page no racing mutation can explain — a duplicate-only page caused
       // by an in-flight removal must not end pagination for good.
@@ -454,7 +459,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     } finally {
       setLoadingMore(false);
     }
-  }, [loading, loadingMore, pageSize, rememberListed, keepLocalThread]);
+  }, [loading, loadingMore, pageSize, rememberListed, keepThreads]);
 
   // -------------------------------------------------------------------------
   // Focus & drawer
@@ -731,14 +736,13 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       }
       const undoEntry = undoEntryRef.current;
 
-      const threadsSince = threadWritesRef.current.count;
+      const keepThread = keepThreads();
       try {
         const stored = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
         // A source that saves the plain record leaves the listed permissions in
         // force; a reply stored or deleted meanwhile, the thread held here.
-        const saved = keepLocalThread(
+        const saved = keepThread(
           stored.permissions || !record.permissions ? stored : { ...stored, permissions: record.permissions },
-          threadsSince,
         );
         // A later mutation on this feedback owns the row now — don't clobber its optimistic state.
         if (settleMutation(id, handle, true)) {
@@ -788,7 +792,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       commitCounts,
       commitPendingUndo,
       commitOpenedCache,
-      keepLocalThread,
+      keepThreads,
     ],
   );
 
@@ -910,8 +914,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         handle.prev = rewrite(handle.prev);
         if (handle.shown !== null) handle.shown = rewrite(handle.shown);
       }
-      const writes = threadWritesRef.current;
-      writes.last.set(id, ++writes.count);
+      threadWritesRef.current.set(id, ++threadWriteCount);
     },
     [commitItems, commitOpenedCache],
   );

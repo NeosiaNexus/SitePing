@@ -5,7 +5,7 @@ import {
   SitepingNetworkError,
   SitepingValidationError,
 } from "@siteping/core";
-import { beforeEach, describe, expect, it, type Mock, onTestFinished, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createEndpointSource, createStoreSource } from "../../src/source.js";
 import { errorFetch, jsonFetch, makeAnnotationResponse, makeRecord, makeResponse } from "../helpers.js";
 
@@ -295,41 +295,6 @@ describe("createEndpointSource — addComment() & removeComment()", () => {
     const { init } = lastCall(fetchFn);
     expect(init.method).toBe("DELETE");
     expect(JSON.parse(init.body as string)).toEqual({ projectName: "demo", feedbackId: "fb-1", commentId: "c-1" });
-  });
-
-  it("gives up on a write that hangs for 30 s, as a network error — even without AbortSignal.timeout", async () => {
-    // Safari before 16 has no AbortSignal.timeout: calling it throws.
-    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
-      throw new TypeError("AbortSignal.timeout is not a function");
-    });
-    vi.useFakeTimers();
-    onTestFinished(() => {
-      vi.useRealTimers();
-      timeout.mockRestore();
-    });
-    // A request that never answers, but honours its signal as fetch does.
-    const fetchFn = vi.fn<typeof fetch>(
-      (_url, init) =>
-        new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal?.reason))),
-    );
-    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
-    const writes = [
-      source.addComment?.("fb-1", "demo", input),
-      source.removeComment?.("fb-1", "demo", "c-1"),
-      source.setStatus("fb-1", "demo", "resolved"),
-      source.remove("fb-1", "demo"),
-    ].map((write) => expect(write).rejects.toBeInstanceOf(SitepingNetworkError));
-
-    await vi.advanceTimersByTimeAsync(29_999);
-    expect(fetchFn).toHaveBeenCalledTimes(4);
-    expect(fetchFn.mock.calls.some(([, init]) => init?.signal?.aborted)).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
-    await Promise.all(writes);
-
-    // A write that answers leaves no timer behind.
-    const answered = createEndpointSource({ endpoint: ENDPOINT, fetchFn: jsonFetch({ deleted: true }) });
-    await answered.removeComment?.("fb-1", "demo", "c-1");
-    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("maps a refusal to its typed error", async () => {

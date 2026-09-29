@@ -72,10 +72,6 @@ export const de: Translations = {
   "comments.send": "Senden",
   "comments.delete": "Antwort löschen",
   "comments.failed": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
-  "comments.full": "Dieser Verlauf ist voll. Löschen Sie Antworten, um Platz zu schaffen.",
-  "comments.deleteConfirm": "Diese Antwort löschen?",
-  "comments.added": "Antwort von {name}",
-  "comments.deleted": "Antwort gelöscht",
 
   // Keyboard hints
   "hints.navigate": "navigieren",

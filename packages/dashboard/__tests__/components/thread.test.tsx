@@ -177,7 +177,9 @@ describe("Thread", () => {
     expect(view.alert()?.textContent).toBe("");
   });
 
-  it("says a full thread is full, rather than to try again", async () => {
+  it("says a 409 failed like any refusal, never that the thread is full: the team's replies never meet the cap", async () => {
+    // The inbox replies as the team: a 409 means the server did not take
+    // this reply as the team's, which deleting replies would not fix.
     const onAdd = vi.fn(async () => {
       throw new SitepingValidationError("Failed to post comment: 409", 409);
     });
@@ -186,8 +188,50 @@ describe("Thread", () => {
     await type(view.input(), "One too many");
     await act(async () => view.send()?.click());
 
-    expect(view.alert()?.textContent).toBe(t("comments.full"));
+    expect(view.alert()?.textContent).toBe(t("comments.failed"));
     expect(view.input()?.value).toBe("One too many");
+  });
+
+  it("stops waiting on a reply or a delete left unanswered for 30 s, keeping the draft and the question", async () => {
+    vi.useFakeTimers();
+    try {
+      const view = renderThread({
+        comments: [makeComment()],
+        onAdd: vi.fn(() => new Promise<void>(() => {})),
+        onDelete: vi.fn(() => new Promise<void>(() => {})),
+      });
+      await type(view.input(), "Anyone there?");
+      await act(async () => view.send()?.click());
+      await act(async () => vi.advanceTimersByTimeAsync(29_999));
+      expect(view.send()?.getAttribute("aria-busy")).toBe("true");
+      expect(view.alert()?.textContent).toBe("");
+
+      await act(async () => vi.advanceTimersByTimeAsync(1));
+      expect(view.send()?.getAttribute("aria-busy")).toBe("false");
+      expect(view.alert()?.textContent).toBe(t("comments.failed"));
+      expect(view.input()?.value).toBe("Anyone there?");
+
+      await act(async () => view.container.querySelector<HTMLButtonElement>("[data-comment-delete]")?.click());
+      const confirm = () => view.container.querySelector<HTMLButtonElement>(".spd-confirm .spd-btn-danger");
+      await act(async () => confirm()?.click());
+      await act(async () => vi.advanceTimersByTimeAsync(30_000));
+      expect(confirm()?.getAttribute("aria-busy")).toBe("false");
+      expect(view.alert()?.textContent).toBe(t("comments.failed"));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears its 30 s wait once an answer is in", async () => {
+    const setTimer = vi.spyOn(globalThis, "setTimeout");
+    const clearTimer = vi.spyOn(globalThis, "clearTimeout");
+    const view = renderThread({ comments: [] });
+    await type(view.input(), "Quick");
+    await act(async () => view.send()?.click());
+
+    const waits = setTimer.mock.calls.flatMap(([, ms], i) => (ms === 30_000 ? [setTimer.mock.results[i]?.value] : []));
+    expect(waits).toHaveLength(1);
+    expect(clearTimer).toHaveBeenCalledWith(waits[0]);
   });
 
   it("gives an edited draft a new clientId after a failure, so a first attempt that landed cannot replace it", async () => {
@@ -219,75 +263,44 @@ describe("Thread", () => {
     expect(view.alert()?.textContent).toBe("");
   });
 
-  it("announces a reply that comes in, and one that goes, in a status of its own — never the delete question", async () => {
+  it("announces the reply count in a status of its own when a reply comes in or goes — never the delete question", async () => {
     const view = renderWithUi(<LiveThread initial={[makeComment({ id: "a" })]} canComment />);
-    const status = () => view.container.querySelector('[role="status"]');
+    const status = () => view.container.querySelector('[role="status"]')?.textContent;
     expect(view.container.querySelector("[aria-live]")).toBeNull();
-    expect(status()?.textContent).toBe("");
+    expect(status()).toBe(`${t("comments.title")} (1)`);
 
     await type(view.container.querySelector("textarea"), "Done");
     await act(async () => view.container.querySelector<HTMLButtonElement>(".spd-thread-composer button")?.click());
-    expect(status()?.textContent).toBe("Reply from Studio");
+    expect(status()).toBe(`${t("comments.title")} (2)`);
 
     await act(async () => view.container.querySelector<HTMLButtonElement>('[data-comment-delete="a"]')?.click());
     const confirm = view.container.querySelector<HTMLButtonElement>(".spd-confirm .spd-btn-danger");
     const question = view.container.querySelector(`#${CSS.escape(confirm?.getAttribute("aria-describedby") ?? "")}`);
-    expect(question?.textContent).toBe(t("comments.deleteConfirm"));
+    expect(question?.textContent).toBe(t("drawer.deleteConfirm"));
     expect(confirm?.closest('[aria-live], [role="status"]')).toBeNull();
+    expect(status()).toBe(`${t("comments.title")} (2)`);
 
+    // Every event changes the count, so each one is read out.
     await act(async () => confirm?.click());
-    expect(status()?.textContent).toBe(t("comments.deleted"));
+    expect(status()).toBe(`${t("comments.title")} (1)`);
   });
 
-  it("announces every reply that comes in or goes, the same message twice in a row included", async () => {
-    const view = renderWithUi(<LiveThread initial={["a", "b", "c"].map((id) => makeComment({ id }))} canComment />);
-    const status = () => view.container.querySelector('[role="status"]')?.textContent ?? "";
-    // A status is read out when its text changes: each event must change it.
-    const announced: string[] = [];
-    const next = () => {
-      expect(status()).not.toBe(announced.at(-1));
-      announced.push(status());
-    };
-
-    for (const id of ["a", "b"]) {
-      await act(async () => view.container.querySelector<HTMLButtonElement>(`[data-comment-delete="${id}"]`)?.click());
-      await act(async () => view.container.querySelector<HTMLButtonElement>(".spd-confirm .spd-btn-danger")?.click());
-      next();
-    }
-    for (const body of ["On it", "Done"]) {
-      await type(view.container.querySelector("textarea"), body);
-      await act(async () => view.container.querySelector<HTMLButtonElement>(".spd-thread-composer button")?.click());
-      next();
-    }
-
-    expect(announced.map((text) => text.trim())).toEqual([
-      t("comments.deleted"),
-      t("comments.deleted"),
-      "Reply from Studio",
-      "Reply from Studio",
-    ]);
-  });
-
-  it("hands the focus to the next reply's delete, else the previous one's, else the drawer — never <body>", async () => {
-    const ids = ["a", "b", "c"];
+  it("hands the focus to the composer after a delete, else the drawer — never <body>", async () => {
     const view = renderWithUi(
       // The drawer: a focusable container around the thread.
       <div className="drawer" tabIndex={-1}>
-        <LiveThread initial={ids.map((id) => makeComment({ id }))} canComment={false} />
+        <LiveThread initial={["a", "b"].map((id) => makeComment({ id }))} canComment={false} />
       </div>,
     );
-    const trash = (id: string) => view.container.querySelector<HTMLButtonElement>(`[data-comment-delete="${id}"]`);
     const remove = async (id: string) => {
-      await act(async () => trash(id)?.click());
+      await act(async () => view.container.querySelector<HTMLButtonElement>(`[data-comment-delete="${id}"]`)?.click());
       await act(async () => view.container.querySelector<HTMLButtonElement>(".spd-confirm .spd-btn-danger")?.click());
     };
 
-    await remove("b");
-    expect(document.activeElement).toBe(trash("c"));
-    await remove("c");
-    expect(document.activeElement).toBe(trash("a"));
-    // The thread leaves with its last reply, the composer being off.
     await remove("a");
+    expect(document.activeElement).toBe(view.container.querySelector(".drawer"));
+    // The thread leaves with its last reply, the composer being off.
+    await remove("b");
     expect(view.container.querySelector("section")).toBeNull();
     expect(document.activeElement).toBe(view.container.querySelector(".drawer"));
   });

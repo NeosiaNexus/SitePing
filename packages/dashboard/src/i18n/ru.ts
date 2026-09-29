@@ -72,10 +72,6 @@ export const ru: Translations = {
   "comments.send": "Отправить",
   "comments.delete": "Удалить ответ",
   "comments.failed": "Что-то пошло не так. Попробуйте ещё раз.",
-  "comments.full": "Обсуждение заполнено. Удалите ответы, чтобы освободить место.",
-  "comments.deleteConfirm": "Удалить этот ответ?",
-  "comments.added": "Ответ от {name}",
-  "comments.deleted": "Ответ удалён",
 
   // Keyboard hints
   "hints.navigate": "навигация",
