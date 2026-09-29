@@ -60,7 +60,9 @@ export function createGitLabTracker({
   const request = createJsonHttpClient({
     tracker: "GitLab",
     baseUrl: apiBaseUrl,
-    headers: { "PRIVATE-TOKEN": token },
+    // Not `PRIVATE-TOKEN`: fetch forwards custom headers across a cross-origin
+    // redirect (an SSO proxy, a moved instance), and strips `Authorization`.
+    headers: { Authorization: `Bearer ${token}` },
     ...(fetch ? { fetch } : {}),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
   });

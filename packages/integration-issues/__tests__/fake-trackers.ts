@@ -272,7 +272,7 @@ export function createFakeGitLab(project: string): FakeTracker {
         },
       ],
     ],
-    "private-token",
+    "authorization",
   );
   return server;
 }
