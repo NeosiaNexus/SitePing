@@ -368,6 +368,14 @@ export interface SitepingBaseConfig {
    * `id` are skipped with a console warning. See {@link SitepingPanelAction}.
    */
   panelActions?: readonly SitepingPanelAction[] | undefined;
+  /**
+   * Reviewer mode: hide the actions that triage feedback — resolve, reopen,
+   * delete, the bulk actions, "Delete all" — and keep creating, browsing
+   * and replying. Defaults to `false`. The server's `permissions` hide
+   * what it would refuse on top of it. It only hides: the server decides
+   * what it accepts. Read once when the panel loads.
+   */
+  readOnly?: boolean | undefined;
 
   // Events
   /** Called when the feedback panel is opened. */

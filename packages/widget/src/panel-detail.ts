@@ -20,6 +20,7 @@ import { el, parseSvg, setText } from "./dom-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { ICON_USER } from "./icons.js";
 import { type PanelActionItem, safeHref, snapshotFeedback } from "./panel-actions.js";
+import type { TriagePermission } from "./panel-bulk.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
@@ -1024,6 +1025,8 @@ export interface DetailCallbacks {
   onCustomActionError: (error: unknown) => void;
   /** The discussion thread, shown under the message — `null` when the feedback has none to show. */
   buildThread?: (feedback: FeedbackResponse) => HTMLElement | null;
+  /** False leaves out Resolve/Reopen (`canChangeStatus`) or Delete (`canDelete`). */
+  permits?: (feedback: FeedbackResponse, permission: TriagePermission) => boolean;
 }
 
 /** An operation in flight on a feedback: a built-in button, or the host action it runs. */
@@ -1292,36 +1295,21 @@ export class DetailView {
     // Action buttons
     const actions = el("div", { class: "sp-detail-actions" });
 
-    // Resolve / Reopen
+    // Resolve / Reopen, and Delete — their content is what an operation restores
     this.resolveBtn = document.createElement("button");
     this.resolveBtn.type = "button";
-    if (isClosed) {
-      this.resolveBtn.className = "sp-detail-btn-reopen";
-      this.resolveBtn.appendChild(parseSvg(ICON_UNDO));
-      const span = document.createElement("span");
-      setText(span, this.t("detail.reopen"));
-      this.resolveBtn.appendChild(span);
-    } else {
-      this.resolveBtn.className = "sp-detail-btn-resolve";
-      this.resolveBtn.appendChild(parseSvg(ICON_CHECK));
-      const span = document.createElement("span");
-      setText(span, this.t("detail.resolve"));
-      this.resolveBtn.appendChild(span);
-    }
+    this.resolveBtn.className = isClosed ? "sp-detail-btn-reopen" : "sp-detail-btn-resolve";
+    this.restoreResolveBtn(feedback);
     this.resolveBtn.addEventListener("click", () => this.handleResolve());
 
-    // Delete
     this.deleteBtn = document.createElement("button");
     this.deleteBtn.type = "button";
     this.deleteBtn.className = "sp-detail-btn-delete";
-    this.deleteBtn.appendChild(parseSvg(ICON_TRASH));
-    const deleteSpan = document.createElement("span");
-    setText(deleteSpan, this.t("detail.delete"));
-    this.deleteBtn.appendChild(deleteSpan);
+    this.restoreDeleteBtn();
     this.deleteBtn.addEventListener("click", () => this.handleDelete());
 
-    actions.appendChild(this.resolveBtn);
-    actions.appendChild(this.deleteBtn);
+    if (this.callbacks.permits?.(feedback, "canChangeStatus") !== false) actions.appendChild(this.resolveBtn);
+    if (this.callbacks.permits?.(feedback, "canDelete") !== false) actions.appendChild(this.deleteBtn);
     container.appendChild(actions);
 
     this.buildCustomActions(container, feedback);

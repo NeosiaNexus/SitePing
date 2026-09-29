@@ -7,6 +7,7 @@ export type {
   AnnotationResponse,
   CommentResponse,
   FeedbackPayload,
+  FeedbackPermissions,
   FeedbackResponse,
   FeedbackStatus,
   FeedbackType,

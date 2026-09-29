@@ -58,6 +58,15 @@ describe("SitepingConfig discriminated union", () => {
     const storeWithApiKey: SitepingConfig = { projectName: "p", store, apiKey: "leaked" };
     void storeWithApiKey;
   });
+
+  it("takes readOnly in both modes — a shared option, outside the union", () => {
+    expectTypeOf({ projectName: "p", endpoint: "/api", readOnly: true }).toExtend<SitepingConfig>();
+    expectTypeOf({ projectName: "p", store, readOnly: true }).toExtend<SitepingConfig>();
+
+    // @ts-expect-error — a flag, not a list of actions
+    const granular: SitepingConfig = { projectName: "p", store, readOnly: ["delete"] };
+    void granular;
+  });
 });
 
 describe("FeedbackUpdateInput closure invariant", () => {
