@@ -4885,17 +4885,26 @@ describe("Panel on phones", () => {
     });
 
     it("follows the finger from the header and closes past a quarter of the sheet", () => {
-      const title = shadow.querySelector(".sp-panel-title")!;
-      pointer("pointerdown", title, 100);
-      pointer("pointermove", title, 350);
-      expect(root().style.transform).toBe("translateY(250px)");
-      expect(root().style.transition).toBe("none");
+      // A slow drag (250 px over a second): only the distance can close it,
+      // not the flick rule. jsdom's own timeStamps are ~0 ms apart.
+      const now = vi.spyOn(Event.prototype, "timeStamp", "get");
+      try {
+        const title = shadow.querySelector(".sp-panel-title")!;
+        now.mockReturnValue(0);
+        pointer("pointerdown", title, 100);
+        pointer("pointermove", title, 350);
+        expect(root().style.transform).toBe("translateY(250px)");
+        expect(root().style.transition).toBe("none");
 
-      pointer("pointerup", title, 350);
-      expect(panel.isCurrentlyOpen).toBe(false);
-      // Handed back to the stylesheet, which animates the rest of the way
-      expect(root().style.transform).toBe("");
-      expect(root().style.transition).toBe("");
+        now.mockReturnValue(1000);
+        pointer("pointerup", title, 350);
+        expect(panel.isCurrentlyOpen).toBe(false);
+        // Handed back to the stylesheet, which animates the rest of the way
+        expect(root().style.transform).toBe("");
+        expect(root().style.transition).toBe("");
+      } finally {
+        now.mockRestore();
+      }
     });
 
     it("never drags the sheet upward", () => {
