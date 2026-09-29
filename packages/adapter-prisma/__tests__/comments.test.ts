@@ -25,6 +25,23 @@ describe("PrismaStore — comment capability", () => {
     expect(beforeThreads.deleteComment).toBeUndefined();
   });
 
+  it("keeps the comment methods a subclass defines, with the delegate or without", async () => {
+    class ThreadedStore extends PrismaStore {}
+    const addComment = vi.fn();
+    const deleteComment = vi.fn();
+    // Where a subclass's methods live — TypeScript types PrismaStore's as properties, so this is how JavaScript defines them.
+    Object.assign(ThreadedStore.prototype, { addComment, deleteComment });
+
+    for (const client of [fakePrisma(), fakePrisma({ comments: false })]) {
+      const store = new ThreadedStore(client);
+      expect(store.addComment).toBe(addComment);
+      expect(store.deleteComment).toBe(deleteComment);
+    }
+    const handler = createSitepingHandler({ store: new ThreadedStore(fakePrisma({ comments: false })) });
+    const listed = (await (await handler.GET(new Request(`${ENDPOINT}?projectName=p`))).json()) as FeedbackResponseList;
+    expect(listed.capabilities).toEqual({ comments: true, deleteComments: true });
+  });
+
   it("reads the thread only from a client that has the model", async () => {
     const current = fakePrisma();
     const beforeThreads = fakePrisma({ comments: false });
