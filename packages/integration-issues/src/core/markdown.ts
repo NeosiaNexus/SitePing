@@ -30,9 +30,11 @@ export function codeSpan(text: string): string {
 }
 
 /**
- * Plain-text issue titles still turn `#12` into a link and `@user` into a
- * mention on GitHub and GitLab: a zero-width space after each defuses both.
+ * Plain-text issue titles still render references: `@user` mentions, `#12`
+ * and `GH-12` on GitHub, and GitLab's `!12` (merge request), `&12` (epic),
+ * `~label`, `%milestone` and `$12` (snippet). A zero-width space after each
+ * sigil defuses them.
  */
 export function defuseReferences(text: string): string {
-  return text.replace(/[@#]/g, "$&\u200B");
+  return text.replace(/[@#!&~%$]|\bGH-/gi, "$&\u200B");
 }

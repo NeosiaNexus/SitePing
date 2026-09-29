@@ -178,11 +178,14 @@ describe("formatIssue", () => {
 
   it("defuses mentions and references in the title", () => {
     const { title } = formatIssue(
-      record({ message: "Ping @octocat and @acme/maintainers about #12\nplease" }),
+      record({ message: "Ping @octocat and @acme/maintainers about #12\nand GH-5, !7, &3, ~bug, %v1, $4" }),
       options,
     );
 
-    expect(title).toBe("[SitePing] Ping @\u200Boctocat and @\u200Bacme/maintainers about #\u200B12 please");
+    expect(title).toBe(
+      "[SitePing] Ping @\u200Boctocat and @\u200Bacme/maintainers about #\u200B12 " +
+        "and GH-\u200B5, !\u200B7, &\u200B3, ~\u200Bbug, %\u200Bv1, $\u200B4",
+    );
   });
 
   it("lists where each annotation points, quoted as code", () => {
