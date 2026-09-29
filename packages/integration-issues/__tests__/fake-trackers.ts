@@ -75,6 +75,11 @@ function createFakeServer(
   };
 }
 
+/** Escapes every RegExp metacharacter, backslash included, so a repository or project path matches literally. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function page<Item>(items: Item[], url: URL): Item[] {
   const perPage = Number(url.searchParams.get("per_page") ?? "30");
   const pageNumber = Number(url.searchParams.get("page") ?? "1");
@@ -86,7 +91,7 @@ export function createFakeGitHub(repository: string): FakeTracker & {
   useExistingLabel(name: string): void;
 } {
   const base = `/repos/${repository}/issues`;
-  const escapedBase = base.replace(/[/.]/g, "\\$&");
+  const escapedBase = escapeRegExp(base);
   let server: ReturnType<typeof createFakeServer>;
   const find = (key: string | undefined) => server.issues.find((issue) => issue.key === key);
   // GitHub matches label names case-insensitively and answers with the repository's casing.
@@ -182,7 +187,7 @@ export function createFakeGitHub(repository: string): FakeTracker & {
 
 export function createFakeGitLab(project: string): FakeTracker {
   const base = `/api/v4/projects/${encodeURIComponent(project)}/issues`;
-  const escapedBase = base.replace(/[/.%]/g, "\\$&");
+  const escapedBase = escapeRegExp(base);
   let server: ReturnType<typeof createFakeServer>;
   const find = (key: string | undefined) => server.issues.find((issue) => issue.key === key);
   const toGitLab = (issue: FakeIssue) => ({
