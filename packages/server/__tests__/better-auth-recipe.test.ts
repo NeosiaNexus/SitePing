@@ -412,6 +412,32 @@ describe("Better Auth recipe", () => {
 
     expect((await page(handler, cookie)).permissions).toEqual({ canDeleteAll: false });
   });
+
+  it("finds no stateless session on another instance behind disableCookieCache, as the docs warn", async () => {
+    // No database, no secondaryStorage: two instances — serverless invocations, replicas — share only the secret.
+    const stateless = () =>
+      betterAuth({
+        baseURL: BASE_URL,
+        secret: SECRET,
+        emailAndPassword: { enabled: true },
+        plugins: [admin()],
+        logger: { disabled: true },
+      });
+    const signedInOn = stateless();
+    const servedBy = stateless();
+    await signedInOn.api.createUser({ body: { ...ADMIN, password: PASSWORD } });
+    const { headers } = await signedInOn.api.signInEmail({
+      body: { email: ADMIN.email, password: PASSWORD },
+      returnHeaders: true,
+    });
+    const read = (query: { disableCookieCache?: boolean; disableRefresh: boolean }) =>
+      servedBy.api.getSession({ headers: new Headers(cookieFrom(headers)), query });
+
+    // The recipe's flags: no session, so the administrator is a visitor.
+    expect(await read({ disableCookieCache: true, disableRefresh: true })).toBeNull();
+    // Without `disableCookieCache`, as the docs advise there, the cookie serves.
+    expect((await read({ disableRefresh: true }))?.user.role).toBe("admin");
+  });
 });
 
 // ---- the recipe's owner-scoped deletes --------------------------------------
