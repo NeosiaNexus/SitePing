@@ -25,7 +25,11 @@ import {
   settleWithConcurrencyLimit,
 } from "@siteping/core";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../constants/deletes.js";
-import { DRIZZLE_STORE_MESSAGE_PREFIX, type DrizzleStoreMutation } from "../constants/errors.js";
+import {
+  DRIZZLE_STORE_MESSAGE_PREFIX,
+  type DrizzleStoreMutation,
+  FOREIGN_KEY_VIOLATION_SQLSTATE,
+} from "../constants/errors.js";
 import { INLINE_SCREENSHOT_URL_PREFIX, SCREENSHOT_REFERENCE_LOOKUP_BATCH_SIZE } from "../constants/screenshots.js";
 import { withDriverErrors } from "./errors.js";
 import type {
@@ -113,6 +117,16 @@ async function persistMutation<Result>(
       cause: error,
     });
   }
+}
+
+/** Whether `error` or an error of its `cause` chain is a foreign-key violation. */
+function isForeignKeyViolation(error: unknown): boolean {
+  const seen: unknown[] = [];
+  for (let current = error; current instanceof Error && !seen.includes(current); current = current.cause) {
+    if (Reflect.get(current, "code") === FOREIGN_KEY_VIOLATION_SQLSTATE) return true;
+    seen.push(current);
+  }
+  return false;
 }
 
 /** Rows grouped by their `feedbackId`, each group in the order the rows came. */
@@ -373,8 +387,11 @@ export class DrizzleSitepingStore implements DrizzleStore {
     } catch (error) {
       // PostgreSQL checks that the feedback exists on the statement's snapshot, and
       // its foreign key after it: a feedback deleted in between fails the insert
-      // instead of skipping it. When the feedback is gone, that is a missing
-      // feedback; when the lookup fails too, the insert's own failure stands.
+      // on the foreign key instead of skipping it. When the feedback is gone, that
+      // is a missing feedback; when the lookup fails too, the insert's own failure
+      // stands. Any other failure stands at once: on an unreachable database, a
+      // lookup would only wait for a second driver timeout.
+      if (!isForeignKeyViolation(error)) throw error;
       const feedbackGone = await this.gateway.findProjectName(feedbackId).then(
         (projectName) => projectName === null,
         () => false,

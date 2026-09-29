@@ -1338,6 +1338,23 @@ for (const dialect of dialects) {
       await expect(store.addComment(feedback.id, commentInput())).rejects.toSatisfy(isStoreNotFound);
     });
 
+    it("fails a comment insert that broke no foreign key without looking its feedback up", async () => {
+      const feedback = await database.createStore({ logger }).createFeedback(feedbackInput());
+      const connectionFailure = new Error("connect ECONNREFUSED 127.0.0.1:5432");
+      const statements: string[] = [];
+      const store = database.createStoreWithDriverInterceptor(
+        (statementSql, run) => {
+          statements.push(statementSql);
+          return isCommentWrite(statementSql) ? Promise.reject(connectionFailure) : run();
+        },
+        { logger },
+      );
+
+      await expect(store.addComment(feedback.id, commentInput())).rejects.toSatisfy(isStorePersistence);
+      // On an unreachable database, a lookup would wait for a second driver timeout.
+      expect(statements.filter((statementSql) => !isCommentWrite(statementSql))).toEqual([]);
+    });
+
     it("stores one comment when separate store instances race on its clientId", async () => {
       const feedback = await database.createStore({ logger }).createFeedback(feedbackInput());
       const input = commentInput();

@@ -17,6 +17,12 @@ export type DrizzleStoreMutation =
 export const DRIZZLE_QUERY_ERROR_MESSAGE_PREFIX = "Failed query:";
 
 /**
+ * SQLSTATE of a foreign-key violation: what PostgreSQL reports when a
+ * comment's feedback is deleted while the comment is being inserted.
+ */
+export const FOREIGN_KEY_VIOLATION_SQLSTATE = "23503";
+
+/**
  * Own properties of a driver error that tell what failed without quoting
  * the statement or its values — the only ones the store keeps: Node.js
  * system errors (a lost connection), pg-protocol errors (node-postgres,
