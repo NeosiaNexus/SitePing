@@ -91,21 +91,25 @@ Only the last status change is undoable (`pendingUndo` + `undo()`); delete is pe
 
 Each record carries its thread in `comments` (oldest first). `canComment` says whether this inbox may post replies: an `author` is set, the source implements `addComment`, and the last list did not say the endpoint keeps no comments. `canDeleteComment` says whether it may also delete them: the inbox is not `readOnly`, the source implements `removeComment` too, and the last list did not say the endpoint cannot delete them.
 
-Replies are **not** optimistic: `addComment` resolves once the source has stored the reply, which then shows on the record wherever the hook holds it — its row, `opened`, and the record a pending status change would roll back to. Both actions re-throw after `onError`, like the mutations above.
+Replies are **not** optimistic: `addComment` resolves once the source has stored the reply, which then shows on the record wherever the hook holds it — its row, `opened`, and the record a pending status change would roll back to. Both actions re-throw after `onError`, like the mutations above — except a `deleteComment` whose reply is gone already (a `404`, or the store's `StoreNotFoundError`): the reply leaves the record and the call resolves. A list or a status change read before a reply was stored or deleted keeps the thread the hook holds.
 
 ```tsx
 const [draft, setDraft] = useState("");
 // One clientId per reply, kept across its resends: the server answers a
-// resend of a reply that did land with the stored one.
-const clientId = useRef<string | null>(null);
+// resend of a reply that did land with the stored one. An edited draft is
+// another reply, or that first text would come back in its place.
+const sent = useRef<{ body: string; clientId: string } | null>(null);
 
 async function send(feedbackId: string) {
-  // crypto.randomUUID() exists only in secure contexts (HTTPS, localhost).
-  clientId.current ??= crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (sent.current?.body !== draft) {
+    // crypto.randomUUID() exists only in secure contexts (HTTPS, localhost).
+    const clientId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sent.current = { body: draft, clientId };
+  }
   try {
-    await inbox.addComment(feedbackId, draft, clientId.current);
+    await inbox.addComment(feedbackId, draft, sent.current.clientId);
     setDraft("");
-    clientId.current = null;
+    sent.current = null;
   } catch {
     // the draft stays — show an inline error
   }

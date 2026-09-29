@@ -152,8 +152,10 @@ export const ja: Translations = {
   "detail.diagnostics.noEntries": "項目はありません",
 
   // Discussion thread (detail view)
+  "comments.title": "返信",
   "comments.placeholder": "チームに返信...",
   "comments.error": "送信できませんでした。もう一度お試しください。",
+  "comments.full": "このスレッドは上限に達しました。",
   "comments.team": "チーム",
 
   // Keyboard shortcuts overlay

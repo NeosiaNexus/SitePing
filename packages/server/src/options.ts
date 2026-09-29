@@ -1,4 +1,4 @@
-import type { CommentCreateInput, FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
+import type { CommentPayload, FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
 import type { WebhookConfig } from "./webhooks.js";
 
 /** HTTP methods served by `createSitepingHandler`. */
@@ -71,7 +71,8 @@ export type SitepingPrincipal = object | string | number;
  *   role keeps it; otherwise it is stamped `client`. Defaults to the
  *   principal's `canReadAuthorEmail` answer (whoever may read reviewer
  *   emails is on the project side), so a policy that sets neither never
- *   lets a caller speak as the team.
+ *   lets a caller speak as the team. Once set, anything but `true`
+ *   (`undefined` from plain JavaScript included) refuses.
  *
  * A throw from any of them answers a logged 500.
  */
@@ -172,18 +173,19 @@ export interface SitepingHandlerBaseOptions<Principal> {
     context: SitepingRequestContext<Principal>,
   ): FeedbackCreateInput | Promise<FeedbackCreateInput>;
   /**
-   * Rewrite a validated comment before it is stored, as `beforeCreate` does
-   * a feedback: the author's name and email are what the request sends
-   * until this imposes them from the session. Runs once the comment is
-   * authorized and, when the store implements `verifyProjectOwnership`, its
-   * feedback found. The `team` role is kept only when the access policy
-   * vouches for the caller, whatever this returns. A throw answers a logged
-   * 500 and stores nothing.
+   * `beforeCreate` for the replies of a thread: rewrite the validated comment
+   * before it is stored — impose the author from the session, redact secrets
+   * from its body, pin the project. Runs before `access.authorize`, which
+   * sees the effective `projectName` and `feedbackId`, so before the feedback
+   * is looked up too: it may run for a feedback that turns out not to exist.
+   * The `authorRole` it returns is still a claim: `team` is kept only for a
+   * caller the policy vouches for. A throw answers a logged 500 and stores
+   * nothing.
    */
   beforeComment?(
-    input: CommentCreateInput,
+    input: CommentPayload,
     context: SitepingRequestContext<Principal>,
-  ): CommentCreateInput | Promise<CommentCreateInput>;
+  ): CommentPayload | Promise<CommentPayload>;
   /**
    * Transform each record right before it is serialized in a response, e.g.
    * read-time redaction. `clientId` is stripped, and `authorEmail` blanked

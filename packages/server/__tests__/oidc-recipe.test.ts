@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { MemoryStore } from "@siteping/adapter-memory";
-import type { FeedbackPermissions, FeedbackResponse, FeedbackResponseList } from "@siteping/core";
+import type { CommentResponse, FeedbackPermissions, FeedbackResponse, FeedbackResponseList } from "@siteping/core";
 import {
   createRemoteJWKSet,
   customFetch,
@@ -184,6 +184,25 @@ async function submit(handler: SitepingHandler, headers: Record<string, string> 
   return (await response.json()) as FeedbackResponse;
 }
 
+async function reply(
+  handler: SitepingHandler,
+  feedbackId: string,
+  headers: Record<string, string> = {},
+): Promise<CommentResponse> {
+  clientIds += 1;
+  const body = {
+    projectName: PROJECT,
+    feedbackId,
+    body: "Fixed in the next deploy",
+    authorName: "Someone",
+    authorEmail: "someone@acme.example",
+    clientId: `oidc-${clientIds}`,
+  };
+  const response = await handler.POST(send("POST", body, headers));
+  expect(response.status).toBe(201);
+  return (await response.json()) as CommentResponse;
+}
+
 function list(handler: SitepingHandler, headers: Record<string, string> = {}): Promise<Response> {
   return handler.GET(new Request(`${ENDPOINT}?projectName=${PROJECT}`, { headers }));
 }
@@ -261,6 +280,24 @@ describe("OpenID Connect recipe", () => {
       ]),
     );
     expect(authors).toHaveLength(2);
+  });
+
+  it("takes a reply's author from the token too", async () => {
+    const handler = handlerFor(remoteKeySet());
+    const admin = bearer(await accessToken(ADMIN));
+    const created = await submit(handler);
+    await reply(handler, created.id, admin);
+    await reply(handler, created.id, bearer(await accessToken(MEMBER)));
+    await reply(handler, created.id);
+
+    const thread = (await page(handler, admin)).feedbacks[0]?.comments ?? [];
+
+    expect(thread.map((c) => [c.authorName, c.authorEmail])).toEqual([
+      [ADMIN.name, ADMIN.email],
+      // MEMBER's email is unverified, and a visitor has no token: what the client sent is kept.
+      [MEMBER.name, "someone@acme.example"],
+      ["Someone", "someone@acme.example"],
+    ]);
   });
 
   it("takes a signed-in replier's name from the token too, so no one replies as another reviewer", async () => {

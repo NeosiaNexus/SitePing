@@ -153,8 +153,10 @@ export const pt: Translations = {
   "detail.diagnostics.noEntries": "Sem entradas",
 
   // Discussion thread (detail view)
+  "comments.title": "Respostas",
   "comments.placeholder": "Responder à equipe...",
   "comments.error": "Não enviada. Tente novamente.",
+  "comments.full": "Esta conversa está cheia.",
   "comments.team": "Equipe",
 
   // Keyboard shortcuts overlay

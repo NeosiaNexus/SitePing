@@ -143,6 +143,8 @@ describe("syncCommand", () => {
     syncCommand({ schema: schemaPath });
 
     expect(logInfoSpy).toHaveBeenCalledWith(expect.stringContaining("prisma db push"));
+    // Prisma 7 no longer generates the client from db push.
+    expect(logInfoSpy).toHaveBeenCalledWith(expect.stringContaining("prisma generate"));
   });
 
   it("preserves existing user models when syncing", () => {

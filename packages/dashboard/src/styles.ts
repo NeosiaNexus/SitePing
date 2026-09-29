@@ -367,7 +367,10 @@ export const INBOX_CSS = `
   overscroll-behavior: contain;
 }
 .spd-list { outline: none; transition: opacity 120ms var(--spd-ease); }
-.spd-list[aria-busy="true"] { opacity: 0.6; pointer-events: none; }
+/* A list loading, a reply's send or delete in flight: dimmed, and inert to
+   the pointer (a busy button keeps the keyboard focus). */
+.spd-list[aria-busy="true"],
+.spd-thread [aria-busy="true"] { opacity: 0.6; pointer-events: none; }
 .spd-list:focus-visible { outline: none; }
 /* The root takes focus when the listbox unmounts (empty state, skeleton):
    no ring after a click, an inset one for keyboard users. Zero specificity

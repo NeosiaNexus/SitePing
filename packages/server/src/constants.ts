@@ -39,7 +39,7 @@ export const ERROR_MESSAGES = {
   clientIdUsedByAnotherProject: "clientId already used by another project",
   clientIdUsedByAnotherFeedback: "clientId already used on another feedback",
   commentsUnsupported: "Comments are not supported by this store",
-  tooManyComments: `Too many comments on this feedback (max ${MAX_COMMENTS_PER_FEEDBACK})`,
+  tooManyComments: `Too many client comments on this feedback (max ${MAX_COMMENTS_PER_FEEDBACK})`,
   tooManyAnnotations: `Too many annotations (max ${MAX_ANNOTATIONS_PER_FEEDBACK})`,
   valueTooLong: "A value is too long for this server's database",
   deletionAborted: "Deletion aborted: a linked resource could not be cleaned up",

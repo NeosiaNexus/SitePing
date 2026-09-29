@@ -154,8 +154,10 @@ export const it: Translations = {
   "detail.diagnostics.noEntries": "Nessuna voce",
 
   // Discussion thread (detail view)
+  "comments.title": "Risposte",
   "comments.placeholder": "Rispondi al team...",
   "comments.error": "Non inviata. Riprova.",
+  "comments.full": "Questa discussione è piena.",
   "comments.team": "Team",
 
   // Keyboard shortcuts overlay

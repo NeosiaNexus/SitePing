@@ -35,6 +35,7 @@ import {
 
 export type {
   CommentCreateInput,
+  CommentPayload,
   FeedbackCreateInput,
   FeedbackRecord,
   ScreenshotStorage,
@@ -571,9 +572,9 @@ export class PrismaStore implements SitepingStore {
    * up first so a replay never runs into the thread cap; a concurrent replay
    * that wins the insert race surfaces as P2002 and is read back the same
    * way. The `connect` turns a missing feedback into Prisma's P2025 on every
-   * provider, rather than each database's own foreign-key error. The cap is a
-   * count before the insert, so posts racing for the last free slot may
-   * overshoot it.
+   * provider, rather than each database's own foreign-key error. The cap on
+   * `client` comments is a count before the insert, so posts racing for the
+   * last free slot may overshoot it; a `team` comment skips it.
    */
   private async insertComment(
     comments: PrismaModelDelegate,
@@ -582,8 +583,11 @@ export class PrismaStore implements SitepingStore {
   ): Promise<CommentRecord> {
     const replayed = await this.findComment(comments, data.clientId);
     if (replayed) return replayed;
-    if ((await comments.count({ where: { feedbackId } })) >= MAX_COMMENTS_PER_FEEDBACK) {
-      throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
+    if (
+      data.authorRole === "client" &&
+      (await comments.count({ where: { feedbackId, authorRole: "client" } })) >= MAX_COMMENTS_PER_FEEDBACK
+    ) {
+      throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} client comments`);
     }
 
     try {

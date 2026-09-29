@@ -120,11 +120,12 @@ Le modèle `SitepingComment` contient les [fils de discussion](/fr/docs/comments
 ```bash
 npx @siteping/cli sync   # ajoute SitepingComment et SitepingFeedback.comments
 npx prisma db push       # ou : npx prisma migrate dev --name siteping-comments
+npx prisma generate      # Prisma 7 : aucune des commandes ci-dessus ne régénère le client
 ```
 
-Les deux commandes régénèrent le client. Appliquez le schéma à la base avant de déployer ce client : il lit la table des commentaires à chaque liste, donc tant qu'elle n'existe pas, les listes répondent `500` avec l'indication de table manquante.
+Sur Prisma 5 et 6, `db push` et `migrate dev` régénèrent aussi le client ; Prisma 7 laisse cela à `prisma generate`, sans effet néfaste sur 5 et 6. Oubliez-le sur 7 et le client n'a pas de délégué `sitepingComment` : les fils restent désactivés, sans rien dans les logs. Appliquez le schéma à la base avant de déployer ce client : il lit la table des commentaires à chaque liste, donc tant qu'elle n'existe pas, les listes répondent `500` avec l'indication de table manquante.
 
-Un fil revient du plus ancien au plus récent. Un envoi se rattache à son feedback, donc un feedback inconnu donne un `404` quel que soit le provider, et le `clientId` unique fait qu'un envoi rejoué renvoie le commentaire enregistré. La limite de 100 commentaires est un comptage avant l'insertion : des envois qui se disputent la dernière place libre peuvent la dépasser.
+Un fil revient du plus ancien au plus récent. Un envoi se rattache à son feedback, donc un feedback inconnu donne un `404` quel que soit le provider, et le `clientId` unique fait qu'un envoi rejoué renvoie le commentaire enregistré. La limite de 100 commentaires `client` est un comptage avant l'insertion : des envois qui se disputent la dernière place libre peuvent la dépasser.
 
 ## Stockage des captures
 

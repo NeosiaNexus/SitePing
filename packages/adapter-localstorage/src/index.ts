@@ -85,6 +85,8 @@ export class LocalStorageStore implements SitepingStore {
       this.persist(next);
     },
     generateId: () => this.generateId(),
+    // `load` revives comment dates like the record's own.
+    comments: true,
   });
 
   constructor(options?: LocalStorageStoreOptions) {

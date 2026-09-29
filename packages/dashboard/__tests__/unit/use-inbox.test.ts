@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { FeedbackPage, FeedbackRecord, SitepingStore } from "@siteping/core";
+import { SitepingValidationError, StoreNotFoundError } from "@siteping/core";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 import type { InboxRecord, InboxSource } from "../../src/types.js";
@@ -1810,6 +1811,118 @@ describe("useSitepingInbox — discussion thread", () => {
     expect(r1?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
   });
 
+  describe("against a response read before a reply was stored or deleted", () => {
+    const reply = {
+      id: "c-9",
+      feedbackId: "r1",
+      body: "Wrong thread",
+      authorName: "Studio",
+      authorEmail: "",
+      authorRole: "team" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-21T08:00:00Z"),
+    };
+    const bodies = (record: FeedbackRecord | null | undefined) => record?.comments?.map((c) => c.body);
+
+    it("keeps a reply stored during a status change that succeeds with the older thread", async () => {
+      const source = threadedSource();
+      const change = deferred<FeedbackRecord>();
+      source.setStatus.mockReturnValueOnce(change.promise);
+      const { result } = await ready({ projects: "demo", source, author });
+      act(() => result.current.setStatus("all"));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      act(() => result.current.openFeedback("r1"));
+
+      let changed!: Promise<void>;
+      act(() => {
+        changed = result.current.changeStatus("r1", "in_progress");
+      });
+      await act(() => result.current.addComment("r1", "Fixed, have a look"));
+      // The PATCH read the thread before the reply's insert committed.
+      await act(async () => {
+        change.resolve(makeRecord({ id: "r1", status: "in_progress", comments: [] }));
+        await changed;
+      });
+
+      expect(result.current.opened?.status).toBe("in_progress");
+      expect(bodies(result.current.opened)).toEqual(["Fixed, have a look"]);
+      expect(bodies(result.current.items.find((r) => r.id === "r1"))).toEqual(["Fixed, have a look"]);
+    });
+
+    it("keeps a reply deleted during a status change deleted", async () => {
+      const source = threadedSource(demoRecords().map((r) => (r.id === "r1" ? { ...r, comments: [reply] } : r)));
+      const change = deferred<FeedbackRecord>();
+      source.setStatus.mockReturnValueOnce(change.promise);
+      const { result } = await ready({ projects: "demo", source, author });
+      act(() => result.current.openFeedback("r1"));
+
+      let changed!: Promise<void>;
+      act(() => {
+        changed = result.current.changeStatus("r1", "in_progress");
+      });
+      await act(() => result.current.deleteComment("r1", "c-9"));
+      await act(async () => {
+        change.resolve(makeRecord({ id: "r1", status: "in_progress", comments: [reply] }));
+        await changed;
+      });
+
+      expect(bodies(result.current.opened)).toEqual([]);
+    });
+
+    it("keeps a reply stored while a refetch was in flight, then takes the next refetch's word", async () => {
+      const source = threadedSource();
+      const { result } = await ready({ projects: "demo", source, author });
+      const page = deferred<Awaited<ReturnType<InboxSource["list"]>>>();
+      const list = source.list.getMockImplementation()!;
+      const older = await list({ projectName: "demo", page: 1, limit: 50 });
+      source.list.mockReturnValueOnce(page.promise);
+
+      let refreshed!: Promise<void>;
+      act(() => {
+        refreshed = result.current.refresh();
+      });
+      await act(() => result.current.addComment("r1", "Posted meanwhile"));
+      await act(async () => {
+        page.resolve(older);
+        await refreshed;
+      });
+      expect(bodies(result.current.items.find((r) => r.id === "r1"))).toEqual(["Posted meanwhile"]);
+
+      // A list asked for after the reply is the server's word — a teammate may have deleted it.
+      await act(() => result.current.refresh());
+      expect(bodies(result.current.items.find((r) => r.id === "r1"))).toBeUndefined();
+    });
+
+    it("keeps a reply stored while a loaded-more page was in flight", async () => {
+      const source = threadedSource();
+      const { result } = await ready({ projects: "demo", source, author, pageSize: 2 });
+      // r4, opened under its filter, is held by the drawer only once "all" lists r1 and r2.
+      act(() => result.current.setStatus("in_progress"));
+      await waitFor(() => expect(ids(result.current.items)).toEqual(["r4"]));
+      act(() => result.current.openFeedback("r4"));
+      act(() => result.current.setStatus("all"));
+      await waitFor(() => expect(ids(result.current.items)).toEqual(["r1", "r2"]));
+
+      const page = deferred<Awaited<ReturnType<InboxSource["list"]>>>();
+      const list = source.list.getMockImplementation()!;
+      const older = await list({ projectName: "demo", page: 2, limit: 2 });
+      source.list.mockImplementation((query) => (query.page === 2 ? page.promise : list(query)));
+      let loaded!: Promise<void>;
+      act(() => {
+        loaded = result.current.loadMore();
+      });
+      await act(() => result.current.addComment("r4", "Posted meanwhile"));
+      await act(async () => {
+        page.resolve(older);
+        await loaded;
+      });
+
+      expect(ids(result.current.items)).toEqual(["r1", "r2", "r3", "r4"]);
+      expect(bodies(result.current.items.find((r) => r.id === "r4"))).toEqual(["Posted meanwhile"]);
+      expect(bodies(result.current.opened)).toEqual(["Posted meanwhile"]);
+    });
+  });
+
   it("rolls the drawer back with the reply when the opened record is not in the list", async () => {
     const source = threadedSource();
     const change = deferred<FeedbackRecord>();
@@ -2024,7 +2137,35 @@ describe("useSitepingInbox — discussion thread", () => {
     expect(result.current.items.find((r) => r.id === "r1")?.comments).toHaveLength(1);
 
     await act(() => result.current.deleteComment("r1", "c-9"));
-    expect(source.removeComment).toHaveBeenLastCalledWith("r1", "c-9", "demo");
+    expect(source.removeComment).toHaveBeenLastCalledWith("r1", "demo", "c-9");
+    expect(result.current.items.find((r) => r.id === "r1")?.comments).toEqual([]);
+  });
+
+  it.each([
+    ["a store", () => new StoreNotFoundError()],
+    [
+      "the endpoint",
+      () => new SitepingValidationError('Failed to delete comment: 404 {"error":"Comment not found"}', 404),
+    ],
+  ])("drops a reply %s says is gone already, without an error that no retry could clear", async (_, gone) => {
+    const reply = {
+      id: "c-9",
+      feedbackId: "r1",
+      body: "Spam",
+      authorName: "Bot",
+      authorEmail: "",
+      authorRole: "client" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-21T08:00:00Z"),
+    };
+    const source = threadedSource(demoRecords().map((r) => (r.id === "r1" ? { ...r, comments: [reply] } : r)));
+    source.removeComment.mockRejectedValueOnce(gone());
+    const onError = vi.fn();
+    const { result } = await ready({ projects: "demo", source, author, onError });
+
+    await act(() => result.current.deleteComment("r1", "c-9"));
+
+    expect(onError).not.toHaveBeenCalled();
     expect(result.current.items.find((r) => r.id === "r1")?.comments).toEqual([]);
   });
 });
@@ -2107,7 +2248,7 @@ describe("useSitepingInbox — permissions and readOnly", () => {
     rerender({ projects: "demo", source, author, readOnly: true });
     await act(() => result.current.deleteComment("r2", "c-2"));
 
-    expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r2", "c-2", "demo");
+    expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r2", "demo", "c-2");
   });
 
   it("posts no reply on a record that refuses it", async () => {

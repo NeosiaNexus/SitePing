@@ -212,6 +212,11 @@ function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[]): S
   }
 
   const provider = [schema, ...siblings].map((file) => datasourceProvider(file)).find((p) => p !== undefined);
+  // A multi-schema datasource needs `@@schema` on every model: a model sync
+  // adds goes to the database schema the existing Siteping models live in.
+  const databaseSchema = Object.keys(SITEPING_MODELS)
+    .flatMap((name) => existingModelsMap.get(name)?.properties ?? [])
+    .find((p): p is BlockAttribute => p.type === "attribute" && (p as BlockAttribute).name === "schema");
   const addedModels: string[] = [];
   const changes: FieldChange[] = [];
 
@@ -228,6 +233,7 @@ function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[]): S
           model.properties.push(buildBlockIndex(idx));
         }
       }
+      if (databaseSchema) model.properties.push(structuredClone(databaseSchema));
       schema.list.push(model);
       addedModels.push(modelName);
       continue;

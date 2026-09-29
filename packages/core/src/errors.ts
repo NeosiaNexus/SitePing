@@ -47,11 +47,19 @@ export class SitepingNetworkError extends SitepingError<"NETWORK"> {
   }
 }
 
-/** Server rejected the request (4xx, not auth). Validation problem on the client side. */
+/**
+ * Server rejected the request (4xx, not auth). Validation problem on the
+ * client side. `status` is the HTTP status when a response said so: a 404
+ * (the target is gone) and a 409 (a full thread) call for other answers
+ * than a 400.
+ */
 export class SitepingValidationError extends SitepingError<"VALIDATION"> {
-  constructor(message: string) {
+  readonly status: number | undefined;
+
+  constructor(message: string, status?: number) {
     super(message, "VALIDATION", false);
     this.name = "SitepingValidationError";
+    this.status = status;
   }
 }
 

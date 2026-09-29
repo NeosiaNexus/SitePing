@@ -1590,6 +1590,16 @@ describe("ApiClient — bounded waits", () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
   });
 
+  it("bounds a reply's body the same way, so the thread's composer is never held forever", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => stalledBody(init, 201));
+    const reply = { body: "b", authorName: "A", authorEmail: "a@b.com", authorRole: "client" as const, clientId: "r1" };
+
+    const error = await settlesAt(() => new ApiClient(endpoint, "test").addComment("fb-1", reply), 10_000);
+
+    expect(error).toBeInstanceOf(SitepingNetworkError);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
   it("gives the body a fresh 10 s window once the headers arrive, not the rest of the upload's", async () => {
     // Headers at 6 s (a slow upload), then the body stalls: a window shared
     // with the upload would abort at 10 s, only 4 s into the body.

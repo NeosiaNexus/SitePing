@@ -153,8 +153,12 @@ export interface Translations {
 
   // Discussion thread (detail view) — the composer reuses "popup.submit" and
   // the "popup.submitHint*" keys
+  /** Accessible name of the list of replies. */
+  "comments.title": string;
   "comments.placeholder": string;
   "comments.error": string;
+  /** A reply refused because the thread holds its most client replies. */
+  "comments.full": string;
   /** Badge on a reply from the project team. */
   "comments.team": string;
 

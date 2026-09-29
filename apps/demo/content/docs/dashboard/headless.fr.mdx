@@ -91,21 +91,26 @@ Seul le dernier changement de statut est annulable (`pendingUndo` + `undo()`) ; 
 
 Chaque feedback porte son fil dans `comments` (du plus ancien au plus récent). `canComment` indique si cette inbox peut poster des réponses : un `author` est fourni, la source implémente `addComment`, et la dernière liste n'a pas dit que l'endpoint ne garde aucun commentaire. `canDeleteComment` indique si elle peut aussi les supprimer : l'inbox n'est pas en `readOnly`, la source implémente en plus `removeComment`, et la dernière liste n'a pas dit que l'endpoint ne sait pas les supprimer.
 
-Les réponses ne sont **pas** optimistes : `addComment` se résout une fois la réponse enregistrée par la source, et elle apparaît alors sur le feedback partout où le hook le détient — sa ligne, `opened`, et l'état vers lequel un changement de statut en cours reviendrait. Les deux actions relèvent l'erreur après `onError`, comme les mutations plus haut.
+Les réponses ne sont **pas** optimistes : `addComment` se résout une fois la réponse enregistrée par la source, et elle apparaît alors sur le feedback partout où le hook le détient — sa ligne, `opened`, et l'état vers lequel un changement de statut en cours reviendrait. Les deux actions relèvent l'erreur après `onError`, comme les mutations plus haut — sauf un `deleteComment` dont la réponse n'existe déjà plus (un `404`, ou la `StoreNotFoundError` du store) : la réponse quitte le feedback et l'appel se résout. Une liste ou un changement de statut lu avant qu'une réponse soit enregistrée ou supprimée garde le fil que détient le hook.
 
 ```tsx
 const [draft, setDraft] = useState("");
 // Un clientId par réponse, gardé entre ses renvois : le serveur répond au
-// renvoi d'une réponse déjà arrivée par celle qu'il a enregistrée.
-const clientId = useRef<string | null>(null);
+// renvoi d'une réponse déjà arrivée par celle qu'il a enregistrée. Un
+// brouillon modifié est une autre réponse, sinon ce premier texte reviendrait
+// à sa place.
+const sent = useRef<{ body: string; clientId: string } | null>(null);
 
 async function send(feedbackId: string) {
-  // crypto.randomUUID() n'existe qu'en contexte sécurisé (HTTPS, localhost).
-  clientId.current ??= crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (sent.current?.body !== draft) {
+    // crypto.randomUUID() n'existe qu'en contexte sécurisé (HTTPS, localhost).
+    const clientId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sent.current = { body: draft, clientId };
+  }
   try {
-    await inbox.addComment(feedbackId, draft, clientId.current);
+    await inbox.addComment(feedbackId, draft, sent.current.clientId);
     setDraft("");
-    clientId.current = null;
+    sent.current = null;
   } catch {
     // le brouillon reste — affichez une erreur en ligne
   }

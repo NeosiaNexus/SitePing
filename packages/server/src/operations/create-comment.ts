@@ -25,9 +25,11 @@ export function createCommentOperation<Principal>({
   return async (scope: Scope<Principal>, body: unknown): Promise<Response> => {
     const payload = pipeline.validate(scope, commentCreateSchema, body);
     if (!payload.ok) return payload.response;
-    const { projectName, feedbackId, ...validated } = payload.value;
 
     try {
+      const { projectName, feedbackId, authorRole, ...comment } = beforeComment
+        ? await beforeComment(payload.value, scope.context)
+        : payload.value;
       const refusal = await pipeline.authorize(scope, { action: "createComment", projectName, feedbackId });
       if (refusal) return refusal;
       // 501, not 404: the thread may well exist — this store keeps no comments.
@@ -38,12 +40,11 @@ export function createCommentOperation<Principal>({
         return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);
       }
 
-      const comment = beforeComment ? await beforeComment(validated, scope.context) : validated;
       // POST is typically public so the widget can reply from a visitor's
       // browser: the role a request claims is kept only when the access
       // policy vouches for the caller.
       const role: CommentAuthorRole =
-        comment.authorRole === "team" && (await pipeline.canCommentAsTeam(scope)) ? "team" : "client";
+        authorRole === "team" && (await pipeline.canCommentAsTeam(scope)) ? "team" : "client";
       const stored = await store.addComment(feedbackId, { ...comment, authorRole: role });
 
       // A clientId is unique across every thread, so a replay that resolves to

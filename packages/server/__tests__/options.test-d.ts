@@ -4,7 +4,7 @@
  * principal inferred from `access.authenticate`.
  */
 
-import type { SitepingStore } from "@siteping/core";
+import type { CommentPayload, SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
 import {
   createSitepingHandler,
@@ -106,6 +106,11 @@ describe("the principal", () => {
       presentFeedback: (feedback, { principal }) => {
         expectTypeOf(principal).toEqualTypeOf<Reviewer>();
         return feedback;
+      },
+      beforeComment: (input, { principal }) => {
+        expectTypeOf(principal).toEqualTypeOf<Reviewer>();
+        expectTypeOf(input).toEqualTypeOf<CommentPayload>();
+        return input;
       },
       hooks: {
         onCreated: (_feedback, { principal }) => {

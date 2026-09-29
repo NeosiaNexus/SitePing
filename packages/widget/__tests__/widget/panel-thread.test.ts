@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { CommentResponse, FeedbackResponse } from "@siteping/core";
+import { type CommentResponse, type FeedbackResponse, StoreLimitError } from "@siteping/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
 import { buildThread, type ThreadOptions } from "../../src/panel-thread.js";
@@ -47,7 +47,7 @@ function makeFeedback(comments?: CommentResponse[]): FeedbackResponse {
 
 function mount(feedback: FeedbackResponse, options: Partial<ThreadOptions> = {}) {
   const post = vi.fn<ThreadOptions["post"]>();
-  const root = buildThread(feedback, { t, locale: "en", canPost: true, post, ...options });
+  const root = buildThread(feedback, { t, locale: "en", canPost: true, draft: { text: "" }, post, ...options });
   if (root) document.body.appendChild(root);
   return {
     root,
@@ -71,13 +71,15 @@ afterEach(() => {
 
 describe("buildThread", () => {
   it("is left out when there is nothing to read and no way to reply", () => {
-    expect(buildThread(makeFeedback([]), { t, locale: "en", canPost: false, post: vi.fn() })).toBeNull();
+    expect(
+      buildThread(makeFeedback([]), { t, locale: "en", canPost: false, draft: { text: "" }, post: vi.fn() }),
+    ).toBeNull();
   });
 
   it("reads a feedback from a server that predates threads (no `comments` key) without throwing", () => {
     const feedback = makeFeedback();
     expect(feedback).not.toHaveProperty("comments");
-    expect(buildThread(feedback, { t, locale: "en", canPost: false, post: vi.fn() })).toBeNull();
+    expect(buildThread(feedback, { t, locale: "en", canPost: false, draft: { text: "" }, post: vi.fn() })).toBeNull();
     const { replies, input } = mount(feedback);
     expect(replies()).toHaveLength(0);
     expect(input()).not.toBeNull();
@@ -88,6 +90,17 @@ describe("buildThread", () => {
     expect(replies()).toHaveLength(1);
     expect(replies()[0]?.textContent).toContain("Is it 16 or 24 px?");
     expect(input()).toBeNull();
+  });
+
+  it("renders the replies as a labelled list, whose new items are read out", () => {
+    const { replies } = mount(makeFeedback([makeComment({ id: "a" }), makeComment({ id: "b" })]));
+    const list = replies()[0]?.parentElement;
+
+    expect(replies().map((reply) => reply.tagName)).toEqual(["LI", "LI"]);
+    expect(list?.tagName).toBe("OL");
+    expect(list?.getAttribute("role")).toBe("list");
+    expect(list?.getAttribute("aria-label")).toBe(t("comments.title"));
+    expect(list?.getAttribute("aria-live")).toBe("polite");
   });
 
   it("renders bodies and names as text, never as markup", () => {
@@ -117,14 +130,20 @@ describe("buildThread", () => {
     expect(input()?.maxLength).toBe(5000);
     expect(send()?.textContent).toBe(t("popup.submit"));
     // jsdom reports neither userAgentData nor a Mac platform.
-    expect(root?.querySelector(".sp-thread-foot span")?.textContent).toBe(t("popup.submitHintOther"));
+    const hint = root?.querySelector(".sp-thread-foot span");
+    expect(hint?.textContent).toBe(t("popup.submitHintOther"));
+    // The field names the hint as its description, and the shortcut itself.
+    expect(hint?.id).not.toBe("");
+    expect(input()?.getAttribute("aria-describedby")).toBe(hint?.id);
+    expect(input()?.getAttribute("aria-keyshortcuts")).toBe("Control+Enter Meta+Enter");
   });
 
   it("does not advertise the keyboard shortcut on touch screens", () => {
     mockMediaQueries(["(pointer: coarse)"]);
     try {
-      const { root, send } = mount(makeFeedback([]));
+      const { root, send, input } = mount(makeFeedback([]));
       expect(root?.querySelector(".sp-thread-foot span")?.textContent).toBe("");
+      expect(input()?.hasAttribute("aria-describedby")).toBe(false);
       expect(send()?.textContent).toBe(t("popup.submit"));
     } finally {
       mockMediaQueries([]);
@@ -165,6 +184,24 @@ describe("buildThread", () => {
     expect(post).toHaveBeenCalledTimes(2);
   });
 
+  it("shows a post in flight on Send — busy, still focusable — until it settles", async () => {
+    const { post, input, send } = mount(makeFeedback([]));
+    let settle: (comment: CommentResponse) => void = () => {};
+    post.mockReturnValue(new Promise((resolve) => (settle = resolve)));
+    input()!.value = "Once";
+    send()!.click();
+    await flush();
+
+    expect(send()!.getAttribute("aria-busy")).toBe("true");
+    expect(send()!.getAttribute("aria-disabled")).toBe("true");
+    expect(send()!.disabled).toBe(false);
+
+    settle(makeComment());
+    await flush();
+    expect(send()!.getAttribute("aria-busy")).toBe("false");
+    expect(send()!.getAttribute("aria-disabled")).toBe("false");
+  });
+
   it("sends once while a post is in flight", async () => {
     const { post, input, send } = mount(makeFeedback([]));
     post.mockReturnValue(new Promise(() => {}));
@@ -199,6 +236,32 @@ describe("buildThread", () => {
     expect(resent).toBe(first);
     expect(error()!.textContent).toBe("");
     expect(replies()).toHaveLength(1);
+  });
+
+  it("says a full thread is full, rather than to try again", async () => {
+    const { post, input, send, error } = mount(makeFeedback([]));
+    post.mockRejectedValue(new StoreLimitError());
+    input()!.value = "One too many";
+    send()!.click();
+    await flush();
+
+    expect(error()!.textContent).toBe(t("comments.full"));
+    expect(input()!.value).toBe("One too many");
+  });
+
+  it("gives an edited draft a new clientId after a failure, so a first attempt that landed cannot replace it", async () => {
+    const { post, input, send } = mount(makeFeedback([]));
+    post.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce(makeComment({ body: "24px" }));
+    input()!.value = "16px";
+    send()!.click();
+    await flush();
+    input()!.value = "24px";
+    send()!.click();
+    await flush();
+
+    const [[, first], [body, second]] = post.mock.calls as [[string, string], [string, string]];
+    expect(body).toBe("24px");
+    expect(second).not.toBe(first);
   });
 
   it("gives the next reply a new clientId", async () => {

@@ -110,6 +110,36 @@ describe("buildWebhookPayload", () => {
     ]);
   });
 
+  it("dispatched from onUpdated, sends a thread without its clientIds", async () => {
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      apiKey: "k",
+      hooks: { onUpdated: (feedback) => dispatchWebhooks([{ url: "https://receiver.example/hook" }], feedback) },
+    });
+    const send = (method: string, body: unknown) =>
+      new Request("http://localhost/api/siteping", {
+        method,
+        headers: { "Content-Type": "application/json", Authorization: "Bearer k" },
+        body: JSON.stringify(body),
+      });
+    const { id } = (await (await handler.POST(send("POST", validPayloadNoAnnotations))).json()) as { id: string };
+    const reply = {
+      projectName: validPayloadNoAnnotations.projectName,
+      feedbackId: id,
+      body: "reply",
+      authorName: "Bob",
+      authorEmail: "bob@example.com",
+      clientId: "secret-comment-client-id",
+    };
+    expect((await handler.POST(send("POST", reply))).status).toBe(201);
+
+    await handler.PATCH(send("PATCH", { id, projectName: validPayloadNoAnnotations.projectName, status: "resolved" }));
+
+    const body = String(fetchSpy.mock.calls.at(-1)?.[1]?.body);
+    expect(JSON.parse(body).comments).toHaveLength(1);
+    expect(body).not.toContain("secret-comment-client-id");
+  });
+
   it("truncates excessively long messages for chat platforms", () => {
     const long = { ...FEEDBACK, message: "x".repeat(2000) };
     const slack = buildWebhookPayload("slack", long);

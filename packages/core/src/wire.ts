@@ -81,8 +81,8 @@ export function withSearchParams(endpoint: string, params: URLSearchParams): str
 
 /**
  * Map a non-OK `Response` to the appropriate typed error:
- *   - 401 / 403 → `SitepingAuthError`
- *   - other 4xx → `SitepingValidationError`
+ *   - 401 / 403 → `SitepingAuthError`, with its `status`
+ *   - other 4xx → `SitepingValidationError`, with its `status`
  *   - 5xx (or anything else) → generic `SitepingError` (code `"SERVER"`)
  *
  * The response body is consumed via `.text()` so the caller keeps the
@@ -94,8 +94,36 @@ export async function errorFromResponse(response: Response, label: string): Prom
   const detail = text ? `${response.status} ${text}` : `${response.status}`;
   const message = `${label}: ${detail}`;
   if (response.status === 401 || response.status === 403) return new SitepingAuthError(message, response.status);
-  if (response.status >= 400 && response.status < 500) return new SitepingValidationError(message);
+  if (response.status >= 400 && response.status < 500) return new SitepingValidationError(message, response.status);
   return new SitepingError(message, "SERVER", false);
+}
+
+/**
+ * An error's `status` (`SitepingValidationError.status`, or a custom
+ * source's) or `code` (a store error's) — read as a plain field, not through
+ * `instanceof`: an instance carries its code anyway, and the store error
+ * classes stay out of the browser bundles. Anything thrown is safe to read:
+ * a primitive has neither field, `null` and `undefined` are skipped.
+ */
+const fieldOf = (error: unknown, key: "status" | "code"): unknown =>
+  (error as Partial<Record<"status" | "code", unknown>> | null | undefined)?.[key];
+
+/**
+ * Whether a failed reply met a full thread — a store's `StoreLimitError`, or
+ * a 409 (the endpoint's other 409, a clientId reused on another feedback,
+ * never comes from clients that mint one per reply). Retrying won't help.
+ */
+export function isThreadFull(error: unknown): boolean {
+  return fieldOf(error, "status") === 409 || fieldOf(error, "code") === "STORE_LIMIT";
+}
+
+/**
+ * Whether a failed reply delete found nothing to delete — a store's
+ * `StoreNotFoundError`, or a 404: it is gone already. (Unlike
+ * `isStoreNotFound`, no Prisma `P2025`: a browser source never meets one.)
+ */
+export function isCommentGone(error: unknown): boolean {
+  return fieldOf(error, "status") === 404 || fieldOf(error, "code") === "STORE_NOT_FOUND";
 }
 
 /**

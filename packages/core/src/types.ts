@@ -813,11 +813,13 @@ export type CommentAuthorRole = (typeof COMMENT_AUTHOR_ROLES)[number];
 export const COMMENT_BODY_MAX_LENGTH = 5000;
 
 /**
- * Most comments one thread holds. List responses embed whole threads, which
- * are not paginated, so this bounds what one feedback weighs however much a
- * public endpoint is spammed. Stores enforce it with `StoreLimitError`; a
- * store without an atomic primitive may overshoot it by the posts that race
- * the last free slot.
+ * Most `client` comments one thread holds. List responses embed whole
+ * threads, which are not paginated, so this bounds what one feedback weighs
+ * however much a public endpoint is spammed. `team` comments — a role only
+ * the access policy grants — neither count nor meet it: a thread spammed
+ * full still takes the team's answer. Stores enforce it with
+ * `StoreLimitError`; a store without an atomic primitive may overshoot it by
+ * the posts that race the last free slot.
  */
 export const MAX_COMMENTS_PER_FEEDBACK = 100;
 
@@ -911,9 +913,9 @@ export class StorePersistenceError extends Error {
 }
 
 /**
- * Thrown when a write would break a bound of the store contract — a thread
- * already holding `MAX_COMMENTS_PER_FEEDBACK` comments. Handlers translate
- * this to HTTP 409.
+ * Thrown when a write would break a bound of the store contract — a
+ * `client` comment on a thread already holding `MAX_COMMENTS_PER_FEEDBACK`
+ * of them. Handlers translate this to HTTP 409.
  */
 export class StoreLimitError extends Error {
   readonly code = "STORE_LIMIT" as const;
@@ -1115,8 +1117,9 @@ export interface SitepingStore {
    * refuse a replay aimed at another thread).
    *
    * Throws `StoreNotFoundError` when the feedback does not exist,
-   * `StoreLimitError` when its thread already holds
-   * `MAX_COMMENTS_PER_FEEDBACK` comments, `StorePersistenceError` when the
+   * `StoreLimitError` when a `client` comment meets a thread already holding
+   * `MAX_COMMENTS_PER_FEEDBACK` of them (a `team` comment is never refused
+   * for it), `StorePersistenceError` when the
    * write cannot be persisted. A comment is not a change of the feedback
    * itself: its `updatedAt` stays as it was.
    *

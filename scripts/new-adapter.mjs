@@ -123,10 +123,16 @@ export { isStorePersistence, StoreDuplicateError, StoreNotFoundError, StorePersi
  * Two implementation strategies:
  * - Snapshot backend (KV, file, browser storage): delegate everything to
  *   \`createCollectionStore({ load, persist, generateId })\` from
- *   @siteping/core — see adapter-memory for the reference.
+ *   @siteping/core — see adapter-memory for the reference. Threads are
+ *   opt-in: add \`comments: true\` once \`load\` revives each comment's
+ *   \`createdAt\` as a Date; without it the store keeps no replies, and the
+ *   conformance suite skips its thread tests.
  * - Query backend (SQL, ORM): implement the 6 methods below directly;
  *   \`buildFeedbackRecord\`/\`buildAnnotationRecord\` handle record
  *   construction, and the SitepingStore JSDoc documents the error contract.
+ *   For threads, add \`addComment\`/\`deleteComment\` (\`buildCommentRecord\`).
+ *
+ * Threads: https://siteping.dev/docs/adapters/writing-an-adapter#discussion-threads
  */
 export class ${className} implements SitepingStore {
   async createFeedback(_data: FeedbackCreateInput): Promise<FeedbackRecord> {

@@ -11,7 +11,7 @@ The inbox reads and writes through a small abstraction with three ways to supply
 <SitepingInbox projects="my-project" endpoint="/api/siteping" apiKey={KEY} />
 ```
 
-Talks to your [SitePing endpoint](/docs/server): `GET` for lists, `PATCH` for statuses, `DELETE` for removals, always with `cache: "no-store"`. Errors arrive typed by `code` (`AUTH` for 401/403, with that `status`, `VALIDATION` for other 4xx, `SERVER` for 5xx, `NETWORK` for fetch failures). There are deliberately **no retries** — a triage UI should tell you immediately.
+Talks to your [SitePing endpoint](/docs/server): `GET` for lists, `PATCH` for statuses, `DELETE` for removals, always with `cache: "no-store"`. Errors arrive typed by `code` (`AUTH` for 401/403 and `VALIDATION` for other 4xx, each with the HTTP `status`, `SERVER` for 5xx, `NETWORK` for fetch failures). There are deliberately **no retries** — a triage UI should tell you immediately.
 
 Behind your app's login, leave `apiKey` out: mounted on the endpoint's origin, the inbox sends your session cookie with every request, for a server [`access`](/docs/server#custom-access) policy to read — see the [Better Auth recipe](/docs/server#recipe-better-auth). From another origin, send a token with `headers`.
 
@@ -57,13 +57,13 @@ const source: InboxSource = {
     // input: body, authorName, authorEmail, authorRole ("team"), clientId
     return reviveDates(await trpc.siteping.addComment.mutate({ feedbackId, projectName, ...input }));
   },
-  async removeComment(feedbackId, commentId, projectName) {
-    await trpc.siteping.removeComment.mutate({ feedbackId, commentId, projectName });
+  async removeComment(feedbackId, projectName, commentId) {
+    await trpc.siteping.removeComment.mutate({ feedbackId, projectName, commentId });
   },
 };
 ```
 
-`list()` may also return `capabilities: { comments: false }` to make threads read-only for a backend that keeps none, or `deleteComments: false` to hide the delete buttons of a backend that cannot delete replies; left out, `addComment` and `removeComment` alone decide. A source without `removeComment` posts replies but offers no delete. The endpoint source maps the server's advertised `capabilities` (and a server that advertises nothing to read-only); the store source defines the methods only when the store implements `addComment` / `deleteComment`.
+`list()` may also return `capabilities: { comments: false }` to make threads read-only for a backend that keeps none, or `deleteComments: false` to hide the delete buttons of a backend that cannot delete replies; left out, `addComment` and `removeComment` alone decide. A source without `removeComment` posts replies but offers no delete. When the reply is gone already, have `removeComment` throw an error whose `status` is `404`: the inbox then drops it instead of failing. The inbox replies as the team, whose replies never meet a thread's cap: a `409` from `addComment` means the server did not take the reply as the team's (see [who speaks as the team](/docs/comments#who-speaks-as-the-team)), and the composer says it failed. The endpoint source's errors carry the response's `status`, and the store source's the store's own errors. The endpoint source maps the server's advertised `capabilities` (and a server that advertises nothing to read-only); the store source defines the methods only when the store implements `addComment` / `deleteComment`.
 
 ### Permissions
 

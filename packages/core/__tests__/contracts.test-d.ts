@@ -165,7 +165,7 @@ describe("discussion threads", () => {
 
 describe("SitepingStore contract", () => {
   it("is satisfied by the collection-store engine, including its optional members", () => {
-    const engine = createCollectionStore({ load: () => [], persist: () => {}, generateId: () => "id" });
+    const engine = createCollectionStore({ load: () => [], persist: () => {}, generateId: () => "id", comments: true });
     expectTypeOf(engine).toExtend<SitepingStore>();
     expectTypeOf(engine).toExtend<
       Required<
@@ -174,6 +174,13 @@ describe("SitepingStore contract", () => {
     >();
     expectTypeOf(engine.verifyProjectOwnership).returns.resolves.toEqualTypeOf<boolean>();
     expectTypeOf(engine.createFeedbackIfAbsent).returns.resolves.toEqualTypeOf<FeedbackCreateOutcome>();
+  });
+
+  it("guarantees threads only to an engine that opts in", () => {
+    const threadless = createCollectionStore({ load: () => [], persist: () => {}, generateId: () => "id" });
+    expectTypeOf(threadless).toExtend<SitepingStore>();
+    expectTypeOf(threadless.addComment).toEqualTypeOf<SitepingStore["addComment"]>();
+    expectTypeOf(threadless.deleteComment).toEqualTypeOf<SitepingStore["deleteComment"]>();
   });
 
   it("keeps createFeedbackIfAbsent optional for minimal adapters", () => {

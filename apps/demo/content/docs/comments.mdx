@@ -13,9 +13,9 @@ The thread reads on from the message in the panel's feedback detail view, oldest
 
 - **The composer shows only when replies can be kept**: the endpoint advertises `capabilities.comments` on its list responses (in [`store` mode](/docs/adapters/localstorage): the store implements `addComment`), and the feedback's [`permissions`](/docs/server#what-each-requester-may-do) do not refuse replies. Against a server that predates threads — no `capabilities`, no `comments` — the widget shows no thread and nothing breaks.
 - **Who replies**: the reviewer, resolved like a feedback's author — your `identity` option, else the one saved in this browser, else the identity prompt. Dismissing the prompt sends nothing and reports nothing; the draft stays. A widget reply is always stored as `client`.
-- **Sending**: the button or Ctrl/⌘+Enter. Network failures and 5xx are retried like a feedback's, under the same `clientId`, so a retry never duplicates the reply. A reply is never queued for a later page load: if it still fails, the draft stays and the thread says it wasn't sent.
+- **Sending**: the button or Ctrl/⌘+Enter. Network failures and 5xx are retried like a feedback's, under the same `clientId`, so a retry never duplicates the reply. A reply is never queued for a later page load: if it still fails, the draft stays and the thread says it wasn't sent — or that the thread is full, which no retry fixes. Send shows a reply in flight, and the draft, like a reply in flight, survives the panel reloading its list.
 - **Your code hears about it** through `onCommentAdded` and the `comment:added` event (payload: the stored comment, `CommentResponse`); a failure goes to `onError` and `feedback:error`, like any API call.
-- **Reading the answer** needs the list: with an `apiKey`, add `"GET"` to `publicEndpoints` — see [Public endpoints](#public-endpoints-and-abuse).
+- **Threads need the list**: the widget opens a thread from its panel, which a list request fills. With an `apiKey`, add `"GET"` to `publicEndpoints`, or a key-less widget can neither read nor reply — see [Public endpoints](#public-endpoints-and-abuse).
 
 ## In the dashboard
 
@@ -32,7 +32,7 @@ The drawer shows the opened feedback's thread, and lets your team reply and dele
 
 - **`author`** (`{ name, email? }`) is who replies from this inbox. Without it, threads are read-only — and hidden when empty. So are they when the endpoint advertises no comments, or when the feedback's [`permissions`](/docs/server#what-each-requester-may-do) refuse replies; a reply offers no delete when the endpoint advertises no deletion, the feedback's `permissions` refuse it, or the inbox is `readOnly`.
 - **Replies ask for the `team` role**, which the server keeps only for a caller your access policy vouches for — the `apiKey`, or `canCommentAsTeam` under `access` (see [who speaks as the team](#who-speaks-as-the-team)). Any other reply is stored as `client`.
-- **Nothing is optimistic**: a reply shows once stored, and a failure keeps the draft. Deleting a reply asks first; like every `DELETE`, it needs the `apiKey` or your access policy's consent.
+- **Nothing is optimistic**: a reply shows once stored, and a failure keeps the draft — so does a reply the source leaves unanswered for 30 seconds, and a late answer still shows it. Escape in a draft leaves the field rather than closing the drawer. Deleting a reply asks first, and a reply someone else deleted already simply goes; like every `DELETE`, it needs the `apiKey` or your access policy's consent.
 - **Headless**: `useSitepingInbox` returns `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)` and `deleteComment(id, commentId)` — see [the hook](/docs/dashboard/headless#discussion-threads). A [custom source](/docs/dashboard/sources#discussion-threads) opts in with `addComment` and `removeComment`.
 
 ## What a comment holds
@@ -50,7 +50,7 @@ The drawer shows the opened feedback's thread, and lets your team reply and dele
 Every feedback in a response carries `comments`, oldest first: `[]` when the thread is empty, or when the store keeps no comments at all.
 
 - **Idempotent posts.** A comment also carries a `clientId` the client generates. Posting the same `clientId` again returns the stored comment instead of adding it twice, so a retried request never duplicates a reply. Like the feedback's, it is never sent back.
-- **100 comments per thread** (`MAX_COMMENTS_PER_FEEDBACK`). Lists embed whole threads, which are not paginated, so the cap bounds what one feedback weighs.
+- **100 `client` comments per thread** (`MAX_COMMENTS_PER_FEEDBACK`). Lists embed whole threads, which are not paginated, so the cap bounds what spam on the public `POST` can make one feedback weigh. `team` replies neither count nor meet it: a thread spammed full still takes your answer.
 - **A comment leaves the feedback's `updatedAt` alone.** `updatedAt` tracks the feedback's own fields (its status); the newest comment's `createdAt` tells when the thread last moved.
 - **Deleting a feedback deletes its thread.**
 
@@ -74,7 +74,7 @@ Content-Type: application/json
 }
 ```
 
-It answers `201` with the comment. `authorRole` is optional and defaults to `client`. `clientId` is required — `[a-zA-Z0-9_-]`, up to 200 characters: generate one per comment (`crypto.randomUUID()`) and resend the same one on a retry.
+It answers `201` with the comment. `authorRole` is optional and defaults to `client`. `clientId` is required — `[a-zA-Z0-9_-]`, up to 200 characters: generate one per comment (`crypto.randomUUID()`) and resend the same one on a retry of the same text. An edited reply is a new comment with a new `clientId`: the server matches on `clientId` alone, so a first attempt that did land would come back in its place. The widget and the dashboard do both.
 
 ### Delete a comment
 
@@ -116,7 +116,7 @@ The `GET` list is unchanged, with three additions: each feedback's `comments`; a
 | `403` | Refused by `authorize` — or, under `access`, an `Origin` outside `allowedOrigins` (CSRF check) |
 | `404 { error: "Feedback not found" }` | Unknown feedback, or one of another project |
 | `404 { error: "Comment not found" }` | The comment is not on that feedback's thread |
-| `409 { error }` | The thread already holds 100 comments, or the `clientId` is already used on another feedback |
+| `409 { error }` | A `client` comment on a thread that already holds 100 of them (a `team` reply is never refused for it), or the `clientId` is already used on another feedback |
 | `415 { error }` | Under `access`, a body without `Content-Type: application/json` (CSRF check) |
 | `422 { error }` | A value longer than the store holds — a name over 191 characters in [Prisma's MySQL columns](/docs/adapters/prisma#database-schema) |
 | `501 { error: "Comments are not supported by this store" }` | The store keeps no comments — see [enabling threads](#enable-threads-on-your-store) |
@@ -128,7 +128,7 @@ The widget posts from anonymous browsers, so the `authorRole` a request sends is
 - **Under the `apiKey` policy**, the request must carry `Authorization: Bearer <apiKey>`. The public `POST`, a wrong key, and a handler without an `apiKey` all get `client`. A widget configured with `apiKey` sends that key from every visitor's browser, so its visitors could post as the team: keep `apiKey` out of public widgets.
 - **Under [`access`](/docs/server#custom-access)**, `canCommentAsTeam(principal)` decides. Without it, your `canReadAuthorEmail` answer does — whoever may read reviewer emails is on the project side — so a policy that already tells visitors apart needs nothing more. A policy with neither callback stamps every comment `client`: posting as the team lets a caller speak for your agency in the thread, so it is never granted by default.
 
-The name and email are claims too: a visitor may sign a reply with anyone's, as they may a feedback. Under `access`, impose a signed-in author's from the session with `beforeComment`, as the [recipes](/docs/server#recipe-openid-connect) do — the role check above still applies to what it returns.
+The name and email are claims too: a visitor may sign a reply with anyone's, as they may a feedback. To take them from the session — and scrub the body, or pin the project — use [`beforeComment`](/docs/server#extension-points), the replies' `beforeCreate`, as the [recipes](/docs/server#recipe-openid-connect) do; the role check above still applies to what it returns.
 
 `authorize` sees two more actions: `createComment` and `deleteComment`, with the `feedbackId` — and the `commentId` for a delete. On a `dryRun`, which fills in the feedback's [`permissions`](/docs/server#what-each-requester-may-do), `deleteComment` comes without a `commentId` and its answer covers the whole thread: guard a per-author rule with `if (!commentId) return false`, which hides the delete buttons while the real `DELETE` still goes through your rule.
 
@@ -153,15 +153,15 @@ A comment's `authorEmail` is redacted exactly like the feedback's: blank unless 
 
 ## Public endpoints and abuse
 
-- **Reading replies from the widget.** With an `apiKey`, `publicEndpoints` defaults to `["POST", "OPTIONS"]`: `GET` needs the key, so a public widget can post a comment but not read the answer. Add `"GET"` to `publicEndpoints` to let reviewers read their threads — emails stay redacted.
-- **Rate limiting.** The public `POST` takes comments too: anyone who knows a feedback id and your project name can add one. Rate-limit `POST` in your framework or reverse proxy; the 100-comment cap bounds how large one thread can grow, not how fast.
+- **Threads from a public widget.** With an `apiKey`, `publicEndpoints` defaults to `["POST", "OPTIONS"]`: `GET` needs the key, so a key-less widget cannot load its panel, and reviewers can neither read a thread nor reply — only a direct API call could still post a comment. Add `"GET"` to `publicEndpoints` to let reviewers use their threads — emails stay redacted.
+- **Rate limiting.** The public `POST` takes comments too: anyone who knows a feedback id and your project name can add one. Rate-limit `POST` in your framework or reverse proxy; the cap of 100 `client` comments bounds how large spam can make one thread, not how fast — and never blocks your team's reply.
 - **Notifications.** Webhooks and the [lifecycle hooks](/docs/server#extension-points) fire for feedbacks only: adding or deleting a comment runs none of them, and `onDeleting`'s target is always a feedback or a project. `beforeComment` is the one callback a comment runs.
 
 ## Enable threads on your store
 
 | Store | What to do |
 |---|---|
-| [Prisma](/docs/adapters/prisma#discussion-threads) | Run `npx @siteping/cli sync` to add the `SitepingComment` model, then `npx prisma db push` (or `npx prisma migrate dev`). Until the client is generated with it, threads read empty and comment writes answer `501` |
+| [Prisma](/docs/adapters/prisma#discussion-threads) | Run `npx @siteping/cli sync` to add the `SitepingComment` model, then `npx prisma db push` (or `npx prisma migrate dev`) and `npx prisma generate` — Prisma 7 no longer generates from those. Until the client is generated with it, threads read empty and comment writes answer `501` |
 | [Drizzle](/docs/adapters/drizzle) | Nothing beyond the setup: `sitepingComments` is one of the three tables the store needs. It reads every feedback's thread, so lists fail without it |
 | [Memory](/docs/adapters/memory), [localStorage](/docs/adapters/localstorage) | Nothing — both keep threads. localStorage data saved by an earlier version reads with empty threads |
-| [Your own](/docs/adapters/writing-an-adapter#discussion-threads) | Implement the optional `addComment` and `deleteComment` — `createCollectionStore` provides both |
+| [Your own](/docs/adapters/writing-an-adapter#discussion-threads) | Implement the optional `addComment` and `deleteComment` — `createCollectionStore` provides both with `comments: true` |

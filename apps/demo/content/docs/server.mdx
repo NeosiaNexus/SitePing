@@ -117,7 +117,7 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 | `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Fire on each new feedback — see [webhooks](#webhooks) |
 | `waitUntil` | `(promise) => void` | — | Keeps webhook deliveries alive after the response on serverless and edge runtimes — see [webhooks](#webhooks) |
 | `beforeCreate` | `(input, context) => input` | — | Rewrite a submission before it is stored — see [extension points](#extension-points) |
-| `beforeComment` | `(input, context) => input` | — | The same for a [comment](/docs/comments) |
+| `beforeComment` | `(input, context) => input` | — | The same for a [thread](/docs/comments) reply |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transform each record before it is sent |
 | `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
 | `logger` | `{ error(message, context) }` | `console.error` | Where unexpected failures go, with the request's method and path — and for a failed hook, the feedback or deletion it concerns. Webhook failures go to their own [`onError`](#webhooks) instead. A logger that throws or rejects falls back to `console.error` |
@@ -190,7 +190,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 - **`authorize` also fills in [`permissions`](#what-each-requester-may-do)**, asked with `dryRun: true`: `update`, `delete`, `createComment` and `deleteComment` for each feedback a response carries, and `deleteAll` once per list. Nothing is being done then — skip your audit log on dry runs. A dry-run `deleteComment` carries no `commentId`, its answer covering the whole thread: a per-author rule answers `false` there (`if (!commentId) return false`). Keep it fast: a page of 50 feedbacks takes 201 dry runs, 8 at a time — they share the response's `request`, so a policy that queries a database can cache per request, in a `WeakMap` keyed on it.
 - **A dry run is asked about an action, not a method.** Its `request` is the response's — a `GET` for a list, the `POST` or `PATCH` a write answers — and `authenticate` is not called again for it. Decide by `action`, never by `request.method`; and when `authenticate` admits visitors on some methods only, have `authorize` refuse them the other actions, or they are offered controls that answer `401`.
 - **`canReadAuthorEmail`** reveals reviewer emails on `true` only: without it, every response blanks them, and so does any other answer — `undefined` from a principal that lacks the flag you read included. A policy that serves the public widget resolves a principal for anonymous visitors too, so being authenticated says nothing about who may read them.
-- **`canCommentAsTeam`** decides whether a comment that asks for the `team` role keeps it; any other is stamped `client`. It defaults to the `canReadAuthorEmail` answer, so a policy that sets neither never grants it — see [who speaks as the team](/docs/comments#who-speaks-as-the-team).
+- **`canCommentAsTeam`** decides whether a comment that asks for the `team` role keeps it; any other is stamped `client`. It defaults to the `canReadAuthorEmail` answer, so a policy that sets neither never grants it — see [who speaks as the team](/docs/comments#who-speaks-as-the-team). Once set, only `true` grants the role.
 - A callback that throws answers a logged `500` — except `authorize` on a dry run: that permission is refused, the failure logged, and the response goes out.
 
 `access` replaces `apiKey`, `publicEndpoints`, `requireAuthForDestructive` and `redactUnauthenticatedEmails`: passing both is a type error. From a page on another origin, send the credential through the widget's `headers` option — the widget does not send cookies cross-origin.
@@ -274,13 +274,13 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   // Every site the widget runs on, and the dashboard's own origin.
   allowedOrigins: ["https://client-site.com", "https://inbox.example.com"],
   access: oidcAccess,
-  // A signed-in author's name, and verified email, come from the token.
+  // A signed-in author's name, and verified email, come from the token…
   beforeCreate: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
-  // A reply's too.
+  // …on their replies too.
   beforeComment: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
@@ -341,7 +341,7 @@ function submittedBy(request: Request, sub: string): Promise<Set<string>> {
 
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
-  // …allowedOrigins and beforeCreate as in route.ts above
+  // …allowedOrigins, beforeCreate and beforeComment as in route.ts above
   access: {
     ...oidcAccess,
     authorize: async ({ principal, action, feedbackId = "", request }) =>
@@ -425,13 +425,13 @@ import { store } from "@/lib/siteping-store";
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
   access: betterAuthAccess,
-  // A signed-in author's name, and verified email, come from the session.
+  // A signed-in author's name, and verified email, come from the session…
   beforeCreate: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
-  // A reply's too.
+  // …on their replies too.
   beforeComment: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
@@ -493,7 +493,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   // Every site the widget runs on. The inbox stays on the endpoint's own origin.
   allowedOrigins: ["https://client-site.com"],
   access: betterAuthAccess,
-  // …beforeCreate as above
+  // …beforeCreate and beforeComment as above
 });
 ```
 
@@ -534,6 +534,13 @@ createSitepingHandler({
     authorEmail: principal.email,
     message: input.message.replace(/token=\S+/g, "token=[redacted]"),
   }),
+  // The same for a reply in a thread.
+  beforeComment: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name,
+    authorEmail: principal.email,
+    body: input.body.replace(/token=\S+/g, "token=[redacted]"),
+  }),
   hooks: {
     onCreated: (feedback) => searchIndex.add(feedback),
     // Throw to keep the record: the DELETE answers 502 and can be retried.
@@ -542,8 +549,7 @@ createSitepingHandler({
 });
 ```
 
-- **`beforeCreate`** runs on the validated submission, before `authorize` — which sees the project it returns.
-- **`beforeComment`** runs on a validated [comment](/docs/comments), once `authorize` allowed it and, on a store that implements `verifyProjectOwnership` (every bundled store does), its feedback was found. A reply's name and email are what the request sends until it imposes yours; the `team` role stays your access policy's call, whatever it returns.
+- **`beforeCreate`** runs on the validated submission, before `authorize` — which sees the project it returns. **`beforeComment`** does the same for a [reply](/docs/comments), `projectName` and `feedbackId` included — so it runs before the feedback is looked up too, and may run for one that turns out not to exist. The `authorRole` it returns stays a claim, `team` being kept only for a caller [your policy vouches for](/docs/comments#who-speaks-as-the-team). Without it, a reply keeps the name and email its client sent.
 - **`presentFeedback`** runs on each record just before it is sent; `clientId` stripping and email redaction still apply after it.
 - **`onCreated`**, **`onUpdated`** and **`onDeleted`** are awaited before the response, so serverless runtimes don't cut them off. A throw is logged and never fails the request: the write already happened. `onCreated` runs once per stored feedback, never for a replayed `clientId`.
 - **`onDeleting`** runs before the delete, with `{ kind: "single", id, projectName }` or `{ kind: "project", projectName }`. A throw keeps the record and answers `502`.
@@ -570,11 +576,11 @@ One endpoint, five methods. All bodies are JSON.
 
 **DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
 
-**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`, the first 20 issues; a body over `maxBodyBytes` → `413`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project, a comment's `clientId` already used on another feedback, or a full comment thread → `409 { error }`; a value longer than the store holds (a `VARCHAR(191)` column on MySQL) → `422 { error }`; comment write on a store without comments → `501 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
+**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`, the first 20 issues; a body over `maxBodyBytes` → `413`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project, a comment's `clientId` already used on another feedback, or a `client` comment on a full thread → `409 { error }`; a value longer than the store holds (a `VARCHAR(191)` column on MySQL) → `422 { error }`; comment write on a store without comments → `501 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
 
 ### Validation limits worth knowing
 
-The whole body ≤ `maxBodyBytes` (4 MiB) · `message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · comment `body` ≤ 5000 chars, 100 comments per thread · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
+The whole body ≤ `maxBodyBytes` (4 MiB) · `message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · comment `body` ≤ 5000 chars, 100 `client` comments per thread (`team` replies are not capped) · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
 
 ## Webhooks
 

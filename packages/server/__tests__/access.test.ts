@@ -273,6 +273,63 @@ describe("createSitepingHandler — access", () => {
     expect(adminReply.authorRole).toBe("team");
   });
 
+  it("fails closed when a JavaScript canReadAuthorEmail answers undefined — for emails and the team role", async () => {
+    // TypeScript wants a boolean; `roles?.includes(…)` over a visitor without roles answers undefined.
+    const access = {
+      authenticate: (request: Request) => (request.headers.get("x-admin") ? { roles: ["admin"] } : { visitor: true }),
+      canReadAuthorEmail: (principal: { roles?: string[] }) => principal.roles?.includes("admin"),
+    } as unknown as SitepingAccessControl<object>;
+    const handler = createSitepingHandler({ store: new MemoryStore(), access });
+    const { id } = (await (
+      await handler.POST(
+        new Request(ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-admin": "1" },
+          body: JSON.stringify(validPayloadNoAnnotations),
+        }),
+      )
+    ).json()) as FeedbackRecord;
+
+    const reply = await handler.POST(
+      jsonRequest("POST", {
+        projectName: PROJECT,
+        feedbackId: id,
+        body: "Speaking for the agency",
+        authorName: "Visitor",
+        authorEmail: "visitor@example.com",
+        authorRole: "team",
+        clientId: "visitor-reply",
+      }),
+    );
+    const listed = ((await (await handler.GET(listRequest())).json()) as { feedbacks: FeedbackRecord[] }).feedbacks;
+
+    expect(((await reply.json()) as { authorRole: string }).authorRole).toBe("client");
+    expect(listed[0]?.authorEmail).toBe("");
+  });
+
+  it("refuses the team role when a custom canCommentAsTeam answers anything but true", async () => {
+    const access = {
+      authenticate: () => ({ id: "u" }),
+      canCommentAsTeam: () => "yes",
+    } as unknown as SitepingAccessControl<object>;
+    const handler = createSitepingHandler({ store: new MemoryStore(), access });
+    const { id } = await createFeedback(handler);
+
+    const reply = await handler.POST(
+      jsonRequest("POST", {
+        projectName: PROJECT,
+        feedbackId: id,
+        body: "b",
+        authorName: "a",
+        authorEmail: "",
+        authorRole: "team",
+        clientId: "c",
+      }),
+    );
+
+    expect(((await reply.json()) as { authorRole: string }).authorRole).toBe("client");
+  });
+
   it("applies the email permission to fresh and replayed POST responses", async () => {
     const store = new MemoryStore();
     const handler = createSitepingHandler({

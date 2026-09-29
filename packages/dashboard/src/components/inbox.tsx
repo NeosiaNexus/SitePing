@@ -221,6 +221,15 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
         target instanceof HTMLSelectElement;
 
       if (event.key === "Escape") {
+        // An IME candidate window's Esc belongs to the IME.
+        if (event.nativeEvent.isComposing) return;
+        // Esc in a reply draft leaves the field for the drawer rather than
+        // closing it, which would drop the draft: the next Esc closes.
+        if (target instanceof HTMLTextAreaElement && target.value.trim()) {
+          target.parentElement?.closest<HTMLElement>("[tabindex]")?.focus();
+          event.preventDefault();
+          return;
+        }
         // Esc inside search stays inside search — it never closes the drawer.
         if (target && target === searchRef.current) {
           if (state.search) {

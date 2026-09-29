@@ -401,6 +401,48 @@ test.describe("Discussion thread across the widget and the inbox", () => {
   });
 });
 
+test.describe("Typing in the widget's reply box", () => {
+  test("never triggers the page's single-key shortcuts, nor loses a character to them", async ({
+    page,
+    request,
+  }, testInfo) => {
+    const project = projectFor(testInfo);
+    await seed(request, project, "Which font size?");
+    await openWidgetThread(page, project);
+    // The detail view focuses its back button on the next frame: once it has,
+    // nothing takes the focus from the field.
+    await page.waitForFunction(() =>
+      document.querySelector("siteping-widget")?.shadowRoot?.activeElement?.classList.contains("sp-detail-back"),
+    );
+    // DocSearch-style: `/` opens the page's search, `s` stars — outside text fields.
+    await page.evaluate(() => {
+      const fired: string[] = [];
+      Object.assign(window, { shortcutsFired: fired });
+      document.addEventListener("keydown", (event) => {
+        const target = event.target as HTMLElement;
+        if ((event.key === "/" || event.key === "s") && !["INPUT", "TEXTAREA"].includes(target.tagName)) {
+          event.preventDefault();
+          fired.push(event.key);
+        }
+      });
+      document
+        .querySelector("siteping-widget")
+        ?.shadowRoot?.querySelector<HTMLTextAreaElement>(".sp-detail textarea")
+        ?.focus();
+    });
+
+    await page.keyboard.type("see https://x.io/a s");
+
+    const typed = await page.evaluate(
+      () =>
+        document.querySelector("siteping-widget")?.shadowRoot?.querySelector<HTMLTextAreaElement>(".sp-detail textarea")
+          ?.value,
+    );
+    expect(typed).toBe("see https://x.io/a s");
+    expect(await page.evaluate(() => (window as unknown as { shortcutsFired: string[] }).shortcutsFired)).toEqual([]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Permissions: what the server lets each requester do (#101)
 // ---------------------------------------------------------------------------

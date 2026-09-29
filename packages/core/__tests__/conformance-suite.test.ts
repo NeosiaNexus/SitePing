@@ -19,6 +19,7 @@ function createUniqueIndexStore(): SitepingStore {
       feedbacks = next;
     },
     generateId: () => `unique-${counter++}`,
+    comments: true,
   });
   const inserting = new Set<string>();
 

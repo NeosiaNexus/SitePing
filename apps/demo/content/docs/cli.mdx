@@ -19,7 +19,7 @@ npx @siteping/cli init
 
 `init` walks you through two confirmations:
 
-1. **Sync Prisma models** — if a schema is found (see [schema detection](#schema-detection)), it offers to add the `SitepingFeedback` and `SitepingAnnotation` models.
+1. **Sync Prisma models** — if a schema is found (see [schema detection](#schema-detection)), it offers to add the SitePing models: `SitepingFeedback`, `SitepingAnnotation` and `SitepingComment` (the [discussion threads](/docs/comments)).
 2. **Generate the API route** — offers to create a Next.js App Router route that serves the widget. The file goes to `app/api/siteping/route.ts`, or `src/app/api/siteping/route.ts` when your project uses a `src/` layout. If both `app/` and `src/app/` exist, `app/` wins — Next.js itself ignores `src/app/` then. An existing route — `route.ts`, `.tsx`, `.js` or `.jsx` — is never overwritten.
 
 The generated route imports two things you need to provide yourself — the CLI installs nothing:
@@ -40,12 +40,12 @@ npx @siteping/cli sync --schema prisma/schema.prisma
 
 `sync` merges the SitePing models into your Prisma schema without prompts, which makes it safe for CI and update scripts. It works at the AST level:
 
-- creates the two models if they are missing,
+- creates the SitePing models that are missing — in the database schema of the existing SitePing models (their `@@schema`) when your datasource declares several `schemas`,
 - adds any missing fields and `@@index` blocks,
 - rewrites SitePing fields whose type or attributes drifted from the expected shape — keeping the parts that are yours (`@map` column names, relation names, a relation's `onUpdate`, comments); an `@ignore` counts as drift, since the adapter writes every SitePing column,
 - **never touches fields you added yourself.**
 
-When something changed, it reminds you to run `npx prisma db push`. Running it twice in a row is a no-op.
+When something changed, it reminds you to run `npx prisma db push` and `npx prisma generate` (Prisma 7 no longer generates the client from `db push`). An existing schema gets `SitepingComment` and the `SitepingFeedback.comments` relation this way: apply them before you deploy — see [discussion threads with Prisma](/docs/adapters/prisma#discussion-threads). Running it twice in a row is a no-op.
 
 > **Commit before you run it.** `sync` re-prints the whole schema file, so formatting (blank lines after `//` comments, column alignment) is normalized across your own models too — `///` doc comments stay attached to what they document. A clean git diff makes the changes easy to review.
 
@@ -60,7 +60,7 @@ npx @siteping/cli status --schema prisma/schema.prisma
 
 | Check | What it looks at |
 |---|---|
-| Prisma schema | Both models present, every field up to date — the exact diff `sync` applies, so type, optionality, attributes and their arguments (`@unique`, `@db.Text`, `onDelete: Cascade`, …) and `@@index` blocks all count |
+| Prisma schema | All three SitePing models present, every field up to date — the exact diff `sync` applies, so type, optionality, attributes and their arguments (`@unique`, `@db.Text`, `onDelete: Cascade`, …) and `@@index` blocks all count |
 | API route | `api/siteping/route.ts` (or `.tsx`, `.js`, `.jsx`) exists in the app directory Next.js serves — `app/`, or `src/app/` when there is no `app/` |
 | Package | `@siteping/widget` listed in your `package.json` |
 | Widget integration | `initSiteping` referenced somewhere in `src/`, `app/`, or `pages/` |

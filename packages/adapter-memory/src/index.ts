@@ -53,6 +53,8 @@ export class MemoryStore implements SitepingStore {
       this.feedbacks = next;
     },
     generateId: () => `mem-${this.idCounter++}-${Date.now().toString(36)}`,
+    // Records live in memory: comment dates stay Dates.
+    comments: true,
   });
 
   createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {

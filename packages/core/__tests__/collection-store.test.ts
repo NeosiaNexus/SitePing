@@ -46,7 +46,7 @@ function kvBackend() {
     state.cache ??= structuredClone(state.kv);
     return state.cache;
   });
-  const store = createCollectionStore({ load, persist, generateId: () => `id-${++state.seq}` });
+  const store = createCollectionStore({ load, persist, generateId: () => `id-${++state.seq}`, comments: true });
   return { store, state, load, persist };
 }
 
@@ -166,6 +166,52 @@ describe("buildFeedbackRecord", () => {
   });
 });
 
+describe("createCollectionStore — threads are opt-in", () => {
+  /**
+   * A snapshot adapter written before threads: JSON storage whose `load`
+   * revives the record's dates, never a comment's.
+   */
+  function jsonStore(options: { comments?: true } = {}) {
+    let json = "[]";
+    let seq = 0;
+    const revive = (raw: FeedbackRecord): FeedbackRecord => ({
+      ...raw,
+      createdAt: new Date(raw.createdAt),
+      updatedAt: new Date(raw.updatedAt),
+    });
+    return createCollectionStore({
+      load: () => (JSON.parse(json) as FeedbackRecord[]).map(revive),
+      persist: (next) => {
+        json = JSON.stringify(next);
+      },
+      generateId: () => `id-${++seq}`,
+      ...options,
+    });
+  }
+
+  it("leaves a store without `comments: true` threadless, as the engine was before threads", async () => {
+    const store = jsonStore();
+
+    const created = await store.createFeedback(input("c1"));
+
+    expect(store.addComment).toBeUndefined();
+    expect(store.deleteComment).toBeUndefined();
+    expect(created).not.toHaveProperty("comments");
+    expect((await store.findByClientId("c1"))?.comments).toBeUndefined();
+  });
+
+  it("keeps threads once the adapter opts in", async () => {
+    const store = jsonStore({ comments: true });
+
+    const created = await store.createFeedback(input("c1"));
+    const added = await store.addComment?.(created.id, comment("k1"));
+
+    expect(created.comments).toEqual([]);
+    expect((await store.findByClientId("c1"))?.comments?.map((c) => c.id)).toEqual([added?.id]);
+    expect(added?.body).toBe("b");
+  });
+});
+
 describe("createCollectionStore — records without a thread", () => {
   /** A store whose only record was persisted before comments existed: no `comments` key at all. */
   async function legacyStore() {
@@ -218,11 +264,13 @@ function arrayBackend(async: boolean) {
           write(next);
         },
         generateId,
+        comments: true,
       })
     : createCollectionStore({
         load: () => state.rows,
         persist: write,
         generateId,
+        comments: true,
       });
   return { store, state };
 }

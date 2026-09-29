@@ -434,6 +434,10 @@ export const DETAIL_CSS = /* css */ `
 
   /* ---- Thread Section ---- */
 
+  .sp-thread-list {
+    list-style: none;
+  }
+
   .sp-comment {
     margin-top: 8px;
     border-left-color: var(--sp-border);
@@ -480,6 +484,19 @@ export const DETAIL_CSS = /* css */ `
   .sp-thread-foot {
     justify-content: space-between;
     margin-top: 8px;
+  }
+
+  /* A reply in flight: Send spins, and keeps the keyboard focus. */
+  .sp-thread-foot [aria-busy="true"]::before {
+    content: "";
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 8px;
+    border: 2px solid;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: sp-spin 0.6s linear infinite;
   }
 
   .sp-thread-error {

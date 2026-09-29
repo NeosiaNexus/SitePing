@@ -30,10 +30,11 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 npx @siteping/cli init
 ```
 
-Confirm both prompts: the CLI adds the two SitePing models to your Prisma schema and generates the API route (`app/api/siteping/route.ts`, or under `src/app/` if that's your layout). Then push the schema to your database:
+Confirm both prompts: the CLI adds the SitePing models to your Prisma schema and generates the API route (`app/api/siteping/route.ts`, or under `src/app/` if that's your layout). Then push the schema to your database:
 
 ```bash
 npx prisma db push
+npx prisma generate   # Prisma 7 no longer runs it from db push
 ```
 
 ### 3. Mount the widget
