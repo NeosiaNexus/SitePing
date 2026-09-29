@@ -33,9 +33,10 @@ export interface IssueTrackerHooksOptions {
    */
   redact?: (text: string) => string;
   /**
-   * Origin of the site the widget runs on, e.g. `https://acme.com`. The
-   * widget records `location.pathname` as the page URL by default: without
-   * this, such issues show a bare path and carry no deep link.
+   * Origin of the site the widget runs on, e.g. `https://acme.com`. Page
+   * URLs resolve against it (the widget records `location.pathname` by
+   * default), and the deep link only ever points to it: without it, issues
+   * carry no deep link.
    */
   siteUrl?: string | undefined;
   /** Query parameter of the widget's deep link (`SitepingConfig.deepLink`), or `false` to omit it. */
@@ -169,7 +170,7 @@ export function createIssueTrackerHooks({
     return listing.issues.filter((issue) => linkOf(issue)?.projectName === projectName);
   };
 
-  /** Close as not planned and leave the deletion comment once, even across retries. */
+  /** Close as not planned if still open, and leave the deletion comment once, even across retries. */
   const closeDeleted = async (issue: TrackedIssue, feedbackId: string): Promise<void> => {
     if (issue.isOpen) await tracker.updateIssueStatus(issue.reference, "wont_fix");
     const comments = await tracker.listComments(issue.reference);
