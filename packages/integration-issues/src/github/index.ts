@@ -18,15 +18,15 @@ export interface GitHubTrackerOptions {
   /** Token with `issues: write` (fine-grained) or `repo` scope. */
   token: string;
   /** GitHub Enterprise Server API root, e.g. `https://github.acme.com/api/v3`. */
-  apiBaseUrl?: string;
+  apiBaseUrl?: string | undefined;
   fetch?: typeof fetch;
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
   /**
    * Pages of 100 issues listed, newest first, when the search misses (its
    * index lags a few seconds behind a new issue). Defaults to 10: an issue
    * older than the 1,000 newest SitePing issues is then out of reach.
    */
-  maxListedPages?: number;
+  maxListedPages?: number | undefined;
 }
 
 interface GitHubIssue {

@@ -16,15 +16,15 @@ export interface GitLabTrackerOptions {
   /** Personal, project or group access token with the `api` scope. */
   token: string;
   /** Self-managed instance API root, e.g. `https://gitlab.acme.com/api/v4`. */
-  apiBaseUrl?: string;
+  apiBaseUrl?: string | undefined;
   fetch?: typeof fetch;
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
   /**
    * Pages of 100 issues listed, newest first, when the search misses and on
    * a project-wide delete. Defaults to 10: an issue older than the 1,000
    * newest SitePing issues is then out of reach.
    */
-  maxListedPages?: number;
+  maxListedPages?: number | undefined;
 }
 
 interface GitLabIssue {

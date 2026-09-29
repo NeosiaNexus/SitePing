@@ -28,7 +28,7 @@ export interface IssueTrackerHooksOptions {
    * widget records `location.pathname` as the page URL by default: without
    * this, such issues show a bare path and carry no deep link.
    */
-  siteUrl?: string;
+  siteUrl?: string | undefined;
   /** Query parameter of the widget's deep link (`SitepingConfig.deepLink`), or `false` to omit it. */
   deepLinkParam?: string | false;
   /** Include reviewer emails in issues. Defaults to `false` — issues are often public. */
@@ -89,7 +89,7 @@ export function createIssueTrackerHooks<Principal = never>({
     redact,
     deepLinkParam,
     includeAuthorEmail,
-    ...(siteUrl === undefined ? {} : { siteUrl }),
+    siteUrl,
   };
   const issueLabels = [SITEPING_ISSUE_LABEL, ...labels.filter((label) => label !== SITEPING_ISSUE_LABEL)];
 

@@ -31,7 +31,7 @@ export interface IssueFormatOptions {
   /** Include the reviewer's email next to their name. Off by default: issues are often public. */
   includeAuthorEmail: boolean;
   /** Base that relative page URLs resolve against, e.g. `https://acme.com`. */
-  siteUrl?: string;
+  siteUrl?: string | undefined;
 }
 
 /** Identity of the feedback an issue belongs to, stored in the issue body. */
