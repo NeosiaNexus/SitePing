@@ -389,6 +389,60 @@ describe("createSitepingHandler — failure reporting", () => {
     });
   });
 
+  it("answers a logged, CORS-readable 500 when a status change, a comment delete or an answer fails", async () => {
+    const failure = new Error("connection reset");
+    const origin = "https://client-site.example";
+    const fromOrigin = { Origin: origin };
+    const store = new MemoryStore();
+    const logger = silentLogger();
+    let presentationFails = false;
+    const handler = createSitepingHandler({
+      store,
+      logger,
+      allowedOrigins: [origin],
+      requireAuthForDestructive: false,
+      presentFeedback: (feedback) => {
+        if (presentationFails) throw failure;
+        return feedback;
+      },
+    });
+    const { projectName } = validPayloadNoAnnotations;
+    const { id } = (await (await handler.POST(request("POST", validPayloadNoAnnotations))).json()) as FeedbackRecord;
+    const comment = await store.addComment(id, {
+      body: "b",
+      authorName: "a",
+      authorEmail: "",
+      authorRole: "client",
+      clientId: "reply-1",
+    });
+    store.updateFeedback = () => Promise.reject(failure);
+    store.deleteComment = () => Promise.reject(failure);
+
+    const patched = await handler.PATCH(request("PATCH", { id, projectName, status: "resolved" }, fromOrigin));
+    const uncommented = await handler.DELETE(
+      request("DELETE", { projectName, feedbackId: id, commentId: comment.id }, fromOrigin),
+    );
+    presentationFails = true;
+    const posted = await handler.POST(
+      request("POST", { ...validPayloadNoAnnotations, clientId: "uuid-456" }, fromOrigin),
+    );
+
+    for (const [response, message, method] of [
+      [patched, "[siteping] Failed to update feedback", "PATCH"],
+      [uncommented, "[siteping] Failed to delete comment", "DELETE"],
+      [posted, "[siteping] Failed to create feedback", "POST"],
+    ] as const) {
+      expect(response.status).toBe(500);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+      // A cookie-authenticated widget reads nothing without it.
+      expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+      expect(await response.json()).toEqual({ error: "Internal server error" });
+      expect(logger.error).toHaveBeenCalledWith(message, { error: failure, method, path: "/api/siteping" });
+    }
+    // The POST stored its feedback: only the answer failed.
+    expect(await store.findByClientId("uuid-456")).not.toBeNull();
+  });
+
   it("answers describeError's hint, and the generic message when it has none", async () => {
     const missingTable = Object.assign(new Error("relation does not exist"), { code: "42P01" });
     const describeError = (error: unknown) => (error === missingTable ? "Run the SitePing migrations" : undefined);

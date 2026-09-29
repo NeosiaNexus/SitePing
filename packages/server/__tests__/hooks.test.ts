@@ -310,6 +310,24 @@ describe("createSitepingHandler — lifecycle hooks", () => {
     expect((await store.getFeedbacks({ projectName: PROJECT })).total).toBe(0);
   });
 
+  it("runs onDeleted only once the store has deleted the record", async () => {
+    const store = new MemoryStore();
+    store.deleteFeedback = () => Promise.reject(new Error("deadlock detected"));
+    const onDeleted = vi.fn();
+    const handler = createSitepingHandler({
+      store,
+      access: sessionAccess,
+      logger: silentLogger(),
+      hooks: { onDeleted },
+    });
+    const feedback = await createFeedback(handler);
+
+    const response = await handler.DELETE(jsonRequest("DELETE", { id: feedback.id, projectName: PROJECT }));
+
+    expect(response.status).toBe(500);
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+
   it("keeps the record and answers 502 when onDeleting throws", async () => {
     const store = new MemoryStore();
     const onDeleted = vi.fn();
