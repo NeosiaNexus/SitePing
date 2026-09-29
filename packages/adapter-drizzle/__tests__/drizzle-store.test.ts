@@ -1,13 +1,18 @@
+import { inspect } from "node:util";
 import {
   applyFeedbackFilters,
   buildFeedbackRecord,
   type CommentCreateInput,
   type FeedbackCreateInput,
+  isStoreNotFound,
   isStorePersistence,
   SCREENSHOT_DELETE_CONCURRENCY,
   type ScreenshotStorage,
 } from "@siteping/core";
 import { getTableName, sql } from "drizzle-orm";
+import { drizzle as drizzleD1 } from "drizzle-orm/d1";
+import { withReplicas as withPgReplicas } from "drizzle-orm/pg-core";
+import { withReplicas as withSQLiteReplicas } from "drizzle-orm/sqlite-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../src/constants/deletes.js";
 import { DEFAULT_SITEPING_TABLE_NAMES, type SitepingTableNames } from "../src/constants/table-names.js";
@@ -19,6 +24,8 @@ import { createLibSQLTestDatabase, createPgTestDatabase, type DriverCallIntercep
 const SCREENSHOT_DATA_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
 /** Response cap of the size-limited driver — smaller than one inline screenshot in the tests using it. */
 const RESPONSE_SIZE_LIMIT_BYTES = 16 * 1024;
+/** Timeout of a test that opens its own databases — starting PGlite takes seconds on a loaded machine. */
+const DATABASE_OPENING_TEST_TIMEOUT_MS = 30_000;
 /** Time the injected test clocks start at, far from the real wall clock. */
 const FROZEN_TIME_MS = Date.parse("2026-01-01T00:00:00.000Z");
 const CUSTOM_TABLE_NAMES: SitepingTableNames = {
@@ -104,6 +111,14 @@ function isFeedbackDelete(statementSql: string): boolean {
   return statementSql.toLowerCase().includes(`delete from "${DEFAULT_SITEPING_TABLE_NAMES.feedbacks}"`);
 }
 
+/** Whether a driver call reads feedback rows. */
+function isFeedbackRead(statementSql: string): boolean {
+  const normalizedSql = statementSql.toLowerCase();
+  return (
+    normalizedSql.startsWith("select") && normalizedSql.includes(`from "${DEFAULT_SITEPING_TABLE_NAMES.feedbacks}"`)
+  );
+}
+
 /** Whether a driver call reads annotation rows. */
 function isAnnotationRead(statementSql: string): boolean {
   const normalizedSql = statementSql.toLowerCase();
@@ -140,7 +155,10 @@ function externallyStoredScreenshotRows(count: number, projectName = "site"): Ap
   });
 }
 
-/** An error followed by its `cause`s — Drizzle's PostgreSQL session wraps driver errors in a `DrizzleQueryError`. */
+/**
+ * An error followed by its `cause`s. The store reports a copy of the driver's error, so tests
+ * find the one they injected with `toContainEqual`.
+ */
 function causeChain(error: unknown): unknown[] {
   const chain: unknown[] = [];
   for (let current = error; current !== undefined && !chain.includes(current); ) {
@@ -148,6 +166,16 @@ function causeChain(error: unknown): unknown[] {
     current = current instanceof Error ? current.cause : undefined;
   }
   return chain;
+}
+
+/**
+ * A driver call's result — one result or a libSQL batch of them — reporting only the rows
+ * `reported` keeps of those its statement returned.
+ */
+function withReportedRows(result: unknown, reported: (rows: unknown[]) => unknown[]): unknown {
+  if (Array.isArray(result)) return result.map((single) => withReportedRows(single, reported));
+  const { rows } = result as { rows: unknown[] };
+  return { ...(result as object), rows: reported(rows) };
 }
 
 const REJECTED_WRITE_OPERATIONS = ["INSERT", "UPDATE", "DELETE"] as const;
@@ -185,6 +213,11 @@ interface DialectUnderTest {
     stopEnforcingForeignKeys(): Promise<() => Promise<void>>;
     /** Make the database reject writes to the feedback table; resolves to the undo. */
     rejectFeedbackWrites(): Promise<() => Promise<void>>;
+    /**
+     * Make the database skip deletes of feedback rows without an error, as a trigger or a
+     * row-level security policy may; resolves to the undo.
+     */
+    skipFeedbackDeletes(): Promise<() => Promise<void>>;
     reset(): Promise<void>;
     close(): Promise<void>;
   }>;
@@ -246,6 +279,18 @@ const dialects: DialectUnderTest[] = [
           await database.db.execute(sql`SET default_transaction_read_only = on`);
           return async () => {
             await database.db.execute(sql`SET default_transaction_read_only = off`);
+          };
+        },
+        async skipFeedbackDeletes() {
+          await database.db.execute(
+            sql`CREATE FUNCTION skip_feedback_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`,
+          );
+          await database.db.execute(
+            sql`CREATE TRIGGER skip_feedback_delete BEFORE DELETE ON ${tables.sitepingFeedbacks} FOR EACH ROW EXECUTE FUNCTION skip_feedback_delete()`,
+          );
+          return async () => {
+            await database.db.execute(sql`DROP TRIGGER skip_feedback_delete ON ${tables.sitepingFeedbacks}`);
+            await database.db.execute(sql`DROP FUNCTION skip_feedback_delete()`);
           };
         },
         reset: database.reset,
@@ -311,6 +356,15 @@ const dialects: DialectUnderTest[] = [
             for (const operation of REJECTED_WRITE_OPERATIONS) {
               await database.db.run(sql`DROP TRIGGER ${triggerName(operation)}`);
             }
+          };
+        },
+        async skipFeedbackDeletes() {
+          const feedbackTable = sql.identifier(getTableName(tables.sitepingFeedbacks));
+          await database.db.run(
+            sql`CREATE TRIGGER skip_feedback_delete BEFORE DELETE ON ${feedbackTable} BEGIN SELECT RAISE(IGNORE); END`,
+          );
+          return async () => {
+            await database.db.run(sql`DROP TRIGGER skip_feedback_delete`);
           };
         },
         reset: database.reset,
@@ -539,7 +593,7 @@ for (const dialect of dialects) {
         expect((await cleanup.getFeedbacks({ projectName: "site" })).total).toBe(0);
       });
 
-      it("discards the loser's upload and propagates the error when reading the winning row back rejects", async () => {
+      it("discards the loser's upload and reports a StorePersistenceError when reading the winning row back rejects", async () => {
         const { storage, uploads, deletions } = recordingStorage();
         const clientId = crypto.randomUUID();
         const lookupFailure = new Error("connection lost while reading the winning row back");
@@ -555,9 +609,15 @@ for (const dialect of dialects) {
           },
         );
 
-        await expect(
-          loser.createFeedbackIfAbsent(feedbackInput({ clientId, screenshotDataUrl: SCREENSHOT_DATA_URL })),
-        ).rejects.toMatchObject({ cause: lookupFailure });
+        const failure = await loser
+          .createFeedbackIfAbsent(feedbackInput({ clientId, screenshotDataUrl: SCREENSHOT_DATA_URL }))
+          .then(
+            () => null,
+            (error: unknown) => error,
+          );
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect(causeChain(failure)).toContainEqual(lookupFailure);
 
         expect(uploads).toHaveLength(1);
         expect(deletions).toEqual([`https://cdn.example.com/${uploads[0]?.feedbackId}.jpg`]);
@@ -771,7 +831,7 @@ for (const dialect of dialects) {
         );
 
         expect(isStorePersistence(failure)).toBe(true);
-        expect(causeChain(failure)).toContain(readFailure);
+        expect(causeChain(failure)).toContainEqual(readFailure);
         const [unchanged] = (await database.createStore({ logger }).getFeedbacks({ projectName: "site" })).feedbacks;
         expect(unchanged).toMatchObject({ id: stored.id, status: "open", updatedAt: stored.updatedAt });
       });
@@ -842,7 +902,7 @@ for (const dialect of dialects) {
         );
 
         expect(isStorePersistence(failure)).toBe(true);
-        expect(causeChain(failure)).toContain(chunkFailure);
+        expect(causeChain(failure)).toContainEqual(chunkFailure);
         const remaining = await reader.getFeedbacks({ projectName: "site", limit: 50 });
         expect(remaining.total).toBe(rows.length - PROJECT_DELETE_CHUNK_SIZE);
         const remainingUrls = new Set(remaining.feedbacks.map((feedback) => feedback.screenshotUrl));
@@ -874,6 +934,91 @@ for (const dialect of dialects) {
         expect(await database.countAnnotations()).toBe(0);
         expect(deletions).toEqual([]);
       });
+    });
+
+    describe("when deleteAllFeedbacks deletes chunk by chunk alongside other deletes", () => {
+      // A concurrent delete that took rows a chunk picked leaves that chunk short or empty
+      // (PostgreSQL waits for its locks, then skips the rows it removed). Here the chunk's own
+      // statement deletes them and reports only some, as the store then sees it.
+      it.each([
+        ["every row", () => []],
+        ["some rows", (rows: unknown[]) => rows.slice(1)],
+      ])("finishes the project when a concurrent delete took %s of a chunk", async (_taken, reported) => {
+        await database.insertFeedbacksAsApplication(externallyStoredScreenshotRows(PROJECT_DELETE_CHUNK_SIZE + 20));
+        let firstChunk = true;
+        const store = database.createStoreWithDriverInterceptor(
+          async (statementSql, run) => {
+            const result = await run();
+            if (!firstChunk || !isFeedbackDelete(statementSql)) return result;
+            firstChunk = false;
+            return withReportedRows(result, reported);
+          },
+          { screenshotStorage: recordingStorage().storage, logger },
+        );
+
+        await store.deleteAllFeedbacks("site");
+
+        expect((await database.createStore({ logger }).getFeedbacks({ projectName: "site" })).total).toBe(0);
+      });
+
+      it("finishes the project when feedback keeps arriving between its chunks", async () => {
+        const writer = database.createStore({ logger });
+        await writer.createFeedback(feedbackInput());
+        let chunks = 0;
+        const store = database.createStoreWithDriverInterceptor(
+          async (statementSql, run) => {
+            const result = await run();
+            if (!isFeedbackDelete(statementSql)) return result;
+            chunks += 1;
+            // A submission lands right after each chunk that finds the project empty.
+            if (chunks === 2 || chunks === 4) await writer.createFeedback(feedbackInput());
+            return result;
+          },
+          { screenshotStorage: recordingStorage().storage, logger },
+        );
+
+        await store.deleteAllFeedbacks("site");
+
+        expect(chunks).toBeGreaterThan(4);
+        expect((await writer.getFeedbacks({ projectName: "site" })).total).toBe(0);
+      });
+
+      it("fails instead of retrying forever when the database keeps rows it is told to delete", async () => {
+        const store = database.createStore({ screenshotStorage: recordingStorage().storage, logger });
+        await store.createFeedback(feedbackInput());
+        await store.createFeedback(feedbackInput());
+        const restoreDeletes = await database.skipFeedbackDeletes();
+        try {
+          const failure = await store.deleteAllFeedbacks("site").then(
+            () => null,
+            (error: unknown) => error,
+          );
+
+          expect(isStorePersistence(failure)).toBe(true);
+        } finally {
+          await restoreDeletes();
+        }
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(2);
+      });
+    });
+
+    it("deletes a project in one driver call when no screenshot cleanup needs its rows", async () => {
+      const writer = database.createStore({ logger });
+      await writer.createFeedback(feedbackInput());
+      await writer.createFeedback(feedbackInput());
+      let driverCalls = 0;
+      const store = database.createStoreWithDriverInterceptor(
+        (_statementSql, run) => {
+          driverCalls += 1;
+          return run();
+        },
+        { logger },
+      );
+
+      await store.deleteAllFeedbacks("site");
+
+      expect(driverCalls).toBe(1);
+      expect((await writer.getFeedbacks({ projectName: "site" })).total).toBe(0);
     });
 
     it("deletes feedbacks with inline screenshots through a size-capped driver when no cleanup hook exists", async () => {
@@ -917,7 +1062,8 @@ for (const dialect of dialects) {
       await store.createFeedback(feedbackInput({ message: "Discount shows 100% off" }));
       await store.createFeedback(feedbackInput({ message: "Discount shows 1000 off" }));
       await store.createFeedback(feedbackInput({ message: "Field user_name is empty" }));
-      await store.createFeedback(feedbackInput({ message: "Field username is empty" }));
+      // As long as the match: an unescaped `_` would match its `X`.
+      await store.createFeedback(feedbackInput({ message: "Field userXname is empty" }));
 
       const percent = await store.getFeedbacks({ projectName: "site", search: "100%" });
       const underscore = await store.getFeedbacks({ projectName: "site", search: "user_name" });
@@ -1017,6 +1163,81 @@ for (const dialect of dialects) {
       expect(found.total).toBe(1);
     });
 
+    describe("with text holding NUL or an unpaired surrogate, which PostgreSQL cannot store", () => {
+      // The widget's console capture cuts a long line after 499 code units: past an emoji
+      // there, the line ends with a high surrogate whose low half was cut off.
+      const cutInsideEmoji = `${"x".repeat(498)}\u{1F680} deployed`.slice(0, 499);
+
+      it("stores feedbacks and comments with U+FFFD in their place, exactly as the store returns them", async () => {
+        const store = database.createStore({ logger });
+        const [template] = feedbackInput().annotations;
+        if (!template) throw new Error("feedbackInput() must provide an annotation template");
+
+        const created = await store.createFeedback(
+          feedbackInput({
+            message: "Total shows a\u0000b",
+            authorName: "Zoe \uDE00",
+            annotations: [{ ...template, textSnippet: "Pay\u0000" }],
+            diagnostics: {
+              console: [{ level: "warn", timestamp: "2026-01-01T00:00:00.000Z", message: cutInsideEmoji }],
+              network: [
+                { url: "https://api.example.com/\u0000", method: "GET", status: 0, durationMs: 1, timestamp: "t" },
+              ],
+            },
+          }),
+        );
+        const comment = await store.addComment(created.id, commentInput({ body: "Seen \uD83D\u0000" }));
+
+        expect(created.message).toBe("Total shows a\uFFFDb");
+        expect(created.authorName).toBe("Zoe \uFFFD");
+        expect(created.annotations[0]?.textSnippet).toBe("Pay\uFFFD");
+        expect(created.diagnostics?.console[0]?.message).toBe(`${"x".repeat(498)}\uFFFD`);
+        expect(created.diagnostics?.network[0]?.url).toBe("https://api.example.com/\uFFFD");
+        expect(comment.body).toBe("Seen \uFFFD\uFFFD");
+        expect(await store.findByClientId(created.clientId)).toEqual({ ...created, comments: [comment] });
+      });
+
+      it("finds them by the same text in search and every filter, and nothing else", async () => {
+        const store = database.createStore({ logger });
+        const withNul = await store.createFeedback(
+          feedbackInput({ projectName: "site\u0000", message: "Total a\u0000b", url: "https://example.com/\u0000" }),
+        );
+        await store.createFeedback(feedbackInput({ projectName: "site\u0000", url: "https://example.com/\u0000" }));
+
+        const query = { projectName: "site\u0000", url: "https://example.com/\u0000" };
+
+        for (const search of ["a\u0000b", "\u0000"]) {
+          const found = await store.getFeedbacks({ ...query, search });
+          expect(found.feedbacks.map((feedback) => feedback.id)).toEqual([withNul.id]);
+        }
+        expect((await store.getFeedbacks(query)).total).toBe(2);
+        expect(await store.verifyProjectOwnership(withNul.id, "site\u0000")).toBe(true);
+      });
+
+      it("answers a lookup by an id or a project name holding one like any unknown one", async () => {
+        const store = database.createStore({ logger });
+        const stored = await store.createFeedback(feedbackInput());
+        const comment = await store.addComment(stored.id, commentInput());
+        const unknownId = `${stored.id}\u0000`;
+
+        expect(await store.findByClientId(`${stored.clientId}\u0000`)).toBeNull();
+        expect(await store.verifyProjectOwnership(unknownId, "site")).toBe(false);
+        expect(await store.verifyProjectOwnership(stored.id, "site\u0000")).toBe(false);
+        expect((await store.getFeedbacks({ projectName: "site\u0000" })).total).toBe(0);
+        for (const lookup of [
+          () => store.updateFeedback(unknownId, { status: "in_progress", resolvedAt: null }),
+          () => store.deleteFeedback(unknownId),
+          () => store.addComment(unknownId, commentInput()),
+          () => store.deleteComment(unknownId, comment.id),
+          () => store.deleteComment(stored.id, `${comment.id}\uDC00`),
+        ]) {
+          await expect(lookup()).rejects.toSatisfy(isStoreNotFound);
+        }
+        await store.deleteAllFeedbacks("site\u0000");
+        expect(await store.findByClientId(stored.clientId)).toEqual({ ...stored, comments: [comment] });
+      });
+    });
+
     it("lets the host application write through the same database while the store writes", async () => {
       const store = database.createStore({ logger });
       const existing = await store.createFeedback(feedbackInput());
@@ -1089,9 +1310,49 @@ for (const dialect of dialects) {
 
       for (const failure of failures) {
         expect(isStorePersistence(failure)).toBe(true);
-        expect(causeChain(failure)).toContain(writeFailure);
+        expect(causeChain(failure)).toContainEqual(writeFailure);
       }
       expect((await writer.findByClientId(feedback.clientId))?.comments).toEqual([kept]);
+    });
+
+    it("reports a comment racing the delete of its feedback as a missing feedback", async () => {
+      const writer = database.createStore({ logger });
+      const feedback = await writer.createFeedback(feedbackInput());
+      // What PostgreSQL does when the delete commits between the insert's feedback check and its
+      // foreign-key check: the insert fails on the foreign key.
+      const foreignKeyViolation = Object.assign(
+        new Error(
+          `insert or update on table "${DEFAULT_SITEPING_TABLE_NAMES.comments}" violates foreign key constraint`,
+        ),
+        { code: "23503" },
+      );
+      const store = database.createStoreWithDriverInterceptor(
+        async (statementSql, run) => {
+          if (!isCommentWrite(statementSql)) return run();
+          await writer.deleteFeedback(feedback.id);
+          throw foreignKeyViolation;
+        },
+        { logger },
+      );
+
+      await expect(store.addComment(feedback.id, commentInput())).rejects.toSatisfy(isStoreNotFound);
+    });
+
+    it("fails a comment insert that broke no foreign key without looking its feedback up", async () => {
+      const feedback = await database.createStore({ logger }).createFeedback(feedbackInput());
+      const connectionFailure = new Error("connect ECONNREFUSED 127.0.0.1:5432");
+      const statements: string[] = [];
+      const store = database.createStoreWithDriverInterceptor(
+        (statementSql, run) => {
+          statements.push(statementSql);
+          return isCommentWrite(statementSql) ? Promise.reject(connectionFailure) : run();
+        },
+        { logger },
+      );
+
+      await expect(store.addComment(feedback.id, commentInput())).rejects.toSatisfy(isStorePersistence);
+      // On an unreachable database, a lookup would wait for a second driver timeout.
+      expect(statements.filter((statementSql) => !isCommentWrite(statementSql))).toEqual([]);
     });
 
     it("stores one comment when separate store instances race on its clientId", async () => {
@@ -1165,6 +1426,29 @@ for (const dialect of dialects) {
         expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(created.updatedAt.getTime());
       });
 
+      it("never moves updatedAt backwards when an instance whose clock lags updates after one whose clock runs ahead", async () => {
+        const laggingStore = database.createStore({ logger, now: frozenClock });
+        const aheadStore = database.createStore({ logger, now: () => new Date(FROZEN_TIME_MS + 10_000) });
+        const created = await laggingStore.createFeedback(feedbackInput());
+
+        const aheadUpdate = await aheadStore.updateFeedback(created.id, { status: "in_progress", resolvedAt: null });
+        const laggingUpdate = await laggingStore.updateFeedback(created.id, { status: "open", resolvedAt: null });
+
+        expect(aheadUpdate.updatedAt.getTime()).toBe(FROZEN_TIME_MS + 10_000);
+        expect(laggingUpdate.updatedAt.getTime()).toBe(FROZEN_TIME_MS + 10_000);
+      });
+
+      it("raises updatedAt to createdAt on a row the host application stamped updatedAt before createdAt", async () => {
+        const row = { ...applicationFeedbackRow(frozenClock()), createdAt: new Date(FROZEN_TIME_MS + 10_000) };
+        await database.insertFeedbackAsApplication(row);
+
+        const updated = await database
+          .createStore({ logger, now: frozenClock })
+          .updateFeedback(row.id, { status: "in_progress", resolvedAt: null });
+
+        expect(updated.updatedAt.getTime()).toBe(FROZEN_TIME_MS + 10_000);
+      });
+
       it("lists feedbacks created in the same millisecond by separate store instances newest first, across pages", async () => {
         // Each instance issues createdAt from the same frozen clock, so all of them stamp the same value —
         // as several serverless invocations writing within one millisecond would.
@@ -1218,6 +1502,133 @@ for (const dialect of dialects) {
       });
     });
 
+    describe("when the database is unreachable", () => {
+      const connectionFailure = new Error("connect ECONNREFUSED 127.0.0.1:5432");
+
+      it("reports a StorePersistenceError from every mutation, whatever call fails first", async () => {
+        const writer = database.createStore({ logger });
+        const stored = await writer.createFeedback(feedbackInput());
+        const comment = await writer.addComment(stored.id, commentInput());
+        const failing = (options: DrizzleStoreOptions = {}) =>
+          database.createStoreWithDriverInterceptor(() => Promise.reject(connectionFailure), { logger, ...options });
+        const store = failing();
+        const withDeleteHook = failing({ screenshotStorage: recordingStorage().storage });
+
+        const failures = await Promise.all(
+          [
+            () => store.createFeedback(feedbackInput()),
+            () => store.createFeedbackIfAbsent(feedbackInput()),
+            () => store.updateFeedback(stored.id, { status: "in_progress", resolvedAt: null }),
+            () => store.deleteFeedback(stored.id),
+            () => store.deleteAllFeedbacks("site"),
+            () => withDeleteHook.deleteAllFeedbacks("site"),
+            () => store.addComment(stored.id, commentInput()),
+            () => store.deleteComment(stored.id, comment.id),
+          ].map((mutation) =>
+            mutation().then(
+              () => null,
+              (error: unknown) => error,
+            ),
+          ),
+        );
+
+        for (const failure of failures) {
+          expect(isStorePersistence(failure)).toBe(true);
+          expect(causeChain(failure)).toContainEqual(connectionFailure);
+        }
+      });
+
+      it.each([
+        ["a fetch-based driver's timeout", () => new DOMException("The operation timed out.", "TimeoutError")],
+        [
+          "an error that is its own cause",
+          () => {
+            const error = new Error("connection lost");
+            error.cause = error;
+            return error;
+          },
+        ],
+      ])("reports %s as a StorePersistenceError", async (_driverError, makeDriverError) => {
+        const driverError = makeDriverError();
+        const store = database.createStoreWithDriverInterceptor(() => Promise.reject(driverError), { logger });
+
+        const failure = await store.createFeedback(feedbackInput()).then(
+          () => null,
+          (error: unknown) => error,
+        );
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect((failure as Error).cause).toMatchObject({ name: driverError.name, message: driverError.message });
+      });
+
+      it("keeps the statements' parameters — the submission itself — out of the errors it reports", async () => {
+        const stored = await database.createStore({ logger }).createFeedback(feedbackInput());
+        const email = "jeanne.private@example.com";
+        const text = "private-message";
+        const screenshotDataUrl = `${SCREENSHOT_DATA_URL}privatepixels`;
+        // Drizzle wraps the driver's rejection in an error listing every bound parameter, and
+        // drivers list them on their own errors too: PGlite as plain properties, postgres.js as
+        // hidden ones that cannot be deleted. PostgreSQL's `detail` may quote the whole row.
+        const parameters = [email, text, screenshotDataUrl];
+        const driverFailure = Object.defineProperties(new Error(connectionFailure.message), {
+          code: { value: "ECONNREFUSED", enumerable: true },
+          params: { value: parameters, enumerable: true },
+          parameters: { value: parameters },
+          detail: { value: `Failing row contains (${parameters.join(", ")}).`, enumerable: true },
+        });
+        const store = database.createStoreWithDriverInterceptor(
+          (statementSql, run) =>
+            isFeedbackInsert(statementSql) || isCommentWrite(statementSql) || / like /i.test(statementSql)
+              ? Promise.reject(driverFailure)
+              : run(),
+          { logger },
+        );
+
+        const failures = await Promise.all(
+          [
+            () =>
+              store.createFeedback(
+                feedbackInput({ authorEmail: email, message: text, screenshotDataUrl, annotations: [] }),
+              ),
+            () => store.addComment(stored.id, commentInput({ authorEmail: email, body: text })),
+            () => store.getFeedbacks({ projectName: "site", search: text }),
+          ].map((operation) =>
+            operation().then(
+              () => null,
+              (error: unknown) => error,
+            ),
+          ),
+        );
+
+        for (const failure of failures) {
+          expect(causeChain(failure)).toContainEqual(
+            expect.objectContaining({ message: connectionFailure.message, code: "ECONNREFUSED" }),
+          );
+          const logged = inspect(failure, { depth: null, showHidden: true });
+          for (const secret of parameters) expect(logged).not.toContain(secret);
+        }
+      });
+
+      // A comment on an unknown feedback inserts nothing; telling why takes two more reads.
+      it.each([
+        ["the replay lookup", (statementSql: string) => !isCommentWrite(statementSql)],
+        ["the feedback lookup", isFeedbackRead],
+      ])("reports a StorePersistenceError when a comment inserts nothing and %s fails", async (_lookup, fails) => {
+        const store = database.createStoreWithDriverInterceptor(
+          (statementSql, run) => (fails(statementSql) ? Promise.reject(connectionFailure) : run()),
+          { logger },
+        );
+
+        const failure = await store.addComment(crypto.randomUUID(), commentInput()).then(
+          () => null,
+          (error: unknown) => error,
+        );
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect(causeChain(failure)).toContainEqual(connectionFailure);
+      });
+    });
+
     describe("when the database rejects writes", () => {
       let restoreWrites: (() => Promise<void>) | undefined;
       afterEach(async () => {
@@ -1259,6 +1670,49 @@ for (const dialect of dialects) {
         expect(deletions).toHaveLength(1);
       });
 
+      it("keeps the statement's parameters out of the database's own error", async () => {
+        const store = database.createStore({ logger });
+        const email = "jeanne.private@example.com";
+        const text = "private-message";
+        const screenshotDataUrl = `${SCREENSHOT_DATA_URL}privatepixels`;
+        restoreWrites = await database.rejectFeedbackWrites();
+
+        // PGlite lists the statement and every bound parameter on the error it throws.
+        const failure = await store
+          .createFeedback(feedbackInput({ authorEmail: email, message: text, screenshotDataUrl, annotations: [] }))
+          .then(
+            () => null,
+            (error: unknown) => error,
+          );
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect((failure as Error).cause).toHaveProperty("code", expect.any(String));
+        const logged = inspect(failure, { depth: null, showHidden: true });
+        for (const secret of [email, text, screenshotDataUrl]) expect(logged).not.toContain(secret);
+      });
+
+      it("leaves the whole project in place when its single-statement delete fails", async () => {
+        // No delete hook: the project goes in one statement (PostgreSQL) or one batch (libSQL).
+        const store = database.createStore({ logger });
+        const stored = await store.createFeedback(feedbackInput());
+        await store.addComment(stored.id, commentInput());
+        const annotationsBefore = await database.countAnnotations();
+        const commentsBefore = await database.countComments();
+        restoreWrites = await database.rejectFeedbackWrites();
+
+        const failure = await store.deleteAllFeedbacks("site").then(
+          () => null,
+          (error: unknown) => error,
+        );
+        await restoreWrites();
+        restoreWrites = undefined;
+
+        expect(isStorePersistence(failure)).toBe(true);
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
+        expect(await database.countAnnotations()).toBe(annotationsBefore);
+        expect(await database.countComments()).toBe(commentsBefore);
+      });
+
       it("keeps the screenshot of a failed insert when a contract-breaking storage shares its URL with another feedback", async () => {
         const { storage, deletions } = sharedUrlStorage();
         const store = database.createStore({ screenshotStorage: storage, logger });
@@ -1278,7 +1732,7 @@ for (const dialect of dialects) {
   });
 
   describe(`DrizzleStore — ${dialect.name} with custom table names`, () => {
-    it("reads and writes through the renamed tables", async () => {
+    it("reads and writes through the renamed tables", { timeout: DATABASE_OPENING_TEST_TIMEOUT_MS }, async () => {
       const database = await dialect.open(CUSTOM_TABLE_NAMES);
       try {
         const store = database.createStore({ logger: { warn: () => {} } });
@@ -1298,6 +1752,65 @@ for (const dialect of dialects) {
     });
   });
 }
+
+describe("DrizzleStore on a database built with withReplicas", () => {
+  /**
+   * Everything the store does, checked against a replica that holds nothing: a write that
+   * reached it, or a read of the store's own writes from it, fails.
+   */
+  async function expectEverythingOnThePrimary(store: DrizzleStore, countPrimaryFeedbacks: () => Promise<number>) {
+    const created = await store.createFeedback(feedbackInput());
+    const comment = await store.addComment(created.id, commentInput());
+    expect(await countPrimaryFeedbacks()).toBe(1);
+    expect(await store.createFeedback(feedbackInput({ clientId: created.clientId }))).toMatchObject({ id: created.id });
+    expect(await store.findByClientId(created.clientId)).toEqual({ ...created, comments: [comment] });
+    expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
+    expect(await store.verifyProjectOwnership(created.id, "site")).toBe(true);
+    await store.updateFeedback(created.id, { status: "in_progress", resolvedAt: null });
+    await store.deleteFeedback(created.id);
+    await store.createFeedback(feedbackInput());
+    await store.deleteAllFeedbacks("site");
+    expect(await countPrimaryFeedbacks()).toBe(0);
+  }
+
+  it("runs everything on the PostgreSQL primary, never on a read-only replica", {
+    timeout: DATABASE_OPENING_TEST_TIMEOUT_MS,
+  }, async () => {
+    const [primary, replica] = await Promise.all([createPgTestDatabase(), createPgTestDatabase()]);
+    try {
+      await replica.db.execute(sql`SET default_transaction_read_only = on`);
+      const { sitepingFeedbacks } = createSitepingPgTables();
+      const store = createPgSitepingStore(withPgReplicas(primary.db, [replica.db]), { logger: { warn: () => {} } });
+
+      await expectEverythingOnThePrimary(store, async () => (await primary.db.select().from(sitepingFeedbacks)).length);
+    } finally {
+      await Promise.all([primary.close(), replica.close()]);
+    }
+  });
+
+  it("runs everything on the libSQL primary, whose batches the replicated database lacks", {
+    timeout: DATABASE_OPENING_TEST_TIMEOUT_MS,
+  }, async () => {
+    const [primary, replica] = await Promise.all([createLibSQLTestDatabase(), createLibSQLTestDatabase()]);
+    try {
+      const { sitepingFeedbacks } = createSitepingSqliteTables();
+      const store = createLibSQLSitepingStore(withSQLiteReplicas(primary.db, [replica.db]), {
+        logger: { warn: () => {} },
+      });
+
+      await expectEverythingOnThePrimary(store, async () => (await primary.db.select().from(sitepingFeedbacks)).length);
+    } finally {
+      await Promise.all([primary.close(), replica.close()]);
+    }
+  });
+});
+
+it("refuses a database from another SQLite driver, such as Cloudflare D1", () => {
+  // Where @libsql/client's types do not resolve (a Workers project), the types accept it.
+  const d1 = drizzleD1({} as never) as unknown as Parameters<typeof createLibSQLSitepingStore>[0];
+
+  expect(() => createLibSQLSitepingStore(d1)).toThrow(/needs a database from drizzle-orm\/libsql/);
+});
 
 // Each entry bundles its own copy of core, so `instanceof` only matches the
 // classes exported by that entry: every error a store method throws must be one.

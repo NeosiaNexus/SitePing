@@ -162,6 +162,14 @@ describe("ConsoleBuffer", () => {
     buffer.dispose();
   });
 
+  it("never cuts a long message between the two halves of an emoji", () => {
+    // Half an emoji is a lone surrogate, which a PostgreSQL jsonb column refuses.
+    const buffer = new ConsoleBuffer();
+    console.log(`${"x".repeat(498)}\u{1F680} deployed`);
+    expect(buffer.getEntries()[0]?.message).toBe(`${"x".repeat(498)}…`);
+    buffer.dispose();
+  });
+
   it("does not break when an Error is logged", () => {
     const buffer = new ConsoleBuffer();
     const err = new TypeError("kaboom");

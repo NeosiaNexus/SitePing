@@ -153,6 +153,25 @@ for (const dialect of dialects) {
       expect(await deleted.json()).toEqual({ deleted: true });
     });
 
+    it("serves a submission whose console line was cut inside an emoji, and a search for NUL", async () => {
+      const api = handler();
+      // The widget cuts a long console line after 499 code units, here between an emoji's two halves.
+      const consoleLine = `${"x".repeat(498)}\u{1F680} deployed`.slice(0, 499);
+      const diagnostics = {
+        console: [{ level: "warn", timestamp: "2026-01-01T00:00:00.000Z", message: `${consoleLine}…` }],
+        network: [],
+      };
+
+      const created = await api.POST(
+        request("POST", { ...payload, message: "Total a\u0000b", diagnostics, clientId: crypto.randomUUID() }),
+      );
+      const searched = await api.GET(request("GET", undefined, "?projectName=site&search=%00"));
+
+      expect(created.status).toBe(201);
+      expect(searched.status).toBe(200);
+      expect(((await searched.json()) as { total: number }).total).toBe(1);
+    });
+
     it("notifies the webhooks once when two server processes race on one clientId", async () => {
       // One handler and one store instance each, sharing only the database —
       // as two serverless instances would: only the unique client_id index

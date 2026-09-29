@@ -45,7 +45,7 @@ npx drizzle-kit migrate    # l'applique — ou `npx drizzle-kit push` pendant le
 
 ### Ce qui est créé
 
-Trois tables, `siteping_feedbacks`, `siteping_annotations` et `siteping_comments` par défaut. Les annotations et les [commentaires](/fr/docs/comments) référencent leur feedback avec `ON DELETE CASCADE`.
+Trois tables, `siteping_feedbacks`, `siteping_annotations` et `siteping_comments` par défaut — exportez et migrez les trois : le store lit le fil de chaque feedback, donc la table des commentaires est requise même si personne ne commente jamais. Les annotations et les [commentaires](/fr/docs/comments) référencent leur feedback avec `ON DELETE CASCADE` (sur PostgreSQL, via les clés étrangères `<annotations>_feedback_id_fk` et `<comments>_feedback_id_fk`).
 
 | Index | Colonnes |
 |---|---|
@@ -57,6 +57,8 @@ Trois tables, `siteping_feedbacks`, `siteping_annotations` et `siteping_comments
 | `<comments>_feedback_created_idx` | `feedback_id`, `created_at` |
 
 Les types de colonnes suivent le dialecte : sur PostgreSQL, les champs JSON sont en `jsonb` et les dates en `timestamptz(3)` ; sur libSQL, les champs JSON sont stockés en texte et les dates en millisecondes epoch.
+
+Une chaîne JavaScript peut contenir un caractère NUL, ou la moitié d'une paire de substitution — un texte coupé au milieu d'un emoji se termine par l'une d'elles. PostgreSQL ne stocke ni l'un ni l'autre : le store remplace donc chacun par U+FFFD, le caractère de remplacement Unicode, dans tout ce qu'il écrit, sur les deux dialectes, et un enregistrement se relit exactement tel qu'il a été renvoyé. Les termes de recherche, les filtres et les ids subissent le même remplacement, pour retrouver ce qui a été stocké à leur place.
 
 ### Noms de tables personnalisés
 
@@ -76,6 +78,8 @@ const store = createPgSitepingStore(db, { tables: { sitepingFeedbacks, sitepingA
 
 Les valeurs par défaut sont exportées sous `DEFAULT_SITEPING_TABLE_NAMES`.
 
+Sur PostgreSQL, gardez le nom de la table des feedbacks à 36 octets au plus, celui des annotations à 47 et celui des commentaires à 42. PostgreSQL tronque sans prévenir les identifiants au-delà de 63 octets, et les noms d'index et de clés étrangères ajoutent un suffixe au nom de leur table : un nom tronqué ferait supprimer puis recréer cet index ou cette contrainte à chaque `drizzle-kit push`. `createSitepingPgTables` lève une `RangeError` pour un nom trop long.
+
 ## 2. Créer le store
 
 ```ts
@@ -83,13 +87,12 @@ Les valeurs par défaut sont exportées sous `DEFAULT_SITEPING_TABLE_NAMES`.
 import { drizzle } from "drizzle-orm/node-postgres";
 import { createPgSitepingStore } from "@siteping/adapter-drizzle/pg";
 
-export const store = createPgSitepingStore(drizzle(process.env.DATABASE_URL!), {
-  screenshotStorage,
-  logger: console,
-});
+export const store = createPgSitepingStore(drizzle(process.env.DATABASE_URL!), { logger: console });
 ```
 
 Tous les drivers PostgreSQL fonctionnent de la même façon — changez l'import de `drizzle` (`drizzle-orm/neon-http`, `drizzle-orm/postgres-js`, `drizzle-orm/pglite`…). Le store n'ouvre jamais de `db.transaction` interactive : chaque écriture est une seule requête, donc les drivers sans transactions interactives, comme Neon HTTP, sont pleinement pris en charge.
+
+Une base construite avec `withReplicas(primary, replicas)` de Drizzle fonctionne sur les deux dialectes : le store exécute tout sur le primaire, lectures comprises, car il relit ses propres écritures et un réplica peut avoir du retard.
 
 ```ts
 // Turso / libSQL
@@ -97,10 +100,12 @@ import { drizzle } from "drizzle-orm/libsql";
 import { createLibSQLSitepingStore } from "@siteping/adapter-drizzle/libsql";
 
 export const store = createLibSQLSitepingStore(
-  drizzle({ connection: { url: process.env.TURSO_DATABASE_URL!, authToken: process.env.TURSO_AUTH_TOKEN } }),
-  { screenshotStorage, logger: console },
+  drizzle({ connection: { url: process.env.TURSO_DATABASE_URL!, authToken: process.env.TURSO_AUTH_TOKEN! } }),
+  { logger: console },
 );
 ```
+
+Les deux factories acceptent aussi un `screenshotStorage`, pour garder les captures hors de la base — voir [les captures](#captures-décran).
 
 ## 3. Le servir
 
@@ -144,7 +149,7 @@ Les deux factories acceptent les mêmes options :
 
 **Nettoyage.** Ajoutez un `delete(url)` optionnel et le store supprime les captures dont il n'a plus besoin : sur `deleteFeedback`, sur `deleteAllFeedbacks`, quand une soumission perd la course contre un doublon d'elle-même (elle a envoyé son propre objet, désormais orphelin — supprimé même si la relecture de la soumission gagnante échoue ensuite), et quand une insertion échoue. Avant toute suppression, il vérifie qu'aucun feedback stocké ne référence encore l'URL — une insertion signalée en échec a pu être validée malgré tout — et si cette vérification échoue elle-même, tous les objets sont conservés. Au plus 32 suppressions tournent en même temps, pour qu'une suppression de projet libérant des milliers d'objets ne sature pas votre stockage. Le nettoyage est au mieux : un `delete` qui échoue est journalisé et ne fait jamais échouer l'opération. Les data URLs `data:` en ligne ne sont jamais passées à `delete`.
 
-**Gros projets.** Avec un `delete`, `deleteAllFeedbacks` doit relire les URLs supprimées : il supprime donc le projet par tranches de 500 lignes — chaque tranche de façon atomique, ses captures nettoyées avant la suivante — et aucune réponse du driver ni liste en mémoire ne grossit avec le projet. Si une tranche échoue, l'appel lève `StorePersistenceError` : les tranches précédentes restent supprimées et nettoyées, et relancer l'appel supprime le reste. Sans `delete`, tout le projet part en une seule instruction atomique.
+**Gros projets.** Avec un `delete`, `deleteAllFeedbacks` doit relire les URLs supprimées : il supprime donc le projet par tranches de 500 lignes — chaque tranche de façon atomique, ses captures nettoyées avant la suivante — et aucune réponse du driver ni liste en mémoire ne grossit avec le projet. Si une tranche échoue, l'appel lève `StorePersistenceError` : les tranches précédentes restent supprimées et nettoyées, et relancer l'appel supprime le reste. L'appel ne rend la main qu'une fois le projet vide, même quand une autre suppression du même projet tourne en parallèle (un double clic, une requête relancée). Si la base garde des lignes qu'on lui demande de supprimer — une politique de sécurité au niveau des lignes ou un trigger qui ignore les suppressions —, il lève `StorePersistenceError` au lieu de réessayer indéfiniment. Sans `delete`, tout le projet part en une seule instruction atomique.
 
 ## Garanties de concurrence
 
@@ -191,16 +196,17 @@ Faites ce remplissage en JavaScript, pas avec le `lower()` de SQL : le `lower()`
 
 ## Erreurs
 
-- Un échec de la base pendant une écriture (base en lecture seule ou pleine, connexion perdue, requête rejetée…) remonte en `StorePersistenceError`, avec l'erreur du driver en `cause`. Détectez-la avec `isStorePersistence`.
+- Un échec de la base pendant une mutation (base en lecture seule ou pleine, connexion perdue, requête rejetée…) remonte en `StorePersistenceError`, avec l'erreur du driver en `cause` — y compris l'échec d'une lecture que fait la mutation, comme la recherche du `clientId` avant une insertion. Détectez-la avec `isStorePersistence`.
+- Aucune erreur levée par le store ne porte la requête ni ses valeurs. Drizzle enveloppe une requête en échec dans une `DrizzleQueryError` dont le message liste chaque valeur liée — e-mails des auteurs, messages, captures en ligne —, PGlite et postgres.js les attachent à leurs propres erreurs, et les loggers affichent la `cause` d'une erreur. Le store remonte donc une copie de l'erreur du driver, pour les lectures en échec aussi : une `Error` simple qui reprend son nom, son message, sa pile d'appels, ses codes (un SQLSTATE PostgreSQL et la contrainte, la table ou la colonne qu'il désigne, un code `SQLITE_*`) et sa chaîne de `cause`. Testez `code`, pas la classe d'erreur du driver. Le `detail` de PostgreSQL est écarté : pour une violation NOT NULL ou CHECK, il contient toute la ligne en échec.
 - `updateFeedback` lit les annotations (immuables) et le fil avant de mettre la ligne à jour : aucun appel à la base ne suit la validation de la mise à jour. Une lecture en échec laisse la ligne intacte, et une mise à jour appliquée n'est jamais signalée en échec à cause d'une lecture qui la suit.
-- `updateFeedback` et `deleteFeedback` sur un id inconnu lèvent `StoreNotFoundError`, tout comme `addComment` sur un feedback inconnu et `deleteComment` d'un commentaire absent du fil de ce feedback. `addComment` sur un fil plein lève `StoreLimitError`.
+- `updateFeedback` et `deleteFeedback` sur un id inconnu lèvent `StoreNotFoundError`, tout comme `addComment` sur un feedback inconnu — y compris un feedback supprimé pendant l'insertion du commentaire — et `deleteComment` d'un commentaire absent du fil de ce feedback. `addComment` sur un fil plein lève `StoreLimitError`.
 
 Les deux entrées réexportent `StorePersistenceError`, `isStorePersistence`, `StoreNotFoundError`, `StoreDuplicateError` et `StoreLimitError`, pour les attraper sans autre import.
 
 ## Limites
 
 - **PostgreSQL et libSQL uniquement.** Il n'y a pas encore d'entrée MySQL.
-- **libSQL uniquement via `drizzle-orm/libsql`.** Les autres drivers SQLite (better-sqlite3, Cloudflare D1) ne sont pas pris en charge.
-- **Un fichier libSQL local partagé par plusieurs processus.** SQLite n'accepte qu'un écrivain à la fois : réglez le délai d'attente du client — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — pour que les écritures concurrentes patientent au lieu d'échouer avec `SQLITE_BUSY`.
+- **libSQL uniquement via `drizzle-orm/libsql`** ou ses variantes (`/web`, `/http`, `/ws`…). Les autres drivers SQLite (better-sqlite3, Cloudflare D1) ne sont pas pris en charge : `createLibSQLSitepingStore` lève une `TypeError` quand on lui passe leur base, que les types d'un projet Workers peuvent accepter.
+- **Un fichier libSQL local partagé par plusieurs processus.** SQLite n'accepte qu'un écrivain à la fois : avec `@libsql/client` 0.17.4 ou plus récent, réglez le délai d'attente du client — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — pour que les écritures concurrentes patientent au lieu d'échouer avec `SQLITE_BUSY`. Les clients plus anciens l'ignorent sans rien dire, même quand TypeScript l'accepte (le client 0.17.3 installe un `@libsql/core` plus récent, qui la déclare) : mettez d'abord à jour.
 - **Clés étrangères sur libSQL.** Les cascades exigent `PRAGMA foreign_keys = ON`, que libSQL ne garantit pas : le store supprime donc explicitement les annotations et les commentaires avec leur feedback. Les feedbacks que vous supprimez vous-même hors du store demandent le même soin.
 - **La recherche sur les lignes sans `message_search`** replie la casse à la manière de la base (ASCII uniquement sur libSQL, et sur PostgreSQL sous une collation / un `LC_CTYPE` `C`) tant que vous ne les avez pas [remplies](#recherche-textuelle-et-casse-non-ascii).

@@ -13,6 +13,8 @@
  * `NetworkEntry` on failure.
  */
 
+import { truncateWithEllipsis } from "./truncate.js";
+
 /**
  * Server schema limits (adapter-prisma `networkEntrySchema`). Entries are
  * clamped to them on capture: one out-of-range field fails validation for
@@ -46,9 +48,7 @@ export interface NetworkEntry {
 function recordableUrl(input: unknown): string {
   const url = withoutCredentials(urlString(input));
   const cut = url.search(/[?#]/);
-  const bare = cut === -1 ? url : url.slice(0, cut);
-  if (bare.length <= MAX_URL_LENGTH) return bare;
-  return `${bare.slice(0, MAX_URL_LENGTH - 1)}…`;
+  return truncateWithEllipsis(cut === -1 ? url : url.slice(0, cut), MAX_URL_LENGTH);
 }
 
 /**

@@ -8,15 +8,49 @@ import type {
 import {
   bigint,
   doublePrecision,
+  foreignKey,
+  getTableConfig,
   index,
   integer,
   jsonb,
+  type PgTable,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { DRIZZLE_STORE_MESSAGE_PREFIX } from "../constants/errors.js";
+import { POSTGRES_IDENTIFIER_MAX_BYTES } from "../constants/sql.js";
 import { DEFAULT_SITEPING_TABLE_NAMES, type SitepingTableNames } from "../constants/table-names.js";
+
+/**
+ * Refuse identifiers PostgreSQL would truncate. It cuts every name past
+ * {@link POSTGRES_IDENTIFIER_MAX_BYTES} bytes without an error, so each later
+ * `drizzle-kit push` or `generate` sees the declared name missing and drops
+ * and recreates the index or foreign key — or two names cut to the same
+ * prefix and the migration fails.
+ *
+ * @param tables - The tables, whose own, index and foreign-key names are checked.
+ */
+function assertIdentifiersFitPostgres(tables: readonly PgTable[]): void {
+  const encoder = new TextEncoder();
+  for (const table of tables) {
+    const { name, indexes, foreignKeys } = getTableConfig(table);
+    const identifiers = [
+      name,
+      ...indexes.flatMap((tableIndex) => tableIndex.config.name ?? []),
+      ...foreignKeys.map((key) => key.getName()),
+    ];
+    for (const identifier of identifiers) {
+      const bytes = encoder.encode(identifier).length;
+      if (bytes > POSTGRES_IDENTIFIER_MAX_BYTES) {
+        throw new RangeError(
+          `${DRIZZLE_STORE_MESSAGE_PREFIX}: "${identifier}" is ${bytes} bytes long, over PostgreSQL's ${POSTGRES_IDENTIFIER_MAX_BYTES}-byte identifier limit — pass shorter table names to createSitepingPgTables`,
+        );
+      }
+    }
+  }
+}
 
 /**
  * Build the SitePing tables for PostgreSQL. Export them from your Drizzle
@@ -26,6 +60,12 @@ import { DEFAULT_SITEPING_TABLE_NAMES, type SitepingTableNames } from "../consta
  * // db/schema.ts
  * export const { sitepingFeedbacks, sitepingAnnotations, sitepingComments } = createSitepingPgTables();
  * ```
+ *
+ * Index and foreign-key names derive from the table names, which leaves the
+ * feedback table at most 36 bytes, annotations 47 and comments 42.
+ *
+ * @throws `RangeError` when a table, index or foreign-key name would pass
+ *   PostgreSQL's 63-byte identifier limit.
  */
 export function createSitepingPgTables(names: SitepingTableNames = DEFAULT_SITEPING_TABLE_NAMES) {
   const sitepingFeedbacks = pgTable(
@@ -72,9 +112,7 @@ export function createSitepingPgTables(names: SitepingTableNames = DEFAULT_SITEP
     names.annotations,
     {
       id: text("id").primaryKey(),
-      feedbackId: text("feedback_id")
-        .notNull()
-        .references(() => sitepingFeedbacks.id, { onDelete: "cascade" }),
+      feedbackId: text("feedback_id").notNull(),
       cssSelector: text("css_selector").notNull(),
       xpath: text("xpath").notNull(),
       textSnippet: text("text_snippet").notNull(),
@@ -100,16 +138,21 @@ export function createSitepingPgTables(names: SitepingTableNames = DEFAULT_SITEP
       position: integer("position").notNull().default(0),
       createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
     },
-    (table) => [index(`${names.annotations}_feedback_id_idx`).on(table.feedbackId)],
+    (table) => [
+      foreignKey({
+        name: `${names.annotations}_feedback_id_fk`,
+        columns: [table.feedbackId],
+        foreignColumns: [sitepingFeedbacks.id],
+      }).onDelete("cascade"),
+      index(`${names.annotations}_feedback_id_idx`).on(table.feedbackId),
+    ],
   );
 
   const sitepingComments = pgTable(
     names.comments,
     {
       id: text("id").primaryKey(),
-      feedbackId: text("feedback_id")
-        .notNull()
-        .references(() => sitepingFeedbacks.id, { onDelete: "cascade" }),
+      feedbackId: text("feedback_id").notNull(),
       body: text("body").notNull(),
       authorName: text("author_name").notNull(),
       authorEmail: text("author_email").notNull(),
@@ -122,11 +165,17 @@ export function createSitepingPgTables(names: SitepingTableNames = DEFAULT_SITEP
       position: integer("position").notNull().default(0),
     },
     (table) => [
+      foreignKey({
+        name: `${names.comments}_feedback_id_fk`,
+        columns: [table.feedbackId],
+        foreignColumns: [sitepingFeedbacks.id],
+      }).onDelete("cascade"),
       uniqueIndex(`${names.comments}_client_id_key`).on(table.clientId),
       index(`${names.comments}_feedback_created_idx`).on(table.feedbackId, table.createdAt),
     ],
   );
 
+  assertIdentifiersFitPostgres([sitepingFeedbacks, sitepingAnnotations, sitepingComments]);
   return { sitepingFeedbacks, sitepingAnnotations, sitepingComments };
 }
 

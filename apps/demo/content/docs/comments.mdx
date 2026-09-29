@@ -148,6 +148,6 @@ A comment's `authorEmail` is redacted exactly like the feedback's: blank unless 
 | Store | What to do |
 |---|---|
 | [Prisma](/docs/adapters/prisma#discussion-threads) | Run `npx @siteping/cli sync` to add the `SitepingComment` model, then `npx prisma db push` (or `npx prisma migrate dev`). Until the client is generated with it, threads read empty and comment writes answer `501` |
-| [Drizzle](/docs/adapters/drizzle) | Export `sitepingComments` from your schema next to the other tables, then generate and apply the migration with `drizzle-kit` |
+| [Drizzle](/docs/adapters/drizzle) | Nothing beyond the setup: `sitepingComments` is one of the three tables the store needs. It reads every feedback's thread, so lists fail without it |
 | [Memory](/docs/adapters/memory), [localStorage](/docs/adapters/localstorage) | Nothing — both keep threads. localStorage data saved by an earlier version reads with empty threads |
 | [Your own](/docs/adapters/writing-an-adapter#discussion-threads) | Implement the optional `addComment` and `deleteComment` — `createCollectionStore` provides both |

@@ -25,8 +25,13 @@ import {
   settleWithConcurrencyLimit,
 } from "@siteping/core";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../constants/deletes.js";
-import { DRIZZLE_STORE_MESSAGE_PREFIX, type DrizzleStoreMutation } from "../constants/errors.js";
+import {
+  DRIZZLE_STORE_MESSAGE_PREFIX,
+  type DrizzleStoreMutation,
+  FOREIGN_KEY_VIOLATION_SQLSTATE,
+} from "../constants/errors.js";
 import { INLINE_SCREENSHOT_URL_PREFIX, SCREENSHOT_REFERENCE_LOOKUP_BATCH_SIZE } from "../constants/screenshots.js";
+import { withDriverErrors } from "./errors.js";
 import type {
   AnnotationRow,
   CommentRow,
@@ -35,6 +40,7 @@ import type {
   FeedbackRow,
   SitepingSqlGateway,
 } from "./gateway.js";
+import { toStorableText, toStorableValue } from "./text.js";
 
 /**
  * The store returned by the dialect factories — the full contract, including
@@ -86,30 +92,41 @@ function isStoreContractError(error: unknown): boolean {
 }
 
 /**
- * Run a gateway write, reporting any database failure (read-only or full
- * database, lost connection, rejected statement…) as `StorePersistenceError`
- * — the `SitepingStore` mutation contract — with the driver error as `cause`.
+ * Run database calls a mutation makes (its write, or a read it depends on),
+ * reporting any database failure (read-only or full database, lost
+ * connection, rejected statement…) as `StorePersistenceError`, the
+ * `SitepingStore` mutation contract, with the driver's error as `cause`.
  *
  * @param mutation - Store method being served, for the message.
  * @param identifiers - Minimal ids to debug the failure (never payload data).
- * @param write - The gateway write.
+ * @param run - The database calls.
  */
 async function persistMutation<Result>(
   mutation: DrizzleStoreMutation,
   identifiers: Record<string, string>,
-  write: () => Promise<Result>,
+  run: () => Promise<Result>,
 ): Promise<Result> {
   try {
-    return await write();
+    return await run();
   } catch (error) {
     if (isStoreContractError(error)) throw error;
     const context = Object.entries(identifiers)
       .map(([name, value]) => `${name}=${value}`)
       .join(" ");
-    throw new StorePersistenceError(`${DRIZZLE_STORE_MESSAGE_PREFIX}.${mutation} failed to write (${context})`, {
+    throw new StorePersistenceError(`${DRIZZLE_STORE_MESSAGE_PREFIX}.${mutation} failed (${context})`, {
       cause: error,
     });
   }
+}
+
+/** Whether `error` or an error of its `cause` chain is a foreign-key violation. */
+function isForeignKeyViolation(error: unknown): boolean {
+  const seen: unknown[] = [];
+  for (let current = error; current instanceof Error && !seen.includes(current); current = current.cause) {
+    if (Reflect.get(current, "code") === FOREIGN_KEY_VIOLATION_SQLSTATE) return true;
+    seen.push(current);
+  }
+  return false;
 }
 
 /** Rows grouped by their `feedbackId`, each group in the order the rows came. */
@@ -131,19 +148,19 @@ function isUploadedScreenshotUrl(url: string | null | undefined): url is string 
 /**
  * `SitepingStore` over a dialect gateway: ids, timestamps, clientId
  * idempotency, screenshot upload/cleanup and the error contract live here,
- * SQL lives in the gateway.
+ * SQL lives in the gateway. Every string a method receives goes through
+ * {@link toStorableText} before it reaches the gateway.
  * @internal
  */
 export class DrizzleSitepingStore implements DrizzleStore {
+  private readonly gateway: SitepingSqlGateway;
   private readonly screenshotStorage: ScreenshotStorage | undefined;
   private readonly logger: DrizzleStoreLogger;
   private readonly now: () => Date;
   private inlineScreenshotWarned = false;
 
-  constructor(
-    private readonly gateway: SitepingSqlGateway,
-    options: DrizzleStoreOptions = {},
-  ) {
+  constructor(gateway: SitepingSqlGateway, options: DrizzleStoreOptions = {}) {
+    this.gateway = withDriverErrors(gateway);
     this.screenshotStorage = options.screenshotStorage;
     this.logger = options.logger ?? silentLogger;
     this.now = options.now ?? systemClock;
@@ -159,15 +176,17 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * atomic across store instances and processes: of N concurrent calls, only
    * the one whose insert lands reports `created: true`.
    *
-   * @throws `StorePersistenceError` when the insert fails. When the insert
-   *   loses the race, the winning row is read back: if that read rejects, its
-   *   error propagates; if the row was deleted in the meantime, an `Error`
-   *   naming the `clientId` is thrown (the caller may retry the submission).
-   *   On every failure path, the screenshot this attempt uploaded is discarded
-   *   first — no committed row references it.
+   * @throws `StorePersistenceError` when a database call fails: the lookup
+   *   of the `clientId`, the insert, or — when the insert loses the race — the
+   *   read-back of the winning row. If that row was deleted in the meantime,
+   *   an `Error` naming the `clientId` is thrown (the caller may retry the
+   *   submission). On every failure path, the screenshot this attempt uploaded
+   *   is discarded first — no committed row references it.
    */
-  async createFeedbackIfAbsent(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome> {
-    const existing = await this.findByClientId(data.clientId);
+  async createFeedbackIfAbsent(submitted: FeedbackCreateInput): Promise<FeedbackCreateOutcome> {
+    const data = toStorableValue(submitted);
+    const identifiers = { clientId: data.clientId };
+    const existing = await persistMutation("createFeedback", identifiers, () => this.findByClientId(data.clientId));
     if (existing) return { feedback: existing, created: false };
 
     // Fresh per attempt: racing creates of one clientId upload under distinct
@@ -189,7 +208,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
 
     let inserted: boolean;
     try {
-      inserted = await persistMutation("createFeedback", { clientId: data.clientId }, () =>
+      inserted = await persistMutation("createFeedback", identifiers, () =>
         this.gateway.insertFeedback(row, annotations),
       );
     } catch (error) {
@@ -206,10 +225,10 @@ export class DrizzleSitepingStore implements DrizzleStore {
     // screenshot, uploaded under its own id, so the one just uploaded is an
     // orphan no row references (screenshot URLs are unique per feedback id).
     // It is discarded however the winner lookup ends — found, deleted in the
-    // meantime, or rejected — and a lookup failure still propagates untouched.
+    // meantime, or rejected.
     let winner: FeedbackRecord | null;
     try {
-      winner = await this.findByClientId(data.clientId);
+      winner = await persistMutation("createFeedback", identifiers, () => this.findByClientId(data.clientId));
     } finally {
       await this.discardScreenshots([screenshotUrl], { clientId: data.clientId });
     }
@@ -221,7 +240,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
     return { feedback: winner, created: false };
   }
 
-  async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
+  async getFeedbacks(submittedQuery: FeedbackQuery): Promise<FeedbackPage> {
+    const query = toStorableValue(submittedQuery);
     const { limit, skip } = clampPagination(query);
     const filter: FeedbackFilter = { projectName: query.projectName };
     if (query.type) filter.type = query.type;
@@ -244,7 +264,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
   }
 
   async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
-    const row = await this.gateway.findByClientId(clientId);
+    const row = await this.gateway.findByClientId(toStorableText(clientId));
     return row ? ((await this.withRelations([row]))[0] ?? null) : null;
   }
 
@@ -258,7 +278,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * @throws `StorePersistenceError` when reading the annotations, the thread
    *   or the update fails — a failed read leaves the row untouched.
    */
-  async updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
+  async updateFeedback(submittedId: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
+    const id = toStorableText(submittedId);
     const { relationsOf, row } = await persistMutation("updateFeedback", { id }, async () => {
       const relationsOf = await this.readRelations([id]);
       // The gateway clamps updatedAt to the row's createdAt, which another
@@ -274,7 +295,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
     return { ...row, ...relationsOf(id) };
   }
 
-  async deleteFeedback(id: string): Promise<void> {
+  async deleteFeedback(submittedId: string): Promise<void> {
+    const id = toStorableText(submittedId);
     const deleted = await persistMutation("deleteFeedback", { id }, () =>
       this.gateway.deleteById(id, this.deleteOptions()),
     );
@@ -291,32 +313,54 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * needed for cleanup, so rows go in chunks of
    * {@link PROJECT_DELETE_CHUNK_SIZE}, each deleted atomically and its
    * screenshots cleaned up before the next one: every driver response and the
-   * URLs held in memory stay bounded however large the project.
+   * URLs held in memory stay bounded however large the project. The call
+   * returns once the project has no row left, whatever deletes run alongside.
    *
    * @throws `StorePersistenceError` when a chunk fails. The chunks before it
    *   stay deleted and their screenshots are already cleaned up; the delete is
    *   idempotent, so retrying it removes the remaining rows. When the failing
    *   chunk committed although the driver reported an error, its rows are gone
-   *   and their screenshots are left in the storage as orphans.
+   *   and their screenshots are left in the storage as orphans. Also thrown
+   *   when the database keeps rows it is told to delete (a row-level security
+   *   policy or a trigger that skips deletes), instead of retrying forever.
    */
-  async deleteAllFeedbacks(projectName: string): Promise<void> {
+  async deleteAllFeedbacks(submittedProjectName: string): Promise<void> {
+    const projectName = toStorableText(submittedProjectName);
     if (!this.deleteOptions().collectScreenshotUrls) {
       await persistMutation("deleteAllFeedbacks", { projectName }, () => this.gateway.deleteByProject(projectName));
       return;
     }
+    let remainingAfterEmptyChunk = Number.POSITIVE_INFINITY;
     for (;;) {
       const deleted = await persistMutation("deleteAllFeedbacks", { projectName }, () =>
         this.gateway.deleteProjectChunk(projectName, PROJECT_DELETE_CHUNK_SIZE),
       );
-      // Stop only on an empty chunk: a short one may come from a concurrent
-      // delete that removed some of its rows, not from the end of the project.
-      if (deleted.deletedCount === 0) return;
-      await this.discardScreenshots(deleted.screenshotUrls);
+      if (deleted.deletedCount > 0) {
+        remainingAfterEmptyChunk = Number.POSITIVE_INFINITY;
+        await this.discardScreenshots(deleted.screenshotUrls);
+        continue;
+      }
+      // A short or even empty chunk does not mean the project is empty: on
+      // PostgreSQL, a concurrent delete may take some or all of the rows a chunk
+      // picked (the statement waits for its locks, then skips the rows it
+      // removed). So only a project left empty ends the delete: the next chunk
+      // waits for the concurrent delete, and rows keep going. When two empty
+      // chunks in a row leave no fewer rows, nothing will remove them.
+      const remaining = await persistMutation("deleteAllFeedbacks", { projectName }, () =>
+        this.gateway.countFeedbacks({ projectName }),
+      );
+      if (remaining === 0) return;
+      if (remaining >= remainingAfterEmptyChunk) {
+        throw new StorePersistenceError(
+          `${DRIZZLE_STORE_MESSAGE_PREFIX}.deleteAllFeedbacks: the database kept ${remaining} rows it was told to delete (projectName=${projectName})`,
+        );
+      }
+      remainingAfterEmptyChunk = remaining;
     }
   }
 
   async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
-    return (await this.gateway.findProjectName(id)) === projectName;
+    return (await this.gateway.findProjectName(toStorableText(id))) === toStorableText(projectName);
   }
 
   /**
@@ -325,25 +369,53 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * store instances and processes, except that posts racing for the last
    * free slot may overshoot the cap by the ones that run concurrently.
    *
-   * @throws `StoreNotFoundError` when the feedback does not exist.
+   * @throws `StoreNotFoundError` when the feedback does not exist, including
+   *   when it is deleted while the comment is being inserted.
    * @throws `StoreLimitError` when its thread already holds `MAX_COMMENTS_PER_FEEDBACK` comments.
-   * @throws `StorePersistenceError` when the insert fails.
+   * @throws `StorePersistenceError` when a database call fails.
    */
-  async addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> {
+  async addComment(submittedFeedbackId: string, submitted: CommentCreateInput): Promise<CommentRecord> {
+    const feedbackId = toStorableText(submittedFeedbackId);
+    const data = toStorableValue(submitted);
     const comment = buildCommentRecord(data, { id: crypto.randomUUID(), feedbackId, now: this.now() });
-    const inserted = await persistMutation("addComment", { feedbackId, clientId: data.clientId }, () =>
-      this.gateway.insertComment(comment, MAX_COMMENTS_PER_FEEDBACK),
-    );
+    const identifiers = { feedbackId, clientId: data.clientId };
+    let inserted: boolean;
+    try {
+      inserted = await persistMutation("addComment", identifiers, () =>
+        this.gateway.insertComment(comment, MAX_COMMENTS_PER_FEEDBACK),
+      );
+    } catch (error) {
+      // PostgreSQL checks that the feedback exists on the statement's snapshot, and
+      // its foreign key after it: a feedback deleted in between fails the insert
+      // on the foreign key instead of skipping it. When the feedback is gone, that
+      // is a missing feedback; when the lookup fails too, the insert's own failure
+      // stands. Any other failure stands at once: on an unreachable database, a
+      // lookup would only wait for a second driver timeout.
+      if (!isForeignKeyViolation(error)) throw error;
+      const feedbackGone = await this.gateway.findProjectName(feedbackId).then(
+        (projectName) => projectName === null,
+        () => false,
+      );
+      if (feedbackGone) throw new StoreNotFoundError();
+      throw error;
+    }
     if (inserted) return comment;
 
     // Nothing written: a replay of the clientId, a missing feedback, or a full thread.
-    const replayed = await this.gateway.findCommentByClientId(data.clientId);
+    const replayed = await persistMutation("addComment", identifiers, () =>
+      this.gateway.findCommentByClientId(data.clientId),
+    );
     if (replayed) return replayed;
-    if ((await this.gateway.findProjectName(feedbackId)) === null) throw new StoreNotFoundError();
+    const projectName = await persistMutation("addComment", identifiers, () =>
+      this.gateway.findProjectName(feedbackId),
+    );
+    if (projectName === null) throw new StoreNotFoundError();
     throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
   }
 
-  async deleteComment(feedbackId: string, commentId: string): Promise<void> {
+  async deleteComment(submittedFeedbackId: string, submittedCommentId: string): Promise<void> {
+    const feedbackId = toStorableText(submittedFeedbackId);
+    const commentId = toStorableText(submittedCommentId);
     const deleted = await persistMutation("deleteComment", { feedbackId, commentId }, () =>
       this.gateway.deleteComment(feedbackId, commentId),
     );

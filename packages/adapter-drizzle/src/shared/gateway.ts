@@ -91,8 +91,9 @@ export interface SitepingSqlGateway {
    * Delete at most `chunkSize` rows of a project, their annotations and their comments
    * atomically (one statement or one batch), reading back their uploaded
    * screenshot URLs — the response stays bounded however large the project.
-   * The chunk is picked in `id` order; `deletedCount` is `0` once the project
-   * has no row left.
+   * The chunk is picked in `id` order. `deletedCount` is `0` once the project
+   * has no row left, but also when a concurrent delete removed every row the
+   * chunk picked.
    */
   deleteProjectChunk(projectName: string, chunkSize: number): Promise<DeletedFeedbacks>;
   /**

@@ -14,6 +14,8 @@
  *    behind on `destroy()`.
  */
 
+import { truncateWithEllipsis } from "./truncate.js";
+
 /**
  * Default AND ceiling: adapter-prisma validates `diagnostics.console` at max
  * 50 entries, so a larger buffer would turn every submission into a 400.
@@ -89,10 +91,7 @@ function formatArgs(args: readonly unknown[]): string {
     out += serializeArg(args[i]);
     if (out.length >= MAX_MESSAGE_LENGTH) break;
   }
-  if (out.length > MAX_MESSAGE_LENGTH) {
-    out = `${out.slice(0, MAX_MESSAGE_LENGTH - 1)}…`;
-  }
-  return out;
+  return truncateWithEllipsis(out, MAX_MESSAGE_LENGTH);
 }
 
 /**

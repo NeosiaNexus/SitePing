@@ -1,3 +1,4 @@
+import { primaryOf } from "../shared/replicas.js";
 import { DrizzleSitepingStore, type DrizzleStore, type DrizzleStoreOptions } from "../shared/store.js";
 import { type AnyPgDatabase, createPgGateway } from "./gateway.js";
 import { createSitepingPgTables, type SitepingPgTables } from "./tables.js";
@@ -21,7 +22,8 @@ export interface PgSitepingStoreOptions extends DrizzleStoreOptions {
 }
 
 /**
- * `SitepingStore` on PostgreSQL through Drizzle ORM.
+ * `SitepingStore` on PostgreSQL through Drizzle ORM. Given a database built
+ * with `withReplicas`, it runs everything on the primary.
  *
  * @example
  * ```ts
@@ -33,5 +35,5 @@ export interface PgSitepingStoreOptions extends DrizzleStoreOptions {
  */
 export function createPgSitepingStore(db: AnyPgDatabase, options: PgSitepingStoreOptions = {}): DrizzleStore {
   const { tables = createSitepingPgTables(), ...storeOptions } = options;
-  return new DrizzleSitepingStore(createPgGateway(db, tables), storeOptions);
+  return new DrizzleSitepingStore(createPgGateway(primaryOf(db), tables), storeOptions);
 }
