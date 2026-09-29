@@ -48,11 +48,13 @@ export interface ScreenshotStorageOptions {
    */
   logger?: ScreenshotStorageLogger | undefined;
   /**
-   * Receives the key of every upload whose outcome is unknown (timeout, 5xx),
-   * right after its immediate removal. The backend may still commit such an
-   * upload later, so enqueue the key in a durable job that removes it again
-   * after a few minutes. Awaited before the upload error is rethrown; its own
-   * errors are logged, never thrown.
+   * Receives the key of every upload whose outcome is unknown (timeout,
+   * network error, 5xx), alongside its immediate removal. The backend may
+   * still commit such an upload later, so enqueue the key in a durable job
+   * that removes it again after a few minutes. The upload waits for the
+   * removal and this hook at most 2 seconds before rethrowing its error (what
+   * is still running then goes on in the background), so keep it to the
+   * enqueue. Its own errors are logged, never thrown.
    */
   onUncertainUpload?: UncertainUploadHook | undefined;
 }

@@ -9,14 +9,15 @@ import { SERVED_SCREENSHOT_CACHE_CONTROL } from "../constants/screenshots.js";
 import { normalizeBaseUrl } from "../core/base-url.js";
 import { ObjectStoreRequestError, sendBackendRequest } from "../core/http.js";
 import type { ScreenshotObjectStore } from "../core/object-store.js";
+import { assertRequiredString, assertTimeoutMs } from "../core/option-checks.js";
 import { createPublicUrlMapping } from "../core/public-url.js";
 import { encodeRfc3986, type SigV4Credentials, sha256Hex, signS3Request } from "./sigv4.js";
 
 export interface S3ObjectStoreOptions extends SigV4Credentials {
   /**
-   * S3 API endpoint: `https://s3.<region>.amazonaws.com`,
-   * `https://<account>.r2.cloudflarestorage.com`, `https://s3.<region>.backblazeb2.com`,
-   * your MinIO URL…
+   * S3 API endpoint, without the bucket: `https://s3.<region>.amazonaws.com`,
+   * `https://<account>.r2.cloudflarestorage.com` (`<account>.eu.r2…` for the
+   * EU jurisdiction), `https://s3.<region>.backblazeb2.com`, your MinIO URL…
    */
   endpoint: string;
   bucket: string;
@@ -26,10 +27,11 @@ export interface S3ObjectStoreOptions extends SigV4Credentials {
    * Public URL objects are read from: the bucket's public domain, a CDN in
    * front of it, or `createScreenshotServeHandler` when the bucket is private.
    * An absolute URL, https in production: the widget's panel only shows
-   * https screenshots.
+   * https screenshots, and plain http ones on this machine.
    */
   publicBaseUrl: string;
   fetch?: typeof fetch | undefined;
+  /** Budget of each call in milliseconds, retries and response body included: an integer from 1 to 2147483647. Defaults to 5000. */
   timeoutMs?: number | undefined;
   /**
    * Clock read once per request to sign it (`x-amz-date` and credential scope).
@@ -95,8 +97,22 @@ export function createS3ObjectStore({
   now = () => new Date(),
   treatAccessDeniedAsMissing = false,
 }: S3ObjectStoreOptions): ScreenshotObjectStore {
+  const factory = "createS3ObjectStore";
+  assertRequiredString(factory, "bucket", bucket);
+  assertRequiredString(factory, "region", region);
+  assertRequiredString(factory, "accessKeyId", accessKeyId);
+  assertRequiredString(factory, "secretAccessKey", secretAccessKey);
+  assertTimeoutMs(factory, timeoutMs);
   const credentials: SigV4Credentials = { accessKeyId, secretAccessKey, ...(sessionToken ? { sessionToken } : {}) };
   const endpointBase = normalizeBaseUrl(endpoint, "endpoint");
+  // R2's dashboard shows its S3 API URL with the bucket appended: pasted as is,
+  // every object lands under `<bucket>/<key>`, and every screenshot URL 404s.
+  if (new URL(endpointBase).pathname.endsWith(`/${encodeRfc3986(bucket)}`)) {
+    console.warn(
+      `[siteping] endpoint ends with the bucket name "${bucket}": objects would be stored under "${bucket}/<key>", ` +
+        "not where publicBaseUrl reads them — remove the bucket from endpoint",
+    );
+  }
   // Without ListBucket, S3 hides a missing key behind 403 — see treatAccessDeniedAsMissing.
   const getMissingStatuses = treatAccessDeniedAsMissing
     ? [HTTP_STATUS_NOT_FOUND, HTTP_STATUS_FORBIDDEN]
@@ -132,6 +148,8 @@ export function createS3ObjectStore({
       },
       fetch,
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      // A PUT sends the same bytes under the same fresh key: repeating it stores the same object.
+      idempotent: true,
       ...(options.acceptStatuses ? { acceptStatuses: options.acceptStatuses } : {}),
       ...(options.isUpload ? { isUpload: true } : {}),
       describeError: describeS3Error,

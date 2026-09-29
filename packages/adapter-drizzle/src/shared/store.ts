@@ -15,21 +15,18 @@ import {
   isStorePersistence,
   isUnreachableOffset,
   MAX_COMMENTS_PER_FEEDBACK,
+  SCREENSHOT_DELETE_CONCURRENCY,
   type ScreenshotStorage,
   type SitepingStore,
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
   screenshotMimeType,
+  settleWithConcurrencyLimit,
 } from "@siteping/core";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../constants/deletes.js";
 import { DRIZZLE_STORE_MESSAGE_PREFIX, type DrizzleStoreMutation } from "../constants/errors.js";
-import {
-  INLINE_SCREENSHOT_URL_PREFIX,
-  SCREENSHOT_DELETE_CONCURRENCY,
-  SCREENSHOT_REFERENCE_LOOKUP_BATCH_SIZE,
-} from "../constants/screenshots.js";
-import { settleWithConcurrencyLimit } from "./concurrency.js";
+import { INLINE_SCREENSHOT_URL_PREFIX, SCREENSHOT_REFERENCE_LOOKUP_BATCH_SIZE } from "../constants/screenshots.js";
 import type {
   AnnotationRow,
   CommentRow,

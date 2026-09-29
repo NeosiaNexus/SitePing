@@ -15,12 +15,14 @@ import {
   isStoreNotFound,
   isUnreachableOffset,
   MAX_COMMENTS_PER_FEEDBACK,
+  SCREENSHOT_DELETE_CONCURRENCY,
   type ScreenshotStorage,
   type SitepingStore,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
   screenshotMimeType,
+  settleWithConcurrencyLimit,
 } from "@siteping/core";
 import {
   createSitepingHandler as createServerHandler,
@@ -453,6 +455,11 @@ export class PrismaStore implements SitepingStore {
    * logged and swallowed: an orphaned object is preferable to a delete that
    * reports failure after the row is already gone. Inline `data:` URLs and
    * stores without a `delete` hook are skipped.
+   *
+   * Deletes run through a pool of at most {@link SCREENSHOT_DELETE_CONCURRENCY}
+   * concurrent calls: a project delete may free thousands of objects, and one
+   * socket each at once would exhaust the file descriptors of a serverless
+   * function, orphaning most of them.
    */
   private async discardScreenshots(urls: ReadonlyArray<unknown>): Promise<void> {
     const remove = this.screenshotStorage?.delete?.bind(this.screenshotStorage);
@@ -460,7 +467,7 @@ export class PrismaStore implements SitepingStore {
     const stored = urls.filter(isStoredScreenshotUrl);
     if (stored.length === 0) return;
 
-    const results = await Promise.allSettled(stored.map((url) => remove(url)));
+    const results = await settleWithConcurrencyLimit(stored, SCREENSHOT_DELETE_CONCURRENCY, async (url) => remove(url));
     results.forEach((result, index) => {
       if (result.status === "rejected") {
         console.warn(

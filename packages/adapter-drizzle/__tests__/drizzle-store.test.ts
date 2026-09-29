@@ -4,12 +4,12 @@ import {
   type CommentCreateInput,
   type FeedbackCreateInput,
   isStorePersistence,
+  SCREENSHOT_DELETE_CONCURRENCY,
   type ScreenshotStorage,
 } from "@siteping/core";
 import { getTableName, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../src/constants/deletes.js";
-import { SCREENSHOT_DELETE_CONCURRENCY } from "../src/constants/screenshots.js";
 import { DEFAULT_SITEPING_TABLE_NAMES, type SitepingTableNames } from "../src/constants/table-names.js";
 import { createLibSQLSitepingStore, createSitepingSqliteTables } from "../src/libsql/index.js";
 import { createPgSitepingStore, createSitepingPgTables } from "../src/pg/index.js";

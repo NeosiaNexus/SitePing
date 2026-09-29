@@ -82,17 +82,21 @@ export const objectStore = createS3ObjectStore({
 
 | Option | Défaut | Rôle |
 |---|---|---|
-| `endpoint` | requis | L'endpoint de l'API S3 (`https://<compte>.r2.cloudflarestorage.com`, `https://s3.<région>.amazonaws.com`, `https://s3.<région>.backblazeb2.com`, l'URL de votre MinIO). Une URL http(s) absolue |
+| `endpoint` | requis | L'endpoint de l'API S3, sans le nom du bucket (`https://<compte>.r2.cloudflarestorage.com`, `https://s3.<région>.amazonaws.com`, `https://s3.<région>.backblazeb2.com`, l'URL de votre MinIO). Une URL http(s) absolue. Le tableau de bord de R2 affiche son URL d'API S3 avec le bucket à la fin : retirez-le, sinon chaque objet atterrit sous `<bucket>/<clé>` et chaque URL de capture répond `404` (un avertissement le signale). Un bucket sous la juridiction UE de R2 prend `https://<compte>.eu.r2.cloudflarestorage.com` |
 | `bucket` | requis | Le nom du bucket |
 | `region` | `"auto"` | La région de signature : `auto` convient à R2 ; sur AWS, B2 et MinIO, la région configurée pour le bucket ou le serveur |
 | `accessKeyId`, `secretAccessKey`, `sessionToken` | requis, optionnel | Les identifiants. `sessionToken` sert aux identifiants temporaires (STS) |
 | `publicBaseUrl` | requis | D'où les captures sont lues : le domaine public du bucket, un CDN devant lui, ou [votre app](#servir-les-captures-depuis-votre-app) quand le bucket est privé |
 | `treatAccessDeniedAsMissing` | `false` | Voir [identifiants au moindre privilège](#identifiants-au-moindre-privilège) |
-| `timeoutMs` | `5000` | Délai maximal par requête, corps de la réponse compris |
+| `timeoutMs` | `5000` | Budget de temps de chaque appel au bucket, [nouvelles tentatives](#nouvelles-tentatives) et corps de la réponse compris |
 | `now` | l'horloge de l'hôte | L'horloge qui signe les requêtes. S3 refuse une signature décalée de plus de quelques minutes : passez une horloge corrigée si celle de l'hôte dérive |
 | `fetch` | `globalThis.fetch` | L'implémentation de fetch, pour les tests ou un proxy |
 
-Les requêtes utilisent des URL en style chemin (`<endpoint>/<bucket>/<clé>`), qu'acceptent R2, AWS S3, B2 et MinIO. L'adressage en style hôte virtuel (`<bucket>.<endpoint>`) n'est pas pris en charge. Chaque objet est stocké avec `Cache-Control: public, max-age=31536000, immutable`, puisqu'une clé n'est jamais réutilisée : un bucket public ou un CDN garde les captures en cache pour de bon.
+Les requêtes utilisent des URL en style chemin (`<endpoint>/<bucket>/<clé>`), qu'acceptent R2, AWS S3, B2 et MinIO. L'adressage en style hôte virtuel (`<bucket>.<endpoint>`) n'est pas pris en charge. Chaque objet est stocké avec `Cache-Control: public, max-age=31536000, immutable`, puisqu'une clé n'est jamais réutilisée : un bucket public ou un CDN garde les captures en cache pour de bon, [même une fois supprimées](#ce-que-supprime-delete).
+
+### Nouvelles tentatives
+
+Une requête qui échoue sur une erreur réseau, un `5xx` (le `503 SlowDown` de S3, une `500 InternalError` de R2) ou un `429` est renvoyée, jusqu'à trois tentatives en tout, après une courte attente aléatoire ou le `Retry-After` que demande le backend, tant que `timeoutMs` en laisse le temps. Sinon, un seul échec passager coûterait sa capture au feedback. Renvoyer un `PUT` stocke les mêmes octets sous la même clé : une nouvelle tentative ne laisse jamais de second objet.
 
 ### Identifiants au moindre privilège
 
@@ -125,7 +129,7 @@ export const objectStore = createCloudflareImagesObjectStore({
 });
 ```
 
-Chaque capture est envoyée avec sa clé pour identifiant d'image personnalisé : son URL de diffusion, `https://imagedelivery.net/<accountHash>/<clé>/public`, est connue avant la fin de l'envoi. `variant` choisit une autre variante que `public`, et `deliveryBaseUrl` sert depuis votre propre domaine (`https://example.com/cdn-cgi/imagedelivery`). `timeoutMs` et `fetch` fonctionnent comme pour S3.
+Chaque capture est envoyée avec sa clé pour identifiant d'image personnalisé : son URL de diffusion, `https://imagedelivery.net/<accountHash>/<clé>/public`, est connue avant la fin de l'envoi. `variant` choisit une autre variante que `public`, et `deliveryBaseUrl` sert depuis votre propre domaine (`https://example.com/cdn-cgi/imagedelivery`). `timeoutMs`, `fetch` et les [nouvelles tentatives](#nouvelles-tentatives) fonctionnent comme pour S3, sauf pour l'envoi lui-même : un `POST` n'est renvoyé qu'après un `429`, car après une erreur réseau ou un `5xx` l'image est peut-être déjà stockée sous son identifiant.
 
 Cloudflare n'autorise pas les URL signées pour les images à identifiant personnalisé : les captures restent lisibles par quiconque a leur URL. Les clés sont des valeurs aléatoires de 128 bits, que personne ne peut deviner, mais une URL partagée dans un ticket ou visible sur une capture du panneau reste valide jusqu'à la suppression du feedback. Si les captures doivent rester derrière votre connexion, utilisez un bucket privé servi par votre app.
 
@@ -189,6 +193,8 @@ export const screenshotStorage = createScreenshotStorage(objectStore);
 
 Migrez la table avec `drizzle-kit` comme le reste de votre schéma, et servez-la avec la route ci-dessus. Sur Turso / libSQL, utilisez `createSitepingScreenshotsSqliteTable` et `createLibSQLScreenshotObjectStore` de `@siteping/screenshot-storage/drizzle-libsql`. Les deux demandent `drizzle-orm` 0.45 ou plus (sous 1.0), une dépendance peer optionnelle. La table est indépendante de celles du store : `createSitepingScreenshotsPgTable("mon_nom")` la renomme, et vous la passez en `table`.
 
+Une requête qui échoue (une table pas encore migrée, une base injoignable) lève une `ObjectStoreRequestError` qui nomme l'instruction et la clé. Sa `cause` est le code et le message de l'erreur du driver, jamais les paramètres de la requête : ils contiennent toute l'image, qui finirait sinon dans vos logs à chaque envoi en échec.
+
 ## Options
 
 `createScreenshotStorage(objectStore, options)` :
@@ -201,15 +207,21 @@ Migrez la table avec `drizzle-kit` comme le reste de votre schéma, et servez-la
 | `logger` | `console.warn` | Reçoit les cas dégradés mais gérés : une suppression refusée, une récupération qui échoue, un `onUncertainUpload` qui échoue |
 | `onUncertainUpload` | — | `(key) => void \| Promise<void>` : voir plus bas |
 
-Les factories lèvent une erreur sur une configuration qui ne pourrait pas fonctionner : un `keyPrefix` dangereux, un `maxBytes` qui n'est pas un entier positif, ou un `publicBaseUrl`, `endpoint` ou `deliveryBaseUrl` qui n'est pas une URL http(s) absolue, ou qui contient des identifiants, une query string ou un fragment. Un `publicBaseUrl` ou `deliveryBaseUrl` qui n'est pas en https est accepté avec un avertissement : le panneau du widget n'affiche que les captures en https (le dashboard les affiche toutes), donc `http://localhost` ne convient qu'au développement.
+Les factories lèvent une erreur sur une configuration qui ne pourrait pas fonctionner : une option requise absente ou vide (`bucket`, `region`, les identifiants, `accountId`, `apiToken`, `accountHash` : une variable absente derrière `process.env.X!` construirait sinon chaque URL de capture sur `undefined`), un `accountHash` ou un `variant` qui n'est pas un seul segment de chemin d'URL, un `keyPrefix` dangereux, un `maxBytes` qui n'est pas un entier positif, un `timeoutMs` qui n'est pas un entier de 1 à 2147483647 (`Number()` d'une variable absente donne `NaN`), ou un `publicBaseUrl`, `endpoint` ou `deliveryBaseUrl` qui n'est pas une URL http(s) absolue, ou qui contient des identifiants, une query string ou un fragment. L'erreur nomme l'option et la raison, jamais la valeur, qui peut contenir un jeton. Un `publicBaseUrl` ou `deliveryBaseUrl` en http simple est accepté, avec un avertissement s'il n'est pas sur cette machine : le panneau du widget affiche les captures en https, plus celles en http simple sur `localhost`, `*.localhost`, `127.0.0.1` et `[::1]` pour le développement. Toute autre URL http manque au panneau, et un dashboard servi en https la bloque comme contenu mixte.
 
 ## Ce que supprime `delete`
 
 Les stores appellent `delete(url)` quand un feedback est supprimé, et quand une création qui a déjà envoyé sa capture n'est pas enregistrée, comme un `clientId` en double (les pages [Prisma](/fr/docs/adapters/prisma#stockage-des-captures) et [Drizzle](/fr/docs/adapters/drizzle#captures-décran) listent les cas). Il ne supprime l'objet que si l'URL a été produite par ce stockage **et** que sa clé est dans son propre espace de noms (`keyPrefix` plus la forme générée). Une URL `data:` en ligne, un autre hôte ou un encodage malformé est ignoré. Un autre objet derrière le même bucket ou CDN, comme une ancienne capture ou le fichier d'une autre app, est laissé en place avec un avertissement au `logger`. Supprimer un objet déjà disparu réussit.
 
+`delete` supprime l'objet du backend, pas les copies que les caches détiennent déjà. Les objets S3, et les captures que votre app sert sans `authorize`, portent `Cache-Control: public, max-age=31536000, immutable` : un CDN devant eux (CloudFront, un domaine personnalisé chez Cloudflare) et chaque navigateur qui en a affiché une peuvent continuer à la servir jusqu'à un an à quiconque détient son URL. Quand une capture doit vraiment disparaître, comme lorsqu'un client demande l'effacement de ses données, purgez aussi son URL du CDN (une invalidation CloudFront, une purge du cache Cloudflare), ou raccourcissez à l'avance la durée de cache dans les règles du CDN. Derrière `authorize`, aucun cache partagé ne garde une capture, mais un navigateur qui l'a affichée garde sa propre copie.
+
 ## Envois à l'issue incertaine
 
-Quand un envoi échoue sur un délai dépassé ou un `5xx`, le backend a pu stocker l'objet malgré tout. Le stockage supprime alors la clé tout de suite et relance l'erreur. Un backend qui valide l'envoi après cette suppression laisse un orphelin : `onUncertainUpload(key)` reçoit donc la clé. Mettez-la dans une tâche durable qui la supprime de nouveau quelques minutes plus tard avec `objectStore.remove(key)`. Un refus définitif (un `4xx`, comme des identifiants invalides) n'a rien stocké et n'est pas récupéré.
+Quand un envoi échoue encore après ses nouvelles tentatives, sur un délai dépassé, une erreur réseau ou un `5xx`, le backend a pu stocker l'objet malgré tout. Le stockage supprime alors la clé tout de suite, avant de relancer l'erreur. Un backend qui valide l'envoi après cette suppression laisse un orphelin : `onUncertainUpload(key)` reçoit donc la clé au même moment. Mettez-la dans une tâche durable qui la supprime de nouveau quelques minutes plus tard avec `objectStore.remove(key)`.
+
+Le stockage attend la suppression et le hook 2 secondes au plus, puis relance l'erreur et les laisse finir en arrière-plan (un hook qui échoue plus tard est quand même journalisé). Un envoi en échec retient donc le feedback au plus `timeoutMs` plus 2 secondes, dans le délai de 10 secondes que le widget accorde à sa requête : limitez le hook à la mise en file, et gardez `timeoutMs` sous 8 secondes.
+
+Un refus définitif n'a rien stocké et n'est pas récupéré : un `4xx`, comme des identifiants invalides, ou un `3xx`, comme le `301 PermanentRedirect` que renvoie AWS quand `endpoint` n'est pas la région du bucket. Seule exception, le refus d'une nouvelle tentative : quand une tentative précédente du même envoi a échoué sur une erreur réseau ou un `5xx`, elle a pu stocker l'objet. L'issue est alors incertaine, et la clé est récupérée comme décrit plus haut.
 
 Une règle de cycle de vie qui fait expirer `siteping-*` ne remplace pas ce mécanisme : elle ne distingue pas les orphelins des captures qu'un feedback affiche encore. Elle ne convient donc que si vous voulez de toute façon que les captures expirent après une durée de conservation.
 

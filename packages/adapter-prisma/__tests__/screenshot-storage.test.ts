@@ -1,4 +1,4 @@
-import { type ScreenshotStorage, StoreDuplicateError } from "@siteping/core";
+import { SCREENSHOT_DELETE_CONCURRENCY, type ScreenshotStorage, StoreDuplicateError } from "@siteping/core";
 import { createScreenshotStorage } from "@siteping/screenshot-storage";
 import { createMemoryObjectStore } from "@siteping/screenshot-storage/memory";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -220,6 +220,28 @@ describe("PrismaStore — screenshot cleanup", () => {
     );
     expect(calls[0]).toBe("deleteMany");
     expect(calls.slice(1).sort()).toEqual(["https://cdn.example.com/a.jpg", "https://cdn.example.com/b.jpg"]);
+  });
+
+  it("deleteAllFeedbacks keeps at most the concurrency limit of screenshot deletes in flight", async () => {
+    const storage = storageWithDelete();
+    const urls = Array.from({ length: 50 }, (_, index) => `https://cdn.example.com/${index}.jpg`);
+    prisma.sitepingFeedback.findMany.mockResolvedValue(urls.map((screenshotUrl) => ({ screenshotUrl })));
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const deleted: string[] = [];
+    storage.delete.mockImplementation(async (url: string) => {
+      inFlight += 1;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      // Keep each delete pending across a macrotask so concurrent calls overlap.
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight -= 1;
+      deleted.push(url);
+    });
+
+    await new PrismaStore(prisma, { screenshotStorage: storage }).deleteAllFeedbacks("p");
+
+    expect(peakInFlight).toBe(SCREENSHOT_DELETE_CONCURRENCY);
+    expect(deleted.sort()).toEqual([...urls].sort());
   });
 
   it("deleteAllFeedbacks does not query screenshots when the storage has no delete hook", async () => {

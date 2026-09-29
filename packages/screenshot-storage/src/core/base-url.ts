@@ -1,3 +1,5 @@
+import { parseHttpUrl } from "@siteping/core";
+
 /**
  * Remove every trailing `/` from a configured base URL.
  *
@@ -22,42 +24,55 @@ function trimTrailingSlashes(value: string): string {
  * URL or a `?` or `#` (even an empty one) would produce URLs that point
  * elsewhere, and credentials would be copied into every stored screenshot URL.
  *
+ * The refused value is never quoted: it is thrown at startup, into server
+ * logs, and may carry a secret the parser does not see as credentials — a
+ * `?token=`, a `#sig=`, or the password of a URL that does not parse or lacks
+ * its scheme (`user:pass@host` parses as the scheme `user:`).
+ *
  * @param value - The base URL as configured by the caller.
  * @param option - Name of the option, for the error message.
  * @returns The URL's origin and path, normalized (lowercase scheme and host,
  *   `https:host` → `https://host`) and without trailing slashes.
- * @throws Error naming the option and, unless it holds credentials, the refused value.
+ * @throws Error naming the option and why its value was refused, never the value.
  */
 export function normalizeBaseUrl(value: string, option: string): string {
-  let url: URL | null = null;
-  try {
-    url = new URL(value);
-  } catch {
-    // Reported below with the other refusals.
-  }
-  if (url && (url.username || url.password)) {
-    // The value is not echoed: it holds a password.
+  const url = parseHttpUrl(value);
+  if (!url) throw new Error(`[siteping] ${option} must be an absolute http(s) URL`);
+  if (url.username || url.password) {
     throw new Error(`[siteping] ${option} must not contain credentials (user:password@)`);
   }
-  if (!url || (url.protocol !== "https:" && url.protocol !== "http:") || value.includes("?") || value.includes("#")) {
-    throw new Error(`[siteping] ${option} must be an absolute http(s) URL without a query or fragment, got "${value}"`);
+  if (value.includes("?") || value.includes("#")) {
+    throw new Error(`[siteping] ${option} must not contain a query or a fragment (? or #)`);
   }
   return trimTrailingSlashes(`${url.origin}${url.pathname}`);
 }
 
 /**
- * Warn, at configuration time, when screenshot URLs will not be `https`: the
- * widget's panel only renders `https://` (and inline `data:`) screenshots, so
- * an `http://localhost` setup would otherwise lose them there silently — the
- * dashboard still shows them.
+ * Whether `hostname` is this machine: the hosts the widget's panel also shows
+ * plain-http screenshots from, for a local MinIO or dev server — the same
+ * list as the widget's `isLoopbackHttp` (`packages/widget/src/panel-detail.ts`).
+ *
+ * @param hostname - Hostname of a parsed URL (lowercase, IPv6 in brackets).
+ */
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "[::1]"
+  );
+}
+
+/**
+ * Warn, at configuration time, when the widget's panel will not show the
+ * screenshot URLs: it renders `https://` ones, and plain `http://` ones only
+ * on this machine. Any other `http://` base would lose them there silently,
+ * and on a dashboard served over https too, as mixed content.
  *
  * @param base - A base URL normalized by {@link normalizeBaseUrl}, whose scheme is lowercase.
  * @param option - Name of the option, for the warning.
  */
 export function warnUnlessHttps(base: string, option: string): void {
-  if (base.startsWith("https://")) return;
+  if (base.startsWith("https://") || isLoopbackHostname(new URL(base).hostname)) return;
   console.warn(
-    `[siteping] ${option} "${base}" is not https: the widget's panel only shows https screenshots, ` +
-      "so they will be missing there (the dashboard shows them).",
+    `[siteping] ${option} "${base}" is neither https nor on this machine: the widget's panel will not show ` +
+      "its screenshots, and a dashboard served over https blocks them as mixed content.",
   );
 }

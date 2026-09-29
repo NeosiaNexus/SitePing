@@ -82,17 +82,21 @@ export const objectStore = createS3ObjectStore({
 
 | Option | Default | What it does |
 |---|---|---|
-| `endpoint` | required | The S3 API endpoint (`https://<account>.r2.cloudflarestorage.com`, `https://s3.<region>.amazonaws.com`, `https://s3.<region>.backblazeb2.com`, your MinIO URL). An absolute http(s) URL |
+| `endpoint` | required | The S3 API endpoint, without the bucket name (`https://<account>.r2.cloudflarestorage.com`, `https://s3.<region>.amazonaws.com`, `https://s3.<region>.backblazeb2.com`, your MinIO URL). An absolute http(s) URL. R2's dashboard shows its S3 API URL with the bucket at the end: remove it, or every object lands under `<bucket>/<key>` and every screenshot URL answers `404` (a warning flags it). A bucket under R2's EU jurisdiction takes `https://<account>.eu.r2.cloudflarestorage.com` |
 | `bucket` | required | The bucket name |
 | `region` | `"auto"` | The signing region: `auto` suits R2; on AWS, B2 and MinIO, use the region the bucket or server is configured with |
 | `accessKeyId`, `secretAccessKey`, `sessionToken` | required, optional | The credentials. `sessionToken` is for temporary (STS) credentials |
 | `publicBaseUrl` | required | Where screenshots are read from: the bucket's public domain, a CDN in front of it, or [your app](#serve-screenshots-from-your-app) when the bucket is private |
 | `treatAccessDeniedAsMissing` | `false` | See [least-privilege credentials](#least-privilege-credentials) |
-| `timeoutMs` | `5000` | Per-request timeout, response body included |
+| `timeoutMs` | `5000` | Time budget of each call to the bucket, [retries](#retries) and response body included |
 | `now` | the host clock | The clock that signs requests. S3 refuses a signature more than a few minutes off, so pass a corrected clock if the host's drifts |
 | `fetch` | `globalThis.fetch` | The fetch implementation, for tests or a proxy |
 
-Requests use path-style URLs (`<endpoint>/<bucket>/<key>`), which R2, AWS S3, B2 and MinIO all accept. Virtual-hosted-style addressing (`<bucket>.<endpoint>`) is not supported. Each object is stored with `Cache-Control: public, max-age=31536000, immutable`, since a key is never reused: a public bucket or CDN caches screenshots for good.
+Requests use path-style URLs (`<endpoint>/<bucket>/<key>`), which R2, AWS S3, B2 and MinIO all accept. Virtual-hosted-style addressing (`<bucket>.<endpoint>`) is not supported. Each object is stored with `Cache-Control: public, max-age=31536000, immutable`, since a key is never reused: a public bucket or CDN caches screenshots for good, [even once deleted](#what-delete-removes).
+
+### Retries
+
+A request that fails with a network error, a `5xx` (S3's `503 SlowDown`, an R2 `500 InternalError`) or a `429` is sent again, up to three attempts in all, after a short random wait or the `Retry-After` the backend asks for, as long as `timeoutMs` leaves time for it. A single transient failure would otherwise cost the feedback its screenshot. Sending a `PUT` again stores the same bytes under the same key, so a retry never leaves a second object behind.
 
 ### Least-privilege credentials
 
@@ -125,7 +129,7 @@ export const objectStore = createCloudflareImagesObjectStore({
 });
 ```
 
-Each screenshot is uploaded with its key as a custom image ID, so its delivery URL, `https://imagedelivery.net/<accountHash>/<key>/public`, is known before the upload finishes. `variant` picks another variant than `public`, and `deliveryBaseUrl` serves from your own domain (`https://example.com/cdn-cgi/imagedelivery`). `timeoutMs` and `fetch` work as for S3.
+Each screenshot is uploaded with its key as a custom image ID, so its delivery URL, `https://imagedelivery.net/<accountHash>/<key>/public`, is known before the upload finishes. `variant` picks another variant than `public`, and `deliveryBaseUrl` serves from your own domain (`https://example.com/cdn-cgi/imagedelivery`). `timeoutMs`, `fetch` and [retries](#retries) work as for S3, except for the upload itself: a `POST` is only sent again after a `429`, since after a network error or a `5xx` the image may already be stored under its ID.
 
 Cloudflare does not allow signed URLs for images with a custom ID, so screenshots stay publicly readable by anyone who has the URL. Keys are 128-bit random values, which nobody can guess, but a URL shared in a ticket or a screenshot of the panel stays valid until the feedback is deleted. If screenshots must stay behind your login, use a private bucket served by your app.
 
@@ -189,6 +193,8 @@ export const screenshotStorage = createScreenshotStorage(objectStore);
 
 Migrate the table with `drizzle-kit` like the rest of your schema, and serve it with the route above. On Turso / libSQL, use `createSitepingScreenshotsSqliteTable` and `createLibSQLScreenshotObjectStore` from `@siteping/screenshot-storage/drizzle-libsql`. Both need `drizzle-orm` 0.45 or later (below 1.0), an optional peer dependency. The table is independent from the store's tables: `createSitepingScreenshotsPgTable("my_name")` renames it, and you pass it as `table`.
 
+A failed query (a table not migrated yet, a database out of reach) throws an `ObjectStoreRequestError` naming the statement and the key. Its `cause` is the code and message of the driver's error, never the query's parameters: those hold the whole image, which would otherwise land in your logs with every failed upload.
+
 ## Options
 
 `createScreenshotStorage(objectStore, options)`:
@@ -201,15 +207,21 @@ Migrate the table with `drizzle-kit` like the rest of your schema, and serve it 
 | `logger` | `console.warn` | Receives the degraded-but-handled cases: a refused delete, a failed reclaim, a failing `onUncertainUpload` |
 | `onUncertainUpload` | — | `(key) => void \| Promise<void>`: see below |
 
-The factories throw on a configuration that could not work: an unsafe `keyPrefix`, a `maxBytes` that is not a positive integer, or a `publicBaseUrl`, `endpoint` or `deliveryBaseUrl` that is not an absolute http(s) URL, or that carries credentials, a query or a fragment. A `publicBaseUrl` or `deliveryBaseUrl` that is not https is accepted with a warning: the widget's panel only shows https screenshots (the dashboard shows them all), so `http://localhost` is fine for development only.
+The factories throw on a configuration that could not work: a missing or blank required option (`bucket`, `region`, the credentials, `accountId`, `apiToken`, `accountHash`: an unset variable behind `process.env.X!` would otherwise build every screenshot URL on `undefined`), an `accountHash` or `variant` that is not a single URL path segment, an unsafe `keyPrefix`, a `maxBytes` that is not a positive integer, a `timeoutMs` that is not an integer from 1 to 2147483647 (`Number()` of a missing variable is `NaN`), or a `publicBaseUrl`, `endpoint` or `deliveryBaseUrl` that is not an absolute http(s) URL, or that carries credentials, a query or a fragment. The error names the option and the reason, never the value, which may hold a token. A plain-http `publicBaseUrl` or `deliveryBaseUrl` is accepted, with a warning unless it is on this machine: the widget's panel shows https screenshots, plus plain-http ones on `localhost`, `*.localhost`, `127.0.0.1` and `[::1]` for development. Any other http URL is missing from the panel, and a dashboard served over https blocks it as mixed content.
 
 ## What `delete` removes
 
 The stores call `delete(url)` when a feedback is deleted, and when a create that already uploaded its screenshot is not stored, such as a duplicate `clientId` (the [Prisma](/docs/adapters/prisma#screenshot-storage) and [Drizzle](/docs/adapters/drizzle#screenshots) pages list the cases). It removes the object only when the URL is one this storage produced **and** its key is in its own namespace (`keyPrefix` plus the generated shape). An inline `data:` URL, another host or a malformed encoding is ignored. Another object behind the same bucket or CDN, such as a legacy screenshot or another app's file, is left alone with a warning to the `logger`. Deleting an object that is already gone succeeds.
 
+`delete` removes the object from the backend, not the copies caches already hold. S3 objects, and screenshots your app serves without `authorize`, carry `Cache-Control: public, max-age=31536000, immutable`: a CDN in front of them (CloudFront, a custom domain on Cloudflare) and every browser that displayed one may keep serving it for up to a year to whoever holds its URL. When a screenshot must really disappear, such as a client asking for their data to be erased, also purge its URL from the CDN (a CloudFront invalidation, a Cloudflare cache purge), or shorten the cache lifetime in the CDN's rules beforehand. Behind `authorize`, no shared cache keeps a screenshot, but a browser that displayed it keeps its own copy.
+
 ## Uploads with an unknown outcome
 
-When an upload fails with a timeout or a `5xx`, the backend may have stored the object anyway. The storage then removes the key right away and rethrows the error. A backend that commits the upload after that removal leaves an orphan, so `onUncertainUpload(key)` receives the key: enqueue it in a durable job that removes it again a few minutes later with `objectStore.remove(key)`. A definitive refusal (a `4xx`, such as bad credentials) stored nothing and is not reclaimed.
+When an upload still fails after its retries with a timeout, a network error or a `5xx`, the backend may have stored the object anyway. The storage then removes the key right away, before it rethrows the error. A backend that commits the upload after that removal leaves an orphan, so `onUncertainUpload(key)` receives the key at the same time: enqueue it in a durable job that removes it again a few minutes later with `objectStore.remove(key)`.
+
+The storage waits for the removal and the hook 2 seconds at most, then rethrows and leaves them to finish in the background (a hook that fails later is still logged). A failed upload thus holds the feedback at most `timeoutMs` plus 2 seconds, within the widget's 10-second request timeout: keep the hook to the enqueue, and `timeoutMs` under 8 seconds.
+
+A definitive refusal stored nothing and is not reclaimed: a `4xx`, such as bad credentials, or a `3xx`, such as the `301 PermanentRedirect` AWS answers when `endpoint` is not the bucket's region. The exception is a refusal of a retry: when an earlier attempt of the same upload failed with a network error or a `5xx`, that attempt may have stored the object, so the outcome is unknown and the key is reclaimed as above.
 
 An expiration lifecycle rule on `siteping-*` does not replace this: it cannot tell orphans from screenshots a feedback still shows, so it only fits if you want screenshots to expire after a retention period anyway.
 
