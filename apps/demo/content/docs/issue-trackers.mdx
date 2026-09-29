@@ -62,7 +62,7 @@ On a self-managed instance, pass `apiBaseUrl: "https://gitlab.acme.com/api/v4"`.
 | `open`, `in_progress` | Reopened | Reopened |
 | `resolved` | Closed as completed | Closed |
 | `wont_fix` | Closed as not planned | Closed |
-| Deleted | Closed as not planned, with a comment | Closed, with a comment |
+| Deleted | Closed as not planned if still open, with a comment. An issue already closed keeps its reason | Closed, with a comment |
 
 Moving between `open` and `in_progress` only looks the issue up, and writes nothing to an issue that is open. With `syncStatus: false`, issues are only created and closed on delete.
 

@@ -62,7 +62,7 @@ Sur une instance auto-hébergée, passez `apiBaseUrl: "https://gitlab.acme.com/a
 | `open`, `in_progress` | Rouvert | Rouvert |
 | `resolved` | Fermé comme terminé (completed) | Fermé |
 | `wont_fix` | Fermé comme non prévu (not planned) | Fermé |
-| Supprimé | Fermé comme non prévu, avec un commentaire | Fermé, avec un commentaire |
+| Supprimé | Fermé comme non prévu s'il est encore ouvert, avec un commentaire. Un ticket déjà fermé garde sa raison | Fermé, avec un commentaire |
 
 Passer de `open` à `in_progress` et inversement ne fait que chercher le ticket, et n'écrit rien sur un ticket ouvert. Avec `syncStatus: false`, les tickets sont seulement créés, puis fermés à la suppression.
 
