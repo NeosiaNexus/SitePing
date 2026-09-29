@@ -115,13 +115,25 @@ Everything in the body comes from anonymous visitors, so it is quoted as code. T
 
 Both check their options when they are called, and throw on a value that could not work: a `repository` that is not `owner/name` (a `project` that is neither an id nor a full path), an `apiBaseUrl` that is not an absolute http(s) URL, a `timeoutMs` or `maxListedPages` that is not a positive integer (`Number()` of a misspelled variable is `NaN`), or a token that is empty or has a space, a line break or an invisible character inside. The error never quotes the token.
 
-`createIssueTrackerHooks` returns plain hooks, so you can add your own next to them:
+`createIssueTrackerHooks` returns plain `onCreated`, `onUpdated` and `onDeleting` hooks, and you can add `onDeleted` next to them. To run code of your own on one of those three, call the integration's hook from yours: a hook of the same name spread after them replaces theirs, and TypeScript does not flag it.
 
 ```ts
-hooks: {
-  ...createIssueTrackerHooks({ tracker }),
-  onDeleted: (target) => audit.log("deleted", target),
-},
+const issues = createIssueTrackerHooks({ tracker });
+
+createSitepingHandler({
+  store,
+  hooks: {
+    ...issues,
+    async onCreated(feedback) {
+      try {
+        await issues.onCreated(feedback);
+      } finally {
+        await searchIndex.add(feedback); // runs even when the tracker fails, whose error is still logged
+      }
+    },
+    onDeleted: (target) => audit.log("deleted", target),
+  },
+});
 ```
 
 ## Latency and failures

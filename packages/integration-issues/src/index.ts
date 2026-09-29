@@ -7,7 +7,7 @@
  *
  * Or implement `IssueTracker` for any other tracker.
  */
-export { createIssueTrackerHooks, type IssueTrackerHooksOptions } from "./core/hooks.js";
+export { createIssueTrackerHooks, type IssueTrackerHooks, type IssueTrackerHooksOptions } from "./core/hooks.js";
 export {
   IssueTrackerRequestError,
   isIssueTrackerRequestError,

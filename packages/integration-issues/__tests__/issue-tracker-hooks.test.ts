@@ -226,22 +226,21 @@ for (const provider of providers) {
     });
 
     it("keeps deployments that share a repository apart by instance", async () => {
-      const context = { request: new Request(ENDPOINT), principal: null };
-      const production = createIssueTrackerHooks<null>({ tracker: provider.createTracker(fake) });
-      const staging = createIssueTrackerHooks<null>({ tracker: provider.createTracker(fake), instance: "staging" });
+      const production = createIssueTrackerHooks({ tracker: provider.createTracker(fake) });
+      const staging = createIssueTrackerHooks({ tracker: provider.createTracker(fake), instance: "staging" });
       // Separate stores may hand out the same id: production's issue is the newer match.
       const feedback = await send(createHandler({ instance: "staging" }));
-      await production.onCreated?.(feedback, context);
+      await production.onCreated(feedback);
 
       expect(fake.issues.map((issue) => issue.body.split("\n", 1)[0])).toEqual([
         `<!-- siteping-feedback {"id":"${feedback.id}","project":"site","instance":"staging"} -->`,
         `<!-- siteping-feedback {"id":"${feedback.id}","project":"site"} -->`,
       ]);
 
-      await staging.onUpdated?.({ ...feedback, status: "resolved" }, context);
+      await staging.onUpdated({ ...feedback, status: "resolved" });
       expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, true]);
 
-      await production.onDeleting?.({ kind: "project", projectName: "site" }, context);
+      await production.onDeleting({ kind: "project", projectName: "site" });
       expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, false]);
       expect(fake.issues.map((issue) => issue.comments.filter((comment) => !comment.startsWith("system:")))).toEqual([
         [],
@@ -419,10 +418,11 @@ for (const provider of providers) {
       const [issue] = fake.issues;
 
       // First attempt: the comment lands, then the delete itself is retried.
-      await (createIssueTrackerHooks<null>({ tracker: provider.createTracker(fake) }).onDeleting?.(
-        { kind: "single", id: feedback.id, projectName: "site" },
-        { request: new Request(ENDPOINT), principal: null },
-      ) as Promise<void>);
+      await createIssueTrackerHooks({ tracker: provider.createTracker(fake) }).onDeleting({
+        kind: "single",
+        id: feedback.id,
+        projectName: "site",
+      });
       const response = await remove(handler, { id: feedback.id, projectName: "site" });
 
       expect(response.status).toBe(200);
@@ -446,15 +446,14 @@ for (const provider of providers) {
     for (const [label, deletedCommentText] of deletedTexts) {
       it(`leaves a single deletion comment across retries, with a text ${label}`, async () => {
         const feedback = await send(createHandler());
-        const hooks = createIssueTrackerHooks<null>({
+        const hooks = createIssueTrackerHooks({
           tracker: provider.createTracker(fake),
           deletedCommentText: deletedCommentText(),
         });
         const target = { kind: "single", id: feedback.id, projectName: "site" } as const;
-        const context = { request: new Request(ENDPOINT), principal: null };
 
-        await hooks.onDeleting?.(target, context);
-        await hooks.onDeleting?.(target, context);
+        await hooks.onDeleting(target);
+        await hooks.onDeleting(target);
 
         expect(fake.issues[0]?.comments.filter((comment) => !comment.startsWith("system:"))).toHaveLength(1);
       });

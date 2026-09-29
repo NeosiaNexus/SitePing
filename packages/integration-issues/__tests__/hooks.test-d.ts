@@ -41,6 +41,30 @@ describe("createIssueTrackerHooks", () => {
     });
   });
 
+  it("lets a hook of your own call the one it replaces", () => {
+    const issues = createIssueTrackerHooks({ tracker });
+
+    createSitepingHandler({
+      store,
+      access: { authenticate: sessionUser },
+      hooks: {
+        ...issues,
+        async onCreated(feedback, { principal }) {
+          await issues.onCreated(feedback);
+          expectTypeOf(principal).toEqualTypeOf<Reviewer>();
+        },
+      },
+    });
+    createSitepingHandler({
+      store,
+      apiKey: "k",
+      hooks: {
+        ...issues,
+        onDeleting: (target) => issues.onDeleting(target),
+      },
+    });
+  });
+
   it("combines with hooks of your own", () => {
     createSitepingHandler({
       store,

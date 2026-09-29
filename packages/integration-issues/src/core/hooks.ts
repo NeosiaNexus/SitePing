@@ -1,5 +1,5 @@
 import { type FeedbackRecord, isClosedStatus, parseHttpUrl } from "@siteping/core";
-import type { SitepingLifecycleHooks } from "@siteping/server";
+import type { SitepingDeletionTarget } from "@siteping/server";
 import {
   DEFAULT_DEEP_LINK_PARAM,
   DELETED_FEEDBACK_COMMENT_TEMPLATE,
@@ -61,6 +61,17 @@ export interface IssueTrackerHooksOptions {
   deletedCommentText?: (feedbackId: string) => string;
 }
 
+/**
+ * The hooks `createIssueTrackerHooks` returns. They never read the request
+ * context: they fit either access policy without widening the principal
+ * the handler infers, and a hook of your own can call the one it replaces.
+ */
+export interface IssueTrackerHooks {
+  onCreated(feedback: FeedbackRecord): Promise<void>;
+  onUpdated(feedback: FeedbackRecord): Promise<void>;
+  onDeleting(target: SitepingDeletionTarget): Promise<void>;
+}
+
 const noRedaction = (text: string): string => text;
 const defaultDeletedComment = (feedbackId: string): string =>
   DELETED_FEEDBACK_COMMENT_TEMPLATE.replace("{feedbackId}", feedbackId);
@@ -73,9 +84,6 @@ const defaultDeletedComment = (feedbackId: string): string =>
  *
  * Issues are linked to feedbacks by a hidden marker on the first line of
  * their body, so no extra column is needed in your database.
- *
- * The hooks never read the principal, so they fit either access policy
- * without widening the one the handler infers.
  *
  * @example
  * ```ts
@@ -91,7 +99,7 @@ const defaultDeletedComment = (feedbackId: string): string =>
  * });
  * ```
  */
-export function createIssueTrackerHooks<Principal = never>({
+export function createIssueTrackerHooks({
   tracker,
   labels = [],
   redact = noRedaction,
@@ -103,7 +111,7 @@ export function createIssueTrackerHooks<Principal = never>({
   onIssueCreated,
   syncStatus = true,
   deletedCommentText = defaultDeletedComment,
-}: IssueTrackerHooksOptions): SitepingLifecycleHooks<Principal> {
+}: IssueTrackerHooksOptions): IssueTrackerHooks {
   if (siteUrl !== undefined && !parseHttpUrl(siteUrl)) {
     throw new Error(`[siteping] createIssueTrackerHooks: siteUrl must be an absolute http(s) URL, got "${siteUrl}"`);
   }
