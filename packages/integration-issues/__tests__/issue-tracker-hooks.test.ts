@@ -51,6 +51,15 @@ const providers: ProviderUnderTest[] = [
 
 const silentLogger = () => ({ error: vi.fn() });
 
+describe("createIssueTrackerHooks options", () => {
+  it("refuses a siteUrl that cannot resolve page URLs", () => {
+    const tracker = createGitHubTracker({ repository: "acme/site", token: TOKEN });
+
+    expect(() => createIssueTrackerHooks({ tracker, siteUrl: "acme.test" })).toThrow(/siteUrl must be an absolute/);
+    expect(() => createIssueTrackerHooks({ tracker, siteUrl: "ftp://acme.test" })).toThrow(/siteUrl/);
+  });
+});
+
 for (const provider of providers) {
   describe(`createIssueTrackerHooks — ${provider.name}`, () => {
     let fake: FakeTracker;
@@ -107,6 +116,14 @@ for (const provider of providers) {
       expect(issue?.body).toContain(`<!-- siteping-feedback {"id":"${feedback.id}","project":"site"} -->`);
       expect(issue?.body).toContain(`https://example.com/checkout?step=2&siteping=${feedback.id}`);
       expect(fake.requests[0]?.authorization).toContain(TOKEN);
+    });
+
+    it("links relative page URLs through siteUrl", async () => {
+      const handler = createHandler({ siteUrl: "https://acme.test" });
+
+      const feedback = await send(handler, { url: "/checkout" });
+
+      expect(fake.issues[0]?.body).toContain(`<https://acme.test/checkout?siteping=${feedback.id}>`);
     });
 
     it("redacts free text and leaves the reviewer email out by default", async () => {

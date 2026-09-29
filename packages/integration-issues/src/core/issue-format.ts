@@ -1,8 +1,7 @@
-import type { FeedbackRecord } from "@siteping/core";
+import { buildDeepLink, type FeedbackRecord, parseHttpUrl } from "@siteping/core";
 import {
   DIAGNOSTIC_ENTRIES_PER_KIND,
   DIAGNOSTIC_MESSAGE_MAX_LENGTH,
-  EMBEDDABLE_SCREENSHOT_URL_PREFIX,
   EMPTY_DIAGNOSTICS_PLACEHOLDER,
   ISSUE_REFERENCE_MARKER,
   ISSUE_SECTION_HEADINGS,
@@ -26,6 +25,8 @@ export interface IssueFormatOptions {
   deepLinkParam: string | false;
   /** Include the reviewer's email next to their name. Off by default: issues are often public. */
   includeAuthorEmail: boolean;
+  /** Base that relative page URLs resolve against, e.g. `https://acme.com`. */
+  siteUrl?: string;
 }
 
 /** Identity of the feedback an issue belongs to, stored in the issue body. */
@@ -42,16 +43,6 @@ function truncate(value: string, maxLength: number): string {
 
 function section(heading: string, content: string): string {
   return `## ${heading}${ISSUE_SECTION_SEPARATOR}${content}`;
-}
-
-function buildDeepLink(feedback: Pick<FeedbackRecord, "id" | "url">, param: string): string | null {
-  try {
-    const url = new URL(feedback.url);
-    url.searchParams.set(param, feedback.id);
-    return url.toString();
-  } catch {
-    return null; // The page URL is not absolute — nothing to link to.
-  }
 }
 
 /** One block per kind: console messages and network URLs are visitor-controlled, and may span lines. */
@@ -81,23 +72,28 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
   const titleBudget = ISSUE_TITLE_MAX_LENGTH - ISSUE_TITLE_PREFIX.length - 1;
   const title = `${ISSUE_TITLE_PREFIX} ${truncate(defuseReferences(message.replace(/\s+/g, " ").trim()), titleBudget)}`;
 
+  // The widget records `location.pathname` by default: resolve it against the site.
   const pageUrl = redact(feedback.url);
+  const page = parseHttpUrl(pageUrl, options.siteUrl);
   const author = options.includeAuthorEmail ? `${feedback.authorName} <${feedback.authorEmail}>` : feedback.authorName;
   const deepLink =
-    options.deepLinkParam === false ? null : buildDeepLink({ id: feedback.id, url: pageUrl }, options.deepLinkParam);
-  const screenshot = feedback.screenshotUrl?.startsWith(EMBEDDABLE_SCREENSHOT_URL_PREFIX)
-    ? section(ISSUE_SECTION_HEADINGS.screenshot, `![${ISSUE_SECTION_HEADINGS.screenshot}](${feedback.screenshotUrl})`)
-    : null;
+    options.deepLinkParam === false
+      ? null
+      : buildDeepLink({ id: feedback.id, url: pageUrl }, options.deepLinkParam, options.siteUrl);
+  // Inline `data:` screenshots (no ScreenshotStorage) are skipped: trackers do not render them.
+  const screenshot = feedback.screenshotUrl ? parseHttpUrl(feedback.screenshotUrl) : null;
 
   const sections = [
     section(ISSUE_SECTION_HEADINGS.message, codeBlock(message)),
     section(ISSUE_SECTION_HEADINGS.type, feedback.type),
-    section(ISSUE_SECTION_HEADINGS.pageUrl, codeSpan(pageUrl)),
+    section(ISSUE_SECTION_HEADINGS.pageUrl, codeSpan(page?.href ?? pageUrl)),
     deepLink ? section(ISSUE_SECTION_HEADINGS.deepLink, `<${deepLink}>`) : null,
     section(ISSUE_SECTION_HEADINGS.author, codeSpan(redact(author))),
     section(ISSUE_SECTION_HEADINGS.viewport, codeSpan(feedback.viewport)),
     section(ISSUE_SECTION_HEADINGS.userAgent, codeSpan(redact(feedback.userAgent))),
-    screenshot,
+    screenshot?.protocol === "https:"
+      ? section(ISSUE_SECTION_HEADINGS.screenshot, `![${ISSUE_SECTION_HEADINGS.screenshot}](<${screenshot.href}>)`)
+      : null,
     ...buildDiagnostics(feedback, redact),
   ];
   return { title, body: sections.filter((part): part is string => part !== null).join(ISSUE_SECTION_SEPARATOR) };

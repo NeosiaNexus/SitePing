@@ -1,4 +1,4 @@
-import type { FeedbackRecord } from "@siteping/core";
+import { type FeedbackRecord, parseHttpUrl } from "@siteping/core";
 import type { SitepingDeletionTarget, SitepingLifecycleHooks } from "@siteping/server";
 import {
   DEFAULT_DEEP_LINK_PARAM,
@@ -23,6 +23,12 @@ export interface IssueTrackerHooksOptions {
   labels?: readonly string[];
   /** Redact secrets from free text before it leaves your server. Defaults to no redaction. */
   redact?: (text: string) => string;
+  /**
+   * Origin of the site the widget runs on, e.g. `https://acme.com`. The
+   * widget records `location.pathname` as the page URL by default: without
+   * this, such issues show a bare path and carry no deep link.
+   */
+  siteUrl?: string;
   /** Query parameter of the widget's deep link (`SitepingConfig.deepLink`), or `false` to omit it. */
   deepLinkParam?: string | false;
   /** Include reviewer emails in issues. Defaults to `false` — issues are often public. */
@@ -66,13 +72,22 @@ export function createIssueTrackerHooks({
   tracker,
   labels = [],
   redact = noRedaction,
+  siteUrl,
   deepLinkParam = DEFAULT_DEEP_LINK_PARAM,
   includeAuthorEmail = false,
   formatIssue: customFormatIssue,
   syncStatus = true,
   deletedCommentText = defaultDeletedComment,
 }: IssueTrackerHooksOptions): SitepingLifecycleHooks<unknown> {
-  const formatOptions: IssueFormatOptions = { redact, deepLinkParam, includeAuthorEmail };
+  if (siteUrl !== undefined && !parseHttpUrl(siteUrl)) {
+    throw new Error(`[siteping] createIssueTrackerHooks: siteUrl must be an absolute http(s) URL, got "${siteUrl}"`);
+  }
+  const formatOptions: IssueFormatOptions = {
+    redact,
+    deepLinkParam,
+    includeAuthorEmail,
+    ...(siteUrl === undefined ? {} : { siteUrl }),
+  };
   const issueLabels = [SITEPING_ISSUE_LABEL, ...labels.filter((label) => label !== SITEPING_ISSUE_LABEL)];
 
   const issueOf = async (feedbackId: string): Promise<TrackedIssue | null> => {

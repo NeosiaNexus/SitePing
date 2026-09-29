@@ -19,9 +19,6 @@ export const DIAGNOSTIC_ENTRIES_PER_KIND = 5;
 /** Query parameter the widget reads to focus a feedback (`SitepingConfig.deepLink`). */
 export const DEFAULT_DEEP_LINK_PARAM = "siteping";
 
-/** Only public HTTPS screenshots render as images on GitHub (inline data URLs do not). */
-export const EMBEDDABLE_SCREENSHOT_URL_PREFIX = "https://";
-
 /**
  * Hidden marker linking an issue to its feedback, always the first line of
  * the body. The JSON payload carries the feedback id and project so

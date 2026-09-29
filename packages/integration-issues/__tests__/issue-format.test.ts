@@ -146,6 +146,36 @@ describe("formatIssue", () => {
     expect(title).toBe("[SitePing] Ping @\u200Boctocat and @\u200Bacme/maintainers about #\u200B12 please");
   });
 
+  it("resolves the widget's default pathname URL against siteUrl", () => {
+    const { body } = formatIssue(record({ url: "/checkout?step=2" }), { ...options, siteUrl: "https://acme.test" });
+
+    expect(liveMarkdown(body).links).toEqual(["https://acme.test/checkout?step=2&siteping=fb-1"]);
+    expect(body).toContain("## Page\n\n`https://acme.test/checkout?step=2`");
+  });
+
+  it("shows a bare path and no deep link without siteUrl", () => {
+    const { body } = formatIssue(record({ url: "/checkout" }), options);
+
+    expect(liveMarkdown(body).links).toEqual([]);
+    expect(body).toContain("## Page\n\n`/checkout`");
+  });
+
+  it("never links a non-http(s) page URL", () => {
+    const { body } = formatIssue(record({ url: "javascript:alert(1)" }), { ...options, siteUrl: "https://acme.test" });
+
+    expect(liveMarkdown(body).links).toEqual([]);
+    expect(body).not.toContain("## Open in the page");
+  });
+
+  it("embeds https screenshots only", () => {
+    const embedded = (screenshotUrl: string) =>
+      liveMarkdown(formatIssue(record({ screenshotUrl }), options).body).images;
+
+    expect(embedded("https://cdn.test/shots/a (1).png")).toEqual(["https://cdn.test/shots/a%20(1).png"]);
+    expect(embedded("data:image/jpeg;base64,AAAA")).toEqual([]);
+    expect(embedded("http://cdn.test/shots/a.png")).toEqual([]);
+  });
+
   it("redacts the author name along with the rest of the free text", () => {
     const redact = (text: string) => text.replace(/token=\S+/g, "token=[redacted]");
 
