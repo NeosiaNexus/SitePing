@@ -320,6 +320,8 @@ describe("Better Auth recipe", () => {
     const created = await submit(handler, cookie);
     const visible = await page(handler, cookie);
 
+    // A live session, even a member's, would have stamped its own name.
+    expect(created.authorName).toBe(validPayloadNoAnnotations.authorName);
     expect(created.permissions).toEqual(VISITOR_PERMISSIONS);
     expect(visible.permissions).toEqual({ canDeleteAll: false });
     expect(visible.feedbacks.map((f) => f.authorEmail)).toEqual([""]);
