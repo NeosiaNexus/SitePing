@@ -12,7 +12,13 @@ import {
 } from "@siteping/core";
 
 export type { SitepingStore } from "@siteping/core";
-export { isStorePersistence, StoreDuplicateError, StoreNotFoundError, StorePersistenceError } from "@siteping/core";
+export {
+  isStorePersistence,
+  StoreDuplicateError,
+  StoreLimitError,
+  StoreNotFoundError,
+  StorePersistenceError,
+} from "@siteping/core";
 
 /**
  * In-memory `SitepingStore` implementation.

@@ -195,7 +195,7 @@ Run the backfill in JavaScript, not with SQL `lower()`: the database's `lower()`
 - `updateFeedback` reads the (immutable) annotations and the thread before updating the row, so no database call runs after the update commits: a failed read leaves the row untouched, and an applied update is never reported as failed because of a read that followed it.
 - `updateFeedback` and `deleteFeedback` on an unknown id throw `StoreNotFoundError`, and so do `addComment` on an unknown feedback and `deleteComment` of a comment that is not on that feedback's thread. `addComment` on a full thread throws `StoreLimitError`.
 
-Both entries re-export `StorePersistenceError`, `isStorePersistence`, `StoreNotFoundError` and `StoreDuplicateError`, so you can catch them without another import.
+Both entries re-export `StorePersistenceError`, `isStorePersistence`, `StoreNotFoundError`, `StoreDuplicateError` and `StoreLimitError`, so you can catch them without another import.
 
 ## Limitations
 

@@ -1298,3 +1298,21 @@ for (const dialect of dialects) {
     });
   });
 }
+
+// Each entry bundles its own copy of core, so `instanceof` only matches the
+// classes exported by that entry: every error a store method throws must be one.
+it.each([
+  ["pg", () => import("../src/pg/index.js")],
+  ["libsql", () => import("../src/libsql/index.js")],
+])("the %s entry re-exports every store error its methods throw", async (_name, loadEntry) => {
+  const { isStorePersistence, StoreDuplicateError, StoreLimitError, StoreNotFoundError, StorePersistenceError } =
+    await import("@siteping/core");
+
+  expect(await loadEntry()).toMatchObject({
+    isStorePersistence,
+    StoreDuplicateError,
+    StoreLimitError,
+    StoreNotFoundError,
+    StorePersistenceError,
+  });
+});
