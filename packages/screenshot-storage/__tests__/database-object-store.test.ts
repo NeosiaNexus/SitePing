@@ -99,6 +99,28 @@ describe("createDatabaseObjectStore", () => {
     }
   });
 
+  it("keeps Drizzle's own error to its first line when the driver threw something other than an Error", async () => {
+    const queryError = Object.assign(new Error(`Failed query: insert into …\nparams: shot.png,image/png,${bytes}`), {
+      params: ["shot.png", "image/png", bytes],
+      cause: "connection lost",
+    });
+    const store = createDatabaseObjectStore({
+      name: "test-db",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      gateway: {
+        ...createInMemoryTableGateway(),
+        insertRow: async () => {
+          throw queryError;
+        },
+      },
+    });
+
+    await expect(store.put({ key: "shot.png", bytes, contentType: "image/png" })).rejects.toMatchObject({
+      message: "[siteping] test-db INSERT shot.png failed",
+      cause: "Failed query: insert into …",
+    });
+  });
+
   it("names the backend and maps keys to URLs under the public base URL", () => {
     const store = createDatabaseObjectStore({
       name: "test-db",
