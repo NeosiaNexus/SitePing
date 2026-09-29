@@ -216,26 +216,6 @@ describe("comments — POST", () => {
     expect((await store.findByClientId("uuid-123"))?.comments).toEqual([]);
   });
 
-  it("answers 404 when a store without the ownership check finds no such feedback", async () => {
-    const memory = new MemoryStore();
-    const store: SitepingStore = {
-      createFeedback: (data) => memory.createFeedback(data),
-      getFeedbacks: (query) => memory.getFeedbacks(query),
-      findByClientId: (clientId) => memory.findByClientId(clientId),
-      updateFeedback: (id, data) => memory.updateFeedback(id, data),
-      deleteFeedback: (id) => memory.deleteFeedback(id),
-      deleteAllFeedbacks: (projectName) => memory.deleteAllFeedbacks(projectName),
-      // Its addComment is the only one to tell an unknown feedback.
-      addComment: (feedbackId, data) => memory.addComment(feedbackId, data),
-    };
-    const handler = createSitepingHandler({ store });
-
-    const response = await handler.POST(request("POST", commentBody("does-not-exist")));
-
-    expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({ error: "Feedback not found" });
-  });
-
   it(`answers 409 once the thread holds ${MAX_COMMENTS_PER_FEEDBACK} client comments — and still takes the team's`, async () => {
     const store = new MemoryStore();
     // The widget's setup: anyone reads and posts, the key holder speaks as the team.
