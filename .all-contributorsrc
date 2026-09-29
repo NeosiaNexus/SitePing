@@ -131,7 +131,52 @@
       "profile": "https://github.com/guidomodarelli",
       "contributions": [
         "code",
-        "platform"
+        "platform",
+        "test",
+        "doc",
+        "bug"
+      ]
+    },
+    {
+      "login": "davidvasandani",
+      "name": "David Vasandani",
+      "avatar_url": "https://avatars.githubusercontent.com/u/547876?v=4",
+      "profile": "https://david.vasandani.me/",
+      "contributions": [
+        "code",
+        "test",
+        "bug"
+      ]
+    },
+    {
+      "login": "hiepnn-rk",
+      "name": "hiepnn",
+      "avatar_url": "https://avatars.githubusercontent.com/u/92846351?v=4",
+      "profile": "https://github.com/hiepnn-rk",
+      "contributions": [
+        "code",
+        "translation",
+        "doc"
+      ]
+    },
+    {
+      "login": "petzkod5",
+      "name": "Dylan Petzko",
+      "avatar_url": "https://avatars.githubusercontent.com/u/62967026?v=4",
+      "profile": "https://petzko.sh/",
+      "contributions": [
+        "code",
+        "ideas"
+      ]
+    },
+    {
+      "login": "imikemiller",
+      "name": "Mike Miller",
+      "avatar_url": "https://avatars.githubusercontent.com/u/24856374?v=4",
+      "profile": "https://github.com/imikemiller",
+      "contributions": [
+        "code",
+        "doc"
       ]
     }
   ],
