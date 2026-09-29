@@ -68,7 +68,7 @@ export interface IssueTracker {
    * indexes may lag behind a new issue or be rate limited, so the hooks
    * still list the newest issues after a miss, and further after a failure
    * or a truncated answer. Without a search, every lookup the newest issues
-   * do not settle lists up to the provider's cap.
+   * do not settle lists up to the provider's cap, and is refused past it.
    */
   searchSitepingIssues?(feedbackId: string): Promise<IssueListing>;
 }

@@ -200,8 +200,9 @@ const tracker: IssueTracker = {
   async findSitepingIssues(marker, { maxPages } = {}) {
     return { issues: [], truncated: false }; // issues: { reference, body, isOpen }
   },
-  // Optional: a server-side search by feedback id, tried first, and whether
-  // it found more matches than it returned.
+  // Optional, but without it lookups past your cap are refused (see below):
+  // a server-side search by feedback id, tried first, and whether it found
+  // more matches than it returned.
   async searchSitepingIssues(feedbackId) {
     return { issues: [], truncated: false };
   },
@@ -209,5 +210,7 @@ const tracker: IssueTracker = {
 ```
 
 Throw when a call fails, and the [failure rules](#latency-and-failures) above apply. Trackers that do not speak Markdown can shape the body with `formatIssue`.
+
+Without `searchSitepingIssues`, nothing settles a lookup past the newest page: every status change or delete whose issue is not there lists up to your cap, and once the tracker holds more SitePing issues than that, one whose issue is not listed is refused. That includes a feedback that never got an issue, which then cannot be deleted. Provide a search whenever the tracker has one.
 
 Syncing the other way, so that closing an issue resolves its feedback, needs a tracker webhook handler and is not built yet ([#318](https://github.com/NeosiaNexus/SitePing/issues/318)).

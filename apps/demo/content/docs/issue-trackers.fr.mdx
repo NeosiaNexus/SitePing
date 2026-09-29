@@ -200,8 +200,10 @@ const tracker: IssueTracker = {
   async findSitepingIssues(marker, { maxPages } = {}) {
     return { issues: [], truncated: false }; // issues : { reference, body, isOpen }
   },
-  // Facultatif : une recherche côté gestionnaire par identifiant de feedback,
-  // essayée d'abord, et si elle a trouvé plus de tickets qu'elle n'en renvoie.
+  // Facultatif, mais sans elle les recherches de ticket au-delà de votre limite
+  // sont refusées (voir plus bas) : une recherche côté gestionnaire par
+  // identifiant de feedback, essayée d'abord, et si elle a trouvé plus de
+  // tickets qu'elle n'en renvoie.
   async searchSitepingIssues(feedbackId) {
     return { issues: [], truncated: false };
   },
@@ -209,5 +211,7 @@ const tracker: IssueTracker = {
 ```
 
 Levez une exception quand un appel échoue, et les [règles d'échec](#latence-et-échecs) ci-dessus s'appliquent. Les gestionnaires qui ne parlent pas Markdown peuvent façonner le corps avec `formatIssue`.
+
+Sans `searchSitepingIssues`, rien ne tranche une recherche de ticket au-delà de la première page : chaque changement de statut ou suppression dont le ticket n'y est pas liste jusqu'à votre limite, et dès que le gestionnaire compte plus de tickets SitePing que cela, celle dont le ticket n'est pas listé est refusée. Cela inclut un feedback qui n'a jamais eu de ticket, qui ne peut alors plus être supprimé. Fournissez une recherche dès que le gestionnaire en a une.
 
 Synchroniser dans l'autre sens, pour que fermer un ticket résolve son feedback, demande un handler de webhooks du gestionnaire et n'existe pas encore ([#318](https://github.com/NeosiaNexus/SitePing/issues/318)).

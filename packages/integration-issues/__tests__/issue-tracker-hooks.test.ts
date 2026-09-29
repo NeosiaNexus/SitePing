@@ -70,6 +70,9 @@ const providers: ProviderUnderTest[] = [
 
 const silentLogger = () => ({ error: vi.fn() });
 
+/** The tracker without its optional search, like a custom one that has none. */
+const withoutSearch = ({ searchSitepingIssues: _, ...tracker }: IssueTracker): IssueTracker => tracker;
+
 describe("createGitHubTracker", () => {
   it("accepts the siteping label in the casing the repository already uses", async () => {
     const fake = createFakeGitHub("acme/site");
@@ -441,6 +444,14 @@ for (const provider of providers) {
         expect(fake.issues[0]?.isOpen).toBe(false);
       });
 
+      it("finds the issue through the listing when the tracker has no search", async () => {
+        const feedback = await send(createHandler());
+
+        await patch(createHandler({ tracker: withoutSearch(provider.createTracker(fake)) }), feedback.id, "resolved");
+
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
       it("falls back to the label listing when the search fails", async () => {
         const handler = createHandler();
         const feedback = await send(handler);
@@ -535,6 +546,17 @@ for (const provider of providers) {
             `^\\[siteping\\] ${provider.name}: the issue of feedback "${feedback.id}" is not among the SitePing issues listed`,
           ),
         );
+      });
+
+      it("refuses, without a search, a lookup the listing cannot finish", async () => {
+        fake.failWhen(/^POST /, 500);
+        const feedback = await send(createHandler());
+        addOtherIssues(1);
+        logger.error.mockClear();
+        const handler = createHandler({ tracker: withoutSearch(provider.createTracker(fake, { maxListedPages: 1 })) });
+
+        expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(502);
+        expect(reason()).toMatch(/is not among the SitePing issues listed.*maxListedPages/);
       });
 
       it("trusts a search that answered past the newest page: a feedback without an issue stays deletable", async () => {
