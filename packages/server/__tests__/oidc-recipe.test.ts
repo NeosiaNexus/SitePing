@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { MemoryStore } from "@siteping/adapter-memory";
 import type { FeedbackPermissions, FeedbackResponse, FeedbackResponseList } from "@siteping/core";
 import {
@@ -24,9 +26,10 @@ import { validPayloadNoAnnotations } from "./fixtures.js";
 
 /*
  * The OpenID Connect recipe of apps/demo/content/docs/server.mdx, run against
- * the real handler: keep the two in sync. Only the key set's transport differs
- * — jose's `customFetch` serves it from memory, or fails the way an identity
- * provider does.
+ * the real handler. The last suite checks that the docs print this code, EN
+ * and FR. Only the key set's transport differs — jose's `customFetch` serves
+ * it from memory, or fails the way an identity provider does — and the owner
+ * table, kept in memory.
  */
 
 const ISSUER = "https://id.example.com/realms/acme";
@@ -60,7 +63,7 @@ function oidcAccess(jwks: JWTVerifyGetKey): SitepingAccessControl<Reviewer> {
       try {
         const { payload } = await jwtVerify(token, jwks, {
           issuer: ISSUER,
-          audience: AUDIENCE,
+          audience: "siteping-api",
           algorithms: ["RS256", "PS256", "ES256", "EdDSA"],
           requiredClaims: ["exp"],
         });
@@ -320,25 +323,38 @@ describe("OpenID Connect recipe", () => {
 describe("OpenID Connect recipe — authors delete their own feedback", () => {
   /** A handler whose `authorize` also lets an author delete what they submitted. */
   function ownerHandler() {
-    const owners = new Map<string, string>(); // your table: feedback id → sub
+    // Your table, in memory: `lookups` counts its reads.
+    const table: { sub: string; feedbackId: string }[] = [];
     let lookups = 0;
+    const db = {
+      feedbackOwner: {
+        findMany: async ({ where }: { where: { sub: string }; select: { feedbackId: true } }) => {
+          lookups += 1;
+          return table.filter((row) => row.sub === where.sub);
+        },
+        create: async ({ data }: { data: { sub: string; feedbackId: string } }) => {
+          table.push(data);
+        },
+      },
+    };
 
     const ownerships = new WeakMap<Request, Promise<Set<string>>>();
+
     function submittedBy(request: Request, sub: string): Promise<Set<string>> {
       let ids = ownerships.get(request);
       if (!ids) {
-        lookups += 1;
-        ids = Promise.resolve(new Set([...owners].filter(([, owner]) => owner === sub).map(([id]) => id)));
+        ids = db.feedbackOwner
+          .findMany({ where: { sub }, select: { feedbackId: true } })
+          .then((rows) => new Set(rows.map((row) => row.feedbackId)));
         ownerships.set(request, ids);
       }
       return ids;
     }
 
-    const base = oidcAccess(remoteKeySet());
     const handler = createSitepingHandler({
       store: new MemoryStore(),
       access: {
-        ...base,
+        ...oidcAccess(remoteKeySet()),
         authorize: async ({ principal, action, feedbackId = "", request }) =>
           principal.isAdmin ||
           action === "create" ||
@@ -348,7 +364,7 @@ describe("OpenID Connect recipe — authors delete their own feedback", () => {
       },
       hooks: {
         onCreated: async (feedback, { principal }) => {
-          if (principal.sub) owners.set(feedback.id, principal.sub);
+          if (principal.sub) await db.feedbackOwner.create({ data: { sub: principal.sub, feedbackId: feedback.id } });
         },
       },
     });
@@ -380,5 +396,48 @@ describe("OpenID Connect recipe — authors delete their own feedback", () => {
     expect((await remove(handler, anonymous.id, max)).status).toBe(403);
     expect((await remove(handler, own.id)).status).toBe(403);
     expect((await remove(handler, own.id, max)).status).toBe(200);
+  });
+});
+
+// ---- the recipe, as the docs print it ---------------------------------------
+
+describe("OpenID Connect recipe — the docs", () => {
+  /** What the code does, not how it reads: no comments, no whitespace. */
+  const bare = (code: string) =>
+    code
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|\s)\/\/.*$/gm, "$1")
+      .replace(/\s+/g, "");
+
+  /** Every span of the recipe the docs print, by its first and last characters. */
+  const SPANS: ReadonlyArray<readonly [start: string, end: string]> = [
+    ["const ISSUER =", ";"],
+    ["interface Reviewer {", '"ERR_JWKS_INVALID"]);'],
+    ["async authenticate(request) {", "canReadAuthorEmail: (principal) => principal.isAdmin,"],
+    ["beforeCreate: (input, { principal }) => ({", "}),"],
+    ["const ownerships = new WeakMap", "return ids;"],
+    ['authorize: async ({ principal, action, feedbackId = "", request }) =>', ".has(feedbackId)),"],
+    ["onCreated: async (feedback, { principal }) => {", "},"],
+  ];
+
+  /** `text` from `start` to the end of the first `end` after it. */
+  function span(text: string, [start, end]: readonly [string, string]): string {
+    const from = text.indexOf(start);
+    const to = from < 0 ? -1 : text.indexOf(end, from + start.length);
+    if (to < 0) throw new Error(`No "${start}" … "${end}" span`);
+    return bare(text.slice(from, to + end.length));
+  }
+
+  // The spans above come after the code they bound: each `indexOf` finds the code.
+  const tests = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const pages = new URL("../../../apps/demo/content/docs/", import.meta.url);
+
+  it.each(["server.mdx", "server.fr.mdx"])("%s prints the code these tests run", (page) => {
+    const docs = readFileSync(fileURLToPath(new URL(page, pages)), "utf8");
+    const from = docs.search(/^### .*OpenID Connect$/m);
+    expect(from).toBeGreaterThan(0);
+    const recipe = docs.slice(from, docs.indexOf("\n## ", from));
+
+    for (const bounds of SPANS) expect(span(recipe, bounds), bounds[0]).toBe(span(tests, bounds));
   });
 });
