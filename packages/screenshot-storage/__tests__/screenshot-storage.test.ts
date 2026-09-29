@@ -690,6 +690,29 @@ describe("createFilesystemObjectStore — keys", () => {
   });
 });
 
+describe("createS3ObjectStore — deletes", () => {
+  it("treats a 404 NoSuchKey answer to a delete as an object already gone", async () => {
+    const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };
+    const fake = createFakeS3({ bucket: "screens", region: "auto", ...credentials, deleteMissingAnswers404: true });
+    const objectStore = createS3ObjectStore({
+      endpoint: "https://storage.googleapis.com",
+      bucket: "screens",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      ...credentials,
+      fetch: fake.fetch,
+    });
+    const logger = silentLogger();
+    const storage = createScreenshotStorage(objectStore, { logger });
+    const { url } = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    await storage.delete?.(url);
+
+    await expect(storage.delete?.(url)).resolves.toBeUndefined();
+    await expect(objectStore.remove(`siteping-${"a".repeat(32)}.jpg`)).resolves.toBeUndefined();
+    expect(fake.requests.map(({ method }) => method)).toEqual(["PUT", "DELETE", "DELETE", "DELETE"]);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+});
+
 describe("createS3ObjectStore — uploads", () => {
   it("stores each object with an immutable Cache-Control, left out of the signature like the AWS SDK does", async () => {
     const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };

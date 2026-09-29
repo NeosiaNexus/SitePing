@@ -102,6 +102,9 @@ async function sha256Hex(body: Uint8Array): Promise<string> {
  *
  * `canListBucket: false` models credentials without `s3:ListBucket`: S3 then
  * answers a GET of a missing key with `403 AccessDenied` instead of `404 NoSuchKey`.
+ * `deleteMissingAnswers404: true` models S3-compatible services (Google Cloud
+ * Storage's XML API…) that answer a DELETE of a missing key with `404 NoSuchKey`,
+ * where S3 answers `204`.
  */
 export function createFakeS3({
   bucket,
@@ -109,12 +112,14 @@ export function createFakeS3({
   accessKeyId,
   secretAccessKey,
   canListBucket = true,
+  deleteMissingAnswers404 = false,
 }: {
   bucket: string;
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
   canListBucket?: boolean;
+  deleteMissingAnswers404?: boolean;
 }): FakeBackend {
   const objects: FakeBackend["objects"] = new Map();
   const requests: RecordedRequest[] = [];
@@ -199,7 +204,9 @@ export function createFakeS3({
       return new Response(object.bytes as Uint8Array<ArrayBuffer>, { headers: { "content-type": object.contentType } });
     }
     if (request.method === "DELETE") {
-      objects.delete(key);
+      if (!objects.delete(key) && deleteMissingAnswers404) {
+        return new Response("<Error><Code>NoSuchKey</Code></Error>", { status: 404 });
+      }
       return new Response(null, { status: 204 });
     }
     return new Response(null, { status: 405 });
