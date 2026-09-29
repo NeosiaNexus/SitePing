@@ -61,7 +61,7 @@ const source: InboxSource = {
 };
 ```
 
-`list()` may also return `capabilities: { comments: false }` to make threads read-only for a backend that keeps none; left out, `addComment` alone decides. The endpoint source maps the server's advertised `capabilities` (and a server that advertises nothing to read-only); the store source defines the methods only when the store implements `addComment` / `deleteComment`.
+`list()` may also return `capabilities: { comments: false }` to make threads read-only for a backend that keeps none; left out, `addComment` alone decides. A source without `removeComment` posts replies but offers no delete. The endpoint source maps the server's advertised `capabilities` (and a server that advertises nothing to read-only); the store source defines the methods only when the store implements `addComment` / `deleteComment`.
 
 The two building blocks behind the built-in modes are exported too — `createEndpointSource({ endpoint, apiKey, headers })` and `createStoreSource(store)` — so you can wrap, compose, or decorate them (e.g. add logging around the HTTP client) instead of starting from scratch.
 

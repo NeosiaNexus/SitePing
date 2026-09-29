@@ -27,16 +27,20 @@ function makeComment(overrides: Partial<CommentRecord> = {}): CommentRecord {
 function renderThread({
   comments,
   canComment = true,
+  canDelete = canComment,
   onAdd = vi.fn(async () => {}),
   onDelete = vi.fn(async () => {}),
 }: {
   comments?: CommentRecord[];
   canComment?: boolean;
+  canDelete?: boolean;
   onAdd?: (body: string, clientId: string) => Promise<void>;
   onDelete?: (commentId: string) => Promise<void>;
 } = {}) {
   const record = makeRecord({ id: "fb-1", ...(comments ? { comments } : {}) });
-  const view = renderWithUi(<Thread record={record} canComment={canComment} onAdd={onAdd} onDelete={onDelete} />);
+  const view = renderWithUi(
+    <Thread record={record} canComment={canComment} canDelete={canDelete} onAdd={onAdd} onDelete={onDelete} />,
+  );
   const q = <E extends Element>(selector: string) => view.container.querySelector<E>(selector);
   return {
     ...view,
@@ -172,6 +176,12 @@ describe("Thread", () => {
     expect(view.onDelete).toHaveBeenCalledWith("c-1");
     expect(view.container.querySelector(".spd-confirm")).toBeNull();
     expect(document.activeElement).toBe(view.input());
+  });
+
+  it("offers no delete when replies can be posted but not deleted", () => {
+    const view = renderThread({ comments: [makeComment()], canDelete: false });
+    expect(view.input()).not.toBeNull();
+    expect(view.container.querySelector("[data-comment-delete]")).toBeNull();
   });
 
   it("keeps the question open and says so when a delete fails", async () => {

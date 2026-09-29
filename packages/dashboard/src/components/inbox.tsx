@@ -429,6 +429,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
                   void deleteFeedback(id);
                 }}
                 canComment={state.canComment}
+                canDeleteComment={state.canDeleteComment}
                 // Failures show in the thread itself, next to the kept draft.
                 onAddComment={state.addComment}
                 onDeleteComment={state.deleteComment}

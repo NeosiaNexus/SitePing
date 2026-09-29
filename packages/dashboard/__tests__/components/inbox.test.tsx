@@ -494,6 +494,33 @@ describe("SitepingInbox — drawer", () => {
     expect(dl?.querySelectorAll("dd.spd-meta-value").length).toBeGreaterThanOrEqual(5);
   });
 
+  it("offers to delete a reply only when the source can delete it", async () => {
+    const reply = {
+      id: "c-1",
+      feedbackId: "o1",
+      body: "16 or 24 px?",
+      authorName: "Alex",
+      authorEmail: "",
+      authorRole: "client" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-20T10:07:00Z"),
+    };
+    const records = seed().map((r) => (r.id === "o1" ? { ...r, comments: [reply] } : r));
+    const addComment = async () => reply;
+    for (const [removeComment, offered] of [
+      [undefined, false],
+      [async () => {}, true],
+    ] as const) {
+      const source = Object.assign(makeSource(records), { addComment }, removeComment ? { removeComment } : {});
+      render(<SitepingInbox source={source} projects="demo" theme="dark" author={{ name: "Studio" }} />);
+      await openFirst();
+      const dialog = screen.getByRole("dialog", { name: /Feedback details/ });
+      expect(within(dialog).getByRole("textbox", { name: "Reply to the client…" })).toBeTruthy();
+      expect(within(dialog).queryByRole("button", { name: "Delete reply" }) !== null).toBe(offered);
+      cleanup();
+    }
+  });
+
   it("is a modal dialog in overlay (narrow) mode", async () => {
     renderInbox();
     await openFirst();

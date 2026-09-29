@@ -894,6 +894,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   );
 
   const canComment = author !== undefined && src.addComment !== undefined && commentsAdvertised;
+  const canDeleteComment = canComment && src.removeComment !== undefined;
 
   // -------------------------------------------------------------------------
   // Public setters
@@ -955,6 +956,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     changeStatus,
     deleteFeedback,
     canComment,
+    canDeleteComment,
     addComment,
     deleteComment,
     pendingUndo,

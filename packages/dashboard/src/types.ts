@@ -219,10 +219,12 @@ export interface InboxState {
   /** Optimistic delete (no undo — confirm in the UI) with rollback on error. Rejects after rolling back. */
   deleteFeedback(id: string): Promise<void>;
   /**
-   * Whether replies can be posted and deleted: an `author` is set, the source
-   * implements `addComment`, and the endpoint advertises comments.
+   * Whether replies can be posted: an `author` is set, the source implements
+   * `addComment`, and the endpoint advertises comments.
    */
   canComment: boolean;
+  /** Whether replies can be deleted: `canComment`, and the source implements `removeComment`. */
+  canDeleteComment: boolean;
   /**
    * Post a reply as `author`. Not optimistic: the thread shows it once the
    * source has stored it. Rejects after `onError`. Pass the `clientId` of a
@@ -231,7 +233,10 @@ export interface InboxState {
    * when omitted.
    */
   addComment(id: string, body: string, clientId?: string): Promise<void>;
-  /** Delete a reply once the source confirms it. Rejects after `onError`. */
+  /**
+   * Delete a reply once the source confirms it. Rejects after `onError`.
+   * Does nothing for a source without `removeComment`.
+   */
   deleteComment(id: string, commentId: string): Promise<void>;
   /** Last status change eligible for undo, or `null`. */
   pendingUndo: { id: string; previousStatus: FeedbackStatus } | null;

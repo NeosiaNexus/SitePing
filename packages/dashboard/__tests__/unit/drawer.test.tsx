@@ -11,7 +11,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderDrawer(recordOverrides = {}, canComment = false) {
+function renderDrawer(recordOverrides = {}, canComment = false, canDeleteComment = canComment) {
   const record = makeRecord(recordOverrides);
   const onAddComment = vi.fn(async () => {});
   const { container } = renderWithUi(
@@ -23,6 +23,7 @@ function renderDrawer(recordOverrides = {}, canComment = false) {
       onChangeStatus={vi.fn()}
       onDelete={vi.fn()}
       canComment={canComment}
+      canDeleteComment={canDeleteComment}
       onAddComment={onAddComment}
       onDeleteComment={vi.fn(async () => {})}
     />,
@@ -69,6 +70,24 @@ describe("Drawer — discussion thread", () => {
     await act(async () => container.querySelector<HTMLButtonElement>(".spd-thread-composer button")?.click());
 
     expect(onAddComment).toHaveBeenCalledWith(record.id, "On it", expect.any(String));
+  });
+
+  it("offers deletion only when the inbox can delete replies", () => {
+    const comments = [
+      {
+        id: "c-1",
+        feedbackId: "fb-1",
+        body: "16 px",
+        authorName: "Alex",
+        authorEmail: "",
+        authorRole: "client" as const,
+        clientId: "",
+        createdAt: new Date("2026-07-20T10:05:00.000Z"),
+      },
+    ];
+    const { container } = renderDrawer({ comments }, true, false);
+    expect(container.querySelector(".spd-thread textarea")).not.toBeNull();
+    expect(container.querySelector("[data-comment-delete]")).toBeNull();
   });
 
   it("leaves the thread out of a read-only drawer with nothing to read", () => {

@@ -44,7 +44,7 @@ Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOpt
 
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
 
-**Fil de discussion** — `canComment`, `addComment(id, body, clientId?)`, `deleteComment(id, commentId)` ; voir [plus bas](#fils-de-discussion).
+**Fil de discussion** — `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)`, `deleteComment(id, commentId)` ; voir [plus bas](#fils-de-discussion).
 
 ## `view` — l'algèbre des drapeaux en moins
 
@@ -86,7 +86,7 @@ Seul le dernier changement de statut est annulable (`pendingUndo` + `undo()`) ; 
 
 ## Fils de discussion
 
-Chaque feedback porte son fil dans `comments` (du plus ancien au plus récent). `canComment` indique si cette inbox peut poster et supprimer des réponses : un `author` est fourni, la source implémente `addComment`, et la dernière liste n'a pas dit que l'endpoint ne garde aucun commentaire.
+Chaque feedback porte son fil dans `comments` (du plus ancien au plus récent). `canComment` indique si cette inbox peut poster des réponses : un `author` est fourni, la source implémente `addComment`, et la dernière liste n'a pas dit que l'endpoint ne garde aucun commentaire. `canDeleteComment` indique si elle peut aussi les supprimer : la source implémente en plus `removeComment`.
 
 Les réponses ne sont **pas** optimistes : `addComment` se résout une fois la réponse enregistrée par la source, et elle apparaît alors sur le feedback partout où le hook le détient — sa ligne, `opened`, et l'état vers lequel un changement de statut en cours reviendrait. Les deux actions relèvent l'erreur après `onError`, comme les mutations plus haut.
 

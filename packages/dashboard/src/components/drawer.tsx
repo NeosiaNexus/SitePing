@@ -29,6 +29,8 @@ interface DrawerProps {
   onDelete: (id: string) => void;
   /** See `InboxState.canComment`. */
   canComment: boolean;
+  /** See `InboxState.canDeleteComment`. */
+  canDeleteComment: boolean;
   onAddComment: (id: string, body: string, clientId: string) => Promise<void>;
   onDeleteComment: (id: string, commentId: string) => Promise<void>;
 }
@@ -47,6 +49,7 @@ export function Drawer({
   onChangeStatus,
   onDelete,
   canComment,
+  canDeleteComment,
   onAddComment,
   onDeleteComment,
 }: DrawerProps): ReactElement {
@@ -185,6 +188,7 @@ export function Drawer({
           <Thread
             record={record}
             canComment={canComment}
+            canDelete={canDeleteComment}
             onAdd={(body, clientId) => onAddComment(record.id, body, clientId)}
             onDelete={(commentId) => onDeleteComment(record.id, commentId)}
           />

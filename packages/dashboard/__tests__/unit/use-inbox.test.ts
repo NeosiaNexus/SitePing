@@ -1722,6 +1722,19 @@ describe("useSitepingInbox — discussion thread", () => {
     expect(advertisedOff.current.canComment).toBe(false);
   });
 
+  it("offers deletion only on top of replies, with a source that deletes them", async () => {
+    const { result: capable } = await ready({ projects: "demo", source: threadedSource(), author });
+    expect(capable.current.canDeleteComment).toBe(true);
+
+    const { result: noAuthor } = await ready({ projects: "demo", source: threadedSource() });
+    expect(noAuthor.current.canDeleteComment).toBe(false);
+
+    const { removeComment: _, ...postOnly } = threadedSource();
+    const { result } = await ready({ projects: "demo", source: postOnly, author });
+    expect(result.current.canComment).toBe(true);
+    expect(result.current.canDeleteComment).toBe(false);
+  });
+
   it("posts as the team author and adds the stored reply to the row and the drawer", async () => {
     const source = threadedSource();
     const { result } = await ready({ projects: "demo", source, author });

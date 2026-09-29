@@ -7,8 +7,10 @@ import { TrashIcon } from "./icons.js";
 
 interface ThreadProps {
   record: FeedbackRecord;
-  /** Replies can be posted and deleted — see `InboxState.canComment`. */
+  /** Replies can be posted — see `InboxState.canComment`. */
   canComment: boolean;
+  /** Replies can be deleted — see `InboxState.canDeleteComment`. */
+  canDelete: boolean;
   onAdd: (body: string, clientId: string) => Promise<void>;
   onDelete: (commentId: string) => Promise<void>;
 }
@@ -19,7 +21,7 @@ interface ThreadProps {
  * optimistic — a reply shows once the source has stored it. Left out when
  * there is nothing to read and no way to reply.
  */
-export function Thread({ record, canComment, onAdd, onDelete }: ThreadProps): ReactElement | null {
+export function Thread({ record, canComment, canDelete, onAdd, onDelete }: ThreadProps): ReactElement | null {
   const { t, locale } = useInboxUi();
   const titleId = useId();
   const [draft, setDraft] = useState("");
@@ -92,7 +94,7 @@ export function Thread({ record, canComment, onAdd, onDelete }: ThreadProps): Re
               <time dateTime={toDateTimeAttr(comment.createdAt)} title={formatAbsolute(comment.createdAt, locale)}>
                 {formatRelativeTime(comment.createdAt, t)}
               </time>
-              {canComment ? (
+              {canDelete ? (
                 <button
                   type="button"
                   className="spd-icon-btn"

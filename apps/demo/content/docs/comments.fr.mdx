@@ -33,7 +33,7 @@ Le tiroir montre le fil du feedback ouvert, et laisse votre équipe répondre et
 - **`author`** (`{ name, email? }`) est qui répond depuis cette inbox. Sans lui, les fils sont en lecture seule — et masqués quand ils sont vides. De même quand l'endpoint n'annonce pas de commentaires.
 - **Les réponses demandent le rôle `team`**, que le serveur ne garde que pour un appelant dont votre politique d'accès se porte garante — l'`apiKey`, ou `canCommentAsTeam` sous `access` (voir [le rôle équipe](#le-rôle-équipe)). Toute autre réponse est enregistrée en `client`.
 - **Rien n'est optimiste** : une réponse s'affiche une fois enregistrée, et un échec garde le brouillon. Supprimer une réponse demande confirmation ; comme tout `DELETE`, il faut l'`apiKey` ou l'accord de votre politique d'accès.
-- **Sans interface** : `useSitepingInbox` renvoie `canComment`, `addComment(id, body, clientId?)` et `deleteComment(id, commentId)` — voir [le hook](/fr/docs/dashboard/headless#fils-de-discussion). Une [source personnalisée](/fr/docs/dashboard/sources#fils-de-discussion) s'y branche avec `addComment` et `removeComment`.
+- **Sans interface** : `useSitepingInbox` renvoie `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)` et `deleteComment(id, commentId)` — voir [le hook](/fr/docs/dashboard/headless#fils-de-discussion). Une [source personnalisée](/fr/docs/dashboard/sources#fils-de-discussion) s'y branche avec `addComment` et `removeComment`.
 
 ## Ce que contient un commentaire
 

@@ -61,6 +61,7 @@ describe("InboxState", () => {
 
   it("exposes the thread actions", () => {
     expectTypeOf<InboxState["canComment"]>().toEqualTypeOf<boolean>();
+    expectTypeOf<InboxState["canDeleteComment"]>().toEqualTypeOf<boolean>();
     expectTypeOf<InboxState["addComment"]>().toEqualTypeOf<
       (id: string, body: string, clientId?: string) => Promise<void>
     >();
