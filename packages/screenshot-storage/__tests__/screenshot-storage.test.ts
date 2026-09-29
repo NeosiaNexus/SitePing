@@ -915,15 +915,18 @@ describe("backend requests — retries", () => {
     expect(methods).toEqual(["PUT", "DELETE"]);
   });
 
-  it("retries an S3 delete that failed once", async () => {
+  it.each([
+    ["an S3", openFlakyS3, "PUT"],
+    ["a Cloudflare Images", openFlakyCloudflareImages, "POST"],
+  ] as const)("retries %s delete that failed once", async (_label, openFlaky, uploadMethod) => {
     const failures: Failure[] = [];
-    const { fake, methods, storage } = openFlakyS3(failures);
+    const { fake, methods, storage } = openFlaky(failures);
     const { url } = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
     failures.push(503);
 
     await storage.delete?.(url);
 
-    expect(methods).toEqual(["PUT", "DELETE", "DELETE"]);
+    expect(methods).toEqual([uploadMethod, "DELETE", "DELETE"]);
     expect(fake.objects.size).toBe(0);
   });
 
