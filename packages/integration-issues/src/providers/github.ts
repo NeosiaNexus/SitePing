@@ -73,7 +73,8 @@ export function createGitHubTracker({
   maxListedPages = TRACKER_MAX_LISTED_PAGES,
 }: GitHubTrackerOptions): IssueTracker {
   if (!GITHUB_REPOSITORY_PATTERN.test(repository)) {
-    throw new Error(`[siteping] createGitHubTracker: repository must be "owner/name", got "${repository}"`);
+    // Not echoed: a clone URL may carry a token, and this error is logged.
+    throw new Error('[siteping] createGitHubTracker: repository must be "owner/name"');
   }
   const credential = checkToken("createGitHubTracker", token);
   checkApiBaseUrl("createGitHubTracker", apiBaseUrl);

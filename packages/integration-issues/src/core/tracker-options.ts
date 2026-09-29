@@ -26,12 +26,13 @@ export function checkToken(factory: string, token: string): string {
   return trimmed;
 }
 
+/** The value is never echoed: it may carry a token, whether or not it parses as a URL. */
 export function checkApiBaseUrl(factory: string, apiBaseUrl: string): void {
   const url = parseHttpUrl(apiBaseUrl);
   if (!url) {
-    throw new Error(`[siteping] ${factory}: apiBaseUrl must be an absolute http(s) URL, got "${apiBaseUrl}"`);
+    throw new Error(`[siteping] ${factory}: apiBaseUrl must be an absolute http(s) URL`);
   }
-  // Not echoed: fetch refuses such a URL on every call, with an error quoting it that the handler logs.
+  // fetch would refuse such a URL on every call, with an error quoting it that the handler logs.
   if (url.username || url.password) {
     throw new Error(`[siteping] ${factory}: apiBaseUrl must not carry credentials. Pass the token as \`token\`.`);
   }

@@ -97,11 +97,14 @@ describe("createGitHubTracker", () => {
 });
 
 describe("createIssueTrackerHooks options", () => {
-  it("refuses a siteUrl that cannot resolve page URLs", () => {
+  it("refuses a siteUrl that cannot resolve page URLs, without echoing credentials it may carry", () => {
     const tracker = createGitHubTracker({ repository: "acme/site", token: TOKEN });
 
     expect(() => createIssueTrackerHooks({ tracker, siteUrl: "acme.test" })).toThrow(/siteUrl must be an absolute/);
     expect(() => createIssueTrackerHooks({ tracker, siteUrl: "ftp://acme.test" })).toThrow(/siteUrl/);
+    const withoutScheme = "reviewer:SECRET@staging.acme.test";
+    expect(() => createIssueTrackerHooks({ tracker, siteUrl: withoutScheme })).toThrow(/siteUrl must be an absolute/);
+    expect(() => createIssueTrackerHooks({ tracker, siteUrl: withoutScheme })).not.toThrow(/SECRET/);
   });
 });
 

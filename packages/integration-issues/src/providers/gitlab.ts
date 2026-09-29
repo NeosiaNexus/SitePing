@@ -64,9 +64,8 @@ export function createGitLabTracker({
   const isProject =
     typeof project === "number" ? Number.isSafeInteger(project) && project > 0 : GITLAB_PROJECT_PATTERN.test(project);
   if (!isProject) {
-    throw new Error(
-      `[siteping] createGitLabTracker: project must be a numeric id or a full path like "group/project", got "${project}"`,
-    );
+    // Not echoed: a clone URL may carry a token, and this error is logged.
+    throw new Error('[siteping] createGitLabTracker: project must be a numeric id or a full path like "group/project"');
   }
   const credential = checkToken("createGitLabTracker", token);
   checkApiBaseUrl("createGitLabTracker", apiBaseUrl);

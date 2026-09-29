@@ -72,12 +72,17 @@ for (const [name, createTracker] of providers) {
       expect(() => createTracker({ token: TOKEN, timeoutMs: 2 ** 31 - 1 })).not.toThrow();
     });
 
-    it("refuses an apiBaseUrl carrying credentials, without echoing them", () => {
+    it("refuses an apiBaseUrl carrying credentials, with or without its scheme, without echoing them", () => {
       // fetch would refuse it on every call, quoting it in an error the handler logs.
-      const apiBaseUrl = "https://ci:SECRET@tracker.acme.test/api";
+      const refused = [
+        ["https://ci:SECRET@tracker.acme.test/api", /apiBaseUrl must not carry credentials/],
+        ["oauth2:SECRET@tracker.acme.test/api", /apiBaseUrl must be an absolute http\(s\) URL/],
+      ] as const;
 
-      expect(() => createTracker({ token: TOKEN, apiBaseUrl })).toThrow(/apiBaseUrl must not carry credentials/);
-      expect(() => createTracker({ token: TOKEN, apiBaseUrl })).not.toThrow(/SECRET/);
+      for (const [apiBaseUrl, error] of refused) {
+        expect(() => createTracker({ token: TOKEN, apiBaseUrl })).toThrow(error);
+        expect(() => createTracker({ token: TOKEN, apiBaseUrl })).not.toThrow(/SECRET/);
+      }
     });
 
     it("gives up on a request after timeoutMs", async () => {
@@ -126,20 +131,38 @@ for (const [name, createTracker] of providers) {
 }
 
 describe("repository and project", () => {
-  it("refuses a GitHub repository that is not owner/name", () => {
-    for (const repository of ["", "acme", "acme/site/", "acme/site.git", "https://github.com/acme/site"]) {
+  it("refuses a GitHub repository that is not owner/name, without echoing a token it may carry", () => {
+    for (const repository of [
+      "",
+      "acme",
+      "acme/site/",
+      "acme/site.git",
+      "https://github.com/acme/site",
+      "https://x-access-token:SECRET@github.com/acme/site.git",
+    ]) {
       expect(() => createGitHubTracker({ repository, token: TOKEN })).toThrow(/repository must be "owner\/name"/);
+      expect(() => createGitHubTracker({ repository, token: TOKEN })).not.toThrow(/SECRET/);
     }
     for (const repository of ["acme/site", "acme-corp/acme.github.io", "acme_emu/site_2"]) {
       expect(() => createGitHubTracker({ repository, token: TOKEN })).not.toThrow();
     }
   });
 
-  it("refuses a GitLab project that is neither an id nor a full path", () => {
-    for (const project of ["", "site", "acme/site.git", "https://gitlab.com/acme/site", 0, 1.5, Number.NaN]) {
+  it("refuses a GitLab project that is neither an id nor a full path, without echoing a token it may carry", () => {
+    for (const project of [
+      "",
+      "site",
+      "acme/site.git",
+      "https://gitlab.com/acme/site",
+      "https://oauth2:SECRET@gitlab.com/acme/site.git",
+      0,
+      1.5,
+      Number.NaN,
+    ]) {
       expect(() => createGitLabTracker({ project, token: TOKEN })).toThrow(
         /project must be a numeric id or a full path/,
       );
+      expect(() => createGitLabTracker({ project, token: TOKEN })).not.toThrow(/SECRET/);
     }
     for (const project of ["acme/site", "acme/web/site.v2", "42", 42]) {
       expect(() => createGitLabTracker({ project, token: TOKEN })).not.toThrow();

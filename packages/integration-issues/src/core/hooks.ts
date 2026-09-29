@@ -124,7 +124,8 @@ export function createIssueTrackerHooks({
   deletedCommentText = defaultDeletedComment,
 }: IssueTrackerHooksOptions): IssueTrackerHooks {
   if (siteUrl !== undefined && !parseHttpUrl(siteUrl)) {
-    throw new Error(`[siteping] createIssueTrackerHooks: siteUrl must be an absolute http(s) URL, got "${siteUrl}"`);
+    // Not echoed: a staging URL may carry credentials, and this error is logged.
+    throw new Error("[siteping] createIssueTrackerHooks: siteUrl must be an absolute http(s) URL");
   }
   const formatOptions: IssueFormatOptions = {
     redact,
