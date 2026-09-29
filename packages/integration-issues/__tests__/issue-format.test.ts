@@ -1,4 +1,4 @@
-import type { FeedbackRecord } from "@siteping/core";
+import type { AnnotationRecord, FeedbackRecord } from "@siteping/core";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
 import { buildIssueMarker, formatIssue, type IssueFormatOptions, parseIssueMarker } from "../src/core/issue-format.js";
@@ -48,6 +48,32 @@ const record = (overrides: Partial<FeedbackRecord> = {}): FeedbackRecord => ({
   screenshotUrl: null,
   screenshotRegion: null,
   diagnostics: null,
+  ...overrides,
+});
+
+const annotation = (overrides: Partial<AnnotationRecord> = {}): AnnotationRecord => ({
+  id: "an-1",
+  feedbackId: "fb-1",
+  cssSelector: "#checkout > button.pay",
+  xpath: "/html/body/main/button",
+  textSnippet: "Pay now",
+  elementTag: "button",
+  elementId: null,
+  textPrefix: "",
+  textSuffix: "",
+  fingerprint: "",
+  neighborText: "",
+  anchorKey: null,
+  xPct: 0,
+  yPct: 0,
+  wPct: 1,
+  hPct: 1,
+  scrollX: 0,
+  scrollY: 0,
+  viewportW: 1280,
+  viewportH: 720,
+  devicePixelRatio: 1,
+  createdAt: new Date(0),
   ...overrides,
 });
 
@@ -144,6 +170,60 @@ describe("formatIssue", () => {
     );
 
     expect(title).toBe("[SitePing] Ping @\u200Boctocat and @\u200Bacme/maintainers about #\u200B12 please");
+  });
+
+  it("lists where each annotation points, quoted as code", () => {
+    const annotations = [
+      annotation({ textSnippet: "Pay @octocat for #12" }),
+      annotation({ elementTag: "img", cssSelector: "main > img:nth-child(2)", textSnippet: "" }),
+    ];
+
+    const { body } = formatIssue(record({ annotations }), options);
+
+    expect(body).toContain(
+      [
+        "## Annotations",
+        "",
+        "- Element `button`, selector `#checkout > button.pay`, text `Pay @octocat for #12`",
+        "- Element `img`, selector `main > img:nth-child(2)`",
+      ].join("\n"),
+    );
+    expect(liveMarkdown(body).text).not.toContain("octocat");
+  });
+
+  it("caps the annotation list so the body stays under GitHub's 65,536-character limit", () => {
+    const annotations = Array.from({ length: 50 }, () =>
+      annotation({ cssSelector: "div > ".repeat(333), textSnippet: "x".repeat(500) }),
+    );
+    const diagnostics: FeedbackRecord["diagnostics"] = {
+      console: Array.from({ length: 50 }, () => ({
+        level: "error" as const,
+        timestamp: "t",
+        message: "m".repeat(600),
+      })),
+      network: Array.from({ length: 20 }, () => ({
+        url: `https://api.test/${"p".repeat(1980)}`,
+        method: "GET",
+        status: 500,
+        durationMs: 1,
+        timestamp: "t",
+      })),
+    };
+
+    const { body } = formatIssue(
+      record({
+        annotations,
+        diagnostics,
+        message: "`".repeat(5000),
+        url: `https://acme.test/${"u".repeat(1980)}`,
+        userAgent: "a".repeat(500),
+        authorName: "n".repeat(200),
+      }),
+      { ...options, includeAuthorEmail: true },
+    );
+
+    expect(body).toContain("- and 40 more");
+    expect(body.length).toBeLessThan(65_536);
   });
 
   it("resolves the widget's default pathname URL against siteUrl", () => {

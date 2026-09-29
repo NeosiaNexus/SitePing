@@ -16,6 +16,16 @@ export const DIAGNOSTIC_MESSAGE_MAX_LENGTH = 500;
 /** Diagnostic entries copied per kind (console / network). */
 export const DIAGNOSTIC_ENTRIES_PER_KIND = 5;
 
+/**
+ * Annotations listed in the issue body. A feedback may carry 50, each with a
+ * 2000-character selector: listed whole, they would outgrow GitHub's
+ * 65,536-character body limit and the issue would be refused.
+ */
+export const ANNOTATIONS_LISTED = 10;
+
+/** Longest annotation selector or text snippet copied into the issue body, in characters. */
+export const ANNOTATION_FIELD_MAX_LENGTH = 300;
+
 /** Query parameter the widget reads to focus a feedback (`SitepingConfig.deepLink`). */
 export const DEFAULT_DEEP_LINK_PARAM = "siteping";
 
@@ -37,6 +47,7 @@ export const ISSUE_SECTION_HEADINGS = {
   type: "Type",
   pageUrl: "Page",
   deepLink: "Open in the page",
+  annotations: "Annotations",
   author: "Author",
   viewport: "Viewport",
   userAgent: "User agent",
@@ -44,6 +55,9 @@ export const ISSUE_SECTION_HEADINGS = {
   consoleDiagnostics: "Console diagnostics",
   networkDiagnostics: "Network diagnostics",
 } as const satisfies Record<string, string>;
+
+/** Last line of a truncated annotation list; `{count}` is replaced. */
+export const MORE_ANNOTATIONS_TEMPLATE = "- and {count} more";
 
 /** Placeholder listed under a diagnostics heading with no entries. */
 export const EMPTY_DIAGNOSTICS_PLACEHOLDER = "- none";

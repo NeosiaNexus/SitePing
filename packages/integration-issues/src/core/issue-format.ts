@@ -1,5 +1,7 @@
 import { buildDeepLink, type FeedbackRecord, parseHttpUrl } from "@siteping/core";
 import {
+  ANNOTATION_FIELD_MAX_LENGTH,
+  ANNOTATIONS_LISTED,
   DIAGNOSTIC_ENTRIES_PER_KIND,
   DIAGNOSTIC_MESSAGE_MAX_LENGTH,
   EMPTY_DIAGNOSTICS_PLACEHOLDER,
@@ -8,6 +10,7 @@ import {
   ISSUE_SECTION_SEPARATOR,
   ISSUE_TITLE_MAX_LENGTH,
   ISSUE_TITLE_PREFIX,
+  MORE_ANNOTATIONS_TEMPLATE,
   TRUNCATION_SUFFIX,
 } from "../constants/issue-format.js";
 import { codeBlock, codeSpan, defuseReferences } from "./markdown.js";
@@ -43,6 +46,19 @@ function truncate(value: string, maxLength: number): string {
 
 function section(heading: string, content: string): string {
   return `## ${heading}${ISSUE_SECTION_SEPARATOR}${content}`;
+}
+
+/** Where each annotation points on the page — what a developer needs to find the element. */
+function buildAnnotations(feedback: FeedbackRecord, redact: (text: string) => string): string | null {
+  if (feedback.annotations.length === 0) return null;
+  const field = (value: string) => codeSpan(truncate(redact(value), ANNOTATION_FIELD_MAX_LENGTH));
+  const lines = feedback.annotations.slice(0, ANNOTATIONS_LISTED).map((annotation) => {
+    const text = annotation.textSnippet ? `, text ${field(annotation.textSnippet)}` : "";
+    return `- Element ${codeSpan(annotation.elementTag)}, selector ${field(annotation.cssSelector)}${text}`;
+  });
+  const hidden = feedback.annotations.length - ANNOTATIONS_LISTED;
+  if (hidden > 0) lines.push(MORE_ANNOTATIONS_TEMPLATE.replace("{count}", String(hidden)));
+  return section(ISSUE_SECTION_HEADINGS.annotations, lines.join("\n"));
 }
 
 /** One block per kind: console messages and network URLs are visitor-controlled, and may span lines. */
@@ -88,6 +104,7 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
     section(ISSUE_SECTION_HEADINGS.type, feedback.type),
     section(ISSUE_SECTION_HEADINGS.pageUrl, codeSpan(page?.href ?? pageUrl)),
     deepLink ? section(ISSUE_SECTION_HEADINGS.deepLink, `<${deepLink}>`) : null,
+    buildAnnotations(feedback, redact),
     section(ISSUE_SECTION_HEADINGS.author, codeSpan(redact(author))),
     section(ISSUE_SECTION_HEADINGS.viewport, codeSpan(feedback.viewport)),
     section(ISSUE_SECTION_HEADINGS.userAgent, codeSpan(redact(feedback.userAgent))),
