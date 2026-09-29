@@ -380,9 +380,6 @@ describe("Better Auth recipe", () => {
     const { auth, db } = createAuth();
     const member = await signIn(auth, MEMBER);
     const admin = await signIn(auth, ADMIN);
-    // Six days into seven: past `updateAge`.
-    const dayLeft = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    for (const session of db.session) session.expiresAt = dayLeft;
     const call = (path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) =>
       auth.handler(
         new Request(`${BASE_URL}/api/auth${path}`, { ...init, headers: { ...admin.bearer, ...init.headers } }),
@@ -393,11 +390,16 @@ describe("Better Auth recipe", () => {
       headers: { "Content-Type": "application/json", Origin: "https://evil.example" },
       body: JSON.stringify({ userId: member.userId, role: "admin" }),
     });
-    // What an auth client asks on every page load.
-    await call("/get-session");
 
     expect(promoted.status).toBe(200);
     expect(db.user.find((user) => user.id === member.userId)?.role).toBe("admin");
+
+    // Six days into seven: past `updateAge`, so the next read renews it.
+    const dayLeft = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    for (const session of db.session) session.expiresAt = dayLeft;
+    // What an auth client asks on every page load.
+    await call("/get-session");
+
     const [session] = db.session.filter((row) => row.userId === admin.userId);
     expect(session?.expiresAt).toBeInstanceOf(Date);
     expect((session?.expiresAt as Date).getTime()).toBeGreaterThan(dayLeft.getTime());
