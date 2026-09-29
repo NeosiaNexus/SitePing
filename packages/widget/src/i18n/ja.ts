@@ -49,7 +49,7 @@ export const ja: Translations = {
   "scope.all": "すべてのページ",
 
   // "Mine" toggle
-  "panel.filterMine": "自分の",
+  "panel.filterMine": "自分の投稿",
   "panel.filterMineHint": "このブラウザから送信したフィードバックのみ",
 
   // FAB menu
