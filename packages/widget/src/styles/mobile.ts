@@ -1,4 +1,4 @@
-import { COMPACT_MAX_WIDTH } from "../constants.js";
+import { COMPACT_MEDIA } from "../constants.js";
 
 /**
  * Phone and touch layer — appended last in the Shadow DOM stylesheet so it
@@ -10,7 +10,8 @@ import { COMPACT_MAX_WIDTH } from "../constants.js";
  *   tappable.
  * - `pointer: coarse` — finger-sized targets, and 16px form fields: iOS
  *   Safari zooms the whole page into any input under 16px on focus.
- * - `max-width: 640px` — the panel and its menus become bottom sheets. Glass
+ * - `COMPACT_MEDIA` (up to 640px wide, or a touch screen up to 500px tall: a
+ *   phone held sideways) — the panel and its menus become bottom sheets. Glass
  *   turns solid there: translucent sheets are hard to read on a busy page, and
  *   backdrop blur is the most expensive paint on low-end phones.
  *
@@ -139,7 +140,7 @@ export const MOBILE_CSS = /* css */ `
     }
   }
 
-  @media (max-width: ${COMPACT_MAX_WIDTH}px) {
+  @media ${COMPACT_MEDIA} {
     .sp-fab--bottom-right,
     .sp-radial--bottom-right {
       right: calc(16px + env(safe-area-inset-right, 0px));

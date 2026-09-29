@@ -1,16 +1,17 @@
-import { COMPACT_MAX_WIDTH } from "./constants.js";
+import { COMPACT_MEDIA } from "./constants.js";
 
 function matches(query: string): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(query).matches;
 }
 
 /**
- * Phone-sized viewport — the widget swaps floating surfaces for bottom sheets.
+ * Phone-sized viewport, upright or sideways (`COMPACT_MEDIA`) — the widget
+ * swaps floating surfaces for bottom sheets.
  * Elements inside the Shadow DOM use the equivalent `@media` block; this is
  * for the ones that live on `document.body` with inline styles.
  */
 export function isCompactViewport(): boolean {
-  return matches(`(max-width: ${COMPACT_MAX_WIDTH}px)`);
+  return matches(COMPACT_MEDIA);
 }
 
 /** Primary input is a finger: no hover, and usually no hardware keyboard. */

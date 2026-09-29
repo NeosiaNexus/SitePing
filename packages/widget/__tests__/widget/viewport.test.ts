@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { COMPACT_MEDIA } from "../../src/constants.js";
 import { isCoarsePointer, isCompactViewport, trackKeyboardInset } from "../../src/viewport.js";
 import { mockMediaQueries, mockVisualViewport } from "../helpers.js";
 
@@ -16,8 +17,9 @@ describe("viewport", () => {
       expect(isCoarsePointer()).toBe(false);
     });
 
-    it("isCompactViewport reads the 640px phone breakpoint", () => {
-      mockMediaQueries(["(max-width: 640px)"]);
+    it("isCompactViewport reads the phone query: up to 640px wide, or a short touch screen", () => {
+      expect(COMPACT_MEDIA).toBe("(max-width: 640px), (max-height: 500px) and (pointer: coarse)");
+      mockMediaQueries([COMPACT_MEDIA]);
       expect(isCompactViewport()).toBe(true);
       expect(isCoarsePointer()).toBe(false);
     });

@@ -9,11 +9,12 @@ export const Z_INDEX_MAX = 2147483647;
 export const DEFAULT_MIN_VIEWPORT_WIDTH = 0;
 
 /**
- * Widest viewport (px) that gets the compact phone layout: the panel, the
- * feedback form and the identity prompt become bottom sheets. Mirrored by the
- * `@media (max-width: 640px)` blocks in `styles/mobile.ts`.
+ * Viewports that get the compact phone layout: the panel, the feedback form
+ * and the identity prompt become bottom sheets. A phone up to 640px wide, or
+ * one held sideways — a short touch screen, where the on-screen keyboard
+ * covers half the height. Read by `viewport.ts` and `styles/mobile.ts`.
  */
-export const COMPACT_MAX_WIDTH = 640;
+export const COMPACT_MEDIA = "(max-width: 640px), (max-height: 500px) and (pointer: coarse)";
 
 /** Default number of feedbacks to fetch per page. */
 export const PAGE_SIZE = 20;

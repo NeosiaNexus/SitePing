@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { COMPACT_MEDIA } from "../src/constants.js";
 
 // ---------------------------------------------------------------------------
 // Shared test utilities — extracted from duplicated helpers across test files
@@ -87,7 +88,7 @@ export function mockMatchMedia(matches = false): void {
 }
 
 /** Media queries the phone layout reads (`viewport.ts`) — pass to `mockMediaQueries`. */
-export const PHONE_MEDIA = ["(max-width: 640px)", "(pointer: coarse)"];
+export const PHONE_MEDIA = [COMPACT_MEDIA, "(pointer: coarse)"];
 
 /**
  * Stub window.matchMedia so exactly the listed queries match. Assigns rather
