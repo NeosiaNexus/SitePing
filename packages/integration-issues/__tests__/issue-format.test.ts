@@ -23,6 +23,7 @@ describe("issue marker", () => {
     expect(parseIssueMarker("An issue written by hand")).toBeNull();
     expect(parseIssueMarker('<!-- siteping-feedback {"id":"a" -->')).toBeNull();
     expect(parseIssueMarker('<!-- siteping-feedback {"id":1,"project":"site"} -->')).toBeNull();
+    expect(parseIssueMarker('<!-- siteping-feedback {"id":} -->')).toBeNull();
   });
 });
 
