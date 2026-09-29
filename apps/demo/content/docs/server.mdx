@@ -173,6 +173,155 @@ A browser attaches cookies to a forged cross-site request too, so under `access`
 
 Lists are also sent with `Cache-Control: no-store`, since they depend on who asks. The `apiKey` policy needs neither: its key travels in a header no forged request can set.
 
+### Recipe: OpenID Connect
+
+When reviewers sign in with an OpenID Connect provider — Keycloak, Microsoft Entra ID, Auth0, Zitadel… — the widget and the dashboard send its access token as a bearer, and `access` verifies it with [jose](https://github.com/panva/jose). Visitors without a token keep the public widget: they submit, read and reply, while administrators alone triage and read reviewer emails.
+
+```ts
+// lib/siteping-access.ts
+import type { SitepingAccessControl } from "@siteping/server";
+import { createRemoteJWKSet, errors, type JWTPayload, jwtVerify } from "jose";
+
+// Both from https://id.example.com/realms/acme/.well-known/openid-configuration
+const ISSUER = "https://id.example.com/realms/acme";
+const jwks = createRemoteJWKSet(new URL(`${ISSUER}/protocol/openid-connect/certs`));
+
+export interface Reviewer {
+  sub: string; // "" for a visitor without a token
+  name: string;
+  email: string;
+  isAdmin: boolean;
+}
+
+const VISITOR: Reviewer = { sub: "", name: "", email: "", isAdmin: false };
+
+// Where your provider puts roles: Keycloak's realm roles here — see the table below.
+function rolesOf(payload: JWTPayload): unknown {
+  return (payload.realm_access as { roles?: unknown } | undefined)?.roles;
+}
+
+// The key set down, slow or garbled: an outage, not a bad token.
+const KEY_SET_FAILURES = new Set(["ERR_JOSE_GENERIC", "ERR_JWKS_TIMEOUT", "ERR_JWKS_INVALID"]);
+
+export const oidcAccess: SitepingAccessControl<Reviewer> = {
+  async authenticate(request) {
+    const authorization = request.headers.get("Authorization");
+    if (!authorization) return VISITOR;
+    const token = /^Bearer (\S+)$/i.exec(authorization)?.[1];
+    if (!token) return null;
+    try {
+      const { payload } = await jwtVerify(token, jwks, {
+        issuer: ISSUER,
+        audience: "siteping-api", // your API's, never the client id
+        algorithms: ["RS256", "PS256", "ES256", "EdDSA"],
+        requiredClaims: ["exp"],
+      });
+      if (!payload.sub) return null;
+      const roles = rolesOf(payload);
+      return {
+        sub: payload.sub,
+        name: typeof payload.name === "string" ? payload.name : "",
+        email: payload.email_verified === true && typeof payload.email === "string" ? payload.email : "",
+        isAdmin: Array.isArray(roles) && roles.includes("siteping-admin"),
+      };
+    } catch (error) {
+      if (error instanceof errors.JOSEError && !KEY_SET_FAILURES.has(error.code)) return null; // → 401
+      throw error; // → logged 500
+    }
+  },
+  authorize: ({ principal, action }) =>
+    principal.isAdmin || action === "create" || action === "list" || action === "createComment",
+  canReadAuthorEmail: (principal) => principal.isAdmin,
+};
+```
+
+```ts
+// app/api/siteping/route.ts
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  // Every site the widget runs on, and the dashboard's own origin.
+  allowedOrigins: ["https://client-site.com", "https://inbox.example.com"],
+  access: oidcAccess,
+  // A signed-in author's name, and verified email, come from the token.
+  beforeCreate: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name || input.authorName,
+    authorEmail: principal.email || input.authorEmail,
+  }),
+});
+```
+
+On the client, `headers` runs before every request, so it always sends the current token — refreshed, or gone after a sign-out:
+
+```ts
+async function headers(): Promise<Record<string, string>> {
+  const token = await getAccessToken(); // from your OIDC client library
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "acme", headers });
+// Dashboard, on https://inbox.example.com:
+// <SitepingInbox endpoint="https://api.example.com/api/siteping" projects="acme" headers={headers} />
+```
+
+- **An access token, never an ID token.** `audience` is the identifier your provider puts in `aud` for your API — Auth0's API identifier, or the audience a Keycloak audience mapper adds. An ID token is addressed to your client application instead, so it answers `401`. Auth0 issues a JWT access token only for an API audience, and Zitadel only when the application's token type is JWT.
+- **No header, a visitor; a bad one, a `401`.** Without `Authorization` the request is anonymous, so the public widget keeps working. A malformed, expired, forged or foreign token answers `401` instead of being downgraded to a visitor: a reviewer whose session lapsed sees it, and the client can refresh the token.
+- **An unreachable provider, a `500`.** When the key set cannot be fetched — network error, timeout, non-`200` answer, no key set in it — `authenticate` throws: the handler logs it and answers `500` rather than calling every token invalid. Visitors, who send none, are unaffected. jose caches the keys and refetches them for an unknown `kid`, so key rotation needs nothing.
+- **Pinned algorithms, over HTTPS.** `algorithms` lists what your provider signs with, so an unsigned or `HS256` token is refused before any key is looked up. Keep the issuer and the key set on `https://`: whoever can tamper with the key set can mint administrator tokens.
+- **The author comes from the token.** `beforeCreate` stamps its name, and its email only when `email_verified` is true; otherwise the widget's values stay. Access tokens don't always carry these claims, so pass [`identity`](/docs/widget/configuration) to spare signed-in users the widget's identity prompt.
+- **Emails stay with administrators.** Since `canReadAuthorEmail` is set, it also decides [who speaks as the team](/docs/comments#who-speaks-as-the-team): administrators' replies are marked `team`, everyone else's `client`.
+- **One role, every project.** This `authorize` never reads `projectName`: `siteping-admin` triages every project the endpoint serves, and anyone — visitor or member — lists any of them, screenshots and diagnostics included. To keep several clients apart, give each project its own role, such as `siteping-admin:acme`: keep the caller's roles in the principal, and have `authorize` test `` roles.includes(`siteping-admin:${projectName}`) `` where it tests `isAdmin`. `canReadAuthorEmail` is not told the project, so keep it for a role that covers them all. To put reads behind sign-in too, return `null` instead of `VISITOR` when the header is missing — every request then needs a token, submissions included — and allow `list` on the caller's projects only.
+
+Roles are provider-specific, so `rolesOf` is yours to write:
+
+| Provider | Roles in the access token | `rolesOf(payload)` returns |
+|---|---|---|
+| Keycloak | `realm_access.roles` (realm roles), `resource_access.<client>.roles` (client roles) | As above |
+| Microsoft Entra ID | `roles` (app roles) | `payload.roles` |
+| Auth0 | None by default: add a claim in a post-login Action, e.g. `https://siteping.example/roles` | `payload["https://siteping.example/roles"]` |
+| Zitadel | `urn:zitadel:iam:org:project:roles`, an object keyed by role | `Object.keys(payload["urn:zitadel:iam:org:project:roles"] ?? {})` |
+
+#### Letting authors delete their own feedback
+
+The store records no owner: keep your own table, filled by `onCreated`, which sees the principal, and read by `authorize`. A list asks about every feedback it carries — 50 `delete` dry runs for a page of 50 — so read the caller's ids once per request, in a `WeakMap` keyed on it:
+
+```ts
+const ownerships = new WeakMap<Request, Promise<Set<string>>>();
+
+/** The ids `sub` submitted, read once per request. */
+function submittedBy(request: Request, sub: string): Promise<Set<string>> {
+  let ids = ownerships.get(request);
+  if (!ids) {
+    ids = db.feedbackOwner
+      .findMany({ where: { sub }, select: { feedbackId: true } })
+      .then((rows) => new Set(rows.map((row) => row.feedbackId)));
+    ownerships.set(request, ids);
+  }
+  return ids;
+}
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  // …allowedOrigins and beforeCreate as in route.ts above
+  access: {
+    ...oidcAccess,
+    authorize: async ({ principal, action, feedbackId = "", request }) =>
+      principal.isAdmin ||
+      action === "create" ||
+      action === "list" ||
+      action === "createComment" ||
+      (action === "delete" && principal.sub !== "" && (await submittedBy(request, principal.sub)).has(feedbackId)),
+  },
+  hooks: {
+    onCreated: async (feedback, { principal }) => {
+      if (principal.sub) await db.feedbackOwner.create({ data: { sub: principal.sub, feedbackId: feedback.id } });
+    },
+  },
+});
+```
+
+`onCreated` never fails a submission: if its write fails, that author just cannot delete the feedback. A `sub` is unique per issuer only — with several providers, key the table on both — and `onDeleted` is the place to drop rows.
+
 ## Extension points
 
 ```ts

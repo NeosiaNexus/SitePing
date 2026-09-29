@@ -58,7 +58,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint garanti */ }
 | `enableRightClickComment` | `boolean` | `false` | Clic droit n'importe où pour commenter instantanément — voir [Commentaires au clic droit](/fr/docs/widget/right-click) |
 | `captureDiagnostics` | `boolean` ou objet | `false` | Joint les entrées console récentes (max 50) et les requêtes réseau en échec (max 20, URL enregistrée sans identifiants, query string ni fragment) à chaque feedback. `true` active les deux ; un objet choisit les canaux et des limites plus basses (`maxConsoleEntries` / `maxNetworkEntries` — au-delà, ramenées à 50 / 20, les plafonds du serveur) |
 | `deepLink` | `boolean` ou `{ param?: string }` | `false` | Au premier chargement, met en avant le feedback référencé par `?siteping=<id>` (ou votre paramètre personnalisé). Chargement initial uniquement — pour les changements de route, appelez `focusFeedback()` |
-| `identity` | `{ name, email }` | — | Pré-remplit l'auteur (applis avec SSO) : évite complètement la modale d'identité, jamais persisté dans le localStorage |
+| `identity` | `{ name, email }` | — | Pré-remplit les champs d'auteur depuis la session de l'application hôte (ex. SSO) : évite la modale d'identité, jamais persisté dans le localStorage. N'authentifie pas les requêtes API — envoyez un bearer avec `headers`. Lu à l'init : remontez le widget après un changement de compte |
 | `panelActions` | tableau | — | Vos propres boutons et liens dans la vue détail d'un feedback — créer un ticket, l'ouvrir dans votre outil de suivi. Voir [Actions du panneau](/fr/docs/widget/panel-actions) |
 
 ## Mode relecteur

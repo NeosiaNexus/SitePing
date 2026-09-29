@@ -59,6 +59,7 @@
   },
   "devDependencies": {
     "@siteping/adapter-memory": "workspace:*",
-    "@siteping/core": "workspace:*"
+    "@siteping/core": "workspace:*",
+    "jose": "^6.2.12"
   }
 }
