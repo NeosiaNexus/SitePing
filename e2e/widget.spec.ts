@@ -1159,7 +1159,7 @@ test.describe("Panel search", () => {
 });
 
 test.describe("Touch annotation", () => {
-  test("tap on overlay creates an annotation rectangle", async ({ page, browserName }) => {
+  test("a touch drag on the overlay creates an annotation rectangle", async ({ page, browserName }) => {
     test.skip(browserName !== "chromium", "TouchEvent constructor not supported in Firefox/WebKit headless");
     const s = shadow(page);
 
