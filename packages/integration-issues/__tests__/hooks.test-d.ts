@@ -7,7 +7,7 @@
 import type { SitepingStore } from "@siteping/core";
 import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
 import { describe, expectTypeOf, it } from "vitest";
-import { createIssueTrackerHooks, type IssueTracker } from "../src/index.js";
+import { createIssueTrackerHooks, formatIssue, type IssueTracker } from "../src/index.js";
 import { createGitHubTracker } from "../src/providers/github.js";
 import { createGitLabTracker } from "../src/providers/gitlab.js";
 
@@ -74,6 +74,18 @@ describe("createIssueTrackerHooks", () => {
         onDeleted: (_target, { principal }) => {
           expectTypeOf(principal).toEqualTypeOf<Reviewer>();
         },
+      },
+    });
+  });
+});
+
+describe("formatIssue", () => {
+  it("extends the built-in format with the options it is given", () => {
+    createIssueTrackerHooks({
+      tracker,
+      formatIssue: (feedback, options) => {
+        const issue = formatIssue(feedback, options);
+        return { ...issue, body: `${issue.body}\n\nextra` };
       },
     });
   });

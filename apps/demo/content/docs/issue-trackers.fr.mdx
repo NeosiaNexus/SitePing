@@ -105,7 +105,7 @@ Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Le l
 | `labels` | `string[]` | `[]` | Labels en plus. `siteping` est toujours ajouté |
 | `redact` | `(text) => string` | aucun | Appliqué au message, à l'auteur, aux URL, au user agent, au texte des annotations et aux diagnostics avant qu'ils quittent votre serveur |
 | `includeAuthorEmail` | `boolean` | `false` | Ajoute l'e-mail du relecteur à côté de son nom |
-| `formatIssue` | `(feedback, defaults) => { title, body }` | intégré | Votre propre titre et votre propre Markdown. Le marqueur reste ajouté en première ligne. Citer le texte des visiteurs est alors à votre charge |
+| `formatIssue` | `(feedback, options) => { title, body }` | intégré | Votre propre titre et votre propre Markdown, ou [celui par défaut, complété](#compléter-le-ticket-par-défaut). Le marqueur reste ajouté en première ligne. Citer le texte des visiteurs est alors à votre charge |
 | `onIssueCreated` | `(feedback, issue) => void` | — | Appelée avec chaque ticket ouvert (`issue.key`, `issue.url`), pour envoyer son lien dans une messagerie ou le garder, par exemple. Une exception est journalisée comme une création qui a échoué |
 | `instance` | `string` | — | Nom de ce déploiement quand plusieurs partagent un dépôt. Voir [comment les tickets sont retrouvés](#comment-les-tickets-sont-retrouvés) |
 | `syncStatus` | `boolean` | `true` | Ferme et rouvre le ticket quand le statut change |
@@ -132,6 +132,22 @@ createSitepingHandler({
       }
     },
     onDeleted: (target) => audit.log("deleted", target),
+  },
+});
+```
+
+### Compléter le ticket par défaut
+
+Le format intégré est exporté sous le nom `formatIssue(feedback, options)`, et votre option `formatIssue` reçoit ces `options` : `redact`, `deepLinkParam`, `includeAuthorEmail` et `siteUrl`. Enveloppez-le pour ajouter au ticket par défaut plutôt que de le réécrire, et la citation du texte des visiteurs vient avec :
+
+```ts
+import { createIssueTrackerHooks, formatIssue } from "@siteping/integration-issues";
+
+createIssueTrackerHooks({
+  tracker,
+  formatIssue: (feedback, options) => {
+    const issue = formatIssue(feedback, options);
+    return { ...issue, body: `${issue.body}\n\n## Release\n\n${process.env.RELEASE_NAME}` };
   },
 });
 ```

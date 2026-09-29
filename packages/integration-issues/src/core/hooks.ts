@@ -38,8 +38,12 @@ export interface IssueTrackerHooksOptions {
   deepLinkParam?: string | false;
   /** Include reviewer emails in issues. Defaults to `false` — issues are often public. */
   includeAuthorEmail?: boolean;
-  /** Replace the default Markdown. The linking marker is prepended to whatever you return, as its first line. */
-  formatIssue?: (feedback: FeedbackRecord, defaults: IssueFormatOptions) => IssueContent;
+  /**
+   * Replace the default Markdown. `options` are what the exported
+   * `formatIssue` takes: call it to extend the default issue. The linking
+   * marker is prepended to whatever you return, as its first line.
+   */
+  formatIssue?: (feedback: FeedbackRecord, options: IssueFormatOptions) => IssueContent;
   /**
    * Name of this deployment when several share one repository (staging and
    * production, say). It goes into each issue's marker, and the hooks only
