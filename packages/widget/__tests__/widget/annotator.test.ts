@@ -1819,16 +1819,75 @@ describe("Annotator on touch screens", () => {
     markers.id = "siteping-markers";
     markers.appendChild(marker);
     document.body.appendChild(markers);
+    // Real boxes, as in a browser — jsdom's 0×0 rects would stop annotateElement
+    // before the guards under test are ever reached.
+    const box = () => new DOMRect(10, 600, 200, 40);
+    marker.getBoundingClientRect = box;
+    document.body.getBoundingClientRect = box;
 
-    for (const hit of [document.body, marker, null]) {
-      document.elementFromPoint = vi.fn(() => hit);
-      bus.emit("annotation:start");
-      touch(findOverlay()!, { x: 60, y: 620 });
-      await new Promise((r) => setTimeout(r, 10));
+    try {
+      for (const hit of [document.body, marker, null]) {
+        document.elementFromPoint = vi.fn(() => hit);
+        bus.emit("annotation:start");
+        touch(findOverlay()!, { x: 60, y: 620 });
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(popupMocks.showCount).toBe(0);
+      // The session stays open for another try
+      expect(findOverlay()).not.toBeNull();
+    } finally {
+      Reflect.deleteProperty(document.body, "getBoundingClientRect");
     }
-    expect(popupMocks.showCount).toBe(0);
-    // The session stays open for another try
-    expect(findOverlay()).not.toBeNull();
+  });
+
+  it("a slide too thin to frame an area comments on the element instead of being dropped", async () => {
+    const target = pageElement();
+    document.elementFromPoint = vi.fn(() => target);
+
+    bus.emit("annotation:start");
+    // 200×6 px: a finger along a line of text
+    touch(findOverlay()!, { x: 20, y: 620 }, { x: 220, y: 626 });
+
+    await vi.waitFor(() => expect(popupMocks.showCount).toBe(1));
+    expect(generateAnchor).toHaveBeenCalledWith(target);
+    expect(popupMocks.lastRect).toMatchObject({ x: 10, y: 600, width: 200, height: 40 });
+  });
+
+  it("a second tap while the form is open does not open another one (#163)", async () => {
+    popupMocks.keepShowPending = true;
+    const target = pageElement();
+    document.elementFromPoint = vi.fn(() => target);
+
+    bus.emit("annotation:start");
+    touch(findOverlay()!, { x: 60, y: 620 });
+    await vi.waitFor(() => expect(popupMocks.showCount).toBe(1));
+    popupMocks.isOpenState = true;
+
+    touch(findOverlay()!, { x: 62, y: 621 });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(popupMocks.showCount).toBe(1);
+  });
+
+  it("captures only the visible part of a tapped element taller than the screen", async () => {
+    annotator.destroy();
+    bus = new EventBus<WidgetEvents>();
+    annotator = new Annotator(colors, bus, t, true);
+    const section = pageElement("section", { x: 0, y: -400, width: 390, height: 3000 });
+    document.elementFromPoint = vi.fn(() => section);
+
+    bus.emit("annotation:start");
+    touch(findOverlay()!, { x: 60, y: 300 });
+
+    // The mock popup submits straight away
+    await vi.waitFor(() => expect(screenshotMocks.captureAnnotatedScreenshot).toHaveBeenCalledOnce());
+    // The annotation still covers the whole element
+    expect(popupMocks.lastRect).toMatchObject({ x: 0, y: -400, width: 390, height: 3000 });
+    expect(screenshotMocks.captureAnnotatedScreenshot.mock.calls[0]![0]).toMatchObject({
+      x: 0,
+      y: 0,
+      width: 390,
+      height: window.innerHeight,
+    });
   });
 
   it("a drag still selects an area", async () => {
@@ -1843,12 +1902,14 @@ describe("Annotator on touch screens", () => {
   it("explains tap-or-drag on touch screens, with a finger-sized Cancel", () => {
     mockMediaQueries(["(pointer: coarse)"]);
     bus.emit("annotation:start");
-    expect(findOverlay()!.getAttribute("aria-label")).toBe(t("annotator.touchInstruction"));
     const cancel = Array.from(document.body.querySelectorAll("button")).find(
       (b) => b.textContent === t("annotator.cancel"),
     )!;
     expect(cancel.parentElement!.textContent).toContain(t("annotator.touchInstruction"));
     expect(cancel.style.height).toBe("40px");
+    // The overlay's accessible name still announces the Enter route (#162),
+    // for a tablet with a keyboard and the screen reader on it.
+    expect(findOverlay()!.getAttribute("aria-label")).toBe(t("annotator.instruction"));
   });
 
   it("uses a solid toolbar on phones, clear of the notch", () => {

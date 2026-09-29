@@ -15,6 +15,18 @@ import { isCoarsePointer, isCompactViewport } from "./viewport.js";
 /** Below this size (px) a drawn rect is an accidental click — or, on touch, a tap. */
 const MIN_RECT_SIZE = 10;
 
+/** The part of a viewport rect that is on screen. */
+function clampToViewport(r: DOMRect): DOMRect {
+  const left = Math.max(0, r.left);
+  const top = Math.max(0, r.top);
+  return new DOMRect(
+    left,
+    top,
+    Math.max(0, Math.min(r.right, window.innerWidth) - left),
+    Math.max(0, Math.min(r.bottom, window.innerHeight) - top),
+  );
+}
+
 export interface AnnotationComplete {
   annotation: AnnotationPayload;
   type: FeedbackType;
@@ -153,9 +165,9 @@ export class Annotator {
     const drawMode = !this.instantMode;
     const compact = isCompactViewport();
     const touch = isCoarsePointer();
-    // Touch copy: a tap selects the element under the finger — there is no
-    // focused element to annotate with Enter.
-    const instruction = touch ? this.t("annotator.touchInstruction") : this.t("annotator.instruction");
+    // The visible copy on touch says "tap an element". The overlay's name keeps
+    // the Enter route (#162): tablets with a keyboard, and screen readers on them.
+    const instruction = this.t("annotator.instruction");
 
     // Capture the focused element before activation for keyboard annotation
     this.preActiveFocusElement = document.activeElement;
@@ -247,7 +259,7 @@ export class Annotator {
       this.toolbar.appendChild(style);
 
       const instructionEl = el("span", { style: "font-weight:500;letter-spacing:-0.01em;min-width:0;" });
-      setText(instructionEl, instruction);
+      setText(instructionEl, touch ? this.t("annotator.touchInstruction") : instruction);
 
       const cancelBtn = document.createElement("button");
       cancelBtn.style.cssText = /* css */ `
@@ -408,9 +420,11 @@ export class Annotator {
 
   /**
    * Comment on a whole element with a full-bounds rect — the keyboard (Enter)
-   * path and the touch tap path.
+   * path and the touch tap path. A tapped element can be far taller than the
+   * screen, and the capture renders at devicePixelRatio (3 on phones): the tap
+   * path captures only its visible part, like the instant flow.
    */
-  private async annotateElement(target: HTMLElement): Promise<void> {
+  private async annotateElement(target: HTMLElement, tap = false): Promise<void> {
     const bounds = target.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return;
 
@@ -442,7 +456,7 @@ export class Annotator {
 
     // Submission stays inside the popup so the user gets a visible spinner
     // until the server confirms — see finishDrawing for the rationale.
-    const result = await this.openForm(annotation, rectBounds);
+    const result = await this.openForm(annotation, rectBounds, tap ? clampToViewport(rectBounds) : rectBounds);
 
     this.drawingRect?.remove();
     this.drawingRect = null;
@@ -531,18 +545,18 @@ export class Annotator {
   private onTouchEnd = async (e: TouchEvent): Promise<void> => {
     const touch = e.changedTouches[0];
     if (!touch) return;
-    // A tap, not a drag: comment on the element under the finger — a
-    // fingertip hides the very corner it is trying to place.
+    // A tap, or a slide too thin to frame an area (a finger along a line of
+    // text): comment on the element under the finger instead of dropping the
+    // gesture — a fingertip hides the very corner it is trying to place.
     if (
       this.isDrawing &&
-      Math.abs(touch.clientX - this.startX) < MIN_RECT_SIZE &&
-      Math.abs(touch.clientY - this.startY) < MIN_RECT_SIZE
+      (Math.abs(touch.clientX - this.startX) < MIN_RECT_SIZE || Math.abs(touch.clientY - this.startY) < MIN_RECT_SIZE)
     ) {
       this.isDrawing = false;
       this.drawingRect?.remove();
       this.drawingRect = null;
       const target = this.elementAt(touch.clientX, touch.clientY);
-      if (target) await this.annotateElement(target);
+      if (target) await this.annotateElement(target, true);
       return;
     }
     await this.finishDrawing(touch.clientX, touch.clientY);
@@ -642,14 +656,7 @@ export class Annotator {
     // Use the anchor element's bounding box (clamped to viewport) for
     // screenshot capture so reviewers get meaningful context, not a 20×20 px
     // postage stamp.
-    const left = Math.max(0, anchorBounds.left);
-    const top = Math.max(0, anchorBounds.top);
-    const captureRect = new DOMRect(
-      left,
-      top,
-      Math.max(0, Math.min(anchorBounds.right, window.innerWidth) - left),
-      Math.max(0, Math.min(anchorBounds.bottom, window.innerHeight) - top),
-    );
+    const captureRect = clampToViewport(anchorBounds);
 
     // Create a visual indicator at the click point
     this.drawingRect?.remove();
