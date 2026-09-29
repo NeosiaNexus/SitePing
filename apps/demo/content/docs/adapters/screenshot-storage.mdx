@@ -88,11 +88,15 @@ export const objectStore = createS3ObjectStore({
 | `accessKeyId`, `secretAccessKey`, `sessionToken` | required, optional | The credentials. `sessionToken` is for temporary (STS) credentials |
 | `publicBaseUrl` | required | Where screenshots are read from: the bucket's public domain, a CDN in front of it, or [your app](#serve-screenshots-from-your-app) when the bucket is private |
 | `treatAccessDeniedAsMissing` | `false` | See [least-privilege credentials](#least-privilege-credentials) |
-| `timeoutMs` | `5000` | Per-request timeout, response body included |
+| `timeoutMs` | `5000` | Time budget of each call to the bucket, [retries](#retries) and response body included |
 | `now` | the host clock | The clock that signs requests. S3 refuses a signature more than a few minutes off, so pass a corrected clock if the host's drifts |
 | `fetch` | `globalThis.fetch` | The fetch implementation, for tests or a proxy |
 
 Requests use path-style URLs (`<endpoint>/<bucket>/<key>`), which R2, AWS S3, B2 and MinIO all accept. Virtual-hosted-style addressing (`<bucket>.<endpoint>`) is not supported. Each object is stored with `Cache-Control: public, max-age=31536000, immutable`, since a key is never reused: a public bucket or CDN caches screenshots for good.
+
+### Retries
+
+A request that fails with a network error, a `5xx` or a `429` (S3's `SlowDown`, an R2 `InternalError`) is sent again, up to three attempts in all, after a short random wait or the `Retry-After` the backend asks for, as long as `timeoutMs` leaves time for it. A single transient failure would otherwise cost the feedback its screenshot. Sending a `PUT` again stores the same bytes under the same key, so a retry never leaves a second object behind.
 
 ### Least-privilege credentials
 
@@ -125,7 +129,7 @@ export const objectStore = createCloudflareImagesObjectStore({
 });
 ```
 
-Each screenshot is uploaded with its key as a custom image ID, so its delivery URL, `https://imagedelivery.net/<accountHash>/<key>/public`, is known before the upload finishes. `variant` picks another variant than `public`, and `deliveryBaseUrl` serves from your own domain (`https://example.com/cdn-cgi/imagedelivery`). `timeoutMs` and `fetch` work as for S3.
+Each screenshot is uploaded with its key as a custom image ID, so its delivery URL, `https://imagedelivery.net/<accountHash>/<key>/public`, is known before the upload finishes. `variant` picks another variant than `public`, and `deliveryBaseUrl` serves from your own domain (`https://example.com/cdn-cgi/imagedelivery`). `timeoutMs`, `fetch` and [retries](#retries) work as for S3, except for the upload itself: a `POST` is only sent again after a `429`, since after a network error or a `5xx` the image may already be stored under its ID.
 
 Cloudflare does not allow signed URLs for images with a custom ID, so screenshots stay publicly readable by anyone who has the URL. Keys are 128-bit random values, which nobody can guess, but a URL shared in a ticket or a screenshot of the panel stays valid until the feedback is deleted. If screenshots must stay behind your login, use a private bucket served by your app.
 
@@ -211,7 +215,7 @@ The stores call `delete(url)` when a feedback is deleted, and when a create that
 
 ## Uploads with an unknown outcome
 
-When an upload fails with a timeout or a `5xx`, the backend may have stored the object anyway. The storage then removes the key right away and rethrows the error. A backend that commits the upload after that removal leaves an orphan, so `onUncertainUpload(key)` receives the key: enqueue it in a durable job that removes it again a few minutes later with `objectStore.remove(key)`. A definitive refusal stored nothing and is not reclaimed: a `4xx`, such as bad credentials, or a `3xx`, such as the `301 PermanentRedirect` AWS answers when `endpoint` is not the bucket's region.
+When an upload still fails after its retries with a timeout, a network error or a `5xx`, the backend may have stored the object anyway. The storage then removes the key right away and rethrows the error. A backend that commits the upload after that removal leaves an orphan, so `onUncertainUpload(key)` receives the key: enqueue it in a durable job that removes it again a few minutes later with `objectStore.remove(key)`. A definitive refusal stored nothing and is not reclaimed: a `4xx`, such as bad credentials, or a `3xx`, such as the `301 PermanentRedirect` AWS answers when `endpoint` is not the bucket's region.
 
 An expiration lifecycle rule on `siteping-*` does not replace this: it cannot tell orphans from screenshots a feedback still shows, so it only fits if you want screenshots to expire after a retention period anyway.
 

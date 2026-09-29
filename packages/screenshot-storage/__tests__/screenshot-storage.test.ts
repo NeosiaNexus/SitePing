@@ -753,6 +753,146 @@ describe("backend requests — timeouts", () => {
   );
 });
 
+describe("backend requests — retries", () => {
+  const SLOW_DOWN = "<Error><Code>SlowDown</Code><Message>Please reduce your request rate.</Message></Error>";
+  /** A failed attempt: a status, a whole response, or a network error. */
+  type Failure = number | Response | Error;
+
+  /** Wrap a fake backend's fetch so its first requests fail as listed, recording every method. */
+  function flaky(fake: FakeBackend, failures: Failure[]) {
+    const methods: string[] = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      methods.push(new Request(input, init).method);
+      const failure = failures.shift();
+      if (failure instanceof Error) throw failure;
+      if (failure instanceof Response) return failure;
+      if (failure !== undefined) return new Response(SLOW_DOWN, { status: failure });
+      return fake.fetch(input, init);
+    };
+    return { fetch, methods };
+  }
+
+  function openFlakyS3(failures: Failure[], timeoutMs?: number) {
+    const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };
+    const fake = createFakeS3({ bucket: "screens", region: "auto", ...credentials });
+    const { fetch, methods } = flaky(fake, failures);
+    const objectStore = createS3ObjectStore({
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      bucket: "screens",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      ...credentials,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      fetch,
+    });
+    return { fake, methods, storage: createScreenshotStorage(objectStore, { logger: silentLogger() }) };
+  }
+
+  function openFlakyCloudflareImages(failures: Failure[]) {
+    const fake = createFakeCloudflareImages({ accountId: "account-1", apiToken: "cf-token" });
+    const { fetch, methods } = flaky(fake, failures);
+    const objectStore = createCloudflareImagesObjectStore({
+      accountId: "account-1",
+      apiToken: "cf-token",
+      accountHash: "hash-1",
+      fetch,
+    });
+    return { fake, methods, storage: createScreenshotStorage(objectStore, { logger: silentLogger() }) };
+  }
+
+  it.each<[string, Failure[]]>([
+    ["a 503 SlowDown", [503]],
+    ["a 500 InternalError", [500]],
+    [
+      "a connection reset",
+      [new TypeError("fetch failed", { cause: Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }) })],
+    ],
+    ["a 429 and a 503", [429, 503]],
+  ])("stores an S3 upload that failed once with %s", async (_label, failures) => {
+    const attempts = failures.length + 1;
+    const { fake, methods, storage } = openFlakyS3(failures);
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).resolves.toHaveProperty("url");
+
+    expect(methods).toEqual(Array(attempts).fill("PUT"));
+    expect(fake.objects.size).toBe(1);
+  });
+
+  it("gives up after three attempts, then reclaims the upload", async () => {
+    const { fake, methods, storage } = openFlakyS3([503, 503, 503]);
+
+    const failure = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ status: 503, cause: "SlowDown: Please reduce your request rate." });
+    expect(isScreenshotUploadRejected(failure)).toBe(false);
+    expect(methods).toEqual(["PUT", "PUT", "PUT", "DELETE"]);
+    expect(fake.objects.size).toBe(0);
+  });
+
+  it("reports a refusal after an attempt that may have stored the upload as an unknown outcome, and reclaims it", async () => {
+    const { methods, storage } = openFlakyS3([500, 403]);
+
+    const failure = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => error);
+
+    expect(isScreenshotUploadRejected(failure)).toBe(false);
+    expect(failure).toMatchObject({ status: 403 });
+    expect(methods).toEqual(["PUT", "PUT", "DELETE"]);
+  });
+
+  it("waits the Retry-After the backend asks for", async () => {
+    const { methods, storage } = openFlakyS3([
+      new Response(SLOW_DOWN, { status: 503, headers: { "Retry-After": "1" } }),
+    ]);
+    const startedAt = Date.now();
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).resolves.toHaveProperty("url");
+
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_000);
+    expect(methods).toEqual(["PUT", "PUT"]);
+  });
+
+  it("does not retry when the Retry-After would outlast timeoutMs", async () => {
+    const { methods, storage } = openFlakyS3(
+      [new Response(SLOW_DOWN, { status: 503, headers: { "Retry-After": "60" } })],
+      1_000,
+    );
+    const startedAt = Date.now();
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).rejects.toMatchObject({ status: 503 });
+
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(methods).toEqual(["PUT", "DELETE"]);
+  });
+
+  it("retries an S3 delete that failed once", async () => {
+    const failures: Failure[] = [];
+    const { fake, methods, storage } = openFlakyS3(failures);
+    const { url } = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    failures.push(503);
+
+    await storage.delete?.(url);
+
+    expect(methods).toEqual(["PUT", "DELETE", "DELETE"]);
+    expect(fake.objects.size).toBe(0);
+  });
+
+  it("retries a Cloudflare Images upload refused by a 429, which stored nothing", async () => {
+    const { fake, methods, storage } = openFlakyCloudflareImages([429]);
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).resolves.toHaveProperty("url");
+
+    expect(methods).toEqual(["POST", "POST"]);
+    expect(fake.objects.size).toBe(1);
+  });
+
+  it("does not repeat a Cloudflare Images upload that may have been stored, and reclaims it", async () => {
+    const { methods, storage } = openFlakyCloudflareImages([502]);
+
+    await expect(storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT)).rejects.toMatchObject({ status: 502 });
+
+    expect(methods).toEqual(["POST", "DELETE"]);
+  });
+});
+
 describe("backend factories — timeoutMs", () => {
   const openS3 = (timeoutMs: number) =>
     createS3ObjectStore({

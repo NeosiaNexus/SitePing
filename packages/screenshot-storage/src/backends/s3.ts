@@ -31,7 +31,7 @@ export interface S3ObjectStoreOptions extends SigV4Credentials {
    */
   publicBaseUrl: string;
   fetch?: typeof fetch | undefined;
-  /** Per-request timeout in milliseconds, response body included: an integer from 1 to 2147483647. Defaults to 5000. */
+  /** Budget of each call in milliseconds, retries and response body included: an integer from 1 to 2147483647. Defaults to 5000. */
   timeoutMs?: number | undefined;
   /**
    * Clock read once per request to sign it (`x-amz-date` and credential scope).
@@ -140,6 +140,8 @@ export function createS3ObjectStore({
       },
       fetch,
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      // A PUT sends the same bytes under the same fresh key: repeating it stores the same object.
+      idempotent: true,
       ...(options.acceptStatuses ? { acceptStatuses: options.acceptStatuses } : {}),
       ...(options.isUpload ? { isUpload: true } : {}),
       describeError: describeS3Error,

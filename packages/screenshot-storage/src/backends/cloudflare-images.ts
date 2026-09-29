@@ -23,7 +23,7 @@ export interface CloudflareImagesObjectStoreOptions {
   /** Delivery URL root — set it when serving Images from a custom domain (`https://example.com/cdn-cgi/imagedelivery`). */
   deliveryBaseUrl?: string | undefined;
   fetch?: typeof fetch | undefined;
-  /** Per-request timeout in milliseconds, response body included: an integer from 1 to 2147483647. Defaults to 5000. */
+  /** Budget of each call in milliseconds, retries and response body included: an integer from 1 to 2147483647. Defaults to 5000. */
   timeoutMs?: number | undefined;
 }
 
@@ -70,7 +70,11 @@ export function createCloudflareImagesObjectStore({
   warnUnlessHttps(deliveryBase, "deliveryBaseUrl");
   const deliveryPrefix = `${deliveryBase}/${accountHash}/`;
   const authorization = { Authorization: `Bearer ${apiToken}` };
-  const request = (url: URL, init: RequestInit, extra: { acceptStatuses?: number[]; isUpload?: boolean } = {}) =>
+  const request = (
+    url: URL,
+    init: RequestInit,
+    extra: { idempotent: boolean; acceptStatuses?: number[]; isUpload?: boolean },
+  ) =>
     sendBackendRequest({
       backend: "Cloudflare Images",
       url,
@@ -97,14 +101,20 @@ export function createCloudflareImagesObjectStore({
       const form = new FormData();
       form.append(CLOUDFLARE_IMAGES_UPLOAD_FIELDS.file, new Blob([bytes], { type: contentType }), key);
       form.append(CLOUDFLARE_IMAGES_UPLOAD_FIELDS.id, key);
-      await request(new URL(imagesUrl), { method: "POST", headers: authorization, body: form }, { isUpload: true });
+      // Not idempotent: a POST that failed without a 429 may have stored the image, and a
+      // retry would then be refused as a duplicate id — it is reclaimed as an unknown outcome.
+      await request(
+        new URL(imagesUrl),
+        { method: "POST", headers: authorization, body: form },
+        { idempotent: false, isUpload: true },
+      );
     },
 
     async remove(key) {
       await request(
         new URL(`${imagesUrl}/${encodeURIComponent(key)}`),
         { method: "DELETE", headers: authorization },
-        { acceptStatuses: [HTTP_STATUS_NOT_FOUND] },
+        { idempotent: true, acceptStatuses: [HTTP_STATUS_NOT_FOUND] },
       );
     },
   };

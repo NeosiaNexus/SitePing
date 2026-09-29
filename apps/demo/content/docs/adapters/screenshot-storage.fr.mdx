@@ -88,11 +88,15 @@ export const objectStore = createS3ObjectStore({
 | `accessKeyId`, `secretAccessKey`, `sessionToken` | requis, optionnel | Les identifiants. `sessionToken` sert aux identifiants temporaires (STS) |
 | `publicBaseUrl` | requis | D'où les captures sont lues : le domaine public du bucket, un CDN devant lui, ou [votre app](#servir-les-captures-depuis-votre-app) quand le bucket est privé |
 | `treatAccessDeniedAsMissing` | `false` | Voir [identifiants au moindre privilège](#identifiants-au-moindre-privilège) |
-| `timeoutMs` | `5000` | Délai maximal par requête, corps de la réponse compris |
+| `timeoutMs` | `5000` | Budget de temps de chaque appel au bucket, [nouvelles tentatives](#nouvelles-tentatives) et corps de la réponse compris |
 | `now` | l'horloge de l'hôte | L'horloge qui signe les requêtes. S3 refuse une signature décalée de plus de quelques minutes : passez une horloge corrigée si celle de l'hôte dérive |
 | `fetch` | `globalThis.fetch` | L'implémentation de fetch, pour les tests ou un proxy |
 
 Les requêtes utilisent des URL en style chemin (`<endpoint>/<bucket>/<clé>`), qu'acceptent R2, AWS S3, B2 et MinIO. L'adressage en style hôte virtuel (`<bucket>.<endpoint>`) n'est pas pris en charge. Chaque objet est stocké avec `Cache-Control: public, max-age=31536000, immutable`, puisqu'une clé n'est jamais réutilisée : un bucket public ou un CDN garde les captures en cache pour de bon.
+
+### Nouvelles tentatives
+
+Une requête qui échoue sur une erreur réseau, un `5xx` ou un `429` (le `SlowDown` de S3, une `InternalError` de R2) est renvoyée, jusqu'à trois tentatives en tout, après une courte attente aléatoire ou le `Retry-After` que demande le backend, tant que `timeoutMs` en laisse le temps. Sinon, un seul échec passager coûterait sa capture au feedback. Renvoyer un `PUT` stocke les mêmes octets sous la même clé : une nouvelle tentative ne laisse jamais de second objet.
 
 ### Identifiants au moindre privilège
 
@@ -125,7 +129,7 @@ export const objectStore = createCloudflareImagesObjectStore({
 });
 ```
 
-Chaque capture est envoyée avec sa clé pour identifiant d'image personnalisé : son URL de diffusion, `https://imagedelivery.net/<accountHash>/<clé>/public`, est connue avant la fin de l'envoi. `variant` choisit une autre variante que `public`, et `deliveryBaseUrl` sert depuis votre propre domaine (`https://example.com/cdn-cgi/imagedelivery`). `timeoutMs` et `fetch` fonctionnent comme pour S3.
+Chaque capture est envoyée avec sa clé pour identifiant d'image personnalisé : son URL de diffusion, `https://imagedelivery.net/<accountHash>/<clé>/public`, est connue avant la fin de l'envoi. `variant` choisit une autre variante que `public`, et `deliveryBaseUrl` sert depuis votre propre domaine (`https://example.com/cdn-cgi/imagedelivery`). `timeoutMs`, `fetch` et les [nouvelles tentatives](#nouvelles-tentatives) fonctionnent comme pour S3, sauf pour l'envoi lui-même : un `POST` n'est renvoyé qu'après un `429`, car après une erreur réseau ou un `5xx` l'image est peut-être déjà stockée sous son identifiant.
 
 Cloudflare n'autorise pas les URL signées pour les images à identifiant personnalisé : les captures restent lisibles par quiconque a leur URL. Les clés sont des valeurs aléatoires de 128 bits, que personne ne peut deviner, mais une URL partagée dans un ticket ou visible sur une capture du panneau reste valide jusqu'à la suppression du feedback. Si les captures doivent rester derrière votre connexion, utilisez un bucket privé servi par votre app.
 
@@ -211,7 +215,7 @@ Les stores appellent `delete(url)` quand un feedback est supprimé, et quand une
 
 ## Envois à l'issue incertaine
 
-Quand un envoi échoue sur un délai dépassé ou un `5xx`, le backend a pu stocker l'objet malgré tout. Le stockage supprime alors la clé tout de suite et relance l'erreur. Un backend qui valide l'envoi après cette suppression laisse un orphelin : `onUncertainUpload(key)` reçoit donc la clé. Mettez-la dans une tâche durable qui la supprime de nouveau quelques minutes plus tard avec `objectStore.remove(key)`. Un refus définitif n'a rien stocké et n'est pas récupéré : un `4xx`, comme des identifiants invalides, ou un `3xx`, comme le `301 PermanentRedirect` que renvoie AWS quand `endpoint` n'est pas la région du bucket.
+Quand un envoi échoue encore après ses nouvelles tentatives, sur un délai dépassé, une erreur réseau ou un `5xx`, le backend a pu stocker l'objet malgré tout. Le stockage supprime alors la clé tout de suite et relance l'erreur. Un backend qui valide l'envoi après cette suppression laisse un orphelin : `onUncertainUpload(key)` reçoit donc la clé. Mettez-la dans une tâche durable qui la supprime de nouveau quelques minutes plus tard avec `objectStore.remove(key)`. Un refus définitif n'a rien stocké et n'est pas récupéré : un `4xx`, comme des identifiants invalides, ou un `3xx`, comme le `301 PermanentRedirect` que renvoie AWS quand `endpoint` n'est pas la région du bucket.
 
 Une règle de cycle de vie qui fait expirer `siteping-*` ne remplace pas ce mécanisme : elle ne distingue pas les orphelins des captures qu'un feedback affiche encore. Elle ne convient donc que si vous voulez de toute façon que les captures expirent après une durée de conservation.
 
