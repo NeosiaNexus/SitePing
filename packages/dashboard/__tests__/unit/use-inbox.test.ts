@@ -1915,6 +1915,32 @@ describe("useSitepingInbox — discussion thread", () => {
     expect(r1?.comments?.map((c) => c.body)).toEqual(["Reply meanwhile"]);
   });
 
+  it("an undo after a successful change carries a reply posted since, in flight and after it fails", async () => {
+    const source = threadedSource();
+    const { result } = await ready({ projects: "demo", source, author, onError: vi.fn() });
+    act(() => result.current.openFeedback("r1"));
+    await act(() => result.current.changeStatus("r1", "resolved"));
+    expect(ids(result.current.items)).not.toContain("r1");
+    await act(() => result.current.addComment("r1", "Reply since"));
+
+    // What the undo shows is built from the undo record, not from the drawer.
+    const undone = deferred<FeedbackRecord>();
+    source.setStatus.mockReturnValueOnce(undone.promise);
+    let failed!: Promise<void>;
+    act(() => {
+      failed = result.current.undo();
+    });
+    expect(result.current.opened?.status).toBe("open");
+    expect(result.current.opened?.comments?.map((c) => c.body)).toEqual(["Reply since"]);
+
+    await act(async () => {
+      undone.reject(new Error("boom"));
+      await failed.catch(() => {});
+    });
+    expect(result.current.opened?.status).toBe("resolved");
+    expect(result.current.opened?.comments?.map((c) => c.body)).toEqual(["Reply since"]);
+  });
+
   it("reports a failed post through onError and rejects, leaving the thread as it was", async () => {
     const source = threadedSource();
     const failure = new Error("offline");
