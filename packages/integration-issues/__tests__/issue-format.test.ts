@@ -222,7 +222,9 @@ describe("formatIssue", () => {
       { ...options, includeAuthorEmail: true },
     );
 
+    expect(body.match(/^- Element /gm)).toHaveLength(10);
     expect(body).toContain("- and 40 more");
+    expect(body).toContain(`\`${"x".repeat(297)}...\``);
     expect(body.length).toBeLessThan(65_536);
   });
 
