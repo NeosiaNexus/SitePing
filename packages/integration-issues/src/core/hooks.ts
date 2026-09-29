@@ -54,6 +54,9 @@ const defaultDeletedComment = (feedbackId: string): string =>
  * Issues are linked to feedbacks by a hidden marker in their body, so no
  * extra column is needed in your database.
  *
+ * The hooks never read the principal, so they fit either access policy
+ * without widening the one the handler infers.
+ *
  * @example
  * ```ts
  * import { createIssueTrackerHooks } from "@siteping/integration-issues";
@@ -68,7 +71,7 @@ const defaultDeletedComment = (feedbackId: string): string =>
  * });
  * ```
  */
-export function createIssueTrackerHooks({
+export function createIssueTrackerHooks<Principal = never>({
   tracker,
   labels = [],
   redact = noRedaction,
@@ -78,7 +81,7 @@ export function createIssueTrackerHooks({
   formatIssue: customFormatIssue,
   syncStatus = true,
   deletedCommentText = defaultDeletedComment,
-}: IssueTrackerHooksOptions): SitepingLifecycleHooks<unknown> {
+}: IssueTrackerHooksOptions): SitepingLifecycleHooks<Principal> {
   if (siteUrl !== undefined && !parseHttpUrl(siteUrl)) {
     throw new Error(`[siteping] createIssueTrackerHooks: siteUrl must be an absolute http(s) URL, got "${siteUrl}"`);
   }
