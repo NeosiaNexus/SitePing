@@ -715,15 +715,20 @@ for (const provider of providers) {
       }
     });
 
-    it("closes only the issues of the project on deleteAll", async () => {
+    it("closes only the issues of the project on deleteAll, each commented with its feedback", async () => {
       const handler = createHandler();
-      await send(handler);
-      await send(handler);
+      const first = await send(handler);
+      const second = await send(handler);
       await send(handler, { projectName: "other-site" });
 
       await remove(handler, { projectName: "site", deleteAll: true });
 
       expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, false, true]);
+      expect(fake.issues.map((issue) => issue.comments.filter((comment) => !comment.startsWith("system:")))).toEqual([
+        [`<!-- siteping-feedback-deleted -->\n\nSitePing feedback \`${first.id}\` was deleted.`],
+        [`<!-- siteping-feedback-deleted -->\n\nSitePing feedback \`${second.id}\` was deleted.`],
+        [],
+      ]);
     });
 
     it("reports a token that cannot label issues, which lookups could never find", async () => {
