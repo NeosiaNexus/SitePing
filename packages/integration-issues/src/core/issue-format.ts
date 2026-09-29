@@ -60,17 +60,22 @@ function joinSections(sections: Array<string | null>): string {
   return sections.filter((part): part is string => part !== null).join(ISSUE_SECTION_SEPARATOR);
 }
 
+/** A copy of `url` without the credentials a URL may carry. */
+function withoutCredentials(url: URL): URL {
+  const copy = new URL(url);
+  copy.username = "";
+  copy.password = "";
+  return copy;
+}
+
 /**
  * The deep link, only to a page of the site under review: the page URL is
  * the visitor's, and this is the one live link in the body. Credentials in
  * the URL are dropped.
  */
-function buildSiteDeepLink(page: URL | null, feedbackId: string, param: string, siteUrl?: string): string | null {
-  const site = siteUrl === undefined ? null : parseHttpUrl(siteUrl);
+function buildSiteDeepLink(page: URL | null, feedbackId: string, param: string, site: URL | null): string | null {
   if (!page || page.origin !== site?.origin) return null;
-  const link = new URL(page);
-  link.username = "";
-  link.password = "";
+  const link = withoutCredentials(page);
   link.searchParams.set(param, feedbackId);
   return link.href;
 }
@@ -116,14 +121,14 @@ export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOption
   const titleBudget = ISSUE_TITLE_MAX_LENGTH - ISSUE_TITLE_PREFIX.length - 1;
   const title = `${ISSUE_TITLE_PREFIX} ${truncate(defuseReferences(message.replace(/\s+/g, " ").trim()), titleBudget)}`;
 
-  // The widget records `location.pathname` by default: resolve it against the site.
+  // The widget records `location.pathname` by default: resolve it against the
+  // site, whose credentials a relative URL would otherwise copy into the issue.
   const pageUrl = redact(feedback.url);
-  const page = parseHttpUrl(pageUrl, options.siteUrl);
+  const site = options.siteUrl === undefined ? null : parseHttpUrl(options.siteUrl);
+  const page = parseHttpUrl(pageUrl, site ? withoutCredentials(site).href : undefined);
   const author = options.includeAuthorEmail ? `${feedback.authorName} <${feedback.authorEmail}>` : feedback.authorName;
   const deepLink =
-    options.deepLinkParam === false
-      ? null
-      : buildSiteDeepLink(page, feedback.id, options.deepLinkParam, options.siteUrl);
+    options.deepLinkParam === false ? null : buildSiteDeepLink(page, feedback.id, options.deepLinkParam, site);
   // Inline `data:` screenshots (no ScreenshotStorage) are skipped: trackers do not render them.
   const screenshot = feedback.screenshotUrl ? parseHttpUrl(feedback.screenshotUrl) : null;
 

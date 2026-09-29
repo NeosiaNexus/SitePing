@@ -344,6 +344,16 @@ describe("formatIssue", () => {
     expect(liveMarkdown(body).links).toEqual(["https://acme.test/checkout?siteping=fb-1"]);
   });
 
+  it("keeps siteUrl's credentials out of the page URLs resolved against it", () => {
+    const { body } = formatIssue(record({ url: "/checkout" }), {
+      ...options,
+      siteUrl: "https://reviewer:s3cret@staging.acme.test",
+    });
+
+    expect(body).toContain("## Page\n\n`https://staging.acme.test/checkout`");
+    expect(body).not.toContain("s3cret");
+  });
+
   it("never links a non-http(s) page URL", () => {
     const { body } = formatIssue(record({ url: "javascript:alert(1)" }), { ...options, siteUrl: "https://acme.test" });
 
