@@ -541,7 +541,7 @@ One endpoint, five methods. All bodies are JSON.
 
 **DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
 
-**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`, the first 20 issues; a body over `maxBodyBytes` → `413`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project, or a full comment thread → `409 { error }`; a value longer than the store holds (a `VARCHAR(191)` column on MySQL) → `422 { error }`; comment write on a store without comments → `501 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
+**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`, the first 20 issues; a body over `maxBodyBytes` → `413`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project, a comment's `clientId` already used on another feedback, or a full comment thread → `409 { error }`; a value longer than the store holds (a `VARCHAR(191)` column on MySQL) → `422 { error }`; comment write on a store without comments → `501 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
 
 ### Validation limits worth knowing
 

@@ -89,13 +89,21 @@ Il répond `200 { "deleted": true }`. Comme tout `DELETE`, il exige l'`apiKey` �
 
 ### Lire les fils
 
-La liste `GET` ne change pas, à deux ajouts près : les `comments` de chaque feedback, et un objet `capabilities` qui dit si le store accepte les commentaires (`comments`) et sait les supprimer (`deleteComments`) — un client peut ainsi masquer sa zone de réponse, ou ses boutons de suppression, d'emblée au lieu de tomber sur un `501` :
+La liste `GET` ne change pas, à trois ajouts près : les `comments` de chaque feedback ; un objet `capabilities` qui dit si le store accepte les commentaires (`comments`) et sait les supprimer (`deleteComments`) — un client peut ainsi masquer sa zone de réponse, ou ses boutons de suppression, d'emblée au lieu de tomber sur un `501` ; et les [`permissions`](/fr/docs/server#ce-que-chaque-appelant-peut-faire) de ce demandeur, sur chaque feedback et, avec `canDeleteAll`, sur la liste :
 
 ```json
 {
-  "feedbacks": [{ "id": "cm3f8x…", "message": "…", "comments": [] }],
+  "feedbacks": [
+    {
+      "id": "cm3f8x…",
+      "message": "…",
+      "comments": [],
+      "permissions": { "canChangeStatus": false, "canDelete": false, "canComment": true, "canDeleteComment": false }
+    }
+  ],
   "total": 1,
-  "capabilities": { "comments": true, "deleteComments": true }
+  "capabilities": { "comments": true, "deleteComments": true },
+  "permissions": { "canDeleteAll": false }
 }
 ```
 
@@ -104,10 +112,13 @@ La liste `GET` ne change pas, à deux ajouts près : les `comments` de chaque fe
 | Statut | Quand |
 |---|---|
 | `400 { errors }` | Le corps échoue à la validation (texte vide, e-mail invalide, `clientId` absent…) |
-| `401` / `403` | Identifiants absents, ou refus d'`authorize` ou d'un contrôle CSRF |
+| `401` | Identifiants absents ou faux |
+| `403` | Refus d'`authorize` — ou, avec `access`, une `Origin` hors d'`allowedOrigins` (contrôle CSRF) |
 | `404 { error: "Feedback not found" }` | Feedback inconnu, ou d'un autre projet |
 | `404 { error: "Comment not found" }` | Le commentaire n'est pas dans le fil de ce feedback |
 | `409 { error }` | Le fil contient déjà 100 commentaires, ou le `clientId` est déjà utilisé sur un autre feedback |
+| `415 { error }` | Avec `access`, un corps sans `Content-Type: application/json` (contrôle CSRF) |
+| `422 { error }` | Une valeur plus longue que ce que tient le store — un nom de plus de 191 caractères dans [les colonnes MySQL de Prisma](/fr/docs/adapters/prisma#schéma-de-base-de-données) |
 | `501 { error: "Comments are not supported by this store" }` | Le store ne garde aucun commentaire — voir [activer les fils](#activer-les-fils-sur-votre-store) |
 
 ## Le rôle équipe
@@ -126,8 +137,9 @@ createSitepingHandler({
   store,
   access: {
     authenticate: (request) => getSessionUser(request),
+    // Toute personne connectée signale, lit et répond ; seule l'équipe trie et supprime.
     authorize: ({ principal, action }) =>
-      action === "deleteComment" ? principal.isStaff : true,
+      principal.isStaff || action === "create" || action === "list" || action === "createComment",
     canReadAuthorEmail: (principal) => principal.isStaff,
     // Optionnel ici : il reprendrait canReadAuthorEmail.
     canCommentAsTeam: (principal) => principal.isStaff,
@@ -137,7 +149,7 @@ createSitepingHandler({
 
 ## E-mails des relecteurs
 
-L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback : vide sauf si le demandeur peut le lire — l'`apiKey` en Bearer, ou `canReadAuthorEmail` avec `access`. La réponse à un `POST` de commentaire renvoie à son auteur l'e-mail du nouveau commentaire, comme le fait un `POST` de feedback ; un `POST` de feedback rejoué ne renvoie que l'e-mail de son auteur, jamais ceux du fil.
+L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback : vide sauf si le demandeur peut le lire — l'`apiKey` en Bearer, ou `canReadAuthorEmail` avec `access`. Avec la politique `apiKey`, la réponse à un `POST` de commentaire renvoie à son auteur l'e-mail du nouveau commentaire, comme le fait un `POST` de feedback ; un `POST` de feedback rejoué ne renvoie que l'e-mail de son auteur, jamais ceux du fil. Avec `access`, c'est `canReadAuthorEmail` qui décide, réponses aux `POST` comprises.
 
 ## Endpoints publics et abus
 

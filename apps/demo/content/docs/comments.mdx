@@ -89,13 +89,21 @@ It answers `200 { "deleted": true }`. Like every `DELETE`, it needs the `apiKey`
 
 ### Read threads
 
-The `GET` list is unchanged, with two additions: each feedback's `comments`, and a `capabilities` object that says whether the store can take comments (`comments`) and delete them (`deleteComments`) — so a client can hide its reply box, or its delete buttons, up front instead of meeting a `501`:
+The `GET` list is unchanged, with three additions: each feedback's `comments`; a `capabilities` object that says whether the store can take comments (`comments`) and delete them (`deleteComments`) — so a client can hide its reply box, or its delete buttons, up front instead of meeting a `501`; and the [`permissions`](/docs/server#what-each-requester-may-do) of this requester, on each feedback and, with `canDeleteAll`, on the list:
 
 ```json
 {
-  "feedbacks": [{ "id": "cm3f8x…", "message": "…", "comments": [] }],
+  "feedbacks": [
+    {
+      "id": "cm3f8x…",
+      "message": "…",
+      "comments": [],
+      "permissions": { "canChangeStatus": false, "canDelete": false, "canComment": true, "canDeleteComment": false }
+    }
+  ],
   "total": 1,
-  "capabilities": { "comments": true, "deleteComments": true }
+  "capabilities": { "comments": true, "deleteComments": true },
+  "permissions": { "canDeleteAll": false }
 }
 ```
 
@@ -104,10 +112,13 @@ The `GET` list is unchanged, with two additions: each feedback's `comments`, and
 | Status | When |
 |---|---|
 | `400 { errors }` | The body fails validation (empty body text, invalid email, missing `clientId`…) |
-| `401` / `403` | Missing credentials, or refused by `authorize` or a CSRF check |
+| `401` | Missing or wrong credentials |
+| `403` | Refused by `authorize` — or, under `access`, an `Origin` outside `allowedOrigins` (CSRF check) |
 | `404 { error: "Feedback not found" }` | Unknown feedback, or one of another project |
 | `404 { error: "Comment not found" }` | The comment is not on that feedback's thread |
 | `409 { error }` | The thread already holds 100 comments, or the `clientId` is already used on another feedback |
+| `415 { error }` | Under `access`, a body without `Content-Type: application/json` (CSRF check) |
+| `422 { error }` | A value longer than the store holds — a name over 191 characters in [Prisma's MySQL columns](/docs/adapters/prisma#database-schema) |
 | `501 { error: "Comments are not supported by this store" }` | The store keeps no comments — see [enabling threads](#enable-threads-on-your-store) |
 
 ## Who speaks as the team
@@ -126,8 +137,9 @@ createSitepingHandler({
   store,
   access: {
     authenticate: (request) => getSessionUser(request),
+    // Anyone signed in reports, reads and replies; staff alone triage and delete.
     authorize: ({ principal, action }) =>
-      action === "deleteComment" ? principal.isStaff : true,
+      principal.isStaff || action === "create" || action === "list" || action === "createComment",
     canReadAuthorEmail: (principal) => principal.isStaff,
     // Optional here: it would default to canReadAuthorEmail.
     canCommentAsTeam: (principal) => principal.isStaff,
@@ -137,7 +149,7 @@ createSitepingHandler({
 
 ## Reviewer emails
 
-A comment's `authorEmail` is redacted exactly like the feedback's: blank unless the requester may read it — the Bearer `apiKey`, or `canReadAuthorEmail` under `access`. The answer to a comment `POST` echoes the new comment's own email to its author, like a feedback `POST` does; a replayed feedback `POST` echoes the submitter's email only, never the thread's.
+A comment's `authorEmail` is redacted exactly like the feedback's: blank unless the requester may read it — the Bearer `apiKey`, or `canReadAuthorEmail` under `access`. Under the `apiKey` policy, the answer to a comment `POST` echoes the new comment's own email to its author, like a feedback `POST` does; a replayed feedback `POST` echoes the submitter's email only, never the thread's. Under `access`, `canReadAuthorEmail` decides, `POST` answers included.
 
 ## Public endpoints and abuse
 
