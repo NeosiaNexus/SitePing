@@ -4,7 +4,12 @@ import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createGitHubTracker } from "../src/github/index.js";
 import { createGitLabTracker } from "../src/gitlab/index.js";
-import { createIssueTrackerHooks, type IssueTracker, type IssueTrackerHooksOptions } from "../src/index.js";
+import {
+  createIssueTrackerHooks,
+  type IssueTracker,
+  type IssueTrackerHooksOptions,
+  UnlabelledIssueError,
+} from "../src/index.js";
 import { createFakeGitHub, createFakeGitLab, type FakeTracker } from "./fake-trackers.js";
 
 const ENDPOINT = "http://localhost/api/siteping";
@@ -351,6 +356,7 @@ for (const provider of providers) {
       const [message, context] = logger.error.mock.calls[0] ?? [];
       expect(message).toContain("Hook onCreated failed");
       const { error } = context as { error: Error };
+      expect(error).toBeInstanceOf(UnlabelledIssueError);
       expect(error.message).toMatch(/created issue #1 without its "siteping" label/);
       expect(error.message).toMatch(provider.labelPermission);
     });
