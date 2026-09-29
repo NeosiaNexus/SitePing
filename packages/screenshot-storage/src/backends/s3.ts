@@ -9,7 +9,7 @@ import { SERVED_SCREENSHOT_CACHE_CONTROL } from "../constants/screenshots.js";
 import { normalizeBaseUrl } from "../core/base-url.js";
 import { ObjectStoreRequestError, sendBackendRequest } from "../core/http.js";
 import type { ScreenshotObjectStore } from "../core/object-store.js";
-import { assertTimeoutMs } from "../core/option-checks.js";
+import { assertRequiredString, assertTimeoutMs } from "../core/option-checks.js";
 import { createPublicUrlMapping } from "../core/public-url.js";
 import { encodeRfc3986, type SigV4Credentials, sha256Hex, signS3Request } from "./sigv4.js";
 
@@ -97,7 +97,12 @@ export function createS3ObjectStore({
   now = () => new Date(),
   treatAccessDeniedAsMissing = false,
 }: S3ObjectStoreOptions): ScreenshotObjectStore {
-  assertTimeoutMs("createS3ObjectStore", timeoutMs);
+  const factory = "createS3ObjectStore";
+  assertRequiredString(factory, "bucket", bucket);
+  assertRequiredString(factory, "region", region);
+  assertRequiredString(factory, "accessKeyId", accessKeyId);
+  assertRequiredString(factory, "secretAccessKey", secretAccessKey);
+  assertTimeoutMs(factory, timeoutMs);
   const credentials: SigV4Credentials = { accessKeyId, secretAccessKey, ...(sessionToken ? { sessionToken } : {}) };
   const endpointBase = normalizeBaseUrl(endpoint, "endpoint");
   // Without ListBucket, S3 hides a missing key behind 403 — see treatAccessDeniedAsMissing.

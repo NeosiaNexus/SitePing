@@ -8,7 +8,7 @@ import { HTTP_STATUS_NOT_FOUND } from "../constants/http.js";
 import { normalizeBaseUrl, warnUnlessHttps } from "../core/base-url.js";
 import { sendBackendRequest } from "../core/http.js";
 import type { ScreenshotObjectStore } from "../core/object-store.js";
-import { assertTimeoutMs } from "../core/option-checks.js";
+import { assertPathSegment, assertRequiredString, assertTimeoutMs } from "../core/option-checks.js";
 import { safeDecodeURIComponent } from "../core/safe-decode-uri-component.js";
 
 export interface CloudflareImagesObjectStoreOptions {
@@ -58,7 +58,13 @@ export function createCloudflareImagesObjectStore({
   fetch = globalThis.fetch,
   timeoutMs,
 }: CloudflareImagesObjectStoreOptions): ScreenshotObjectStore {
-  assertTimeoutMs("createCloudflareImagesObjectStore", timeoutMs);
+  const factory = "createCloudflareImagesObjectStore";
+  assertRequiredString(factory, "accountId", accountId);
+  assertRequiredString(factory, "apiToken", apiToken);
+  // Both are written verbatim into every delivery URL.
+  assertPathSegment(factory, "accountHash", accountHash);
+  assertPathSegment(factory, "variant", variant);
+  assertTimeoutMs(factory, timeoutMs);
   const imagesUrl = `${CLOUDFLARE_API_BASE_URL}/accounts/${encodeURIComponent(accountId)}/images/v1`;
   const deliveryBase = normalizeBaseUrl(deliveryBaseUrl, "deliveryBaseUrl");
   warnUnlessHttps(deliveryBase, "deliveryBaseUrl");

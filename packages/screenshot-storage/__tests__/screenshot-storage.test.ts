@@ -787,6 +787,69 @@ describe("backend factories — timeoutMs", () => {
   });
 });
 
+describe("backend factories — required options", () => {
+  /** What `process.env.X!` passes when the variable is unset or empty. */
+  const unset = [undefined as unknown as string, "", "  "];
+  /** An option with a default is only filled in when undefined. */
+  const blank = ["", "  "];
+  const s3Options = {
+    endpoint: "https://account.r2.cloudflarestorage.com",
+    bucket: "screens",
+    publicBaseUrl: PUBLIC_BASE_URL,
+    accessKeyId: "AKIDEXAMPLE",
+    secretAccessKey: "s3-secret",
+  };
+  const cloudflareImagesOptions = { accountId: "account-1", apiToken: "cf-token", accountHash: "hash-1" };
+
+  it.each([
+    ["bucket", unset],
+    ["accessKeyId", unset],
+    ["secretAccessKey", unset],
+    ["region", blank],
+  ] as const)("createS3ObjectStore refuses a missing %s", (option, values) => {
+    for (const value of values) {
+      expect(() => createS3ObjectStore({ ...s3Options, [option]: value })).toThrow(
+        new Error(`[siteping] createS3ObjectStore: ${option} is required (a non-empty string)`),
+      );
+    }
+  });
+
+  it.each([
+    ["accountId", unset],
+    ["apiToken", unset],
+    ["accountHash", unset],
+    ["variant", blank],
+  ] as const)("createCloudflareImagesObjectStore refuses a missing %s", (option, values) => {
+    for (const value of values) {
+      expect(() => createCloudflareImagesObjectStore({ ...cloudflareImagesOptions, [option]: value })).toThrow(
+        new Error(`[siteping] createCloudflareImagesObjectStore: ${option} is required (a non-empty string)`),
+      );
+    }
+  });
+
+  it.each([
+    ["accountHash", "hash/1"],
+    ["accountHash", "hash?1"],
+    ["variant", "public#1"],
+    ["variant", "w=400 h=300"],
+  ] as const)(
+    "createCloudflareImagesObjectStore refuses the %s %j, which would break every delivery URL",
+    (option, value) => {
+      expect(() => createCloudflareImagesObjectStore({ ...cloudflareImagesOptions, [option]: value })).toThrow(
+        `${option} must be a single URL path segment`,
+      );
+    },
+  );
+
+  it("accepts a flexible variant", () => {
+    const objectStore = createCloudflareImagesObjectStore({ ...cloudflareImagesOptions, variant: "w=400,sharpen=3" });
+    const url = objectStore.urlFor("siteping-a.jpg");
+
+    expect(url).toBe("https://imagedelivery.net/hash-1/siteping-a.jpg/w=400,sharpen=3");
+    expect(objectStore.keyFromUrl(url)).toBe("siteping-a.jpg");
+  });
+});
+
 describe("createS3ObjectStore — a body cut short", () => {
   /** A 200 or 403 whose body errors mid-read, as when the request timeout fires during the download. */
   function openS3WithBrokenBody(status: number) {
