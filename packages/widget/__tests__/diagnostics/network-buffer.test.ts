@@ -106,6 +106,15 @@ describe("NetworkBuffer — fetch", () => {
     buffer.dispose();
   });
 
+  it("never cuts a long URL between the two halves of an emoji", async () => {
+    fetchSpy.mockResolvedValue(new Response("", { status: 500 }));
+    const buffer = new NetworkBuffer();
+    const kept = `/${"a".repeat(1997)}`;
+    await fetch(`${kept}\u{1F680}/rest`);
+    expect(buffer.getEntries()[0]?.url).toBe(`${kept}…`);
+    buffer.dispose();
+  });
+
   it("records fetch URLs without their query string or hash (tokens never leave the browser)", async () => {
     fetchSpy.mockResolvedValue(new Response("", { status: 401 }));
     const buffer = new NetworkBuffer();
