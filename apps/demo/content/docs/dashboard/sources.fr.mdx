@@ -11,7 +11,7 @@ L'inbox lit et écrit à travers une petite abstraction, que vous pouvez fournir
 <SitepingInbox projects="mon-projet" endpoint="/api/siteping" apiKey={KEY} />
 ```
 
-Parle à votre [endpoint SitePing](/fr/docs/server) : `GET` pour les listes, `PATCH` pour les statuts, `DELETE` pour les suppressions, toujours avec `cache: "no-store"`. Les erreurs arrivent typées par `code` (`AUTH` pour 401/403, avec ce `status`, `VALIDATION` pour les autres 4xx, `SERVER` pour les 5xx, `NETWORK` pour les échecs de fetch). Il n'y a volontairement **aucun réessai** — une interface de tri doit vous dire les choses tout de suite.
+Parle à votre [endpoint SitePing](/fr/docs/server) : `GET` pour les listes, `PATCH` pour les statuts, `DELETE` pour les suppressions, toujours avec `cache: "no-store"`. Les erreurs arrivent typées par `code` (`AUTH` pour 401/403 et `VALIDATION` pour les autres 4xx, chacun avec le `status` HTTP, `SERVER` pour les 5xx, `NETWORK` pour les échecs de fetch). Il n'y a volontairement **aucun réessai** — une interface de tri doit vous dire les choses tout de suite.
 
 Derrière la connexion de votre application, laissez `apiKey` de côté : montée sur l'origine de l'endpoint, l'inbox envoie votre cookie de session à chaque requête, et une politique [`access`](/fr/docs/server#accès-personnalisé) côté serveur le lit — voir la [recette Better Auth](/fr/docs/server#recette--better-auth). Depuis une autre origine, envoyez un jeton avec `headers`.
 
@@ -63,7 +63,7 @@ const source: InboxSource = {
 };
 ```
 
-`list()` peut aussi renvoyer `capabilities: { comments: false }` pour mettre les fils en lecture seule face à un backend qui n'en garde pas, ou `deleteComments: false` pour masquer les boutons de suppression d'un backend qui ne sait pas supprimer les réponses ; en leur absence, `addComment` et `removeComment` seuls décident. Une source sans `removeComment` poste des réponses mais n'en supprime aucune. La source endpoint reprend les `capabilities` annoncées par le serveur (et passe en lecture seule face à un serveur qui n'annonce rien) ; la source store ne définit ces méthodes que si le store implémente `addComment` / `deleteComment`.
+`list()` peut aussi renvoyer `capabilities: { comments: false }` pour mettre les fils en lecture seule face à un backend qui n'en garde pas, ou `deleteComments: false` pour masquer les boutons de suppression d'un backend qui ne sait pas supprimer les réponses ; en leur absence, `addComment` et `removeComment` seuls décident. Une source sans `removeComment` poste des réponses mais n'en supprime aucune. Quand la réponse n'existe déjà plus, faites lever à `removeComment` une erreur dont le `status` vaut `404` : l'inbox la retire alors au lieu d'échouer. Depuis `addComment`, un `status` de `409` signifie que le fil est complet, ce que le champ de réponse indique au lieu de « réessayez ». Les erreurs de la source endpoint portent le `status` de la réponse, et celles de la source store sont les erreurs du store lui-même. La source endpoint reprend les `capabilities` annoncées par le serveur (et passe en lecture seule face à un serveur qui n'annonce rien) ; la source store ne définit ces méthodes que si le store implémente `addComment` / `deleteComment`.
 
 ### Permissions
 

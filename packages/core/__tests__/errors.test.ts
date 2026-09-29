@@ -77,6 +77,12 @@ describe("thread failures", () => {
     expect(isCommentGone(await errorFromResponse(new Response("", { status: 403 }), "Failed"))).toBe(false);
     expect(isCommentGone(new Error("offline"))).toBe(false);
   });
+
+  it("reads the status of a custom source's own errors", () => {
+    expect(isCommentGone(Object.assign(new Error("gone"), { status: 404 }))).toBe(true);
+    expect(isThreadFull(Object.assign(new Error("full"), { status: 409 }))).toBe(true);
+    expect(isThreadFull(Object.assign(new Error("teapot"), { status: 418 }))).toBe(false);
+  });
 });
 
 describe("SitepingAuthError", () => {

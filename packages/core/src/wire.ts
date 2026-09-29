@@ -9,6 +9,7 @@
  */
 
 import { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
+import { hasOwn } from "./type-utils.js";
 import { type FeedbackQuery, isStoreLimit, isStoreNotFound } from "./types.js";
 
 /**
@@ -99,20 +100,26 @@ export async function errorFromResponse(response: Response, label: string): Prom
 }
 
 /**
+ * The HTTP status an error carries — `SitepingValidationError.status`, or a
+ * custom source's own `status` field.
+ */
+const statusOf = (error: unknown): unknown => (hasOwn(error, "status") ? error.status : undefined);
+
+/**
  * Whether a failed reply met a full thread — a store's `StoreLimitError`, or
- * the endpoint's 409 (its other 409, a clientId reused on another feedback,
+ * a 409 (the endpoint's other 409, a clientId reused on another feedback,
  * never comes from clients that mint one per reply). Retrying won't help.
  */
 export function isThreadFull(error: unknown): boolean {
-  return isStoreLimit(error) || (error instanceof SitepingValidationError && error.status === 409);
+  return isStoreLimit(error) || statusOf(error) === 409;
 }
 
 /**
  * Whether a failed reply delete found nothing to delete — a store's
- * `StoreNotFoundError`, or the endpoint's 404: it is gone already.
+ * `StoreNotFoundError`, or a 404: it is gone already.
  */
 export function isCommentGone(error: unknown): boolean {
-  return isStoreNotFound(error) || (error instanceof SitepingValidationError && error.status === 404);
+  return isStoreNotFound(error) || statusOf(error) === 404;
 }
 
 /**
