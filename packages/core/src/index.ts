@@ -1,3 +1,4 @@
+export { buildDeepLink, parseHttpUrl } from "./deep-link.js";
 export { EMAIL_PATTERN, isValidEmail } from "./email.js";
 export type { SitepingErrorCode } from "./errors.js";
 export { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";

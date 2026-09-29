@@ -336,9 +336,9 @@ createSitepingHandler({
     message: input.message.replace(/token=\S+/g, "token=[redacted]"),
   }),
   hooks: {
-    onCreated: (feedback) => tracker.openIssue(feedback),
+    onCreated: (feedback) => searchIndex.add(feedback),
     // Levez pour garder l'enregistrement : le DELETE répond 502 et peut être rejoué.
-    onDeleting: (target) => tracker.closeIssues(target),
+    onDeleting: (target) => searchIndex.remove(target),
   },
 });
 ```
@@ -349,6 +349,8 @@ createSitepingHandler({
 - **`onDeleting`** tourne avant la suppression, avec `{ kind: "single", id, projectName }` ou `{ kind: "project", projectName }`. Une exception garde l'enregistrement et répond `502`.
 
 Ces callbacks reçoivent `{ request, principal }` comme contexte ; `principal` vaut `null` sous la politique `apiKey`. Les hooks écrits comme méthodes de classe gardent leur `this`.
+
+Pour garder un ticket GitHub ou GitLab par feedback, fermé et rouvert avec lui, [`@siteping/integration-issues`](/fr/docs/issue-trackers) construit ces hooks pour vous.
 
 ## Référence HTTP
 

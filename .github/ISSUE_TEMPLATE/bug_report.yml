@@ -68,6 +68,7 @@ body:
         - "@siteping/server"
         - "@siteping/adapter-prisma"
         - "@siteping/adapter-drizzle"
+        - "@siteping/integration-issues"
         - "@siteping/screenshot-storage"
         - "@siteping/adapter-memory"
         - "@siteping/adapter-localstorage"

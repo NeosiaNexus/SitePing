@@ -8,5 +8,6 @@
   "packages/cli": "0.5.6",
   "packages/adapter-drizzle": "0.0.0",
   "packages/server": "0.0.0",
-  "packages/screenshot-storage": "0.0.0"
+  "packages/screenshot-storage": "0.0.0",
+  "packages/integration-issues": "0.0.0"
 }

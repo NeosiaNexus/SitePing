@@ -64,6 +64,11 @@
       "release-type": "node",
       "component": "screenshot-storage",
       "bump-minor-pre-major": true
+    },
+    "packages/integration-issues": {
+      "release-type": "node",
+      "component": "integration-issues",
+      "bump-minor-pre-major": true
     }
   }
 }

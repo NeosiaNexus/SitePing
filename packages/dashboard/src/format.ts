@@ -1,4 +1,4 @@
-import type { FeedbackRecord } from "@siteping/core";
+import { buildDeepLink as buildDeepLinkFrom, type FeedbackRecord, parseHttpUrl } from "@siteping/core";
 import { type TFunction, tWithParams } from "./i18n/index.js";
 
 const MINUTE = 60;
@@ -72,40 +72,23 @@ function currentBase(): string {
 }
 
 /**
- * Parse a record URL against the current origin, allowing only http(s).
- * `record.url` is client-supplied data — without the scheme allowlist, a
- * crafted feedback (`javascript:…`, `data:…`) would become a stored-XSS
- * payload the moment the freelancer clicks "Open on page".
- */
-function safeRecordUrl(url: string): URL | null {
-  try {
-    const u = new URL(url, currentBase());
-    return u.protocol === "http:" || u.protocol === "https:" ? u : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Absolute URL for a feedback's page — relative `record.url` values resolve
  * against the dashboard's own origin (dashboard and site share a deployment
  * in the common self-hosted setup). Null for non-http(s) or unparseable
- * values — callers render plain text instead of a link.
+ * values — callers render plain text instead of a link, so a crafted
+ * `javascript:` URL never becomes a stored-XSS payload behind "Open on page".
  */
 export function resolveRecordUrl(url: string): string | null {
-  return safeRecordUrl(url)?.toString() ?? null;
+  return parseHttpUrl(url, currentBase())?.toString() ?? null;
 }
 
 /**
  * Deep link that opens the feedback's page with the widget focused on the
- * annotation — `?<param>=<id>` consumed by the widget's `deepLink` option.
- * Null when the record URL is not a safe http(s) target.
+ * annotation, resolved against the dashboard's origin. Null when the record
+ * URL is not a safe http(s) target.
  */
 export function buildDeepLink(record: Pick<FeedbackRecord, "id" | "url">, param: string): string | null {
-  const u = safeRecordUrl(record.url);
-  if (!u) return null;
-  u.searchParams.set(param, record.id);
-  return u.toString();
+  return buildDeepLinkFrom(record, param, currentBase());
 }
 
 /** First 8 chars of a feedback id — the mono `#short-id` in the drawer head. */

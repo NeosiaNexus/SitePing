@@ -1,3 +1,14 @@
 {
-  "pages": ["index", "quickstart", "widget", "dashboard", "server", "comments", "adapters", "cli", "faq"]
+  "pages": [
+    "index",
+    "quickstart",
+    "widget",
+    "dashboard",
+    "server",
+    "comments",
+    "issue-trackers",
+    "adapters",
+    "cli",
+    "faq"
+  ]
 }
