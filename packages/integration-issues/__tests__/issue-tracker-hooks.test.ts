@@ -208,7 +208,7 @@ for (const provider of providers) {
       await send(handler);
 
       expect(fake.issues).toHaveLength(0);
-      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("hook onCreated failed"), expect.anything());
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("Hook onCreated failed"), expect.anything());
       expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
     });
   });
