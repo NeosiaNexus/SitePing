@@ -280,7 +280,11 @@ misses the new locale, and a picker that does not offer it.
   (`widget.spec.ts`, `host-modal.spec.ts`), and `e2e/stack-server.mjs`, the
   real `createSitepingHandler` over a `MemoryStore` with a webhook receiver,
   serving the widget and `<SitepingInbox />` (`stack.spec.ts`). Anything the
-  server validates, persists or dispatches belongs on the real stack.
+  server validates, persists or dispatches belongs on the real stack. Both
+  servers listen on `127.0.0.1` only, and whatever they take from the request
+  URL into a page's inline script goes through `scriptSafeJson`
+  (`e2e/script-safe-json.mjs`). Playwright only collects `*.spec.ts`: a helper
+  the servers share gets a Vitest unit test next to it, as `e2e/*.test.mjs`.
 - **Property tests** — [fast-check](https://fast-check.dev/), in `*.property.test.ts` next to the example-based suite.
 - Cover new features with unit tests. Cover user-facing flows with E2E tests when relevant.
 
