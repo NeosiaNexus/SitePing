@@ -8,6 +8,7 @@ import { HTTP_STATUS_NOT_FOUND } from "../constants/http.js";
 import { normalizeBaseUrl, warnUnlessHttps } from "../core/base-url.js";
 import { sendBackendRequest } from "../core/http.js";
 import type { ScreenshotObjectStore } from "../core/object-store.js";
+import { assertTimeoutMs } from "../core/option-checks.js";
 import { safeDecodeURIComponent } from "../core/safe-decode-uri-component.js";
 
 export interface CloudflareImagesObjectStoreOptions {
@@ -22,6 +23,7 @@ export interface CloudflareImagesObjectStoreOptions {
   /** Delivery URL root — set it when serving Images from a custom domain (`https://example.com/cdn-cgi/imagedelivery`). */
   deliveryBaseUrl?: string | undefined;
   fetch?: typeof fetch | undefined;
+  /** Per-request timeout in milliseconds, response body included: an integer from 1 to 2147483647. Defaults to 5000. */
   timeoutMs?: number | undefined;
 }
 
@@ -56,6 +58,7 @@ export function createCloudflareImagesObjectStore({
   fetch = globalThis.fetch,
   timeoutMs,
 }: CloudflareImagesObjectStoreOptions): ScreenshotObjectStore {
+  assertTimeoutMs("createCloudflareImagesObjectStore", timeoutMs);
   const imagesUrl = `${CLOUDFLARE_API_BASE_URL}/accounts/${encodeURIComponent(accountId)}/images/v1`;
   const deliveryBase = normalizeBaseUrl(deliveryBaseUrl, "deliveryBaseUrl");
   warnUnlessHttps(deliveryBase, "deliveryBaseUrl");

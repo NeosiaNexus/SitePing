@@ -1,6 +1,9 @@
 /** Per-request timeout for storage backends, in milliseconds. */
 export const OBJECT_STORE_REQUEST_TIMEOUT_MS = 5_000;
 
+/** Longest delay a timer holds, in milliseconds (2^31 - 1, about 24.8 days). */
+export const TIMER_MAX_DELAY_MS = 2_147_483_647;
+
 /** Status meaning "already gone" on a delete — a successful outcome for cleanup. */
 export const HTTP_STATUS_NOT_FOUND = 404;
 

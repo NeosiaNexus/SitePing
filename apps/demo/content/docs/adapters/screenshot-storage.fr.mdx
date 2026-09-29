@@ -203,7 +203,7 @@ Une requête qui échoue (une table pas encore migrée, une base injoignable) l�
 | `logger` | `console.warn` | Reçoit les cas dégradés mais gérés : une suppression refusée, une récupération qui échoue, un `onUncertainUpload` qui échoue |
 | `onUncertainUpload` | — | `(key) => void \| Promise<void>` : voir plus bas |
 
-Les factories lèvent une erreur sur une configuration qui ne pourrait pas fonctionner : un `keyPrefix` dangereux, un `maxBytes` qui n'est pas un entier positif, ou un `publicBaseUrl`, `endpoint` ou `deliveryBaseUrl` qui n'est pas une URL http(s) absolue, ou qui contient des identifiants, une query string ou un fragment. L'erreur nomme l'option et la raison, jamais la valeur, qui peut contenir un jeton. Un `publicBaseUrl` ou `deliveryBaseUrl` qui n'est pas en https est accepté avec un avertissement : le panneau du widget n'affiche que les captures en https (le dashboard les affiche toutes), donc `http://localhost` ne convient qu'au développement.
+Les factories lèvent une erreur sur une configuration qui ne pourrait pas fonctionner : un `keyPrefix` dangereux, un `maxBytes` qui n'est pas un entier positif, un `timeoutMs` qui n'est pas un entier de 1 à 2147483647 (`Number()` d'une variable absente donne `NaN`), ou un `publicBaseUrl`, `endpoint` ou `deliveryBaseUrl` qui n'est pas une URL http(s) absolue, ou qui contient des identifiants, une query string ou un fragment. L'erreur nomme l'option et la raison, jamais la valeur, qui peut contenir un jeton. Un `publicBaseUrl` ou `deliveryBaseUrl` qui n'est pas en https est accepté avec un avertissement : le panneau du widget n'affiche que les captures en https (le dashboard les affiche toutes), donc `http://localhost` ne convient qu'au développement.
 
 ## Ce que supprime `delete`
 

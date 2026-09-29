@@ -753,6 +753,35 @@ describe("backend requests — timeouts", () => {
   );
 });
 
+describe("backend factories — timeoutMs", () => {
+  const openS3 = (timeoutMs: number) =>
+    createS3ObjectStore({
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      bucket: "screens",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      accessKeyId: "AKIDEXAMPLE",
+      secretAccessKey: "s3-secret",
+      timeoutMs,
+    });
+  const openCloudflareImages = (timeoutMs: number) =>
+    createCloudflareImagesObjectStore({ accountId: "account-1", apiToken: "cf-token", accountHash: "hash-1", timeoutMs });
+
+  // What `Number(process.env.TIMEOUT_MS)` gives for a missing or mistyped variable, and delays no timer holds.
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5, 2 ** 31])(
+    "refuses timeoutMs %s, under which every request would fail without reaching the backend",
+    (timeoutMs) => {
+      const refusal = `timeoutMs must be an integer number of milliseconds from 1 to 2147483647, got ${String(timeoutMs)}`;
+      expect(() => openS3(timeoutMs)).toThrow(`[siteping] createS3ObjectStore: ${refusal}`);
+      expect(() => openCloudflareImages(timeoutMs)).toThrow(`[siteping] createCloudflareImagesObjectStore: ${refusal}`);
+    },
+  );
+
+  it("accepts the longest delay a timer holds", () => {
+    expect(() => openS3(2 ** 31 - 1)).not.toThrow();
+    expect(() => openCloudflareImages(2 ** 31 - 1)).not.toThrow();
+  });
+});
+
 describe("createS3ObjectStore — a body cut short", () => {
   /** A 200 or 403 whose body errors mid-read, as when the request timeout fires during the download. */
   function openS3WithBrokenBody(status: number) {
