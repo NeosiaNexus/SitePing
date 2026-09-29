@@ -86,7 +86,7 @@ Only the last status change is undoable (`pendingUndo` + `undo()`); delete is pe
 
 ## Discussion threads
 
-Each record carries its thread in `comments` (oldest first). `canComment` says whether this inbox may post replies: an `author` is set, the source implements `addComment`, and the last list did not say the endpoint keeps no comments. `canDeleteComment` says whether it may also delete them: the source implements `removeComment` too.
+Each record carries its thread in `comments` (oldest first). `canComment` says whether this inbox may post replies: an `author` is set, the source implements `addComment`, and the last list did not say the endpoint keeps no comments. `canDeleteComment` says whether it may also delete them: the source implements `removeComment` too, and the last list did not say the endpoint cannot delete them.
 
 Replies are **not** optimistic: `addComment` resolves once the source has stored the reply, which then shows on the record wherever the hook holds it — its row, `opened`, and the record a pending status change would roll back to. Both actions re-throw after `onError`, like the mutations above.
 

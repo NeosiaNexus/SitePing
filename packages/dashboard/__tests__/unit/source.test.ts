@@ -125,15 +125,30 @@ describe("createEndpointSource — list()", () => {
     expect(threadless?.comments).toBeUndefined();
   });
 
-  it("advertises comments as the server does — and none for a server that predates them", async () => {
+  it("advertises comments and their deletion as the server does — and neither for a server that predates them", async () => {
     const advertised = createEndpointSource({
       endpoint: ENDPOINT,
-      fetchFn: jsonFetch({ feedbacks: [], total: 0, capabilities: { comments: true } }),
+      fetchFn: jsonFetch({ feedbacks: [], total: 0, capabilities: { comments: true, deleteComments: true } }),
     });
-    expect((await advertised.list({ projectName: "demo" })).capabilities).toEqual({ comments: true });
+    expect((await advertised.list({ projectName: "demo" })).capabilities).toEqual({
+      comments: true,
+      deleteComments: true,
+    });
+
+    const appendOnly = createEndpointSource({
+      endpoint: ENDPOINT,
+      fetchFn: jsonFetch({ feedbacks: [], total: 0, capabilities: { comments: true, deleteComments: false } }),
+    });
+    expect((await appendOnly.list({ projectName: "demo" })).capabilities).toEqual({
+      comments: true,
+      deleteComments: false,
+    });
 
     const legacy = createEndpointSource({ endpoint: ENDPOINT, fetchFn: jsonFetch({ feedbacks: [], total: 0 }) });
-    expect((await legacy.list({ projectName: "demo" })).capabilities).toEqual({ comments: false });
+    expect((await legacy.list({ projectName: "demo" })).capabilities).toEqual({
+      comments: false,
+      deleteComments: false,
+    });
   });
 
   it("keeps a null resolvedAt as null (no Date coercion)", async () => {

@@ -110,7 +110,10 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
         feedbacks: body.feedbacks.map(reviveRecord),
         total: body.total,
         // A server that predates threads advertises nothing — and has none.
-        capabilities: { comments: body.capabilities?.comments === true },
+        capabilities: {
+          comments: body.capabilities?.comments === true,
+          deleteComments: body.capabilities?.deleteComments === true,
+        },
       };
     },
 

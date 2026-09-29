@@ -1303,6 +1303,12 @@ export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId"
 export interface SitepingCapabilities {
   /** Whether comments can be posted: the store implements `addComment`. */
   comments: boolean;
+  /**
+   * Whether comments can be deleted: the store implements `deleteComment`.
+   * Sent by `@siteping/server`; a client that does not delete (the widget)
+   * leaves it out.
+   */
+  deleteComments?: boolean | undefined;
 }
 
 /** Paginated `FeedbackResponse` shape returned by the API. */

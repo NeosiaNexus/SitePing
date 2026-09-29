@@ -1733,6 +1733,17 @@ describe("useSitepingInbox — discussion thread", () => {
     const { result } = await ready({ projects: "demo", source: postOnly, author });
     expect(result.current.canComment).toBe(true);
     expect(result.current.canDeleteComment).toBe(false);
+
+    // The endpoint's store keeps replies but cannot delete them.
+    const appendOnly = threadedSource();
+    const list = appendOnly.list.getMockImplementation()!;
+    appendOnly.list.mockImplementation(async (query) => ({
+      ...(await list(query)),
+      capabilities: { comments: true, deleteComments: false },
+    }));
+    const { result: advertisedOff } = await ready({ projects: "demo", source: appendOnly, author });
+    expect(advertisedOff.current.canComment).toBe(true);
+    expect(advertisedOff.current.canDeleteComment).toBe(false);
   });
 
   it("posts as the team author and adds the stored reply to the row and the drawer", async () => {

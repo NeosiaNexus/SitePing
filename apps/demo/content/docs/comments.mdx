@@ -30,7 +30,7 @@ The drawer shows the opened feedback's thread, and lets your team reply and dele
 />
 ```
 
-- **`author`** (`{ name, email? }`) is who replies from this inbox. Without it, threads are read-only — and hidden when empty. So are they when the endpoint advertises no comments.
+- **`author`** (`{ name, email? }`) is who replies from this inbox. Without it, threads are read-only — and hidden when empty. So are they when the endpoint advertises no comments, and a reply offers no delete when it advertises no deletion.
 - **Replies ask for the `team` role**, which the server keeps only for a caller your access policy vouches for — the `apiKey`, or `canCommentAsTeam` under `access` (see [who speaks as the team](#who-speaks-as-the-team)). Any other reply is stored as `client`.
 - **Nothing is optimistic**: a reply shows once stored, and a failure keeps the draft. Deleting a reply asks first; like every `DELETE`, it needs the `apiKey` or your access policy's consent.
 - **Headless**: `useSitepingInbox` returns `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)` and `deleteComment(id, commentId)` — see [the hook](/docs/dashboard/headless#discussion-threads). A [custom source](/docs/dashboard/sources#discussion-threads) opts in with `addComment` and `removeComment`.
@@ -89,13 +89,13 @@ It answers `200 { "deleted": true }`. Like every `DELETE`, it needs the `apiKey`
 
 ### Read threads
 
-The `GET` list is unchanged, with two additions: each feedback's `comments`, and a `capabilities` object that says whether the store can take comments — so a client can hide its reply box up front instead of meeting a `501`:
+The `GET` list is unchanged, with two additions: each feedback's `comments`, and a `capabilities` object that says whether the store can take comments (`comments`) and delete them (`deleteComments`) — so a client can hide its reply box, or its delete buttons, up front instead of meeting a `501`:
 
 ```json
 {
   "feedbacks": [{ "id": "cm3f8x…", "message": "…", "comments": [] }],
   "total": 1,
-  "capabilities": { "comments": true }
+  "capabilities": { "comments": true, "deleteComments": true }
 }
 ```
 

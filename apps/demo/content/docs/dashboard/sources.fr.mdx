@@ -61,7 +61,7 @@ const source: InboxSource = {
 };
 ```
 
-`list()` peut aussi renvoyer `capabilities: { comments: false }` pour mettre les fils en lecture seule face à un backend qui n'en garde pas ; en son absence, `addComment` seul décide. Une source sans `removeComment` poste des réponses mais n'en supprime aucune. La source endpoint reprend les `capabilities` annoncées par le serveur (et passe en lecture seule face à un serveur qui n'annonce rien) ; la source store ne définit ces méthodes que si le store implémente `addComment` / `deleteComment`.
+`list()` peut aussi renvoyer `capabilities: { comments: false }` pour mettre les fils en lecture seule face à un backend qui n'en garde pas, ou `deleteComments: false` pour masquer les boutons de suppression d'un backend qui ne sait pas supprimer les réponses ; en leur absence, `addComment` et `removeComment` seuls décident. Une source sans `removeComment` poste des réponses mais n'en supprime aucune. La source endpoint reprend les `capabilities` annoncées par le serveur (et passe en lecture seule face à un serveur qui n'annonce rien) ; la source store ne définit ces méthodes que si le store implémente `addComment` / `deleteComment`.
 
 Les deux briques qui sous-tendent les modes intégrés sont également exportées — `createEndpointSource({ endpoint, apiKey, headers })` et `createStoreSource(store)` — pour que vous puissiez les envelopper, les composer ou les décorer (par exemple ajouter de la journalisation autour du client HTTP) plutôt que de repartir de zéro.
 

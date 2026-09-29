@@ -29,7 +29,8 @@ export interface InboxSource {
   /**
    * Paginated, filtered feedback query. Must resolve real `Date` objects on
    * records, their threads included. `capabilities.comments: false` makes
-   * threads read-only; left out, `addComment` alone decides.
+   * threads read-only, and `capabilities.deleteComments: false` hides their
+   * delete buttons; left out, `addComment` and `removeComment` alone decide.
    */
   list(query: FeedbackQuery): Promise<FeedbackPage & { capabilities?: SitepingCapabilities | undefined }>;
   /**
@@ -223,7 +224,10 @@ export interface InboxState {
    * `addComment`, and the endpoint advertises comments.
    */
   canComment: boolean;
-  /** Whether replies can be deleted: `canComment`, and the source implements `removeComment`. */
+  /**
+   * Whether replies can be deleted: `canComment`, the source implements
+   * `removeComment`, and the endpoint advertises their deletion.
+   */
   canDeleteComment: boolean;
   /**
    * Post a reply as `author`. Not optimistic: the thread shows it once the

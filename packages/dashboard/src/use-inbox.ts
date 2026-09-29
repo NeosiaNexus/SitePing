@@ -6,6 +6,7 @@ import {
   isClosedStatus,
   matchesFeedbackQuery,
   newClientId,
+  type SitepingCapabilities,
 } from "@siteping/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createEndpointSource, createStoreSource } from "./source.js";
@@ -136,8 +137,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [openedId, setOpenedId] = useState<string | null>(null);
   const [pendingUndo, setPendingUndo] = useState<InboxState["pendingUndo"]>(null);
-  /** Whether the last list advertised comments — the endpoint's store may keep none. */
-  const [commentsAdvertised, setCommentsAdvertised] = useState(true);
+  /** What the last list advertised — the endpoint's store may keep no comments, or not delete them. */
+  const [advertised, setAdvertised] = useState<SitepingCapabilities | undefined>(undefined);
 
   // Mirrors for stable mutation callbacks (avoid stale closures without dep churn).
   const itemsRef = useRef(items);
@@ -322,7 +323,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const page = await src.list(query);
       if (token !== tokenRef.current) return;
       setExhausted(false);
-      setCommentsAdvertised(page.capabilities?.comments !== false);
+      setAdvertised(page.capabilities);
       listGenRef.current += 1;
       rememberListed(queryBase, page.feedbacks);
       itemsRef.current = page.feedbacks;
@@ -893,8 +894,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     [updateRecord],
   );
 
-  const canComment = author !== undefined && src.addComment !== undefined && commentsAdvertised;
-  const canDeleteComment = canComment && src.removeComment !== undefined;
+  const canComment = author !== undefined && src.addComment !== undefined && advertised?.comments !== false;
+  const canDeleteComment = canComment && src.removeComment !== undefined && advertised?.deleteComments !== false;
 
   // -------------------------------------------------------------------------
   // Public setters

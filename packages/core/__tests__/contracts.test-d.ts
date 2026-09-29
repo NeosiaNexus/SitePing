@@ -113,7 +113,7 @@ describe("wire types derived from record types", () => {
 
   it("advertises capabilities on the list, optional for servers that predate them", () => {
     expectTypeOf<FeedbackResponseList["capabilities"]>().toEqualTypeOf<SitepingCapabilities | undefined>();
-    expectTypeOf<SitepingCapabilities>().toEqualTypeOf<{ comments: boolean }>();
+    expectTypeOf<SitepingCapabilities>().toEqualTypeOf<{ comments: boolean; deleteComments?: boolean | undefined }>();
   });
 });
 
