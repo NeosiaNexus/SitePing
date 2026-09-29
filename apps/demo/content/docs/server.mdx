@@ -117,7 +117,7 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 | `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Fire on each new feedback — see [webhooks](#webhooks) |
 | `waitUntil` | `(promise) => void` | — | Keeps webhook deliveries alive after the response on serverless and edge runtimes — see [webhooks](#webhooks) |
 | `beforeCreate` | `(input, context) => input` | — | Rewrite a submission before it is stored — see [extension points](#extension-points) |
-| `beforeComment` | `(input, context) => input` | — | The same for a [comment](/docs/comments) |
+| `beforeComment` | `(input, context) => input` | — | The same for a [thread](/docs/comments) reply |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transform each record before it is sent |
 | `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
 | `logger` | `{ error(message, context) }` | `console.error` | Where unexpected failures go, with the request's method and path — and for a failed hook, the feedback or deletion it concerns. Webhook failures go to their own [`onError`](#webhooks) instead. A logger that throws or rejects falls back to `console.error` |
@@ -274,13 +274,13 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   // Every site the widget runs on, and the dashboard's own origin.
   allowedOrigins: ["https://client-site.com", "https://inbox.example.com"],
   access: oidcAccess,
-  // A signed-in author's name, and verified email, come from the token.
+  // A signed-in author's name, and verified email, come from the token…
   beforeCreate: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
-  // A reply's too.
+  // …on their replies too.
   beforeComment: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
@@ -341,7 +341,7 @@ function submittedBy(request: Request, sub: string): Promise<Set<string>> {
 
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
-  // …allowedOrigins and beforeCreate as in route.ts above
+  // …allowedOrigins, beforeCreate and beforeComment as in route.ts above
   access: {
     ...oidcAccess,
     authorize: async ({ principal, action, feedbackId = "", request }) =>
@@ -425,13 +425,13 @@ import { store } from "@/lib/siteping-store";
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
   access: betterAuthAccess,
-  // A signed-in author's name, and verified email, come from the session.
+  // A signed-in author's name, and verified email, come from the session…
   beforeCreate: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
-  // A reply's too.
+  // …on their replies too.
   beforeComment: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
@@ -493,7 +493,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   // Every site the widget runs on. The inbox stays on the endpoint's own origin.
   allowedOrigins: ["https://client-site.com"],
   access: betterAuthAccess,
-  // …beforeCreate as above
+  // …beforeCreate and beforeComment as above
 });
 ```
 
@@ -534,6 +534,13 @@ createSitepingHandler({
     authorEmail: principal.email,
     message: input.message.replace(/token=\S+/g, "token=[redacted]"),
   }),
+  // The same for a reply in a thread.
+  beforeComment: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name,
+    authorEmail: principal.email,
+    body: input.body.replace(/token=\S+/g, "token=[redacted]"),
+  }),
   hooks: {
     onCreated: (feedback) => searchIndex.add(feedback),
     // Throw to keep the record: the DELETE answers 502 and can be retried.
@@ -542,8 +549,7 @@ createSitepingHandler({
 });
 ```
 
-- **`beforeCreate`** runs on the validated submission, before `authorize` — which sees the project it returns.
-- **`beforeComment`** runs on a validated [comment](/docs/comments), once `authorize` allowed it and, on a store that implements `verifyProjectOwnership` (every bundled store does), its feedback was found. A reply's name and email are what the request sends until it imposes yours; the `team` role stays your access policy's call, whatever it returns.
+- **`beforeCreate`** runs on the validated submission, before `authorize` — which sees the project it returns. **`beforeComment`** does the same for a [reply](/docs/comments), `projectName` and `feedbackId` included — so it runs before the feedback is looked up too, and may run for one that turns out not to exist. The `authorRole` it returns stays a claim, `team` being kept only for a caller [your policy vouches for](/docs/comments#who-speaks-as-the-team). Without it, a reply keeps the name and email its client sent.
 - **`presentFeedback`** runs on each record just before it is sent; `clientId` stripping and email redaction still apply after it.
 - **`onCreated`**, **`onUpdated`** and **`onDeleted`** are awaited before the response, so serverless runtimes don't cut them off. A throw is logged and never fails the request: the write already happened. `onCreated` runs once per stored feedback, never for a replayed `clientId`.
 - **`onDeleting`** runs before the delete, with `{ kind: "single", id, projectName }` or `{ kind: "project", projectName }`. A throw keeps the record and answers `502`.

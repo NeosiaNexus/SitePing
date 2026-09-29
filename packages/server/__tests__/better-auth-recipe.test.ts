@@ -284,20 +284,22 @@ describe("Better Auth recipe", () => {
     expect(authors).toHaveLength(2);
   });
 
-  it("takes a signed-in replier's name from the session too, so no one replies as another reviewer", async () => {
+  it("takes a reply's author from the session too", async () => {
     const { auth } = createAuth();
     const handler = handlerFor(auth);
     const admin = await signIn(auth, ADMIN);
     const created = await submit(handler);
-
-    await reply(handler, created.id, (await signIn(auth, MEMBER)).cookie);
     await reply(handler, created.id, admin.cookie);
+    await reply(handler, created.id, (await signIn(auth, MEMBER)).cookie);
+    await reply(handler, created.id);
 
     const thread = (await page(handler, admin.cookie)).feedbacks[0]?.comments ?? [];
+
     expect(thread.map((c) => [c.authorName, c.authorEmail])).toEqual([
-      // MEMBER's email is unverified: the one the request sent is kept.
-      [MEMBER.name, "someone@acme.example"],
       [ADMIN.name, ADMIN.email],
+      // MEMBER's email is unverified, and a visitor has no session: what the client sent is kept.
+      [MEMBER.name, "someone@acme.example"],
+      ["Someone", "someone@acme.example"],
     ]);
   });
 

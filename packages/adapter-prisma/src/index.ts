@@ -35,6 +35,7 @@ import {
 
 export type {
   CommentCreateInput,
+  CommentPayload,
   FeedbackCreateInput,
   FeedbackRecord,
   ScreenshotStorage,

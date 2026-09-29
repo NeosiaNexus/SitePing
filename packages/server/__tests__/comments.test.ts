@@ -1,6 +1,5 @@
 import { MemoryStore } from "@siteping/adapter-memory";
 import {
-  type CommentCreateInput,
   type CommentResponse,
   type FeedbackResponse,
   type FeedbackResponseList,
@@ -12,7 +11,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createSitepingHandler,
   type SitepingAccessControl,
-  type SitepingAccessHandlerOptions,
   type SitepingAuthorizationContext,
   type SitepingHandler,
   type SitepingLogger,
@@ -323,91 +321,6 @@ describe("comments — the team role", () => {
   });
 });
 
-describe("comments — beforeComment", () => {
-  interface Member {
-    name: string;
-    email: string;
-    staff: boolean;
-  }
-  const MALLORY: Member = { name: "Mallory", email: "mallory@client.example", staff: false };
-
-  /** The recipes' stamping: a signed-in author's name and email come from the session. */
-  function stampingHandler(
-    store = new MemoryStore(),
-    overrides: Pick<SitepingAccessHandlerOptions<Member>, "beforeComment" | "logger"> = {},
-  ) {
-    return createSitepingHandler({
-      store,
-      access: {
-        authenticate: () => MALLORY,
-        canReadAuthorEmail: ({ staff }) => staff,
-      },
-      beforeComment: (input, { principal }) => ({
-        ...input,
-        authorName: principal.name || input.authorName,
-        authorEmail: principal.email || input.authorEmail,
-      }),
-      ...overrides,
-    });
-  }
-
-  it("stores the author it imposes, not the one the request claims", async () => {
-    const store = new MemoryStore();
-    const handler = stampingHandler(store);
-    const feedback = await createFeedback(handler);
-
-    await postComment(handler, commentBody(feedback.id, { authorName: "Alice", authorEmail: "alice@client.example" }));
-
-    const [stored] = (await store.findByClientId(validPayloadNoAnnotations.clientId))?.comments ?? [];
-    expect(stored).toMatchObject({ authorName: MALLORY.name, authorEmail: MALLORY.email });
-  });
-
-  it("keeps the team role out of reach of a caller the policy does not vouch for, whatever it returns", async () => {
-    const handler = stampingHandler(new MemoryStore(), {
-      beforeComment: (input) => ({ ...input, authorRole: "team" }),
-    });
-    const feedback = await createFeedback(handler);
-
-    const created = await postComment(handler, commentBody(feedback.id));
-
-    expect(created.authorRole).toBe("client");
-  });
-
-  it("is not asked about a comment refused, or aimed at an unknown feedback", async () => {
-    const beforeComment = vi.fn((input: CommentCreateInput) => input);
-    const refusing = createSitepingHandler({
-      store: new MemoryStore(),
-      access: { authenticate: () => MALLORY, authorize: ({ action }) => action !== "createComment" },
-      beforeComment,
-    });
-    const open = createSitepingHandler({ store: new MemoryStore(), beforeComment });
-    const feedback = await createFeedback(refusing);
-
-    const refused = await refusing.POST(request("POST", commentBody(feedback.id)));
-    const unknown = await open.POST(request("POST", commentBody("does-not-exist")));
-
-    expect([refused.status, unknown.status]).toEqual([403, 404]);
-    expect(beforeComment).not.toHaveBeenCalled();
-  });
-
-  it("answers a logged 500 and stores nothing when it throws", async () => {
-    const store = new MemoryStore();
-    const failure = new Error("directory lookup failed");
-    const logger = silentLogger();
-    const handler = stampingHandler(store, { beforeComment: () => Promise.reject(failure), logger });
-    const feedback = await createFeedback(handler);
-
-    const response = await handler.POST(request("POST", commentBody(feedback.id)));
-
-    expect(response.status).toBe(500);
-    expect(logger.error).toHaveBeenCalledWith(
-      "[siteping] Failed to add comment",
-      expect.objectContaining({ error: failure }),
-    );
-    expect((await store.findByClientId(validPayloadNoAnnotations.clientId))?.comments).toEqual([]);
-  });
-});
-
 describe("comments — email redaction", () => {
   /** A feedback with a team reply, both carrying an email, behind an apiKey with a public GET. */
   async function threadWithEmails() {
@@ -623,5 +536,100 @@ describe("comments — authorization", () => {
     );
 
     expect(response.status).toBe(415);
+  });
+});
+
+describe("comments — beforeComment", () => {
+  interface Member {
+    name: string;
+    email: string;
+    project: string;
+  }
+  const MALLORY: Member = { name: "Mallory", email: "mallory@corp.example", project: PROJECT };
+
+  /** The recipes' shape: the author and the project come from the session, secrets leave the body. */
+  function stampingHandler(store: SitepingStore, authorize = vi.fn(() => true)) {
+    return createSitepingHandler<Member>({
+      store,
+      access: { authenticate: () => MALLORY, authorize, canCommentAsTeam: () => false },
+      beforeComment: (input, { principal }) => ({
+        ...input,
+        projectName: principal.project,
+        authorName: principal.name,
+        authorEmail: principal.email,
+        body: input.body.replace(/token=\S+/g, "token=[redacted]"),
+      }),
+    });
+  }
+
+  it("stores the reply it returns — the session's author, the scrubbed body — never the one sent", async () => {
+    const store = new MemoryStore();
+    const handler = stampingHandler(store);
+    const feedback = await createFeedback(handler);
+
+    const created = await postComment(
+      handler,
+      commentBody(feedback.id, {
+        body: "Ship it token=abc123",
+        authorName: "Alice CEO",
+        authorEmail: "ceo@corp.example",
+      }),
+    );
+
+    const expected = { authorName: "Mallory", authorEmail: "mallory@corp.example", body: "Ship it token=[redacted]" };
+    // The answer blanks the email: this policy lets no one read reviewer emails.
+    expect(created).toMatchObject({ ...expected, authorEmail: "" });
+    expect((await store.findByClientId("uuid-123"))?.comments?.[0]).toMatchObject(expected);
+  });
+
+  it("runs before authorize, which sees the project it returns — another tenant's feedback stays out of reach", async () => {
+    const store = new MemoryStore();
+    const authorize = vi.fn(() => true);
+    const handler = stampingHandler(store, authorize);
+    const foreignResponse = await createSitepingHandler({ store }).POST(
+      request("POST", { ...validPayloadNoAnnotations, projectName: "other-tenant", clientId: "foreign" }),
+    );
+    const foreign = (await foreignResponse.json()) as FeedbackResponse;
+
+    const response = await handler.POST(request("POST", commentBody(foreign.id, { projectName: "other-tenant" })));
+
+    expect(response.status).toBe(404);
+    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({ action: "createComment", projectName: PROJECT }));
+    expect((await store.findByClientId("foreign"))?.comments).toEqual([]);
+  });
+
+  it("leaves the team role a claim the policy must vouch for", async () => {
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      apiKey: API_KEY,
+      beforeComment: (input) => ({ ...input, authorRole: "team" }),
+    });
+    const feedback = await createFeedback(handler);
+
+    expect((await postComment(handler, commentBody(feedback.id))).authorRole).toBe("client");
+    expect((await postComment(handler, commentBody(feedback.id), BEARER)).authorRole).toBe("team");
+  });
+
+  it("answers a logged 500 and stores nothing when it throws", async () => {
+    const store = new MemoryStore();
+    const failure = new Error("session store down");
+    const logger = silentLogger();
+    const handler = createSitepingHandler({
+      store,
+      logger,
+      beforeComment: () => {
+        throw failure;
+      },
+    });
+    const feedback = await createFeedback(handler);
+
+    const response = await handler.POST(request("POST", commentBody(feedback.id)));
+
+    expect(response.status).toBe(500);
+    expect(logger.error).toHaveBeenCalledWith(
+      "[siteping] Failed to add comment",
+      expect.objectContaining({ error: failure }),
+    );
+    expect((await store.findByClientId("uuid-123"))?.comments).toEqual([]);
   });
 });

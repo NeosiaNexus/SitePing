@@ -117,7 +117,7 @@ La limitation de débit n'est pas gérée ici : appliquez-la dans votre framewor
 | `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Déclenchés à chaque nouveau feedback — voir [webhooks](#webhooks) |
 | `waitUntil` | `(promise) => void` | — | Garde les envois de webhooks en vie après la réponse sur les runtimes serverless et edge — voir [webhooks](#webhooks) |
 | `beforeCreate` | `(input, context) => input` | — | Réécrire un envoi avant son enregistrement — voir [points d'extension](#points-dextension) |
-| `beforeComment` | `(input, context) => input` | — | De même pour un [commentaire](/fr/docs/comments) |
+| `beforeComment` | `(input, context) => input` | — | La même chose pour une réponse d'un [fil](/fr/docs/comments) |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transformer chaque enregistrement avant son envoi |
 | `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
 | `logger` | `{ error(message, context) }` | `console.error` | Où vont les échecs inattendus, avec la méthode et le chemin de la requête — et pour un hook en échec, le feedback ou la suppression qu'il concerne. Les échecs de webhook vont plutôt à leur propre [`onError`](#webhooks). Un logger qui lève ou rejette se rabat sur `console.error` |
@@ -274,13 +274,13 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   // Chaque site où tourne le widget, et l'origine du dashboard.
   allowedOrigins: ["https://site-client.com", "https://inbox.example.com"],
   access: oidcAccess,
-  // Le nom d'un auteur connecté, et son e-mail vérifié, viennent du jeton.
+  // Le nom d'un auteur connecté, et son e-mail vérifié, viennent du jeton…
   beforeCreate: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
-  // Ceux d'une réponse aussi.
+  // …sur ses réponses aussi.
   beforeComment: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
@@ -341,7 +341,7 @@ function submittedBy(request: Request, sub: string): Promise<Set<string>> {
 
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
-  // …allowedOrigins et beforeCreate comme dans route.ts ci-dessus
+  // …allowedOrigins, beforeCreate et beforeComment comme dans route.ts ci-dessus
   access: {
     ...oidcAccess,
     authorize: async ({ principal, action, feedbackId = "", request }) =>
@@ -425,13 +425,13 @@ import { store } from "@/lib/siteping-store";
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
   access: betterAuthAccess,
-  // Le nom d'un auteur connecté, et son e-mail vérifié, viennent de la session.
+  // Le nom d'un auteur connecté, et son e-mail vérifié, viennent de la session…
   beforeCreate: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
-  // Ceux d'une réponse aussi.
+  // …sur ses réponses aussi.
   beforeComment: (input, { principal }) => ({
     ...input,
     authorName: principal.name || input.authorName,
@@ -493,7 +493,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   // Chaque site où tourne le widget. L'inbox reste sur l'origine de l'endpoint.
   allowedOrigins: ["https://site-client.com"],
   access: betterAuthAccess,
-  // …beforeCreate comme plus haut
+  // …beforeCreate et beforeComment comme plus haut
 });
 ```
 
@@ -534,6 +534,13 @@ createSitepingHandler({
     authorEmail: principal.email,
     message: input.message.replace(/token=\S+/g, "token=[redacted]"),
   }),
+  // La même chose pour une réponse dans un fil.
+  beforeComment: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name,
+    authorEmail: principal.email,
+    body: input.body.replace(/token=\S+/g, "token=[redacted]"),
+  }),
   hooks: {
     onCreated: (feedback) => searchIndex.add(feedback),
     // Levez pour garder l'enregistrement : le DELETE répond 502 et peut être rejoué.
@@ -542,8 +549,7 @@ createSitepingHandler({
 });
 ```
 
-- **`beforeCreate`** tourne sur l'envoi validé, avant `authorize` — qui voit le projet qu'il renvoie.
-- **`beforeComment`** tourne sur un [commentaire](/fr/docs/comments) validé, une fois qu'`authorize` l'a permis et, sur un store qui implémente `verifyProjectOwnership` (tous les stores fournis le font), que son feedback a été trouvé. Le nom et l'e-mail d'une réponse sont ceux qu'envoie la requête tant qu'il n'impose pas les vôtres ; le rôle `team` reste la décision de votre politique d'accès, quoi qu'il renvoie.
+- **`beforeCreate`** tourne sur l'envoi validé, avant `authorize` — qui voit le projet qu'il renvoie. **`beforeComment`** fait de même pour une [réponse](/fr/docs/comments), `projectName` et `feedbackId` compris — il tourne donc aussi avant que le feedback soit cherché, et peut tourner pour un feedback qui s'avère ne pas exister. L'`authorRole` qu'il renvoie reste une prétention, `team` n'étant gardé que pour un appelant [dont votre politique répond](/fr/docs/comments#le-rôle-équipe). Sans lui, une réponse garde le nom et l'e-mail envoyés par son client.
 - **`presentFeedback`** tourne sur chaque enregistrement juste avant son envoi ; le retrait de `clientId` et le masquage de l'e-mail s'appliquent encore après lui.
 - **`onCreated`**, **`onUpdated`** et **`onDeleted`** sont attendus avant la réponse, pour que les runtimes serverless ne les coupent pas. Une exception est journalisée et ne fait jamais échouer la requête : l'écriture a déjà eu lieu. `onCreated` tourne une fois par feedback enregistré, jamais pour un `clientId` rejoué.
 - **`onDeleting`** tourne avant la suppression, avec `{ kind: "single", id, projectName }` ou `{ kind: "project", projectName }`. Une exception garde l'enregistrement et répond `502`.

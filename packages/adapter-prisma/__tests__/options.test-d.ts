@@ -6,7 +6,7 @@
 import type { SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
 import {
-  type CommentCreateInput,
+  type CommentPayload,
   createSitepingHandler,
   type FeedbackCreateInput,
   type FeedbackRecord,
@@ -88,7 +88,7 @@ describe("server option types", () => {
     };
     const logger: SitepingLogger = { error: () => {} };
     const beforeCreate = (input: FeedbackCreateInput): FeedbackCreateInput => input;
-    const beforeComment: SitepingHandlerBaseOptions<Reviewer>["beforeComment"] = (input: CommentCreateInput) => input;
+    const beforeComment: SitepingHandlerBaseOptions<Reviewer>["beforeComment"] = (input: CommentPayload) => input;
     const presentFeedback = (feedback: FeedbackRecord): FeedbackRecord => feedback;
 
     createSitepingHandler({ prisma, access, hooks, logger, beforeCreate, beforeComment, presentFeedback });
