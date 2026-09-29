@@ -188,6 +188,15 @@ describe("formatIssue", () => {
     );
   });
 
+  it("breaks the URLs in the title, which GitLab would autolink into references", () => {
+    const { title } = formatIssue(
+      record({ message: "Same as https://gitlab.com/acme/site/-/merge_requests/12 and ftp://x" }),
+      options,
+    );
+
+    expect(title).toBe("[SitePing] Same as https:\u200B//gitlab.com/acme/site/-/merge_requests/12 and ftp:\u200B//x");
+  });
+
   it("lists where each annotation points, quoted as code", () => {
     const annotations = [
       annotation({ textSnippet: "Pay @octocat for #12" }),

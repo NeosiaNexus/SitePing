@@ -32,9 +32,13 @@ export function codeSpan(text: string): string {
 /**
  * Plain-text issue titles still render references: `@user` mentions, `#12`
  * and `GH-12` on GitHub, and GitLab's `!12` (merge request), `&12` (epic),
- * `~label`, `%milestone` and `$12` (snippet). A zero-width space after each
- * sigil defuses them.
+ * `~label`, `%milestone` and `$12` (snippet). GitLab also autolinks the URLs
+ * in a title, then resolves one pointing at an issue, merge request or commit
+ * as a reference. A zero-width space after each sigil, and inside each `://`,
+ * defuses them. Bare commit SHAs are left alone: GitLab
+ * only links those of the project's own commits, and splitting every 7-to-40
+ * character hex word would also break order numbers and error codes.
  */
 export function defuseReferences(text: string): string {
-  return text.replace(/[@#!&~%$]|\bGH-/gi, "$&\u200B");
+  return text.replace(/[@#!&~%$]|\bGH-|:(?=\/\/)/gi, "$&\u200B");
 }

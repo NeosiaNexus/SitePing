@@ -89,7 +89,7 @@ Certaines choses restent dehors :
 - Les captures stockées en ligne comme URL `data:`, ce qui arrive sans [stockage des captures](/fr/docs/adapters/screenshot-storage). Les gestionnaires ne les affichent pas.
 - Les [fils de discussion](/fr/docs/comments).
 
-Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Un message peut contenir `@octocat`, `#12`, `<!--`, un lien Markdown ou une image : rien de tout cela ne notifie quelqu'un, ne pointe vers un autre ticket, ne masque du texte ni ne charge quoi que ce soit. Dans le titre, les signes de référence (`@`, `#` et `GH-`, plus `!`, `&`, `~`, `%` et `$` sur GitLab) sont suivis d'une espace sans chasse pour la même raison.
+Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Un message peut contenir `@octocat`, `#12`, `<!--`, un lien Markdown ou une image : rien de tout cela ne notifie quelqu'un, ne pointe vers un autre ticket, ne masque du texte ni ne charge quoi que ce soit. Dans le titre, une espace sans chasse suit chaque signe de référence (`@`, `#` et `GH-`, plus `!`, `&`, `~`, `%` et `$` sur GitLab) et coupe chaque `://`, car GitLab transforme aussi en référence une URL qui pointe vers un ticket ou une merge request. Un SHA de commit seul est laissé tel quel : GitLab le lie toujours s'il désigne un commit du projet lui-même.
 
 > **Dépôts publics.** Un ticket dans un dépôt public est public : le message, la page, le user agent et les diagnostics de chaque feedback deviennent lisibles par tous. Préférez un dépôt privé, et utilisez `redact` pour les secrets qui finissent dans des URL ou des messages de console.
 
