@@ -1,5 +1,5 @@
 import { type FeedbackRecord, isClosedStatus, parseHttpUrl } from "@siteping/core";
-import type { SitepingDeletionTarget, SitepingLifecycleHooks } from "@siteping/server";
+import type { SitepingLifecycleHooks } from "@siteping/server";
 import {
   DEFAULT_DEEP_LINK_PARAM,
   DELETED_FEEDBACK_COMMENT_TEMPLATE,
@@ -17,6 +17,7 @@ import {
   projectMarkerFragment,
 } from "./issue-format.js";
 import type { IssueTracker, TrackedIssue } from "./issue-tracker.js";
+import { createTaskQueue } from "./task-queue.js";
 
 export interface IssueTrackerHooksOptions {
   /** Where issues live — `createGitHubTracker`, `createGitLabTracker` or your own. */
@@ -121,34 +122,38 @@ export function createIssueTrackerHooks<Principal = never>({
     }
   };
 
-  const closeDeletedTarget = async (target: SitepingDeletionTarget): Promise<void> => {
-    if (target.kind === "single") {
-      const issue = await issueOf(target.id);
-      if (issue) await closeDeleted(issue, target.id);
-      return;
-    }
-    for (const issue of await issuesOfProject(target.projectName)) {
-      const link = parseIssueMarker(issue.body);
-      if (link) await closeDeleted(issue, link.feedbackId);
-    }
-  };
+  const queue = createTaskQueue();
 
   return {
-    async onCreated(feedback) {
-      const content = customFormatIssue
-        ? customFormatIssue(feedback, formatOptions)
-        : formatIssue(feedback, formatOptions);
-      const marker = buildIssueMarker({ feedbackId: feedback.id, projectName: feedback.projectName });
-      await tracker.createIssue({ title: content.title, body: `${marker}\n\n${content.body}`, labels: issueLabels });
-    },
+    onCreated: (feedback) =>
+      queue.forFeedback(feedback.projectName, feedback.id, async () => {
+        const content = customFormatIssue
+          ? customFormatIssue(feedback, formatOptions)
+          : formatIssue(feedback, formatOptions);
+        const marker = buildIssueMarker({ feedbackId: feedback.id, projectName: feedback.projectName });
+        await tracker.createIssue({ title: content.title, body: `${marker}\n\n${content.body}`, labels: issueLabels });
+      }),
     async onUpdated(feedback) {
       if (!syncStatus) return;
-      const issue = await issueOf(feedback.id);
-      // An open status on an open issue changes nothing; a closed one may still change the close reason.
-      if (issue && (isClosedStatus(feedback.status) || !issue.isOpen)) {
-        await tracker.updateIssueStatus(issue.reference, feedback.status);
-      }
+      await queue.forFeedback(feedback.projectName, feedback.id, async () => {
+        const issue = await issueOf(feedback.id);
+        // An open status on an open issue changes nothing; a closed one may still change the close reason.
+        if (issue && (isClosedStatus(feedback.status) || !issue.isOpen)) {
+          await tracker.updateIssueStatus(issue.reference, feedback.status);
+        }
+      });
     },
-    onDeleting: closeDeletedTarget,
+    onDeleting: (target) =>
+      target.kind === "single"
+        ? queue.forFeedback(target.projectName, target.id, async () => {
+            const issue = await issueOf(target.id);
+            if (issue) await closeDeleted(issue, target.id);
+          })
+        : queue.forProject(target.projectName, async () => {
+            for (const issue of await issuesOfProject(target.projectName)) {
+              const link = parseIssueMarker(issue.body);
+              if (link) await closeDeleted(issue, link.feedbackId);
+            }
+          }),
   };
 }

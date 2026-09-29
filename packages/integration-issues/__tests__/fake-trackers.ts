@@ -25,6 +25,10 @@ export interface FakeTracker {
   dropLabels(): void;
   /** Make searches find nothing, like a search index that has not caught up yet. */
   lagSearch(): void;
+  /** Make every request wait this long before the fake handles it, as over a network. */
+  delay(ms: number): void;
+  /** Hold the next request whose `METHOD path?query` matches until `release()`; `reached` settles when it arrives. */
+  hold(pattern: RegExp): { reached: Promise<void>; release(): void };
 }
 
 type Route = (request: Request, match: RegExpMatchArray, url: URL) => Promise<Response> | Response;
@@ -37,7 +41,8 @@ function createFakeServer(
   const issues: FakeIssue[] = [];
   const requests: FakeTracker["requests"] = [];
   const failures: Array<{ pattern: RegExp; status: number }> = [];
-  const settings = { dropLabels: false, searchLags: false };
+  const holds: Array<{ pattern: RegExp; arrive(): void; released: Promise<void> }> = [];
+  const settings = { dropLabels: false, searchLags: false, delayMs: 0 };
 
   const fakeFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -48,10 +53,18 @@ function createFakeServer(
       query: url.search,
       authorization: request.headers.get(authorizationHeader),
     });
+    const route = `${request.method} ${url.pathname}${url.search}`;
+    if (settings.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, settings.delayMs));
+    const held = holds.findIndex(({ pattern }) => pattern.test(route));
+    if (held >= 0) {
+      const [{ arrive, released }] = holds.splice(held, 1) as [(typeof holds)[number]];
+      arrive();
+      await released;
+    }
     if (requiredHeaders.some((header) => !request.headers.has(header))) {
       return new Response(JSON.stringify({ message: "Request forbidden by administrative rules." }), { status: 403 });
     }
-    const failure = failures.find(({ pattern }) => pattern.test(`${request.method} ${url.pathname}${url.search}`));
+    const failure = failures.find(({ pattern }) => pattern.test(route));
     if (failure) return new Response(JSON.stringify({ message: "fake failure" }), { status: failure.status });
     for (const [method, pattern, route] of routes) {
       const match = url.pathname.match(pattern);
@@ -71,6 +84,21 @@ function createFakeServer(
     },
     lagSearch: () => {
       settings.searchLags = true;
+    },
+    delay: (ms: number) => {
+      settings.delayMs = ms;
+    },
+    hold: (pattern: RegExp) => {
+      let arrive = () => {};
+      let release = () => {};
+      const reached = new Promise<void>((resolve) => {
+        arrive = resolve;
+      });
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      holds.push({ pattern, arrive, released });
+      return { reached, release };
     },
   };
 }

@@ -347,6 +347,81 @@ for (const provider of providers) {
       });
     }
 
+    describe("concurrent requests", () => {
+      const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const humanComments = () =>
+        fake.issues.map((issue) => issue.comments.filter((comment) => !comment.startsWith("system:")).length);
+
+      it("apply status changes in the order they came, however the tracker answers interleave", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.delay(20);
+
+        const resolving = patch(handler, feedback.id, "resolved");
+        await pause(5);
+        await Promise.all([resolving, patch(handler, feedback.id, "open")]);
+
+        expect(fake.issues[0]?.isOpen).toBe(true);
+      });
+
+      it("leave one deletion comment when deletes of a feedback overlap", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.delay(10);
+
+        const responses = await Promise.all(
+          [1, 2].map(() => remove(handler, { id: feedback.id, projectName: "site" })),
+        );
+
+        expect(responses.map((response) => response.status)).toContain(200);
+        expect(humanComments()).toEqual([1]);
+      });
+
+      it("leave one deletion comment per issue when project deletes overlap", async () => {
+        const handler = createHandler();
+        await send(handler);
+        await send(handler);
+        fake.delay(10);
+
+        await Promise.all([1, 2].map(() => remove(handler, { projectName: "site", deleteAll: true })));
+
+        expect(humanComments()).toEqual([1, 1]);
+      });
+
+      const whileTheIssueIsCreated = async (
+        act: (handler: SitepingHandler, feedbackId: string) => Promise<Response>,
+      ) => {
+        const handler = createHandler();
+        const creation = fake.hold(/^POST \S+\/issues$/);
+        const sending = send(handler);
+        await creation.reached;
+        const [feedback] = (await store.getFeedbacks({ projectName: "site" })).feedbacks;
+        const acting = act(handler, feedback?.id ?? "");
+        // Time enough for the request's own tracker calls, had it not waited for the creation.
+        await pause(20);
+        creation.release();
+        await sending;
+        return (await acting).status;
+      };
+
+      it("close an issue still being created when its project is deleted", async () => {
+        expect(
+          await whileTheIssueIsCreated((handler) => remove(handler, { projectName: "site", deleteAll: true })),
+        ).toBe(200);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("close an issue still being created when its feedback is deleted", async () => {
+        expect(await whileTheIssueIsCreated((handler, id) => remove(handler, { id, projectName: "site" }))).toBe(200);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+
+      it("sync the status of an issue still being created", async () => {
+        expect(await whileTheIssueIsCreated((handler, id) => patch(handler, id, "resolved"))).toBe(200);
+        expect(fake.issues[0]?.isOpen).toBe(false);
+      });
+    });
+
     it("aborts the delete and keeps the feedback when the tracker fails", async () => {
       const handler = createHandler();
       const feedback = await send(handler);
