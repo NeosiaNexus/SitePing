@@ -27,6 +27,11 @@ export interface AccessGate<Principal> {
   /** `Cache-Control` of the list response. */
   readonly listCacheControl: string;
   authenticate(request: Request, method: SitepingHttpMethod): Promise<AccessOutcome<Principal>>;
+  /**
+   * Whether the caller of an admitted request would be admitted on `method`
+   * too — the first half of each `permissions` answer, `authorize` the second.
+   */
+  admits(request: Request, method: SitepingHttpMethod): Promise<boolean>;
   authorize(context: SitepingAuthorizationContext<Principal>): Promise<boolean>;
   /**
    * Whether an authenticated caller's comment keeps the `team` role it asks
@@ -102,24 +107,30 @@ export function createApiKeyGate({
     return header !== null && safeCompare(header, `Bearer ${apiKey}`);
   };
 
+  const authenticate: AccessGate<null>["authenticate"] = async (request, method) => {
+    const canReadAuthorEmail = !redactUnauthenticatedEmails || isBearerAuthenticated(request);
+    if (!apiKey) {
+      // GET/POST/OPTIONS stay open by default so the widget keeps working in dev without config.
+      if (requireAuthForDestructive && (method === "DELETE" || method === "PATCH")) {
+        return { ok: false, status: 401, error: ERROR_MESSAGES.apiKeyRequiredForDestructive };
+      }
+      return { ok: true, principal: null, canReadAuthorEmail };
+    }
+    if (publicMethods?.has(method) || isBearerAuthenticated(request)) {
+      return { ok: true, principal: null, canReadAuthorEmail };
+    }
+    return { ok: false, status: 401, error: ERROR_MESSAGES.unauthorized };
+  };
+
   return {
     echoesAuthorEmailOnCreate: true,
     // The key travels in a header a forged cross-site request cannot set.
     guardsMutations: false,
     listCacheControl: "private, max-age=5",
-    async authenticate(request, method) {
-      const canReadAuthorEmail = !redactUnauthenticatedEmails || isBearerAuthenticated(request);
-      if (!apiKey) {
-        // GET/POST/OPTIONS stay open by default so the widget keeps working in dev without config.
-        if (requireAuthForDestructive && (method === "DELETE" || method === "PATCH")) {
-          return { ok: false, status: 401, error: ERROR_MESSAGES.apiKeyRequiredForDestructive };
-        }
-        return { ok: true, principal: null, canReadAuthorEmail };
-      }
-      if (publicMethods?.has(method) || isBearerAuthenticated(request)) {
-        return { ok: true, principal: null, canReadAuthorEmail };
-      }
-      return { ok: false, status: 401, error: ERROR_MESSAGES.unauthorized };
+    authenticate,
+    // This policy admits by method: a visitor reads, the key holder triages.
+    async admits(request, method) {
+      return (await authenticate(request, method)).ok;
     },
     async authorize() {
       return true;
@@ -147,6 +158,10 @@ export function createAccessGate<Principal extends SitepingPrincipal>(
         return { ok: false, status: 401, error: ERROR_MESSAGES.unauthorized };
       }
       return { ok: true, principal, canReadAuthorEmail: (await access.canReadAuthorEmail?.(principal)) ?? true };
+    },
+    // `access.authenticate` never sees the method: whoever it admitted once, it admits on any.
+    async admits() {
+      return true;
     },
     async authorize(context) {
       return access.authorize ? access.authorize(context) : true;

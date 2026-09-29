@@ -118,7 +118,8 @@ describe("createSitepingHandler — access", () => {
       store: new MemoryStore(),
       access: sessionAccess({
         authorize: (context) => {
-          decisions.push(context);
+          // Dry runs fill in permissions — see "reports what the policy would allow".
+          if (!context.dryRun) decisions.push(context);
           return context.action === "create" || context.principal.isAdmin;
         },
       }),

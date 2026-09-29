@@ -1,4 +1,4 @@
-import type { CommentRecord, FeedbackRecord } from "@siteping/core";
+import type { CommentRecord, FeedbackPermissions, FeedbackRecord } from "@siteping/core";
 import type { AccessGate, AccessOutcome } from "./access.js";
 import { ERROR_MESSAGES } from "./constants.js";
 import { buildCorsHeaders, type CorsHeaders, withCors } from "./cors.js";
@@ -41,8 +41,11 @@ interface PipelineDependencies<Principal> {
 /** A comment as it goes on the wire. */
 export type WireComment = Omit<CommentRecord, "clientId">;
 
-/** A feedback as it goes on the wire — its thread always present. */
-export type WireFeedback = Omit<FeedbackRecord, "clientId" | "comments"> & { comments: WireComment[] };
+/** A feedback as it goes on the wire — its thread and the requester's permissions always present. */
+export type WireFeedback = Omit<FeedbackRecord, "clientId" | "comments"> & {
+  comments: WireComment[];
+  permissions: FeedbackPermissions;
+};
 
 /**
  * Serialize a comment for the HTTP wire — `clientId` stripped and
@@ -65,7 +68,11 @@ function toWireComment(comment: CommentRecord, includeEmail: boolean): WireComme
  * A store without comments leaves the thread out: it goes out as `[]`.
  * Never mutates the input — webhooks receive the same record object.
  */
-function toWireFeedback(feedback: FeedbackRecord, includeEmail: boolean, includeCommentEmails: boolean): WireFeedback {
+function toWireFeedback(
+  feedback: FeedbackRecord,
+  includeEmail: boolean,
+  includeCommentEmails: boolean,
+): Omit<WireFeedback, "permissions"> {
   const { clientId: _clientId, comments, ...wire } = feedback;
   return {
     ...wire,
@@ -121,18 +128,48 @@ export function createPipeline<Principal>({
     return { ok: true, value: body };
   };
 
-  /** Wire shape of a record for this requester (`presentFeedback`, then redaction). */
-  const present = (scope: Scope<Principal>, feedback: FeedbackRecord, includeEmail = scope.canReadAuthorEmail) =>
-    toWireFeedback(
+  /**
+   * Whether this requester may do what `target` describes: the policy admits
+   * the method it takes, and `authorize` allows it in a dry run.
+   */
+  const may = async (
+    scope: Scope<Principal>,
+    method: SitepingHttpMethod,
+    target: Omit<SitepingAuthorizationContext<Principal>, keyof SitepingRequestContext<Principal>>,
+  ): Promise<boolean> =>
+    (await gate.admits(scope.context.request, method)) && gate.authorize({ ...scope.context, ...target, dryRun: true });
+
+  /** What this requester may do with a record — `permissions` on the wire. */
+  const permissions = async (scope: Scope<Principal>, feedback: FeedbackRecord): Promise<FeedbackPermissions> => {
+    const target = { projectName: feedback.projectName, feedbackId: feedback.id };
+    const [canChangeStatus, canDelete, canComment, canDeleteComment] = await Promise.all([
+      may(scope, "PATCH", { action: "update", ...target }),
+      may(scope, "DELETE", { action: "delete", ...target }),
+      may(scope, "POST", { action: "createComment", ...target }),
+      may(scope, "DELETE", { action: "deleteComment", ...target }),
+    ]);
+    return { canChangeStatus, canDelete, canComment, canDeleteComment };
+  };
+
+  /** Wire shape of a record for this requester (`presentFeedback`, then redaction), with its permissions. */
+  const present = async (
+    scope: Scope<Principal>,
+    feedback: FeedbackRecord,
+    includeEmail = scope.canReadAuthorEmail,
+  ): Promise<WireFeedback> => ({
+    ...toWireFeedback(
       presentFeedback ? presentFeedback(feedback, scope.context) : feedback,
       includeEmail,
       scope.canReadAuthorEmail,
-    );
+    ),
+    permissions: await permissions(scope, feedback),
+  });
 
   return {
     json,
     error,
     validate,
+    may,
     present,
 
     /**

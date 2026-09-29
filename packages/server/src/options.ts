@@ -23,6 +23,11 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
   feedbackId?: string;
   /** Target comment of `deleteComment`. */
   commentId?: string;
+  /**
+   * `true` when nothing is being done: the handler fills in the
+   * `permissions` of a response — see `SitepingAccessControl.authorize`.
+   */
+  dryRun?: boolean;
 }
 
 /**
@@ -40,7 +45,12 @@ export type SitepingPrincipal = object | string | number;
  * - `authorize` resolving `false` → 403. Defaults to allowing every
  *   authenticated principal. When set, the store must implement
  *   `verifyProjectOwnership`: PATCH/DELETE address records by id, and the
- *   check is what binds the authorized `projectName` to the record.
+ *   check is what binds the authorized `projectName` to the record. It is
+ *   also asked, with `dryRun: true`, to fill in the `permissions` of every
+ *   feedback a response carries — `update`, `delete`, `createComment` and
+ *   `deleteComment` (without a `commentId`) per feedback, plus `deleteAll`
+ *   once per list — so clients hide what it would refuse. Keep it fast:
+ *   a page of 50 feedbacks takes 201 dry runs.
  * - `canReadAuthorEmail` decides whether responses include `authorEmail`
  *   (reviewer PII), on feedbacks and their comments — the list, the PATCH
  *   answer and the POST answer alike. Defaults to `true`.

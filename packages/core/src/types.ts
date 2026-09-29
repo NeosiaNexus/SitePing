@@ -1283,8 +1283,36 @@ export type FeedbackResponse = Prettify<
   Serialized<Omit<FeedbackRecord, "clientId" | "comments">> & {
     /** The thread, oldest first — always sent by `@siteping/server`, absent from servers that predate comments. */
     comments?: CommentResponse[] | undefined;
+    /**
+     * What the requester may do with this feedback — always sent by
+     * `@siteping/server`. Absent from servers that predate it, and in store
+     * mode: nothing is refused then.
+     */
+    permissions?: FeedbackPermissions | undefined;
   }
 >;
+
+/**
+ * What a requester may do with one feedback, as the server's access policy
+ * decides — so clients hide the actions it would refuse. The server still
+ * enforces every one of them.
+ */
+export interface FeedbackPermissions {
+  /** Change its status: resolve, reopen, … */
+  canChangeStatus: boolean;
+  /** Delete it. */
+  canDelete: boolean;
+  /** Reply in its thread. */
+  canComment: boolean;
+  /** Delete replies from its thread. */
+  canDeleteComment: boolean;
+}
+
+/** What a requester may do with a whole project, sent with each list. */
+export interface FeedbackListPermissions {
+  /** Delete every feedback of the project at once. */
+  canDeleteAll: boolean;
+}
 
 /**
  * Annotation record as returned by the API — {@link AnnotationRecord} with
@@ -1317,4 +1345,6 @@ export interface FeedbackResponseList {
   total: number;
   /** Always sent by `@siteping/server` — absent from servers that predate it. */
   capabilities?: SitepingCapabilities | undefined;
+  /** Always sent by `@siteping/server` — absent from servers that predate it. */
+  permissions?: FeedbackListPermissions | undefined;
 }
