@@ -192,7 +192,10 @@ model SitepingFeedback {
 
       expect(err).toBeInstanceOf(ExitError);
       expect((err as ExitError).code).toBe(1);
-      expect(p.log.error).toHaveBeenCalledWith(expect.stringContaining("Error:"));
+      // The permission mapping, not just any sync failure
+      expect(p.log.error).toHaveBeenCalledWith(
+        expect.stringMatching(/^Error: Permission denied: cannot write to .*schema\.prisma\./),
+      );
       expect(p.outro).toHaveBeenCalledWith(expect.stringContaining("Fix the errors"));
     });
 

@@ -125,14 +125,19 @@ describe("generateRoute", () => {
   // Permission error
   // -------------------------------------------------------------------------
 
-  it("throws descriptive error message on EACCES permission error", () => {
+  // Both codes a refused write can carry: EACCES for a mode bit, EPERM for an
+  // immutable file on Linux or any access denied on Windows (libuv's mapping).
+  it.each([
+    ["EACCES", "permission denied"],
+    ["EPERM", "operation not permitted"],
+  ])("throws descriptive error message on %s permission error", (code, description) => {
     mkdirSync(join(tmpDir, "app"), { recursive: true });
     // The OS refusing the route write (see the node:fs mock above)
     vi.mocked(writeFileSync).mockImplementationOnce((path) => {
-      throw Object.assign(new Error(`EACCES: permission denied, open '${String(path)}'`), { code: "EACCES" });
+      throw Object.assign(new Error(`${code}: ${description}, open '${String(path)}'`), { code });
     });
 
-    expect(() => generateRoute(tmpDir)).toThrow(/Permission denied.*cannot write to/);
+    expect(() => generateRoute(tmpDir)).toThrow(/^Permission denied: cannot write to .*route\.ts\./);
   });
 
   it("rethrows non-permission errors (e.g. ENOTDIR) verbatim", () => {
