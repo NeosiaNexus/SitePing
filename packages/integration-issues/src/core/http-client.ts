@@ -42,7 +42,7 @@ export interface JsonHttpClientOptions {
 
 export interface JsonRequest {
   method: "GET" | "POST" | "PUT" | "PATCH";
-  /** Path appended to `baseUrl`, or an absolute URL (pagination links). */
+  /** Path appended to `baseUrl`. */
   path: string;
   query?: Record<string, string>;
   body?: unknown;
@@ -57,7 +57,7 @@ export function createJsonHttpClient({
   timeoutMs = TRACKER_REQUEST_TIMEOUT_MS,
 }: JsonHttpClientOptions) {
   const toUrl = (path: string, query: Record<string, string> = {}): URL => {
-    const url = /^https?:\/\//.test(path) ? new URL(path) : new URL(`${baseUrl.replace(/\/$/, "")}${path}`);
+    const url = new URL(`${baseUrl.replace(/\/$/, "")}${path}`);
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
     return url;
   };
