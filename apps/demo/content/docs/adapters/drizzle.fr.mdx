@@ -195,7 +195,7 @@ Faites ce remplissage en JavaScript, pas avec le `lower()` de SQL : le `lower()`
 
 - Un échec de la base pendant une mutation (base en lecture seule ou pleine, connexion perdue, requête rejetée…) remonte en `StorePersistenceError`, avec l'erreur du driver en `cause` — y compris l'échec d'une lecture que fait la mutation, comme la recherche du `clientId` avant une insertion. Détectez-la avec `isStorePersistence`.
 - `updateFeedback` lit les annotations (immuables) et le fil avant de mettre la ligne à jour : aucun appel à la base ne suit la validation de la mise à jour. Une lecture en échec laisse la ligne intacte, et une mise à jour appliquée n'est jamais signalée en échec à cause d'une lecture qui la suit.
-- `updateFeedback` et `deleteFeedback` sur un id inconnu lèvent `StoreNotFoundError`, tout comme `addComment` sur un feedback inconnu et `deleteComment` d'un commentaire absent du fil de ce feedback. `addComment` sur un fil plein lève `StoreLimitError`.
+- `updateFeedback` et `deleteFeedback` sur un id inconnu lèvent `StoreNotFoundError`, tout comme `addComment` sur un feedback inconnu — y compris un feedback supprimé pendant l'insertion du commentaire — et `deleteComment` d'un commentaire absent du fil de ce feedback. `addComment` sur un fil plein lève `StoreLimitError`.
 
 Les deux entrées réexportent `StorePersistenceError`, `isStorePersistence`, `StoreNotFoundError`, `StoreDuplicateError` et `StoreLimitError`, pour les attraper sans autre import.
 

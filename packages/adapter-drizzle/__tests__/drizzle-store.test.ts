@@ -1184,6 +1184,29 @@ for (const dialect of dialects) {
       expect((await writer.findByClientId(feedback.clientId))?.comments).toEqual([kept]);
     });
 
+    it("reports a comment racing the delete of its feedback as a missing feedback", async () => {
+      const writer = database.createStore({ logger });
+      const feedback = await writer.createFeedback(feedbackInput());
+      // What PostgreSQL does when the delete commits between the insert's feedback check and its
+      // foreign-key check: the insert fails on the foreign key.
+      const foreignKeyViolation = Object.assign(
+        new Error(
+          `insert or update on table "${DEFAULT_SITEPING_TABLE_NAMES.comments}" violates foreign key constraint`,
+        ),
+        { code: "23503" },
+      );
+      const store = database.createStoreWithDriverInterceptor(
+        async (statementSql, run) => {
+          if (!isCommentWrite(statementSql)) return run();
+          await writer.deleteFeedback(feedback.id);
+          throw foreignKeyViolation;
+        },
+        { logger },
+      );
+
+      await expect(store.addComment(feedback.id, commentInput())).rejects.toSatisfy(isStoreNotFound);
+    });
+
     it("stores one comment when separate store instances race on its clientId", async () => {
       const feedback = await database.createStore({ logger }).createFeedback(feedbackInput());
       const input = commentInput();

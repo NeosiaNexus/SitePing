@@ -337,7 +337,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * store instances and processes, except that posts racing for the last
    * free slot may overshoot the cap by the ones that run concurrently.
    *
-   * @throws `StoreNotFoundError` when the feedback does not exist.
+   * @throws `StoreNotFoundError` when the feedback does not exist, including
+   *   when it is deleted while the comment is being inserted.
    * @throws `StoreLimitError` when its thread already holds `MAX_COMMENTS_PER_FEEDBACK` comments.
    * @throws `StorePersistenceError` when a database call fails.
    */
@@ -346,9 +347,23 @@ export class DrizzleSitepingStore implements DrizzleStore {
     const data = toStorableValue(submitted);
     const comment = buildCommentRecord(data, { id: crypto.randomUUID(), feedbackId, now: this.now() });
     const identifiers = { feedbackId, clientId: data.clientId };
-    const inserted = await persistMutation("addComment", identifiers, () =>
-      this.gateway.insertComment(comment, MAX_COMMENTS_PER_FEEDBACK),
-    );
+    let inserted: boolean;
+    try {
+      inserted = await persistMutation("addComment", identifiers, () =>
+        this.gateway.insertComment(comment, MAX_COMMENTS_PER_FEEDBACK),
+      );
+    } catch (error) {
+      // PostgreSQL checks that the feedback exists on the statement's snapshot, and
+      // its foreign key after it: a feedback deleted in between fails the insert
+      // instead of skipping it. When the feedback is gone, that is a missing
+      // feedback; when the lookup fails too, the insert's own failure stands.
+      const feedbackGone = await this.gateway.findProjectName(feedbackId).then(
+        (projectName) => projectName === null,
+        () => false,
+      );
+      if (feedbackGone) throw new StoreNotFoundError();
+      throw error;
+    }
     if (inserted) return comment;
 
     // Nothing written: a replay of the clientId, a missing feedback, or a full thread.
@@ -356,7 +371,9 @@ export class DrizzleSitepingStore implements DrizzleStore {
       this.gateway.findCommentByClientId(data.clientId),
     );
     if (replayed) return replayed;
-    const projectName = await persistMutation("addComment", identifiers, () => this.gateway.findProjectName(feedbackId));
+    const projectName = await persistMutation("addComment", identifiers, () =>
+      this.gateway.findProjectName(feedbackId),
+    );
     if (projectName === null) throw new StoreNotFoundError();
     throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
   }
