@@ -4,9 +4,10 @@ import { hasErrorCode } from "./error-code.js";
 import { ScreenshotUploadRejectedError } from "./object-store.js";
 
 /**
- * A backend API call that failed — method, path and status, never credentials.
- * Its `cause` is the network error, or the backend's error code and message:
- * never the raw error body, which may echo the signed request.
+ * A backend call that failed — method (or SQL statement), path (or key) and
+ * status, never credentials. Its `cause` is the network error, or the
+ * backend's error code and message: never the raw error body, which may echo
+ * the signed request, nor a database error quoting the query's parameters.
  * Match it with {@link isObjectStoreRequestError} rather than `instanceof`
  * (CommonJS entry points each bundle their own copy of the class).
  */
@@ -16,13 +17,11 @@ export class ObjectStoreRequestError extends Error {
     readonly backend: string,
     readonly method: string,
     readonly path: string,
+    /** HTTP status of the failed response: `null` without one (network error, timeout, database). */
     readonly status: number | null,
     options?: { cause?: unknown },
   ) {
-    super(
-      `[siteping] ${backend} ${method} ${path} failed${status === null ? " (no response)" : ` with status ${status}`}`,
-      options,
-    );
+    super(`[siteping] ${backend} ${method} ${path} failed${status === null ? "" : ` with status ${status}`}`, options);
     this.name = "ObjectStoreRequestError";
   }
 }

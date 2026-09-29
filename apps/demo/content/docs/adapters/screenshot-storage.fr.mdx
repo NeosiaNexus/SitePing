@@ -189,6 +189,8 @@ export const screenshotStorage = createScreenshotStorage(objectStore);
 
 Migrez la table avec `drizzle-kit` comme le reste de votre schéma, et servez-la avec la route ci-dessus. Sur Turso / libSQL, utilisez `createSitepingScreenshotsSqliteTable` et `createLibSQLScreenshotObjectStore` de `@siteping/screenshot-storage/drizzle-libsql`. Les deux demandent `drizzle-orm` 0.45 ou plus (sous 1.0), une dépendance peer optionnelle. La table est indépendante de celles du store : `createSitepingScreenshotsPgTable("mon_nom")` la renomme, et vous la passez en `table`.
 
+Une requête qui échoue (une table pas encore migrée, une base injoignable) lève une `ObjectStoreRequestError` qui nomme l'instruction et la clé. Sa `cause` est le code et le message de l'erreur du driver, jamais les paramètres de la requête : ils contiennent toute l'image, qui finirait sinon dans vos logs à chaque envoi en échec.
+
 ## Options
 
 `createScreenshotStorage(objectStore, options)` :

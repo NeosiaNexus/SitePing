@@ -1,8 +1,12 @@
+import { inspect } from "node:util";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createLibSQLScreenshotObjectStore } from "../src/backends/drizzle-libsql.js";
-import { createPgScreenshotObjectStore } from "../src/backends/drizzle-pg.js";
-import { createScreenshotStorage } from "../src/index.js";
+import {
+  createLibSQLScreenshotObjectStore,
+  createSitepingScreenshotsSqliteTable,
+} from "../src/backends/drizzle-libsql.js";
+import { createPgScreenshotObjectStore, createSitepingScreenshotsPgTable } from "../src/backends/drizzle-pg.js";
+import { createScreenshotStorage, isObjectStoreRequestError } from "../src/index.js";
 import { describeBackendContract, PUBLIC_BASE_URL, silentLogger, UPLOAD_CONTEXT } from "./backend-contract.js";
 import { createLibSQLScreenshotsDatabase, createPgScreenshotsDatabase } from "./databases.js";
 
@@ -80,5 +84,52 @@ describe("database backends — the largest screenshot", () => {
     expect(stored?.contentType).toBe("image/png");
     expect(stored?.bytes.length).toBe(largest.length);
     expect(Buffer.from(stored?.bytes ?? []).equals(Buffer.from(largest))).toBe(true);
+  });
+});
+
+describe("database backends — a failed query", () => {
+  // The table was never migrated: every query fails, with a driver error that
+  // quotes the bound parameters — the whole screenshot — unless it is scrubbed.
+  const image = new Uint8Array(200_000).fill(0x41);
+  const dataUrl = `data:image/png;base64,${Buffer.from(image).toString("base64")}`;
+  const notMigrated = "siteping_not_migrated";
+
+  it.each([
+    [
+      "PostgreSQL (Drizzle)",
+      () =>
+        createPgScreenshotObjectStore(pg.db, {
+          publicBaseUrl: PUBLIC_BASE_URL,
+          table: createSitepingScreenshotsPgTable(notMigrated),
+        }),
+      `42P01: relation "${notMigrated}" does not exist`,
+    ],
+    [
+      "libSQL (Drizzle)",
+      () =>
+        createLibSQLScreenshotObjectStore(libsql.db, {
+          publicBaseUrl: PUBLIC_BASE_URL,
+          table: createSitepingScreenshotsSqliteTable(notMigrated),
+        }),
+      `SQLITE_ERROR: no such table: ${notMigrated}`,
+    ],
+  ])("%s reports it by statement and key, without the query's parameters", async (_name, open, driverError) => {
+    const logger = silentLogger();
+
+    const failure = await createScreenshotStorage(open(), { logger })
+      .upload(dataUrl, UPLOAD_CONTEXT)
+      .catch((error: unknown) => error);
+
+    expect(isObjectStoreRequestError(failure)).toBe(true);
+    expect(failure).toMatchObject({
+      message: expect.stringMatching(/ INSERT siteping-[a-f0-9]{32}\.png failed$/),
+      cause: driverError,
+    });
+    // What a store logs: the upload failure, and the warning of the reclaim that failed too.
+    const logged = inspect([failure, logger.warn.mock.calls], { depth: null });
+    expect(logged).toContain("could not reclaim an uncertain upload");
+    expect(logged).not.toContain("AAAAAAAA"); // node-postgres and PGlite: the bytes as text
+    expect(logged).not.toContain("65,65,65"); // libSQL: the bytes as decimals
+    expect(logged.length).toBeLessThan(20_000);
   });
 });
