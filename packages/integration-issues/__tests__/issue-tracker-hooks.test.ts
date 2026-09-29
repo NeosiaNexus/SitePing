@@ -216,7 +216,7 @@ for (const provider of providers) {
       const [issue] = fake.issues;
 
       // First attempt: the comment lands, then the delete itself is retried.
-      await (createIssueTrackerHooks({ tracker: provider.createTracker(fake) }).onDeleting?.(
+      await (createIssueTrackerHooks<null>({ tracker: provider.createTracker(fake) }).onDeleting?.(
         { kind: "single", id: feedback.id, projectName: "site" },
         { request: new Request(ENDPOINT), principal: null },
       ) as Promise<void>);
