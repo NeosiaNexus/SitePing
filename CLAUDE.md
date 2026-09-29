@@ -15,7 +15,7 @@
 - `bun run new:locale <code>` / `bun run new:adapter <name>` — scaffolds (see CONTRIBUTING)
 
 ## Architecture
-- **Monorepo** with bun workspaces — 11 packages in `packages/`:
+- **Monorepo** with bun workspaces — 12 packages in `packages/`:
   - `@siteping/core` — shared types, schema, store errors + helpers (internal, not published, no release-please entry, no npm publish job)
   - `@siteping/widget` — browser feedback widget (Shadow DOM, closed mode). Accepts `store` option for client-side mode (no server needed)
   - `@siteping/dashboard` — Linear-style triage inbox React component (`<SitepingInbox />` + headless `useSitepingInbox()`); no Shadow DOM — scoped `spd-` classes + `--spd-*` CSS vars injected once
@@ -23,6 +23,7 @@
   - `@siteping/adapter-prisma` — PrismaStore + `createSitepingHandler` delegating to `@siteping/server` (`workspace:^` dependency, pinned by release.yml at publish; its publish job waits for the idempotent `publish-server`); `@prisma/client` optional peer
   - `@siteping/adapter-drizzle` — Drizzle ORM store: `/pg` (any PostgreSQL driver, Neon HTTP included) and `/libsql` (Turso); `drizzle-orm` peer, mounted through `@siteping/server`
   - `@siteping/screenshot-storage` — ready-made `ScreenshotStorage` for the stores: `createScreenshotStorage(objectStore)` over `/s3` (SigV4 on Web Crypto, no AWS SDK), `/cloudflare-images`, `/drizzle-pg`, `/drizzle-libsql`, `/filesystem` (the only Node entry) and `/memory`, plus `createScreenshotServeHandler` (own keys only, inert images inline); random key per upload, `drizzle-orm` optional peer
+  - `@siteping/integration-issues` — `createIssueTrackerHooks` (server lifecycle hooks) over an `IssueTracker` port, providers `/github` and `/gitlab`: one issue per feedback, linked by a marker on the body's first line (the only line parsed), visitor text quoted as code; `@siteping/server` peer (`workspace:^`, pinned by release.yml, publish job waits for `publish-server`)
   - `@siteping/adapter-memory` — in-memory adapter (testing, demos, serverless)
   - `@siteping/adapter-localstorage` — client-side localStorage adapter (demos, prototyping)
   - `@siteping/adapter-kit` — published toolkit for third-party adapters: store contract, `createCollectionStore` engine, record builders, conformance suite (`/testing`, vitest optional peer)

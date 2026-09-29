@@ -1,0 +1,169 @@
+---
+title: Gestionnaires de tickets
+description: Un ticket GitHub ou GitLab par feedback, ouvert, fermé et rouvert avec lui par les hooks de cycle de vie du serveur.
+---
+
+`@siteping/integration-issues` construit les [hooks de cycle de vie](/fr/docs/server#points-dextension) de `@siteping/server` pour que chaque feedback ait son propre ticket sur GitHub ou GitLab :
+
+- **créé** → un ticket s'ouvre, avec le label `siteping`, le message, la page, un lien direct, les éléments annotés, l'environnement du relecteur et les diagnostics ;
+- **résolu** ou **ne sera pas corrigé** → le ticket se ferme ; **rouvert** → il se rouvre ;
+- **supprimé** → le ticket se ferme avec un commentaire. Si le gestionnaire est injoignable, la suppression est refusée et peut être rejouée.
+
+Aucune colonne n'est ajoutée à la base : la première ligne de chaque ticket est un marqueur caché qui nomme son feedback.
+
+```bash
+npm i @siteping/integration-issues
+```
+
+Il tourne partout où tourne le [serveur](/fr/docs/server) (API Fetch uniquement) et prend `@siteping/server` en dépendance pair ; [`@siteping/adapter-prisma`](/fr/docs/adapters/prisma) l'apporte déjà, et transmet `hooks` comme toutes les autres options du serveur.
+
+## GitHub
+
+```ts
+// app/api/siteping/route.ts
+import { createSitepingHandler } from "@siteping/server";
+import { createIssueTrackerHooks } from "@siteping/integration-issues";
+import { createGitHubTracker } from "@siteping/integration-issues/github";
+import { store } from "@/lib/siteping-store";
+
+export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
+  store,
+  apiKey: process.env.SITEPING_API_KEY,
+  hooks: createIssueTrackerHooks({
+    tracker: createGitHubTracker({ repository: "acme/site", token: process.env.GITHUB_TOKEN! }),
+    siteUrl: "https://acme.com",
+  }),
+});
+```
+
+Le jeton est un [jeton d'accès personnel à granularité fine](https://github.com/settings/personal-access-tokens) limité à ce dépôt, avec la permission **Issues** en **Read and write**. Son compte doit aussi avoir un **accès en écriture** au dépôt : GitHub retire sans rien dire les labels d'un nouveau ticket créé par quelqu'un d'autre, et sans son label `siteping`, SitePing ne retrouve plus le ticket. Dans ce cas, le handler journalise une erreur qui nomme la permission manquante.
+
+Sur GitHub Enterprise Server, passez `apiBaseUrl: "https://github.acme.com/api/v3"`.
+
+## GitLab
+
+```ts
+import { createGitLabTracker } from "@siteping/integration-issues/gitlab";
+
+createIssueTrackerHooks({
+  tracker: createGitLabTracker({ project: "acme/site", token: process.env.GITLAB_TOKEN! }),
+  siteUrl: "https://acme.com",
+});
+```
+
+`project` est l'identifiant numérique ou le chemin complet (`groupe/sous-groupe/projet`). Le jeton est un jeton d'accès personnel, de projet ou de groupe avec la portée `api`, pour un membre qui a au moins le rôle **Reporter** : GitLab ignore les labels posés par les membres Guest, et le handler journalise alors une erreur, comme sur GitHub.
+
+Sur une instance auto-hébergée, passez `apiBaseUrl: "https://gitlab.acme.com/api/v4"`.
+
+## Correspondance des statuts
+
+| Feedback | Ticket GitHub | Ticket GitLab |
+|---|---|---|
+| `open`, `in_progress` | Rouvert | Rouvert |
+| `resolved` | Fermé comme terminé (completed) | Fermé |
+| `wont_fix` | Fermé comme non prévu (not planned) | Fermé |
+| Supprimé | Fermé comme non prévu, avec un commentaire | Fermé, avec un commentaire |
+
+Passer de `open` à `in_progress` et inversement n'envoie rien : le ticket est déjà ouvert. Avec `syncStatus: false`, les tickets sont seulement créés, puis fermés à la suppression.
+
+La synchronisation va dans un seul sens, de SitePing vers le gestionnaire : fermer le ticket sur GitHub ne résout pas le feedback.
+
+## Ce que contient un ticket
+
+Le titre est `[SitePing]` suivi du message sur une ligne, tronqué à 255 caractères. Le corps a ces sections :
+
+- **Message**
+- **Type**
+- **Page**, résolue par rapport à `siteUrl`
+- **Open in the page** : un lien qui ouvre la page avec le feedback mis en avant, une fois l'option [`deepLink`](/fr/docs/widget/configuration) du widget activée
+- **Annotations** : élément, sélecteur CSS et texte de 10 annotations au plus
+- **Author**, **Viewport**, **User agent**
+- **Screenshot**, quand la capture a une URL `https`
+- **Console diagnostics** et **Network diagnostics** : les 5 premières entrées de chaque, quand le widget les a capturées
+
+Certaines choses restent dehors :
+
+- L'e-mail du relecteur, sauf avec `includeAuthorEmail: true`.
+- Les captures stockées en ligne comme URL `data:`, ce qui arrive sans [stockage des captures](/fr/docs/adapters/screenshot-storage). Les gestionnaires ne les affichent pas.
+- Les [fils de discussion](/fr/docs/comments).
+
+Tout le corps vient de visiteurs anonymes, il est donc cité comme du code. Un message peut contenir `@octocat`, `#12`, `<!--`, un lien Markdown ou une image : rien de tout cela ne notifie quelqu'un, ne pointe vers un autre ticket, ne masque du texte ni ne charge quoi que ce soit. Dans le titre, `@` et `#` sont suivis d'une espace sans chasse pour la même raison.
+
+> **Dépôts publics.** Un ticket dans un dépôt public est public : le message, la page, le user agent et les diagnostics de chaque feedback deviennent lisibles par tous. Préférez un dépôt privé, et utilisez `redact` pour les secrets qui finissent dans des URL ou des messages de console.
+
+## Options
+
+`createIssueTrackerHooks` prend :
+
+| Option | Type | Défaut | Ce qu'elle fait |
+|---|---|---|---|
+| `tracker` | `IssueTracker` | — | Obligatoire. `createGitHubTracker`, `createGitLabTracker` ou [le vôtre](#autres-gestionnaires) |
+| `siteUrl` | `string` | — | Origine du site en recette. Par défaut, le widget enregistre `location.pathname` comme URL de page : sans `siteUrl`, les tickets affichent un chemin nu et n'ont pas de lien direct |
+| `deepLinkParam` | `string \| false` | `"siteping"` | Doit correspondre au `param` de l'option [`deepLink`](/fr/docs/widget/configuration) du widget. `false` retire le lien |
+| `labels` | `string[]` | `[]` | Labels en plus. `siteping` est toujours ajouté |
+| `redact` | `(text) => string` | aucun | Appliqué au message, à l'auteur, aux URL, au user agent, au texte des annotations et aux diagnostics avant qu'ils quittent votre serveur |
+| `includeAuthorEmail` | `boolean` | `false` | Ajoute l'e-mail du relecteur à côté de son nom |
+| `formatIssue` | `(feedback, defaults) => { title, body }` | intégré | Votre propre titre et votre propre Markdown. Le marqueur reste ajouté en première ligne. Citer le texte des visiteurs est alors à votre charge |
+| `syncStatus` | `boolean` | `true` | Ferme et rouvre le ticket quand le statut change |
+| `deletedCommentText` | `(feedbackId) => string` | ``SitePing feedback `<id>` was deleted.`` | Le commentaire laissé sur le ticket d'un feedback supprimé |
+
+`createGitHubTracker` et `createGitLabTracker` prennent aussi `apiBaseUrl`, `fetch` (pour un proxy ou des tests), `timeoutMs` (par requête, `5000` par défaut) et `maxListedPages` (`10` par défaut, voir [comment les tickets sont retrouvés](#comment-les-tickets-sont-retrouvés)).
+
+`createIssueTrackerHooks` renvoie des hooks ordinaires, auxquels vous pouvez ajouter les vôtres :
+
+```ts
+hooks: {
+  ...createIssueTrackerHooks({ tracker }),
+  onDeleted: (target) => audit.log("deleted", target),
+},
+```
+
+## Latence et échecs
+
+- **À la création.** `onCreated` est attendu avant que le `POST` réponde : le widget attend donc une requête au gestionnaire, au plus `timeoutMs` (5 secondes par défaut). Si elle échoue (gestionnaire en panne, mauvais jeton, label retiré), le feedback est enregistré quand même et l'erreur part dans le `logger` du serveur sous la forme `[siteping] Hook onCreated failed`. Rien ne la rejoue : ce feedback n'a pas de ticket.
+- **Au changement de statut.** Un échec de synchronisation est journalisé de la même façon, et le nouveau statut est conservé.
+- **À la suppression.** `onDeleting` ferme le ticket avant que l'enregistrement parte. Si le gestionnaire échoue, le `DELETE` répond `502` et garde l'enregistrement : rejouez-le quand le gestionnaire est revenu. Le commentaire n'est laissé qu'une fois, même d'une tentative à l'autre.
+
+## Comment les tickets sont retrouvés
+
+Chaque corps commence par le marqueur `<!-- siteping-feedback {"id":"…","project":"…"} -->`, que GitHub et GitLab n'affichent pas. Seule cette première ligne est lue, donc un texte de feedback qui l'imite est ignoré. Modifiez le reste du ticket comme vous voulez, mais gardez cette ligne en tête.
+
+Pour synchroniser un statut ou supprimer un feedback, le gestionnaire est d'abord interrogé par une recherche sur l'identifiant du feedback (l'API de recherche de GitHub, le paramètre `search` de GitLab). Si la recherche ne trouve rien, les hooks listent les tickets `siteping` du plus récent au plus ancien. L'index de recherche de GitHub a quelques secondes de retard sur un nouveau ticket, et sa limite est de 30 recherches par minute. La suppression d'un projet entier passe toujours par cette liste.
+
+La liste s'arrête après `maxListedPages` pages de 100 tickets. Avec la valeur par défaut de 10, le repli ne peut pas atteindre un ticket plus ancien que les 1 000 tickets SitePing les plus récents du dépôt. Augmentez-la pour un historique plus grand.
+
+Seuls les tickets avec le label comptent. Sur GitHub et GitLab, une personne extérieure ne peut pas poser de label sur un ticket, et ne peut donc pas en faire passer un pour un ticket de SitePing.
+
+## Autres gestionnaires
+
+Implémentez `IssueTracker` pour Jira, Linear ou un outil interne. Les hooks gardent tout ce qui ne dépend pas du gestionnaire : le format, le marqueur, et des commentaires de suppression qui ne se répètent pas.
+
+```ts
+import type { IssueTracker } from "@siteping/integration-issues";
+
+const tracker: IssueTracker = {
+  name: "Linear",
+  // Stockez `body` tel quel : sa première ligne est le marqueur.
+  async createIssue({ title, body, labels }) {
+    return { key: "ENG-42", url: "https://linear.app/acme/issue/ENG-42" };
+  },
+  // resolved / wont_fix ferment le ticket ; open / in_progress le rouvrent.
+  async updateIssueStatus(reference, status) {},
+  async addComment(reference, body) {},
+  async listComments(reference) {
+    return []; // le texte des commentaires
+  },
+  // Chaque ticket SitePing dont le corps contient `marker`, fermés compris.
+  async findSitepingIssues(marker) {
+    return []; // { reference, body, isOpen }
+  },
+  // Facultatif : une recherche côté gestionnaire par identifiant de feedback, essayée d'abord.
+  async searchSitepingIssues(feedbackId) {
+    return [];
+  },
+};
+```
+
+Levez une exception quand un appel échoue, et les [règles d'échec](#latence-et-échecs) ci-dessus s'appliquent. Les gestionnaires qui ne parlent pas Markdown peuvent façonner le corps avec `formatIssue`.
+
+Synchroniser dans l'autre sens, pour que fermer un ticket résolve son feedback, demande un handler de webhooks du gestionnaire et n'existe pas encore ([#318](https://github.com/NeosiaNexus/SitePing/issues/318)).

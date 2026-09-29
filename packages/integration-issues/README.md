@@ -1,12 +1,22 @@
+[![npm version](https://img.shields.io/npm/v/@siteping/integration-issues)](https://www.npmjs.com/package/@siteping/integration-issues)
+[![Docs](https://img.shields.io/badge/docs-siteping.dev-0066ff)](https://siteping.dev/docs/issue-trackers)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
+
 # @siteping/integration-issues
 
-Keep one tracker issue per [SitePing](https://siteping.dev) feedback, through `@siteping/server` lifecycle hooks:
+One GitHub or GitLab issue per [SitePing](https://github.com/NeosiaNexus/SitePing) feedback, opened, closed and reopened along with it through `@siteping/server` lifecycle hooks. No database column: the issue's first line links it to its feedback. Any other tracker plugs in through the `IssueTracker` interface.
 
-- **created** → opens an issue (Markdown body: message, page, deep link, viewport, screenshot, diagnostics);
-- **resolved / won't fix / reopened** → closes or reopens it;
-- **deleted** → closes it with a comment. If the tracker is unreachable, the delete is aborted and can be retried.
+**[Documentation](https://siteping.dev/docs/issue-trackers)**
 
-Issues are linked to feedbacks by a hidden marker in their body — no extra database column.
+## Install
+
+```bash
+npm install @siteping/integration-issues
+```
+
+Node ≥ 20, or any runtime with the Fetch API. `@siteping/server` is a peer dependency.
+
+## Quick start
 
 ```ts
 import { createSitepingHandler } from "@siteping/server";
@@ -16,23 +26,18 @@ import { createGitHubTracker } from "@siteping/integration-issues/github";
 
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
-  access,
+  apiKey: process.env.SITEPING_API_KEY,
   hooks: createIssueTrackerHooks({
     tracker: createGitHubTracker({ repository: "acme/site", token: process.env.GITHUB_TOKEN! }),
-    // tracker: createGitLabTracker({ project: "acme/site", token: process.env.GITLAB_TOKEN! }),
-    labels: ["feedback"],
-    redact: (text) => text.replace(/token=\S+/g, "token=[redacted]"),
+    siteUrl: "https://acme.com", // resolves the page paths the widget records
   }),
 });
 ```
 
-| Provider | Entry | Status mapping |
-|---|---|---|
-| GitHub (github.com, Enterprise Server via `apiBaseUrl`) | `./github` | resolved → closed as completed, won't fix → closed as not planned, open → reopened |
-| GitLab (gitlab.com, self-managed via `apiBaseUrl`) | `./gitlab` | resolved / won't fix → closed, open → reopened |
+## Documentation
 
-Any other tracker: implement the `IssueTracker` interface and pass it as `tracker`.
+Token permissions, the status mapping, what an issue contains, failure handling and custom trackers: **[siteping.dev/docs/issue-trackers](https://siteping.dev/docs/issue-trackers)**.
 
-Reviewer emails are left out of issues unless `includeAuthorEmail: true` — issues are often public.
+## License
 
-MIT
+[MIT](https://github.com/NeosiaNexus/SitePing/blob/main/LICENSE)
