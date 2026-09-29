@@ -11,7 +11,8 @@
 //   2. a simulated consumer production build CAN fold it (the literal is
 //      still in a define-replaceable position).
 // It also fails when a bundle still carries a CSS comment (a build without
-// the css-literals plugin) or a source map names a source by an absolute path.
+// the css-literals plugin), ships a non-ASCII character, or a source map names
+// a source by an absolute path.
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -94,6 +95,20 @@ for (const [f, code] of sources) {
   }
 }
 
+// esbuild escapes every non-ASCII character (its `charset: ascii` default),
+// and the Terser pass keeps it that way (`ascii_only`): a classic <script> is
+// decoded with the page's charset, so a raw UTF-8 byte in the IIFE would come
+// out garbled on a page that is not UTF-8.
+for (const [f, code] of sources) {
+  const at = code.search(/[\u0080-\uffff]/);
+  if (at !== -1) {
+    errors.push(
+      `${f}: non-ASCII character ${JSON.stringify(code[at])} at offset ${at} — ` +
+        "check that the Terser pass keeps `ascii_only`",
+    );
+  }
+}
+
 // Source maps name their sources relative to the map. An absolute path would
 // publish the build machine's checkout path and tie the map to it.
 const ABSOLUTE = /^(?:[\\/]|[a-z][\w+.-]*:)/i;
@@ -111,5 +126,5 @@ if (errors.length > 0) {
 }
 console.log(
   `[verify-dist-guard] OK — ${LITERAL} literal intact and consumer-replaceable in all bundles, ` +
-    "CSS literals minified, source map paths relative",
+    "CSS literals minified, ASCII-only, source map paths relative",
 );

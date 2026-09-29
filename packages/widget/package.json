@@ -86,8 +86,7 @@
     "esbuild": "^0.28.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "size-limit": "^14.0.0",
-    "terser": "^5.51.2"
+    "size-limit": "^14.0.0"
   },
   "peerDependencies": {
     "react": ">=18"

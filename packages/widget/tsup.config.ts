@@ -1,7 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { basename } from "node:path";
-import { minify } from "terser";
 import { defineConfig } from "tsup";
+import { terserPass } from "../../tsup.preset.js";
 import { cssLiteralsPlugin } from "./scripts/css-literals.js";
 
 // Three parallel builds:
@@ -33,24 +31,6 @@ const pureCalls = ["console.debug", "console.info"] as const;
 // plain browsers without `process` fall through via readNodeEnv's try/catch.
 // `scripts/verify-dist-guard.mjs` asserts this after every build.
 const keepNodeEnvLiteral = { "process.env.NODE_ENV": "process.env.NODE_ENV" } as const;
-
-// Terser runs on the finished file rather than through tsup's
-// `minify: "terser"`, which ships the esbuild output when Terser fails and
-// names that intermediate bundle by its absolute path in the source map.
-// Given esbuild's map, Terser chains the two maps itself and leaves the code
-// that has no original position unmapped.
-async function terserPass(file: string): Promise<void> {
-  const name = basename(file);
-  const [code, map] = await Promise.all([readFile(file, "utf8"), readFile(`${file}.map`, "utf8")]);
-  const result = await minify(
-    { [name]: code },
-    { compress: { passes: 2 }, sourceMap: { content: map, url: `${name}.map` } },
-  );
-  if (result.code === undefined || typeof result.map !== "string") {
-    throw new Error(`Terser returned no output for ${file}`);
-  }
-  await Promise.all([writeFile(file, result.code), writeFile(`${file}.map`, result.map)]);
-}
 
 export default defineConfig([
   {
