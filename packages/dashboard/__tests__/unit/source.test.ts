@@ -458,6 +458,7 @@ describe("createStoreSource", () => {
         rows = next;
       },
       generateId: () => crypto.randomUUID(),
+      comments: true,
     });
     const source = createStoreSource(threaded);
     const input = {

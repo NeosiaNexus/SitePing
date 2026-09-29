@@ -37,6 +37,8 @@ export function createArrayStore(): SitepingStore {
       feedbacks = next;
     },
     generateId: () => `kit-${counter++}`,
+    // Fils de discussion — voir plus bas.
+    comments: true,
   });
 }
 ```
@@ -51,7 +53,7 @@ C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la 
 | `persist(feedbacks)` | Réécrit l'instantané complet. Levez `StorePersistenceError` quand l'écriture est perdue (quota, stockage désactivé) — ne l'avalez jamais |
 | `generateId()` | Un identifiant unique, utilisé pour les feedbacks, les annotations et les commentaires |
 
-`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` dont `verifyProjectOwnership` est garanti au lieu d'être optionnel — avec `createFeedbackIfAbsent`, `addComment` et `deleteComment` garantis eux aussi, vous pouvez donc leur déléguer sans vérification préalable.
+`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` dont `verifyProjectOwnership` est garanti au lieu d'être optionnel — avec `createFeedbackIfAbsent` garanti lui aussi, et `addComment` et `deleteComment` dès que vous passez `comments: true` — vous pouvez donc leur déléguer sans vérification préalable.
 
 **Un `persist` qui échoue laisse votre instantané intact.** Le moteur ne modifie jamais le tableau renvoyé par `load()` — chaque écriture construit un nouveau tableau et le passe à `persist`. Donc si `load()` sert un tableau en cache et que l'écriture lève, aucun enregistrement fantôme ne reste visible, et le réessai du widget avec le même `clientId` est écrit pour de bon au lieu d'être dédupliqué contre quelque chose qui n'a jamais atteint le stockage.
 
@@ -145,7 +147,7 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 - `deleteComment` se limite au fil qu'elle désigne, celui pour lequel l'appelant a été autorisé : un commentaire d'un autre fil est « introuvable ».
 - Un fil contient au plus `MAX_COMMENTS_PER_FEEDBACK` (100) commentaires `client` — les `team` ne comptent pas et ne sont jamais refusés —, un commentaire ne touche pas à l'`updatedAt` du feedback, et supprimer un feedback supprime son fil.
 
-`buildCommentRecord(data, { id, feedbackId })` construit l'enregistrement, et `createCollectionStore` implémente les deux méthodes.
+`buildCommentRecord(data, { id, feedbackId })` construit l'enregistrement, et `createCollectionStore` implémente les deux méthodes quand vous passez `comments: true`. Passez-le dès que `load` rend le `createdAt` de chaque commentaire sous forme de `Date` — un backend JSON le ranime comme les dates de l'enregistrement. Les fils sont désactivés par défaut : un adapter snapshot écrit avant eux garde sa surface, et son format de stockage, quand le kit se met à jour.
 
 ## La preuve : la suite de conformité
 

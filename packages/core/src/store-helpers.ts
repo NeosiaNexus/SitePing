@@ -153,6 +153,15 @@ export interface CollectionStoreBackend {
   persist(feedbacks: FeedbackRecord[]): void | Promise<void>;
   /** Generate a unique id for a new feedback, annotation or comment record. */
   generateId(): string;
+  /**
+   * Keep discussion threads on the records: the store gains `addComment` and
+   * `deleteComment`, and new records start with `comments: []`. Opt in once
+   * `load` hands back what `persist` wrote for them, each comment's
+   * `createdAt` a `Date` again (a JSON backend revives it like the record's
+   * own dates). Off by default, so an adapter written before threads never
+   * gains them — over storage never written for them — on an engine update.
+   */
+  comments?: boolean | undefined;
 }
 
 /**
@@ -169,8 +178,8 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * create, with `createFeedbackIfAbsent` reporting inserts), newest-first
  * ordering, the standard filter/pagination pipeline, `StoreNotFoundError` on
  * missing update/delete, project-scoped bulk delete,
- * `verifyProjectOwnership`, and discussion threads (`addComment`,
- * `deleteComment`) kept on each record. The snapshot returned by `load` is
+ * `verifyProjectOwnership`, and — with `comments: true` — discussion threads
+ * (`addComment`, `deleteComment`) kept on each record. The snapshot returned by `load` is
  * never mutated: every write hands `persist` a new array, so a failed write leaves
  * a cached snapshot exactly as it was. When `persist` fails during `createFeedback`
  * and the record carries an inline screenshot, the engine retries once
@@ -205,6 +214,7 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  *       this.feedbacks = next;
  *     },
  *     generateId: () => crypto.randomUUID(),
+ *     comments: true,
  *   });
  *   createFeedback = this.store.createFeedback;
  *   // …delegate the remaining methods the same way
@@ -212,8 +222,14 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * ```
  */
 export function createCollectionStore(
+  backend: CollectionStoreBackend & { comments: true },
+): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent" | "addComment" | "deleteComment">>;
+export function createCollectionStore(
   backend: CollectionStoreBackend,
-): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent" | "addComment" | "deleteComment">> {
+): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent">>;
+export function createCollectionStore(
+  backend: CollectionStoreBackend,
+): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent">> {
   // Every mutation is a load → modify → persist cycle over the WHOLE
   // snapshot, so two interleaved mutations would start from the same
   // snapshot and the last persist would silently drop the other's change
@@ -246,13 +262,11 @@ export function createCollectionStore(
       const existing = feedbacks.find((f) => f.clientId === data.clientId);
       if (existing) return { feedback: existing, created: false };
 
-      const record: FeedbackRecord = {
-        ...buildFeedbackRecord(data, {
-          id: backend.generateId(),
-          annotationId: () => backend.generateId(),
-        }),
-        comments: [],
-      };
+      const record: FeedbackRecord = buildFeedbackRecord(data, {
+        id: backend.generateId(),
+        annotationId: () => backend.generateId(),
+      });
+      if (backend.comments) record.comments = [];
 
       const next = [record, ...feedbacks];
       try {
@@ -265,7 +279,7 @@ export function createCollectionStore(
       return { feedback: record, created: true };
     });
 
-  return {
+  const store: CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent">> = {
     createFeedbackIfAbsent,
 
     async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
@@ -311,6 +325,11 @@ export function createCollectionStore(
       const fb = (await backend.load()).find((f) => f.id === id);
       return fb !== undefined && fb.projectName === projectName;
     },
+  };
+  if (!backend.comments) return store;
+
+  return {
+    ...store,
 
     addComment: (feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> =>
       mutate(async (feedbacks) => {

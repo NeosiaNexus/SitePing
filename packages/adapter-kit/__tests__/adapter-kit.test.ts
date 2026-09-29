@@ -18,6 +18,7 @@ function createArrayStore(): SitepingStore {
       feedbacks = next;
     },
     generateId: () => `kit-${counter++}`,
+    comments: true,
   });
 }
 
