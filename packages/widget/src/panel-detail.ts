@@ -486,18 +486,14 @@ export const DETAIL_CSS = /* css */ `
     margin-top: 8px;
   }
 
-  .sp-thread-foot [aria-busy="true"] {
-    cursor: wait;
-  }
-
+  /* A reply in flight: Send spins, and keeps the keyboard focus. */
   .sp-thread-foot [aria-busy="true"]::before {
     content: "";
     display: inline-block;
     width: 10px;
     height: 10px;
     margin-right: 8px;
-    vertical-align: -1px;
-    border: 2px solid currentColor;
+    border: 2px solid;
     border-top-color: transparent;
     border-radius: 50%;
     animation: sp-spin 0.6s linear infinite;

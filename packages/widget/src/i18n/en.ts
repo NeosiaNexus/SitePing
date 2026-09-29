@@ -155,7 +155,7 @@ export const en: Translations = {
   "comments.title": "Replies",
   "comments.placeholder": "Reply to the team...",
   "comments.error": "Not sent. Try again.",
-  "comments.full": "This thread is full. No more replies can be sent.",
+  "comments.full": "This thread is full.",
   "comments.team": "Team",
 
   // Keyboard shortcuts overlay

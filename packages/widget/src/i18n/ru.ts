@@ -155,7 +155,7 @@ export const ru: Translations = {
   "comments.title": "Ответы",
   "comments.placeholder": "Ответить команде...",
   "comments.error": "Не отправлено. Попробуйте ещё раз.",
-  "comments.full": "Обсуждение заполнено. Новые ответы отправить нельзя.",
+  "comments.full": "Обсуждение заполнено.",
   "comments.team": "Команда",
 
   // Keyboard shortcuts overlay

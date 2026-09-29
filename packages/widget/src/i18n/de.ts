@@ -156,7 +156,7 @@ export const de: Translations = {
   "comments.title": "Antworten",
   "comments.placeholder": "Dem Team antworten...",
   "comments.error": "Nicht gesendet. Versuch es noch einmal.",
-  "comments.full": "Dieser Verlauf ist voll. Es können keine Antworten mehr gesendet werden.",
+  "comments.full": "Dieser Verlauf ist voll.",
   "comments.team": "Team",
 
   // Keyboard shortcuts overlay
