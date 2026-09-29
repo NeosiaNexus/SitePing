@@ -41,14 +41,16 @@ export type WebhookType = "slack" | "discord" | "generic";
  * - `timeoutMs` — abort the fetch after this many ms. Defaults to 5000.
  * - `onError` — invoked with the underlying error and the feedback id when
  *   the dispatch fails (network error, non-2xx, timeout). The webhook is
- *   fire-and-forget, so this is your only chance to observe failures.
+ *   fire-and-forget, so this is your only chance to observe failures. An
+ *   async one is awaited: the delivery `waitUntil` holds covers it, and its
+ *   rejection is reported like a throw, never left unhandled.
  */
 export interface WebhookConfig {
   url: string;
   type?: WebhookType;
   headers?: Record<string, string>;
   timeoutMs?: number;
-  onError?: (err: Error, feedbackId: string) => void;
+  onError?: (err: Error, feedbackId: string) => void | Promise<void>;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -389,19 +391,20 @@ export async function dispatchWebhook(config: WebhookConfig, feedback: FeedbackR
 
     if (!response.ok) {
       const err = new Error(`Webhook responded with HTTP ${response.status}`);
-      reportError(config, err, feedback.id);
+      await reportError(config, err, feedback.id);
     }
   } catch (rawError) {
     clearTimeout(timer);
     const err = rawError instanceof Error ? rawError : new Error(String(rawError));
-    reportError(config, err, feedback.id);
+    await reportError(config, err, feedback.id);
   }
 }
 
-function reportError(config: WebhookConfig, err: Error, feedbackId: string): void {
+async function reportError(config: WebhookConfig, err: Error, feedbackId: string): Promise<void> {
   if (config.onError) {
     try {
-      config.onError(err, feedbackId);
+      // Awaited, so an async callback's rejection lands here like a throw.
+      await config.onError(err, feedbackId);
     } catch (callbackErr) {
       // Defense-in-depth: a thrown user callback must not bubble back up
       // and crash the request that already succeeded persisting the

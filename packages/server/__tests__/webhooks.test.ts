@@ -458,6 +458,22 @@ describe("dispatchWebhook", () => {
     expect(abortReason).toBeDefined();
   });
 
+  it("awaits an async onError, and reports its rejection instead of leaving it unhandled", async () => {
+    fetchSpy.mockRejectedValueOnce(new Error("slack down"));
+    let reported = false;
+    const onError = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      reported = true;
+      throw new Error("sentry unreachable");
+    };
+
+    await expect(dispatchWebhook({ url: "https://hooks.example.com", onError }, FEEDBACK)).resolves.toBeUndefined();
+
+    expect(reported).toBe(true);
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain("sentry unreachable");
+  });
+
   it("does not throw when the user-supplied onError itself throws", async () => {
     fetchSpy.mockRejectedValueOnce(new Error("boom"));
     const onError = vi.fn(() => {

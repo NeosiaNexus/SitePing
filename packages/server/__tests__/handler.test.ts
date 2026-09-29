@@ -302,6 +302,34 @@ describe("createSitepingHandler — failure reporting", () => {
     expect(await (await handler.GET(listRequest())).json()).toEqual({ error: "Internal server error" });
   });
 
+  it("falls back to console.error when the logger throws or rejects, and still answers", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const throwing: SitepingLogger = {
+        error() {
+          throw new Error("logger misconfigured");
+        },
+      };
+      const rejecting: SitepingLogger = { error: () => Promise.reject(new Error("log shipper unreachable")) };
+
+      for (const logger of [throwing, rejecting]) {
+        const response = await createSitepingHandler({ store: failingStore(new Error("down")), logger }).GET(
+          listRequest(),
+        );
+
+        expect(response.status).toBe(500);
+      }
+
+      await vi.waitFor(() => expect(consoleSpy).toHaveBeenCalledTimes(2));
+      expect(consoleSpy.mock.calls.map(([message]) => message)).toEqual([
+        "[siteping] Failed to fetch feedbacks",
+        "[siteping] Failed to fetch feedbacks",
+      ]);
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
   it("logs to console.error by default", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {

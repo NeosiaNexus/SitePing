@@ -107,9 +107,14 @@ export interface SitepingLifecycleHooks<Principal> {
   onDeleted?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): void | Promise<void>;
 }
 
-/** Where the handler reports unexpected failures. Defaults to `console.error`. */
+/**
+ * Where the handler reports unexpected failures. Defaults to `console.error`.
+ * A logger that throws, or returns a promise that rejects (a log shipper
+ * down), falls back to `console.error`: it never fails the request, nor
+ * leaves a rejection unhandled.
+ */
 export interface SitepingLogger {
-  error(message: string, context: Record<string, unknown>): void;
+  error(message: string, context: Record<string, unknown>): void | Promise<void>;
 }
 
 /** Options shared by both access policies. */

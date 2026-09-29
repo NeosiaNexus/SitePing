@@ -27,6 +27,22 @@ const consoleLogger: SitepingLogger = {
   },
 };
 
+/**
+ * `logger`, made safe to call anywhere: a throw, or a rejection of what it
+ * returns — unhandled, fatal in Node by default — falls back to `console.error`.
+ */
+function safeLogger(logger: SitepingLogger): SitepingLogger {
+  return {
+    error(message, context) {
+      try {
+        Promise.resolve(logger.error(message, context)).catch(() => consoleLogger.error(message, context));
+      } catch {
+        consoleLogger.error(message, context);
+      }
+    },
+  };
+}
+
 /** An operation on a request that passed the access gate, with its JSON body. */
 type BodyOperation<Principal> = (scope: Scope<Principal>, body: unknown) => Promise<Response>;
 
@@ -101,7 +117,7 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
     beforeComment,
     presentFeedback,
     hooks = {},
-    logger = consoleLogger,
+    logger: customLogger,
     describeError,
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   } = options as SitepingHandlerBaseOptions<Principal>;
@@ -127,6 +143,7 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
   const gate = options.access
     ? createAccessGate(options.access)
     : (createApiKeyGate(options) as AccessGate<unknown> as AccessGate<Principal>);
+  const logger = customLogger ? safeLogger(customLogger) : consoleLogger;
   const pipeline = createPipeline({ gate, allowedOrigins, logger, describeError, presentFeedback, maxBodyBytes });
   // Normalised once so every POST skips the allocation; an empty list
   // short-circuits dispatch.
