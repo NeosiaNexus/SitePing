@@ -111,7 +111,7 @@ model SitepingComment {
 
 > `@db.Text` cible PostgreSQL et MySQL. SQLite et CockroachDB le refusent, et un `String` simple y est déjà sans limite — `sync` lit le `provider` de votre datasource et y omet `@db.Text`. Vous écrivez le schéma à la main ? Retirez ces attributs vous-même.
 
-> Sur MySQL, un `String` simple est un `VARCHAR(191)`, plus court que ce qu'accepte le serveur pour `url`, `urlPattern`, `userAgent`, les noms, les e-mails et `clientId`. Une valeur qui n'y tient pas — le user agent du navigateur intégré d'Instagram ou de Facebook, qui dépasse 200 caractères, une URL de page complète venue de `getPageScope` — fait répondre au `POST` un `422`, que le widget ne rejoue pas, et le handler journalise `[siteping] A value is too long for the store`.
+> Sur MySQL, un `String` simple est un `VARCHAR(191)`, plus court que ce qu'accepte le serveur pour `projectName`, `url`, `urlPattern`, `userAgent`, les noms, les e-mails et `clientId`, ainsi que pour le `fingerprint` et l'`anchorKey` d'une annotation. Une valeur qui n'y tient pas — le user agent du navigateur intégré d'Instagram ou de Facebook, qui dépasse 200 caractères, une URL de page complète venue de `getPageScope` — fait répondre au `POST` un `422`, que le widget ne rejoue pas, et le handler journalise `[siteping] A value is too long for the store`.
 
 ## Fils de discussion
 
