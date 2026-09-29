@@ -547,14 +547,17 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       # The @siteping/server peer is `workspace:^`, which npm cannot resolve:
-      # pin a range from the server release this commit carries. Not `^`: on
-      # 0.x it refuses the next minor, which is every breaking server release,
-      # and nothing releases this package along with the server, so npm would
-      # refuse the pair (ERESOLVE) until this package happened to change.
-      # Only the server's hook types are used, and a server change that breaks
-      # them breaks this package's type check in CI, so it ships with its fix.
+      # pin a range from the server release this commit carries up to its next
+      # major. Not `^`: on 0.x it refuses the next minor, which is every
+      # breaking server release, and nothing releases this package along with
+      # the server, so npm would refuse the pair (ERESOLVE) until this package
+      # happened to change. Only the server's hook types are used, and a server
+      # change that breaks them breaks this package's type check in CI, so it
+      # ships with its fix.
       - name: Pin the @siteping/server peer dependency
-        run: npm pkg set "peerDependencies.@siteping/server=>=$(node -p 'require("../server/package.json").version') <1.0.0"
+        run: |
+          range=$(node -p 'const v = require("../server/package.json").version; `>=${v} <${parseInt(v, 10) + 1}.0.0`')
+          npm pkg set "peerDependencies.@siteping/server=$range"
         working-directory: packages/integration-issues
 
       - name: Publish @siteping/integration-issues
