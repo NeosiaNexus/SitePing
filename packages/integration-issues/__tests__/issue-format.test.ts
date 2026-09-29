@@ -10,6 +10,16 @@ describe("issue marker", () => {
     expect(parseIssueMarker(`${buildIssueMarker(link)}\n\nBody text`)).toEqual(link);
   });
 
+  it("keeps a hostile project name inside the marker's HTML comment", () => {
+    const link = { feedbackId: "fb-1", projectName: "x --> @octocat <img src=x> --!> <!-->" };
+    const marker = buildIssueMarker(link);
+
+    // An HTML comment can only end at a `>`: the marker's must be its last character.
+    expect(marker.indexOf(">")).toBe(marker.length - 1);
+    expect(marker.lastIndexOf("<")).toBe(0);
+    expect(parseIssueMarker(marker)).toEqual(link);
+  });
+
   it("reads the first line only, whatever the line endings", () => {
     const link = { feedbackId: "fb-1", projectName: "site" };
     const marker = buildIssueMarker(link);
