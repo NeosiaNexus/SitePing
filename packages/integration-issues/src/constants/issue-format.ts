@@ -38,7 +38,6 @@ export const ISSUE_REFERENCE_MARKER = {
 export const ISSUE_SECTION_HEADINGS = {
   message: "Message",
   type: "Type",
-  status: "Status",
   pageUrl: "Page",
   deepLink: "Open in the page",
   author: "Author",

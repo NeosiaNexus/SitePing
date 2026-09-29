@@ -11,6 +11,7 @@ import {
   ISSUE_TITLE_PREFIX,
   TRUNCATION_SUFFIX,
 } from "../constants/issue-format.js";
+import { codeBlock, codeSpan, defuseReferences } from "./markdown.js";
 
 /** Title and Markdown body of an issue. */
 export interface IssueContent {
@@ -19,7 +20,7 @@ export interface IssueContent {
 }
 
 export interface IssueFormatOptions {
-  /** Applied to every free-text value copied from the feedback (message, URLs, user agent, diagnostics). */
+  /** Applied to every free-text value copied from the feedback (message, author, URLs, user agent, diagnostics). */
   redact: (text: string) => string;
   /** Query parameter of the widget's deep link, or `false` to omit the link. */
   deepLinkParam: string | false;
@@ -43,7 +44,7 @@ function section(heading: string, content: string): string {
   return `## ${heading}${ISSUE_SECTION_SEPARATOR}${content}`;
 }
 
-function buildDeepLink(feedback: FeedbackRecord, param: string): string | null {
+function buildDeepLink(feedback: Pick<FeedbackRecord, "id" | "url">, param: string): string | null {
   try {
     const url = new URL(feedback.url);
     url.searchParams.set(param, feedback.id);
@@ -53,41 +54,49 @@ function buildDeepLink(feedback: FeedbackRecord, param: string): string | null {
   }
 }
 
+/** One block per kind: console messages and network URLs are visitor-controlled, and may span lines. */
 function buildDiagnostics(feedback: FeedbackRecord, redact: (text: string) => string): string[] {
   if (!feedback.diagnostics) return [];
   const consoleLines = feedback.diagnostics.console
     .slice(0, DIAGNOSTIC_ENTRIES_PER_KIND)
-    .map((entry) => `- ${entry.level}: ${truncate(redact(entry.message), DIAGNOSTIC_MESSAGE_MAX_LENGTH)}`);
+    .map((entry) => `${entry.level}: ${truncate(redact(entry.message), DIAGNOSTIC_MESSAGE_MAX_LENGTH)}`);
   const networkLines = feedback.diagnostics.network
     .slice(0, DIAGNOSTIC_ENTRIES_PER_KIND)
-    .map((entry) => `- ${entry.method} ${entry.status} ${redact(entry.url)} (${entry.durationMs}ms)`);
+    .map((entry) => `${entry.method} ${entry.status} ${redact(entry.url)} (${entry.durationMs}ms)`);
+  const block = (lines: string[]) => (lines.length > 0 ? codeBlock(lines.join("\n")) : EMPTY_DIAGNOSTICS_PLACEHOLDER);
   return [
-    section(ISSUE_SECTION_HEADINGS.consoleDiagnostics, consoleLines.join("\n") || EMPTY_DIAGNOSTICS_PLACEHOLDER),
-    section(ISSUE_SECTION_HEADINGS.networkDiagnostics, networkLines.join("\n") || EMPTY_DIAGNOSTICS_PLACEHOLDER),
+    section(ISSUE_SECTION_HEADINGS.consoleDiagnostics, block(consoleLines)),
+    section(ISSUE_SECTION_HEADINGS.networkDiagnostics, block(networkLines)),
   ];
 }
 
-/** Default Markdown rendering — GitHub and GitLab render it. */
+/**
+ * Default Markdown rendering — GitHub and GitLab render it. Every value
+ * copied from the feedback is quoted as code (see `markdown.ts`); the deep
+ * link is an autolink, which the URL parser has already percent-encoded.
+ */
 export function formatIssue(feedback: FeedbackRecord, options: IssueFormatOptions): IssueContent {
   const { redact } = options;
   const message = redact(feedback.message);
   const titleBudget = ISSUE_TITLE_MAX_LENGTH - ISSUE_TITLE_PREFIX.length - 1;
-  const title = `${ISSUE_TITLE_PREFIX} ${truncate(message.replace(/\s+/g, " ").trim(), titleBudget)}`;
+  const title = `${ISSUE_TITLE_PREFIX} ${truncate(defuseReferences(message.replace(/\s+/g, " ").trim()), titleBudget)}`;
 
+  const pageUrl = redact(feedback.url);
   const author = options.includeAuthorEmail ? `${feedback.authorName} <${feedback.authorEmail}>` : feedback.authorName;
-  const deepLink = options.deepLinkParam === false ? null : buildDeepLink(feedback, options.deepLinkParam);
+  const deepLink =
+    options.deepLinkParam === false ? null : buildDeepLink({ id: feedback.id, url: pageUrl }, options.deepLinkParam);
   const screenshot = feedback.screenshotUrl?.startsWith(EMBEDDABLE_SCREENSHOT_URL_PREFIX)
     ? section(ISSUE_SECTION_HEADINGS.screenshot, `![${ISSUE_SECTION_HEADINGS.screenshot}](${feedback.screenshotUrl})`)
     : null;
 
   const sections = [
-    section(ISSUE_SECTION_HEADINGS.message, message),
+    section(ISSUE_SECTION_HEADINGS.message, codeBlock(message)),
     section(ISSUE_SECTION_HEADINGS.type, feedback.type),
-    section(ISSUE_SECTION_HEADINGS.pageUrl, redact(feedback.url)),
-    deepLink ? section(ISSUE_SECTION_HEADINGS.deepLink, redact(deepLink)) : null,
-    section(ISSUE_SECTION_HEADINGS.author, author),
-    section(ISSUE_SECTION_HEADINGS.viewport, feedback.viewport),
-    section(ISSUE_SECTION_HEADINGS.userAgent, redact(feedback.userAgent)),
+    section(ISSUE_SECTION_HEADINGS.pageUrl, codeSpan(pageUrl)),
+    deepLink ? section(ISSUE_SECTION_HEADINGS.deepLink, `<${deepLink}>`) : null,
+    section(ISSUE_SECTION_HEADINGS.author, codeSpan(redact(author))),
+    section(ISSUE_SECTION_HEADINGS.viewport, codeSpan(feedback.viewport)),
+    section(ISSUE_SECTION_HEADINGS.userAgent, codeSpan(redact(feedback.userAgent))),
     screenshot,
     ...buildDiagnostics(feedback, redact),
   ];

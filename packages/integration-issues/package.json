@@ -74,9 +74,10 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@siteping/adapter-memory": "workspace:*",
     "@siteping/core": "workspace:*",
     "@siteping/server": "workspace:*",
-    "@siteping/adapter-memory": "workspace:*"
+    "mdast-util-from-markdown": "^2.0.3"
   },
   "peerDependencies": {
     "@siteping/server": "workspace:^"

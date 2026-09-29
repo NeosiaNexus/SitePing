@@ -1,5 +1,7 @@
+import type { FeedbackRecord } from "@siteping/core";
+import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
-import { buildIssueMarker, parseIssueMarker } from "../src/core/issue-format.js";
+import { buildIssueMarker, formatIssue, type IssueFormatOptions, parseIssueMarker } from "../src/core/issue-format.js";
 
 describe("issue marker", () => {
   it("round-trips ids and project names with characters that need escaping", () => {
@@ -21,5 +23,135 @@ describe("issue marker", () => {
     expect(parseIssueMarker("An issue written by hand")).toBeNull();
     expect(parseIssueMarker('<!-- siteping-feedback {"id":"a" -->')).toBeNull();
     expect(parseIssueMarker('<!-- siteping-feedback {"id":1,"project":"site"} -->')).toBeNull();
+  });
+});
+
+const options: IssueFormatOptions = { redact: (text) => text, deepLinkParam: "siteping", includeAuthorEmail: false };
+
+const record = (overrides: Partial<FeedbackRecord> = {}): FeedbackRecord => ({
+  id: "fb-1",
+  type: "bug",
+  message: "The button is broken",
+  status: "open",
+  projectName: "site",
+  url: "https://example.com/checkout",
+  urlPattern: null,
+  authorName: "Alice",
+  authorEmail: "alice@example.com",
+  viewport: "1280x720",
+  userAgent: "Mozilla/5.0",
+  clientId: "client-1",
+  resolvedAt: null,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+  annotations: [],
+  screenshotUrl: null,
+  screenshotRegion: null,
+  diagnostics: null,
+  ...overrides,
+});
+
+interface MarkdownNode {
+  type: string;
+  value?: string;
+  url?: string;
+  children?: MarkdownNode[];
+}
+
+/**
+ * What a CommonMark parser leaves live in the body: the text and raw HTML
+ * outside code, where trackers resolve mentions and references, plus every
+ * link and image target.
+ */
+function liveMarkdown(body: string) {
+  const live = { text: [] as string[], links: [] as string[], images: [] as string[] };
+  const walk = (node: MarkdownNode): void => {
+    if (node.type === "code" || node.type === "inlineCode") return;
+    if (node.type === "link" && node.url) return void live.links.push(node.url);
+    if (node.type === "image" && node.url) live.images.push(node.url);
+    if (node.value !== undefined) live.text.push(node.value);
+    node.children?.forEach(walk);
+  };
+  walk(fromMarkdown(body) as MarkdownNode);
+  return { ...live, text: live.text.join("\n") };
+}
+
+describe("formatIssue", () => {
+  const payloads = [
+    "@octocat",
+    "@acme/maintainers",
+    "#12",
+    "acme/site#34",
+    "<!-- the rest is hidden",
+    "![pixel](https://tracker.test/pixel.png)",
+    "[reset your password](javascript:alert(1))",
+    "<img src=x onerror=alert(1)>",
+    "# Heading",
+    "---",
+  ];
+  const leaks = ["octocat", "maintainers", "#12", "#34", "<!--", "tracker.test", "javascript:", "<img", "Heading"];
+
+  it("quotes a hostile message so nothing in it renders, however it plays with backticks", () => {
+    const message = ["````", ...payloads, "```", "``` @octocat", "~~~", "    @octocat"].join("\n");
+
+    const { body } = formatIssue(record({ message }), options);
+    const live = liveMarkdown(body);
+
+    for (const leak of leaks) expect(live.text).not.toContain(leak);
+    expect(live.links).toEqual(["https://example.com/checkout?siteping=fb-1"]);
+    expect(live.images).toEqual([]);
+    expect(body).toContain(`\`\`\`\`\`text\n${message}\n\`\`\`\`\``);
+  });
+
+  it("quotes every single-line field on one line", () => {
+    const hostile = (label: string) => `${label} ${payloads.join("\n")} \`\` \``;
+
+    const { body } = formatIssue(
+      record({
+        authorName: hostile("name"),
+        userAgent: hostile("agent"),
+        viewport: hostile("viewport"),
+        url: `/checkout?q=${hostile("url")}`,
+      }),
+      { ...options, includeAuthorEmail: true },
+    );
+    const live = liveMarkdown(body);
+
+    for (const leak of leaks) expect(live.text).not.toContain(leak);
+    expect(live.links).toEqual([]);
+    expect(live.images).toEqual([]);
+  });
+
+  it("quotes console messages and network URLs from the diagnostics", () => {
+    const diagnostics: FeedbackRecord["diagnostics"] = {
+      console: [{ level: "error", timestamp: "t", message: payloads.join("\n") }],
+      network: [
+        { url: `https://api.test/${payloads.join(" ")}`, method: "GET", status: 500, durationMs: 12, timestamp: "t" },
+      ],
+    };
+
+    const live = liveMarkdown(formatIssue(record({ diagnostics }), options).body);
+
+    for (const leak of leaks) expect(live.text).not.toContain(leak);
+  });
+
+  it("defuses mentions and references in the title", () => {
+    const { title } = formatIssue(
+      record({ message: "Ping @octocat and @acme/maintainers about #12\nplease" }),
+      options,
+    );
+
+    expect(title).toBe("[SitePing] Ping @\u200Boctocat and @\u200Bacme/maintainers about #\u200B12 please");
+  });
+
+  it("redacts the author name along with the rest of the free text", () => {
+    const redact = (text: string) => text.replace(/token=\S+/g, "token=[redacted]");
+
+    const { title, body } = formatIssue(
+      record({ message: "Fails with token=m", authorName: "Bob token=a", userAgent: "UA token=u", url: "/p?token=p" }),
+      { ...options, redact },
+    );
+
+    expect(`${title}\n${body}`).not.toMatch(/token=(?!\[redacted\])/);
   });
 });
