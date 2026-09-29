@@ -1932,5 +1932,26 @@ describe("launcher — annotation:complete integration", () => {
 
       instance.destroy();
     });
+
+    it("dismissing the prompt with Escape closes only the prompt: the detail view and the draft stay", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      const instance = launch(defaultConfig());
+
+      const shadow = await openThread(instance);
+      const prompt = '[aria-labelledby^="sp-identity-title-"]';
+      let name: HTMLInputElement | null = null;
+      await vi.waitFor(() => {
+        name = shadow.querySelector<HTMLInputElement>(`${prompt} input`);
+        expect(name).not.toBeNull();
+      });
+      name!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
+
+      await vi.waitFor(() => expect(shadow.querySelector(prompt)).toBeNull());
+      expect(shadow.querySelector(".sp-detail")!.classList.contains("sp-detail--visible")).toBe(true);
+      expect(shadow.querySelector<HTMLTextAreaElement>(".sp-detail textarea")!.value).toBe("16 px, please");
+      expect(mockAddComment).not.toHaveBeenCalled();
+
+      instance.destroy();
+    });
   });
 });

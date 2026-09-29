@@ -940,6 +940,8 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
     const onKeydown = (e: Event) => {
       const ke = e as KeyboardEvent;
       if (ke.key === "Escape") {
+        // Cancel the prompt only — opened from a thread, the panel's detail view stays.
+        ke.stopPropagation();
         closeModal(null);
         return;
       }
