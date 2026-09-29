@@ -239,7 +239,8 @@ export const oidcAccess: SitepingAccessControl<Reviewer> = {
 // app/api/siteping/route.ts
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
-  allowedOrigins: ["https://site-client.com"],
+  // Chaque site où tourne le widget, et l'origine du dashboard.
+  allowedOrigins: ["https://site-client.com", "https://inbox.example.com"],
   access: oidcAccess,
   // Le nom d'un auteur connecté, et son e-mail vérifié, viennent du jeton.
   beforeCreate: (input, { principal }) => ({
@@ -259,7 +260,7 @@ async function headers(): Promise<Record<string, string>> {
 }
 
 initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "acme", headers });
-// Dashboard : <SitepingInbox endpoint="https://api.example.com/api/siteping" projects="acme" headers={headers} />
+// Dashboard, sur https://inbox.example.com : <SitepingInbox endpoint="https://api.example.com/api/siteping" projects="acme" headers={headers} />
 ```
 
 - **Un jeton d'accès, jamais un ID token.** `audience` est l'identifiant que votre fournisseur place dans `aud` pour votre API — l'identifiant d'API d'Auth0, ou l'audience qu'ajoute un audience mapper Keycloak. Un ID token est adressé à votre application cliente : il répond donc `401`. Auth0 ne délivre un jeton d'accès JWT que pour une audience d'API, et Zitadel que si le type de jeton de l'application est JWT.
@@ -300,6 +301,7 @@ function submittedBy(request: Request, sub: string): Promise<Set<string>> {
 
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
+  // …allowedOrigins et beforeCreate comme dans route.ts ci-dessus
   access: {
     ...oidcAccess,
     authorize: async ({ principal, action, feedbackId = "", request }) =>
