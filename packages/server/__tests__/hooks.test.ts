@@ -201,9 +201,16 @@ describe("createSitepingHandler — lifecycle hooks", () => {
       hooks: { onCreated: () => Promise.reject(hookError) },
     });
 
-    await createFeedback(handler);
+    const feedback = await createFeedback(handler);
 
-    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onCreated failed", { error: hookError });
+    // With what an operator needs to find the feedback that missed its side effect.
+    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onCreated failed", {
+      error: hookError,
+      feedbackId: feedback.id,
+      projectName: PROJECT,
+      method: "POST",
+      path: "/api/siteping",
+    });
   });
 
   it("runs onUpdated with the stored record", async () => {
@@ -234,7 +241,13 @@ describe("createSitepingHandler — lifecycle hooks", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ id: feedback.id, status: "resolved" });
-    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onUpdated failed", { error: hookError });
+    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onUpdated failed", {
+      error: hookError,
+      feedbackId: feedback.id,
+      projectName: PROJECT,
+      method: "PATCH",
+      path: "/api/siteping",
+    });
   });
 
   it("logs a failing onDeleted hook without failing the request", async () => {
@@ -257,7 +270,12 @@ describe("createSitepingHandler — lifecycle hooks", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ deleted: true });
-    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onDeleted failed", { error: hookError });
+    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onDeleted failed", {
+      error: hookError,
+      target: { kind: "single", id: feedback.id, projectName: PROJECT },
+      method: "DELETE",
+      path: "/api/siteping",
+    });
     expect((await store.getFeedbacks({ projectName: PROJECT })).total).toBe(0);
   });
 

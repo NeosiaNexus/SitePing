@@ -104,7 +104,7 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 | `beforeComment` | `(input, context) => input` | — | The same for a [comment](/docs/comments) |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transform each record before it is sent |
 | `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
-| `logger` | `{ error(message, context) }` | `console.error` | Where unexpected failures go, with the request's method and path. A logger that throws or rejects falls back to `console.error` |
+| `logger` | `{ error(message, context) }` | `console.error` | Where unexpected failures go, with the request's method and path — and for a failed hook, the feedback or deletion it concerns. Webhook failures go to their own [`onError`](#webhooks) instead. A logger that throws or rejects falls back to `console.error` |
 | `describeError` | `(error) => string \| undefined` | — | The message of a `500` instead of `"Internal server error"`, e.g. a "run your migrations" hint. Never return the error's own details |
 
 ## The security model, honestly

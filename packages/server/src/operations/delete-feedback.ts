@@ -48,14 +48,14 @@ export function deleteFeedbackOperation<Principal>({
         try {
           await onDeleting(target, scope.context);
         } catch (error) {
-          pipeline.logger.error("[siteping] Hook onDeleting aborted the deletion", { error, target });
+          pipeline.logError(scope, "[siteping] Hook onDeleting aborted the deletion", { error, target });
           return pipeline.error(scope, 502, ERROR_MESSAGES.deletionAborted);
         }
       }
 
       if (target.kind === "project") await store.deleteAllFeedbacks(target.projectName);
       else await store.deleteFeedback(target.id);
-      if (onDeleted) await pipeline.runHook("onDeleted", () => onDeleted(target, scope.context));
+      if (onDeleted) await pipeline.runHook(scope, "onDeleted", { target }, () => onDeleted(target, scope.context));
       return pipeline.json(scope, { deleted: true });
     } catch (error) {
       if (isStoreNotFound(error)) return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);

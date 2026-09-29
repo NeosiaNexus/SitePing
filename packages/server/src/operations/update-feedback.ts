@@ -42,7 +42,10 @@ export function updateFeedbackOperation<Principal>({
       // a terminal status (resolved / wont_fix), cleared otherwise. The
       // derivation lives here at the edge; stores persist what they're given.
       const feedback = await store.updateFeedback(id, toFeedbackUpdate(status));
-      if (onUpdated) await pipeline.runHook("onUpdated", () => onUpdated(feedback, scope.context));
+      if (onUpdated) {
+        const subject = { feedbackId: feedback.id, projectName: feedback.projectName };
+        await pipeline.runHook(scope, "onUpdated", subject, () => onUpdated(feedback, scope.context));
+      }
 
       // PATCH can be made public via publicEndpoints / requireAuthForDestructive:
       // false — the scope keeps the author's email out of the update response.

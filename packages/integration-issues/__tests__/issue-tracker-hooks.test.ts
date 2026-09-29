@@ -202,9 +202,10 @@ for (const provider of providers) {
 
       await send(handler);
 
-      expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onCreated failed", {
-        error: expect.objectContaining({ message: "chat is down" }),
-      });
+      expect(logger.error).toHaveBeenCalledWith(
+        "[siteping] Hook onCreated failed",
+        expect.objectContaining({ error: expect.objectContaining({ message: "chat is down" }) }),
+      );
     });
 
     it("links relative page URLs through siteUrl", async () => {

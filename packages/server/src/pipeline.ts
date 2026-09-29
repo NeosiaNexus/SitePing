@@ -166,6 +166,15 @@ export function createPipeline<Principal>({
     return error(scope, 500, describeError?.(failure) ?? ERROR_MESSAGES.internalServerError);
   };
 
+  /**
+   * Log a failure the response does not report, with what it concerns (a
+   * record, a deletion target) and the request's method and path, so an
+   * operator can tell which record missed its side effect.
+   */
+  const logError = (scope: Scope<Principal>, message: string, details: Record<string, unknown>): void => {
+    logger.error(message, { ...details, ...requestContext(scope.context.request) });
+  };
+
   const validate = <Output>(scope: Scope<Principal>, schema: Schema<Output>, input: unknown): Step<Output> => {
     const parsed = schema.safeParse(input);
     if (parsed.success) return { ok: true, value: parsed.data };
@@ -335,18 +344,24 @@ export function createPipeline<Principal>({
       return fail(scope.context.request, scope, message, failure);
     },
 
-    /** Run a lifecycle hook after a write; a failure is logged, never surfaced — the write happened. */
-    async runHook(name: string, invoke: () => void | Promise<void>): Promise<void> {
+    logError,
+
+    /** Run a lifecycle hook after a write; a failure is logged with `subject`, never surfaced — the write happened. */
+    async runHook(
+      scope: Scope<Principal>,
+      name: string,
+      subject: Record<string, unknown>,
+      invoke: () => void | Promise<void>,
+    ): Promise<void> {
       try {
         await invoke();
       } catch (failure) {
-        logger.error(`[siteping] Hook ${name} failed`, { error: failure });
+        logError(scope, `[siteping] Hook ${name} failed`, { error: failure, ...subject });
       }
     },
 
     /** The list response's `Cache-Control`. */
     listCacheControl: gate.listCacheControl,
-    logger,
   };
 }
 

@@ -104,7 +104,7 @@ La limitation de débit n'est pas gérée ici : appliquez-la dans votre framewor
 | `beforeComment` | `(input, context) => input` | — | De même pour un [commentaire](/fr/docs/comments) |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transformer chaque enregistrement avant son envoi |
 | `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
-| `logger` | `{ error(message, context) }` | `console.error` | Où vont les échecs inattendus, avec la méthode et le chemin de la requête. Un logger qui lève ou rejette se rabat sur `console.error` |
+| `logger` | `{ error(message, context) }` | `console.error` | Où vont les échecs inattendus, avec la méthode et le chemin de la requête — et pour un hook en échec, le feedback ou la suppression qu'il concerne. Les échecs de webhook vont plutôt à leur propre [`onError`](#webhooks). Un logger qui lève ou rejette se rabat sur `console.error` |
 | `describeError` | `(error) => string \| undefined` | — | Le message d'une `500` au lieu de `"Internal server error"`, par exemple une indication « lancez vos migrations ». Ne renvoyez jamais les détails de l'erreur elle-même |
 
 ## Le modèle de sécurité, franchement

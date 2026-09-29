@@ -758,7 +758,14 @@ describe("createSitepingHandler — waitUntil", () => {
     const response = await post(handler);
 
     expect(response.status).toBe(201);
-    expect(logger.error).toHaveBeenCalledWith("[siteping] waitUntil failed", { error: failure });
+    const { id } = (await response.json()) as FeedbackRecord;
+    expect(logger.error).toHaveBeenCalledWith("[siteping] waitUntil failed", {
+      error: failure,
+      feedbackId: id,
+      projectName: validPayloadNoAnnotations.projectName,
+      method: "POST",
+      path: "/api/siteping",
+    });
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
   });
 });

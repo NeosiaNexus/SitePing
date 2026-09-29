@@ -134,7 +134,10 @@ export function createFeedbackOperation<Principal>({
         try {
           existing = await store.findByClientId(input.clientId);
         } catch (lookupError) {
-          pipeline.logger.error("[siteping] Failed to look up the duplicate clientId", { error: lookupError });
+          pipeline.logError(scope, "[siteping] Failed to look up the duplicate clientId", {
+            error: lookupError,
+            projectName: input.projectName,
+          });
         }
       }
       if (!existing) return pipeline.fail(scope, FAILED_TO_CREATE, error);
@@ -144,6 +147,7 @@ export function createFeedbackOperation<Principal>({
     }
 
     const { feedback, inserted } = outcome;
+    const subject = { feedbackId: feedback.id, projectName: feedback.projectName };
     try {
       // Creation side effects run once per insert: never for a replay, and
       // never for a request that joined another one's in-flight create.
@@ -156,10 +160,10 @@ export function createFeedbackOperation<Principal>({
           try {
             waitUntil?.(delivery);
           } catch (error) {
-            pipeline.logger.error("[siteping] waitUntil failed", { error });
+            pipeline.logError(scope, "[siteping] waitUntil failed", { error, ...subject });
           }
         }
-        if (onCreated) await pipeline.runHook("onCreated", () => onCreated(feedback, scope.context));
+        if (onCreated) await pipeline.runHook(scope, "onCreated", subject, () => onCreated(feedback, scope.context));
       }
 
       // A clientId is unique across the whole store, so a replay that
