@@ -66,7 +66,9 @@ const inboxBundle = (
             endpoint: params.get("endpoint") ?? "/api/siteping",
             projects: [params.get("project") ?? "e2e-stack"],
             locale: "en",
-            theme: "light",
+            theme: params.get("theme") === "dark" ? "dark" : "light",
+            // Replies need someone to post them as.
+            ...(params.get("author") ? { author: { name: params.get("author") } } : {}),
           }),
         );
       `,
