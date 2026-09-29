@@ -463,6 +463,21 @@ for (const provider of providers) {
         expect(fake.issues.at(-1)?.isOpen).toBe(false);
       });
 
+      it("ends a lookup whose search failed at the newest page when that page holds every issue", async () => {
+        const handler = createHandler();
+        await send(handler);
+        fake.failWhen(/^POST /, 500);
+        const withoutIssue = await send(handler);
+        fake.failWhen(provider.searchRequest, 403);
+        fake.requests.length = 0;
+
+        expect((await remove(handler, { id: withoutIssue.id, projectName: "site" })).status).toBe(200);
+        expect(reads().map(({ method, path, query }) => `${method} ${path}${query}`)).toEqual([
+          expect.stringMatching(provider.searchRequest),
+          expect.stringMatching(/[?&]page=1$/),
+        ]);
+      });
+
       it("lists past the newest page when the search found more issues naming the feedback than it returned", async () => {
         const handler = createHandler();
         const feedback = await send(handler);
