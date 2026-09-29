@@ -193,7 +193,37 @@ describe("permissions — access policy", () => {
     expect((await list(handler)).permissions).toEqual({ canDeleteAll: true });
   });
 
-  it("answers the list with a logged 500 when a dry run throws", async () => {
+  it("refuses a permission whose dry run throws, and still answers the write that already happened", async () => {
+    const logger = { error: vi.fn<SitepingLogger["error"]>() };
+    const failure = new Error("comment lookup failed");
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      logger,
+      // A per-author rule that forgets a dry run's deleteComment has no commentId.
+      access: access(({ action, dryRun }) => {
+        if (dryRun && action === "deleteComment") throw failure;
+        return true;
+      }),
+    });
+    const refused = { ...ALL, canDeleteComment: false };
+
+    const created = await create(handler);
+    const updated = await handler.PATCH(request("PATCH", { id: created.id, projectName: PROJECT, status: "resolved" }));
+    const page = await list(handler);
+
+    expect(created.permissions).toEqual(refused);
+    expect(updated.status).toBe(200);
+    expect(((await updated.json()) as FeedbackResponse).permissions).toEqual(refused);
+    expect(page.feedbacks.map((f) => [f.status, f.permissions])).toEqual([["resolved", refused]]);
+    expect(page.permissions).toEqual({ canDeleteAll: true });
+    expect(logger.error).toHaveBeenCalledTimes(3);
+    expect(logger.error).toHaveBeenCalledWith(
+      "[siteping] authorize failed on a dry run",
+      expect.objectContaining({ error: failure, action: "deleteComment" }),
+    );
+  });
+
+  it("refuses everything, logged once per response, when every dry run throws", async () => {
     const logger = { error: vi.fn<SitepingLogger["error"]>() };
     const handler = createSitepingHandler({
       store: new MemoryStore(),
@@ -203,10 +233,20 @@ describe("permissions — access policy", () => {
         return true;
       }),
     });
+    await create(handler);
+    await create(handler);
+    logger.error.mockClear();
 
-    const response = await handler.GET(new Request(`${ENDPOINT}?projectName=${PROJECT}`));
+    const page = await list(handler);
 
-    expect(response.status).toBe(500);
-    expect(logger.error).toHaveBeenCalledWith("[siteping] Failed to fetch feedbacks", expect.anything());
+    const NONE: FeedbackPermissions = {
+      canChangeStatus: false,
+      canDelete: false,
+      canComment: false,
+      canDeleteComment: false,
+    };
+    expect(page.feedbacks.map((f) => f.permissions)).toEqual([NONE, NONE]);
+    expect(page.permissions).toEqual({ canDeleteAll: false });
+    expect(logger.error).toHaveBeenCalledOnce();
   });
 });

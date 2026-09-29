@@ -128,16 +128,37 @@ export function createPipeline<Principal>({
     return { ok: true, value: body };
   };
 
+  /** Requests whose failed dry run is logged already — one line per response, however many fail. */
+  const loggedDryRunFailures = new WeakSet<Request>();
+
   /**
    * Whether this requester may do what `target` describes: the policy admits
-   * the method it takes, and `authorize` allows it in a dry run.
+   * the method it takes, and `authorize` allows it in a dry run. A dry run
+   * that throws refuses: a permission only hides a control, and the response
+   * it goes out with often answers a write that already happened.
    */
   const may = async (
     scope: Scope<Principal>,
     method: SitepingHttpMethod,
     target: Omit<SitepingAuthorizationContext<Principal>, keyof SitepingRequestContext<Principal>>,
-  ): Promise<boolean> =>
-    (await gate.admits(scope.context.request, method)) && gate.authorize({ ...scope.context, ...target, dryRun: true });
+  ): Promise<boolean> => {
+    const { request } = scope.context;
+    try {
+      return (
+        (await gate.admits(request, method)) && (await gate.authorize({ ...scope.context, ...target, dryRun: true }))
+      );
+    } catch (failure) {
+      if (!loggedDryRunFailures.has(request)) {
+        loggedDryRunFailures.add(request);
+        logger.error("[siteping] authorize failed on a dry run", {
+          error: failure,
+          action: target.action,
+          ...requestContext(request),
+        });
+      }
+      return false;
+    }
+  };
 
   /** What this requester may do with a record — `permissions` on the wire. */
   const permissions = async (scope: Scope<Principal>, feedback: FeedbackRecord): Promise<FeedbackPermissions> => {

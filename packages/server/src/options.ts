@@ -21,7 +21,10 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
   projectName: string;
   /** Target record of `update` and `delete`; the feedback whose thread `createComment` and `deleteComment` target. */
   feedbackId?: string;
-  /** Target comment of `deleteComment`. */
+  /**
+   * Target comment of `deleteComment` — absent on a `dryRun`, whose answer
+   * covers the feedback's whole thread.
+   */
   commentId?: string;
   /**
    * `true` when nothing is being done: the handler fills in the
@@ -49,8 +52,10 @@ export type SitepingPrincipal = object | string | number;
  *   also asked, with `dryRun: true`, to fill in the `permissions` of every
  *   feedback a response carries — `update`, `delete`, `createComment` and
  *   `deleteComment` (without a `commentId`) per feedback, plus `deleteAll`
- *   once per list — so clients hide what it would refuse. Keep it fast:
- *   a page of 50 feedbacks takes 201 dry runs.
+ *   once per list — so clients hide what it would refuse. A dry run that
+ *   throws refuses that permission (logged) rather than failing the
+ *   response. Keep it fast: a page of 50 feedbacks takes 201 dry runs, all
+ *   at once, sharing the one `request` — cache lookups per request.
  * - `canReadAuthorEmail` decides whether responses include `authorEmail`
  *   (reviewer PII), on feedbacks and their comments — the list, the PATCH
  *   answer and the POST answer alike. Defaults to `true`.

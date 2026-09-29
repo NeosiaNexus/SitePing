@@ -159,7 +159,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 - **`authorize` also fills in [`permissions`](#what-each-requester-may-do)**, asked with `dryRun: true`: `update`, `delete`, `createComment` and `deleteComment` (without a `commentId`) for each feedback a response carries, and `deleteAll` once per list. Nothing is being done then — skip your audit log on dry runs — and keep it fast: a page of 50 feedbacks takes 201 of them.
 - **`canReadAuthorEmail`** defaults to `true`.
 - **`canCommentAsTeam`** decides whether a comment that asks for the `team` role keeps it; any other is stamped `client`. It defaults to the `canReadAuthorEmail` answer when you set that callback, and to `false` when you set neither — see [who speaks as the team](/docs/comments#who-speaks-as-the-team).
-- A callback that throws answers a logged `500`.
+- A callback that throws answers a logged `500` — except `authorize` on a dry run: that permission is refused, the failure logged, and the response goes out.
 
 `access` replaces `apiKey`, `publicEndpoints`, `requireAuthForDestructive` and `redactUnauthenticatedEmails`: passing both is a type error. From a page on another origin, send the credential through the widget's `headers` option — the widget does not send cookies cross-origin.
 
