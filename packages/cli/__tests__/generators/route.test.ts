@@ -2,8 +2,17 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateRoute } from "../../src/generators/route.js";
+
+// Pass-through, so every write is real. The EACCES test below makes one
+// write fail with EACCES instead of chmod-ing a file: root writes through
+// read-only modes, so chmod can't stage the error when the suite runs as root
+// (dev containers, some CI images).
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, writeFileSync: vi.fn(actual.writeFileSync) };
+});
 
 describe("generateRoute", () => {
   let tmpDir: string;
@@ -13,6 +22,9 @@ describe("generateRoute", () => {
   });
 
   afterEach(() => {
+    // Drop an error a test staged but the code never consumed, so it can't
+    // fire at the next test's own setup write; the pass-through comes back.
+    vi.mocked(writeFileSync).mockReset();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -113,23 +125,19 @@ describe("generateRoute", () => {
   // Permission error
   // -------------------------------------------------------------------------
 
-  it("throws descriptive error message on EACCES permission error", () => {
+  // Both codes a refused write can carry: EACCES for a mode bit, EPERM for an
+  // immutable file on Linux or any access denied on Windows (libuv's mapping).
+  it.each([
+    ["EACCES", "permission denied"],
+    ["EPERM", "operation not permitted"],
+  ])("throws descriptive error message on %s permission error", (code, description) => {
     mkdirSync(join(tmpDir, "app"), { recursive: true });
+    // The OS refusing the route write (see the node:fs mock above)
+    vi.mocked(writeFileSync).mockImplementationOnce((path) => {
+      throw Object.assign(new Error(`${code}: ${description}, open '${String(path)}'`), { code });
+    });
 
-    // Create the directory structure so mkdirSync succeeds, but writeFileSync will fail
-    mkdirSync(join(tmpDir, "app", "api", "siteping"), { recursive: true });
-
-    // Make the target directory read-only to trigger EACCES on write
-    const { chmodSync } = require("node:fs");
-    const targetDir = join(tmpDir, "app", "api", "siteping");
-    chmodSync(targetDir, 0o444);
-
-    try {
-      expect(() => generateRoute(tmpDir)).toThrow(/Permission denied.*cannot write to/);
-    } finally {
-      // Restore permissions for cleanup
-      chmodSync(targetDir, 0o755);
-    }
+    expect(() => generateRoute(tmpDir)).toThrow(/^Permission denied: cannot write to .*route\.ts\./);
   });
 
   it("rethrows non-permission errors (e.g. ENOTDIR) verbatim", () => {

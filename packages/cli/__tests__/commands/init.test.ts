@@ -6,6 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCommand } from "../../src/commands/init.js";
 import { p } from "../../src/prompts.js";
 
+// Pass-through, so every write is real. The permission test below makes one
+// write fail with EACCES instead of chmod-ing a file: root writes through
+// read-only modes, so chmod can't stage the error when the suite runs as root
+// (dev containers, some CI images).
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, writeFileSync: vi.fn(actual.writeFileSync) };
+});
+
 // ---------------------------------------------------------------------------
 // ExitError — thrown by mocked process.exit to halt execution cleanly
 // ---------------------------------------------------------------------------
@@ -85,6 +94,10 @@ describe("initCommand", () => {
     process.chdir(originalCwd);
     rmSync(tmpDir, { recursive: true, force: true });
     vi.restoreAllMocks();
+    // restoreAllMocks only reaches vi.spyOn spies, not the node:fs mock's
+    // vi.fn: drop an error a test staged but the code never consumed, so it
+    // can't fire at the next test's own setup write.
+    vi.mocked(writeFileSync).mockReset();
   });
 
   // -------------------------------------------------------------------------
@@ -168,21 +181,21 @@ model SitepingFeedback {
 
     it("exits(1) when schema file cannot be written (permission denied)", async () => {
       createPrismaSchema(tmpDir);
-      const schemaPath = join(tmpDir, "prisma", "schema.prisma");
-      // Make file read-only to trigger write error
-      const { chmodSync } = await import("node:fs");
-      chmodSync(schemaPath, 0o444);
+      // The OS refusing the schema write (see the node:fs mock above)
+      vi.mocked(writeFileSync).mockImplementationOnce((path) => {
+        throw Object.assign(new Error(`EACCES: permission denied, open '${String(path)}'`), { code: "EACCES" });
+      });
 
       vi.mocked(p.confirm).mockResolvedValueOnce(true); // sync schema
 
       const err = await initCommand().catch((e) => e);
 
-      // Restore write permission for cleanup
-      chmodSync(schemaPath, 0o644);
-
       expect(err).toBeInstanceOf(ExitError);
       expect((err as ExitError).code).toBe(1);
-      expect(p.log.error).toHaveBeenCalledWith(expect.stringContaining("Error:"));
+      // The permission mapping, not just any sync failure
+      expect(p.log.error).toHaveBeenCalledWith(
+        expect.stringMatching(/^Error: Permission denied: cannot write to .*schema\.prisma\./),
+      );
       expect(p.outro).toHaveBeenCalledWith(expect.stringContaining("Fix the errors"));
     });
 

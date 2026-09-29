@@ -1,9 +1,29 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { statusCommand } from "../../src/commands/status.js";
+
+// Directories whose listing fails with EACCES, as a 0o000 mode makes it fail
+// for a non-root user. Staged through this pass-through mock instead of
+// chmod: root lists a 0o000 directory anyway, so chmod can't stage the error
+// when the suite runs as root (dev containers, some CI images).
+const unreadableDirs = vi.hoisted(() => new Set<string>());
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    readdirSync: vi.fn((...args: Parameters<typeof actual.readdirSync>) => {
+      const dir = String(args[0]);
+      if (unreadableDirs.has(dir)) {
+        throw Object.assign(new Error(`EACCES: permission denied, scandir '${dir}'`), { code: "EACCES" });
+      }
+      return actual.readdirSync(...args);
+    }),
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -327,6 +347,7 @@ describe("statusCommand", () => {
   afterEach(() => {
     process.chdir(originalCwd);
     rmSync(tmpDir, { recursive: true, force: true });
+    unreadableDirs.clear();
     exitSpy.mockRestore();
     logErrorSpy.mockRestore();
     logSuccessSpy.mockRestore();
@@ -749,26 +770,26 @@ describe("statusCommand", () => {
     });
 
     it("survives unreadable directories during widget scan", () => {
-      // Make a directory unreadable so readdirSync throws — searchInDir's catch
-      // returns null without crashing the command.
+      // A directory readdirSync throws on — searchInDir's catch returns null
+      // without crashing the command.
       const restrictedDir = join(tmpDir, "src", "restricted");
       mkdirSync(restrictedDir, { recursive: true });
       writeFileSync(join(restrictedDir, "file.ts"), "// content");
-      // 0o000 → no read/write/execute permission for anyone.
-      chmodSync(restrictedDir, 0o000);
+      // The OS refusing to list it (see the node:fs mock above). Keyed on the
+      // path the scan builds from process.cwd(), which resolves symlinks in
+      // tmpdir() (macOS: /var -> /private/var).
+      const unreadable = join(process.cwd(), "src", "restricted");
+      unreadableDirs.add(unreadable);
 
       createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
 
-      try {
-        // Should not throw — the catch swallows the EACCES.
-        statusCommand({});
-        // Widget integration is reported as warning when not found.
-        const warnings = allMessages(logWarnSpy);
-        expect(warnings.some((m) => m.includes("Widget"))).toBe(true);
-      } finally {
-        // Restore permission so afterEach can rm -rf the tmpDir.
-        chmodSync(restrictedDir, 0o755);
-      }
+      // Should not throw — the catch swallows the EACCES.
+      statusCommand({});
+      // ...which the scan did hit, rather than passing around it.
+      expect(readdirSync).toHaveBeenCalledWith(unreadable, expect.anything());
+      // Widget integration is reported as warning when not found.
+      const warnings = allMessages(logWarnSpy);
+      expect(warnings.some((m) => m.includes("Widget"))).toBe(true);
     });
 
     it("reports outdated fields when a Prisma field has the wrong type", () => {
