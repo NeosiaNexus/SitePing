@@ -1,6 +1,12 @@
 import { type FeedbackStatus, intlLocale } from "@siteping/core";
-import type { CSSProperties, ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useCallback, useEffect, useInsertionEffect, useMemo, useRef, useState } from "react";
+import type {
+  ComponentProps,
+  ComponentType,
+  CSSProperties,
+  ReactElement,
+  KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import { lazy, Suspense, useCallback, useEffect, useInsertionEffect, useMemo, useRef, useState } from "react";
 import { buildDeepLink } from "../format.js";
 import { createT, getStatusLabel, loadLocale, tWithParams } from "../i18n/index.js";
 import { ensureStyles } from "../inject-styles.js";
@@ -9,7 +15,7 @@ import type { SitepingInboxProps } from "../types.js";
 import { useSitepingInbox } from "../use-inbox.js";
 import type { InboxUiContextValue } from "./context.js";
 import { InboxUiProvider } from "./context.js";
-import { Drawer } from "./drawer.js";
+import type { Drawer as DrawerComponent } from "./drawer.js";
 import { EmptyState, ErrorState } from "./empty-state.js";
 import { List } from "./list.js";
 import { ShortcutsOverlay } from "./shortcuts-overlay.js";
@@ -20,6 +26,25 @@ import { Toolbar } from "./toolbar.js";
 
 /** Container width (px) at which the drawer switches from overlay to side-by-side. Mirrors the CSS `@container spd (min-width: 960px)`. */
 const SIDE_BY_SIDE_MIN = 960;
+
+type DrawerProps = ComponentProps<typeof DrawerComponent>;
+
+/** Stands in for a drawer whose chunk failed to load: closes at once, so the list stays usable. */
+function DrawerUnavailable({ onClose }: DrawerProps): null {
+  useEffect(onClose, [onClose]);
+  return null;
+}
+
+// The drawer shows only once a feedback is opened: it ships in its own chunk,
+// fetched while the list loads (see the preload in `SitepingInbox`). A chunk
+// that fails to load must not take the inbox down with it.
+const loadDrawer = () => import("./drawer.js");
+const Drawer = lazy<ComponentType<DrawerProps>>(() =>
+  loadDrawer().then(
+    (module) => ({ default: module.Drawer }),
+    () => ({ default: DrawerUnavailable }),
+  ),
+);
 
 /**
  * `inbox.markedAs` interpolates the translated status label. Lowercase it
@@ -84,6 +109,10 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   // (runMutation), never from onError: onError also fires for loads, and
   // mutations overlap — shared flags mixed their outcomes up.
   const state = useSitepingInbox(props);
+
+  useEffect(() => {
+    loadDrawer().catch(() => {});
+  }, []);
 
   /** Run a mutation; returns true when it succeeded, toasts the rollback when it didn't. */
   const runMutation = useCallback(
@@ -386,19 +415,21 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
             )}
           </div>
           {state.opened ? (
-            <Drawer
-              key={state.opened.id}
-              record={state.opened}
-              overlay={!wide}
-              deepLinkParam={deepLinkParam}
-              onClose={state.closeFeedback}
-              onChangeStatus={(id, status) => {
-                void changeStatus(id, status);
-              }}
-              onDelete={(id) => {
-                void deleteFeedback(id);
-              }}
-            />
+            <Suspense fallback={null}>
+              <Drawer
+                key={state.opened.id}
+                record={state.opened}
+                overlay={!wide}
+                deepLinkParam={deepLinkParam}
+                onClose={state.closeFeedback}
+                onChangeStatus={(id, status) => {
+                  void changeStatus(id, status);
+                }}
+                onDelete={(id) => {
+                  void deleteFeedback(id);
+                }}
+              />
+            </Suspense>
           ) : null}
         </div>
         <div className="spd-hints" aria-hidden="true">
