@@ -71,7 +71,8 @@ export type SitepingPrincipal = object | string | number;
  *   role keeps it; otherwise it is stamped `client`. Defaults to the
  *   principal's `canReadAuthorEmail` answer (whoever may read reviewer
  *   emails is on the project side), so a policy that sets neither never
- *   lets a caller speak as the team.
+ *   lets a caller speak as the team. Once set, anything but `true`
+ *   (`undefined` from plain JavaScript included) refuses.
  *
  * A throw from any of them answers a logged 500.
  */
