@@ -45,7 +45,7 @@ npx drizzle-kit migrate    # applies it — or `npx drizzle-kit push` while prot
 
 ### What gets created
 
-Three tables, `siteping_feedbacks`, `siteping_annotations` and `siteping_comments` by default. Annotations and [comments](/docs/comments) reference their feedback with `ON DELETE CASCADE` (on PostgreSQL, through the foreign keys `<annotations>_feedback_id_fk` and `<comments>_feedback_id_fk`).
+Three tables, `siteping_feedbacks`, `siteping_annotations` and `siteping_comments` by default — export and migrate all three: the store reads every feedback's thread, so the comments table is required even if nobody ever comments. Annotations and [comments](/docs/comments) reference their feedback with `ON DELETE CASCADE` (on PostgreSQL, through the foreign keys `<annotations>_feedback_id_fk` and `<comments>_feedback_id_fk`).
 
 | Index | Columns |
 |---|---|
@@ -87,10 +87,7 @@ On PostgreSQL, keep the feedback table's name within 36 bytes, the annotations' 
 import { drizzle } from "drizzle-orm/node-postgres";
 import { createPgSitepingStore } from "@siteping/adapter-drizzle/pg";
 
-export const store = createPgSitepingStore(drizzle(process.env.DATABASE_URL!), {
-  screenshotStorage,
-  logger: console,
-});
+export const store = createPgSitepingStore(drizzle(process.env.DATABASE_URL!), { logger: console });
 ```
 
 Every PostgreSQL driver works the same way — swap the `drizzle` import (`drizzle-orm/neon-http`, `drizzle-orm/postgres-js`, `drizzle-orm/pglite`…). The store never opens an interactive `db.transaction`: every write is a single statement, so drivers without interactive transactions, like Neon HTTP, are fully supported.
@@ -103,10 +100,12 @@ import { drizzle } from "drizzle-orm/libsql";
 import { createLibSQLSitepingStore } from "@siteping/adapter-drizzle/libsql";
 
 export const store = createLibSQLSitepingStore(
-  drizzle({ connection: { url: process.env.TURSO_DATABASE_URL!, authToken: process.env.TURSO_AUTH_TOKEN } }),
-  { screenshotStorage, logger: console },
+  drizzle({ connection: { url: process.env.TURSO_DATABASE_URL!, authToken: process.env.TURSO_AUTH_TOKEN! } }),
+  { logger: console },
 );
 ```
+
+Both factories also take a `screenshotStorage`, to keep screenshots out of the database — see [screenshots](#screenshots).
 
 ## 3. Serve it
 
@@ -208,6 +207,6 @@ Both entries re-export `StorePersistenceError`, `isStorePersistence`, `StoreNotF
 
 - **PostgreSQL and libSQL only.** There is no MySQL entry yet.
 - **libSQL only through `drizzle-orm/libsql`** or its variants (`/web`, `/http`, `/ws`…). Other SQLite drivers (better-sqlite3, Cloudflare D1) are not supported: `createLibSQLSitepingStore` throws a `TypeError` when given their database, which the types of a Workers project may accept.
-- **One local libSQL file shared by several processes.** SQLite runs one writer at a time: set the client's busy timeout — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — so concurrent writes queue instead of failing with `SQLITE_BUSY`.
+- **One local libSQL file shared by several processes.** SQLite runs one writer at a time: with `@libsql/client` 0.17.4 or later, set the client's busy timeout — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — so concurrent writes queue instead of failing with `SQLITE_BUSY`. Older clients have no such option (plain JavaScript ignores it silently): upgrade first.
 - **Foreign keys on libSQL.** Cascades need `PRAGMA foreign_keys = ON`, which libSQL does not guarantee, so the store deletes annotations and comments explicitly alongside their feedback. Feedbacks you delete yourself outside the store need the same care.
 - **Search on rows without `message_search`** folds case the database's way (ASCII-only on libSQL, and on PostgreSQL under a `C` collation / `LC_CTYPE`) until you [backfill them](#text-search-and-non-ascii-case).

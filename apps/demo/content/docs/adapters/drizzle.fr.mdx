@@ -45,7 +45,7 @@ npx drizzle-kit migrate    # l'applique — ou `npx drizzle-kit push` pendant le
 
 ### Ce qui est créé
 
-Trois tables, `siteping_feedbacks`, `siteping_annotations` et `siteping_comments` par défaut. Les annotations et les [commentaires](/fr/docs/comments) référencent leur feedback avec `ON DELETE CASCADE` (sur PostgreSQL, via les clés étrangères `<annotations>_feedback_id_fk` et `<comments>_feedback_id_fk`).
+Trois tables, `siteping_feedbacks`, `siteping_annotations` et `siteping_comments` par défaut — exportez et migrez les trois : le store lit le fil de chaque feedback, donc la table des commentaires est requise même si personne ne commente jamais. Les annotations et les [commentaires](/fr/docs/comments) référencent leur feedback avec `ON DELETE CASCADE` (sur PostgreSQL, via les clés étrangères `<annotations>_feedback_id_fk` et `<comments>_feedback_id_fk`).
 
 | Index | Colonnes |
 |---|---|
@@ -87,10 +87,7 @@ Sur PostgreSQL, gardez le nom de la table des feedbacks sous 36 octets, celui de
 import { drizzle } from "drizzle-orm/node-postgres";
 import { createPgSitepingStore } from "@siteping/adapter-drizzle/pg";
 
-export const store = createPgSitepingStore(drizzle(process.env.DATABASE_URL!), {
-  screenshotStorage,
-  logger: console,
-});
+export const store = createPgSitepingStore(drizzle(process.env.DATABASE_URL!), { logger: console });
 ```
 
 Tous les drivers PostgreSQL fonctionnent de la même façon — changez l'import de `drizzle` (`drizzle-orm/neon-http`, `drizzle-orm/postgres-js`, `drizzle-orm/pglite`…). Le store n'ouvre jamais de `db.transaction` interactive : chaque écriture est une seule requête, donc les drivers sans transactions interactives, comme Neon HTTP, sont pleinement pris en charge.
@@ -103,10 +100,12 @@ import { drizzle } from "drizzle-orm/libsql";
 import { createLibSQLSitepingStore } from "@siteping/adapter-drizzle/libsql";
 
 export const store = createLibSQLSitepingStore(
-  drizzle({ connection: { url: process.env.TURSO_DATABASE_URL!, authToken: process.env.TURSO_AUTH_TOKEN } }),
-  { screenshotStorage, logger: console },
+  drizzle({ connection: { url: process.env.TURSO_DATABASE_URL!, authToken: process.env.TURSO_AUTH_TOKEN! } }),
+  { logger: console },
 );
 ```
+
+Les deux factories acceptent aussi un `screenshotStorage`, pour garder les captures hors de la base — voir [les captures](#captures-décran).
 
 ## 3. Le servir
 
@@ -208,6 +207,6 @@ Les deux entrées réexportent `StorePersistenceError`, `isStorePersistence`, `S
 
 - **PostgreSQL et libSQL uniquement.** Il n'y a pas encore d'entrée MySQL.
 - **libSQL uniquement via `drizzle-orm/libsql`** ou ses variantes (`/web`, `/http`, `/ws`…). Les autres drivers SQLite (better-sqlite3, Cloudflare D1) ne sont pas pris en charge : `createLibSQLSitepingStore` lève une `TypeError` quand on lui passe leur base, que les types d'un projet Workers peuvent accepter.
-- **Un fichier libSQL local partagé par plusieurs processus.** SQLite n'accepte qu'un écrivain à la fois : réglez le délai d'attente du client — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — pour que les écritures concurrentes patientent au lieu d'échouer avec `SQLITE_BUSY`.
+- **Un fichier libSQL local partagé par plusieurs processus.** SQLite n'accepte qu'un écrivain à la fois : avec `@libsql/client` 0.17.4 ou plus récent, réglez le délai d'attente du client — `drizzle({ connection: { url: "file:siteping.db", timeout: 5000 } })` — pour que les écritures concurrentes patientent au lieu d'échouer avec `SQLITE_BUSY`. Les clients plus anciens n'ont pas cette option (en JavaScript, ils l'ignorent sans rien dire) : mettez d'abord à jour.
 - **Clés étrangères sur libSQL.** Les cascades exigent `PRAGMA foreign_keys = ON`, que libSQL ne garantit pas : le store supprime donc explicitement les annotations et les commentaires avec leur feedback. Les feedbacks que vous supprimez vous-même hors du store demandent le même soin.
 - **La recherche sur les lignes sans `message_search`** replie la casse à la manière de la base (ASCII uniquement sur libSQL, et sur PostgreSQL sous une collation / un `LC_CTYPE` `C`) tant que vous ne les avez pas [remplies](#recherche-textuelle-et-casse-non-ascii).

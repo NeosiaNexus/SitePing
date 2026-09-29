@@ -148,6 +148,6 @@ L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback 
 | Store | Quoi faire |
 |---|---|
 | [Prisma](/fr/docs/adapters/prisma#fils-de-discussion) | Lancez `npx @siteping/cli sync` pour ajouter le modèle `SitepingComment`, puis `npx prisma db push` (ou `npx prisma migrate dev`). Tant que le client n'est pas généré avec lui, les fils se lisent vides et les écritures de commentaires répondent `501` |
-| [Drizzle](/fr/docs/adapters/drizzle) | Exportez `sitepingComments` depuis votre schéma à côté des autres tables, puis générez et appliquez la migration avec `drizzle-kit` |
+| [Drizzle](/fr/docs/adapters/drizzle) | Rien de plus que l'installation : `sitepingComments` est l'une des trois tables dont le store a besoin. Il lit le fil de chaque feedback, donc les listes échouent sans elle |
 | [Memory](/fr/docs/adapters/memory), [localStorage](/fr/docs/adapters/localstorage) | Rien — les deux gardent les fils. Les données localStorage enregistrées par une version antérieure se lisent avec des fils vides |
 | [Le vôtre](/fr/docs/adapters/writing-an-adapter#fils-de-discussion) | Implémentez les méthodes optionnelles `addComment` et `deleteComment` — `createCollectionStore` fournit les deux |
