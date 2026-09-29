@@ -1,7 +1,7 @@
 import { isStoreNotFound, type SitepingStore } from "@siteping/core";
 import { ERROR_MESSAGES } from "../constants.js";
 import type { SitepingDeletionTarget, SitepingLifecycleHooks } from "../options.js";
-import type { Pipeline } from "../pipeline.js";
+import type { Pipeline, Scope } from "../pipeline.js";
 import { feedbackDeleteSchema } from "../validation.js";
 
 interface DeleteFeedbackDependencies<Principal> {
@@ -18,12 +18,8 @@ export function deleteFeedbackOperation<Principal>({
   onDeleting,
   onDeleted,
 }: DeleteFeedbackDependencies<Principal>) {
-  return async (request: Request): Promise<Response> => {
-    const entry = await pipeline.enter(request, "DELETE");
-    if (!entry.ok) return entry.response;
-    const scope = entry.value;
-
-    const payload = await pipeline.readBody(scope, feedbackDeleteSchema);
+  return async (scope: Scope<Principal>, body: unknown): Promise<Response> => {
+    const payload = pipeline.validate(scope, feedbackDeleteSchema, body);
     if (!payload.ok) return payload.response;
     const target: SitepingDeletionTarget =
       "deleteAll" in payload.value

@@ -1,4 +1,6 @@
 import {
+  type CommentCreateInput,
+  type CommentRecord,
   clampPagination,
   type FeedbackCreateInput,
   type FeedbackPage,
@@ -12,9 +14,11 @@ import {
   isStoreDuplicate,
   isStoreNotFound,
   isUnreachableOffset,
+  MAX_COMMENTS_PER_FEEDBACK,
   type ScreenshotStorage,
   type SitepingStore,
   StoreDuplicateError,
+  StoreLimitError,
   StoreNotFoundError,
   screenshotMimeType,
 } from "@siteping/core";
@@ -31,6 +35,7 @@ export {
   flattenAnnotation,
   isStorePersistence,
   StoreDuplicateError,
+  StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
 } from "@siteping/core";
@@ -123,6 +128,13 @@ type _AssertDelegateBivariance = AssertTrue<GeneratedDelegateProbe extends Prism
  */
 export interface SitepingPrismaClient {
   sitepingFeedback: PrismaModelDelegate;
+  /**
+   * Generated once the schema declares the `SitepingComment` model
+   * (`npx @siteping/cli sync`). Optional, so a client generated from an older
+   * schema keeps type-checking: `PrismaStore` then has no threads and the
+   * handler answers comment writes with 501.
+   */
+  sitepingComment?: PrismaModelDelegate | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +142,14 @@ export interface SitepingPrismaClient {
 // ---------------------------------------------------------------------------
 
 const INCLUDE_ANNOTATIONS = { annotations: true } as const;
+/**
+ * Read shape once the client has the `SitepingComment` model: the thread
+ * oldest first, `id` breaking `createdAt` ties (SQL leaves them unordered).
+ */
+const INCLUDE_ANNOTATIONS_AND_COMMENTS = {
+  annotations: true,
+  comments: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+} as const;
 
 /**
  * Prisma datasource providers whose generated client exposes `mode?: QueryMode`
@@ -256,10 +276,28 @@ export class PrismaStore implements SitepingStore {
   private inlineFallbackWarned = false;
   /** @internal */
   private caseInsensitiveSearch: boolean;
+  /** Read shape of every feedback query — with the thread once the client has the comment model. */
+  private readonly include: typeof INCLUDE_ANNOTATIONS | typeof INCLUDE_ANNOTATIONS_AND_COMMENTS;
+
+  /**
+   * Add a comment to a feedback's thread — defined only when the client has
+   * the `SitepingComment` delegate. Without it the store has no threads, and
+   * the handler answers comment writes with 501 instead of every post failing
+   * with a Prisma error.
+   */
+  readonly addComment?: (feedbackId: string, data: CommentCreateInput) => Promise<CommentRecord>;
+  /** Delete one comment from a feedback's thread — defined under the same condition as {@link addComment}. */
+  readonly deleteComment?: (feedbackId: string, commentId: string) => Promise<void>;
 
   constructor(prisma: SitepingPrismaClient, options: PrismaStoreOptions = {}) {
     this.prisma = prisma;
     this.screenshotStorage = options.screenshotStorage;
+    const comments = prisma.sitepingComment;
+    this.include = comments ? INCLUDE_ANNOTATIONS_AND_COMMENTS : INCLUDE_ANNOTATIONS;
+    if (comments) {
+      this.addComment = (feedbackId, data) => this.insertComment(comments, feedbackId, data);
+      this.deleteComment = (feedbackId, commentId) => this.removeComment(comments, feedbackId, commentId);
+    }
     if (typeof options.caseInsensitiveSearch === "boolean") {
       this.caseInsensitiveSearch = options.caseInsensitiveSearch;
     } else {
@@ -357,7 +395,7 @@ export class PrismaStore implements SitepingStore {
           })),
         },
       },
-      include: INCLUDE_ANNOTATIONS,
+      include: this.include,
     })) as FeedbackRecord;
   }
 
@@ -446,7 +484,7 @@ export class PrismaStore implements SitepingStore {
   async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
     return (await this.prisma.sitepingFeedback.findUnique({
       where: { clientId },
-      include: INCLUDE_ANNOTATIONS,
+      include: this.include,
     })) as FeedbackRecord | null;
   }
 
@@ -481,7 +519,7 @@ export class PrismaStore implements SitepingStore {
     const [feedbacks, total] = await Promise.all([
       this.prisma.sitepingFeedback.findMany({
         where,
-        include: INCLUDE_ANNOTATIONS,
+        include: this.include,
         // `id` breaks createdAt ties: SQL leaves equal rows unordered, so
         // OFFSET pages could otherwise repeat one row and skip another.
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -502,11 +540,62 @@ export class PrismaStore implements SitepingStore {
           status: data.status,
           resolvedAt: data.resolvedAt,
         },
-        include: INCLUDE_ANNOTATIONS,
+        include: this.include,
       })) as FeedbackRecord;
     } catch (error) {
       throw toStoreError(error);
     }
+  }
+
+  /**
+   * Insert a comment. A replayed `clientId` returns the stored comment, looked
+   * up first so a replay never runs into the thread cap; a concurrent replay
+   * that wins the insert race surfaces as P2002 and is read back the same
+   * way. The `connect` turns a missing feedback into Prisma's P2025 on every
+   * provider, rather than each database's own foreign-key error. The cap is a
+   * count before the insert, so posts racing for the last free slot may
+   * overshoot it.
+   */
+  private async insertComment(
+    comments: PrismaModelDelegate,
+    feedbackId: string,
+    data: CommentCreateInput,
+  ): Promise<CommentRecord> {
+    const replayed = await this.findComment(comments, data.clientId);
+    if (replayed) return replayed;
+    if ((await comments.count({ where: { feedbackId } })) >= MAX_COMMENTS_PER_FEEDBACK) {
+      throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
+    }
+
+    try {
+      return (await comments.create({
+        data: {
+          feedback: { connect: { id: feedbackId } },
+          body: data.body,
+          authorName: data.authorName,
+          authorEmail: data.authorEmail,
+          authorRole: data.authorRole,
+          clientId: data.clientId,
+        },
+      })) as CommentRecord;
+    } catch (error) {
+      const winner = isStoreDuplicate(error) ? await this.findComment(comments, data.clientId) : null;
+      if (winner) return winner;
+      throw toStoreError(error);
+    }
+  }
+
+  private async findComment(comments: PrismaModelDelegate, clientId: string): Promise<CommentRecord | null> {
+    return (await comments.findUnique({ where: { clientId } })) as CommentRecord | null;
+  }
+
+  /**
+   * Delete one comment. Both ids go in one `deleteMany`, so a comment of
+   * another thread and an unknown one are the same zero-row miss.
+   */
+  private async removeComment(comments: PrismaModelDelegate, feedbackId: string, commentId: string): Promise<void> {
+    const { count } = (await comments.deleteMany({ where: { id: commentId, feedbackId } })) as { count: number };
+    if (count === 0) throw new StoreNotFoundError();
   }
 
   async deleteFeedback(id: string): Promise<void> {
@@ -582,10 +671,13 @@ export interface PrismaAccessHandlerOptions<Principal extends SitepingPrincipal>
   extends Omit<SitepingAccessHandlerOptions<Principal>, "store">,
     PrismaHandlerStoreOptions {}
 
-/** Setup hint for Prisma's "table does not exist" error (P2021). */
+/**
+ * Setup hint for Prisma's "table does not exist" error (P2021) — any SitePing
+ * table: a client generated after `sync` also reads `SitepingComment`.
+ */
 function describePrismaError(error: unknown): string | undefined {
   if (hasOwn(error, "code") && error.code === "P2021") {
-    return "Table 'SitepingFeedback' not found. Run 'npx prisma db push' to create it.";
+    return "A SitePing table is missing. Run 'npx prisma db push' (or apply your migrations) to create it.";
   }
   return undefined;
 }

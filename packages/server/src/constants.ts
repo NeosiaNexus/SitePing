@@ -1,3 +1,5 @@
+import { MAX_COMMENTS_PER_FEEDBACK } from "@siteping/core";
+
 /** Most annotations accepted on one feedback (the create schema enforces it too). */
 export const MAX_ANNOTATIONS_PER_FEEDBACK = 50;
 
@@ -12,7 +14,11 @@ export const ERROR_MESSAGES = {
   forbidden: "Forbidden",
   unsupportedMediaType: "Content-Type must be application/json",
   feedbackNotFound: "Feedback not found",
+  commentNotFound: "Comment not found",
   clientIdUsedByAnotherProject: "clientId already used by another project",
+  clientIdUsedByAnotherFeedback: "clientId already used on another feedback",
+  commentsUnsupported: "Comments are not supported by this store",
+  tooManyComments: `Too many comments on this feedback (max ${MAX_COMMENTS_PER_FEEDBACK})`,
   tooManyAnnotations: `Too many annotations (max ${MAX_ANNOTATIONS_PER_FEEDBACK})`,
   deletionAborted: "Deletion aborted: a linked resource could not be cleaned up",
   internalServerError: "Internal server error",

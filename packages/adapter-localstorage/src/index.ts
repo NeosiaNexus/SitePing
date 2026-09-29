@@ -1,5 +1,7 @@
 import {
   type AnnotationRecord,
+  type CommentCreateInput,
+  type CommentRecord,
   createCollectionStore,
   FEEDBACK_STATUSES,
   FEEDBACK_TYPES,
@@ -15,7 +17,13 @@ import {
 } from "@siteping/core";
 
 export type { SitepingStore } from "@siteping/core";
-export { isStorePersistence, StoreDuplicateError, StoreNotFoundError, StorePersistenceError } from "@siteping/core";
+export {
+  isStorePersistence,
+  StoreDuplicateError,
+  StoreLimitError,
+  StoreNotFoundError,
+  StorePersistenceError,
+} from "@siteping/core";
 
 const DEFAULT_KEY = "siteping_feedbacks";
 
@@ -30,8 +38,8 @@ export interface LocalStorageStoreOptions {
  * Designed for demos, prototyping, and static sites that don't need a server.
  * Data persists across page reloads but is scoped to the current origin.
  *
- * All store semantics (clientId dedup, filtering, pagination, error
- * contract, screenshot-drop retry on quota) come from core's
+ * All store semantics (clientId dedup, filtering, pagination, discussion
+ * threads, error contract, screenshot-drop retry on quota) come from core's
  * `createCollectionStore` engine — this class only supplies the storage
  * primitives: JSON persistence with Date revival, quota-safe writes, an id
  * generator.
@@ -41,7 +49,7 @@ export interface LocalStorageStoreOptions {
  * adapter-prisma with a configured `ScreenshotStorage`.
  *
  * Unreadable data is never silently destroyed. Records are revived leniently
- * (a missing `annotations` list becomes `[]`), and an entry that can't be
+ * (a missing `annotations` or `comments` list becomes `[]`), and an entry that can't be
  * revived (see `isRevivable`) is skipped without hiding the others. Before
  * the next write replaces `<key>`, whatever was skipped — those entries, or
  * the whole raw blob when it isn't a JSON array — is appended to the JSON
@@ -178,6 +186,14 @@ export class LocalStorageStore implements SitepingStore {
     return this.engine.verifyProjectOwnership(id, projectName);
   }
 
+  addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> {
+    return this.engine.addComment(feedbackId, data);
+  }
+
+  deleteComment(feedbackId: string, commentId: string): Promise<void> {
+    return this.engine.deleteComment(feedbackId, commentId);
+  }
+
   /**
    * Remove all data from localStorage for this store key (a `<key>.corrupt`
    * backup is kept). Throws `StorePersistenceError` when storage is
@@ -197,7 +213,8 @@ export class LocalStorageStore implements SitepingStore {
 // shape; Dates come back as ISO strings and must be revived, and fields added
 // after the adapter's first release may be missing on records written back
 // then (0.4.3 predates `urlPattern`, `screenshotUrl`, `anchorKey`,
-// `screenshotRegion` and `diagnostics`).
+// `screenshotRegion` and `diagnostics`; every release before threads lacks
+// `comments`).
 // ---------------------------------------------------------------------------
 
 /** Nullable record fields that a blob written by an older release may lack. */
@@ -207,12 +224,19 @@ type LegacyAnnotationKey = "anchorKey";
 type StoredAnnotation = Omit<Serialized<AnnotationRecord>, LegacyAnnotationKey> &
   Partial<Pick<Serialized<AnnotationRecord>, LegacyAnnotationKey>>;
 
+/** A stored comment — `createdAt` as its ISO string. */
+type StoredComment = Serialized<CommentRecord>;
+
 /**
  * What `localStorage` may actually hold — the wire shape of any published
- * version. `annotations` may be missing on a hand-edited or foreign record.
+ * version. `annotations` may be missing on a hand-edited or foreign record,
+ * `comments` on any record written before threads.
  */
-type StoredFeedback = Omit<Serialized<FeedbackRecord>, LegacyFeedbackKey | "annotations"> &
-  Partial<Pick<Serialized<FeedbackRecord>, LegacyFeedbackKey>> & { annotations?: StoredAnnotation[] | null };
+type StoredFeedback = Omit<Serialized<FeedbackRecord>, LegacyFeedbackKey | "annotations" | "comments"> &
+  Partial<Pick<Serialized<FeedbackRecord>, LegacyFeedbackKey>> & {
+    annotations?: StoredAnnotation[] | null;
+    comments?: StoredComment[] | null;
+  };
 
 /** String fields every published release has written on every record. */
 const REQUIRED_STRING_KEYS = [
@@ -236,15 +260,20 @@ function isDateString(value: unknown): boolean {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
+/** Whether `list` is absent, or an array of objects whose `createdAt` parses. */
+function isDatedList(list: unknown): boolean {
+  return list == null || (Array.isArray(list) && list.every((item) => isObject(item) && isDateString(item.createdAt)));
+}
+
 /**
  * Whether an entry revives into a record every reader can use: the fields
  * the filter pipeline, the widget and the dashboard dereference are present
- * and well-typed, and every date parses. Missing `annotations` and the
- * legacy nullable fields are back-filled by `reviveFeedback`.
+ * and well-typed, and every date parses. Missing `annotations` / `comments`
+ * and the legacy nullable fields are back-filled by `reviveFeedback`.
  */
 function isRevivable(entry: unknown): entry is StoredFeedback {
   if (!isObject(entry)) return false;
-  const { type, status, createdAt, updatedAt, resolvedAt, annotations } = entry;
+  const { type, status, createdAt, updatedAt, resolvedAt, annotations, comments } = entry;
   return (
     REQUIRED_STRING_KEYS.every((key) => typeof entry[key] === "string") &&
     FEEDBACK_TYPES.some((known) => known === type) &&
@@ -252,8 +281,8 @@ function isRevivable(entry: unknown): entry is StoredFeedback {
     isDateString(createdAt) &&
     isDateString(updatedAt) &&
     (resolvedAt == null || isDateString(resolvedAt)) &&
-    (annotations == null ||
-      (Array.isArray(annotations) && annotations.every((a) => isObject(a) && isDateString(a.createdAt))))
+    isDatedList(annotations) &&
+    isDatedList(comments)
   );
 }
 
@@ -298,6 +327,10 @@ function reviveAnnotation(raw: StoredAnnotation): AnnotationRecord {
   };
 }
 
+function reviveComment(raw: StoredComment): CommentRecord {
+  return { ...raw, createdAt: new Date(raw.createdAt) };
+}
+
 function reviveFeedback(raw: StoredFeedback): FeedbackRecord {
   return {
     ...raw,
@@ -305,6 +338,7 @@ function reviveFeedback(raw: StoredFeedback): FeedbackRecord {
     updatedAt: new Date(raw.updatedAt),
     resolvedAt: raw.resolvedAt ? new Date(raw.resolvedAt) : null,
     annotations: (raw.annotations ?? []).map(reviveAnnotation),
+    comments: (raw.comments ?? []).map(reviveComment),
     // Legacy back-fill: every nullable field is present on the in-memory
     // shape, as `null`, exactly like a freshly built record. Plain JSON
     // values (region, diagnostics) survive the round-trip verbatim.

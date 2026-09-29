@@ -1,12 +1,13 @@
-import { count, eq, getTableColumns, inArray, sql } from "drizzle-orm";
+import { and, count, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { CASE_INSENSITIVE_LIKE_OPERATOR } from "../constants/search.js";
 import { GREATEST_VALUE_FUNCTION } from "../constants/sql.js";
-import { annotationRecordColumns, selectAnnotationValues } from "../shared/annotations.js";
+import { guardedCommentInsert } from "../shared/comments.js";
 import { deletedFeedbackColumns, toDeletedFeedbacks } from "../shared/deletes.js";
 import { feedbackRecordColumns, newestFeedbackFirst } from "../shared/feedbacks.js";
 import { buildFeedbackWhere, withSearchableMessage } from "../shared/filters.js";
 import type { FeedbackFilter, SitepingSqlGateway } from "../shared/gateway.js";
+import { recordColumns, selectValues } from "../shared/rows.js";
 import { monotonicUpdatedAt } from "../shared/timestamps.js";
 import type { SitepingSqliteTables } from "./tables.js";
 
@@ -17,11 +18,12 @@ export type AnyLibSQLDatabase = LibSQLDatabase<any>;
 /** The libSQL SQL behind `createLibSQLSitepingStore`. */
 export function createLibSQLGateway(
   db: AnyLibSQLDatabase,
-  { sitepingFeedbacks, sitepingAnnotations }: SitepingSqliteTables,
+  { sitepingFeedbacks, sitepingAnnotations, sitepingComments }: SitepingSqliteTables,
 ): SitepingSqlGateway {
   const whereClause = (filter: FeedbackFilter) =>
     buildFeedbackWhere(sitepingFeedbacks, filter, CASE_INSENSITIVE_LIKE_OPERATOR.sqlite);
-  const recordColumns = feedbackRecordColumns(getTableColumns(sitepingFeedbacks));
+  const feedbackColumns = feedbackRecordColumns(getTableColumns(sitepingFeedbacks));
+  const commentColumns = recordColumns(getTableColumns(sitepingComments));
   /** Number of feedback rows matching a where clause — the page `total`. */
   const countMatching = async (where: ReturnType<typeof whereClause>): Promise<number> => {
     const [totals] = await db.select({ total: count() }).from(sitepingFeedbacks).where(where);
@@ -51,15 +53,13 @@ export function createLibSQLGateway(
       // The feedback id is fresh, so it exists only when this batch inserted it.
       const [inserted] = await db.batch([
         insertFeedbackRow,
-        db
-          .insert(sitepingAnnotations)
-          .select(
-            selectAnnotationValues(
-              sitepingAnnotations,
-              annotations,
-              sql`EXISTS (SELECT 1 FROM ${sitepingFeedbacks} WHERE ${sitepingFeedbacks.id} = ${feedback.id})`,
-            ),
+        db.insert(sitepingAnnotations).select(
+          selectValues(
+            sitepingAnnotations,
+            annotations.map((annotation, position) => ({ ...annotation, position })),
+            sql`EXISTS (SELECT 1 FROM ${sitepingFeedbacks} WHERE ${sitepingFeedbacks.id} = ${feedback.id})`,
           ),
+        ),
       ]);
       return inserted.length > 0;
     },
@@ -67,7 +67,7 @@ export function createLibSQLGateway(
       const where = whereClause(filter);
       const [rows, total] = await Promise.all([
         db
-          .select(recordColumns)
+          .select(feedbackColumns)
           .from(sitepingFeedbacks)
           .where(where)
           .orderBy(...newestFeedbackFirst(sitepingFeedbacks.createdAt, insertionOrder))
@@ -82,14 +82,49 @@ export function createLibSQLGateway(
     },
     async findAnnotations(feedbackIds) {
       return db
-        .select(annotationRecordColumns(getTableColumns(sitepingAnnotations)))
+        .select(recordColumns(getTableColumns(sitepingAnnotations)))
         .from(sitepingAnnotations)
         .where(inArray(sitepingAnnotations.feedbackId, [...feedbackIds]))
         .orderBy(sitepingAnnotations.createdAt, sitepingAnnotations.position);
     },
+    async findComments(feedbackIds) {
+      return db
+        .select(commentColumns)
+        .from(sitepingComments)
+        .where(inArray(sitepingComments.feedbackId, [...feedbackIds]))
+        .orderBy(sitepingComments.createdAt, sitepingComments.position);
+    },
+    async findCommentByClientId(clientId) {
+      const [row] = await db
+        .select(commentColumns)
+        .from(sitepingComments)
+        .where(eq(sitepingComments.clientId, clientId))
+        .limit(1);
+      return row ?? null;
+    },
+    async insertComment(comment, maxComments) {
+      const { values, condition } = guardedCommentInsert(
+        { feedbacks: sitepingFeedbacks, comments: sitepingComments },
+        comment,
+        maxComments,
+      );
+      const inserted = await db
+        .insert(sitepingComments)
+        .select(selectValues(sitepingComments, [values], condition))
+        .onConflictDoNothing({ target: sitepingComments.clientId })
+        .returning({ id: sitepingComments.id });
+      return inserted.length > 0;
+    },
+    async deleteComment(feedbackId, commentId) {
+      const deleted = await db
+        .delete(sitepingComments)
+        .where(and(eq(sitepingComments.id, commentId), eq(sitepingComments.feedbackId, feedbackId)))
+        .returning({ id: sitepingComments.id });
+      return deleted.length > 0;
+    },
     async findByClientId(clientId) {
       const [row] = await db
-        .select(recordColumns)
+        .select(feedbackColumns)
         .from(sitepingFeedbacks)
         .where(eq(sitepingFeedbacks.clientId, clientId))
         .limit(1);
@@ -112,14 +147,15 @@ export function createLibSQLGateway(
           updatedAt: monotonicUpdatedAt(sitepingFeedbacks, updatedAt, GREATEST_VALUE_FUNCTION.sqlite),
         })
         .where(eq(sitepingFeedbacks.id, id))
-        .returning(recordColumns);
+        .returning(feedbackColumns);
       return row ?? null;
     },
     async deleteById(id, options) {
-      // Annotations cascade only with `PRAGMA foreign_keys = ON`, which libSQL
-      // does not guarantee — delete them explicitly in the same batch.
-      const [, deleted] = await db.batch([
+      // Annotations and comments cascade only with `PRAGMA foreign_keys = ON`,
+      // which libSQL does not guarantee — delete them explicitly in the same batch.
+      const [, , deleted] = await db.batch([
         db.delete(sitepingAnnotations).where(eq(sitepingAnnotations.feedbackId, id)),
+        db.delete(sitepingComments).where(eq(sitepingComments.feedbackId, id)),
         db
           .delete(sitepingFeedbacks)
           .where(eq(sitepingFeedbacks.id, id))
@@ -134,11 +170,12 @@ export function createLibSQLGateway(
         .where(eq(sitepingFeedbacks.projectName, projectName));
       await db.batch([
         db.delete(sitepingAnnotations).where(inArray(sitepingAnnotations.feedbackId, projectFeedbackIds)),
+        db.delete(sitepingComments).where(inArray(sitepingComments.feedbackId, projectFeedbackIds)),
         db.delete(sitepingFeedbacks).where(eq(sitepingFeedbacks.projectName, projectName)),
       ]);
     },
     async deleteProjectChunk(projectName, chunkSize) {
-      // Ordered by the primary key, both statements of the batch pick the same
+      // Ordered by the primary key, every statement of the batch picks the same
       // rows: nothing else writes the feedback table between them.
       const chunkIds = db
         .select({ id: sitepingFeedbacks.id })
@@ -146,8 +183,9 @@ export function createLibSQLGateway(
         .where(eq(sitepingFeedbacks.projectName, projectName))
         .orderBy(sitepingFeedbacks.id)
         .limit(chunkSize);
-      const [, deleted] = await db.batch([
+      const [, , deleted] = await db.batch([
         db.delete(sitepingAnnotations).where(inArray(sitepingAnnotations.feedbackId, chunkIds)),
+        db.delete(sitepingComments).where(inArray(sitepingComments.feedbackId, chunkIds)),
         db
           .delete(sitepingFeedbacks)
           .where(inArray(sitepingFeedbacks.id, chunkIds))

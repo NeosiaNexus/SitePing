@@ -22,7 +22,7 @@ export const ICON_CHECKBOX_CHECKED = `<svg viewBox="0 0 18 18" fill="none" aria-
 // CSS
 // ---------------------------------------------------------------------------
 
-export const BULK_CSS = `
+export const BULK_CSS = /* css */ `
   /* ============================
      Bulk Checkbox
      ============================ */

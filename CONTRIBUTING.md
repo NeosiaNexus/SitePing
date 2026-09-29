@@ -177,7 +177,8 @@ Two implementation strategies:
   `createCollectionStore({ load, persist, generateId })` from `@siteping/core`
   your three storage primitives and you get the complete store — clientId
   dedup, filtering/pagination, the error contract, `verifyProjectOwnership`,
-  `createFeedbackIfAbsent`, and the screenshot-drop retry on failed persists.
+  `createFeedbackIfAbsent`, discussion threads (`addComment` /
+  `deleteComment`), and the screenshot-drop retry on failed persists.
   `adapter-memory` is the ~80-line reference.
 - **Query backends** (SQL, ORMs): implement the 6 methods directly. Use
   `buildFeedbackRecord` / `buildAnnotationRecord` for input→record
@@ -186,11 +187,14 @@ Two implementation strategies:
   `updateFeedback`/`deleteFeedback` throw `StoreNotFoundError`,
   `deleteAllFeedbacks` is a no-op when empty, every lost write throws
   `StorePersistenceError`. Optionally implement `verifyProjectOwnership` so
-  HTTP handlers can reject cross-project PATCH/DELETE, and
+  HTTP handlers can reject cross-project PATCH/DELETE,
   `createFeedbackIfAbsent` when `createFeedback` returns the existing record
-  on a duplicate, so webhooks fire once per feedback.
+  on a duplicate, so webhooks fire once per feedback, and `addComment` /
+  `deleteComment` for discussion threads (`buildCommentRecord` builds a
+  comment; `buildFeedbackRecord` leaves `comments` out, so a store with
+  threads adds `comments: []` to the record it returns).
 
-Verify with the shared conformance suite (~56 tests — the scaffold pre-wires
+Verify with the shared conformance suite (~67 tests — the scaffold pre-wires
 this file):
 
 ```ts
@@ -214,6 +218,7 @@ Re-export the error types for consumer convenience, and use
 - **Conventional Commits** for all commit messages: `type(scope): description`.
   - Examples: `feat(widget): add color picker`, `fix(cli): handle missing config`.
 - **i18n** — Built-in locales: English (default), French, German, Spanish, Italian, Brazilian Portuguese, Russian, Japanese. See [Adding a Locale](#adding-a-locale) below.
+- **Widget CSS** — write CSS in a template literal (the Shadow DOM stylesheet, an element's inline style) behind a `/* css */` marker: `` style: /* css */ `...` ``. The build strips its comments and indentation (`packages/widget/scripts/css-literals.ts`), and a test fails on a multi-line CSS literal left without the marker.
 - Keep functions small and focused. Prefer composition over inheritance.
 
 ## Adding a Locale
@@ -280,7 +285,11 @@ misses the new locale, and a picker that does not offer it.
   (`widget.spec.ts`, `host-modal.spec.ts`), and `e2e/stack-server.mjs`, the
   real `createSitepingHandler` over a `MemoryStore` with a webhook receiver,
   serving the widget and `<SitepingInbox />` (`stack.spec.ts`). Anything the
-  server validates, persists or dispatches belongs on the real stack.
+  server validates, persists or dispatches belongs on the real stack. Both
+  servers listen on `127.0.0.1` only, and whatever they take from the request
+  URL into a page's inline script goes through `scriptSafeJson`
+  (`e2e/script-safe-json.mjs`). Playwright only collects `*.spec.ts`: a helper
+  the servers share gets a Vitest unit test next to it, as `e2e/*.test.mjs`.
 - **Property tests** — [fast-check](https://fast-check.dev/), in `*.property.test.ts` next to the example-based suite.
 - Cover new features with unit tests. Cover user-facing flows with E2E tests when relevant.
 

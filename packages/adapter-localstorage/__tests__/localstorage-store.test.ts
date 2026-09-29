@@ -255,6 +255,28 @@ describe("LocalStorageStore specific", () => {
       expect(revived.annotations[0]!.anchorKey).toBeNull();
     });
 
+    it("revives a record written before threads with an empty one, and persists its first comment", async () => {
+      const fb = await store.createFeedback(input);
+      const raw = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<Record<string, unknown>>;
+      delete raw[0]!.comments;
+      localStorage.setItem("test_feedbacks", JSON.stringify(raw));
+
+      const store2 = new LocalStorageStore({ key: "test_feedbacks" });
+      expect((await store2.findByClientId("c1"))?.comments).toEqual([]);
+      const comment = await store2.addComment(fb.id, {
+        body: "Still there?",
+        authorName: "Alice",
+        authorEmail: "a@t.com",
+        authorRole: "client",
+        clientId: "k1",
+      });
+
+      const store3 = new LocalStorageStore({ key: "test_feedbacks" });
+      const revived = (await store3.findByClientId("c1"))?.comments;
+      expect(revived).toEqual([comment]);
+      expect(revived?.[0]?.createdAt).toBeInstanceOf(Date);
+    });
+
     it("revives legacy records without the screenshotRegion key to null", async () => {
       // Simulate a record persisted by a pre-region version of the adapter.
       const fb = await store.createFeedback(input);
@@ -302,6 +324,8 @@ describe("LocalStorageStore specific", () => {
       ["an unparsable createdAt", (stored) => ({ ...stored, id: "x", createdAt: "yesterday" })],
       ["an unparsable resolvedAt", (stored) => ({ ...stored, id: "x", resolvedAt: "soon" })],
       ["an annotation without a date", (stored) => ({ ...stored, id: "x", annotations: [{}] })],
+      ["comments that are not a list", (stored) => ({ ...stored, id: "x", comments: "hello" })],
+      ["a comment without a date", (stored) => ({ ...stored, id: "x", comments: [{ body: "hi" }] })],
     ])("skips an entry with %s without hiding the valid ones", async (_label, makeExtra) => {
       await seedWith(makeExtra);
 
@@ -514,5 +538,20 @@ describe("LocalStorageStore specific", () => {
       expect(r2.feedbacks[0]!.message).toBe("store 2");
       localStorage.removeItem("other_feedbacks");
     });
+  });
+});
+
+// The package bundles its own copy of core, so `instanceof` only matches the
+// classes exported by this entry: every error a store method throws must be one.
+it("re-exports every store error its methods throw", async () => {
+  const { isStorePersistence, StoreDuplicateError, StoreLimitError, StoreNotFoundError, StorePersistenceError } =
+    await import("@siteping/core");
+
+  expect(await import("../src/index.js")).toMatchObject({
+    isStorePersistence,
+    StoreDuplicateError,
+    StoreLimitError,
+    StoreNotFoundError,
+    StorePersistenceError,
   });
 });

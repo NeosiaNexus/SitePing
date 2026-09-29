@@ -48,6 +48,10 @@ export const ja: Translations = {
   "scope.thisType": "このページ種別",
   "scope.all": "すべてのページ",
 
+  // "Mine" toggle
+  "panel.filterMine": "自分の投稿",
+  "panel.filterMineHint": "このブラウザから送信したフィードバックのみ",
+
   // FAB menu
   "fab.aria": "Siteping — フィードバックメニュー",
   "fab.messages": "サイドバーを表示",
@@ -146,6 +150,11 @@ export const ja: Translations = {
   "detail.diagnostics.expand": "診断情報を表示",
   "detail.diagnostics.collapse": "診断情報を隠す",
   "detail.diagnostics.noEntries": "項目はありません",
+
+  // Discussion thread (detail view)
+  "comments.placeholder": "チームに返信...",
+  "comments.error": "送信できませんでした。もう一度お試しください。",
+  "comments.team": "チーム",
 
   // Keyboard shortcuts overlay
   "shortcuts.title": "キーボードショートカット",

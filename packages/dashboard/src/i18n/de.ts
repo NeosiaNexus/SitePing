@@ -65,6 +65,14 @@ export const de: Translations = {
   "drawer.deleteConfirm": "Endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
   "drawer.deleteYes": "Löschen",
 
+  // Discussion thread
+  "comments.title": "Antworten",
+  "comments.team": "Team",
+  "comments.placeholder": "Dem Kunden antworten…",
+  "comments.send": "Senden",
+  "comments.delete": "Antwort löschen",
+  "comments.failed": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
+
   // Keyboard hints
   "hints.navigate": "navigieren",
   "hints.open": "öffnen",

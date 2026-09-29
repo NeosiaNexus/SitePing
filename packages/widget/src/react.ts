@@ -139,6 +139,9 @@ export function useSiteping(config: SitepingConfig): SitepingInstance | null {
       onFeedbackSent: (fb) => {
         if (mounted) configRef.current.onFeedbackSent?.(fb);
       },
+      onCommentAdded: (comment) => {
+        if (mounted) configRef.current.onCommentAdded?.(comment);
+      },
       onError: (error) => {
         if (mounted) configRef.current.onError?.(error);
       },

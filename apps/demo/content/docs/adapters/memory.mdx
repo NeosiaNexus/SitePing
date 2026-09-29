@@ -29,6 +29,7 @@ initSiteping({ store, projectName: "preview" });
 - **Duplicate submissions are absorbed** — creating a feedback with an existing `clientId` returns the already-stored record instead of erroring. That's what makes the widget's retry queue safe.
 - **Records are returned by reference.** If you mutate an object the store gave you, you mutate the store. Clone before editing (`structuredClone(feedback)`) if you need a scratch copy.
 - **Unbounded** — there is no size cap or eviction. Fine for tests; don't leave it collecting feedback on a long-lived server.
+- **Threads included** — [comments](/docs/comments) live on each record, with the same deduplication on their `clientId`, and go away with their feedback.
 - `clear()` empties the store and resets ID numbering — handy between test cases.
 
 Unknown IDs throw `StoreNotFoundError` from `updateFeedback` / `deleteFeedback`; the error classes are re-exported by the package so you can catch them without importing core.

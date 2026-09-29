@@ -15,8 +15,8 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import type { DiagnosticsSnapshot, FeedbackCreateInput, SitepingStore } from "./types.js";
-import { isStoreDuplicate, isStoreNotFound } from "./types.js";
+import type { CommentCreateInput, DiagnosticsSnapshot, FeedbackCreateInput, SitepingStore } from "./types.js";
+import { isStoreDuplicate, isStoreLimit, isStoreNotFound, MAX_COMMENTS_PER_FEEDBACK } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Test fixture
@@ -56,6 +56,20 @@ function createInput(overrides?: Partial<FeedbackCreateInput>): FeedbackCreateIn
         devicePixelRatio: 2,
       },
     ],
+    ...overrides,
+  };
+}
+
+let commentSequence = 0;
+
+function commentInput(overrides?: Partial<CommentCreateInput>): CommentCreateInput {
+  commentSequence += 1;
+  return {
+    body: `Reply ${commentSequence}`,
+    authorName: "Bob",
+    authorEmail: "bob@test.com",
+    authorRole: "team",
+    clientId: `comment-${commentSequence}-${Math.random()}`,
     ...overrides,
   };
 }
@@ -787,6 +801,193 @@ export function testSitepingStore(
         const { feedbacks, total } = await store.getFeedbacks({ projectName: "test-project" });
         expect(total).toBe(1);
         expect(feedbacks[0]?.id).toBe(insertedId);
+      });
+    });
+
+    // ------------------------------------------------------------------
+    // Comments (optional contract members) — every case is skipped for a
+    // store without `addComment` / `deleteComment`, and runs once it has them
+    // ------------------------------------------------------------------
+
+    describe("comments", () => {
+      /** Every read path of the store, for one feedback: list, clientId lookup. */
+      async function threadsOf(clientId: string, projectName = "test-project") {
+        const { feedbacks } = await store.getFeedbacks({ projectName });
+        const listed = feedbacks.find((f) => f.clientId === clientId);
+        const found = await store.findByClientId(clientId);
+        return [listed?.comments, found?.comments];
+      }
+
+      it("starts every feedback with an empty thread (when implemented)", async () => {
+        if (!store.addComment) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "empty-thread" }));
+
+        expect(fb.comments).toEqual([]);
+        for (const thread of await threadsOf("empty-thread")) expect(thread).toEqual([]);
+      });
+
+      it("appends comments oldest first and returns the thread on every read (when implemented)", async () => {
+        if (!store.addComment) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "threaded" }));
+        const first = await store.addComment(
+          fb.id,
+          commentInput({ body: "Still broken on staging", authorRole: "client", clientId: "c-first" }),
+        );
+        const second = await store.addComment(
+          fb.id,
+          commentInput({ body: "Fixed in the next deploy", authorEmail: "" }),
+        );
+
+        expect(first).toEqual({
+          id: expect.any(String),
+          feedbackId: fb.id,
+          body: "Still broken on staging",
+          authorName: "Bob",
+          authorEmail: "bob@test.com",
+          authorRole: "client",
+          clientId: "c-first",
+          createdAt: expect.any(Date),
+        });
+        expect(second.id).not.toBe(first.id);
+        expect(second.authorEmail).toBe("");
+        expect(second.createdAt.getTime()).toBeGreaterThanOrEqual(first.createdAt.getTime());
+
+        for (const thread of await threadsOf("threaded")) expect(thread).toEqual([first, second]);
+        const updated = await store.updateFeedback(fb.id, { status: "in_progress", resolvedAt: null });
+        expect(updated.comments).toEqual([first, second]);
+      });
+
+      it("leaves other threads and the feedback's updatedAt untouched (when implemented)", async () => {
+        if (!store.addComment) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "commented" }));
+        await store.createFeedback(createInput({ clientId: "bystander" }));
+
+        await store.addComment(fb.id, commentInput());
+
+        for (const thread of await threadsOf("bystander")) expect(thread).toEqual([]);
+        expect((await store.findByClientId("commented"))?.updatedAt).toEqual(fb.updatedAt);
+      });
+
+      it("is idempotent on clientId, whichever thread the replay names (when implemented)", async () => {
+        if (!store.addComment) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "replayed" }));
+        const other = await store.createFeedback(createInput({ clientId: "replay-target" }));
+        const input = commentInput({ clientId: "retried-post" });
+
+        const first = await store.addComment(fb.id, input);
+        await expect(store.addComment(fb.id, input)).resolves.toEqual(first);
+        await expect(store.addComment(other.id, input)).resolves.toEqual(first);
+
+        for (const thread of await threadsOf("replayed")) expect(thread).toEqual([first]);
+        for (const thread of await threadsOf("replay-target")) expect(thread).toEqual([]);
+      });
+
+      it("stores one comment when concurrent posts share a clientId (when implemented)", async () => {
+        if (!store.addComment) return;
+        const addComment = store.addComment.bind(store);
+
+        const fb = await store.createFeedback(createInput({ clientId: "raced-post" }));
+        const input = commentInput({ clientId: "same-comment" });
+        const results = await Promise.all(Array.from({ length: 4 }, () => addComment(fb.id, input)));
+
+        for (const result of results) expect(result.id).toBe(results[0]?.id);
+        for (const thread of await threadsOf("raced-post")) expect(thread?.map((c) => c.id)).toEqual([results[0]?.id]);
+      });
+
+      it("throws StoreNotFoundError when commenting on an unknown feedback (when implemented)", async () => {
+        if (!store.addComment) return;
+
+        await expect(store.addComment("unknown-id", commentInput())).rejects.toSatisfy(isStoreNotFound);
+      });
+
+      it(`refuses a comment past ${MAX_COMMENTS_PER_FEEDBACK} per thread with StoreLimitError (when implemented)`, async () => {
+        if (!store.addComment) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "full-thread" }));
+        const other = await store.createFeedback(createInput({ clientId: "roomy-thread" }));
+        let last = await store.addComment(fb.id, commentInput());
+        for (let i = 1; i < MAX_COMMENTS_PER_FEEDBACK; i++) last = await store.addComment(fb.id, commentInput());
+
+        await expect(store.addComment(fb.id, commentInput())).rejects.toSatisfy(isStoreLimit);
+        // A replay is not a new comment, and the cap is per thread.
+        await expect(store.addComment(fb.id, { ...commentInput(), clientId: last.clientId })).resolves.toEqual(last);
+        await expect(store.addComment(other.id, commentInput())).resolves.toMatchObject({ feedbackId: other.id });
+        for (const thread of await threadsOf("full-thread")) expect(thread).toHaveLength(MAX_COMMENTS_PER_FEEDBACK);
+      });
+
+      it("deletes one comment and keeps the rest of the thread (when implemented)", async () => {
+        if (!store.addComment || !store.deleteComment) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "pruned" }));
+        const doomed = await store.addComment(fb.id, commentInput({ body: "Typo, ignore me" }));
+        const kept = await store.addComment(fb.id, commentInput({ body: "The real reply" }));
+
+        await store.deleteComment(fb.id, doomed.id);
+
+        for (const thread of await threadsOf("pruned")) expect(thread).toEqual([kept]);
+      });
+
+      it("refuses to delete a comment through another feedback's thread (when implemented)", async () => {
+        if (!store.addComment || !store.deleteComment) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "authorized-thread" }));
+        const other = await store.createFeedback(createInput({ clientId: "foreign-thread" }));
+        const foreign = await store.addComment(other.id, commentInput());
+
+        await expect(store.deleteComment(fb.id, foreign.id)).rejects.toSatisfy(isStoreNotFound);
+        await expect(store.deleteComment(fb.id, "unknown-comment")).rejects.toSatisfy(isStoreNotFound);
+        await expect(store.deleteComment("unknown-id", foreign.id)).rejects.toSatisfy(isStoreNotFound);
+        for (const thread of await threadsOf("foreign-thread")) expect(thread).toEqual([foreign]);
+      });
+
+      it("deletes the thread with its feedback (when implemented)", async () => {
+        if (!store.addComment || !store.deleteComment) return;
+
+        const single = await store.createFeedback(createInput({ clientId: "deleted-alone" }));
+        const bulk = await store.createFeedback(createInput({ projectName: "wiped", clientId: "deleted-in-bulk" }));
+        const singleComment = await store.addComment(single.id, commentInput({ clientId: "orphan-1" }));
+        const bulkComment = await store.addComment(bulk.id, commentInput({ clientId: "orphan-2" }));
+
+        await store.deleteFeedback(single.id);
+        await store.deleteAllFeedbacks("wiped");
+
+        await expect(store.deleteComment(single.id, singleComment.id)).rejects.toSatisfy(isStoreNotFound);
+        await expect(store.deleteComment(bulk.id, bulkComment.id)).rejects.toSatisfy(isStoreNotFound);
+        // Gone for real: their clientIds are free again, not replays of a leftover row.
+        const fresh = await store.createFeedback(createInput({ clientId: "after-delete" }));
+        for (const clientId of ["orphan-1", "orphan-2"]) {
+          const comment = await store.addComment(fresh.id, commentInput({ clientId }));
+          expect(comment.feedbackId).toBe(fresh.id);
+        }
+      });
+
+      it("keeps every comment and status change when they race on one store (when implemented)", async () => {
+        if (!store.addComment || !store.deleteComment) return;
+        const addComment = store.addComment.bind(store);
+
+        const fb = await store.createFeedback(createInput({ clientId: "busy" }));
+        const other = await store.createFeedback(createInput({ clientId: "busy-too" }));
+        const doomed = await addComment(fb.id, commentInput());
+
+        const [, first, , second, , third] = await Promise.all([
+          store.updateFeedback(fb.id, { status: "in_progress", resolvedAt: null }),
+          addComment(fb.id, commentInput()),
+          store.updateFeedback(other.id, { status: "resolved", resolvedAt: new Date() }),
+          addComment(fb.id, commentInput()),
+          store.deleteComment(fb.id, doomed.id),
+          addComment(other.id, commentInput()),
+        ]);
+
+        const busy = await store.findByClientId("busy");
+        expect(busy?.status).toBe("in_progress");
+        expect(busy?.comments?.map((c) => c.id).sort()).toEqual([first.id, second.id].sort());
+        const busyToo = await store.findByClientId("busy-too");
+        expect(busyToo?.status).toBe("resolved");
+        expect(busyToo?.comments?.map((c) => c.id)).toEqual([third.id]);
       });
     });
   });

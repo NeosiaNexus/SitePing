@@ -1,4 +1,4 @@
-import type { SitepingStore } from "@siteping/core";
+import type { SitepingCapabilities, SitepingStore } from "@siteping/core";
 import { LIST_QUERY_KEYS } from "../constants.js";
 import type { Pipeline } from "../pipeline.js";
 import { getQuerySchema } from "../validation.js";
@@ -38,7 +38,15 @@ export function listFeedbacksOperation<Principal>({ store, pipeline }: ListFeedb
       const page = await store.getFeedbacks(query.value);
       return pipeline.json(
         scope,
-        { ...page, feedbacks: page.feedbacks.map((feedback) => pipeline.present(scope, feedback)) },
+        {
+          ...page,
+          feedbacks: page.feedbacks.map((feedback) => pipeline.present(scope, feedback)),
+          // Lets clients hide their comment composer, and delete buttons, up front instead of meeting a 501.
+          capabilities: {
+            comments: store.addComment !== undefined,
+            deleteComments: store.deleteComment !== undefined,
+          } satisfies SitepingCapabilities,
+        },
         { headers: { "Cache-Control": pipeline.listCacheControl } },
       );
     } catch (error) {

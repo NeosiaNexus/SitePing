@@ -3,10 +3,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scriptSafeJson } from "./script-safe-json.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const widgetDistDir = join(__dirname, "../packages/widget/dist");
 const widgetJs = readFileSync(join(widgetDistDir, "index.js"), "utf-8");
+const widgetIifeJs = readFileSync(join(widgetDistDir, "index.global.js"), "utf-8");
 
 /**
  * Host-modal fixture (a real Radix Dialog), bundled once at startup with the
@@ -234,6 +236,13 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // The IIFE bundle a plain <script src> embed loads — script-tag.spec.ts
+  if (url.pathname === "/widget.global.js") {
+    res.writeHead(200, { "Content-Type": "application/javascript" });
+    res.end(widgetIifeJs);
+    return;
+  }
+
   // The ESM widget bundle is code-split — it imports `./chunk-XXX.js`, `./panel-XXX.js`,
   // and locale chunks that resolve to /<file>.js from the page, so the test server
   // must serve every sibling chunk from dist (not just /widget.js).
@@ -252,7 +261,9 @@ const server = createServer((req, res) => {
   // Serve HTML — accept ?project=xxx for per-browser isolation
   if (url.pathname === "/" || url.pathname === "/index.html") {
     const project = url.searchParams.get("project") || "e2e-test";
-    let html = HTML.replace("projectName: 'e2e-test'", `projectName: '${project}'`);
+    // A replacer function: a string replacement would expand `$'` and the
+    // like in the project name into parts of the page.
+    let html = HTML.replace("projectName: 'e2e-test'", () => `projectName: ${scriptSafeJson(project)}`);
     // ?noForceShow=1 omits forceShow from the init config so the production
     // guard in the real dist bundle is exercised: NODE_ENV is 'test' (set in
     // the page above), so the widget must still mount — see #104.
@@ -266,6 +277,30 @@ const server = createServer((req, res) => {
         return;
       }
       html = stripped;
+    }
+    // ?script=1 loads the IIFE bundle through a classic <script> tag and
+    // calls the `SitePing` global, like a site without a bundler.
+    if (url.searchParams.get("script") === "1") {
+      const moduleImport = "<script type=\"module\">\n    import { initSiteping } from '/widget.js';\n    const instance = initSiteping({";
+      if (!html.includes(moduleImport)) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("script=1: failed to swap the module import for the script bundle");
+        return;
+      }
+      html = html.replace(
+        moduleImport,
+        '<script src="/widget.global.js"></script>\n  <script>\n    const instance = SitePing.initSiteping({',
+      );
+    }
+    // ?screenshot=1 turns on the screenshot capture (html2canvas-pro).
+    if (url.searchParams.get("screenshot") === "1") {
+      const anchor = "      accentColor: '#6366f1',\n";
+      if (!html.includes(anchor)) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("screenshot=1: failed to enable screenshots in the page template");
+        return;
+      }
+      html = html.replace(anchor, `${anchor}      enableScreenshot: true,\n`);
     }
     if (url.searchParams.get("panelActions") === "1") {
       const anchor = "      accentColor: '#6366f1',\n";
@@ -388,6 +423,7 @@ const server = createServer((req, res) => {
   res.end("Not found");
 });
 
-server.listen(3999, () => {
+// Loopback only: the fake API is unauthenticated and resets on demand.
+server.listen(3999, "127.0.0.1", () => {
   console.log("E2E server running on http://localhost:3999");
 });

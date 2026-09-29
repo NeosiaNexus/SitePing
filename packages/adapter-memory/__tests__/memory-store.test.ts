@@ -200,3 +200,18 @@ describe("MemoryStore concurrency", () => {
     }
   });
 });
+
+// The package bundles its own copy of core, so `instanceof` only matches the
+// classes exported by this entry: every error a store method throws must be one.
+it("re-exports every store error its methods throw", async () => {
+  const { isStorePersistence, StoreDuplicateError, StoreLimitError, StoreNotFoundError, StorePersistenceError } =
+    await import("@siteping/core");
+
+  expect(await import("../src/index.js")).toMatchObject({
+    isStorePersistence,
+    StoreDuplicateError,
+    StoreLimitError,
+    StoreNotFoundError,
+    StorePersistenceError,
+  });
+});

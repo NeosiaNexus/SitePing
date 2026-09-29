@@ -28,10 +28,10 @@ import { COMPACT_MAX_WIDTH } from "../constants.js";
  *   accessible name.
  *
  * Surfaces that live on `document.body` (popup, annotator toolbar, markers)
- * cannot see this sheet — they adapt in JS through `viewport.ts`. Comments stay
- * out of the CSS string below: it ships verbatim in the bundle.
+ * cannot see this sheet — they adapt in JS through `viewport.ts`. The CSS
+ * string below is minified at build time, like the rest of the stylesheet.
  */
-export const MOBILE_CSS = `
+export const MOBILE_CSS = /* css */ `
   :host {
     -webkit-tap-highlight-color: transparent;
   }
@@ -118,7 +118,8 @@ export const MOBILE_CSS = `
     }
 
     .sp-sort-btn,
-    .sp-group-toggle {
+    .sp-group-toggle,
+    .sp-mine-toggle {
       min-height: 36px;
     }
 

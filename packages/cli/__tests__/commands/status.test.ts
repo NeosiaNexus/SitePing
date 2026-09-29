@@ -9,7 +9,7 @@ import { statusCommand } from "../../src/commands/status.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** A valid Prisma schema with both Siteping models — complete and up-to-date. */
+/** A valid Prisma schema with every Siteping model — complete and up-to-date. */
 const FULL_SCHEMA = `
 datasource db {
   provider = "postgresql"
@@ -40,6 +40,7 @@ model SitepingFeedback {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
   annotations   SitepingAnnotation[]
+  comments      SitepingComment[]
 
   @@index([projectName])
   @@index([projectName, status, createdAt])
@@ -72,6 +73,20 @@ model SitepingAnnotation {
   createdAt        DateTime         @default(now())
 
   @@index([feedbackId])
+}
+
+model SitepingComment {
+  id          String           @id @default(cuid())
+  feedbackId  String
+  feedback    SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  body        String           @db.Text
+  authorName  String
+  authorEmail String
+  authorRole  String           @default("client")
+  clientId    String           @unique
+  createdAt   DateTime         @default(now())
+
+  @@index([feedbackId, createdAt])
 }
 `;
 
@@ -193,6 +208,7 @@ model SitepingFeedback {
   resolvedAt    DateTime?
   createdAt     DateTime            @default(now())
   annotations   SitepingAnnotation[]
+  comments      SitepingComment[]
 
   @@index([projectName])
   @@index([projectName, status, createdAt])
@@ -225,6 +241,20 @@ model SitepingAnnotation {
   createdAt        DateTime         @default(now())
 
   @@index([feedbackId])
+}
+
+model SitepingComment {
+  id          String           @id @default(cuid())
+  feedbackId  String
+  feedback    SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  body        String           @db.Text
+  authorName  String
+  authorEmail String
+  authorRole  String           @default("client")
+  clientId    String           @unique
+  createdAt   DateTime         @default(now())
+
+  @@index([feedbackId, createdAt])
 }
 `;
 
@@ -334,6 +364,25 @@ describe("statusCommand", () => {
 
       const warnings = allMessages(logWarnSpy);
       expect(warnings.some((m) => m.includes("Prisma schema"))).toBe(true);
+    });
+
+    it("asks for a sync, without failing, on a schema synced before discussion threads", () => {
+      const beforeThreads = FULL_SCHEMA.replace("  comments      SitepingComment[]\n", "").replace(
+        /\nmodel SitepingComment \{[^}]*\}\n/,
+        "\n",
+      );
+      createPrismaSchema(tmpDir, beforeThreads);
+      createPackageJson(tmpDir, { "@siteping/widget": "^1.0.0" });
+      createApiRoute(tmpDir);
+
+      statusCommand({});
+
+      expect(allMessages(logWarnSpy)).toContainEqual(
+        expect.stringMatching(
+          /^Prisma schema\s+2 missing fields \(model SitepingComment, SitepingFeedback\.comments\)$/,
+        ),
+      );
+      expect(exitSpy).not.toHaveBeenCalled();
     });
 
     it("parses a valid schema with a trailing space or a comment after {", () => {

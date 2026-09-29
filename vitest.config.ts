@@ -28,7 +28,8 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["packages/**/__tests__/**/*.test.{ts,tsx}"],
+    // e2e/: unit tests of the fixture servers' helpers (Playwright runs *.spec.ts there).
+    include: ["packages/**/__tests__/**/*.test.{ts,tsx}", "e2e/**/*.test.mjs"],
     setupFiles: ["packages/widget/__tests__/setup-i18n.ts"],
     // Type-level tests: *.test-d.ts files are statically checked by tsc via
     // vitest's typecheck mode (they never execute). They lock the public

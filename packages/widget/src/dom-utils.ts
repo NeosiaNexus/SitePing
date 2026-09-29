@@ -98,6 +98,19 @@ export function setButtonLoading(btn: HTMLButtonElement): () => void {
   };
 }
 
+/**
+ * Detect whether the host platform uses ⌘+Enter (macOS) vs Ctrl+Enter — the
+ * send shortcut hinted by the popup and the thread's composer. Resolved at
+ * call time so the popup can recompute its hint when the locale dictionary
+ * lands.
+ */
+export function isMacPlatform(): boolean {
+  const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
+  return uaData
+    ? uaData.platform === "macOS"
+    : (navigator.platform?.includes("Mac") ?? /Macintosh|Mac OS X/i.test(navigator.userAgent));
+}
+
 /** Format a relative date string using Intl.RelativeTimeFormat for locale support */
 export function formatRelativeDate(isoString: string, locale = "en"): string {
   const diff = Date.now() - new Date(isoString).getTime();

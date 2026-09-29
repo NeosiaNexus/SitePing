@@ -1,5 +1,7 @@
 import {
   type AnnotationPayload,
+  type CommentCreateInput,
+  type CommentResponse,
   errorFromResponse,
   type FeedbackPayload,
   type FeedbackQuery,
@@ -16,6 +18,7 @@ import {
   withSearchParams,
 } from "@siteping/core";
 import type { Identity } from "./identity.js";
+import { ownFeedback } from "./own-feedback.js";
 
 /**
  * Abstract client interface used by the widget internals.
@@ -29,6 +32,8 @@ export interface WidgetClient {
   resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse>;
   deleteFeedback(id: string): Promise<void>;
   deleteAllFeedbacks(projectName: string): Promise<void>;
+  /** Post a reply on a feedback's thread — idempotent on `input.clientId`, so a resend never duplicates it. */
+  addComment(feedbackId: string, input: CommentCreateInput): Promise<CommentResponse>;
 }
 
 /**
@@ -386,7 +391,14 @@ export async function flushRetryQueue(
               body: JSON.stringify(entry.payload),
               signal: controller.signal,
             });
-            if (res.ok) continue;
+            if (res.ok) {
+              // Sent from this browser after all: the panel's "Mine" filter lists it
+              const created: unknown = await res.json().catch(() => null);
+              if (hasOwn(created, "id") && typeof created.id === "string") {
+                ownFeedback(entry.payload.projectName, endpoint).add(created.id);
+              }
+              continue;
+            }
             if (isTransientStatus(res.status)) failed.push(entry);
             else rejected += 1;
           } catch {
@@ -503,6 +515,23 @@ export class ApiClient implements WidgetClient {
       { method: "GET", cache: "no-store", ...(Object.keys(headers).length > 0 ? { headers } : {}) },
       label,
       parseJsonAs<FeedbackResponseList>,
+    );
+  }
+
+  async addComment(feedbackId: string, input: CommentCreateInput): Promise<CommentResponse> {
+    const label = "Failed to post comment";
+    // The same endpoint as a feedback: `feedbackId` routes the POST to the
+    // thread. Retries resend the same clientId, which the server dedupes.
+    return resilientFetch(
+      this.endpoint,
+      {
+        method: "POST",
+        headers: await this.headers(true, label),
+        body: JSON.stringify({ ...input, projectName: this.projectName, feedbackId }),
+      },
+      label,
+      parseJsonAs<CommentResponse>,
+      { boundBody: true },
     );
   }
 

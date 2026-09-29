@@ -487,7 +487,7 @@ export class MarkerManager {
     if (!topMarker) return;
     const badge = el("div", {
       class: "sp-cluster-badge",
-      style: `
+      style: /* css */ `
         position:absolute;top:-6px;right:-6px;
         min-width:16px;height:16px;padding:0 4px;
         border-radius:9999px;
@@ -567,7 +567,7 @@ export class MarkerManager {
     const isResolved = isClosedStatus(feedback.status);
 
     const marker = el("div", {
-      style: `
+      style: /* css */ `
         position:absolute;
         top:${pos.top}px;
         left:${pos.left}px;
@@ -709,7 +709,7 @@ export class MarkerManager {
       const typeColor = getTypeColor(feedback.type, this.colors);
       const rect = resolved.rect;
       const highlight = el("div", {
-        style: `
+        style: /* css */ `
           position:absolute;
           top:${rect.top + window.scrollY}px;
           left:${rect.left + window.scrollX}px;

@@ -48,6 +48,10 @@ export interface Translations {
   "scope.thisType": string;
   "scope.all": string;
 
+  // "Mine" toggle — only the feedback sent from this browser
+  "panel.filterMine": string;
+  "panel.filterMineHint": string;
+
   // FAB menu
   "fab.aria": string;
   "fab.messages": string;
@@ -146,6 +150,13 @@ export interface Translations {
   "detail.diagnostics.expand": string;
   "detail.diagnostics.collapse": string;
   "detail.diagnostics.noEntries": string;
+
+  // Discussion thread (detail view) — the composer reuses "popup.submit" and
+  // the "popup.submitHint*" keys
+  "comments.placeholder": string;
+  "comments.error": string;
+  /** Badge on a reply from the project team. */
+  "comments.team": string;
 
   // Keyboard shortcuts overlay
   "shortcuts.title": string;

@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "e2e",
+  // e2e/*.test.mjs are vitest unit tests of the fixture servers' helpers.
+  testMatch: "**/*.spec.ts",
   timeout: 15_000,
   retries: process.env.CI ? 1 : 0,
   use: {

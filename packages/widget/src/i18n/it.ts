@@ -50,6 +50,10 @@ export const it: Translations = {
   "scope.thisType": "Questo tipo",
   "scope.all": "Tutte le pagine",
 
+  // "Mine" toggle
+  "panel.filterMine": "Miei",
+  "panel.filterMineHint": "Solo i feedback inviati da questo browser",
+
   // FAB menu
   "fab.aria": "Siteping — Menu feedback",
   "fab.messages": "Mostra barra laterale",
@@ -148,6 +152,11 @@ export const it: Translations = {
   "detail.diagnostics.expand": "Mostra diagnostica",
   "detail.diagnostics.collapse": "Nascondi diagnostica",
   "detail.diagnostics.noEntries": "Nessuna voce",
+
+  // Discussion thread (detail view)
+  "comments.placeholder": "Rispondi al team...",
+  "comments.error": "Non inviata. Riprova.",
+  "comments.team": "Team",
 
   // Keyboard shortcuts overlay
   "shortcuts.title": "Scorciatoie da tastiera",

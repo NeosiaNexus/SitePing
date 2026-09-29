@@ -1,10 +1,13 @@
 import {
   CLOSED_FEEDBACK_STATUSES,
+  type CommentResponse,
   FEEDBACK_STATUSES,
   type FeedbackResponse,
+  type FeedbackResponseList,
   type FeedbackStatus,
   type FeedbackType,
   isClosedStatus,
+  MAX_PAGE_LIMIT,
   type PageScope,
   type SitepingPanelAction,
 } from "@siteping/core";
@@ -29,13 +32,17 @@ import {
   ICON_SEARCH,
   ICON_TRASH,
   ICON_UNDO,
+  ICON_USER,
 } from "./icons.js";
+import type { Identity } from "./identity.js";
 import type { MarkerManager } from "./markers.js";
+import type { OwnFeedback } from "./own-feedback.js";
 import { normalizePanelActions } from "./panel-actions.js";
 import { BulkActions } from "./panel-bulk.js";
 import { DetailView } from "./panel-detail.js";
 import { createPageGroupHeader, groupFeedbacksByPage, PanelSortControls, sortFeedbacks } from "./panel-sort.js";
 import { PanelStats } from "./panel-stats.js";
+import { buildThread } from "./panel-thread.js";
 import { focusCardByIndex, getFocusedCardIndex, KeyboardShortcuts } from "./shortcuts.js";
 import { getStatusBgColor, getStatusColor, getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 import { isCoarsePointer, isCompactViewport } from "./viewport.js";
@@ -83,6 +90,10 @@ export class Panel {
   private pendingScrollId: string | null = null;
   /** Tracks feedback IDs with in-flight mutations to prevent spam-click race conditions */
   private pendingMutations = new Set<string>();
+  /** Whether the backend takes replies — advertised by the last list response. */
+  private canComment = false;
+  /** The visitor a reply is posted as — `null` when they dismiss the identity prompt. */
+  private readonly resolveIdentity: () => Promise<Identity | null>;
 
   // New feature modules
   private readonly stats: PanelStats;
@@ -103,6 +114,9 @@ export class Panel {
   private scopeSegmented!: SegmentedControl<"this" | "template" | "all">;
   /** Cached initial scope value — applied after construction in `buildScopeSegmented`. */
   private readonly initialScopeFilter: "this" | "template" | "all" = "this";
+  /** "Mine" filter: only the feedback sent from this browser, whose ids the launcher remembers. */
+  private mineOnly = false;
+  private readonly ownFeedback: Pick<OwnFeedback, "ids" | "remove">;
 
   constructor(
     shadowRoot: ShadowRoot,
@@ -117,11 +131,15 @@ export class Panel {
       getScope: () => PageScope;
       scopeAnnotationsByUrl: boolean;
       panelActions?: readonly SitepingPanelAction[] | undefined;
+      ownFeedback?: Pick<OwnFeedback, "ids" | "remove"> | undefined;
+      resolveIdentity?: () => Promise<Identity | null>;
     },
   ) {
     this.shadowRoot = shadowRoot;
+    this.resolveIdentity = options?.resolveIdentity ?? (async () => null);
     this.getScope = options?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
     this.scopeAnnotationsByUrl = options?.scopeAnnotationsByUrl ?? true;
+    this.ownFeedback = options?.ownFeedback ?? { ids: () => new Set(), remove: () => {} };
 
     // Phone layout: dims the page behind the sheet; a tap on it closes the panel.
     this.scrim = el("div", { class: "sp-scrim" });
@@ -185,13 +203,14 @@ export class Panel {
     searchWrap.appendChild(searchIcon);
     searchWrap.appendChild(this.searchInput);
 
-    // Filter bar (type dropdown + status segmented + scope segmented).
+    // Filter bar (type dropdown + status segmented + scope segmented + "Mine").
     // The scope control gives users a fast way to widen results to "this type
     // of page" or "all pages" when the host provides a route template.
     const filterBar = el("div", { class: "sp-filter-bar" });
     filterBar.appendChild(this.buildTypeDropdown());
     filterBar.appendChild(this.buildStatusSegmented());
     filterBar.appendChild(this.buildScopeSegmented());
+    filterBar.appendChild(this.buildMineToggle());
 
     // Sort controls
     this.sortControls = new PanelSortControls(colors, () => this.renderList(), this.t);
@@ -274,6 +293,13 @@ export class Panel {
           }
         },
         onCustomActionError: (error) => this.reportActionError(error),
+        buildThread: (fb) =>
+          buildThread(fb, {
+            t: this.t,
+            locale,
+            canPost: this.canComment,
+            post: (body, clientId) => this.postComment(fb, body, clientId),
+          }),
       },
       this.t,
       locale,
@@ -633,12 +659,15 @@ export class Panel {
     // feedbacks whatever the list's filters or scope: a "Resolved" tab must
     // not wipe the open markers. The list result serves them when its query
     // is theirs; otherwise their query runs alongside the list's.
-    const listIsMarkerQuery = this.isMarkerQuery(options, scope);
+    const listIsMarkerQuery = !this.mineOnly && this.isMarkerQuery(options, scope);
     this.isLoading = true;
     try {
-      const listRequest = this.client.getFeedbacks(this.projectName, options);
+      const listRequest = this.mineOnly
+        ? this.fetchOwnFeedbacks(options, signal)
+        : this.client.getFeedbacks(this.projectName, options);
       if (!listIsMarkerQuery) void this.loadPageMarkers(scope, signal);
-      let { feedbacks, total } = await listRequest;
+      const first = await listRequest;
+      let { feedbacks, total } = first;
       let page = 1;
       while (page < pages && feedbacks.length < total && !signal.aborted) {
         page++;
@@ -650,6 +679,8 @@ export class Panel {
       this.currentPage = page;
       this.feedbacks = feedbacks;
       this.totalFeedbacks = total;
+      // Absent from a server that predates threads — which then has none.
+      this.canComment = first.capabilities?.comments === true;
       this.stats.update(feedbacks, total);
       this.bulk.reset();
       this.renderList();
@@ -723,6 +754,49 @@ export class Panel {
   private isMarkerQuery(options: GetFeedbacksOptions, scope: PageScope): boolean {
     const markerUrl = this.scopeAnnotationsByUrl ? scope.url : undefined;
     return !options.type && !options.statuses && !options.search && !options.urlPattern && options.url === markerUrl;
+  }
+
+  /**
+   * The "Mine" list: the feedback of the list query that this browser sent,
+   * all of it at once. The server cannot filter by sender (see
+   * own-feedback.ts), so the query's pages are walked until every
+   * remembered id has turned up or none are left.
+   */
+  private async fetchOwnFeedbacks(options: GetFeedbacksOptions, signal: AbortSignal): Promise<FeedbackResponseList> {
+    const own = this.ownFeedback.ids();
+    // By id: a feedback created mid-walk shifts the pages, so one can come twice
+    const found = new Map<string, FeedbackResponse>();
+    const met = new Set<string>();
+    let seen = 0;
+    let firstTotal: number | undefined;
+    let steady = true; // The total never changed: no page shifted under the walk
+    // What the server takes (replies), as the plain list reports it
+    let capabilities: FeedbackResponseList["capabilities"];
+    for (let page = 1; found.size < own.size && !signal.aborted; page++) {
+      const list = await this.client.getFeedbacks(this.projectName, {
+        ...options,
+        page,
+        limit: MAX_PAGE_LIMIT,
+      });
+      const { feedbacks, total } = list;
+      capabilities = list.capabilities;
+      firstTotal ??= total;
+      steady &&= total === firstTotal;
+      for (const feedback of feedbacks) {
+        met.add(feedback.id);
+        if (own.has(feedback.id)) found.set(feedback.id, feedback);
+      }
+      seen += feedbacks.length;
+      if (feedbacks.length === 0 || seen >= total) break;
+    }
+    // A steady walk that met every feedback of the project (no filter: only
+    // `page` and `limit` set) proves the remembered ids it missed deleted,
+    // from the dashboard say. Forgetting them lets the next walk stop early.
+    const wholeProject = Object.keys(options).every((key) => key === "page" || key === "limit");
+    if (wholeProject && steady && met.size === firstTotal) {
+      this.ownFeedback.remove(...[...own].filter((id) => !found.has(id)));
+    }
+    return { feedbacks: [...found.values()], total: found.size, capabilities };
   }
 
   /** Fetch the page markers' own query (the launcher's) when the list shows a filtered or wider one. */
@@ -1347,6 +1421,23 @@ export class Panel {
     }
   }
 
+  /** "Mine" toggle: narrows the list to the feedback sent from this browser. */
+  private buildMineToggle(): HTMLButtonElement {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "sp-mine-toggle";
+    toggle.title = this.t("panel.filterMineHint");
+    toggle.setAttribute("aria-pressed", "false");
+    toggle.append(parseSvg(ICON_USER), this.t("panel.filterMine"));
+    toggle.addEventListener("click", () => {
+      this.mineOnly = !this.mineOnly;
+      toggle.classList.toggle("sp-mine-toggle--active", this.mineOnly);
+      toggle.setAttribute("aria-pressed", String(this.mineOnly));
+      this.loadFeedbacks().catch(() => {});
+    });
+    return toggle;
+  }
+
   /** Get the focused feedback (for keyboard shortcuts) */
   private getFocusedFeedback(): FeedbackResponse | undefined {
     const idx = getFocusedCardIndex(this.listContainer);
@@ -1383,6 +1474,36 @@ export class Panel {
       // rather than leaving the user to find the card in the list.
       const feedback = this.feedbacks.find((f) => f.id === feedbackId);
       if (feedback && isCompactViewport()) this.detail.show(feedback, Number(card.dataset.number));
+    }
+  }
+
+  /**
+   * Post a reply as the visitor and add it to the cached feedback, so the
+   * thread still holds it when the visitor comes back to this feedback.
+   * Resolves `null` when they dismissed the identity prompt — nothing was
+   * sent, and nothing went wrong.
+   */
+  private async postComment(
+    feedback: FeedbackResponse,
+    body: string,
+    clientId: string,
+  ): Promise<CommentResponse | null> {
+    const identity = await this.resolveIdentity();
+    if (!identity) return null;
+    try {
+      const comment = await this.client.addComment(feedback.id, {
+        body,
+        clientId,
+        authorName: identity.name,
+        authorEmail: identity.email,
+        authorRole: "client",
+      });
+      feedback.comments = [...(feedback.comments ?? []), comment];
+      this.bus.emit("comment:added", comment);
+      return comment;
+    } catch (error) {
+      this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
+      throw error;
     }
   }
 

@@ -72,6 +72,39 @@ test("tap an element → feedback sheet → identity sheet → saved against tha
   expect(data.feedbacks[0].annotations[0]).toMatchObject({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
 });
 
+test("the filter row stays one row of finger-sized controls, the Mine toggle included", async ({
+  page,
+  browserName,
+}) => {
+  await page.locator(".sp-fab").tap();
+  await page.locator('[data-item-id="chat"]').tap();
+  await expect(page.locator(".sp-panel")).toHaveClass(/sp-panel--open/);
+
+  const boxes = await page.locator(".sp-filter-bar > *").evaluateAll((controls) =>
+    controls
+      .map((control) => control.getBoundingClientRect())
+      .filter((box) => box.height > 0)
+      .map((box) => ({ top: box.top, bottom: box.bottom, height: box.height })),
+  );
+  expect(boxes.length).toBeGreaterThanOrEqual(3);
+  // One row: the row scrolls sideways instead of wrapping onto a second line
+  const firstBottom = Math.min(...boxes.map((box) => box.bottom));
+  expect(boxes.filter((box) => box.top >= firstBottom)).toEqual([]);
+
+  const mine = page.locator(".sp-mine-toggle");
+  await mine.scrollIntoViewIfNeeded();
+  // The sizes come from the `pointer: coarse` rules. Chromium's touch
+  // emulation reports a coarse pointer; other engines' emulation may not.
+  const coarse = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
+  if (browserName === "chromium") expect(coarse).toBe(true);
+  if (coarse) {
+    for (const box of boxes) expect(Math.round(box.height)).toBeGreaterThanOrEqual(32);
+    expect(Math.round((await mine.boundingBox())!.height)).toBeGreaterThanOrEqual(36);
+  }
+  await mine.tap();
+  await expect(mine).toHaveAttribute("aria-pressed", "true");
+});
+
 test("the panel is a bottom sheet that a tap on the dimmed page closes", async ({ page }) => {
   await page.locator(".sp-fab").tap();
   await page.locator('[data-item-id="chat"]').tap();
