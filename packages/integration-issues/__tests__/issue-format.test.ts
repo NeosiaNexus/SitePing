@@ -293,14 +293,27 @@ describe("formatIssue", () => {
     expect(embedded("http://cdn.test/shots/a.png")).toEqual([]);
   });
 
-  it("redacts the author name along with the rest of the free text", () => {
+  it("redacts every free-text field, annotations and diagnostics included", () => {
     const redact = (text: string) => text.replace(/token=\S+/g, "token=[redacted]");
 
     const { title, body } = formatIssue(
-      record({ message: "Fails with token=m", authorName: "Bob token=a", userAgent: "UA token=u", url: "/p?token=p" }),
+      record({
+        message: "Fails with token=m",
+        authorName: "Bob token=a",
+        userAgent: "UA token=u",
+        url: "/p?token=p",
+        annotations: [annotation({ cssSelector: "a[href*='token=s']", textSnippet: "Reset token=t" })],
+        diagnostics: {
+          console: [{ level: "error", timestamp: "t", message: "Denied token=c" }],
+          network: [{ url: "https://api.test/?token=n", method: "GET", status: 401, durationMs: 1, timestamp: "t" }],
+        },
+      }),
       { ...options, redact },
     );
 
-    expect(`${title}\n${body}`).not.toMatch(/token=(?!\[redacted\])/);
+    const text = `${title}\n${body}`;
+    expect(text).not.toMatch(/token=(?!\[redacted\])/);
+    // Title, message, author, user agent, page, selector, snippet, console, network.
+    expect(text.match(/token=\[redacted\]/g)).toHaveLength(9);
   });
 });
