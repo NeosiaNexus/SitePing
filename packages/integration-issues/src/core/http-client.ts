@@ -113,6 +113,11 @@ export function createJsonHttpClient({
       });
     }
     if (response.status === 204) return undefined as Response;
-    return (await response.json()) as Response;
+    try {
+      return (await response.json()) as Response;
+    } catch (cause) {
+      // A body the timeout cut short, or not JSON (a proxy's login page).
+      throw new IssueTrackerRequestError(tracker, method, logPath, response.status, { cause });
+    }
   };
 }

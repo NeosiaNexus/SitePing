@@ -23,6 +23,44 @@ describe("createJsonHttpClient", () => {
     expect((failure as Error).cause).toBeInstanceOf(TypeError);
   });
 
+  it("reports a success answer whose body is not JSON, with its status", async () => {
+    const request = client(async () => new Response("<html>Sign in</html>", { status: 200 }));
+
+    const failure = await request({ method: "GET", path: "/issues" }).catch((error: unknown) => error);
+
+    expect(isIssueTrackerRequestError(failure)).toBe(true);
+    expect(failure).toMatchObject({
+      status: 200,
+      message: "[siteping] Tracker API GET /issues failed with status 200",
+    });
+  });
+
+  it("reports a body the timeout cuts short", async () => {
+    const request = createJsonHttpClient({
+      tracker: "Tracker",
+      baseUrl: "https://api.test",
+      headers: {},
+      timeoutMs: 20,
+      // Headers arrive, then the body stalls until the request's signal aborts it.
+      fetch: async (_input, init) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{"number":'));
+              init?.signal?.addEventListener("abort", () => controller.error(init.signal?.reason));
+            },
+          }),
+          { status: 201 },
+        ),
+    });
+
+    const failure = await request({ method: "POST", path: "/issues", body: {} }).catch((error: unknown) => error);
+
+    expect(isIssueTrackerRequestError(failure)).toBe(true);
+    expect(failure).toMatchObject({ method: "POST", path: "/issues", status: 201 });
+    expect((failure as Error).cause).toMatchObject({ name: "TimeoutError" });
+  });
+
   it("resolves an empty 204 answer to undefined", async () => {
     const request = client(async () => new Response(null, { status: 204 }));
 
