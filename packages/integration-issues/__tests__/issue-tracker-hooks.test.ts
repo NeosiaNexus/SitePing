@@ -388,6 +388,21 @@ for (const provider of providers) {
         expect(humanComments()).toEqual([1, 1]);
       });
 
+      it("leave one deletion comment when a feedback's delete overlaps its project's", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        const commenting = fake.hold(/^POST \S+\/(comments|notes)$/);
+
+        const deletingAll = remove(handler, { projectName: "site", deleteAll: true });
+        await commenting.reached;
+        const deleting = remove(handler, { id: feedback.id, projectName: "site" });
+        await pause(20);
+        commenting.release();
+        await Promise.all([deletingAll, deleting]);
+
+        expect(humanComments()).toEqual([1]);
+      });
+
       const whileTheIssueIsCreated = async (
         act: (handler: SitepingHandler, feedbackId: string) => Promise<Response>,
       ) => {
