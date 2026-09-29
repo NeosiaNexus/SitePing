@@ -81,7 +81,7 @@ export function withSearchParams(endpoint: string, params: URLSearchParams): str
 
 /**
  * Map a non-OK `Response` to the appropriate typed error:
- *   - 401 / 403 → `SitepingAuthError`
+ *   - 401 / 403 → `SitepingAuthError`, with its `status`
  *   - other 4xx → `SitepingValidationError`, with its `status`
  *   - 5xx (or anything else) → generic `SitepingError` (code `"SERVER"`)
  *
