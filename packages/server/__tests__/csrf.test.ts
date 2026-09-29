@@ -194,6 +194,24 @@ describe("createSitepingHandler — cross-site request forgery (access policy)",
     expect(access.authenticate).not.toHaveBeenCalled();
   });
 
+  // Every media type a cross-site form or no-cors fetch can send without a preflight.
+  it.each(["application/x-www-form-urlencoded", "multipart/form-data; boundary=x", PLAIN_TEXT_CONTENT_TYPE, undefined])(
+    "answers 415 to a credentialed JSON body sent as %s, without authenticating",
+    async (contentType) => {
+      const { handler, store, access } = setupHandler();
+      const headers: Record<string, string> = { Cookie: SESSION_COOKIE, Origin: ALLOWED_ORIGIN };
+      if (contentType) headers["Content-Type"] = contentType;
+      // A Blob without a type, so fetch adds no Content-Type of its own.
+      const body = new Blob([JSON.stringify(validPayloadNoAnnotations)]);
+
+      const response = await handler.POST(new Request(ENDPOINT, { method: "POST", headers, body }));
+
+      expect(response.status).toBe(415);
+      expect(access.authenticate).not.toHaveBeenCalled();
+      expect(await storedFeedbacks(store)).toHaveLength(0);
+    },
+  );
+
   it("answers 415 to a CORS-simple forgery when no allowedOrigins is configured", async () => {
     const { handler, store } = setupHandler(null);
 

@@ -2,7 +2,13 @@ import { MemoryStore } from "@siteping/adapter-memory";
 import { createCollectionStore, type FeedbackRecord } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSitepingHandler } from "../src/index.js";
-import { buildWebhookPayload, dispatchWebhook, dispatchWebhooks, type WebhookConfig } from "../src/webhooks.js";
+import {
+  buildWebhookPayload,
+  dispatchWebhook,
+  dispatchWebhooks,
+  type GenericWebhookPayload,
+  type WebhookConfig,
+} from "../src/webhooks.js";
 import { validPayloadNoAnnotations } from "./fixtures.js";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +85,29 @@ describe("buildWebhookPayload", () => {
     expect(payload).toEqual(expected);
     // clientId is the browser-local dedup secret — it never leaves the server.
     expect("clientId" in payload).toBe(false);
+  });
+
+  it("keeps each comment's clientId out of the generic payload too", async () => {
+    const comment = {
+      id: "comment-1",
+      feedbackId: FEEDBACK.id,
+      body: "Still broken",
+      authorName: "Bob",
+      authorEmail: "bob@example.com",
+      authorRole: "client" as const,
+      clientId: "secret-comment-client-id",
+      createdAt: new Date("2026-05-14T11:00:00Z"),
+    };
+
+    await dispatchWebhook({ url: "https://hooks.example.com" }, { ...FEEDBACK, comments: [comment] });
+
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const body = init.body as string;
+    const { clientId: _clientId, ...expected } = comment;
+    expect(body).not.toContain(comment.clientId);
+    expect((JSON.parse(body) as GenericWebhookPayload).comments).toEqual([
+      { ...expected, createdAt: "2026-05-14T11:00:00.000Z" },
+    ]);
   });
 
   it("truncates excessively long messages for chat platforms", () => {
@@ -234,6 +263,18 @@ describe("buildWebhookPayload — untrusted input", () => {
         "\\(see https://en.wikipedia.org/wiki/Mercury_%28planet%29).",
       );
       expect(urlField("https://shop.example/list?filter[status]")).toBe("https://shop.example/list?filter%5Bstatus%5D");
+    });
+
+    it("tells the brackets it opened from a long trailer in linear time", () => {
+      expect(description("https://a.example/x_(y))].")).toBe("https://a.example/x_%28y%29)].");
+
+      const trailer = ")".repeat(50_000);
+      const started = performance.now();
+      const built = buildWebhookPayload("discord", { ...FEEDBACK, message: `https://a.example/${trailer}` });
+
+      // Quadratic, 50,000 closing parentheses took seconds; a visitor sends 5,000 per field.
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(built.embeds[0]?.description).toMatch(/^https:\/\/a\.example\/\)+…$/);
     });
 
     it("keeps a URL typed into the message linkable while escaping the text around it", () => {
@@ -417,6 +458,35 @@ describe("dispatchWebhook", () => {
     expect(abortReason).toBeDefined();
   });
 
+  it("awaits an async onError, and reports its rejection instead of leaving it unhandled", async () => {
+    fetchSpy.mockRejectedValueOnce(new Error("slack down"));
+    let reported = false;
+    const onError = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      reported = true;
+      throw new Error("sentry unreachable");
+    };
+
+    await expect(dispatchWebhook({ url: "https://hooks.example.com", onError }, FEEDBACK)).resolves.toBeUndefined();
+
+    expect(reported).toBe(true);
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain("sentry unreachable");
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 31])(
+    "reports a timeoutMs of %s, which no timer holds, without sending anything",
+    async (timeoutMs) => {
+      const onError = vi.fn();
+
+      await dispatchWebhook({ url: "https://hooks.example.com", timeoutMs, onError }, FEEDBACK);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith(expect.any(RangeError), FEEDBACK.id);
+      expect(String(onError.mock.calls[0]?.[0])).toContain(`got ${timeoutMs}`);
+    },
+  );
+
   it("does not throw when the user-supplied onError itself throws", async () => {
     fetchSpy.mockRejectedValueOnce(new Error("boom"));
     const onError = vi.fn(() => {
@@ -511,6 +581,33 @@ describe("createSitepingHandler — webhooks option", () => {
     const urls = fetchSpy.mock.calls.map((c) => c[0]);
     expect(urls).toContain("https://slack.example.com");
     expect(urls).toContain("https://discord.example.com");
+  });
+
+  it.each([0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 31])(
+    "refuses to start with a webhook timeoutMs of %s, naming the webhook by its origin only",
+    (timeoutMs) => {
+      const create = () =>
+        createSitepingHandler({
+          store: new MemoryStore(),
+          webhooks: [
+            { url: "https://hooks.example.com" },
+            { url: "https://hooks.slack.com/services/T0/B0/SECRET", timeoutMs },
+          ],
+        });
+
+      expect(create).toThrow(
+        `[siteping] createSitepingHandler: webhook to https://hooks.slack.com: timeoutMs must be a positive integer of at most 2147483647, got ${timeoutMs}.`,
+      );
+    },
+  );
+
+  it("starts with the longest timeoutMs a timer holds", () => {
+    expect(() =>
+      createSitepingHandler({
+        store: new MemoryStore(),
+        webhooks: { url: "https://hooks.example.com", timeoutMs: 2 ** 31 - 1 },
+      }),
+    ).not.toThrow();
   });
 
   it("does not fire webhooks when POST fails validation", async () => {
@@ -701,7 +798,14 @@ describe("createSitepingHandler — waitUntil", () => {
     const response = await post(handler);
 
     expect(response.status).toBe(201);
-    expect(logger.error).toHaveBeenCalledWith("[siteping] waitUntil failed", { error: failure });
+    const { id } = (await response.json()) as FeedbackRecord;
+    expect(logger.error).toHaveBeenCalledWith("[siteping] waitUntil failed", {
+      error: failure,
+      feedbackId: id,
+      projectName: validPayloadNoAnnotations.projectName,
+      method: "POST",
+      path: "/api/siteping",
+    });
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
   });
 });

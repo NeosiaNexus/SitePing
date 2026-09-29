@@ -93,7 +93,7 @@ export async function errorFromResponse(response: Response, label: string): Prom
   const text = await response.text().catch(() => "Unknown error");
   const detail = text ? `${response.status} ${text}` : `${response.status}`;
   const message = `${label}: ${detail}`;
-  if (response.status === 401 || response.status === 403) return new SitepingAuthError(message);
+  if (response.status === 401 || response.status === 403) return new SitepingAuthError(message, response.status);
   if (response.status >= 400 && response.status < 500) return new SitepingValidationError(message);
   return new SitepingError(message, "SERVER", false);
 }

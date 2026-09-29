@@ -142,6 +142,11 @@ function handlerFor(
       authorName: principal.name || input.authorName,
       authorEmail: principal.email || input.authorEmail,
     }),
+    beforeComment: (input, { principal }) => ({
+      ...input,
+      authorName: principal.name || input.authorName,
+      authorEmail: principal.email || input.authorEmail,
+    }),
   });
 }
 
@@ -277,6 +282,23 @@ describe("Better Auth recipe", () => {
       ]),
     );
     expect(authors).toHaveLength(2);
+  });
+
+  it("takes a signed-in replier's name from the session too, so no one replies as another reviewer", async () => {
+    const { auth } = createAuth();
+    const handler = handlerFor(auth);
+    const admin = await signIn(auth, ADMIN);
+    const created = await submit(handler);
+
+    await reply(handler, created.id, (await signIn(auth, MEMBER)).cookie);
+    await reply(handler, created.id, admin.cookie);
+
+    const thread = (await page(handler, admin.cookie)).feedbacks[0]?.comments ?? [];
+    expect(thread.map((c) => [c.authorName, c.authorEmail])).toEqual([
+      // MEMBER's email is unverified: the one the request sent is kept.
+      [MEMBER.name, "someone@acme.example"],
+      [ADMIN.name, ADMIN.email],
+    ]);
   });
 
   it.each<[string, (auth: Auth, tables: Tables) => Promise<Record<string, string>>]>([
@@ -579,6 +601,7 @@ describe("Better Auth recipe — the docs", () => {
     ["interface Reviewer {", "isAdmin: false };"],
     ["async authenticate(request) {", "canReadAuthorEmail: (principal) => principal.isAdmin,"],
     ["beforeCreate: (input, { principal }) => ({", "}),"],
+    ["beforeComment: (input, { principal }) => ({", "}),"],
   ];
 
   /** The Better Auth row of the OpenID Connect recipe's provider table. */

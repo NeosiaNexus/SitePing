@@ -88,6 +88,7 @@ export {
   isStoreLimit,
   isStoreNotFound,
   isStorePersistence,
+  isStoreValueTooLong,
   isUnreachableOffset,
   MAX_COMMENTS_PER_FEEDBACK,
   MAX_PAGE_LIMIT,
@@ -96,5 +97,6 @@ export {
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
+  StoreValueTooLongError,
   toFeedbackUpdate,
 } from "@siteping/core";

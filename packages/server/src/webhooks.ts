@@ -19,7 +19,14 @@
  *   surfaced without crashing the request.
  */
 
-import type { FeedbackRecord, FeedbackType } from "@siteping/core";
+import type {
+  CommentRecord,
+  CommentResponse,
+  FeedbackRecord,
+  FeedbackType,
+  Prettify,
+  Serialized,
+} from "@siteping/core";
 
 /** Supported webhook integrations — drives the JSON body shape. */
 export type WebhookType = "slack" | "discord" | "generic";
@@ -31,20 +38,52 @@ export type WebhookType = "slack" | "discord" | "generic";
  * - `type` — payload format. Defaults to `"generic"` (raw JSON).
  * - `headers` — extra headers merged on top of `Content-Type: application/json`.
  *   Useful for signed-payload schemes (`X-Signature`, bearer tokens, …).
- * - `timeoutMs` — abort the fetch after this many ms. Defaults to 5000.
+ * - `timeoutMs` — abort the fetch after this many ms: a positive integer of
+ *   at most 2,147,483,647, the longest delay a timer holds. Defaults to 5000.
  * - `onError` — invoked with the underlying error and the feedback id when
  *   the dispatch fails (network error, non-2xx, timeout). The webhook is
- *   fire-and-forget, so this is your only chance to observe failures.
+ *   fire-and-forget, so this is your only chance to observe failures. An
+ *   async one is awaited: the delivery `waitUntil` holds covers it, and its
+ *   rejection is reported like a throw, never left unhandled.
  */
 export interface WebhookConfig {
   url: string;
   type?: WebhookType;
   headers?: Record<string, string>;
   timeoutMs?: number;
-  onError?: (err: Error, feedbackId: string) => void;
+  onError?: (err: Error, feedbackId: string) => void | Promise<void>;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
+
+/** Longest delay a timer holds: Node and browsers fire a longer one at once, which would abort every delivery. */
+const TIMER_MAX_DELAY_MS = 2_147_483_647;
+
+/** Why `timeoutMs` cannot bound a delivery, or `null` when it can (or is unset). */
+function timeoutProblem(timeoutMs: number | undefined): string | null {
+  if (
+    timeoutMs === undefined ||
+    (Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= TIMER_MAX_DELAY_MS)
+  ) {
+    return null;
+  }
+  return `timeoutMs must be a positive integer of at most ${TIMER_MAX_DELAY_MS}, got ${timeoutMs}`;
+}
+
+/**
+ * Refuse a webhook whose `timeoutMs` no timer holds, when the handler is
+ * created rather than on every delivery.
+ *
+ * @throws Error naming the webhook by its origin: its path may be a credential.
+ */
+export function checkWebhookTimeouts(configs: readonly WebhookConfig[]): void {
+  for (const config of configs) {
+    const problem = timeoutProblem(config.timeoutMs);
+    if (problem) {
+      throw new Error(`[siteping] createSitepingHandler: webhook to ${webhookOrigin(config.url)}: ${problem}.`);
+    }
+  }
+}
 
 /** Decimal RGB colour table used by Discord embeds — keyed by feedback type. */
 const DISCORD_COLORS: Readonly<Record<FeedbackType, number>> = {
@@ -100,11 +139,20 @@ export interface DiscordWebhookPayload {
 }
 
 /**
- * Generic webhook body — the stored record as JSON. `clientId` is stripped like
- * on every other output: it is the browser-local dedup secret and the POST
- * replay path hands the full record to whoever presents it.
+ * Generic webhook body — the stored record as the receiver parses it: dates
+ * are ISO strings, and `clientId` is stripped like on every other output, on
+ * the record and on each comment of its thread. It is the browser-local
+ * dedup secret, and the POST replay path hands the full record to whoever
+ * presents it.
  */
-export type GenericWebhookPayload = Omit<FeedbackRecord, "clientId">;
+export type GenericWebhookPayload = Prettify<
+  Serialized<Omit<FeedbackRecord, "clientId" | "comments">> & { comments?: CommentResponse[] | undefined }
+>;
+
+/** What `buildGenericPayload` returns — {@link GenericWebhookPayload} before `JSON.stringify`. */
+type GenericWebhookBody = Omit<FeedbackRecord, "clientId" | "comments"> & {
+  comments?: Omit<CommentRecord, "clientId">[] | undefined;
+};
 
 /** Mapping from webhook type to its concrete body shape. */
 export interface WebhookPayloadMap {
@@ -239,13 +287,17 @@ const count = (text: string, char: string) => text.split(char).length - 1;
  * closing a bracket opened inside the URL stays in it (`…/Mercury_(planet)`).
  */
 function discordUrlUnits(url: string): string[] {
+  // Brackets the link opens minus those it closes, counted once and kept up
+  // to date as the trailer is dropped: recounting per character is quadratic.
+  const open = { ")": count(url, "(") - count(url, ")"), "]": count(url, "[") - count(url, "]") };
   let end = url.length;
   while (end > 0) {
     const last = url.charAt(end - 1);
     if (!DISCORD_LINK_TRAILER.includes(last)) break;
-    const opener = last === ")" ? "(" : last === "]" ? "[" : "";
-    const link = url.slice(0, end);
-    if (opener && count(link, opener) >= count(link, last)) break;
+    if (last === ")" || last === "]") {
+      if (open[last] >= 0) break;
+      open[last] += 1;
+    }
     end -= 1;
   }
   return [...Array.from(url.slice(0, end), encodeLinkChar), ...url.slice(end)];
@@ -300,10 +352,11 @@ function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
   };
 }
 
-/** Generic JSON body — the record minus its `clientId`. */
-function buildGenericPayload(feedback: FeedbackRecord): GenericWebhookPayload {
-  const { clientId: _clientId, ...payload } = feedback;
-  return payload;
+/** Generic JSON body — the record minus its `clientId`, and its comments minus theirs. */
+function buildGenericPayload(feedback: FeedbackRecord): GenericWebhookBody {
+  const { clientId: _clientId, comments, ...payload } = feedback;
+  if (!comments) return payload;
+  return { ...payload, comments: comments.map(({ clientId: _commentClientId, ...comment }) => comment) };
 }
 
 /**
@@ -315,7 +368,7 @@ function buildGenericPayload(feedback: FeedbackRecord): GenericWebhookPayload {
 export function buildWebhookPayload<T extends WebhookType | undefined>(
   type: T,
   feedback: FeedbackRecord,
-): T extends "slack" ? SlackWebhookPayload : T extends "discord" ? DiscordWebhookPayload : GenericWebhookPayload {
+): T extends "slack" ? SlackWebhookPayload : T extends "discord" ? DiscordWebhookPayload : GenericWebhookBody {
   switch (type) {
     case "slack":
       return buildSlackPayload(feedback) as never;
@@ -333,8 +386,11 @@ export function buildWebhookPayload<T extends WebhookType | undefined>(
  * - POSTs with an `AbortSignal` timeout.
  * - On any error (network, non-2xx, timeout, exception), invokes
  *   `config.onError(err, feedbackId)` if provided; otherwise logs a one-liner.
+ *   A `timeoutMs` no timer holds is such an error: nothing is sent.
  */
 export async function dispatchWebhook(config: WebhookConfig, feedback: FeedbackRecord): Promise<void> {
+  const problem = timeoutProblem(config.timeoutMs);
+  if (problem) return reportError(config, new RangeError(problem), feedback.id);
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -368,19 +424,20 @@ export async function dispatchWebhook(config: WebhookConfig, feedback: FeedbackR
 
     if (!response.ok) {
       const err = new Error(`Webhook responded with HTTP ${response.status}`);
-      reportError(config, err, feedback.id);
+      await reportError(config, err, feedback.id);
     }
   } catch (rawError) {
     clearTimeout(timer);
     const err = rawError instanceof Error ? rawError : new Error(String(rawError));
-    reportError(config, err, feedback.id);
+    await reportError(config, err, feedback.id);
   }
 }
 
-function reportError(config: WebhookConfig, err: Error, feedbackId: string): void {
+async function reportError(config: WebhookConfig, err: Error, feedbackId: string): Promise<void> {
   if (config.onError) {
     try {
-      config.onError(err, feedbackId);
+      // Awaited, so an async callback's rejection lands here like a throw.
+      await config.onError(err, feedbackId);
     } catch (callbackErr) {
       // Defense-in-depth: a thrown user callback must not bubble back up
       // and crash the request that already succeeded persisting the

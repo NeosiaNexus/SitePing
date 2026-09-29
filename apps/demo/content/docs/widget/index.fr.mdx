@@ -97,7 +97,7 @@ Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint`
 
 ## Gérer les erreurs
 
-`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable` (booléen) :
+`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable` (booléen). Une erreur `AUTH` porte aussi le `status` HTTP : `401` quand les identifiants manquent ou sont morts, `403` quand ils fonctionnent et que la politique du serveur refuse la requête :
 
 ```ts
 initSiteping({

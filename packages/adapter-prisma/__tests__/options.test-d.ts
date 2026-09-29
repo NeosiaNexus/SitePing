@@ -6,11 +6,16 @@
 import type { SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
 import {
+  type CommentCreateInput,
   createSitepingHandler,
+  type FeedbackCreateInput,
+  type FeedbackRecord,
   type HandlerOptions,
+  type PrismaAccessHandlerOptions,
   type SitepingAccessControl,
   type SitepingAuthorizationContext,
   type SitepingDeletionTarget,
+  type SitepingHandlerBaseOptions,
   type SitepingLifecycleHooks,
   type SitepingLogger,
   type SitepingPrismaClient,
@@ -55,6 +60,14 @@ describe("createSitepingHandler options", () => {
     // @ts-expect-error — a boolean check is no principal: its false would read as a signed-in caller
     createSitepingHandler({ prisma, access: { authenticate: (request) => request.headers.has("x-token") } });
   });
+
+  it("takes options assembled at runtime, either policy, like @siteping/server does", () => {
+    const options: HandlerOptions | PrismaAccessHandlerOptions<{ id: string }> = process.env.SSO
+      ? { prisma, access: { authenticate: sessionUser } }
+      : { prisma, apiKey: "k" };
+
+    createSitepingHandler(options);
+  });
 });
 
 describe("server option types", () => {
@@ -74,7 +87,10 @@ describe("server option types", () => {
       },
     };
     const logger: SitepingLogger = { error: () => {} };
+    const beforeCreate = (input: FeedbackCreateInput): FeedbackCreateInput => input;
+    const beforeComment: SitepingHandlerBaseOptions<Reviewer>["beforeComment"] = (input: CommentCreateInput) => input;
+    const presentFeedback = (feedback: FeedbackRecord): FeedbackRecord => feedback;
 
-    createSitepingHandler({ prisma, access, hooks, logger });
+    createSitepingHandler({ prisma, access, hooks, logger, beforeCreate, beforeComment, presentFeedback });
   });
 });

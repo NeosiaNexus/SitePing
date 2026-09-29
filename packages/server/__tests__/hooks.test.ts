@@ -111,6 +111,37 @@ describe("createSitepingHandler — beforeCreate and presentFeedback", () => {
   });
 });
 
+describe("createSitepingHandler — presentFeedback and email redaction", () => {
+  it("still blanks reviewer emails after presentFeedback, on the feedback and on its thread", async () => {
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      access: { ...sessionAccess, canReadAuthorEmail: () => false },
+      // Returns the record untouched: redaction must not rely on it.
+      presentFeedback: (feedback) => feedback,
+    });
+    const created = await createFeedback(handler);
+    const reply = {
+      projectName: PROJECT,
+      feedbackId: created.id,
+      body: "Still broken",
+      authorName: "Bob",
+      authorEmail: "bob@example.com",
+      clientId: "reply-1",
+    };
+    expect((await handler.POST(jsonRequest("POST", reply))).status).toBe(201);
+
+    const listed = ((await (await handler.GET(listRequest())).json()) as { feedbacks: FeedbackRecord[] }).feedbacks[0];
+    const updated = (await (
+      await handler.PATCH(jsonRequest("PATCH", { id: created.id, projectName: PROJECT, status: "resolved" }))
+    ).json()) as FeedbackRecord;
+
+    for (const feedback of [listed, updated]) {
+      expect(feedback?.authorEmail).toBe("");
+      expect(feedback?.comments?.map((comment) => comment.authorEmail)).toEqual([""]);
+    }
+  });
+});
+
 describe("createSitepingHandler — lifecycle hooks", () => {
   it("runs onCreated once per new feedback with the principal, never on a replayed clientId", async () => {
     const onCreated = vi.fn();
@@ -201,9 +232,16 @@ describe("createSitepingHandler — lifecycle hooks", () => {
       hooks: { onCreated: () => Promise.reject(hookError) },
     });
 
-    await createFeedback(handler);
+    const feedback = await createFeedback(handler);
 
-    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onCreated failed", { error: hookError });
+    // With what an operator needs to find the feedback that missed its side effect.
+    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onCreated failed", {
+      error: hookError,
+      feedbackId: feedback.id,
+      projectName: PROJECT,
+      method: "POST",
+      path: "/api/siteping",
+    });
   });
 
   it("runs onUpdated with the stored record", async () => {
@@ -234,7 +272,13 @@ describe("createSitepingHandler — lifecycle hooks", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ id: feedback.id, status: "resolved" });
-    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onUpdated failed", { error: hookError });
+    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onUpdated failed", {
+      error: hookError,
+      feedbackId: feedback.id,
+      projectName: PROJECT,
+      method: "PATCH",
+      path: "/api/siteping",
+    });
   });
 
   it("logs a failing onDeleted hook without failing the request", async () => {
@@ -257,8 +301,31 @@ describe("createSitepingHandler — lifecycle hooks", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ deleted: true });
-    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onDeleted failed", { error: hookError });
+    expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onDeleted failed", {
+      error: hookError,
+      target: { kind: "single", id: feedback.id, projectName: PROJECT },
+      method: "DELETE",
+      path: "/api/siteping",
+    });
     expect((await store.getFeedbacks({ projectName: PROJECT })).total).toBe(0);
+  });
+
+  it("runs onDeleted only once the store has deleted the record", async () => {
+    const store = new MemoryStore();
+    store.deleteFeedback = () => Promise.reject(new Error("deadlock detected"));
+    const onDeleted = vi.fn();
+    const handler = createSitepingHandler({
+      store,
+      access: sessionAccess,
+      logger: silentLogger(),
+      hooks: { onDeleted },
+    });
+    const feedback = await createFeedback(handler);
+
+    const response = await handler.DELETE(jsonRequest("DELETE", { id: feedback.id, projectName: PROJECT }));
+
+    expect(response.status).toBe(500);
+    expect(onDeleted).not.toHaveBeenCalled();
   });
 
   it("keeps the record and answers 502 when onDeleting throws", async () => {

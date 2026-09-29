@@ -19,6 +19,7 @@ import {
   IDENTITY_FIELD_MAX_LENGTH,
 } from "@siteping/core";
 import * as zod from "zod";
+import { MAX_VALIDATION_ISSUES } from "./constants.js";
 
 // Namespace import required: Zod publishes dual CJS/ESM, and bundlers (tsup, vitest) may
 // resolve the CJS entry where `import { z } from "zod"` fails because CJS wraps
@@ -26,6 +27,16 @@ import * as zod from "zod";
 // regardless of which entry point the bundler resolves.
 // See: https://github.com/colinhacks/zod/issues/2697
 const z: typeof zod.z = ("z" in zod ? zod.z : zod) as typeof zod.z;
+
+/**
+ * An array of at most `max` elements, refused on its length before any
+ * element is parsed. zod checks every element before `.max()`, so an
+ * oversized array would cost a parse of each element and one issue per
+ * invalid field: a public POST of 0.6 MB answered with a 120 MB 400.
+ */
+function boundedArray<Element extends zod.z.ZodType>(element: Element, max: number) {
+  return z.array(z.unknown()).max(max).pipe(z.array(element));
+}
 
 const anchorSchema = z.object({
   cssSelector: z.string().min(1).max(2000),
@@ -86,8 +97,8 @@ const networkEntrySchema = z.object({
 });
 
 const diagnosticsSchema = z.object({
-  console: z.array(consoleEntrySchema).max(50),
-  network: z.array(networkEntrySchema).max(20),
+  console: boundedArray(consoleEntrySchema, 50),
+  network: boundedArray(networkEntrySchema, 20),
 });
 
 // Annotation rect position within the screenshot image, as fractions [0, 1]
@@ -133,7 +144,7 @@ export const feedbackCreateSchema = z.object({
   // 400 here.
   authorName: z.string().min(1).max(IDENTITY_FIELD_MAX_LENGTH),
   authorEmail: z.email({ pattern: EMAIL_PATTERN }).max(IDENTITY_FIELD_MAX_LENGTH),
-  annotations: z.array(annotationSchema).max(50),
+  annotations: boundedArray(annotationSchema, 50),
   clientId: clientIdSchema,
   // Optional base64 JPEG data URL captured by the widget when
   // `enableScreenshot: true`. ~1.5 MB cap = roughly a 1.1 MB JPEG, well
@@ -203,7 +214,7 @@ export const getQuerySchema = z.object({
   statuses: z
     .preprocess(
       (val) => (typeof val === "string" && val.length > 0 ? val.split(",") : val),
-      z.array(z.enum(FEEDBACK_STATUSES)).max(4),
+      boundedArray(z.enum(FEEDBACK_STATUSES), 4),
     )
     .optional(),
   search: z.string().max(200).optional(),
@@ -300,13 +311,14 @@ export interface ValidationIssue {
 }
 
 /**
- * Map Zod errors to a flat array of `{ field, message }` objects.
+ * Map Zod errors to a flat array of `{ field, message }` objects — the first
+ * `MAX_VALIDATION_ISSUES` of them.
  * Safe: does not leak input values or schema structure.
  */
 export function formatValidationErrors(error: zod.z.ZodError): ValidationIssue[] {
   // Zod 4 types `issue.path` as PropertyKey[] (symbols possible in theory);
   // String() keeps the join total instead of throwing on non-string keys.
-  return error.issues.map((issue) => ({
+  return error.issues.slice(0, MAX_VALIDATION_ISSUES).map((issue) => ({
     field: issue.path.map(String).join("."),
     message: issue.message,
   }));

@@ -422,12 +422,15 @@ describe("ApiClient", () => {
     expect(err).toBeInstanceOf(SitepingAuthError);
     expect(err.code).toBe("AUTH");
     expect(err.retryable).toBe(false);
+    expect((err as SitepingAuthError).status).toBe(401);
   });
 
-  it("maps 403 to SitepingAuthError", async () => {
+  it("maps 403 to SitepingAuthError, telling it from a 401 by its status", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("Forbidden", { status: 403 }));
     const err = (await client.getFeedbacks("test").catch((e: SitepingError) => e)) as SitepingError;
     expect(err).toBeInstanceOf(SitepingAuthError);
+    // A policy refusal: the credentials still work, so a host must not drop them.
+    expect((err as SitepingAuthError).status).toBe(403);
   });
 
   it("maps other 4xx to SitepingValidationError (not retryable)", async () => {

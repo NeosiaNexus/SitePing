@@ -210,6 +210,30 @@ describe("permissions — access policy", () => {
     expect(peak).toBe(8);
   });
 
+  it("authenticates each response once, however many permissions its dry runs fill in", async () => {
+    const authenticate = vi.fn(access().authenticate);
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      access: { ...access(() => true), authenticate },
+    });
+    const created = await create(handler);
+    await create(handler);
+    await create(handler);
+
+    const calls = async (respond: () => Promise<unknown>) => {
+      authenticate.mockClear();
+      await respond();
+      return authenticate.mock.calls.length;
+    };
+
+    // A page of 3 asks 13 dry runs, a POST or PATCH answer 4: `authenticate` runs for none of them.
+    expect(await calls(() => list(handler))).toBe(1);
+    expect(await calls(() => create(handler))).toBe(1);
+    expect(
+      await calls(() => handler.PATCH(request("PATCH", { id: created.id, projectName: PROJECT, status: "resolved" }))),
+    ).toBe(1);
+  });
+
   it("allows everything to every authenticated principal without authorize", async () => {
     const handler = createSitepingHandler({ store: new MemoryStore(), access: access() });
 

@@ -1,5 +1,6 @@
 import { hasOwn } from "@siteping/core";
 import { type AccessGate, createAccessGate, createApiKeyGate } from "./access.js";
+import { DEFAULT_MAX_BODY_BYTES } from "./constants.js";
 import { preflightResponse } from "./cors.js";
 import { createCommentOperation } from "./operations/create-comment.js";
 import { createFeedbackOperation } from "./operations/create-feedback.js";
@@ -18,13 +19,29 @@ import type {
   SitepingPrincipal,
 } from "./options.js";
 import { createPipeline, type Pipeline, type Scope } from "./pipeline.js";
-import type { WebhookConfig } from "./webhooks.js";
+import { checkWebhookTimeouts, type WebhookConfig } from "./webhooks.js";
 
 const consoleLogger: SitepingLogger = {
   error(message, context) {
     console.error(message, context);
   },
 };
+
+/**
+ * `logger`, made safe to call anywhere: a throw, or a rejection of what it
+ * returns — unhandled, fatal in Node by default — falls back to `console.error`.
+ */
+function safeLogger(logger: SitepingLogger): SitepingLogger {
+  return {
+    error(message, context) {
+      try {
+        Promise.resolve(logger.error(message, context)).catch(() => consoleLogger.error(message, context));
+      } catch {
+        consoleLogger.error(message, context);
+      }
+    },
+  };
+}
 
 /** An operation on a request that passed the access gate, with its JSON body. */
 type BodyOperation<Principal> = (scope: Scope<Principal>, body: unknown) => Promise<Response>;
@@ -62,10 +79,12 @@ function routeByBody<Principal>(
  * Access is either the built-in `apiKey` policy or your own `access` policy
  * (sessions, JWTs, roles…) — see `SitepingAccessHandlerOptions`.
  *
- * @throws Error without a `store`; in production without `apiKey` (see
- * `requireAuthForDestructive`); or with `access.authorize` over a store
- * without `verifyProjectOwnership`, since PATCH/DELETE could then reach a
- * record of a project the caller is not authorized for.
+ * @throws Error without a `store`; with a `maxBodyBytes` that is not a
+ * positive integer, or a webhook `timeoutMs` no timer holds; in production
+ * without `apiKey` (see `requireAuthForDestructive`); or with
+ * `access.authorize` over a store without `verifyProjectOwnership`, since
+ * PATCH/DELETE could then reach a record of a project the caller is not
+ * authorized for.
  *
  * @example Next.js App Router — `app/api/siteping/route.ts`
  * ```ts
@@ -96,13 +115,20 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
     webhooks,
     waitUntil,
     beforeCreate,
+    beforeComment,
     presentFeedback,
     hooks = {},
-    logger = consoleLogger,
+    logger: customLogger,
     describeError,
+    maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   } = options as SitepingHandlerBaseOptions<Principal>;
   if (!store) {
     throw new Error("[siteping] createSitepingHandler requires a `store`.");
+  }
+  if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes <= 0) {
+    throw new Error(
+      `[siteping] createSitepingHandler: \`maxBodyBytes\` must be a positive integer, got ${maxBodyBytes}.`,
+    );
   }
   // A custom `authorize` may scope callers to projects, but PATCH/DELETE
   // address records by id: without the ownership check, the project a caller
@@ -118,7 +144,8 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
   const gate = options.access
     ? createAccessGate(options.access)
     : (createApiKeyGate(options) as AccessGate<unknown> as AccessGate<Principal>);
-  const pipeline = createPipeline({ gate, allowedOrigins, logger, describeError, presentFeedback });
+  const logger = customLogger ? safeLogger(customLogger) : consoleLogger;
+  const pipeline = createPipeline({ gate, allowedOrigins, logger, describeError, presentFeedback, maxBodyBytes });
   // Normalised once so every POST skips the allocation; an empty list
   // short-circuits dispatch.
   const webhookList: ReadonlyArray<WebhookConfig> = webhooks
@@ -126,6 +153,7 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
       ? (webhooks as ReadonlyArray<WebhookConfig>)
       : [webhooks as WebhookConfig]
     : [];
+  checkWebhookTimeouts(webhookList);
 
   return {
     OPTIONS: (request: Request): Response => preflightResponse(request, allowedOrigins),
@@ -133,7 +161,7 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
       pipeline,
       "POST",
       "feedbackId",
-      createCommentOperation({ store, pipeline }),
+      createCommentOperation({ store, pipeline, beforeComment }),
       createFeedbackOperation({
         store,
         pipeline,

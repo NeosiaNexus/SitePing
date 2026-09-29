@@ -89,13 +89,21 @@ Il répond `200 { "deleted": true }`. Comme tout `DELETE`, il exige l'`apiKey` �
 
 ### Lire les fils
 
-La liste `GET` ne change pas, à deux ajouts près : les `comments` de chaque feedback, et un objet `capabilities` qui dit si le store accepte les commentaires (`comments`) et sait les supprimer (`deleteComments`) — un client peut ainsi masquer sa zone de réponse, ou ses boutons de suppression, d'emblée au lieu de tomber sur un `501` :
+La liste `GET` ne change pas, à trois ajouts près : les `comments` de chaque feedback ; un objet `capabilities` qui dit si le store accepte les commentaires (`comments`) et sait les supprimer (`deleteComments`) — un client peut ainsi masquer sa zone de réponse, ou ses boutons de suppression, d'emblée au lieu de tomber sur un `501` ; et les [`permissions`](/fr/docs/server#ce-que-chaque-appelant-peut-faire) de ce demandeur, sur chaque feedback et, avec `canDeleteAll`, sur la liste :
 
 ```json
 {
-  "feedbacks": [{ "id": "cm3f8x…", "message": "…", "comments": [] }],
+  "feedbacks": [
+    {
+      "id": "cm3f8x…",
+      "message": "…",
+      "comments": [],
+      "permissions": { "canChangeStatus": false, "canDelete": false, "canComment": true, "canDeleteComment": false }
+    }
+  ],
   "total": 1,
-  "capabilities": { "comments": true, "deleteComments": true }
+  "capabilities": { "comments": true, "deleteComments": true },
+  "permissions": { "canDeleteAll": false }
 }
 ```
 
@@ -104,10 +112,13 @@ La liste `GET` ne change pas, à deux ajouts près : les `comments` de chaque fe
 | Statut | Quand |
 |---|---|
 | `400 { errors }` | Le corps échoue à la validation (texte vide, e-mail invalide, `clientId` absent…) |
-| `401` / `403` | Identifiants absents, ou refus d'`authorize` ou d'un contrôle CSRF |
+| `401` | Identifiants absents ou faux |
+| `403` | Refus d'`authorize` — ou, avec `access`, une `Origin` hors d'`allowedOrigins` (contrôle CSRF) |
 | `404 { error: "Feedback not found" }` | Feedback inconnu, ou d'un autre projet |
 | `404 { error: "Comment not found" }` | Le commentaire n'est pas dans le fil de ce feedback |
 | `409 { error }` | Le fil contient déjà 100 commentaires, ou le `clientId` est déjà utilisé sur un autre feedback |
+| `415 { error }` | Avec `access`, un corps sans `Content-Type: application/json` (contrôle CSRF) |
+| `422 { error }` | Une valeur plus longue que ce que tient le store — un nom de plus de 191 caractères dans [les colonnes MySQL de Prisma](/fr/docs/adapters/prisma#schéma-de-base-de-données) |
 | `501 { error: "Comments are not supported by this store" }` | Le store ne garde aucun commentaire — voir [activer les fils](#activer-les-fils-sur-votre-store) |
 
 ## Le rôle équipe
@@ -117,6 +128,8 @@ Le widget poste depuis des navigateurs anonymes : l'`authorRole` qu'envoie une r
 - **Avec la politique `apiKey`**, la requête doit porter `Authorization: Bearer <apiKey>`. Le `POST` public, une mauvaise clé et un handler sans `apiKey` obtiennent tous `client`. Un widget configuré avec `apiKey` envoie cette clé depuis le navigateur de chaque visiteur, qui pourrait alors poster au nom de l'équipe : gardez `apiKey` hors des widgets publics.
 - **Avec [`access`](/fr/docs/server#accès-personnalisé)**, c'est `canCommentAsTeam(principal)` qui décide. Sans lui, c'est votre réponse à `canReadAuthorEmail` — qui peut lire les e-mails des relecteurs est du côté projet —, donc une politique qui distingue déjà les visiteurs n'a rien à ajouter. Une politique sans aucun des deux marque chaque commentaire `client` : écrire en tant qu'équipe permet de parler au nom de votre agence dans le fil, ce droit n'est donc jamais accordé par défaut.
 
+Le nom et l'e-mail ne sont que des prétentions eux aussi : un visiteur peut signer une réponse de ceux de n'importe qui, comme un feedback. Avec `access`, imposez ceux d'un auteur connecté depuis la session avec `beforeComment`, comme le font les [recettes](/fr/docs/server#recette--openid-connect) — la vérification du rôle ci-dessus s'applique toujours à ce qu'il renvoie.
+
 `authorize` voit deux actions de plus : `createComment` et `deleteComment`, avec le `feedbackId` — et le `commentId` pour une suppression. Lors d'un `dryRun`, qui remplit les [`permissions`](/fr/docs/server#ce-que-chaque-appelant-peut-faire) du feedback, `deleteComment` arrive sans `commentId` et sa réponse vaut pour tout le fil : protégez une règle par auteur avec `if (!commentId) return false`, qui masque les boutons de suppression tandis que le vrai `DELETE` passe toujours par votre règle.
 
 ```ts
@@ -124,8 +137,9 @@ createSitepingHandler({
   store,
   access: {
     authenticate: (request) => getSessionUser(request),
+    // Toute personne connectée signale, lit et répond ; seule l'équipe trie et supprime.
     authorize: ({ principal, action }) =>
-      action === "deleteComment" ? principal.isStaff : true,
+      principal.isStaff || action === "create" || action === "list" || action === "createComment",
     canReadAuthorEmail: (principal) => principal.isStaff,
     // Optionnel ici : il reprendrait canReadAuthorEmail.
     canCommentAsTeam: (principal) => principal.isStaff,
@@ -135,13 +149,13 @@ createSitepingHandler({
 
 ## E-mails des relecteurs
 
-L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback : vide sauf si le demandeur peut le lire — l'`apiKey` en Bearer, ou `canReadAuthorEmail` avec `access`. La réponse à un `POST` de commentaire renvoie à son auteur l'e-mail du nouveau commentaire, comme le fait un `POST` de feedback ; un `POST` de feedback rejoué ne renvoie que l'e-mail de son auteur, jamais ceux du fil.
+L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback : vide sauf si le demandeur peut le lire — l'`apiKey` en Bearer, ou `canReadAuthorEmail` avec `access`. Avec la politique `apiKey`, la réponse à un `POST` de commentaire renvoie à son auteur l'e-mail du nouveau commentaire, comme le fait un `POST` de feedback ; un `POST` de feedback rejoué ne renvoie que l'e-mail de son auteur, jamais ceux du fil. Avec `access`, c'est `canReadAuthorEmail` qui décide, réponses aux `POST` comprises.
 
 ## Endpoints publics et abus
 
 - **Lire les réponses depuis le widget.** Avec une `apiKey`, `publicEndpoints` vaut par défaut `["POST", "OPTIONS"]` : `GET` exige la clé, donc un widget public peut poster un commentaire mais pas lire la réponse. Ajoutez `"GET"` à `publicEndpoints` pour que les relecteurs lisent leurs fils — les e-mails restent masqués.
 - **Limitation de débit.** Le `POST` public accepte aussi les commentaires : quiconque connaît l'id d'un feedback et le nom de votre projet peut en ajouter. Limitez le débit de `POST` dans votre framework ou votre reverse proxy ; la limite de 100 commentaires borne la taille d'un fil, pas sa vitesse de remplissage.
-- **Notifications.** Les webhooks et `onCreated` se déclenchent pour les nouveaux feedbacks seulement, pas pour les commentaires.
+- **Notifications.** Les webhooks et les [hooks de cycle de vie](/fr/docs/server#points-dextension) se déclenchent pour les feedbacks seulement : ajouter ou supprimer un commentaire n'en exécute aucun, et la cible d'`onDeleting` est toujours un feedback ou un projet. `beforeComment` est le seul callback qu'exécute un commentaire.
 
 ## Activer les fils sur votre store
 

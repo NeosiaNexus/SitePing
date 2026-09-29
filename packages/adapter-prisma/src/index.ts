@@ -21,6 +21,7 @@ import {
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
+  StoreValueTooLongError,
   screenshotMimeType,
   settleWithConcurrencyLimit,
 } from "@siteping/core";
@@ -32,7 +33,13 @@ import {
   type SitepingPrincipal,
 } from "@siteping/server";
 
-export type { ScreenshotStorage, SitepingStore } from "@siteping/core";
+export type {
+  CommentCreateInput,
+  FeedbackCreateInput,
+  FeedbackRecord,
+  ScreenshotStorage,
+  SitepingStore,
+} from "@siteping/core";
 export {
   flattenAnnotation,
   isStorePersistence,
@@ -40,6 +47,7 @@ export {
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
+  StoreValueTooLongError,
 } from "@siteping/core";
 export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "@siteping/server";
 
@@ -58,6 +66,7 @@ export type {
   SitepingAuthorizationContext,
   SitepingDeletionTarget,
   SitepingHandler,
+  SitepingHandlerBaseOptions,
   SitepingHttpMethod,
   SitepingLifecycleHooks,
   SitepingLogger,
@@ -249,6 +258,8 @@ function toStoreError(error: unknown): unknown {
   if (error instanceof StoreNotFoundError || error instanceof StoreDuplicateError) return error;
   if (isStoreNotFound(error)) return new StoreNotFoundError(undefined, { cause: error });
   if (isStoreDuplicate(error)) return new StoreDuplicateError(undefined, { cause: error });
+  // P2000: longer than its column — a plain `String` is `VARCHAR(191)` on MySQL.
+  if (hasOwn(error, "code") && error.code === "P2000") return new StoreValueTooLongError(undefined, { cause: error });
   return error;
 }
 
@@ -283,13 +294,14 @@ export class PrismaStore implements SitepingStore {
 
   /**
    * Add a comment to a feedback's thread — defined only when the client has
-   * the `SitepingComment` delegate. Without it the store has no threads, and
-   * the handler answers comment writes with 501 instead of every post failing
-   * with a Prisma error.
+   * the `SitepingComment` delegate, unless a subclass defines its own. Without
+   * it the store has no threads, and the handler answers comment writes with
+   * 501 instead of every post failing with a Prisma error. Declared, not a
+   * field: a field would set it on every instance, hiding a subclass's method.
    */
-  readonly addComment?: (feedbackId: string, data: CommentCreateInput) => Promise<CommentRecord>;
+  declare readonly addComment?: (feedbackId: string, data: CommentCreateInput) => Promise<CommentRecord>;
   /** Delete one comment from a feedback's thread — defined under the same condition as {@link addComment}. */
-  readonly deleteComment?: (feedbackId: string, commentId: string) => Promise<void>;
+  declare readonly deleteComment?: (feedbackId: string, commentId: string) => Promise<void>;
 
   constructor(prisma: SitepingPrismaClient, options: PrismaStoreOptions = {}) {
     this.prisma = prisma;
@@ -297,8 +309,8 @@ export class PrismaStore implements SitepingStore {
     const comments = prisma.sitepingComment;
     this.include = comments ? INCLUDE_ANNOTATIONS_AND_COMMENTS : INCLUDE_ANNOTATIONS;
     if (comments) {
-      this.addComment = (feedbackId, data) => this.insertComment(comments, feedbackId, data);
-      this.deleteComment = (feedbackId, commentId) => this.removeComment(comments, feedbackId, commentId);
+      this.addComment ??= (feedbackId, data) => this.insertComment(comments, feedbackId, data);
+      this.deleteComment ??= (feedbackId, commentId) => this.removeComment(comments, feedbackId, commentId);
     }
     if (typeof options.caseInsensitiveSearch === "boolean") {
       this.caseInsensitiveSearch = options.caseInsensitiveSearch;
@@ -722,6 +734,10 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
   options: PrismaAccessHandlerOptions<Principal>,
 ): SitepingHandler;
 export function createSitepingHandler(options: HandlerOptions): SitepingHandler;
+/** Options assembled at runtime, either policy. */
+export function createSitepingHandler<Principal extends SitepingPrincipal>(
+  options: HandlerOptions | PrismaAccessHandlerOptions<Principal>,
+): SitepingHandler;
 export function createSitepingHandler<Principal extends SitepingPrincipal>({
   prisma,
   store: providedStore,

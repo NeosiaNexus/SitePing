@@ -57,8 +57,15 @@ export class SitepingValidationError extends SitepingError<"VALIDATION"> {
 
 /** Server rejected auth (401 or 403). Not retryable without fresh credentials. */
 export class SitepingAuthError extends SitepingError<"AUTH"> {
-  constructor(message: string) {
+  /**
+   * `401`: the credentials are missing or no longer work — drop a dead token
+   * on this one. `403`: they work, and the server's policy refuses this request.
+   */
+  readonly status: 401 | 403;
+
+  constructor(message: string, status: 401 | 403) {
     super(message, "AUTH", false);
     this.name = "SitepingAuthError";
+    this.status = status;
   }
 }

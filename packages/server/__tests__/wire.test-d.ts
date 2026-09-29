@@ -5,6 +5,7 @@
 
 import type { CommentResponse, FeedbackPermissions, FeedbackResponse, Prettify, Serialized } from "@siteping/core";
 import { expectTypeOf, test } from "vitest";
+import type { GenericWebhookPayload } from "../src/index.js";
 import type { WireComment, WireFeedback } from "../src/pipeline.js";
 
 test("the wire shapes serialize to the API types clients read", () => {
@@ -16,4 +17,9 @@ test("the wire shapes serialize to the API types clients read", () => {
   // on servers that predate them.
   expectTypeOf<Serialized<WireFeedback>["comments"]>().toEqualTypeOf<CommentResponse[]>();
   expectTypeOf<Serialized<WireFeedback>["permissions"]>().toEqualTypeOf<FeedbackPermissions>();
+});
+
+test("the generic webhook body is typed as the JSON a receiver parses", () => {
+  // Dates as ISO strings, no clientId on the record or its comments; no permissions, which answer a requester.
+  expectTypeOf<GenericWebhookPayload>().toEqualTypeOf<Prettify<Omit<FeedbackResponse, "permissions">>>();
 });
