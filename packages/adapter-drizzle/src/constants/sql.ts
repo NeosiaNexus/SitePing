@@ -18,3 +18,9 @@ export const INSERTED_ANNOTATIONS_CTE_ALIAS = "siteping_inserted_annotations";
 
 /** Alias of the `VALUES` list an insert-select reads its annotation or comment rows from. */
 export const VALUES_LIST_ALIAS = "siteping_values";
+
+/**
+ * Longest identifier PostgreSQL keeps (`NAMEDATALEN` - 1), in bytes: it
+ * silently truncates longer table, index and constraint names.
+ */
+export const POSTGRES_IDENTIFIER_MAX_BYTES = 63;

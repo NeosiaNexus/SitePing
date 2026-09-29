@@ -45,7 +45,7 @@ npx drizzle-kit migrate    # applies it — or `npx drizzle-kit push` while prot
 
 ### What gets created
 
-Three tables, `siteping_feedbacks`, `siteping_annotations` and `siteping_comments` by default. Annotations and [comments](/docs/comments) reference their feedback with `ON DELETE CASCADE`.
+Three tables, `siteping_feedbacks`, `siteping_annotations` and `siteping_comments` by default. Annotations and [comments](/docs/comments) reference their feedback with `ON DELETE CASCADE` (on PostgreSQL, through the foreign keys `<annotations>_feedback_id_fk` and `<comments>_feedback_id_fk`).
 
 | Index | Columns |
 |---|---|
@@ -77,6 +77,8 @@ const store = createPgSitepingStore(db, { tables: { sitepingFeedbacks, sitepingA
 ```
 
 The defaults are exported as `DEFAULT_SITEPING_TABLE_NAMES`.
+
+On PostgreSQL, keep the feedback table's name within 36 bytes, the annotations' within 47 and the comments' within 42. PostgreSQL silently truncates identifiers past 63 bytes, and index and foreign-key names add a suffix to their table's name: a truncated name would make every later `drizzle-kit push` drop and recreate that index or constraint. `createSitepingPgTables` throws a `RangeError` for a name that is too long.
 
 ## 2. Create the store
 
