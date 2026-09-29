@@ -11,12 +11,32 @@
       "entry": ["src/index.ts", "__tests__/**/*.{test,test-d}.{ts,tsx}"],
       "project": ["src/**", "__tests__/**"]
     },
-    "packages/widget": {
-      "entry": ["src/index.ts", "src/react.ts", "__tests__/**/*.{test,test-d}.{ts,tsx}", "__tests__/setup-i18n.ts"],
+    "packages/adapter-drizzle": {
+      "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
       "project": ["src/**", "__tests__/**"]
     },
     "packages/adapter-kit": {
-      "entry": ["src/index.ts", "src/testing.ts", "__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "project": ["src/**", "__tests__/**"]
+    },
+    "packages/cli": {
+      "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "project": ["src/**", "__tests__/**"]
+    },
+    "packages/core": {
+      "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "project": ["src/**", "__tests__/**"]
+    },
+    "packages/integration-issues": {
+      "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "project": ["src/**", "__tests__/**"]
+    },
+    "packages/screenshot-storage": {
+      "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "project": ["src/**", "__tests__/**"]
+    },
+    "packages/widget": {
+      "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
       "project": ["src/**", "__tests__/**"]
     },
     "apps/demo": {}
