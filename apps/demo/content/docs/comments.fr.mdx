@@ -50,7 +50,7 @@ Le tiroir montre le fil du feedback ouvert, et laisse votre équipe répondre et
 Chaque feedback d'une réponse porte `comments`, du plus ancien au plus récent : `[]` quand le fil est vide, ou quand le store ne garde aucun commentaire.
 
 - **Des envois idempotents.** Un commentaire porte aussi un `clientId` que le client génère. Renvoyer le même `clientId` renvoie le commentaire enregistré au lieu de l'ajouter deux fois : une requête relancée ne duplique jamais une réponse. Comme celui du feedback, il n'est jamais renvoyé.
-- **100 commentaires par fil** (`MAX_COMMENTS_PER_FEEDBACK`). Les listes embarquent les fils entiers, qui ne sont pas paginés : la limite borne le poids d'un feedback.
+- **100 commentaires `client` par fil** (`MAX_COMMENTS_PER_FEEDBACK`). Les listes embarquent les fils entiers, qui ne sont pas paginés : la limite borne le poids que le spam sur le `POST` public peut donner à un feedback. Les réponses `team` ne comptent pas et ne s'y heurtent pas : un fil rempli de spam accepte toujours votre réponse.
 - **Un commentaire ne touche pas à l'`updatedAt` du feedback.** `updatedAt` suit les champs propres au feedback (son statut) ; le `createdAt` du commentaire le plus récent dit quand le fil a bougé pour la dernière fois.
 - **Supprimer un feedback supprime son fil.**
 
@@ -116,7 +116,7 @@ La liste `GET` ne change pas, à trois ajouts près : les `comments` de chaque f
 | `403` | Refus d'`authorize` — ou, avec `access`, une `Origin` hors d'`allowedOrigins` (contrôle CSRF) |
 | `404 { error: "Feedback not found" }` | Feedback inconnu, ou d'un autre projet |
 | `404 { error: "Comment not found" }` | Le commentaire n'est pas dans le fil de ce feedback |
-| `409 { error }` | Le fil contient déjà 100 commentaires, ou le `clientId` est déjà utilisé sur un autre feedback |
+| `409 { error }` | Un commentaire `client` sur un fil qui en contient déjà 100 (une réponse `team` n'est jamais refusée pour cette raison), ou le `clientId` est déjà utilisé sur un autre feedback |
 | `415 { error }` | Avec `access`, un corps sans `Content-Type: application/json` (contrôle CSRF) |
 | `422 { error }` | Une valeur plus longue que ce que tient le store — un nom de plus de 191 caractères dans [les colonnes MySQL de Prisma](/fr/docs/adapters/prisma#schéma-de-base-de-données) |
 | `501 { error: "Comments are not supported by this store" }` | Le store ne garde aucun commentaire — voir [activer les fils](#activer-les-fils-sur-votre-store) |
@@ -154,7 +154,7 @@ L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback 
 ## Endpoints publics et abus
 
 - **Lire les réponses depuis le widget.** Avec une `apiKey`, `publicEndpoints` vaut par défaut `["POST", "OPTIONS"]` : `GET` exige la clé, donc un widget public peut poster un commentaire mais pas lire la réponse. Ajoutez `"GET"` à `publicEndpoints` pour que les relecteurs lisent leurs fils — les e-mails restent masqués.
-- **Limitation de débit.** Le `POST` public accepte aussi les commentaires : quiconque connaît l'id d'un feedback et le nom de votre projet peut en ajouter. Limitez le débit de `POST` dans votre framework ou votre reverse proxy ; la limite de 100 commentaires borne la taille d'un fil, pas sa vitesse de remplissage.
+- **Limitation de débit.** Le `POST` public accepte aussi les commentaires : quiconque connaît l'id d'un feedback et le nom de votre projet peut en ajouter. Limitez le débit de `POST` dans votre framework ou votre reverse proxy ; la limite de 100 commentaires `client` borne la taille que le spam peut donner à un fil, pas sa vitesse de remplissage — et ne bloque jamais la réponse de votre équipe.
 - **Notifications.** Les webhooks et les [hooks de cycle de vie](/fr/docs/server#points-dextension) se déclenchent pour les feedbacks seulement : ajouter ou supprimer un commentaire n'en exécute aucun, et la cible d'`onDeleting` est toujours un feedback ou un projet. `beforeComment` est le seul callback qu'exécute un commentaire.
 
 ## Activer les fils sur votre store

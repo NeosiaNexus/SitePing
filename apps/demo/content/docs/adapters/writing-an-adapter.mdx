@@ -101,7 +101,7 @@ Handlers and the dashboard read behavior off these errors, so throw the kit's cl
 | `updateFeedback` / `deleteFeedback` on an unknown id | Throw `StoreNotFoundError` — the HTTP handler turns it into a 404 |
 | `createFeedback` with an already-used `clientId` | Either return the existing record (idempotent) or throw `StoreDuplicateError`. Both are valid; handlers cope with either |
 | `addComment` on an unknown feedback, `deleteComment` of a comment not on that feedback's thread | Throw `StoreNotFoundError` — a 404 |
-| `addComment` on a thread that already holds 100 comments | Throw `StoreLimitError` — a 409 |
+| `addComment` of a `client` comment on a thread that already holds 100 of them | Throw `StoreLimitError` — a 409 |
 | A value longer than your database holds, though the HTTP validation accepts it | Throw `StoreValueTooLongError` — a 422, which clients do not retry |
 | A mutation accepted but not persisted | Throw `StorePersistenceError` instead of reporting a phantom success |
 | Empty results on `getFeedbacks` / `findByClientId` | Don't throw — return an empty array or `null` |
@@ -143,7 +143,7 @@ Implement it whenever your store serves more than one project. When it's absent,
 - Return the thread on every record, as `comments`, oldest first — an empty array when there is none, starting with the record `createFeedback` returns. `buildFeedbackRecord` leaves `comments` out so its record still maps to your feedback row: add `comments: []` yourself.
 - `addComment` is idempotent on `data.clientId`: when a comment with that `clientId` exists, on any thread, return it unchanged. The handler refuses a replay aimed at another feedback.
 - `deleteComment` is scoped to the thread it names, which the caller was authorized for: a comment of another thread is "not found".
-- A thread holds at most `MAX_COMMENTS_PER_FEEDBACK` (100) comments, a comment leaves the feedback's `updatedAt` alone, and deleting a feedback deletes its thread.
+- A thread holds at most `MAX_COMMENTS_PER_FEEDBACK` (100) `client` comments — `team` ones neither count nor are refused —, a comment leaves the feedback's `updatedAt` alone, and deleting a feedback deletes its thread.
 
 `buildCommentRecord(data, { id, feedbackId })` builds the record, and `createCollectionStore` implements both methods.
 

@@ -50,7 +50,7 @@ The drawer shows the opened feedback's thread, and lets your team reply and dele
 Every feedback in a response carries `comments`, oldest first: `[]` when the thread is empty, or when the store keeps no comments at all.
 
 - **Idempotent posts.** A comment also carries a `clientId` the client generates. Posting the same `clientId` again returns the stored comment instead of adding it twice, so a retried request never duplicates a reply. Like the feedback's, it is never sent back.
-- **100 comments per thread** (`MAX_COMMENTS_PER_FEEDBACK`). Lists embed whole threads, which are not paginated, so the cap bounds what one feedback weighs.
+- **100 `client` comments per thread** (`MAX_COMMENTS_PER_FEEDBACK`). Lists embed whole threads, which are not paginated, so the cap bounds what spam on the public `POST` can make one feedback weigh. `team` replies neither count nor meet it: a thread spammed full still takes your answer.
 - **A comment leaves the feedback's `updatedAt` alone.** `updatedAt` tracks the feedback's own fields (its status); the newest comment's `createdAt` tells when the thread last moved.
 - **Deleting a feedback deletes its thread.**
 
@@ -116,7 +116,7 @@ The `GET` list is unchanged, with three additions: each feedback's `comments`; a
 | `403` | Refused by `authorize` — or, under `access`, an `Origin` outside `allowedOrigins` (CSRF check) |
 | `404 { error: "Feedback not found" }` | Unknown feedback, or one of another project |
 | `404 { error: "Comment not found" }` | The comment is not on that feedback's thread |
-| `409 { error }` | The thread already holds 100 comments, or the `clientId` is already used on another feedback |
+| `409 { error }` | A `client` comment on a thread that already holds 100 of them (a `team` reply is never refused for it), or the `clientId` is already used on another feedback |
 | `415 { error }` | Under `access`, a body without `Content-Type: application/json` (CSRF check) |
 | `422 { error }` | A value longer than the store holds — a name over 191 characters in [Prisma's MySQL columns](/docs/adapters/prisma#database-schema) |
 | `501 { error: "Comments are not supported by this store" }` | The store keeps no comments — see [enabling threads](#enable-threads-on-your-store) |
@@ -154,7 +154,7 @@ A comment's `authorEmail` is redacted exactly like the feedback's: blank unless 
 ## Public endpoints and abuse
 
 - **Reading replies from the widget.** With an `apiKey`, `publicEndpoints` defaults to `["POST", "OPTIONS"]`: `GET` needs the key, so a public widget can post a comment but not read the answer. Add `"GET"` to `publicEndpoints` to let reviewers read their threads — emails stay redacted.
-- **Rate limiting.** The public `POST` takes comments too: anyone who knows a feedback id and your project name can add one. Rate-limit `POST` in your framework or reverse proxy; the 100-comment cap bounds how large one thread can grow, not how fast.
+- **Rate limiting.** The public `POST` takes comments too: anyone who knows a feedback id and your project name can add one. Rate-limit `POST` in your framework or reverse proxy; the cap of 100 `client` comments bounds how large spam can make one thread, not how fast — and never blocks your team's reply.
 - **Notifications.** Webhooks and the [lifecycle hooks](/docs/server#extension-points) fire for feedbacks only: adding or deleting a comment runs none of them, and `onDeleting`'s target is always a feedback or a project. `beforeComment` is the one callback a comment runs.
 
 ## Enable threads on your store

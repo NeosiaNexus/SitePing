@@ -204,26 +204,22 @@ describe("comments — POST", () => {
     expect(await response.json()).toEqual({ error: "Feedback not found" });
   });
 
-  it(`answers 409 once the thread holds ${MAX_COMMENTS_PER_FEEDBACK} comments`, async () => {
+  it(`answers 409 once the thread holds ${MAX_COMMENTS_PER_FEEDBACK} client comments — and still takes the team's`, async () => {
     const store = new MemoryStore();
-    const handler = createSitepingHandler({ store });
+    // The widget's setup: anyone reads and posts, the key holder speaks as the team.
+    const handler = createSitepingHandler({ store, apiKey: API_KEY, publicEndpoints: ["GET", "POST", "OPTIONS"] });
     const feedback = await createFeedback(handler);
-    for (let i = 0; i < MAX_COMMENTS_PER_FEEDBACK; i++) {
-      await store.addComment(feedback.id, {
-        body: "b",
-        authorName: "a",
-        authorEmail: "",
-        authorRole: "client",
-        clientId: `seed-${i}`,
-      });
-    }
+    for (let i = 0; i < MAX_COMMENTS_PER_FEEDBACK; i++) await postComment(handler, commentBody(feedback.id));
 
-    const response = await handler.POST(request("POST", commentBody(feedback.id)));
+    const spam = await handler.POST(request("POST", commentBody(feedback.id)));
+    const answer = await handler.POST(request("POST", commentBody(feedback.id, { authorRole: "team" }), BEARER));
 
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({
-      error: `Too many comments on this feedback (max ${MAX_COMMENTS_PER_FEEDBACK})`,
+    expect(spam.status).toBe(409);
+    expect(await spam.json()).toEqual({
+      error: `Too many client comments on this feedback (max ${MAX_COMMENTS_PER_FEEDBACK})`,
     });
+    expect(answer.status).toBe(201);
+    expect(await answer.json()).toMatchObject({ authorRole: "team" });
   });
 
   it("answers 422 to a comment the store cannot hold, logged for the operator", async () => {

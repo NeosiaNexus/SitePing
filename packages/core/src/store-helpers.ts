@@ -321,8 +321,11 @@ export function createCollectionStore(
         const current = feedbacks.find((f) => f.id === feedbackId);
         if (!current) throw new StoreNotFoundError();
         const thread = current.comments ?? [];
-        if (thread.length >= MAX_COMMENTS_PER_FEEDBACK) {
-          throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
+        if (
+          data.authorRole === "client" &&
+          thread.filter((c) => c.authorRole === "client").length >= MAX_COMMENTS_PER_FEEDBACK
+        ) {
+          throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} client comments`);
         }
 
         const comment = buildCommentRecord(data, { id: backend.generateId(), feedbackId });

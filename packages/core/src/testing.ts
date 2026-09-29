@@ -904,19 +904,26 @@ export function testSitepingStore(
         await expect(store.addComment("unknown-id", commentInput())).rejects.toSatisfy(isStoreNotFound);
       });
 
-      it(`refuses a comment past ${MAX_COMMENTS_PER_FEEDBACK} per thread with StoreLimitError (when implemented)`, async () => {
+      it(`refuses a client comment past ${MAX_COMMENTS_PER_FEEDBACK} per thread with StoreLimitError, never a team one (when implemented)`, async () => {
         if (!store.addComment) return;
+        const client = () => commentInput({ authorRole: "client" });
 
         const fb = await store.createFeedback(createInput({ clientId: "full-thread" }));
         const other = await store.createFeedback(createInput({ clientId: "roomy-thread" }));
-        let last = await store.addComment(fb.id, commentInput());
-        for (let i = 1; i < MAX_COMMENTS_PER_FEEDBACK; i++) last = await store.addComment(fb.id, commentInput());
+        // The team's replies do not count toward the cap…
+        await store.addComment(fb.id, commentInput({ authorRole: "team" }));
+        let last = await store.addComment(fb.id, client());
+        for (let i = 1; i < MAX_COMMENTS_PER_FEEDBACK; i++) last = await store.addComment(fb.id, client());
 
-        await expect(store.addComment(fb.id, commentInput())).rejects.toSatisfy(isStoreLimit);
+        await expect(store.addComment(fb.id, client())).rejects.toSatisfy(isStoreLimit);
+        // …nor meet it: a thread spammed full still takes the team's answer.
+        await expect(store.addComment(fb.id, commentInput({ authorRole: "team" }))).resolves.toMatchObject({
+          authorRole: "team",
+        });
         // A replay is not a new comment, and the cap is per thread.
-        await expect(store.addComment(fb.id, { ...commentInput(), clientId: last.clientId })).resolves.toEqual(last);
-        await expect(store.addComment(other.id, commentInput())).resolves.toMatchObject({ feedbackId: other.id });
-        for (const thread of await threadsOf("full-thread")) expect(thread).toHaveLength(MAX_COMMENTS_PER_FEEDBACK);
+        await expect(store.addComment(fb.id, { ...client(), clientId: last.clientId })).resolves.toEqual(last);
+        await expect(store.addComment(other.id, client())).resolves.toMatchObject({ feedbackId: other.id });
+        for (const thread of await threadsOf("full-thread")) expect(thread).toHaveLength(MAX_COMMENTS_PER_FEEDBACK + 2);
       });
 
       it("deletes one comment and keeps the rest of the thread (when implemented)", async () => {

@@ -124,7 +124,7 @@ npx prisma db push       # or: npx prisma migrate dev --name siteping-comments
 
 Both commands regenerate the client. Apply the schema to the database before you deploy that client: it reads the comments table on every list, so until the table exists, lists answer `500` with the missing-table hint.
 
-A thread comes back oldest first. A post connects to its feedback, so an unknown feedback is a `404` on every provider, and the unique `clientId` makes a replayed post return the stored comment. The 100-comment cap is a count before the insert: posts racing for the last free slot may overshoot it.
+A thread comes back oldest first. A post connects to its feedback, so an unknown feedback is a `404` on every provider, and the unique `clientId` makes a replayed post return the stored comment. The cap of 100 `client` comments is a count before the insert: posts racing for the last free slot may overshoot it.
 
 ## Screenshot storage
 

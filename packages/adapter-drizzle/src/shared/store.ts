@@ -365,13 +365,14 @@ export class DrizzleSitepingStore implements DrizzleStore {
 
   /**
    * Add a comment as the last of its thread, in one statement that also
-   * checks the feedback, the thread cap and the `clientId` — atomic across
-   * store instances and processes, except that posts racing for the last
-   * free slot may overshoot the cap by the ones that run concurrently.
+   * checks the feedback, the cap on `client` comments and the `clientId` —
+   * atomic across store instances and processes, except that posts racing
+   * for the last free slot may overshoot the cap by the ones that run
+   * concurrently.
    *
    * @throws `StoreNotFoundError` when the feedback does not exist, including
    *   when it is deleted while the comment is being inserted.
-   * @throws `StoreLimitError` when its thread already holds `MAX_COMMENTS_PER_FEEDBACK` comments.
+   * @throws `StoreLimitError` when a `client` comment meets a thread already holding `MAX_COMMENTS_PER_FEEDBACK` of them.
    * @throws `StorePersistenceError` when a database call fails.
    */
   async addComment(submittedFeedbackId: string, submitted: CommentCreateInput): Promise<CommentRecord> {
@@ -410,7 +411,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
       this.gateway.findProjectName(feedbackId),
     );
     if (projectName === null) throw new StoreNotFoundError();
-    throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} comments`);
+    throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} client comments`);
   }
 
   async deleteComment(submittedFeedbackId: string, submittedCommentId: string): Promise<void> {

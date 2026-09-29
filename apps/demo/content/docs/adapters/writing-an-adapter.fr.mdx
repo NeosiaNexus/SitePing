@@ -101,7 +101,7 @@ Les handlers et le dashboard déduisent leur comportement de ces erreurs : levez
 | `updateFeedback` / `deleteFeedback` sur un id inconnu | Levez `StoreNotFoundError` — le handler HTTP le traduit en 404 |
 | `createFeedback` avec un `clientId` déjà utilisé | Renvoyez l'enregistrement existant (idempotent) ou levez `StoreDuplicateError`. Les deux sont valides, les handlers gèrent l'un comme l'autre |
 | `addComment` sur un feedback inconnu, `deleteComment` d'un commentaire absent du fil de ce feedback | Levez `StoreNotFoundError` — un 404 |
-| `addComment` sur un fil qui contient déjà 100 commentaires | Levez `StoreLimitError` — un 409 |
+| `addComment` d'un commentaire `client` sur un fil qui en contient déjà 100 | Levez `StoreLimitError` — un 409 |
 | Une valeur plus longue que ce que tient votre base, bien que la validation HTTP l'accepte | Levez `StoreValueTooLongError` — un 422, que les clients ne rejouent pas |
 | Une mutation acceptée mais non persistée | Levez `StorePersistenceError` au lieu d'annoncer une réussite fantôme |
 | Résultat vide sur `getFeedbacks` / `findByClientId` | Ne levez pas — renvoyez un tableau vide ou `null` |
@@ -143,7 +143,7 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 - Renvoyez le fil sur chaque enregistrement, dans `comments`, du plus ancien au plus récent — un tableau vide quand il n'y en a pas, à commencer par l'enregistrement que renvoie `createFeedback`. `buildFeedbackRecord` omet `comments` pour que son enregistrement corresponde toujours à votre ligne de feedback : ajoutez `comments: []` vous-même.
 - `addComment` est idempotente sur `data.clientId` : quand un commentaire avec ce `clientId` existe, sur n'importe quel fil, renvoyez-le tel quel. Le handler refuse un envoi rejoué qui vise un autre feedback.
 - `deleteComment` se limite au fil qu'elle désigne, celui pour lequel l'appelant a été autorisé : un commentaire d'un autre fil est « introuvable ».
-- Un fil contient au plus `MAX_COMMENTS_PER_FEEDBACK` (100) commentaires, un commentaire ne touche pas à l'`updatedAt` du feedback, et supprimer un feedback supprime son fil.
+- Un fil contient au plus `MAX_COMMENTS_PER_FEEDBACK` (100) commentaires `client` — les `team` ne comptent pas et ne sont jamais refusés —, un commentaire ne touche pas à l'`updatedAt` du feedback, et supprimer un feedback supprime son fil.
 
 `buildCommentRecord(data, { id, feedbackId })` construit l'enregistrement, et `createCollectionStore` implémente les deux méthodes.
 
