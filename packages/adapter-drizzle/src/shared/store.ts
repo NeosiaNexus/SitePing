@@ -302,13 +302,16 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * needed for cleanup, so rows go in chunks of
    * {@link PROJECT_DELETE_CHUNK_SIZE}, each deleted atomically and its
    * screenshots cleaned up before the next one: every driver response and the
-   * URLs held in memory stay bounded however large the project.
+   * URLs held in memory stay bounded however large the project. The call
+   * returns once the project has no row left, whatever deletes run alongside.
    *
    * @throws `StorePersistenceError` when a chunk fails. The chunks before it
    *   stay deleted and their screenshots are already cleaned up; the delete is
    *   idempotent, so retrying it removes the remaining rows. When the failing
    *   chunk committed although the driver reported an error, its rows are gone
-   *   and their screenshots are left in the storage as orphans.
+   *   and their screenshots are left in the storage as orphans. Also thrown
+   *   when the database keeps rows it is told to delete (a row-level security
+   *   policy or a trigger that skips deletes), instead of retrying forever.
    */
   async deleteAllFeedbacks(submittedProjectName: string): Promise<void> {
     const projectName = toStorableText(submittedProjectName);
@@ -316,14 +319,31 @@ export class DrizzleSitepingStore implements DrizzleStore {
       await persistMutation("deleteAllFeedbacks", { projectName }, () => this.gateway.deleteByProject(projectName));
       return;
     }
+    let remainingAfterEmptyChunk = Number.POSITIVE_INFINITY;
     for (;;) {
       const deleted = await persistMutation("deleteAllFeedbacks", { projectName }, () =>
         this.gateway.deleteProjectChunk(projectName, PROJECT_DELETE_CHUNK_SIZE),
       );
-      // Stop only on an empty chunk: a short one may come from a concurrent
-      // delete that removed some of its rows, not from the end of the project.
-      if (deleted.deletedCount === 0) return;
-      await this.discardScreenshots(deleted.screenshotUrls);
+      if (deleted.deletedCount > 0) {
+        await this.discardScreenshots(deleted.screenshotUrls);
+        continue;
+      }
+      // Neither a short nor an empty chunk means the project is empty: on
+      // PostgreSQL, a concurrent delete may take some or all of the rows a chunk
+      // picked (the statement waits for its locks, then skips the rows it
+      // removed). Only a project left empty ends the delete. The next chunk
+      // waits for the concurrent delete, so rows keep going; when none went
+      // since the last empty chunk, nothing will remove them.
+      const remaining = await persistMutation("deleteAllFeedbacks", { projectName }, () =>
+        this.gateway.countFeedbacks({ projectName }),
+      );
+      if (remaining === 0) return;
+      if (remaining >= remainingAfterEmptyChunk) {
+        throw new StorePersistenceError(
+          `${DRIZZLE_STORE_MESSAGE_PREFIX}.deleteAllFeedbacks: the database kept ${remaining} rows it was told to delete (projectName=${projectName})`,
+        );
+      }
+      remainingAfterEmptyChunk = remaining;
     }
   }
 

@@ -160,6 +160,16 @@ function causeChain(error: unknown): unknown[] {
   return chain;
 }
 
+/**
+ * A driver call's result — one result or a libSQL batch of them — reporting only the rows
+ * `reported` keeps of those its statement returned.
+ */
+function withReportedRows(result: unknown, reported: (rows: unknown[]) => unknown[]): unknown {
+  if (Array.isArray(result)) return result.map((single) => withReportedRows(single, reported));
+  const { rows } = result as { rows: unknown[] };
+  return { ...(result as object), rows: reported(rows) };
+}
+
 const REJECTED_WRITE_OPERATIONS = ["INSERT", "UPDATE", "DELETE"] as const;
 
 interface DialectUnderTest {
@@ -195,6 +205,11 @@ interface DialectUnderTest {
     stopEnforcingForeignKeys(): Promise<() => Promise<void>>;
     /** Make the database reject writes to the feedback table; resolves to the undo. */
     rejectFeedbackWrites(): Promise<() => Promise<void>>;
+    /**
+     * Make the database skip deletes of feedback rows without an error, as a trigger or a
+     * row-level security policy may; resolves to the undo.
+     */
+    skipFeedbackDeletes(): Promise<() => Promise<void>>;
     reset(): Promise<void>;
     close(): Promise<void>;
   }>;
@@ -256,6 +271,18 @@ const dialects: DialectUnderTest[] = [
           await database.db.execute(sql`SET default_transaction_read_only = on`);
           return async () => {
             await database.db.execute(sql`SET default_transaction_read_only = off`);
+          };
+        },
+        async skipFeedbackDeletes() {
+          await database.db.execute(
+            sql`CREATE FUNCTION skip_feedback_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$`,
+          );
+          await database.db.execute(
+            sql`CREATE TRIGGER skip_feedback_delete BEFORE DELETE ON ${tables.sitepingFeedbacks} FOR EACH ROW EXECUTE FUNCTION skip_feedback_delete()`,
+          );
+          return async () => {
+            await database.db.execute(sql`DROP TRIGGER skip_feedback_delete ON ${tables.sitepingFeedbacks}`);
+            await database.db.execute(sql`DROP FUNCTION skip_feedback_delete()`);
           };
         },
         reset: database.reset,
@@ -321,6 +348,15 @@ const dialects: DialectUnderTest[] = [
             for (const operation of REJECTED_WRITE_OPERATIONS) {
               await database.db.run(sql`DROP TRIGGER ${triggerName(operation)}`);
             }
+          };
+        },
+        async skipFeedbackDeletes() {
+          const feedbackTable = sql.identifier(getTableName(tables.sitepingFeedbacks));
+          await database.db.run(
+            sql`CREATE TRIGGER skip_feedback_delete BEFORE DELETE ON ${feedbackTable} BEGIN SELECT RAISE(IGNORE); END`,
+          );
+          return async () => {
+            await database.db.run(sql`DROP TRIGGER skip_feedback_delete`);
           };
         },
         reset: database.reset,
@@ -889,6 +925,50 @@ for (const dialect of dialects) {
         expect((await writer.getFeedbacks({ projectName: "site" })).total).toBe(0);
         expect(await database.countAnnotations()).toBe(0);
         expect(deletions).toEqual([]);
+      });
+    });
+
+    describe("when deleteAllFeedbacks deletes chunk by chunk alongside other deletes", () => {
+      // A concurrent delete that took rows a chunk picked leaves that chunk short or empty
+      // (PostgreSQL waits for its locks, then skips the rows it removed). Here the chunk's own
+      // statement deletes them and reports only some, as the store then sees it.
+      it.each([
+        ["every row", () => []],
+        ["some rows", (rows: unknown[]) => rows.slice(1)],
+      ])("finishes the project when a concurrent delete took %s of a chunk", async (_taken, reported) => {
+        await database.insertFeedbacksAsApplication(externallyStoredScreenshotRows(PROJECT_DELETE_CHUNK_SIZE + 20));
+        let firstChunk = true;
+        const store = database.createStoreWithDriverInterceptor(
+          async (statementSql, run) => {
+            const result = await run();
+            if (!firstChunk || !isFeedbackDelete(statementSql)) return result;
+            firstChunk = false;
+            return withReportedRows(result, reported);
+          },
+          { screenshotStorage: recordingStorage().storage, logger },
+        );
+
+        await store.deleteAllFeedbacks("site");
+
+        expect((await database.createStore({ logger }).getFeedbacks({ projectName: "site" })).total).toBe(0);
+      });
+
+      it("fails instead of retrying forever when the database keeps rows it is told to delete", async () => {
+        const store = database.createStore({ screenshotStorage: recordingStorage().storage, logger });
+        await store.createFeedback(feedbackInput());
+        await store.createFeedback(feedbackInput());
+        const restoreDeletes = await database.skipFeedbackDeletes();
+        try {
+          const failure = await store.deleteAllFeedbacks("site").then(
+            () => null,
+            (error: unknown) => error,
+          );
+
+          expect(isStorePersistence(failure)).toBe(true);
+        } finally {
+          await restoreDeletes();
+        }
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(2);
       });
     });
 
