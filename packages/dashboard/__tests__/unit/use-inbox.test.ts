@@ -1892,6 +1892,35 @@ describe("useSitepingInbox — discussion thread", () => {
       await act(() => result.current.refresh());
       expect(bodies(result.current.items.find((r) => r.id === "r1"))).toBeUndefined();
     });
+
+    it("keeps a reply stored while a loaded-more page was in flight", async () => {
+      const source = threadedSource();
+      const { result } = await ready({ projects: "demo", source, author, pageSize: 2 });
+      // r4, opened under its filter, is held by the drawer only once "all" lists r1 and r2.
+      act(() => result.current.setStatus("in_progress"));
+      await waitFor(() => expect(ids(result.current.items)).toEqual(["r4"]));
+      act(() => result.current.openFeedback("r4"));
+      act(() => result.current.setStatus("all"));
+      await waitFor(() => expect(ids(result.current.items)).toEqual(["r1", "r2"]));
+
+      const page = deferred<Awaited<ReturnType<InboxSource["list"]>>>();
+      const list = source.list.getMockImplementation()!;
+      const older = await list({ projectName: "demo", page: 2, limit: 2 });
+      source.list.mockImplementation((query) => (query.page === 2 ? page.promise : list(query)));
+      let loaded!: Promise<void>;
+      act(() => {
+        loaded = result.current.loadMore();
+      });
+      await act(() => result.current.addComment("r4", "Posted meanwhile"));
+      await act(async () => {
+        page.resolve(older);
+        await loaded;
+      });
+
+      expect(ids(result.current.items)).toEqual(["r1", "r2", "r3", "r4"]);
+      expect(bodies(result.current.items.find((r) => r.id === "r4"))).toEqual(["Posted meanwhile"]);
+      expect(bodies(result.current.opened)).toEqual(["Posted meanwhile"]);
+    });
   });
 
   it("rolls the drawer back with the reply when the opened record is not in the list", async () => {
