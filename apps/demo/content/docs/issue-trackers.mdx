@@ -91,7 +91,7 @@ Some things are left out:
 
 Everything in the body comes from anonymous visitors, so it is quoted as code. The deep link is the only live link, and it only ever points to `siteUrl`: a visitor who sends another site's URL gets a quoted page and no link. A message can contain `@octocat`, `#12`, `<!--`, a Markdown link or an image, and none of it notifies anyone, links to another issue, hides text or loads anything. In the title, a zero-width space follows each reference sigil (`@`, `#` and `GH-`, plus GitLab's `!`, `&`, `~`, `%` and `$`) and splits each `://`, since GitLab also turns a URL pointing at an issue or merge request into a reference. A bare commit SHA is left as typed: GitLab still links it when it names one of the project's own commits.
 
-> **Public repositories.** An issue in a public repository is public: every feedback's message, page, user agent and diagnostics become readable by anyone. Prefer a private repository, and use `redact` for secrets that end up in URLs or console messages.
+> **Public repositories.** An issue in a public repository is public: every feedback's message, page, reviewer name, user agent, diagnostics and screenshot become readable by anyone. The screenshot is embedded from its storage URL, which `redact` does not touch. Prefer a private repository, and use `redact` for secrets that end up in URLs or console messages. To leave screenshots out, [extend the default issue](#extending-the-default-issue) with `formatIssue({ ...feedback, screenshotUrl: null }, options)`.
 
 ## Options
 
