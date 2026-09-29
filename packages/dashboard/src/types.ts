@@ -64,8 +64,8 @@ export interface InboxSource {
    * comment. A source without it has read-only threads.
    */
   addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord>;
-  /** Optional — delete a reply from a feedback's thread. */
-  removeComment?(feedbackId: string, commentId: string, projectName: string): Promise<void>;
+  /** Optional — delete a reply from a feedback's thread. `projectName` comes second, as in every method here. */
+  removeComment?(feedbackId: string, projectName: string, commentId: string): Promise<void>;
 }
 
 /** Options accepted by `createEndpointSource`. */

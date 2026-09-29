@@ -290,7 +290,7 @@ describe("createEndpointSource — addComment() & removeComment()", () => {
   it("DELETEs {projectName, feedbackId, commentId} as JSON", async () => {
     const fetchFn = jsonFetch({ deleted: true });
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
-    await source.removeComment?.("fb-1", "c-1", "demo");
+    await source.removeComment?.("fb-1", "demo", "c-1");
 
     const { init } = lastCall(fetchFn);
     expect(init.method).toBe("DELETE");
@@ -300,7 +300,7 @@ describe("createEndpointSource — addComment() & removeComment()", () => {
   it("maps a refusal to its typed error", async () => {
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(403) });
     await expect(source.addComment?.("fb-1", "demo", input)).rejects.toBeInstanceOf(SitepingAuthError);
-    await expect(source.removeComment?.("fb-1", "c-1", "demo")).rejects.toBeInstanceOf(SitepingAuthError);
+    await expect(source.removeComment?.("fb-1", "demo", "c-1")).rejects.toBeInstanceOf(SitepingAuthError);
   });
 });
 
@@ -473,7 +473,7 @@ describe("createStoreSource", () => {
     expect(comment).toMatchObject({ feedbackId: "a", body: "On it", authorRole: "team" });
     expect(rows[0]?.comments).toHaveLength(1);
 
-    await source.removeComment?.("a", comment?.id ?? "", "demo");
+    await source.removeComment?.("a", "demo", comment?.id ?? "");
     expect(rows[0]?.comments).toEqual([]);
   });
 

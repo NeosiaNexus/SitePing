@@ -2024,7 +2024,7 @@ describe("useSitepingInbox — discussion thread", () => {
     expect(result.current.items.find((r) => r.id === "r1")?.comments).toHaveLength(1);
 
     await act(() => result.current.deleteComment("r1", "c-9"));
-    expect(source.removeComment).toHaveBeenLastCalledWith("r1", "c-9", "demo");
+    expect(source.removeComment).toHaveBeenLastCalledWith("r1", "demo", "c-9");
     expect(result.current.items.find((r) => r.id === "r1")?.comments).toEqual([]);
   });
 });
@@ -2107,7 +2107,7 @@ describe("useSitepingInbox — permissions and readOnly", () => {
     rerender({ projects: "demo", source, author, readOnly: true });
     await act(() => result.current.deleteComment("r2", "c-2"));
 
-    expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r2", "c-2", "demo");
+    expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r2", "demo", "c-2");
   });
 
   it("posts no reply on a record that refuses it", async () => {

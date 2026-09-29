@@ -919,7 +919,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const record = heldRecord(id);
       if (!srcRef.current.removeComment || !record || !permissionsOf(record).canDeleteComment) return;
       try {
-        await srcRef.current.removeComment(id, commentId, projectRef.current);
+        await srcRef.current.removeComment(id, projectRef.current, commentId);
         updateRecord(id, (f) => ({ ...f, comments: f.comments?.filter((c) => c.id !== commentId) }));
       } catch (cause) {
         const err = toError(cause);

@@ -145,7 +145,7 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
       return reviveComment(await parseJsonAs<CommentResponse>(response));
     },
 
-    async removeComment(feedbackId: string, commentId: string, projectName: string): Promise<void> {
+    async removeComment(feedbackId: string, projectName: string, commentId: string): Promise<void> {
       await request("Failed to delete comment", endpoint, {
         method: "DELETE",
         headers: await buildHeaders(true),
@@ -182,6 +182,7 @@ export function createStoreSource(store: SitepingStore): InboxSource {
   const addComment = store.addComment?.bind(store);
   const deleteComment = store.deleteComment?.bind(store);
   if (addComment) source.addComment = (feedbackId, _projectName, input) => addComment(feedbackId, input);
-  if (deleteComment) source.removeComment = (feedbackId, commentId) => deleteComment(feedbackId, commentId);
+  if (deleteComment)
+    source.removeComment = (feedbackId, _projectName, commentId) => deleteComment(feedbackId, commentId);
   return source;
 }
