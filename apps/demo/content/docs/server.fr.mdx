@@ -525,7 +525,7 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 
 **Corps du DELETE :** `{ id, projectName }` pour un enregistrement, ou `{ projectName, deleteAll: true }` pour tout le projet.
 
-**Erreurs :** JSON invalide → `400 { error }` ; échec de validation → `400 { errors: [{ field, message }] }` ; identifiants absents ou faux → `401` ; refus d'`authorize` ou d'un contrôle CSRF → `403` ; corps non JSON avec `access` → `415` ; id inconnu → `404` ; `clientId` appartenant à un autre projet, ou fil de commentaires plein → `409 { error }` ; écriture de commentaire sur un store sans commentaires → `501 { error }` ; `onDeleting` a levé → `502` ; tout le reste → `500 { error: "Internal server error" }`, ou le message que renvoie `describeError`.
+**Erreurs :** JSON invalide → `400 { error }` ; échec de validation → `400 { errors: [{ field, message }] }`, les 20 premiers problèmes ; identifiants absents ou faux → `401` ; refus d'`authorize` ou d'un contrôle CSRF → `403` ; corps non JSON avec `access` → `415` ; id inconnu → `404` ; `clientId` appartenant à un autre projet, ou fil de commentaires plein → `409 { error }` ; écriture de commentaire sur un store sans commentaires → `501 { error }` ; `onDeleting` a levé → `502` ; tout le reste → `500 { error: "Internal server error" }`, ou le message que renvoie `describeError`.
 
 ### Les limites de validation à connaître
 
