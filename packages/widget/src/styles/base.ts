@@ -23,7 +23,7 @@ import { cssVariables, type ThemeColors } from "./theme.js";
  * - prefers-reduced-motion support
  */
 export function buildStyles(colors: ThemeColors): string {
-  return `
+  return /* css */ `
     :host {
       all: initial;
       position: fixed;

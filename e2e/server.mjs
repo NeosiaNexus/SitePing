@@ -8,6 +8,7 @@ import { scriptSafeJson } from "./script-safe-json.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const widgetDistDir = join(__dirname, "../packages/widget/dist");
 const widgetJs = readFileSync(join(widgetDistDir, "index.js"), "utf-8");
+const widgetIifeJs = readFileSync(join(widgetDistDir, "index.global.js"), "utf-8");
 
 /**
  * Host-modal fixture (a real Radix Dialog), bundled once at startup with the
@@ -228,6 +229,13 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // The IIFE bundle a plain <script src> embed loads — script-tag.spec.ts
+  if (url.pathname === "/widget.global.js") {
+    res.writeHead(200, { "Content-Type": "application/javascript" });
+    res.end(widgetIifeJs);
+    return;
+  }
+
   // The ESM widget bundle is code-split — it imports `./chunk-XXX.js`, `./panel-XXX.js`,
   // and locale chunks that resolve to /<file>.js from the page, so the test server
   // must serve every sibling chunk from dist (not just /widget.js).
@@ -262,6 +270,30 @@ const server = createServer((req, res) => {
         return;
       }
       html = stripped;
+    }
+    // ?script=1 loads the IIFE bundle through a classic <script> tag and
+    // calls the `SitePing` global, like a site without a bundler.
+    if (url.searchParams.get("script") === "1") {
+      const moduleImport = "<script type=\"module\">\n    import { initSiteping } from '/widget.js';\n    const instance = initSiteping({";
+      if (!html.includes(moduleImport)) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("script=1: failed to swap the module import for the script bundle");
+        return;
+      }
+      html = html.replace(
+        moduleImport,
+        '<script src="/widget.global.js"></script>\n  <script>\n    const instance = SitePing.initSiteping({',
+      );
+    }
+    // ?screenshot=1 turns on the screenshot capture (html2canvas-pro).
+    if (url.searchParams.get("screenshot") === "1") {
+      const anchor = "      accentColor: '#6366f1',\n";
+      if (!html.includes(anchor)) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("screenshot=1: failed to enable screenshots in the page template");
+        return;
+      }
+      html = html.replace(anchor, `${anchor}      enableScreenshot: true,\n`);
     }
     if (url.searchParams.get("panelActions") === "1") {
       const anchor = "      accentColor: '#6366f1',\n";

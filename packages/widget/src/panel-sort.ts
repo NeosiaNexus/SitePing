@@ -365,7 +365,7 @@ export class PanelSortControls {
 // CSS
 // ---------------------------------------------------------------------------
 
-export const SORT_CSS = `
+export const SORT_CSS = /* css */ `
   /* ============================
      Sort Controls Container
      ============================ */
