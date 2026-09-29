@@ -160,6 +160,48 @@ describe("createSitepingHandler — access", () => {
     ]);
   });
 
+  it("answers 403 to a create authorize refuses, storing and notifying nothing — beforeCreate's project included", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(""));
+    try {
+      const store = new MemoryStore();
+      const onCreated = vi.fn();
+      const waitUntil = vi.fn();
+      const options = {
+        store,
+        // Reviewers report on PROJECT only.
+        access: sessionAccess({
+          authorize: ({ action, projectName }) => action !== "create" || projectName === PROJECT,
+        }),
+        webhooks: { url: "https://hooks.example.com" },
+        waitUntil,
+        hooks: { onCreated },
+      };
+      const claimed = createSitepingHandler(options);
+      const rewritten = createSitepingHandler({
+        ...options,
+        beforeCreate: (input) => ({ ...input, projectName: "other-project" }),
+      });
+
+      const responses = [
+        await claimed.POST(jsonRequest("POST", { ...validPayloadNoAnnotations, projectName: "other-project" }, ADMIN)),
+        await rewritten.POST(jsonRequest("POST", validPayloadNoAnnotations, ADMIN)),
+      ];
+
+      for (const response of responses) {
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({ error: "Forbidden" });
+      }
+      for (const projectName of [PROJECT, "other-project"]) {
+        expect((await store.getFeedbacks({ projectName })).total).toBe(0);
+      }
+      expect(onCreated).not.toHaveBeenCalled();
+      expect(waitUntil).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("blanks authorEmail in list and PATCH responses for principals that may not read it", async () => {
     const handler = createSitepingHandler({
       store: new MemoryStore(),
