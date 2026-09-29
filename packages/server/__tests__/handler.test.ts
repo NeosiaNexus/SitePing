@@ -172,6 +172,26 @@ describe("createSitepingHandler — validation errors", () => {
   });
 });
 
+describe("createSitepingHandler — screenshots", () => {
+  it.each([
+    "https://attacker.example/beacon.gif",
+    "javascript:alert(1)",
+    "data:text/html;base64,PHNjcmlwdD4=",
+    "data:image/svg+xml;base64,PHN2Zz4=",
+  ])("refuses %s as a screenshot, which a store would serve verbatim as its URL", async (screenshotDataUrl) => {
+    const store = new MemoryStore();
+    const handler = createSitepingHandler({ store });
+
+    const response = await handler.POST(request("POST", { ...validPayloadNoAnnotations, screenshotDataUrl }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      errors: [{ field: "screenshotDataUrl", message: "screenshotDataUrl must be a data:image/* base64 URL" }],
+    });
+    expect((await store.getFeedbacks({ projectName: validPayloadNoAnnotations.projectName })).total).toBe(0);
+  });
+});
+
 describe("createSitepingHandler — request body size", () => {
   const CHUNK_BYTES = 64 * 1024;
   const encode = (body: unknown) => new TextEncoder().encode(JSON.stringify(body));
