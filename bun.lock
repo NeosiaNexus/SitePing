@@ -143,6 +143,18 @@
         "react": ">=18",
       },
     },
+    "packages/integration-issues": {
+      "name": "@siteping/integration-issues",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@siteping/adapter-memory": "workspace:*",
+        "@siteping/core": "workspace:*",
+        "@siteping/server": "workspace:*",
+      },
+      "peerDependencies": {
+        "@siteping/server": ">=0.0.0",
+      },
+    },
     "packages/screenshot-storage": {
       "name": "@siteping/screenshot-storage",
       "version": "0.0.0",
@@ -754,6 +766,8 @@
     "@siteping/dashboard": ["@siteping/dashboard@workspace:packages/dashboard"],
 
     "@siteping/demo": ["@siteping/demo@workspace:apps/demo"],
+
+    "@siteping/integration-issues": ["@siteping/integration-issues@workspace:packages/integration-issues"],
 
     "@siteping/screenshot-storage": ["@siteping/screenshot-storage@workspace:packages/screenshot-storage"],
 
