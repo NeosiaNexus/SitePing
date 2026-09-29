@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { MemoryStore } from "@siteping/adapter-memory";
 import {
   type CommentResponse,
@@ -627,5 +629,62 @@ describe("comments — beforeComment", () => {
       expect.objectContaining({ error: failure }),
     );
     expect((await store.findByClientId("uuid-123"))?.comments).toEqual([]);
+  });
+});
+
+describe("comments — the docs' team policy", () => {
+  interface Staffer {
+    isStaff: boolean;
+  }
+  const policy = (): SitepingAccessControl<Staffer> => ({
+    authenticate: (request) => ({ isStaff: request.headers.get("x-staff") === "yes" }),
+    // Everyone submits, reads and replies; only staff triage and delete.
+    authorize: ({ principal, action }) =>
+      principal.isStaff || action === "create" || action === "list" || action === "createComment",
+    canReadAuthorEmail: (principal) => principal.isStaff,
+    // Optional here: it would default to canReadAuthorEmail.
+    canCommentAsTeam: (principal) => principal.isStaff,
+  });
+
+  it("lets a signed-in reviewer reply, but not triage, delete or wipe the project", async () => {
+    const store = new MemoryStore();
+    const handler = createSitepingHandler({ store, access: policy() });
+    const feedback = await createFeedback(handler);
+    const reply = await postComment(handler, commentBody(feedback.id));
+    const staff = { "x-staff": "yes" };
+
+    const refused = [
+      await handler.PATCH(request("PATCH", { id: feedback.id, projectName: PROJECT, status: "resolved" })),
+      await handler.DELETE(request("DELETE", { projectName: PROJECT, feedbackId: feedback.id, commentId: reply.id })),
+      await handler.DELETE(request("DELETE", { id: feedback.id, projectName: PROJECT })),
+      await handler.DELETE(request("DELETE", { projectName: PROJECT, deleteAll: true })),
+    ];
+    const listed = await list(handler);
+
+    expect(refused.map(({ status }) => status)).toEqual([403, 403, 403, 403]);
+    expect(listed.permissions).toEqual({ canDeleteAll: false });
+    expect(listed.feedbacks[0]?.comments).toHaveLength(1);
+    expect((await handler.DELETE(request("DELETE", { projectName: PROJECT, deleteAll: true }, staff))).status).toBe(
+      200,
+    );
+  });
+
+  /** What the code does, not how it reads: no comments, no whitespace. */
+  const bare = (code: string) => code.replace(/(^|\s)\/\/.*$/gm, "$1").replace(/\s+/g, "");
+  const span = (text: string) => {
+    const from = text.indexOf("authorize: ({ principal, action }) =>");
+    const to = text.indexOf("canCommentAsTeam: (principal) => principal.isStaff,", from);
+    expect(from).toBeGreaterThan(0);
+    return bare(text.slice(from, to));
+  };
+
+  it.each(["comments.mdx", "comments.fr.mdx"])("%s prints the policy these tests run", (page) => {
+    const docs = readFileSync(
+      fileURLToPath(new URL(`../../../apps/demo/content/docs/${page}`, import.meta.url)),
+      "utf8",
+    );
+    const tests = readFileSync(fileURLToPath(import.meta.url), "utf8");
+
+    expect(span(docs)).toBe(span(tests));
   });
 });
