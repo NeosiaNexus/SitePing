@@ -12,6 +12,19 @@ import { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidat
 import type { FeedbackQuery } from "./types.js";
 
 /**
+ * A fresh `clientId` for a write the server dedupes a resend of — a feedback,
+ * or a reply in a thread.
+ */
+export function newClientId(): string {
+  // crypto.randomUUID() throws in non-secure contexts (plain HTTP)
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+/**
  * Encode a `FeedbackQuery` as the endpoint's expected query string.
  * Omitted/empty filters are not serialized; `statuses` uses the CSV form
  * the server's schema splits (`statuses=open,in_progress`).

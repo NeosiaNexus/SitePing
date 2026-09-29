@@ -65,6 +65,14 @@ export const es: Translations = {
   "drawer.deleteConfirm": "¿Eliminar permanentemente? Esta acción no se puede deshacer.",
   "drawer.deleteYes": "Eliminar",
 
+  // Discussion thread
+  "comments.title": "Respuestas",
+  "comments.team": "Equipo",
+  "comments.placeholder": "Responder al cliente…",
+  "comments.send": "Enviar",
+  "comments.delete": "Eliminar respuesta",
+  "comments.failed": "Algo salió mal. Inténtalo de nuevo.",
+
   // Keyboard hints
   "hints.navigate": "navegar",
   "hints.open": "abrir",

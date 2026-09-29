@@ -774,6 +774,69 @@ describe("ApiClient", () => {
       await expect(client.deleteAllFeedbacks("my-project")).rejects.toThrow("Failed to delete all feedbacks: 400");
     });
   });
+
+  // -----------------------------------------------------------------------
+  // addComment
+  // -----------------------------------------------------------------------
+
+  describe("addComment", () => {
+    const input = {
+      body: "Is it 16 or 24 px?",
+      authorName: "Alice",
+      authorEmail: "alice@test.com",
+      authorRole: "client" as const,
+      clientId: "reply-1",
+    };
+
+    it("POSTs the reply with its feedbackId and projectName to the shared endpoint", async () => {
+      const stored = { id: "c-1", feedbackId: "fb-1", ...input, createdAt: "2026-01-15T10:00:00.000Z" };
+      vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(stored), { status: 201 }));
+
+      await expect(client.addComment("fb-1", input)).resolves.toEqual(stored);
+
+      const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+      expect(url).toBe(endpoint);
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(init?.body as string)).toEqual({ ...input, projectName: "test", feedbackId: "fb-1" });
+    });
+
+    it("resends a 5xx under the same clientId, which the server dedupes", async () => {
+      vi.useFakeTimers();
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response("", { status: 503 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ id: "c-1" }), { status: 201 }));
+
+      const promise = client.addComment("fb-1", input);
+      await vi.advanceTimersByTimeAsync(1500);
+      await promise;
+      vi.useRealTimers();
+
+      const clientIds = vi.mocked(fetch).mock.calls.map(([, init]) => JSON.parse(init?.body as string).clientId);
+      expect(clientIds).toEqual(["reply-1", "reply-1"]);
+    });
+
+    it("never queues a reply for a replay on a later page load — the visitor resends it from the thread", async () => {
+      const store = stubLocalStorage();
+      vi.useFakeTimers();
+      vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+
+      const promise = client.addComment("fb-1", input).catch((e: Error) => e);
+      await drainRetryBackoff();
+      expect(await promise).toBeInstanceOf(SitepingNetworkError);
+      vi.useRealTimers();
+
+      expect(readQueue(store)).toHaveLength(0);
+      vi.unstubAllGlobals();
+    });
+
+    it("maps a refusal to its typed error", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("Forbidden", { status: 403 }));
+      await expect(client.addComment("fb-1", input)).rejects.toBeInstanceOf(SitepingAuthError);
+
+      vi.mocked(fetch).mockResolvedValue(new Response('{"errors":[]}', { status: 400 }));
+      await expect(client.addComment("fb-1", input)).rejects.toBeInstanceOf(SitepingValidationError);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -837,6 +900,22 @@ describe("ApiClient — auth & headers", () => {
 
     await client.deleteAllFeedbacks("test");
     expect(lastHeaders()).toEqual({ "Content-Type": "application/json", Authorization: "Bearer secret-key" });
+  });
+
+  it("adds the same headers to a reply's POST", async () => {
+    const client = new ApiClient(endpoint, "test", { apiKey: "secret-key", headers: { "X-Team": "acme" } });
+    await client.addComment("fb-1", {
+      body: "b",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      authorRole: "client",
+      clientId: "c",
+    });
+    expect(lastHeaders()).toEqual({
+      "Content-Type": "application/json",
+      Authorization: "Bearer secret-key",
+      "X-Team": "acme",
+    });
   });
 
   it("merges a static headers object", async () => {

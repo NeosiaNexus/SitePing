@@ -431,6 +431,68 @@ export const DETAIL_CSS = /* css */ `
     word-break: break-word;
   }
 
+  /* ---- Thread Section ---- */
+
+  .sp-comment {
+    margin-top: 8px;
+    border-left-color: var(--sp-border);
+  }
+
+  .sp-comment[data-role="team"] {
+    border-left-color: var(--sp-accent);
+  }
+
+  .sp-comment-head,
+  .sp-thread-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .sp-comment-head {
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .sp-comment-head .sp-badge {
+    background: var(--sp-accent-light);
+  }
+
+  .sp-comment-head time,
+  .sp-thread-foot,
+  .sp-thread-input::placeholder {
+    font-weight: 400;
+    color: var(--sp-text-secondary);
+  }
+
+  .sp-comment-head time {
+    margin-left: auto;
+  }
+
+  .sp-thread-input {
+    height: auto;
+    margin-top: 10px;
+    padding: 10px 14px;
+  }
+
+  .sp-thread-foot {
+    justify-content: space-between;
+    margin-top: 8px;
+  }
+
+  .sp-thread-error {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: var(--sp-radius);
+    background: var(--sp-type-bug-bg);
+    font-size: 12px;
+  }
+
+  .sp-thread-error:empty {
+    display: none;
+  }
+
   /* ---- Screenshot Section ---- */
 
   .sp-detail-screenshot {
@@ -960,6 +1022,8 @@ export interface DetailCallbacks {
   onCustomAction: (action: SitepingPanelButtonAction, feedback: SitepingPanelActionFeedback) => Promise<void>;
   /** Reports a host `visible()`/`href()` that threw or an unsafe computed href — the action is hidden. */
   onCustomActionError: (error: unknown) => void;
+  /** The discussion thread, shown under the message — `null` when the feedback has none to show. */
+  buildThread?: (feedback: FeedbackResponse) => HTMLElement | null;
 }
 
 /** An operation in flight on a feedback: a built-in button, or the host action it runs. */
@@ -1077,6 +1141,9 @@ export class DetailView {
     messageBlock.style.borderLeftColor = getTypeColor(feedback.type, this.colors);
     setText(messageBlock, feedback.message);
     messageSection.appendChild(messageBlock);
+    // The discussion thread reads on from the message it answers.
+    const thread = this.callbacks.buildThread?.(feedback);
+    if (thread) messageSection.appendChild(thread);
     this.content.appendChild(messageSection);
 
     // Section 2b: Screenshot (when captured)

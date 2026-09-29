@@ -1,5 +1,7 @@
 import {
   type AnnotationPayload,
+  type CommentCreateInput,
+  type CommentResponse,
   errorFromResponse,
   type FeedbackPayload,
   type FeedbackQuery,
@@ -30,6 +32,8 @@ export interface WidgetClient {
   resolveFeedback(id: string, resolved: boolean): Promise<FeedbackResponse>;
   deleteFeedback(id: string): Promise<void>;
   deleteAllFeedbacks(projectName: string): Promise<void>;
+  /** Post a reply on a feedback's thread — idempotent on `input.clientId`, so a resend never duplicates it. */
+  addComment(feedbackId: string, input: CommentCreateInput): Promise<CommentResponse>;
 }
 
 /**
@@ -511,6 +515,23 @@ export class ApiClient implements WidgetClient {
       { method: "GET", cache: "no-store", ...(Object.keys(headers).length > 0 ? { headers } : {}) },
       label,
       parseJsonAs<FeedbackResponseList>,
+    );
+  }
+
+  async addComment(feedbackId: string, input: CommentCreateInput): Promise<CommentResponse> {
+    const label = "Failed to post comment";
+    // The same endpoint as a feedback: `feedbackId` routes the POST to the
+    // thread. Retries resend the same clientId, which the server dedupes.
+    return resilientFetch(
+      this.endpoint,
+      {
+        method: "POST",
+        headers: await this.headers(true, label),
+        body: JSON.stringify({ ...input, projectName: this.projectName, feedbackId }),
+      },
+      label,
+      parseJsonAs<CommentResponse>,
+      { boundBody: true },
     );
   }
 

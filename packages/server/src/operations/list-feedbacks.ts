@@ -41,8 +41,11 @@ export function listFeedbacksOperation<Principal>({ store, pipeline }: ListFeedb
         {
           ...page,
           feedbacks: page.feedbacks.map((feedback) => pipeline.present(scope, feedback)),
-          // Lets clients hide their comment composer up front instead of meeting a 501.
-          capabilities: { comments: store.addComment !== undefined } satisfies SitepingCapabilities,
+          // Lets clients hide their comment composer, and delete buttons, up front instead of meeting a 501.
+          capabilities: {
+            comments: store.addComment !== undefined,
+            deleteComments: store.deleteComment !== undefined,
+          } satisfies SitepingCapabilities,
         },
         { headers: { "Cache-Control": pipeline.listCacheControl } },
       );

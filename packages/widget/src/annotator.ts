@@ -1,4 +1,4 @@
-import type { AnnotationPayload, FeedbackType, ScreenshotRegion } from "@siteping/core";
+import { type AnnotationPayload, type FeedbackType, newClientId, type ScreenshotRegion } from "@siteping/core";
 import { INSTANT_ANNOTATION_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anchor.js";
 import { el, setText } from "./dom-utils.js";
@@ -52,12 +52,7 @@ interface PopupSession {
 }
 
 function newPopupSession(): PopupSession {
-  // crypto.randomUUID() throws in non-secure contexts (plain HTTP)
-  try {
-    return { clientId: crypto.randomUUID() };
-  } catch {
-    return { clientId: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
-  }
+  return { clientId: newClientId() };
 }
 
 /**

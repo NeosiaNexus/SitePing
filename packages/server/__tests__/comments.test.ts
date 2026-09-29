@@ -117,7 +117,7 @@ describe("comments — POST", () => {
       createdAt: expect.any(String),
     });
     const listed = await list(handler);
-    expect(listed.capabilities).toEqual({ comments: true });
+    expect(listed.capabilities).toEqual({ comments: true, deleteComments: true });
     expect(listed.feedbacks[0]?.comments?.map((c) => c.id)).toEqual([first.id, second.id]);
     expect(listed.feedbacks[0]?.comments?.[0]).not.toHaveProperty("clientId");
   });
@@ -421,11 +421,30 @@ describe("comments — a store without them", () => {
     );
 
     expect(feedback.comments).toEqual([]);
-    expect(listed.capabilities).toEqual({ comments: false });
+    expect(listed.capabilities).toEqual({ comments: false, deleteComments: false });
     expect(listed.feedbacks[0]?.comments).toEqual([]);
     expect(((await patched.json()) as FeedbackResponse).comments).toEqual([]);
     expect(posted.status).toBe(501);
     expect(await posted.json()).toEqual({ error: "Comments are not supported by this store" });
+    expect(deleted.status).toBe(501);
+  });
+});
+
+describe("comments — a store that cannot delete them", () => {
+  it("advertises replies but not their deletion, and answers a comment delete with 501", async () => {
+    const store = new MemoryStore();
+    // Append-only threads: replies are kept, never deleted.
+    Object.assign(store, { deleteComment: undefined });
+    const handler = createSitepingHandler({ store, requireAuthForDestructive: false });
+    const feedback = await createFeedback(handler);
+    const reply = await postComment(handler, commentBody(feedback.id));
+
+    const listed = await list(handler);
+    const deleted = await handler.DELETE(
+      request("DELETE", { projectName: PROJECT, feedbackId: feedback.id, commentId: reply.id }),
+    );
+
+    expect(listed.capabilities).toEqual({ comments: true, deleteComments: false });
     expect(deleted.status).toBe(501);
   });
 });

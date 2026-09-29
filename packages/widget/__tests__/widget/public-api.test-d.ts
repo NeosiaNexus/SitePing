@@ -4,6 +4,7 @@
  */
 
 import type {
+  CommentResponse as CoreCommentResponse,
   FeedbackQuery,
   FeedbackResponse,
   SitepingInstance,
@@ -13,6 +14,7 @@ import type {
 import { describe, expectTypeOf, it } from "vitest";
 import type { GetFeedbacksOptions } from "../../src/api-client.js";
 import {
+  type CommentResponse,
   initSiteping,
   registerLocale,
   type SitepingPanelAction,
@@ -111,6 +113,9 @@ describe("public events", () => {
     instance.on("feedback:error", (error) => {
       expectTypeOf(error).toEqualTypeOf<Error>();
     });
+    instance.on("comment:added", (comment) => {
+      expectTypeOf(comment).toEqualTypeOf<CommentResponse>();
+    });
     instance.on("annotation:start", (...args) => {
       expectTypeOf(args).toEqualTypeOf<[]>();
     });
@@ -123,6 +128,19 @@ describe("public events", () => {
 
   it("keeps the public map in sync with the instance signature", () => {
     expectTypeOf<Parameters<SitepingInstance["on"]>[0]>().toEqualTypeOf<keyof SitepingPublicEvents>();
+  });
+
+  it("types onCommentAdded like the comment:added listener, in both modes", () => {
+    expectTypeOf(initSiteping).toBeCallableWith({
+      projectName: "p",
+      endpoint: "/api/siteping",
+      onCommentAdded: (comment: CommentResponse) => void comment.authorRole,
+    });
+    expectTypeOf(initSiteping).toBeCallableWith({ projectName: "p", store, onCommentAdded: () => {} });
+    expectTypeOf<SitepingPublicEvents["comment:added"]>().toEqualTypeOf<[CommentResponse]>();
+    expectTypeOf<CommentResponse>().toEqualTypeOf<CoreCommentResponse>();
+    // The wire shape never carries the dedup key.
+    expectTypeOf<CommentResponse>().not.toHaveProperty("clientId");
   });
 });
 

@@ -144,7 +144,7 @@ for (const dialect of dialects) {
         capabilities: unknown;
         feedbacks: Array<{ comments: unknown[] }>;
       };
-      expect(listed.capabilities).toEqual({ comments: true });
+      expect(listed.capabilities).toEqual({ comments: true, deleteComments: true });
       expect(listed.feedbacks[0]?.comments).toEqual([
         expect.objectContaining({ id: commentId, body: "Fixed on staging", authorRole: "client", authorEmail: "" }),
       ]);

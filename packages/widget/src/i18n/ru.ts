@@ -150,6 +150,11 @@ export const ru: Translations = {
   "detail.diagnostics.collapse": "Скрыть диагностику",
   "detail.diagnostics.noEntries": "Нет записей",
 
+  // Discussion thread (detail view)
+  "comments.placeholder": "Ответить команде...",
+  "comments.error": "Не отправлено. Попробуйте ещё раз.",
+  "comments.team": "Команда",
+
   // Keyboard shortcuts overlay
   "shortcuts.title": "Горячие клавиши",
   "shortcuts.navigate": "Навигация по отзывам",

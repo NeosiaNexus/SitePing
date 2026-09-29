@@ -376,6 +376,8 @@ export interface SitepingBaseConfig {
   onClose?: (() => void) | undefined;
   /** Called after a feedback is successfully submitted. */
   onFeedbackSent?: ((feedback: FeedbackResponse) => void) | undefined;
+  /** Called after a reply is posted from the panel's discussion thread. */
+  onCommentAdded?: ((comment: CommentResponse) => void) | undefined;
   /**
    * Called when a feedback API call fails.
    *
@@ -499,6 +501,8 @@ export type SitepingUnsubscribe = () => void;
 export interface SitepingPublicEvents {
   "feedback:sent": [FeedbackResponse];
   "feedback:deleted": [FeedbackResponse["id"]];
+  /** A reply was posted from the panel's discussion thread. */
+  "comment:added": [CommentResponse];
   /**
    * A feedback API call failed. Same payload contract as
    * `SitepingConfig.onError` — a `SitepingError` subclass in HTTP mode,
@@ -1299,6 +1303,12 @@ export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId"
 export interface SitepingCapabilities {
   /** Whether comments can be posted: the store implements `addComment`. */
   comments: boolean;
+  /**
+   * Whether comments can be deleted: the store implements `deleteComment`.
+   * Sent by `@siteping/server`; a client that does not delete (the widget)
+   * leaves it out.
+   */
+  deleteComments?: boolean | undefined;
 }
 
 /** Paginated `FeedbackResponse` shape returned by the API. */

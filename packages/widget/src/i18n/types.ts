@@ -150,6 +150,13 @@ export interface Translations {
   "detail.diagnostics.collapse": string;
   "detail.diagnostics.noEntries": string;
 
+  // Discussion thread (detail view) — the composer reuses "popup.submit" and
+  // the "popup.submitHint*" keys
+  "comments.placeholder": string;
+  "comments.error": string;
+  /** Badge on a reply from the project team. */
+  "comments.team": string;
+
   // Keyboard shortcuts overlay
   "shortcuts.title": string;
   "shortcuts.navigate": string;

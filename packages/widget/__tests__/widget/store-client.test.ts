@@ -1,5 +1,7 @@
+import { MemoryStore } from "@siteping/adapter-memory";
 import {
   type AnnotationPayload,
+  type CommentRecord,
   type FeedbackCreateInput,
   type FeedbackPayload,
   type FeedbackRecord,
@@ -444,6 +446,90 @@ describe("StoreClient", () => {
       expect(result.total).toBe(1);
       expect(result.feedbacks[0]!.createdAt).toBe("2025-06-01T12:00:00.000Z");
       expect(typeof result.feedbacks[0]!.createdAt).toBe("string");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Discussion thread
+  // -----------------------------------------------------------------------
+
+  describe("discussion thread", () => {
+    const reply = {
+      body: "Is it 16 or 24 px?",
+      authorName: "Alice",
+      authorEmail: "alice@test.com",
+      authorRole: "client" as const,
+      clientId: "reply-1",
+    };
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("advertises comments exactly when the store implements addComment", async () => {
+      vi.mocked(store.getFeedbacks).mockResolvedValue({ feedbacks: [], total: 0 });
+      expect((await client.getFeedbacks("p")).capabilities).toEqual({ comments: false });
+
+      const threaded = new StoreClient(new MemoryStore(), "p");
+      expect((await threaded.getFeedbacks("p")).capabilities).toEqual({ comments: true });
+    });
+
+    it("serializes a thread like the HTTP handler: ISO dates, no clientId", async () => {
+      const comment: CommentRecord = { id: "c-1", feedbackId: "fb-1", ...reply, createdAt: now };
+      vi.mocked(store.getFeedbacks).mockResolvedValue({
+        feedbacks: [makeFeedbackRecord({ comments: [comment] })],
+        total: 1,
+      });
+
+      const [feedback] = (await client.getFeedbacks("test-project")).feedbacks;
+
+      expect(feedback?.comments).toEqual([
+        {
+          id: "c-1",
+          feedbackId: "fb-1",
+          body: reply.body,
+          authorName: "Alice",
+          authorEmail: "alice@test.com",
+          authorRole: "client",
+          createdAt: "2025-06-01T12:00:00.000Z",
+        },
+      ]);
+    });
+
+    it("leaves `comments` out for a record without a thread", async () => {
+      vi.mocked(store.getFeedbacks).mockResolvedValue({ feedbacks: [makeFeedbackRecord()], total: 1 });
+      const [feedback] = (await client.getFeedbacks("test-project")).feedbacks;
+      expect(feedback?.comments).toBeUndefined();
+    });
+
+    it("adds a reply through the store, deduped on its clientId", async () => {
+      const memory = new MemoryStore();
+      const threaded = new StoreClient(memory, "test-project");
+      const feedback = await threaded.sendFeedback(samplePayload);
+
+      const first = await threaded.addComment(feedback.id, reply);
+      const resent = await threaded.addComment(feedback.id, reply);
+
+      expect(resent).toEqual(first);
+      expect(first).toMatchObject({ feedbackId: feedback.id, body: reply.body, authorRole: "client" });
+      expect(first).not.toHaveProperty("clientId");
+      const [stored] = (await threaded.getFeedbacks("test-project")).feedbacks;
+      expect(stored?.comments).toEqual([first]);
+    });
+
+    it("bounds a reply by the same 30 s as a feedback", async () => {
+      vi.useFakeTimers();
+      const hanging: SitepingStore = { ...store, addComment: () => new Promise(() => {}) };
+      const outcome = new StoreClient(hanging, "p").addComment("fb-1", reply).catch((error: unknown) => error);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(await outcome).toMatchObject({ code: "TIMEOUT", retryable: true });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("refuses a reply when the store keeps no comments", async () => {
+      await expect(client.addComment("fb-1", reply)).rejects.toBeInstanceOf(SitepingError);
     });
   });
 

@@ -3,8 +3,9 @@
  * mode — never executed).
  */
 
-import type { SitepingStore } from "@siteping/core";
+import type { CommentCreateInput, CommentRecord, FeedbackPage, SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
+import type { SitepingCapabilities } from "../../src/index.js";
 import type { InboxSource, InboxState, SitepingInboxProps, UseSitepingInboxOptions } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
 
@@ -28,11 +29,50 @@ describe("UseSitepingInboxOptions XOR union", () => {
     // @ts-expect-error — apiKey is endpoint-mode only
     useSitepingInbox({ projects: "p", store, apiKey: "leaked" });
   });
+
+  it("takes an `author` in every mode — a shared option, outside the union", () => {
+    const author = { name: "Studio", email: "team@studio.example" };
+    expectTypeOf({ projects: "p", source, author }).toExtend<UseSitepingInboxOptions>();
+    expectTypeOf({ projects: "p", store, author: { name: "Studio" } }).toExtend<UseSitepingInboxOptions>();
+    expectTypeOf({ projects: "p", endpoint: "/api", author }).toExtend<UseSitepingInboxOptions>();
+
+    // @ts-expect-error — a reply needs a name to be attributed to
+    useSitepingInbox({ projects: "p", store, author: { email: "team@studio.example" } });
+  });
+});
+
+describe("InboxSource", () => {
+  it("keeps the thread methods optional, so a source written before threads still fits", () => {
+    const legacy = {
+      list: async (): Promise<FeedbackPage> => ({ feedbacks: [], total: 0 }),
+      setStatus: async () => ({}) as never,
+      remove: async () => {},
+    };
+    expectTypeOf(legacy).toExtend<InboxSource>();
+    expectTypeOf<NonNullable<InboxSource["addComment"]>>().toEqualTypeOf<
+      (feedbackId: string, projectName: string, input: CommentCreateInput) => Promise<CommentRecord>
+    >();
+  });
+
+  it("names the capabilities list() may return through the package itself", () => {
+    expectTypeOf<Awaited<ReturnType<InboxSource["list"]>>["capabilities"]>().toEqualTypeOf<
+      SitepingCapabilities | undefined
+    >();
+  });
 });
 
 describe("InboxState", () => {
   it("exposes the derived view discriminant", () => {
     expectTypeOf<InboxState["view"]>().toEqualTypeOf<"loading" | "error" | "empty" | "ready">();
+  });
+
+  it("exposes the thread actions", () => {
+    expectTypeOf<InboxState["canComment"]>().toEqualTypeOf<boolean>();
+    expectTypeOf<InboxState["canDeleteComment"]>().toEqualTypeOf<boolean>();
+    expectTypeOf<InboxState["addComment"]>().toEqualTypeOf<
+      (id: string, body: string, clientId?: string) => Promise<void>
+    >();
+    expectTypeOf<InboxState["deleteComment"]>().toEqualTypeOf<(id: string, commentId: string) => Promise<void>>();
   });
 });
 

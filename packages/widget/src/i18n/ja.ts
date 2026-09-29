@@ -150,6 +150,11 @@ export const ja: Translations = {
   "detail.diagnostics.collapse": "診断情報を隠す",
   "detail.diagnostics.noEntries": "項目はありません",
 
+  // Discussion thread (detail view)
+  "comments.placeholder": "チームに返信...",
+  "comments.error": "送信できませんでした。もう一度お試しください。",
+  "comments.team": "チーム",
+
   // Keyboard shortcuts overlay
   "shortcuts.title": "キーボードショートカット",
   "shortcuts.navigate": "フィードバックを移動",

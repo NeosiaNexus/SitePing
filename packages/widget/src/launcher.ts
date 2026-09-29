@@ -266,6 +266,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   if (config.onOpen) bus.on("open", config.onOpen);
   if (config.onClose) bus.on("close", config.onClose);
   if (config.onFeedbackSent) bus.on("feedback:sent", config.onFeedbackSent);
+  if (config.onCommentAdded) bus.on("comment:added", config.onCommentAdded);
   if (config.onError) bus.on("feedback:error", config.onError);
   if (config.onError) bus.on("panel:action-error", config.onError);
   // A failing panel action is a bug in the host's own code, with no widget UI
@@ -287,6 +288,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
   const publicBridges: { [K in keyof SitepingPublicEvents]: () => void } = {
     "feedback:sent": () => bus.on("feedback:sent", (fb) => publicBus.emit("feedback:sent", fb)),
     "feedback:deleted": () => bus.on("feedback:deleted", (id) => publicBus.emit("feedback:deleted", id)),
+    "comment:added": () => bus.on("comment:added", (comment) => publicBus.emit("comment:added", comment)),
     "feedback:error": () => bus.on("feedback:error", (err) => publicBus.emit("feedback:error", err)),
     "panel:open": () => bus.on("open", () => publicBus.emit("panel:open")),
     "panel:close": () => bus.on("close", () => publicBus.emit("panel:close")),
@@ -377,6 +379,22 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // initial load racing the first navigation) could render a stale page's
   // markers out of order, since markers.render() is a full clear-and-rebuild.
   let markerGeneration = 0;
+
+  /**
+   * The author of a write: the host's `identity`, then the one saved in this
+   * browser, then the modal's answer (saved) — `null` when the visitor
+   * dismisses the modal. Host-provided identity is not persisted: the host
+   * stays the source of truth on every render. `overPopup`: the feedback
+   * popup is on screen (see `promptIdentity`).
+   */
+  async function resolveIdentity(overPopup = false): Promise<Identity | null> {
+    const known = config.identity ?? getIdentity();
+    if (known) return known;
+    const entered = await promptIdentity(shadow, t, overPopup);
+    if (entered) saveIdentity(entered);
+    return entered;
+  }
+
   async function loadPanel(): Promise<PanelType | null> {
     if (destroyed) return null;
     if (panelInstance) return panelInstance;
@@ -388,6 +406,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
           scopeAnnotationsByUrl,
           panelActions: config.panelActions,
           ownFeedback: own,
+          resolveIdentity,
         });
         return panelInstance;
       });
@@ -506,21 +525,14 @@ export function launch(config: SitepingConfig): SitepingInstance {
     try {
       const { annotation, type, message, clientId, screenshotDataUrl, screenshotRegion } = data;
 
-      // Ensure identity — config wins (host-provided), then localStorage,
-      // then prompt the user as a last resort. Host-provided identity is
-      // not persisted: the host stays the source of truth on every render.
-      let identity = config.identity ?? getIdentity();
+      const identity = await resolveIdentity(true);
       if (!identity) {
-        identity = await promptIdentity(shadow, t);
-        if (!identity) {
-          // User cancelled the identity prompt. Emit `submission:cancelled`
-          // (not `feedback:error`) so the popup's pending submit handler
-          // unblocks and restores the form — cancelling a prompt is a benign
-          // user action, so `config.onError` must not fire for it.
-          bus.emit("submission:cancelled");
-          return;
-        }
-        saveIdentity(identity);
+        // User cancelled the identity prompt. Emit `submission:cancelled`
+        // (not `feedback:error`) so the popup's pending submit handler
+        // unblocks and restores the form — cancelling a prompt is a benign
+        // user action, so `config.onError` must not fire for it.
+        bus.emit("submission:cancelled");
+        return;
       }
 
       // Use scope.url as the single source of truth — same identifier the
@@ -800,21 +812,21 @@ export function launch(config: SitepingConfig): SitepingInstance {
  * Glassmorphism: frosted backdrop, glass modal, gradient CTA.
  * Returns null if the user cancels.
  */
-function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity | null> {
+function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean): Promise<Identity | null> {
   return new Promise((resolve) => {
     // Save the currently focused element to restore on close
     const previouslyFocused = (shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null;
 
-    // Move the shadow host to the end of <body> so the identity prompt wins
-    // the source-order tiebreak against the feedback popup. Both elements
-    // already sit at `Z_INDEX_MAX` (max int32 — no \"higher\"), and since #114
-    // the popup stays visible during submission, so it can be on screen at
-    // the moment `promptIdentity` runs. The popup is appended to `document.body`
-    // later than the host during init, which made it win when z-indices tied.
-    // Re-appending an existing node just moves it; no remount, no listener
-    // loss, no visual jitter when the popup isn't open. See issue #126.
+    // Over the feedback popup, move the shadow host to the end of <body> so
+    // the identity prompt wins the source-order tiebreak against it. Both
+    // elements already sit at `Z_INDEX_MAX` (max int32 — no \"higher\"), and
+    // since #114 the popup stays visible during submission. The popup is
+    // appended to `document.body` after the host, which made it win when
+    // z-indices tied (#126). Only then: a moved host loses every scroll
+    // position and the focus inside its shadow root, so a reply from the
+    // panel's thread would jump its detail view back to the top.
     const host = shadowRoot.host;
-    if (host.parentNode) host.parentNode.appendChild(host);
+    if (overPopup && host.parentNode) host.parentNode.appendChild(host);
 
     const backdrop = document.createElement("div");
     backdrop.style.cssText = /* css */ `
@@ -929,6 +941,8 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction): Promise<Identity 
     const onKeydown = (e: Event) => {
       const ke = e as KeyboardEvent;
       if (ke.key === "Escape") {
+        // Cancel the prompt only — opened from a thread, the panel's detail view stays.
+        ke.stopPropagation();
         closeModal(null);
         return;
       }

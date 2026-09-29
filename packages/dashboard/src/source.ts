@@ -1,6 +1,8 @@
 import {
+  type CommentCreateInput,
+  type CommentRecord,
+  type CommentResponse,
   errorFromResponse,
-  type FeedbackPage,
   type FeedbackQuery,
   type FeedbackRecord,
   type FeedbackResponse,
@@ -31,12 +33,14 @@ function reviveRecord(response: FeedbackResponse): FeedbackRecord {
       ...annotation,
       createdAt: new Date(annotation.createdAt),
     })),
-    comments: response.comments?.map((comment) => ({
-      ...comment,
-      clientId: "",
-      createdAt: new Date(comment.createdAt),
-    })),
+    comments: response.comments?.map(reviveComment),
   };
+}
+
+/** Convert a serialized `CommentResponse` into a `CommentRecord` with a real `Date`. */
+function reviveComment(response: CommentResponse): CommentRecord {
+  // The wire omits the dedup key, like the feedback's.
+  return { ...response, clientId: "", createdAt: new Date(response.createdAt) };
 }
 
 /** Parse a JSON body and assert its TypeScript shape — server-side Zod is the source of truth. */
@@ -91,7 +95,7 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
   }
 
   return {
-    async list(query: FeedbackQuery): Promise<FeedbackPage> {
+    async list(query: FeedbackQuery) {
       // Shared serializer from core — the previous local copy silently
       // dropped the `statuses` bucket filter.
       const params = feedbackQueryToSearchParams(query);
@@ -102,7 +106,15 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
         headers: await buildHeaders(false),
       });
       const body = await parseJsonAs<FeedbackResponseList>(response);
-      return { feedbacks: body.feedbacks.map(reviveRecord), total: body.total };
+      return {
+        feedbacks: body.feedbacks.map(reviveRecord),
+        total: body.total,
+        // A server that predates threads advertises nothing — and has none.
+        capabilities: {
+          comments: body.capabilities?.comments === true,
+          deleteComments: body.capabilities?.deleteComments === true,
+        },
+      };
     },
 
     async setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<FeedbackRecord> {
@@ -121,6 +133,25 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
         body: JSON.stringify({ id, projectName }),
       });
     },
+
+    // Threads share the endpoint: a `feedbackId` routes a POST to one, a
+    // `commentId` a DELETE.
+    async addComment(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord> {
+      const response = await request("Failed to post comment", endpoint, {
+        method: "POST",
+        headers: await buildHeaders(true),
+        body: JSON.stringify({ ...input, projectName, feedbackId }),
+      });
+      return reviveComment(await parseJsonAs<CommentResponse>(response));
+    },
+
+    async removeComment(feedbackId: string, commentId: string, projectName: string): Promise<void> {
+      await request("Failed to delete comment", endpoint, {
+        method: "DELETE",
+        headers: await buildHeaders(true),
+        body: JSON.stringify({ projectName, feedbackId, commentId }),
+      });
+    },
   };
 }
 
@@ -136,8 +167,8 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
  * is given.
  */
 export function createStoreSource(store: SitepingStore): InboxSource {
-  return {
-    list(query: FeedbackQuery): Promise<FeedbackPage> {
+  const source: InboxSource = {
+    list(query: FeedbackQuery) {
       return store.getFeedbacks(query);
     },
     setStatus(id: string, _projectName: string, status: FeedbackStatus): Promise<FeedbackRecord> {
@@ -147,4 +178,10 @@ export function createStoreSource(store: SitepingStore): InboxSource {
       await store.deleteFeedback(id);
     },
   };
+  // A store without threads leaves these out, which keeps the inbox's threads read-only.
+  const addComment = store.addComment?.bind(store);
+  const deleteComment = store.deleteComment?.bind(store);
+  if (addComment) source.addComment = (feedbackId, _projectName, input) => addComment(feedbackId, input);
+  if (deleteComment) source.removeComment = (feedbackId, commentId) => deleteComment(feedbackId, commentId);
+  return source;
 }

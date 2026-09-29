@@ -125,6 +125,32 @@ describe("createEndpointSource — list()", () => {
     expect(threadless?.comments).toBeUndefined();
   });
 
+  it("advertises comments and their deletion as the server does — and neither for a server that predates them", async () => {
+    const advertised = createEndpointSource({
+      endpoint: ENDPOINT,
+      fetchFn: jsonFetch({ feedbacks: [], total: 0, capabilities: { comments: true, deleteComments: true } }),
+    });
+    expect((await advertised.list({ projectName: "demo" })).capabilities).toEqual({
+      comments: true,
+      deleteComments: true,
+    });
+
+    const appendOnly = createEndpointSource({
+      endpoint: ENDPOINT,
+      fetchFn: jsonFetch({ feedbacks: [], total: 0, capabilities: { comments: true, deleteComments: false } }),
+    });
+    expect((await appendOnly.list({ projectName: "demo" })).capabilities).toEqual({
+      comments: true,
+      deleteComments: false,
+    });
+
+    const legacy = createEndpointSource({ endpoint: ENDPOINT, fetchFn: jsonFetch({ feedbacks: [], total: 0 }) });
+    expect((await legacy.list({ projectName: "demo" })).capabilities).toEqual({
+      comments: false,
+      deleteComments: false,
+    });
+  });
+
   it("keeps a null resolvedAt as null (no Date coercion)", async () => {
     const fetchFn = jsonFetch({ feedbacks: [makeResponse({ resolvedAt: null })], total: 1 });
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
@@ -219,6 +245,48 @@ describe("createEndpointSource — setStatus() & remove()", () => {
     expect(url).toBe(ENDPOINT);
     expect(init.method).toBe("DELETE");
     expect(JSON.parse(init.body as string)).toEqual({ id: "fb-9", projectName: "demo" });
+  });
+});
+
+describe("createEndpointSource — addComment() & removeComment()", () => {
+  const input = {
+    body: "On it",
+    authorName: "Studio",
+    authorEmail: "",
+    authorRole: "team" as const,
+    clientId: "reply-1",
+  };
+
+  it("POSTs the reply with its feedbackId to the shared endpoint and revives the stored comment", async () => {
+    const stored = { id: "c-1", feedbackId: "fb-1", ...input, createdAt: "2026-07-22T08:00:00.000Z" };
+    const { clientId: _clientId, ...wire } = stored;
+    const fetchFn = jsonFetch(wire);
+    const source = createEndpointSource({ endpoint: ENDPOINT, apiKey: "k", fetchFn });
+
+    const comment = await source.addComment?.("fb-1", "demo", input);
+
+    const { url, init } = lastCall(fetchFn);
+    expect(url).toBe(ENDPOINT);
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer k" });
+    expect(JSON.parse(init.body as string)).toEqual({ ...input, projectName: "demo", feedbackId: "fb-1" });
+    expect(comment).toEqual({ ...stored, clientId: "", createdAt: new Date(stored.createdAt) });
+  });
+
+  it("DELETEs {projectName, feedbackId, commentId} as JSON", async () => {
+    const fetchFn = jsonFetch({ deleted: true });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await source.removeComment?.("fb-1", "c-1", "demo");
+
+    const { init } = lastCall(fetchFn);
+    expect(init.method).toBe("DELETE");
+    expect(JSON.parse(init.body as string)).toEqual({ projectName: "demo", feedbackId: "fb-1", commentId: "c-1" });
+  });
+
+  it("maps a refusal to its typed error", async () => {
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(403) });
+    await expect(source.addComment?.("fb-1", "demo", input)).rejects.toBeInstanceOf(SitepingAuthError);
+    await expect(source.removeComment?.("fb-1", "c-1", "demo")).rejects.toBeInstanceOf(SitepingAuthError);
   });
 });
 
@@ -351,6 +419,38 @@ describe("createStoreSource", () => {
     const source = createStoreSource(store);
     await source.remove("fb-1", "demo");
     expect(store.deleteFeedback).toHaveBeenCalledWith("fb-1");
+  });
+
+  it("leaves the thread methods out for a store that keeps no comments", () => {
+    const source = createStoreSource(store);
+    expect(source.addComment).toBeUndefined();
+    expect(source.removeComment).toBeUndefined();
+  });
+
+  it("posts and deletes replies through a store that keeps them, as the store's own methods", async () => {
+    let rows = [makeRecord({ id: "a", projectName: "demo" })];
+    const threaded = createCollectionStore({
+      load: async () => rows,
+      persist: async (next) => {
+        rows = next;
+      },
+      generateId: () => crypto.randomUUID(),
+    });
+    const source = createStoreSource(threaded);
+    const input = {
+      body: "On it",
+      authorName: "Studio",
+      authorEmail: "",
+      authorRole: "team" as const,
+      clientId: "r-1",
+    };
+
+    const comment = await source.addComment?.("a", "demo", input);
+    expect(comment).toMatchObject({ feedbackId: "a", body: "On it", authorRole: "team" });
+    expect(rows[0]?.comments).toHaveLength(1);
+
+    await source.removeComment?.("a", comment?.id ?? "", "demo");
+    expect(rows[0]?.comments).toEqual([]);
   });
 
   it("two status changes 1 ms apart over an async collection store both land", async () => {

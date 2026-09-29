@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type {
+  CommentResponse,
   FeedbackResponse,
   SitepingPanelAction,
   SitepingPanelActionContext,
@@ -25,6 +26,7 @@ function createMockApiClient() {
     resolveFeedback: vi.fn(),
     deleteFeedback: vi.fn(),
     deleteAllFeedbacks: vi.fn(),
+    addComment: vi.fn(),
   };
 }
 
@@ -4486,6 +4488,123 @@ describe("Panel", () => {
 
       await vi.waitFor(() => expect(panel.isCurrentlyOpen).toBe(false));
       expect(detailEl().classList.contains("sp-detail--visible")).toBe(false);
+    });
+  });
+  describe("discussion thread", () => {
+    const identity = { name: "Alice", email: "alice@example.com" };
+    const reply: CommentResponse = {
+      id: "c-1",
+      feedbackId: "fb-1",
+      body: "Here it is",
+      authorName: "Alice",
+      authorEmail: "alice@example.com",
+      authorRole: "client",
+      createdAt: new Date().toISOString(),
+    };
+
+    function rebuild(resolveIdentity: () => Promise<typeof identity | null>): void {
+      panel.destroy();
+      shadow.host.remove();
+      shadow = createShadowRoot();
+      bus = new EventBus<WidgetEvents>();
+      apiClient = createMockApiClient();
+      panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+        getScope: () => ({ url: "/", urlPattern: null }),
+        scopeAnnotationsByUrl: true,
+        resolveIdentity,
+      });
+    }
+
+    async function openDetail(fb: FeedbackResponse, comments: boolean | undefined): Promise<void> {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [fb],
+        total: 1,
+        ...(comments === undefined ? {} : { capabilities: { comments } }),
+      });
+      await panel.open();
+      shadow.querySelector<HTMLElement>(`[data-feedback-id="${fb.id}"]`)!.click();
+    }
+
+    async function sendReply(text: string): Promise<void> {
+      shadow.querySelector<HTMLTextAreaElement>(".sp-detail textarea")!.value = text;
+      shadow.querySelector<HTMLButtonElement>(".sp-thread-foot button")!.click();
+    }
+
+    it("offers a composer only when the list response advertises comments", async () => {
+      rebuild(async () => identity);
+      await openDetail(makeFeedback({ id: "fb-1" }), true);
+      expect(shadow.querySelector(".sp-detail textarea")).not.toBeNull();
+
+      rebuild(async () => identity);
+      await openDetail(makeFeedback({ id: "fb-1" }), false);
+      expect(shadow.querySelector(".sp-detail textarea")).toBeNull();
+    });
+
+    it("stays read-only against a server that predates threads (no capabilities, no comments)", async () => {
+      rebuild(async () => identity);
+      await openDetail(makeFeedback({ id: "fb-1" }), undefined);
+      expect(shadow.querySelector(".sp-detail-message")).not.toBeNull();
+      expect(shadow.querySelector(".sp-detail textarea")).toBeNull();
+      expect(shadow.querySelector(".sp-comment")).toBeNull();
+    });
+
+    it("posts as the visitor, caches the reply on the feedback and emits comment:added", async () => {
+      rebuild(async () => identity);
+      const fb = makeFeedback({ id: "fb-1" });
+      const added = vi.fn();
+      bus.on("comment:added", added);
+      apiClient.addComment.mockResolvedValue(reply);
+      await openDetail(fb, true);
+
+      await sendReply("Here it is");
+
+      await vi.waitFor(() => expect(added).toHaveBeenCalledWith(reply));
+      expect(apiClient.addComment).toHaveBeenCalledWith("fb-1", {
+        body: "Here it is",
+        clientId: expect.any(String),
+        authorName: "Alice",
+        authorEmail: "alice@example.com",
+        authorRole: "client",
+      });
+      // The list's own record holds it: reopening the feedback shows the reply.
+      expect(fb.comments).toEqual([reply]);
+      shadow.querySelector<HTMLButtonElement>(".sp-detail-back")!.click();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+      expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1);
+    });
+
+    it("sends nothing and reports nothing when the visitor dismisses the identity prompt", async () => {
+      rebuild(async () => null);
+      const errors = vi.fn();
+      bus.on("feedback:error", errors);
+      await openDetail(makeFeedback({ id: "fb-1" }), true);
+
+      await sendReply("Maybe later");
+      await vi.waitFor(() =>
+        expect(shadow.querySelector<HTMLButtonElement>(".sp-thread-foot button")!.disabled).toBe(false),
+      );
+
+      expect(apiClient.addComment).not.toHaveBeenCalled();
+      expect(errors).not.toHaveBeenCalled();
+      expect(shadow.querySelector('.sp-detail [role="alert"]')!.textContent).toBe("");
+    });
+
+    it("reports a failed post on feedback:error and keeps the reply out of the cache", async () => {
+      rebuild(async () => identity);
+      const fb = makeFeedback({ id: "fb-1" });
+      const errors = vi.fn();
+      bus.on("feedback:error", errors);
+      const failure = new Error("500");
+      apiClient.addComment.mockRejectedValue(failure);
+      await openDetail(fb, true);
+
+      await sendReply("Lost?");
+
+      await vi.waitFor(() => expect(errors).toHaveBeenCalledWith(failure));
+      expect(fb.comments).toBeUndefined();
+      await vi.waitFor(() =>
+        expect(shadow.querySelector('.sp-detail [role="alert"]')!.textContent).toBe(t("comments.error")),
+      );
     });
   });
 });

@@ -123,5 +123,6 @@ export {
   feedbackQueryToSearchParams,
   mergeRequestHeaders,
   networkErrorFromException,
+  newClientId,
   withSearchParams,
 } from "./wire.js";

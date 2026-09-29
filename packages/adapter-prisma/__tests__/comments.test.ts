@@ -64,7 +64,7 @@ describe("createSitepingHandler — a schema synced before threads", () => {
     ).json()) as FeedbackResponseList;
 
     expect(comment.status).toBe(501);
-    expect(listed.capabilities).toEqual({ comments: false });
+    expect(listed.capabilities).toEqual({ comments: false, deleteComments: false });
     expect(listed.feedbacks[0]?.comments).toEqual([]);
   });
 });

@@ -5,7 +5,35 @@ description: Des commentaires sur un feedback, stockés à côté de lui et serv
 
 Un feedback porte un fil de commentaires : le relecteur demande « 16 ou 24 px ? », l'équipe répond, et la conversation reste à côté du retour au lieu de partir par e-mail. Les fils sont conservés par votre [store](/fr/docs/adapters) et servis par [`@siteping/server`](/fr/docs/server) sur l'endpoint que vous avez déjà monté — aucune nouvelle route.
 
-Cette page couvre le stockage et l'API HTTP. Le widget et le dashboard n'affichent pas encore les fils.
+Le [widget](#dans-le-widget) montre le fil au relecteur et le laisse répondre ; le [dashboard](#dans-le-dashboard) le montre à votre équipe, qui y répond et y supprime. La suite de cette page couvre le stockage et l'API HTTP.
+
+## Dans le widget
+
+Le fil prolonge le message dans la vue détail d'un feedback, dans le panneau : du plus ancien au plus récent, avec un champ de réponse en dessous. Les réponses de l'équipe portent un badge **Équipe**.
+
+- **Le champ de réponse n'apparaît que si la réponse peut être conservée** : l'endpoint annonce `capabilities.comments` dans ses réponses de liste (en [mode `store`](/fr/docs/adapters/localstorage) : le store implémente `addComment`). Face à un serveur antérieur aux fils — ni `capabilities`, ni `comments` — le widget n'affiche aucun fil, et rien ne casse.
+- **Qui répond** : le relecteur, résolu comme l'auteur d'un feedback — votre option `identity`, sinon celle enregistrée dans ce navigateur, sinon la fenêtre d'identification. La fermer n'envoie rien et ne signale rien ; le brouillon reste. Une réponse du widget est toujours enregistrée en `client`.
+- **L'envoi** : le bouton ou Ctrl/⌘+Entrée. Les pannes réseau et les 5xx sont réessayées comme pour un feedback, avec le même `clientId` : un réessai ne duplique jamais la réponse. Une réponse n'est jamais mise en file pour un chargement ultérieur : si elle échoue encore, le brouillon reste et le fil indique qu'elle n'est pas partie.
+- **Votre code en est informé** par `onCommentAdded` et l'événement `comment:added` (la charge utile : le commentaire enregistré, `CommentResponse`) ; un échec passe par `onError` et `feedback:error`, comme tout appel d'API.
+- **Lire la réponse** demande la liste : avec une `apiKey`, ajoutez `"GET"` à `publicEndpoints` — voir [Endpoints publics](#endpoints-publics-et-abus).
+
+## Dans le dashboard
+
+Le tiroir montre le fil du feedback ouvert, et laisse votre équipe répondre et supprimer une fois que vous avez dit à l'inbox qui écrit :
+
+```tsx
+<SitepingInbox
+  projects="my-project"
+  endpoint="/api/siteping"
+  apiKey={KEY}
+  author={{ name: user.name, email: user.email }}
+/>
+```
+
+- **`author`** (`{ name, email? }`) est qui répond depuis cette inbox. Sans lui, les fils sont en lecture seule — et masqués quand ils sont vides. De même quand l'endpoint n'annonce pas de commentaires, et une réponse ne propose pas de suppression quand il n'annonce pas de suppression.
+- **Les réponses demandent le rôle `team`**, que le serveur ne garde que pour un appelant dont votre politique d'accès se porte garante — l'`apiKey`, ou `canCommentAsTeam` sous `access` (voir [le rôle équipe](#le-rôle-équipe)). Toute autre réponse est enregistrée en `client`.
+- **Rien n'est optimiste** : une réponse s'affiche une fois enregistrée, et un échec garde le brouillon. Supprimer une réponse demande confirmation ; comme tout `DELETE`, il faut l'`apiKey` ou l'accord de votre politique d'accès.
+- **Sans interface** : `useSitepingInbox` renvoie `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)` et `deleteComment(id, commentId)` — voir [le hook](/fr/docs/dashboard/headless#fils-de-discussion). Une [source personnalisée](/fr/docs/dashboard/sources#fils-de-discussion) s'y branche avec `addComment` et `removeComment`.
 
 ## Ce que contient un commentaire
 
@@ -61,13 +89,13 @@ Il répond `200 { "deleted": true }`. Comme tout `DELETE`, il exige l'`apiKey` �
 
 ### Lire les fils
 
-La liste `GET` ne change pas, à deux ajouts près : les `comments` de chaque feedback, et un objet `capabilities` qui dit si le store accepte les commentaires — un client peut ainsi masquer sa zone de réponse d'emblée au lieu de tomber sur un `501` :
+La liste `GET` ne change pas, à deux ajouts près : les `comments` de chaque feedback, et un objet `capabilities` qui dit si le store accepte les commentaires (`comments`) et sait les supprimer (`deleteComments`) — un client peut ainsi masquer sa zone de réponse, ou ses boutons de suppression, d'emblée au lieu de tomber sur un `501` :
 
 ```json
 {
   "feedbacks": [{ "id": "cm3f8x…", "message": "…", "comments": [] }],
   "total": 1,
-  "capabilities": { "comments": true }
+  "capabilities": { "comments": true, "deleteComments": true }
 }
 ```
 

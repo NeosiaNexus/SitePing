@@ -5,7 +5,35 @@ description: Comments on a feedback, stored next to it and served by the same en
 
 A feedback carries a thread of comments: the reviewer asks "16 or 24 px?", the team answers, and the conversation stays next to the report instead of moving to email. Threads are kept by your [store](/docs/adapters) and served by [`@siteping/server`](/docs/server) on the endpoint you already mounted — no new route.
 
-This page covers storage and the HTTP API. The widget and the dashboard do not display threads yet.
+The [widget](#in-the-widget) shows the thread to the reviewer and lets them reply; the [dashboard](#in-the-dashboard) shows it to your team, who reply and delete there. The rest of this page covers storage and the HTTP API.
+
+## In the widget
+
+The thread reads on from the message in the panel's feedback detail view, oldest first, with a composer under it. The team's replies carry a **Team** badge.
+
+- **The composer shows only when replies can be kept**: the endpoint advertises `capabilities.comments` on its list responses (in [`store` mode](/docs/adapters/localstorage): the store implements `addComment`). Against a server that predates threads — no `capabilities`, no `comments` — the widget shows no thread and nothing breaks.
+- **Who replies**: the reviewer, resolved like a feedback's author — your `identity` option, else the one saved in this browser, else the identity prompt. Dismissing the prompt sends nothing and reports nothing; the draft stays. A widget reply is always stored as `client`.
+- **Sending**: the button or Ctrl/⌘+Enter. Network failures and 5xx are retried like a feedback's, under the same `clientId`, so a retry never duplicates the reply. A reply is never queued for a later page load: if it still fails, the draft stays and the thread says it wasn't sent.
+- **Your code hears about it** through `onCommentAdded` and the `comment:added` event (payload: the stored comment, `CommentResponse`); a failure goes to `onError` and `feedback:error`, like any API call.
+- **Reading the answer** needs the list: with an `apiKey`, add `"GET"` to `publicEndpoints` — see [Public endpoints](#public-endpoints-and-abuse).
+
+## In the dashboard
+
+The drawer shows the opened feedback's thread, and lets your team reply and delete once you tell the inbox who is writing:
+
+```tsx
+<SitepingInbox
+  projects="my-project"
+  endpoint="/api/siteping"
+  apiKey={KEY}
+  author={{ name: user.name, email: user.email }}
+/>
+```
+
+- **`author`** (`{ name, email? }`) is who replies from this inbox. Without it, threads are read-only — and hidden when empty. So are they when the endpoint advertises no comments, and a reply offers no delete when it advertises no deletion.
+- **Replies ask for the `team` role**, which the server keeps only for a caller your access policy vouches for — the `apiKey`, or `canCommentAsTeam` under `access` (see [who speaks as the team](#who-speaks-as-the-team)). Any other reply is stored as `client`.
+- **Nothing is optimistic**: a reply shows once stored, and a failure keeps the draft. Deleting a reply asks first; like every `DELETE`, it needs the `apiKey` or your access policy's consent.
+- **Headless**: `useSitepingInbox` returns `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)` and `deleteComment(id, commentId)` — see [the hook](/docs/dashboard/headless#discussion-threads). A [custom source](/docs/dashboard/sources#discussion-threads) opts in with `addComment` and `removeComment`.
 
 ## What a comment holds
 
@@ -61,13 +89,13 @@ It answers `200 { "deleted": true }`. Like every `DELETE`, it needs the `apiKey`
 
 ### Read threads
 
-The `GET` list is unchanged, with two additions: each feedback's `comments`, and a `capabilities` object that says whether the store can take comments — so a client can hide its reply box up front instead of meeting a `501`:
+The `GET` list is unchanged, with two additions: each feedback's `comments`, and a `capabilities` object that says whether the store can take comments (`comments`) and delete them (`deleteComments`) — so a client can hide its reply box, or its delete buttons, up front instead of meeting a `501`:
 
 ```json
 {
   "feedbacks": [{ "id": "cm3f8x…", "message": "…", "comments": [] }],
   "total": 1,
-  "capabilities": { "comments": true }
+  "capabilities": { "comments": true, "deleteComments": true }
 }
 ```
 
