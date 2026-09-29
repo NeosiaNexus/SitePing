@@ -51,9 +51,10 @@ export interface InboxSource {
    */
   list(query: FeedbackQuery): Promise<InboxPage>;
   /**
-   * Persist a status change and resolve the saved record — with its
-   * `permissions`, when `list` gives them. Closure semantics (`resolvedAt`)
-   * are derived at this edge — callers only pass the target status.
+   * Persist a status change and resolve the saved record. Its `permissions`
+   * replace the listed ones; left out, the listed ones stay. Closure
+   * semantics (`resolvedAt`) are derived at this edge — callers only pass
+   * the target status.
    */
   setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<InboxRecord>;
   /** Permanently delete a feedback. */

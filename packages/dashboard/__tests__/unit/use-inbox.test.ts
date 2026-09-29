@@ -2154,4 +2154,21 @@ describe("useSitepingInbox — permissions and readOnly", () => {
 
     expect(result.current.permissionsOf(record(result.current.items, "r1")).canDelete).toBe(false);
   });
+
+  it("keeps the permissions of a record saved without them", async () => {
+    const source = makeSource(recordsWith({ ...ALL, canDelete: false }));
+    // A custom source that lists permissions but saves the plain stored record.
+    source.setStatus.mockImplementation(async (id, _projectName, status) => {
+      const { permissions: _permissions, ...stored } = record(source.records, id);
+      return { ...stored, status };
+    });
+    const { result } = await ready({ projects: "demo", source });
+    act(() => result.current.setStatus("all"));
+    await waitFor(() => expect(result.current.items).toHaveLength(6));
+
+    await act(() => result.current.changeStatus("r1", "resolved"));
+
+    expect(record(result.current.items, "r1").status).toBe("resolved");
+    expect(result.current.permissionsOf(record(result.current.items, "r1")).canDelete).toBe(false);
+  });
 });

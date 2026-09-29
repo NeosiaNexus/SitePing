@@ -65,7 +65,7 @@ const source: InboxSource = {
 
 ### Permissions
 
-A record may carry `permissions` — `{ canChangeStatus, canDelete, canComment, canDeleteComment }`, what the requester may do with it — from `list()` and from `setStatus()`. The inbox then hides what they refuse (see [Permissions](/docs/dashboard/headless#permissions)); a record without them refuses nothing. The endpoint source passes on the server's.
+A record may carry `permissions` — `{ canChangeStatus, canDelete, canComment, canDeleteComment }`, what the requester may do with it — from `list()` and from `setStatus()`. The inbox then hides what they refuse (see [Permissions](/docs/dashboard/headless#permissions)); a record without them refuses nothing. When `setStatus()` resolves a record without them, it keeps the ones `list()` gave. The endpoint source passes on the server's.
 
 The two building blocks behind the built-in modes are exported too — `createEndpointSource({ endpoint, apiKey, headers })` and `createStoreSource(store)` — so you can wrap, compose, or decorate them (e.g. add logging around the HTTP client) instead of starting from scratch.
 

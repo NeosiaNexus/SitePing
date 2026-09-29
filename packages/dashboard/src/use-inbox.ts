@@ -650,7 +650,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
   const applyStatusChange = useCallback(
     async (id: string, nextStatus: FeedbackStatus, isUndo: boolean): Promise<void> => {
-      const record =
+      const record: InboxRecord | null =
         itemsRef.current.find((f) => f.id === id) ??
         (undoRecordRef.current?.id === id ? undoRecordRef.current : null) ??
         (openedCacheRef.current?.id === id ? openedCacheRef.current : null);
@@ -704,7 +704,10 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       const undoEntry = undoEntryRef.current;
 
       try {
-        const saved = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
+        const stored = await srcRef.current.setStatus(id, projectRef.current, nextStatus);
+        // A source that saves the plain record leaves the listed permissions in force.
+        const saved =
+          stored.permissions || !record.permissions ? stored : { ...stored, permissions: record.permissions };
         // A later mutation on this feedback owns the row now — don't clobber its optimistic state.
         if (settleMutation(id, handle, true)) {
           // Place, not map: a page refetched meanwhile may still hold the
