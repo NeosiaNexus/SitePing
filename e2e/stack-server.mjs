@@ -8,6 +8,9 @@
  *   /api/siteping   → `createSitepingHandler` (adapter-prisma) over a
  *                     `MemoryStore` (adapter-memory): real schema validation,
  *                     replay detection, webhooks, status/resolvedAt pairing.
+ *   /api/siteping-keyed → the same store behind `apiKey: "e2e-key"`, reads
+ *                     and submissions left public: what a visitor and the
+ *                     key holder are each allowed to do.
  *   /               → a page running the widget in HTTP mode against it.
  *   /inbox          → `<SitepingInbox />` (dashboard) against the same API,
  *                     bundled with esbuild at startup.
@@ -51,6 +54,13 @@ const handler = createSitepingHandler({
   webhooks: [{ url: `${ORIGIN}/__e2e/webhook`, type: "generic" }],
 });
 
+// A public site: visitors read and submit, only the key holder triages.
+const keyedHandler = createSitepingHandler({
+  store,
+  apiKey: "e2e-key",
+  publicEndpoints: ["GET", "POST", "OPTIONS"],
+});
+
 const widgetDist = join(pkg("widget"), "dist");
 
 const inboxBundle = (
@@ -65,6 +75,7 @@ const inboxBundle = (
           createElement(SitepingInbox, {
             endpoint: params.get("endpoint") ?? "/api/siteping",
             projects: [params.get("project") ?? "e2e-stack"],
+            apiKey: params.get("apiKey") ?? undefined,
             locale: "en",
             theme: params.get("theme") === "dark" ? "dark" : "light",
             // Replies need someone to post them as.
@@ -132,10 +143,10 @@ async function readBody(req) {
   return Buffer.concat(chunks);
 }
 
-/** Node request → Fetch `Request` → handler → Node response. */
-async function callHandler(req, res, url) {
+/** Node request → Fetch `Request` → `api` → Node response. */
+async function callHandler(api, req, res, url) {
   const method = req.method ?? "GET";
-  const route = handler[method];
+  const route = api[method];
   if (!route) {
     res.writeHead(405).end();
     return;
@@ -153,7 +164,8 @@ async function callHandler(req, res, url) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", ORIGIN);
   try {
-    if (url.pathname === "/api/siteping") return await callHandler(req, res, url);
+    if (url.pathname === "/api/siteping") return await callHandler(handler, req, res, url);
+    if (url.pathname === "/api/siteping-keyed") return await callHandler(keyedHandler, req, res, url);
 
     if (url.pathname === "/__e2e/webhook" && req.method === "POST") {
       webhookLog.push(JSON.parse((await readBody(req)).toString("utf-8")));
