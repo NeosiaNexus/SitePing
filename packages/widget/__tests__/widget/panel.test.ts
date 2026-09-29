@@ -4678,6 +4678,44 @@ describe("Panel", () => {
       expect(apiClient.addComment).toHaveBeenCalledOnce();
     });
 
+    it("shows and caches a reply once when a reload brought it in before its own answer", async () => {
+      let refresh: () => Promise<void> = async () => {};
+      rebuild(
+        async () => identity,
+        [
+          {
+            id: "jira",
+            label: "Jira",
+            onAction: (_fb, ctx) => {
+              refresh = ctx.refresh;
+            },
+          },
+        ],
+      );
+      const posting = deferredComment();
+      apiClient.addComment.mockReturnValue(posting.promise);
+      await openDetail(makeFeedback({ id: "fb-1" }), true);
+      shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!.click();
+      await vi.waitFor(() =>
+        expect(shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-custom")!.disabled).toBe(false),
+      );
+      await sendReply("Here it is");
+      await vi.waitFor(() => expect(apiClient.addComment).toHaveBeenCalledOnce());
+
+      // The reply is stored, and the reload reads it before its POST answers.
+      const reloaded = makeFeedback({ id: "fb-1", comments: [reply] });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [reloaded], total: 1, capabilities: { comments: true } });
+      await refresh();
+      expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1);
+      const added = vi.fn();
+      bus.on("comment:added", added);
+      posting.resolve(reply);
+      await vi.waitFor(() => expect(added).toHaveBeenCalled());
+
+      expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1);
+      expect(reloaded.comments).toEqual([reply]);
+    });
+
     it("sends nothing and reports nothing when the visitor dismisses the identity prompt", async () => {
       rebuild(async () => null);
       const errors = vi.fn();
