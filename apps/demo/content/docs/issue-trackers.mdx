@@ -127,7 +127,7 @@ hooks: {
 - **Deleting.** `onDeleting` closes the issue before the record goes. If the tracker fails, the `DELETE` answers `502` and keeps the record: retry it once the tracker is back. The comment is left once, even across retries.
 - **Deleting a whole project.** The project's issues are handled one after the other, with up to three requests each: close the issue if it is open, read its comments, comment. A project with many issues can therefore hit the tracker's rate limit (GitHub allows about 80 content-creating requests a minute) or a serverless function's time limit. The `DELETE` then answers `502` and keeps every record. Retry it a few minutes later: an issue already closed and commented costs a single request, so each attempt gets further.
 
-The errors the hooks throw are exported, for a custom `logger` to tell them apart: `IssueTrackerRequestError` for a failed tracker request (it carries the method, path and status, never the token) and `UnlabelledIssueError` for an issue created without its `siteping` label.
+The built-in trackers throw exported errors, so a custom `logger` can tell them apart: `IssueTrackerRequestError` for a failed tracker request (it carries the method, path and status, never the token) and `UnlabelledIssueError` for an issue created without its `siteping` label.
 
 ## How issues are found again
 
