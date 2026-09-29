@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { IssueTracker } from "../src/index.js";
 import { createGitHubTracker } from "../src/providers/github.js";
 import { createGitLabTracker } from "../src/providers/gitlab.js";
+import { hangingFetch } from "./fake-trackers.js";
 
 const TOKEN = "tracker-secret-token";
 
@@ -67,6 +68,15 @@ for (const [name, createTracker] of providers) {
         createTracker({ token: TOKEN, apiBaseUrl: "https://acme.test/api", timeoutMs: 1, maxListedPages: 1 }),
       ).not.toThrow();
     });
+
+    it("gives up on a request after timeoutMs", async () => {
+      const tracker = createTracker({ token: TOKEN, fetch: hangingFetch, timeoutMs: 20 });
+
+      await expect(tracker.listComments({ key: "1", url: "" })).rejects.toMatchObject({
+        code: "ISSUE_TRACKER_REQUEST_FAILED",
+        status: null,
+      });
+    }, 1_000);
 
     it("sends a token read with a trailing line break, trimmed", async () => {
       const authorization: Array<string | null> = [];

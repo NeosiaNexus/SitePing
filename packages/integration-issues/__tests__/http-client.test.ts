@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createJsonHttpClient, IssueTrackerRequestError, UnlabelledIssueError } from "../src/core/http-client.js";
 import { isIssueTrackerRequestError, isUnlabelledIssueError } from "../src/index.js";
+import { hangingFetch } from "./fake-trackers.js";
 
 const client = (fetch: typeof globalThis.fetch) =>
   createJsonHttpClient({
@@ -74,6 +75,21 @@ describe("createJsonHttpClient", () => {
     expect(failure).toMatchObject({ method: "POST", path: "/issues", status: 201 });
     expect((failure as Error).cause).toMatchObject({ name: "TimeoutError" });
   });
+
+  it("gives up on a tracker that never answers after timeoutMs", async () => {
+    const request = createJsonHttpClient({
+      tracker: "Tracker",
+      baseUrl: "https://api.test",
+      headers: {},
+      fetch: hangingFetch,
+      timeoutMs: 20,
+    });
+
+    const failure = await request({ method: "GET", path: "/issues" }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ code: "ISSUE_TRACKER_REQUEST_FAILED", status: null });
+    expect((failure as Error).cause).toMatchObject({ name: "TimeoutError" });
+  }, 1_000);
 
   it("resolves an empty 204 answer to undefined", async () => {
     const request = client(async () => new Response(null, { status: 204 }));

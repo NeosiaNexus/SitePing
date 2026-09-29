@@ -33,6 +33,14 @@ export interface FakeTracker {
   hold(pattern: RegExp): { reached: Promise<void>; release(): void };
 }
 
+/** `fetch` to a tracker that accepts the connection and never answers: only the request's signal ends it. */
+export const hangingFetch: typeof fetch = (input, init) => {
+  const { signal } = new Request(input, init);
+  return new Promise((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason));
+  });
+};
+
 type Route = (request: Request, match: RegExpMatchArray, url: URL) => Promise<Response> | Response;
 
 function createFakeServer(
@@ -56,11 +64,7 @@ function createFakeServer(
       authorization: request.headers.get(authorizationHeader),
     });
     const route = `${request.method} ${url.pathname}${url.search}`;
-    if (settings.hangs) {
-      return new Promise<Response>((_resolve, reject) => {
-        request.signal.addEventListener("abort", () => reject(request.signal.reason));
-      });
-    }
+    if (settings.hangs) return hangingFetch(request);
     if (settings.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, settings.delayMs));
     const held = holds.findIndex(({ pattern }) => pattern.test(route));
     if (held >= 0) {
