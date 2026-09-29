@@ -340,6 +340,23 @@ for (const provider of providers) {
         expect(fake.issues[0]?.isOpen).toBe(false);
       });
 
+      it("reaches closed issues through the listing too", async () => {
+        const handler = createHandler();
+        const resolved = await send(handler);
+        const reopened = await send(handler);
+        await patch(handler, resolved.id, "resolved");
+        await patch(handler, reopened.id, "resolved");
+        fake.lagSearch();
+
+        await patch(handler, reopened.id, "open");
+        expect(fake.issues.map((issue) => issue.isOpen)).toEqual([false, true]);
+
+        await remove(handler, { projectName: "site", deleteAll: true });
+        expect(
+          fake.issues.map((issue) => issue.comments.filter((comment) => !comment.startsWith("system:")).length),
+        ).toEqual([1, 1]);
+      });
+
       it("lists at most maxListedPages pages of 100 issues, newest first", async () => {
         const feedback = await send(createHandler());
         const [oldest] = fake.issues as [FakeTracker["issues"][number]];

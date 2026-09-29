@@ -188,9 +188,13 @@ export function createFakeGitHub(repository: string): FakeTracker & {
         new RegExp(`^${escapedBase}$`),
         (_request, _match, url) => {
           const label = url.searchParams.get("labels");
-          // Newest first, like the real API's default sort.
-          const labelled = server.issues.filter((issue) => !label || hasLabel(issue, label)).reverse();
-          return Response.json(page(labelled, url).map(toGitHub));
+          // Like the real API: open issues unless `state` says otherwise, newest first.
+          const state = url.searchParams.get("state") ?? "open";
+          const listed = server.issues
+            .filter((issue) => !label || hasLabel(issue, label))
+            .filter((issue) => state === "all" || (state === "open") === issue.isOpen)
+            .reverse();
+          return Response.json(page(listed, url).map(toGitHub));
         },
       ],
       [
