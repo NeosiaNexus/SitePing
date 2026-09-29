@@ -101,6 +101,7 @@ La limitation de débit n'est pas gérée ici : appliquez-la dans votre framewor
 | `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Déclenchés à chaque nouveau feedback — voir [webhooks](#webhooks) |
 | `waitUntil` | `(promise) => void` | — | Garde les envois de webhooks en vie après la réponse sur les runtimes serverless et edge — voir [webhooks](#webhooks) |
 | `beforeCreate` | `(input, context) => input` | — | Réécrire un envoi avant son enregistrement — voir [points d'extension](#points-dextension) |
+| `beforeComment` | `(input, context) => input` | — | De même pour un [commentaire](/fr/docs/comments) |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transformer chaque enregistrement avant son envoi |
 | `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
 | `logger` | `{ error(message, context) }` | `console.error` | Où vont les échecs inattendus, avec la méthode et le chemin de la requête |
@@ -249,6 +250,12 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
+  // Ceux d'une réponse aussi.
+  beforeComment: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name || input.authorName,
+    authorEmail: principal.email || input.authorEmail,
+  }),
 });
 ```
 
@@ -269,7 +276,7 @@ initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "a
 - **Sans en-tête, un visiteur ; un mauvais, une `401`.** Sans `Authorization`, la requête est anonyme : le widget public continue de fonctionner. Un jeton malformé, expiré, forgé ou étranger répond `401` au lieu d'être rétrogradé en visiteur : un relecteur dont la session a expiré le voit, et le client peut rafraîchir le jeton.
 - **Un fournisseur injoignable, une `500`.** Quand le jeu de clés ne peut pas être récupéré — erreur réseau, délai dépassé, réponse autre que `200`, pas de jeu de clés dedans —, `authenticate` lève : le handler le journalise et répond `500` plutôt que de déclarer tout jeton invalide. Les visiteurs, qui n'en envoient pas, ne sont pas touchés. jose met les clés en cache et les recharge pour un `kid` inconnu : une rotation des clés ne demande rien.
 - **Des algorithmes épinglés, en HTTPS.** `algorithms` liste ceux avec lesquels votre fournisseur signe : un jeton non signé ou `HS256` est refusé avant même la recherche d'une clé. Gardez l'issuer et le jeu de clés en `https://` : qui peut altérer le jeu de clés peut fabriquer des jetons d'administrateur.
-- **L'auteur vient du jeton.** `beforeCreate` reprend son nom, et son e-mail seulement quand `email_verified` vaut true ; sinon, les valeurs du widget restent. Les jetons d'accès ne portent pas toujours ces claims : passez [`identity`](/fr/docs/widget/configuration) pour épargner la modale d'identité du widget aux utilisateurs connectés.
+- **L'auteur vient du jeton.** `beforeCreate` reprend son nom, et son e-mail seulement quand `email_verified` vaut true ; sinon, les valeurs du widget restent. `beforeComment` fait de même pour les réponses : personne de connecté ne répond sous le nom d'un autre relecteur. Les jetons d'accès ne portent pas toujours ces claims : passez [`identity`](/fr/docs/widget/configuration) pour épargner la modale d'identité du widget aux utilisateurs connectés.
 - **Les e-mails restent aux administrateurs.** Comme `canReadAuthorEmail` est défini, il décide aussi [du rôle équipe](/fr/docs/comments#le-rôle-équipe) : les réponses des administrateurs sont marquées `team`, celles de tous les autres `client`.
 - **Un rôle, tous les projets.** Ce `authorize` ne lit jamais `projectName` : `siteping-admin` trie tous les projets que sert l'endpoint, et n'importe qui — visiteur ou membre — liste chacun d'eux, captures d'écran et diagnostics compris. Pour séparer plusieurs clients, donnez à chaque projet son propre rôle, comme `siteping-admin:acme` : gardez les rôles de l'appelant dans le principal, et faites tester à `authorize` `` roles.includes(`siteping-admin:${projectName}`) `` là où il teste `isAdmin`. `canReadAuthorEmail` ne reçoit pas le projet : réservez-le donc à un rôle qui les couvre tous. Pour réserver aussi les lectures aux utilisateurs connectés, renvoyez `null` au lieu de `VISITOR` quand l'en-tête manque — chaque requête exige alors un jeton, envois compris — et n'autorisez `list` que sur les projets de l'appelant.
 
@@ -394,6 +401,12 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
+  // Ceux d'une réponse aussi.
+  beforeComment: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name || input.authorName,
+    authorEmail: principal.email || input.authorEmail,
+  }),
 });
 ```
 
@@ -424,7 +437,7 @@ export function Feedback() {
 - **Lue, jamais renouvelée.** Une session plus vieille que l'`updateAge` de Better Auth est renouvelée par le `getSession` suivant, qui écrit une expiration plus lointaine et pose un nouveau cookie — sur une réponse que SitePing n'envoie jamais : le cookie du navigateur expirerait donc en premier. `disableRefresh` laisse le renouvellement aux requêtes de votre application.
 - **Une rétrogradation s'applique aussitôt.** Avec le `session.cookieCache` de Better Auth activé, `getSession` se fie au cookie en cache jusqu'à son `maxAge` : un changement de rôle ou une session révoquée l'attendraient. `disableCookieCache` lit plutôt votre `database` ou votre `secondaryStorage`, comme `getSession` le fait de toute façon sans le cache. Sans l'un ni l'autre, Better Auth est sans état et le cookie signé est le seul enregistrement de la session : une autre instance — une invocation serverless, une réplique — ne trouve aucune session derrière cette option, et sert vos administrateurs comme des visiteurs. Retirez alors `disableCookieCache` ; une rétrogradation attend dans ce cas le `maxAge` du cookie.
 - **Des administrateurs par rôle.** `isAdmin` lit le `role` du plugin admin — `setRole` avec `["user", "admin"]` stocke `"user,admin"`. Les `adminUserIds` du plugin ouvrent ses propres endpoints à des utilisateurs quel que soit leur rôle : donnez-leur aussi le rôle `admin`. Pour laisser quelqu'un trier sans la gestion des utilisateurs du plugin, donnez-lui un rôle à vous (déclaré dans les `roles` du plugin, si vous en avez configuré) et testez celui-là.
-- **L'auteur vient de la session.** `beforeCreate` reprend le nom de l'utilisateur, et son e-mail dès que `emailVerified` vaut true ; sinon, la valeur du widget reste.
+- **L'auteur vient de la session.** `beforeCreate` reprend le nom de l'utilisateur, et son e-mail dès que `emailVerified` vaut true ; sinon, la valeur du widget reste. `beforeComment` fait de même pour les réponses.
 - **Les e-mails restent aux administrateurs.** Comme `canReadAuthorEmail` est défini, il décide aussi [du rôle équipe](/fr/docs/comments#le-rôle-équipe) : les réponses des administrateurs depuis l'inbox sont marquées `team`, celles de tous les autres `client`.
 - **Des cookies, donc du CSRF.** Un navigateur joint aussi le cookie de session à une requête intersite forgée ; les [protections CSRF](#protection-csrf) l'arrêtent, sans rien configurer.
 - **Un rôle, tous les projets.** Comme dans la recette OpenID Connect, `admin` trie tous les projets que sert l'endpoint, et n'importe qui liste chacun d'eux. Pour séparer plusieurs clients, chargez les projets de l'appelant dans `authenticate` — par exemple les slugs de ses organisations, avec le plugin organization de Better Auth — et faites vérifier `projectName` à `authorize`. Pour réserver aussi les lectures aux utilisateurs connectés, renvoyez `null` au lieu de `VISITOR` — chaque requête exige alors une session, envois compris.
@@ -500,6 +513,7 @@ createSitepingHandler({
 ```
 
 - **`beforeCreate`** tourne sur l'envoi validé, avant `authorize` — qui voit le projet qu'il renvoie.
+- **`beforeComment`** tourne sur un [commentaire](/fr/docs/comments) validé, une fois qu'`authorize` l'a permis et que son feedback a été trouvé. Le nom et l'e-mail d'une réponse sont ceux qu'envoie la requête tant qu'il n'impose pas les vôtres ; le rôle `team` reste la décision de votre politique d'accès, quoi qu'il renvoie.
 - **`presentFeedback`** tourne sur chaque enregistrement juste avant son envoi ; le retrait de `clientId` et le masquage de l'e-mail s'appliquent encore après lui.
 - **`onCreated`**, **`onUpdated`** et **`onDeleted`** sont attendus avant la réponse, pour que les runtimes serverless ne les coupent pas. Une exception est journalisée et ne fait jamais échouer la requête : l'écriture a déjà eu lieu. `onCreated` tourne une fois par feedback enregistré, jamais pour un `clientId` rejoué.
 - **`onDeleting`** tourne avant la suppression, avec `{ kind: "single", id, projectName }` ou `{ kind: "project", projectName }`. Une exception garde l'enregistrement et répond `502`.

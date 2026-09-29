@@ -1,4 +1,4 @@
-import type { FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
+import type { CommentCreateInput, FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
 import type { WebhookConfig } from "./webhooks.js";
 
 /** HTTP methods served by `createSitepingHandler`. */
@@ -159,6 +159,18 @@ export interface SitepingHandlerBaseOptions<Principal> {
     input: FeedbackCreateInput,
     context: SitepingRequestContext<Principal>,
   ): FeedbackCreateInput | Promise<FeedbackCreateInput>;
+  /**
+   * Rewrite a validated comment before it is stored, as `beforeCreate` does
+   * a feedback: the author's name and email are what the request sends
+   * until this imposes them from the session. Runs once the comment is
+   * authorized and its feedback found. The `team` role is kept only when
+   * the access policy vouches for the caller, whatever this returns. A
+   * throw answers a logged 500 and stores nothing.
+   */
+  beforeComment?(
+    input: CommentCreateInput,
+    context: SitepingRequestContext<Principal>,
+  ): CommentCreateInput | Promise<CommentCreateInput>;
   /**
    * Transform each record right before it is serialized in a response, e.g.
    * read-time redaction. `clientId` is stripped, and `authorEmail` blanked

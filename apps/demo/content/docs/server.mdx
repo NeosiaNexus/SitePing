@@ -101,6 +101,7 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 | `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Fire on each new feedback — see [webhooks](#webhooks) |
 | `waitUntil` | `(promise) => void` | — | Keeps webhook deliveries alive after the response on serverless and edge runtimes — see [webhooks](#webhooks) |
 | `beforeCreate` | `(input, context) => input` | — | Rewrite a submission before it is stored — see [extension points](#extension-points) |
+| `beforeComment` | `(input, context) => input` | — | The same for a [comment](/docs/comments) |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transform each record before it is sent |
 | `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
 | `logger` | `{ error(message, context) }` | `console.error` | Where unexpected failures go, with the request's method and path |
@@ -249,6 +250,12 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
+  // A reply's too.
+  beforeComment: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name || input.authorName,
+    authorEmail: principal.email || input.authorEmail,
+  }),
 });
 ```
 
@@ -269,7 +276,7 @@ initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "a
 - **No header, a visitor; a bad one, a `401`.** Without `Authorization` the request is anonymous, so the public widget keeps working. A malformed, expired, forged or foreign token answers `401` instead of being downgraded to a visitor: a reviewer whose session lapsed sees it, and the client can refresh the token.
 - **An unreachable provider, a `500`.** When the key set cannot be fetched — network error, timeout, non-`200` answer, no key set in it — `authenticate` throws: the handler logs it and answers `500` rather than calling every token invalid. Visitors, who send none, are unaffected. jose caches the keys and refetches them for an unknown `kid`, so key rotation needs nothing.
 - **Pinned algorithms, over HTTPS.** `algorithms` lists what your provider signs with, so an unsigned or `HS256` token is refused before any key is looked up. Keep the issuer and the key set on `https://`: whoever can tamper with the key set can mint administrator tokens.
-- **The author comes from the token.** `beforeCreate` stamps its name, and its email only when `email_verified` is true; otherwise the widget's values stay. Access tokens don't always carry these claims, so pass [`identity`](/docs/widget/configuration) to spare signed-in users the widget's identity prompt.
+- **The author comes from the token.** `beforeCreate` stamps its name, and its email only when `email_verified` is true; otherwise the widget's values stay. `beforeComment` does the same for replies, so no one signed in replies under another reviewer's name. Access tokens don't always carry these claims, so pass [`identity`](/docs/widget/configuration) to spare signed-in users the widget's identity prompt.
 - **Emails stay with administrators.** Since `canReadAuthorEmail` is set, it also decides [who speaks as the team](/docs/comments#who-speaks-as-the-team): administrators' replies are marked `team`, everyone else's `client`.
 - **One role, every project.** This `authorize` never reads `projectName`: `siteping-admin` triages every project the endpoint serves, and anyone — visitor or member — lists any of them, screenshots and diagnostics included. To keep several clients apart, give each project its own role, such as `siteping-admin:acme`: keep the caller's roles in the principal, and have `authorize` test `` roles.includes(`siteping-admin:${projectName}`) `` where it tests `isAdmin`. `canReadAuthorEmail` is not told the project, so keep it for a role that covers them all. To put reads behind sign-in too, return `null` instead of `VISITOR` when the header is missing — every request then needs a token, submissions included — and allow `list` on the caller's projects only.
 
@@ -394,6 +401,12 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
     authorName: principal.name || input.authorName,
     authorEmail: principal.email || input.authorEmail,
   }),
+  // A reply's too.
+  beforeComment: (input, { principal }) => ({
+    ...input,
+    authorName: principal.name || input.authorName,
+    authorEmail: principal.email || input.authorEmail,
+  }),
 });
 ```
 
@@ -424,7 +437,7 @@ export function Feedback() {
 - **Read, never renewed.** A session older than Better Auth's `updateAge` gets renewed by the next `getSession`, which writes a later expiry and sets a new cookie — on a response SitePing never sends, so the browser's cookie would expire first. `disableRefresh` leaves the renewal to your app's own requests.
 - **A demotion applies at once.** With Better Auth's `session.cookieCache` on, `getSession` trusts the cached cookie until its `maxAge`: a role change or a revoked session would wait for it. `disableCookieCache` reads your `database` or `secondaryStorage` instead, as `getSession` does anyway without the cache. Without either, Better Auth is stateless and the signed cookie is the only session record: another instance — a serverless invocation, a replica — finds no session behind that flag, and serves your administrators as visitors. Drop `disableCookieCache` there; a demotion then waits for the cookie's `maxAge`.
 - **Administrators by role.** `isAdmin` reads the admin plugin's `role` — `setRole` with `["user", "admin"]` stores `"user,admin"`. The plugin's `adminUserIds` opens its own endpoints to users whatever their role: give those users the `admin` role too. To let someone triage without the plugin's user management, give them a role of your own (declared in the plugin's `roles`, if you configured some) and test that one.
-- **The author comes from the session.** `beforeCreate` stamps the user's name, and their email once `emailVerified` is true; otherwise the widget's value stays.
+- **The author comes from the session.** `beforeCreate` stamps the user's name, and their email once `emailVerified` is true; otherwise the widget's value stays. `beforeComment` does the same for replies.
 - **Emails stay with administrators.** Since `canReadAuthorEmail` is set, it also decides [who speaks as the team](/docs/comments#who-speaks-as-the-team): administrators' replies from the inbox are marked `team`, everyone else's `client`.
 - **Cookies, and CSRF.** A browser attaches the session cookie to a forged cross-site request too; the [CSRF checks](#csrf-protection) stop those, with nothing to configure.
 - **One role, every project.** As in the OpenID Connect recipe, `admin` triages every project the endpoint serves and anyone lists any of them. To keep several clients apart, load the caller's projects in `authenticate` — for instance the slugs of their organizations, with Better Auth's organization plugin — and have `authorize` check `projectName` against them. To put reads behind sign-in too, return `null` instead of `VISITOR` — every request then needs a session, submissions included.
@@ -500,6 +513,7 @@ createSitepingHandler({
 ```
 
 - **`beforeCreate`** runs on the validated submission, before `authorize` — which sees the project it returns.
+- **`beforeComment`** runs on a validated [comment](/docs/comments), once `authorize` allowed it and its feedback was found. A reply's name and email are what the request sends until it imposes yours; the `team` role stays your access policy's call, whatever it returns.
 - **`presentFeedback`** runs on each record just before it is sent; `clientId` stripping and email redaction still apply after it.
 - **`onCreated`**, **`onUpdated`** and **`onDeleted`** are awaited before the response, so serverless runtimes don't cut them off. A throw is logged and never fails the request: the write already happened. `onCreated` runs once per stored feedback, never for a replayed `clientId`.
 - **`onDeleting`** runs before the delete, with `{ kind: "single", id, projectName }` or `{ kind: "project", projectName }`. A throw keeps the record and answers `502`.

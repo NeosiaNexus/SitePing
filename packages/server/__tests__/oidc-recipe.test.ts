@@ -157,6 +157,11 @@ function handlerFor(jwks: JWTVerifyGetKey, logger: SitepingLogger = { error: vi.
       authorName: principal.name || input.authorName,
       authorEmail: principal.email || input.authorEmail,
     }),
+    beforeComment: (input, { principal }) => ({
+      ...input,
+      authorName: principal.name || input.authorName,
+      authorEmail: principal.email || input.authorEmail,
+    }),
   });
 }
 
@@ -256,6 +261,33 @@ describe("OpenID Connect recipe", () => {
       ]),
     );
     expect(authors).toHaveLength(2);
+  });
+
+  it("takes a signed-in replier's name from the token too, so no one replies as another reviewer", async () => {
+    const handler = handlerFor(remoteKeySet());
+    const admin = bearer(await accessToken(ADMIN));
+    const created = await submit(handler);
+    const replyAs = async (headers: Record<string, string>, clientId: string) => {
+      const body = {
+        projectName: PROJECT,
+        feedbackId: created.id,
+        body: "Approved, ship it",
+        authorName: "Alice (client PM)",
+        authorEmail: "alice@client.example",
+        clientId,
+      };
+      expect((await handler.POST(send("POST", body, headers))).status).toBe(201);
+    };
+
+    await replyAs(bearer(await accessToken(MEMBER)), "oidc-reply-member");
+    await replyAs(admin, "oidc-reply-admin");
+
+    const thread = (await page(handler, admin)).feedbacks[0]?.comments ?? [];
+    expect(thread.map((c) => [c.authorName, c.authorEmail])).toEqual([
+      // MEMBER's email is unverified: the one the request sent is kept.
+      [MEMBER.name, "alice@client.example"],
+      [ADMIN.name, ADMIN.email],
+    ]);
   });
 
   it.each<[string, () => Promise<Record<string, string>>]>([
@@ -430,6 +462,7 @@ describe("OpenID Connect recipe — the docs", () => {
     ["interface Reviewer {", '"ERR_JWKS_INVALID"]);'],
     ["async authenticate(request) {", "canReadAuthorEmail: (principal) => principal.isAdmin,"],
     ["beforeCreate: (input, { principal }) => ({", "}),"],
+    ["beforeComment: (input, { principal }) => ({", "}),"],
     ["const ownerships = new WeakMap", "return ids;"],
     ['authorize: async ({ principal, action, feedbackId = "", request }) =>', ".has(feedbackId)),"],
     ["onCreated: async (feedback, { principal }) => {", "},"],

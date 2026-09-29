@@ -98,6 +98,7 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
     webhooks,
     waitUntil,
     beforeCreate,
+    beforeComment,
     presentFeedback,
     hooks = {},
     logger = consoleLogger,
@@ -141,7 +142,7 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
       pipeline,
       "POST",
       "feedbackId",
-      createCommentOperation({ store, pipeline }),
+      createCommentOperation({ store, pipeline, beforeComment }),
       createFeedbackOperation({
         store,
         pipeline,

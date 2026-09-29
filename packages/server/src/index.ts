@@ -1,4 +1,4 @@
-export type { FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
+export type { CommentCreateInput, FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
 export { createSitepingHandler } from "./handler.js";
 export type {
   SitepingAccessControl,

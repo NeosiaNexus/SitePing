@@ -1,5 +1,6 @@
 import { MemoryStore } from "@siteping/adapter-memory";
 import {
+  type CommentCreateInput,
   type CommentResponse,
   type FeedbackResponse,
   type FeedbackResponseList,
@@ -10,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createSitepingHandler,
   type SitepingAccessControl,
+  type SitepingAccessHandlerOptions,
   type SitepingAuthorizationContext,
   type SitepingHandler,
   type SitepingLogger,
@@ -280,6 +282,91 @@ describe("comments — the team role", () => {
 
       expect(canCommentAsTeam).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("comments — beforeComment", () => {
+  interface Member {
+    name: string;
+    email: string;
+    staff: boolean;
+  }
+  const MALLORY: Member = { name: "Mallory", email: "mallory@client.example", staff: false };
+
+  /** The recipes' stamping: a signed-in author's name and email come from the session. */
+  function stampingHandler(
+    store = new MemoryStore(),
+    overrides: Pick<SitepingAccessHandlerOptions<Member>, "beforeComment" | "logger"> = {},
+  ) {
+    return createSitepingHandler({
+      store,
+      access: {
+        authenticate: () => MALLORY,
+        canReadAuthorEmail: ({ staff }) => staff,
+      },
+      beforeComment: (input, { principal }) => ({
+        ...input,
+        authorName: principal.name || input.authorName,
+        authorEmail: principal.email || input.authorEmail,
+      }),
+      ...overrides,
+    });
+  }
+
+  it("stores the author it imposes, not the one the request claims", async () => {
+    const store = new MemoryStore();
+    const handler = stampingHandler(store);
+    const feedback = await createFeedback(handler);
+
+    await postComment(handler, commentBody(feedback.id, { authorName: "Alice", authorEmail: "alice@client.example" }));
+
+    const [stored] = (await store.findByClientId(validPayloadNoAnnotations.clientId))?.comments ?? [];
+    expect(stored).toMatchObject({ authorName: MALLORY.name, authorEmail: MALLORY.email });
+  });
+
+  it("keeps the team role out of reach of a caller the policy does not vouch for, whatever it returns", async () => {
+    const handler = stampingHandler(new MemoryStore(), {
+      beforeComment: (input) => ({ ...input, authorRole: "team" }),
+    });
+    const feedback = await createFeedback(handler);
+
+    const created = await postComment(handler, commentBody(feedback.id));
+
+    expect(created.authorRole).toBe("client");
+  });
+
+  it("is not asked about a comment refused, or aimed at an unknown feedback", async () => {
+    const beforeComment = vi.fn((input: CommentCreateInput) => input);
+    const refusing = createSitepingHandler({
+      store: new MemoryStore(),
+      access: { authenticate: () => MALLORY, authorize: ({ action }) => action !== "createComment" },
+      beforeComment,
+    });
+    const open = createSitepingHandler({ store: new MemoryStore(), beforeComment });
+    const feedback = await createFeedback(refusing);
+
+    const refused = await refusing.POST(request("POST", commentBody(feedback.id)));
+    const unknown = await open.POST(request("POST", commentBody("does-not-exist")));
+
+    expect([refused.status, unknown.status]).toEqual([403, 404]);
+    expect(beforeComment).not.toHaveBeenCalled();
+  });
+
+  it("answers a logged 500 and stores nothing when it throws", async () => {
+    const store = new MemoryStore();
+    const failure = new Error("directory lookup failed");
+    const logger = silentLogger();
+    const handler = stampingHandler(store, { beforeComment: () => Promise.reject(failure), logger });
+    const feedback = await createFeedback(handler);
+
+    const response = await handler.POST(request("POST", commentBody(feedback.id)));
+
+    expect(response.status).toBe(500);
+    expect(logger.error).toHaveBeenCalledWith(
+      "[siteping] Failed to add comment",
+      expect.objectContaining({ error: failure }),
+    );
+    expect((await store.findByClientId(validPayloadNoAnnotations.clientId))?.comments).toEqual([]);
   });
 });
 

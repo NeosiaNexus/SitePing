@@ -117,6 +117,8 @@ The widget posts from anonymous browsers, so the `authorRole` a request sends is
 - **Under the `apiKey` policy**, the request must carry `Authorization: Bearer <apiKey>`. The public `POST`, a wrong key, and a handler without an `apiKey` all get `client`. A widget configured with `apiKey` sends that key from every visitor's browser, so its visitors could post as the team: keep `apiKey` out of public widgets.
 - **Under [`access`](/docs/server#custom-access)**, `canCommentAsTeam(principal)` decides. Without it, your `canReadAuthorEmail` answer does — whoever may read reviewer emails is on the project side — so a policy that already tells visitors apart needs nothing more. A policy with neither callback stamps every comment `client`: posting as the team lets a caller speak for your agency in the thread, so it is never granted by default.
 
+The name and email are claims too: a visitor may sign a reply with anyone's, as they may a feedback. Under `access`, impose a signed-in author's from the session with `beforeComment`, as the [recipes](/docs/server#recipe-openid-connect) do — the role check above still applies to what it returns.
+
 `authorize` sees two more actions: `createComment` and `deleteComment`, with the `feedbackId` — and the `commentId` for a delete. On a `dryRun`, which fills in the feedback's [`permissions`](/docs/server#what-each-requester-may-do), `deleteComment` comes without a `commentId` and its answer covers the whole thread: guard a per-author rule with `if (!commentId) return false`, which hides the delete buttons while the real `DELETE` still goes through your rule.
 
 ```ts

@@ -1,19 +1,25 @@
 import { type CommentAuthorRole, isStoreLimit, isStoreNotFound, type SitepingStore } from "@siteping/core";
 import { ERROR_MESSAGES } from "../constants.js";
+import type { SitepingHandlerBaseOptions } from "../options.js";
 import type { Pipeline, Scope } from "../pipeline.js";
 import { commentCreateSchema } from "../validation.js";
 
 interface CreateCommentDependencies<Principal> {
   store: SitepingStore;
   pipeline: Pipeline<Principal>;
+  beforeComment: SitepingHandlerBaseOptions<Principal>["beforeComment"];
 }
 
 /** `POST` with a `feedbackId` — add a comment to that feedback's thread, idempotent on `clientId`. */
-export function createCommentOperation<Principal>({ store, pipeline }: CreateCommentDependencies<Principal>) {
+export function createCommentOperation<Principal>({
+  store,
+  pipeline,
+  beforeComment,
+}: CreateCommentDependencies<Principal>) {
   return async (scope: Scope<Principal>, body: unknown): Promise<Response> => {
     const payload = pipeline.validate(scope, commentCreateSchema, body);
     if (!payload.ok) return payload.response;
-    const { projectName, feedbackId, authorRole, ...comment } = payload.value;
+    const { projectName, feedbackId, ...validated } = payload.value;
 
     try {
       const refusal = await pipeline.authorize(scope, { action: "createComment", projectName, feedbackId });
@@ -26,11 +32,12 @@ export function createCommentOperation<Principal>({ store, pipeline }: CreateCom
         return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);
       }
 
+      const comment = beforeComment ? await beforeComment(validated, scope.context) : validated;
       // POST is typically public so the widget can reply from a visitor's
       // browser: the role a request claims is kept only when the access
       // policy vouches for the caller.
       const role: CommentAuthorRole =
-        authorRole === "team" && (await pipeline.canCommentAsTeam(scope)) ? "team" : "client";
+        comment.authorRole === "team" && (await pipeline.canCommentAsTeam(scope)) ? "team" : "client";
       const stored = await store.addComment(feedbackId, { ...comment, authorRole: role });
 
       // A clientId is unique across every thread, so a replay that resolves to
