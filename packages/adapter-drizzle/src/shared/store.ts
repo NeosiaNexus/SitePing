@@ -30,6 +30,7 @@ import {
   SCREENSHOT_REFERENCE_LOOKUP_BATCH_SIZE,
 } from "../constants/screenshots.js";
 import { settleWithConcurrencyLimit } from "./concurrency.js";
+import { withDriverErrors } from "./errors.js";
 import type {
   AnnotationRow,
   CommentRow,
@@ -93,7 +94,7 @@ function isStoreContractError(error: unknown): boolean {
  * Run database calls a mutation makes (its write, or a read it depends on),
  * reporting any database failure (read-only or full database, lost
  * connection, rejected statement…) as `StorePersistenceError`, the
- * `SitepingStore` mutation contract, with the driver error as `cause`.
+ * `SitepingStore` mutation contract, with the driver's own error as `cause`.
  *
  * @param mutation - Store method being served, for the message.
  * @param identifiers - Minimal ids to debug the failure (never payload data).
@@ -141,15 +142,14 @@ function isUploadedScreenshotUrl(url: string | null | undefined): url is string 
  * @internal
  */
 export class DrizzleSitepingStore implements DrizzleStore {
+  private readonly gateway: SitepingSqlGateway;
   private readonly screenshotStorage: ScreenshotStorage | undefined;
   private readonly logger: DrizzleStoreLogger;
   private readonly now: () => Date;
   private inlineScreenshotWarned = false;
 
-  constructor(
-    private readonly gateway: SitepingSqlGateway,
-    options: DrizzleStoreOptions = {},
-  ) {
+  constructor(gateway: SitepingSqlGateway, options: DrizzleStoreOptions = {}) {
+    this.gateway = withDriverErrors(gateway);
     this.screenshotStorage = options.screenshotStorage;
     this.logger = options.logger ?? silentLogger;
     this.now = options.now ?? systemClock;

@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import {
   applyFeedbackFilters,
   buildFeedbackRecord,
@@ -1364,6 +1365,43 @@ for (const dialect of dialects) {
         for (const failure of failures) {
           expect(isStorePersistence(failure)).toBe(true);
           expect(causeChain(failure)).toContain(connectionFailure);
+        }
+      });
+
+      it("keeps the statements' parameters — the submission itself — out of the errors it reports", async () => {
+        const stored = await database.createStore({ logger }).createFeedback(feedbackInput());
+        const email = "jeanne.private@example.com";
+        const text = "private-message";
+        const screenshotDataUrl = `${SCREENSHOT_DATA_URL}privatepixels`;
+        // Drizzle wraps the driver's rejection in an error listing every bound parameter.
+        const store = database.createStoreWithDriverInterceptor(
+          (statementSql, run) =>
+            isFeedbackInsert(statementSql) || isCommentWrite(statementSql) || / like /i.test(statementSql)
+              ? Promise.reject(connectionFailure)
+              : run(),
+          { logger },
+        );
+
+        const failures = await Promise.all(
+          [
+            () =>
+              store.createFeedback(
+                feedbackInput({ authorEmail: email, message: text, screenshotDataUrl, annotations: [] }),
+              ),
+            () => store.addComment(stored.id, commentInput({ authorEmail: email, body: text })),
+            () => store.getFeedbacks({ projectName: "site", search: text }),
+          ].map((operation) =>
+            operation().then(
+              () => null,
+              (error: unknown) => error,
+            ),
+          ),
+        );
+
+        for (const failure of failures) {
+          expect(causeChain(failure)).toContain(connectionFailure);
+          const logged = inspect(failure, { depth: null });
+          for (const secret of [email, text, screenshotDataUrl]) expect(logged).not.toContain(secret);
         }
       });
 

@@ -194,6 +194,7 @@ Faites ce remplissage en JavaScript, pas avec le `lower()` de SQL : le `lower()`
 ## Erreurs
 
 - Un échec de la base pendant une mutation (base en lecture seule ou pleine, connexion perdue, requête rejetée…) remonte en `StorePersistenceError`, avec l'erreur du driver en `cause` — y compris l'échec d'une lecture que fait la mutation, comme la recherche du `clientId` avant une insertion. Détectez-la avec `isStorePersistence`.
+- Aucune erreur levée par le store ne porte les paramètres de la requête. Drizzle enveloppe une requête en échec dans une `DrizzleQueryError` dont le message liste chaque valeur liée — e-mails des auteurs, messages, captures en ligne — et les loggers affichent la `cause` d'une erreur. Le store retire cette enveloppe, pour les lectures en échec aussi, et garde l'erreur propre au driver, avec son code (un SQLSTATE PostgreSQL, un code `SQLITE_*`).
 - `updateFeedback` lit les annotations (immuables) et le fil avant de mettre la ligne à jour : aucun appel à la base ne suit la validation de la mise à jour. Une lecture en échec laisse la ligne intacte, et une mise à jour appliquée n'est jamais signalée en échec à cause d'une lecture qui la suit.
 - `updateFeedback` et `deleteFeedback` sur un id inconnu lèvent `StoreNotFoundError`, tout comme `addComment` sur un feedback inconnu — y compris un feedback supprimé pendant l'insertion du commentaire — et `deleteComment` d'un commentaire absent du fil de ce feedback. `addComment` sur un fil plein lève `StoreLimitError`.
 
