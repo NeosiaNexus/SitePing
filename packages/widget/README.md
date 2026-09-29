@@ -49,7 +49,7 @@ No server? Pass `store: new LocalStorageStore()` (from `@siteping/adapter-locals
 - **Opt-in extras** — screenshots of the annotated area (with `data-siteping-ignore="true"` privacy masking), console/network diagnostics, instant right-click comments that never hijack keyboard or modifier-key menus
 - **Panel actions** — your own buttons and links in the feedback detail view: create a ticket, hand a feedback to an agent, open it in your tracker
 - **Reliable** — retry with backoff plus a localStorage queue; a flaky network never loses a comment
-- **Isolated & light** — closed Shadow DOM, ~35 KB gzip (ESM); panel, screenshot engine, and non-English locales load on demand
+- **Isolated & light** — closed Shadow DOM, ~34 KB gzip (ESM); panel, screenshot engine, and non-English locales load on demand
 - **8 built-in locales** — en, fr, de, es, it, pt, ru, ja (BCP-47 tags like `fr-CA` resolve automatically)
 
 ## Documentation
