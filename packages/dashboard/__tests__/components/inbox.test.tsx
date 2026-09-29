@@ -563,6 +563,27 @@ describe("SitepingInbox — drawer", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /Feedback details/ })).toBeNull());
   });
 
+  it("keeps the drawer, and the reply draft, on an Escape typed in the composer — the next one closes", async () => {
+    const source = Object.assign(makeSource(seed()), { addComment: async () => ({}) as never });
+    render(<SitepingInbox source={source} projects="demo" theme="dark" author={{ name: "Studio" }} />);
+    await openFirst();
+    const dialog = screen.getByRole("dialog", { name: /Feedback details/ });
+    const composer = within(dialog).getByRole("textbox", { name: "Reply to the client…" });
+
+    // An IME cancelling its candidates, before any text is committed.
+    fireEvent.keyDown(composer, { key: "Escape", isComposing: true });
+    expect(screen.getByRole("dialog", { name: /Feedback details/ })).toBe(dialog);
+
+    fireEvent.change(composer, { target: { value: "A long, carefully typed reply" } });
+    fireEvent.keyDown(composer, { key: "Escape" });
+
+    expect(screen.getByRole("dialog", { name: /Feedback details/ })).toBe(dialog);
+    expect((composer as HTMLTextAreaElement).value).toBe("A long, carefully typed reply");
+    expect(document.activeElement).toBe(dialog);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Feedback details/ })).toBeNull());
+  });
+
   it("is a modal dialog in overlay (narrow) mode", async () => {
     renderInbox();
     await openFirst();
