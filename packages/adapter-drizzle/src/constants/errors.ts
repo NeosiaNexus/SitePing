@@ -11,6 +11,12 @@ export type DrizzleStoreMutation =
   | "deleteComment";
 
 /**
+ * Start of the message of Drizzle's `DrizzleQueryError`, which goes on with
+ * the statement and every bound parameter.
+ */
+export const DRIZZLE_QUERY_ERROR_MESSAGE_PREFIX = "Failed query:";
+
+/**
  * Own properties of a driver error that tell what failed without quoting
  * the statement or its values — the only ones the store keeps: Node.js
  * system errors (a lost connection), pg-protocol errors (node-postgres,
