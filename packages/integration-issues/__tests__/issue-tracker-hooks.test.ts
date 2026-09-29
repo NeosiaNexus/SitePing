@@ -315,9 +315,37 @@ for (const provider of providers) {
       expect(response.status).toBe(200);
       expect(issue?.isOpen).toBe(false);
       expect(issue?.comments.filter((comment) => !comment.startsWith("system:"))).toEqual([
-        `SitePing feedback \`${feedback.id}\` was deleted.`,
+        `<!-- siteping-feedback-deleted -->\n\nSitePing feedback \`${feedback.id}\` was deleted.`,
       ]);
     });
+
+    const deletedTexts = [
+      ["ending in a line break, which GitLab trims", () => (id: string) => `Feedback ${id} was deleted.\r\n`],
+      [
+        "that differs on each attempt",
+        () => {
+          let attempt = 0;
+          return (id: string) => `Feedback ${id} deleted (attempt ${++attempt}).`;
+        },
+      ],
+    ] as const;
+
+    for (const [label, deletedCommentText] of deletedTexts) {
+      it(`leaves a single deletion comment across retries, with a text ${label}`, async () => {
+        const feedback = await send(createHandler());
+        const hooks = createIssueTrackerHooks<null>({
+          tracker: provider.createTracker(fake),
+          deletedCommentText: deletedCommentText(),
+        });
+        const target = { kind: "single", id: feedback.id, projectName: "site" } as const;
+        const context = { request: new Request(ENDPOINT), principal: null };
+
+        await hooks.onDeleting?.(target, context);
+        await hooks.onDeleting?.(target, context);
+
+        expect(fake.issues[0]?.comments.filter((comment) => !comment.startsWith("system:"))).toHaveLength(1);
+      });
+    }
 
     it("aborts the delete and keeps the feedback when the tracker fails", async () => {
       const handler = createHandler();

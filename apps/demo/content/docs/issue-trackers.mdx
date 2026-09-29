@@ -107,7 +107,7 @@ Everything in the body comes from anonymous visitors, so it is quoted as code. T
 | `includeAuthorEmail` | `boolean` | `false` | Add the reviewer's email next to their name |
 | `formatIssue` | `(feedback, defaults) => { title, body }` | built-in | Your own title and Markdown. The marker is still added as the first line. Quoting visitor text is then up to you |
 | `syncStatus` | `boolean` | `true` | Close and reopen the issue when the status changes |
-| `deletedCommentText` | `(feedbackId) => string` | ``SitePing feedback `<id>` was deleted.`` | The comment left on the issue of a deleted feedback |
+| `deletedCommentText` | `(feedbackId) => string` | ``SitePing feedback `<id>` was deleted.`` | The comment left on the issue of a deleted feedback. A retried delete finds it by a hidden first line, so the text may change from one call to the next |
 
 `createGitHubTracker` and `createGitLabTracker` also take `apiBaseUrl`, `fetch` (for a proxy or tests), `timeoutMs` (per request, default `5000`) and `maxListedPages` (default `10`, see [how issues are found again](#how-issues-are-found-again)).
 
@@ -133,7 +133,7 @@ The built-in trackers throw two errors that a custom `logger` can tell apart: `I
 
 ## How issues are found again
 
-Each body starts with the marker `<!-- siteping-feedback {"id":"…","project":"…"} -->`, which GitHub and GitLab do not display. Only that first line is read, so feedback text that imitates it is ignored. Edit the rest of the issue as you like, but keep that line first.
+Each body starts with the marker `<!-- siteping-feedback {"id":"…","project":"…"} -->`, which GitHub and GitLab do not display. Only that first line is read, so feedback text that imitates it is ignored. Edit the rest of the issue as you like, but keep that line first. The deletion comment starts the same way, with `<!-- siteping-feedback-deleted -->`: a retried delete looks for that line, not for the comment's text.
 
 To sync a status or delete one feedback, the tracker is first searched for the feedback id (GitHub's search API, GitLab's `search` parameter). If the search misses, the hooks list the `siteping` issues newest first. GitHub's search index lags a few seconds behind a new issue, and its rate limit is 30 searches a minute. Deleting a whole project always uses that listing.
 
@@ -158,7 +158,7 @@ const tracker: IssueTracker = {
   async updateIssueStatus(reference, status) {},
   async addComment(reference, body) {},
   async listComments(reference) {
-    return []; // comment bodies
+    return []; // comment bodies, each first line as addComment received it
   },
   // Every SitePing issue whose body contains `marker`, closed ones included.
   async findSitepingIssues(marker) {

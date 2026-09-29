@@ -2,6 +2,7 @@ import { type FeedbackRecord, parseHttpUrl } from "@siteping/core";
 import {
   ANNOTATION_FIELD_MAX_LENGTH,
   ANNOTATIONS_LISTED,
+  DELETED_FEEDBACK_COMMENT_MARKER,
   DIAGNOSTIC_ENTRIES_PER_KIND,
   DIAGNOSTIC_ENTRY_MAX_LENGTH,
   EMPTY_DIAGNOSTICS_PLACEHOLDER,
@@ -175,13 +176,14 @@ export function projectMarkerFragment(projectName: string): string {
   return `"project":${toMarkerJson(projectName)}`;
 }
 
+const firstLine = (text: string): string => text.split(/\r?\n/, 1)[0] ?? "";
+
 /**
  * The link stored on the first line of an issue body, or `null` when that
  * line is no (valid) marker. A marker anywhere else is visitor text.
  */
 export function parseIssueMarker(body: string): IssueLink | null {
-  const [firstLine = ""] = body.split(/\r?\n/, 1);
-  const match = ISSUE_REFERENCE_MARKER.pattern.exec(firstLine);
+  const match = ISSUE_REFERENCE_MARKER.pattern.exec(firstLine(body));
   if (!match?.[1]) return null;
   try {
     const parsed: unknown = JSON.parse(match[1]);
@@ -191,4 +193,14 @@ export function parseIssueMarker(body: string): IssueLink | null {
   } catch {
     return null; // A tampered or truncated marker is treated as absent.
   }
+}
+
+/** The comment left on a deleted feedback's issue: `text` below the hidden deletion marker. */
+export function buildDeletionComment(text: string): string {
+  return `${DELETED_FEEDBACK_COMMENT_MARKER}\n\n${text}`;
+}
+
+/** Whether a comment is the deletion comment, told by its first line only. */
+export function isDeletionComment(body: string): boolean {
+  return firstLine(body) === DELETED_FEEDBACK_COMMENT_MARKER;
 }

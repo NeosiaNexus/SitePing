@@ -38,7 +38,10 @@ export interface IssueTracker {
    */
   updateIssueStatus(reference: IssueReference, status: FeedbackStatus): Promise<void>;
   addComment(reference: IssueReference, body: string): Promise<void>;
-  /** Bodies of the issue's existing comments (used to keep comments idempotent). */
+  /**
+   * Bodies of the issue's existing comments, each first line as
+   * `addComment` received it: the hooks find their deletion comment by it.
+   */
   listComments(reference: IssueReference): Promise<string[]>;
   /**
    * SitePing issues whose body contains `marker`, open or closed. Providers

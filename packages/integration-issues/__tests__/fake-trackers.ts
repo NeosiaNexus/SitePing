@@ -266,7 +266,9 @@ export function createFakeGitLab(project: string): FakeTracker {
         "POST",
         new RegExp(`^${escapedBase}/(\\d+)/notes$`),
         async (request, match) => {
-          const { body } = (await request.json()) as { body: string };
+          const { body: sent } = (await request.json()) as { body: string };
+          // GitLab stores a note as its quick-action parser leaves it: without `\r`, trailing whitespace trimmed.
+          const body = sent.replaceAll("\r", "").trimEnd();
           find(match[1])?.comments.push(body);
           return Response.json({ body, system: false }, { status: 201 });
         },

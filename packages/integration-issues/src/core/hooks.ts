@@ -6,11 +6,13 @@ import {
   SITEPING_ISSUE_LABEL,
 } from "../constants/issue-format.js";
 import {
+  buildDeletionComment,
   buildIssueMarker,
   feedbackMarkerFragment,
   formatIssue,
   type IssueContent,
   type IssueFormatOptions,
+  isDeletionComment,
   parseIssueMarker,
   projectMarkerFragment,
 } from "./issue-format.js";
@@ -37,7 +39,10 @@ export interface IssueTrackerHooksOptions {
   formatIssue?: (feedback: FeedbackRecord, defaults: IssueFormatOptions) => IssueContent;
   /** Close / reopen the issue when the feedback status changes. Defaults to `true`. */
   syncStatus?: boolean;
-  /** Comment left on issues whose feedback is deleted. */
+  /**
+   * Comment left on issues whose feedback is deleted. A hidden marker goes
+   * above it, and a retried delete looks for that: the text may vary.
+   */
   deletedCommentText?: (feedbackId: string) => string;
 }
 
@@ -110,9 +115,10 @@ export function createIssueTrackerHooks<Principal = never>({
   /** Close as not planned and leave the deletion comment once, even across retries. */
   const closeDeleted = async (issue: TrackedIssue, feedbackId: string): Promise<void> => {
     if (issue.isOpen) await tracker.updateIssueStatus(issue.reference, "wont_fix");
-    const comment = deletedCommentText(feedbackId);
     const comments = await tracker.listComments(issue.reference);
-    if (!comments.includes(comment)) await tracker.addComment(issue.reference, comment);
+    if (!comments.some(isDeletionComment)) {
+      await tracker.addComment(issue.reference, buildDeletionComment(deletedCommentText(feedbackId)));
+    }
   };
 
   const closeDeletedTarget = async (target: SitepingDeletionTarget): Promise<void> => {
