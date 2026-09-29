@@ -23,6 +23,20 @@ describe("createJsonHttpClient", () => {
     expect((failure as Error).cause).toBeInstanceOf(TypeError);
   });
 
+  it("rejects a client error answer with its status and body", async () => {
+    const request = client(async () => Response.json({ message: "Not Found" }, { status: 404 }));
+
+    const failure = await request({ method: "PATCH", path: "/issues/7", body: {} }).catch((error: unknown) => error);
+
+    expect(isIssueTrackerRequestError(failure)).toBe(true);
+    expect(failure).toMatchObject({
+      method: "PATCH",
+      path: "/issues/7",
+      status: 404,
+      cause: '{"message":"Not Found"}',
+    });
+  });
+
   it("reports a success answer whose body is not JSON, with its status", async () => {
     const request = client(async () => new Response("<html>Sign in</html>", { status: 200 }));
 

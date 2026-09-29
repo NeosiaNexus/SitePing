@@ -565,6 +565,19 @@ for (const provider of providers) {
       expect(String((context as { error: Error }).error.message)).not.toContain(TOKEN);
     });
 
+    for (const status of [401, 403, 404, 410, 422]) {
+      it(`treats a ${status} answer to a write as a failure`, async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        fake.failWhen(/^(PATCH|PUT) /, status);
+
+        expect((await patch(handler, feedback.id, "resolved")).status).toBe(200);
+        expect(logger.error).toHaveBeenCalledWith("[siteping] Hook onUpdated failed", expect.anything());
+        expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(502);
+        expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
+      });
+    }
+
     describe("keeps every record when a tracker call of the delete fails", () => {
       const steps = [
         ["the lookup", /^GET /],
