@@ -81,7 +81,7 @@ The title is `[SitePing]` followed by the message on one line, truncated to 255 
 - **Screenshot**, when it has an `https` URL
 - **Console diagnostics** and **Network diagnostics**: the first 5 entries of each, when the widget captured them
 
-Annotation fields are cut at 300 characters and diagnostic entries at 500. If the body would still exceed GitHub's limit of 65,536 characters, which only a crafted feedback reaches, the annotations and diagnostics are left out and a note says so.
+Annotation fields are cut at 300 characters and diagnostic entries at 500. If the body would still pass 60,000 characters, close to GitHub's limit of 65,536, which only a crafted feedback reaches, the annotations and diagnostics are left out and a note says so.
 
 Some things are left out:
 
