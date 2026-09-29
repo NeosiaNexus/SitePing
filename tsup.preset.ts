@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { minify } from "terser";
+import { type MinifyOptions, minify } from "terser";
 import type { Options } from "tsup";
 
 /**
@@ -32,7 +32,8 @@ export function sitepingLibrary(overrides: Partial<Options> & Pick<Options, "pla
 
 /**
  * Second minification pass with Terser over a finished bundle, run from a
- * build's `onSuccess` hook.
+ * build's `onSuccess` hook: `module` for an ES module (top-level names and
+ * imports get mangled too), `toplevel` for a CommonJS file.
  *
  * It runs on the file rather than through tsup's `minify: "terser"`, which
  * ships the esbuild output when Terser fails and names that intermediate
@@ -41,12 +42,16 @@ export function sitepingLibrary(overrides: Partial<Options> & Pick<Options, "pla
  * position unmapped. `ascii_only` keeps esbuild's ASCII-only output, so a
  * classic `<script>` decodes the same under any page charset.
  */
-export async function terserPass(file: string): Promise<void> {
+export async function terserPass(
+  file: string,
+  options: Pick<MinifyOptions, "module" | "toplevel"> = {},
+): Promise<void> {
   const name = basename(file);
   const [code, map] = await Promise.all([readFile(file, "utf8"), readFile(`${file}.map`, "utf8")]);
   const result = await minify(
     { [name]: code },
     {
+      ...options,
       compress: { passes: 2 },
       format: { ascii_only: true },
       sourceMap: { content: map, url: `${name}.map` },

@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { defineConfig, type Options } from "tsup";
-import { sitepingLibrary } from "../../tsup.preset.js";
+import { sitepingLibrary, terserPass } from "../../tsup.preset.js";
 
 type EsbuildPlugin = NonNullable<Options["esbuildPlugins"]>[number];
 
@@ -27,6 +27,18 @@ const minifyInboxCss: EsbuildPlugin = {
   },
 };
 
+// tsup's tree-shaking step re-renders the minified bundle through Rollup,
+// which merges the React imports back under their full names (`jsx`,
+// `useState`, …, a few hundred call sites) and prints `true` for `!0`. The
+// Terser pass mangles them again (~1 kB gzip off the ESM entry), over every
+// ESM and CJS file so the two formats ship the same code.
+async function terserDist(): Promise<void> {
+  const files = (await readdir("dist")).filter((file) => /\.c?js$/.test(file));
+  await Promise.all(
+    files.map((file) => terserPass(`dist/${file}`, file.endsWith(".cjs") ? { toplevel: true } : { module: true })),
+  );
+}
+
 // React (and its JSX runtime) stays external so consumers pin their own
 // version. Splitting keeps the lazy locale dictionaries in their own chunks
 // so only the requested language ships over the network; the CJS twin is a
@@ -48,5 +60,6 @@ export default defineConfig(
     esbuildOptions(o) {
       o.pure = ["console.debug", "console.info"];
     },
+    onSuccess: terserDist,
   }),
 );
