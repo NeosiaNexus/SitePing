@@ -94,13 +94,15 @@ Replies are **not** optimistic: `addComment` resolves once the source has stored
 const [draft, setDraft] = useState("");
 // One clientId per reply, kept across its resends: the server answers a
 // resend of a reply that did land with the stored one.
-const clientId = useRef(crypto.randomUUID());
+const clientId = useRef<string | null>(null);
 
 async function send(feedbackId: string) {
+  // crypto.randomUUID() exists only in secure contexts (HTTPS, localhost).
+  clientId.current ??= crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   try {
     await inbox.addComment(feedbackId, draft, clientId.current);
     setDraft("");
-    clientId.current = crypto.randomUUID();
+    clientId.current = null;
   } catch {
     // the draft stays — show an inline error
   }

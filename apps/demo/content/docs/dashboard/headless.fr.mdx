@@ -94,13 +94,15 @@ Les réponses ne sont **pas** optimistes : `addComment` se résout une fois la r
 const [draft, setDraft] = useState("");
 // Un clientId par réponse, gardé entre ses renvois : le serveur répond au
 // renvoi d'une réponse déjà arrivée par celle qu'il a enregistrée.
-const clientId = useRef(crypto.randomUUID());
+const clientId = useRef<string | null>(null);
 
 async function send(feedbackId: string) {
+  // crypto.randomUUID() n'existe qu'en contexte sécurisé (HTTPS, localhost).
+  clientId.current ??= crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   try {
     await inbox.addComment(feedbackId, draft, clientId.current);
     setDraft("");
-    clientId.current = crypto.randomUUID();
+    clientId.current = null;
   } catch {
     // le brouillon reste — affichez une erreur en ligne
   }
