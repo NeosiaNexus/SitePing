@@ -174,6 +174,21 @@ describe("Thread", () => {
     expect(onAdd.mock.calls[1]?.[1]).not.toBe(onAdd.mock.calls[0]?.[1]);
   });
 
+  it("ignores a second delete while the first is in flight, and marks it busy", async () => {
+    const pending = deferred<void>();
+    const view = renderThread({ comments: [makeComment()], onDelete: vi.fn(() => pending.promise) });
+    await act(async () => view.container.querySelector<HTMLButtonElement>("[data-comment-delete]")?.click());
+    const confirm = () => view.container.querySelector<HTMLButtonElement>(".spd-confirm .spd-btn-danger");
+
+    await act(async () => confirm()?.click());
+    await act(async () => confirm()?.click());
+
+    expect(view.onDelete).toHaveBeenCalledOnce();
+    expect(confirm()?.getAttribute("aria-busy")).toBe("true");
+    await act(async () => pending.resolve());
+    expect(view.alert()?.textContent).toBe("");
+  });
+
   it("asks before deleting a reply, moving the focus to the question and back", async () => {
     const view = renderThread({ comments: [makeComment()] });
     const trash = view.container.querySelector<HTMLButtonElement>("[data-comment-delete]");
