@@ -683,6 +683,21 @@ export class MarkerManager {
     return true;
   }
 
+  /**
+   * `focusFeedback`, but only when the feedback has a pin on screen. Returns
+   * false (and does nothing) when its anchor no longer resolves (every pin is
+   * display:none) or the markers are hidden with the eye toggle: a pin with
+   * no box cannot be scrolled to, so the caller falls back to the stored
+   * scroll offsets.
+   */
+  revealPin(feedbackId: string): boolean {
+    return (
+      this.container.style.display !== "none" &&
+      this.entries.some((e) => e.feedback.id === feedbackId && e.elements.some((m) => m.style.display !== "none")) &&
+      this.focusFeedback(feedbackId)
+    );
+  }
+
   highlight(feedbackId: string): void {
     for (const entry of this.entries) {
       if (entry.feedback.id === feedbackId) {

@@ -1407,6 +1407,86 @@ test.describe("Panel actions", () => {
   });
 });
 
+test.describe("Go to annotation", () => {
+  // The panel follows the live pin, and falls back to the offsets stored with
+  // the feedback when no pin has a box to scroll to.
+  const STORED_SCROLL_Y = 500;
+
+  async function seed(page: Page, project: string, anchor: Record<string, unknown>) {
+    await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
+    await page.request.post("http://localhost:3999/api/siteping", {
+      data: {
+        projectName: project,
+        type: "bug",
+        message: "Go to annotation feedback",
+        url: "/",
+        viewport: "1280x720",
+        userAgent: "Playwright",
+        authorName: "Test",
+        authorEmail: "test@test.com",
+        annotations: [
+          {
+            anchor: { textPrefix: "", textSuffix: "", fingerprint: "", neighborText: "", ...anchor },
+            rect: { xPct: 0, yPct: 0, wPct: 1, hPct: 1 },
+            scrollX: 0,
+            scrollY: STORED_SCROLL_Y,
+            viewportW: 1280,
+            viewportH: 720,
+            devicePixelRatio: 1,
+          },
+        ],
+      },
+    });
+    await page.goto(`http://localhost:3999?project=${project}`);
+    await shadow(page).waitFor(".sp-fab");
+  }
+
+  async function goToAnnotation(page: Page) {
+    const s = shadow(page);
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="chat"]');
+    await s.click('[data-item-id="chat"]');
+    await s.waitFor(".sp-card");
+    await s.click(".sp-card");
+    await s.waitFor(".sp-detail-btn-goto");
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await s.click(".sp-detail-btn-goto");
+  }
+
+  test("scrolls to the stored offsets when the anchor no longer resolves", async ({ page, browserName }) => {
+    await seed(page, `e2e-${browserName}-goto-orphan`, {
+      cssSelector: "#removed-since",
+      xpath: "/html/body/div[99]",
+      textSnippet: "Text that is no longer on the page",
+      elementTag: "SECTION",
+      elementId: "removed-since",
+    });
+    await goToAnnotation(page);
+
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(STORED_SCROLL_Y);
+  });
+
+  test("scrolls to the stored offsets while the markers are hidden", async ({ page, browserName }) => {
+    await seed(page, `e2e-${browserName}-goto-hidden`, {
+      cssSelector: "#target-element",
+      xpath: "/html/body/div[2]/p",
+      textSnippet: "Ceci est un element cible pour les annotations.",
+      elementTag: "P",
+      elementId: "target-element",
+    });
+    await expect(page.locator("#siteping-markers [data-feedback-id]")).toBeVisible();
+    const s = shadow(page);
+    await s.click(".sp-fab");
+    await s.waitFor('[data-item-id="toggle-annotations"]');
+    await s.click('[data-item-id="toggle-annotations"]');
+    await expect(page.locator("#siteping-markers")).toBeHidden();
+
+    await goToAnnotation(page);
+
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(STORED_SCROLL_Y);
+  });
+});
+
 test.describe("Cleanup", () => {
   test("destroy() removes all injected elements", async ({ page }) => {
     await expect(page.locator("siteping-widget")).toBeAttached();

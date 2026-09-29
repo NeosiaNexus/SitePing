@@ -36,7 +36,7 @@ function createMockMarkers() {
     highlight: vi.fn(),
     pinHighlight: vi.fn(),
     // No live pin by default — "Go to annotation" falls back to the stored offsets.
-    focusFeedback: vi.fn().mockReturnValue(false),
+    revealPin: vi.fn().mockReturnValue(false),
     addFeedback: vi.fn(),
     destroy: vi.fn(),
     count: 0,
@@ -4861,14 +4861,14 @@ describe("Panel on phones", () => {
   it("'Go to annotation' follows the live pin, then gets the sheet out of the way", async () => {
     const fb = makeFeedback({ id: "fb-1", url: "/", annotations: [annotation] });
     apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
-    markers.focusFeedback.mockReturnValue(true);
+    markers.revealPin.mockReturnValue(true);
     const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
     try {
       await panel.open();
       shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
       shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-goto")!.click();
 
-      expect(markers.focusFeedback).toHaveBeenCalledWith("fb-1");
+      expect(markers.revealPin).toHaveBeenCalledWith("fb-1");
       // The author's stored offsets (desktop layout) are only a fallback
       expect(scrollSpy).not.toHaveBeenCalled();
       expect(markers.pinHighlight).not.toHaveBeenCalled();

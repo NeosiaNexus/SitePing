@@ -283,8 +283,8 @@ export class Panel {
             if (!ann) return;
             // Follow the live pin: the stored offsets come from the author's
             // layout and miss on another screen size. They remain the fallback
-            // when no pin is rendered for this feedback.
-            if (!this.markers.focusFeedback(fb.id)) {
+            // when no pin is on screen (anchor lost, or markers hidden).
+            if (!this.markers.revealPin(fb.id)) {
               window.scrollTo({ left: ann.scrollX, top: ann.scrollY, behavior: "smooth" });
               this.markers.pinHighlight(fb);
             }
