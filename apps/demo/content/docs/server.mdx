@@ -543,7 +543,7 @@ createSitepingHandler({
 ```
 
 - **`beforeCreate`** runs on the validated submission, before `authorize` — which sees the project it returns.
-- **`beforeComment`** runs on a validated [comment](/docs/comments), once `authorize` allowed it and its feedback was found. A reply's name and email are what the request sends until it imposes yours; the `team` role stays your access policy's call, whatever it returns.
+- **`beforeComment`** runs on a validated [comment](/docs/comments), once `authorize` allowed it and, on a store that implements `verifyProjectOwnership` (every bundled store does), its feedback was found. A reply's name and email are what the request sends until it imposes yours; the `team` role stays your access policy's call, whatever it returns.
 - **`presentFeedback`** runs on each record just before it is sent; `clientId` stripping and email redaction still apply after it.
 - **`onCreated`**, **`onUpdated`** and **`onDeleted`** are awaited before the response, so serverless runtimes don't cut them off. A throw is logged and never fails the request: the write already happened. `onCreated` runs once per stored feedback, never for a replayed `clientId`.
 - **`onDeleting`** runs before the delete, with `{ kind: "single", id, projectName }` or `{ kind: "project", projectName }`. A throw keeps the record and answers `502`.

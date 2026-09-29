@@ -543,7 +543,7 @@ createSitepingHandler({
 ```
 
 - **`beforeCreate`** tourne sur l'envoi validé, avant `authorize` — qui voit le projet qu'il renvoie.
-- **`beforeComment`** tourne sur un [commentaire](/fr/docs/comments) validé, une fois qu'`authorize` l'a permis et que son feedback a été trouvé. Le nom et l'e-mail d'une réponse sont ceux qu'envoie la requête tant qu'il n'impose pas les vôtres ; le rôle `team` reste la décision de votre politique d'accès, quoi qu'il renvoie.
+- **`beforeComment`** tourne sur un [commentaire](/fr/docs/comments) validé, une fois qu'`authorize` l'a permis et, sur un store qui implémente `verifyProjectOwnership` (tous les stores fournis le font), que son feedback a été trouvé. Le nom et l'e-mail d'une réponse sont ceux qu'envoie la requête tant qu'il n'impose pas les vôtres ; le rôle `team` reste la décision de votre politique d'accès, quoi qu'il renvoie.
 - **`presentFeedback`** tourne sur chaque enregistrement juste avant son envoi ; le retrait de `clientId` et le masquage de l'e-mail s'appliquent encore après lui.
 - **`onCreated`**, **`onUpdated`** et **`onDeleted`** sont attendus avant la réponse, pour que les runtimes serverless ne les coupent pas. Une exception est journalisée et ne fait jamais échouer la requête : l'écriture a déjà eu lieu. `onCreated` tourne une fois par feedback enregistré, jamais pour un `clientId` rejoué.
 - **`onDeleting`** tourne avant la suppression, avec `{ kind: "single", id, projectName }` ou `{ kind: "project", projectName }`. Une exception garde l'enregistrement et répond `502`.
