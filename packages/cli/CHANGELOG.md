@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.7](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.6...cli-v0.5.7) (2026-09-29)
+
+
+### Features
+
+* **core,server:** add discussion threads to feedback ([7cdca3b](https://github.com/NeosiaNexus/SitePing/commit/7cdca3b754c4b9e749772add28baafca38e021bb)), closes [#320](https://github.com/NeosiaNexus/SitePing/issues/320) [#280](https://github.com/NeosiaNexus/SitePing/issues/280)
+
+
+### Bug Fixes
+
+* address independent audit findings on discussion threads ([988e95e](https://github.com/NeosiaNexus/SitePing/commit/988e95e8be134f4027cfd9c5a943e5c81dcf3903)), closes [#320](https://github.com/NeosiaNexus/SitePing/issues/320)
+* **cli:** make sync, status and doctor robust to real-world schemas ([1dcfb6a](https://github.com/NeosiaNexus/SitePing/commit/1dcfb6a86475c4afa1d281a4a0e010f19c7b6c3a)), closes [#169](https://github.com/NeosiaNexus/SitePing/issues/169) [#249](https://github.com/NeosiaNexus/SitePing/issues/249)
+
+
+### Tests
+
+* **cli:** stage permission errors without chmod so the suite passes as root ([#376](https://github.com/NeosiaNexus/SitePing/issues/376)) ([6e34edc](https://github.com/NeosiaNexus/SitePing/commit/6e34edcd5d1bd62c7853d6dacfe874930f1683b4)), closes [#368](https://github.com/NeosiaNexus/SitePing/issues/368)
+
 ## [0.5.6](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.5...cli-v0.5.6) (2026-09-23)
 
 

@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.11.0](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.10...widget-v0.11.0) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **widget:** minViewportWidth now defaults to 0 (was 768), so the widget renders on phones. Set minViewportWidth: 768 to keep it off screens narrower than 768 px.
+
+### Features
+
+* **i18n:** add a Japanese (ja) locale to the widget and dashboard ([4faa755](https://github.com/NeosiaNexus/SitePing/commit/4faa75552afd1bfcb14aa019ea77fcc2549baa96)), closes [#47](https://github.com/NeosiaNexus/SitePing/issues/47) [#320](https://github.com/NeosiaNexus/SitePing/issues/320)
+* server-declared permissions and a read-only reviewer mode ([afd38aa](https://github.com/NeosiaNexus/SitePing/commit/afd38aaeef4358e9a82a7f7fac0303c6f920036a)), closes [#101](https://github.com/NeosiaNexus/SitePing/issues/101)
+* **server:** address independent audit findings ([511c3ff](https://github.com/NeosiaNexus/SitePing/commit/511c3ff732405331074066a6a262a5135817e760)), closes [#406](https://github.com/NeosiaNexus/SitePing/issues/406) [#364](https://github.com/NeosiaNexus/SitePing/issues/364)
+* **widget,dashboard:** show and reply to discussion threads ([d6721e4](https://github.com/NeosiaNexus/SitePing/commit/d6721e4972593229578ade211ac2b006f9dffb0f)), closes [#320](https://github.com/NeosiaNexus/SitePing/issues/320) [#331](https://github.com/NeosiaNexus/SitePing/issues/331)
+* **widget:** add a 'Mine' filter for feedback sent from this browser ([4e9b815](https://github.com/NeosiaNexus/SitePing/commit/4e9b815c8c31b58668095d5e982514efdaa0d0aa)), closes [#321](https://github.com/NeosiaNexus/SitePing/issues/321)
+* **widget:** add host-defined panel actions to the feedback detail view ([b2703c3](https://github.com/NeosiaNexus/SitePing/commit/b2703c3ca58f91539dc87635ba0a0213fc835141)), closes [#316](https://github.com/NeosiaNexus/SitePing/issues/316) [#318](https://github.com/NeosiaNexus/SitePing/issues/318) [#85](https://github.com/NeosiaNexus/SitePing/issues/85)
+* **widget:** anchor feedback inside open shadow roots ([959f17d](https://github.com/NeosiaNexus/SitePing/commit/959f17d9dd42aa2afa63ddfbcb1b92e12eef1cee)), closes [#177](https://github.com/NeosiaNexus/SitePing/issues/177)
+* **widget:** mobile-friendly widget — phone layout, touch input, loads at every width ([4cfcadb](https://github.com/NeosiaNexus/SitePing/commit/4cfcadb5e627f29ad7440dd8f19bc3632a0a0498))
+
+
+### Bug Fixes
+
+* **adapter-drizzle,widget:** address independent audit findings ([de9763d](https://github.com/NeosiaNexus/SitePing/commit/de9763ddcc191d48ba9faa897441db749524bd6f)), closes [#348](https://github.com/NeosiaNexus/SitePing/issues/348)
+* **adapter-prisma,widget:** harden validation, webhooks, CORS, ordering ([c5a3328](https://github.com/NeosiaNexus/SitePing/commit/c5a33285618116d8527d432a870e6438b8fccc70)), closes [#323](https://github.com/NeosiaNexus/SitePing/issues/323) [#307](https://github.com/NeosiaNexus/SitePing/issues/307) [#249](https://github.com/NeosiaNexus/SitePing/issues/249)
+* address independent audit findings on discussion threads ([988e95e](https://github.com/NeosiaNexus/SitePing/commit/988e95e8be134f4027cfd9c5a943e5c81dcf3903)), closes [#320](https://github.com/NeosiaNexus/SitePing/issues/320)
+* **core:** serialize collection-store mutations, harden store contracts ([21b81ef](https://github.com/NeosiaNexus/SitePing/commit/21b81efe995d6c45ef15a7ab1e300a821214311e)), closes [#341](https://github.com/NeosiaNexus/SitePing/issues/341) [#164](https://github.com/NeosiaNexus/SitePing/issues/164)
+* **dashboard:** append list params to an endpoint with a query string ([c61e3bf](https://github.com/NeosiaNexus/SitePing/commit/c61e3bfc7b511faf2fbcd5d5509b89e58ba43471))
+* **widget:** clamp diagnostics buffers to the server's 50 / 20 entries ([c61e3bf](https://github.com/NeosiaNexus/SitePing/commit/c61e3bfc7b511faf2fbcd5d5509b89e58ba43471))
+* **widget:** cut long console lines and URLs on a code-point boundary ([de9763d](https://github.com/NeosiaNexus/SitePing/commit/de9763ddcc191d48ba9faa897441db749524bd6f))
+* **widget:** fix the comment popup lifecycle, placement and markers ([ed88026](https://github.com/NeosiaNexus/SitePing/commit/ed88026da0af6fc1179397ab1890cb93dfeadf64)), closes [#343](https://github.com/NeosiaNexus/SitePing/issues/343) [#304](https://github.com/NeosiaNexus/SitePing/issues/304)
+* **widget:** harden the send path, retry queue and captured context ([c61e3bf](https://github.com/NeosiaNexus/SitePing/commit/c61e3bfc7b511faf2fbcd5d5509b89e58ba43471)), closes [#307](https://github.com/NeosiaNexus/SitePing/issues/307) [#342](https://github.com/NeosiaNexus/SitePing/issues/342) [#344](https://github.com/NeosiaNexus/SitePing/issues/344)
+* **widget:** keep the widget usable on top of host modal dialogs ([5a4bfe8](https://github.com/NeosiaNexus/SitePing/commit/5a4bfe8a193cf47466630a1854a18a498c2b474f)), closes [#338](https://github.com/NeosiaNexus/SitePing/issues/338)
+* **widget:** make bulk actions, menus and keyboard shortcuts reliable ([d13492d](https://github.com/NeosiaNexus/SitePing/commit/d13492d5c2f10a5cdac54ba93fe63c79aef956ca)), closes [#341](https://github.com/NeosiaNexus/SitePing/issues/341)
+* **widget:** record diagnostics URLs without credentials, query or hash ([c61e3bf](https://github.com/NeosiaNexus/SitePing/commit/c61e3bfc7b511faf2fbcd5d5509b89e58ba43471))
+
+
+### Performance
+
+* **dashboard,widget:** reclaim bundle size and tighten size budgets ([0f8a21e](https://github.com/NeosiaNexus/SitePing/commit/0f8a21e824225eb0f68e2eced583d154f4fe3790)), closes [#311](https://github.com/NeosiaNexus/SitePing/issues/311) [#313](https://github.com/NeosiaNexus/SitePing/issues/313)
+* **widget:** reclaim IIFE bundle size ([2303611](https://github.com/NeosiaNexus/SitePing/commit/2303611d5a4183d2444a37130e46952a8a2b810d)), closes [#354](https://github.com/NeosiaNexus/SitePing/issues/354) [#311](https://github.com/NeosiaNexus/SitePing/issues/311) [#313](https://github.com/NeosiaNexus/SitePing/issues/313)
+
+
+### Refactoring
+
+* **adapter-prisma:** share the 200-char identity cap with the widget ([c61e3bf](https://github.com/NeosiaNexus/SitePing/commit/c61e3bfc7b511faf2fbcd5d5509b89e58ba43471))
+
 ## [0.10.10](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.9...widget-v0.10.10) (2026-09-23)
 
 
