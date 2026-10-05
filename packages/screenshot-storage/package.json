@@ -1,6 +1,6 @@
 {
   "name": "@siteping/screenshot-storage",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Screenshot storage for Siteping — Cloudflare Images, any S3-compatible bucket, your database (Drizzle: PostgreSQL, Turso/libSQL), the local filesystem, memory, or your own backend",
   "type": "module",
   "sideEffects": false,

@@ -1,6 +1,6 @@
 {
   "name": "@siteping/integration-issues",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Issue tracker integration for Siteping — one issue per feedback on GitHub, GitLab or your own tracker, kept in sync through @siteping/server lifecycle hooks",
   "type": "module",
   "sideEffects": false,

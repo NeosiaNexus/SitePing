@@ -1,6 +1,6 @@
 {
   "name": "@siteping/adapter-drizzle",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Drizzle ORM adapter for Siteping — PostgreSQL and Turso/libSQL",
   "type": "module",
   "sideEffects": false,
