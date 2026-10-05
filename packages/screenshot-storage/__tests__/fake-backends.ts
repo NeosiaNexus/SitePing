@@ -13,9 +13,16 @@ export interface RecordedRequest {
   headers: Headers;
 }
 
+interface FakeObject {
+  bytes: Uint8Array;
+  contentType: string;
+  /** `Cache-Control` the S3 upload stored with the object, `null` when it sent none. */
+  cacheControl?: string | null;
+}
+
 export interface FakeBackend {
   fetch: typeof fetch;
-  objects: Map<string, { bytes: Uint8Array; contentType: string }>;
+  objects: Map<string, FakeObject>;
   requests: RecordedRequest[];
   /** Answer requests matching `METHOD path` with `status`, optionally after storing the object anyway. */
   failWhen(pattern: RegExp, status: number, options?: { afterStoring?: boolean }): void;
@@ -188,7 +195,11 @@ export function createFakeS3({
 
     if (request.method === "PUT") {
       if (!failure || failure.afterStoring) {
-        objects.set(key, { bytes: body, contentType: request.headers.get("content-type") ?? "" });
+        objects.set(key, {
+          bytes: body,
+          contentType: request.headers.get("content-type") ?? "",
+          cacheControl: request.headers.get("cache-control"),
+        });
       }
       return new Response(null, { status: failure?.status ?? 200 });
     }

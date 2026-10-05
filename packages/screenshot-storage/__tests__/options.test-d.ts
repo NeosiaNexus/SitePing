@@ -16,7 +16,11 @@ test("optional options accept an explicit undefined", () => {
     logger: undefined;
     onUncertainUpload: undefined;
   }>().toExtend<ScreenshotStorageOptions>();
-  expectTypeOf<{ authorize: undefined; keyPrefix: undefined }>().toExtend<ScreenshotServeHandlerOptions>();
+  expectTypeOf<{
+    authorize: undefined;
+    cacheControl: undefined;
+    keyPrefix: undefined;
+  }>().toExtend<ScreenshotServeHandlerOptions>();
   expectTypeOf<{
     endpoint: string;
     bucket: string;
@@ -29,6 +33,7 @@ test("optional options accept an explicit undefined", () => {
     timeoutMs: undefined;
     now: undefined;
     treatAccessDeniedAsMissing: undefined;
+    cacheControl: undefined;
   }>().toExtend<S3ObjectStoreOptions>();
   expectTypeOf<{
     accountId: string;

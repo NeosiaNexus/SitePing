@@ -1,7 +1,7 @@
 import { TIMER_MAX_DELAY_MS } from "../constants/http.js";
 
 /*
- * Checks the backend factories run on their options when they are created,
+ * Checks the factories run on their options when they are created,
  * each naming the factory in its error. A value read from a missing
  * environment variable would otherwise surface as one failed upload per
  * feedback, or not at all: as screenshot URLs built on "undefined".
@@ -35,6 +35,28 @@ export function assertTimeoutMs(factory: string, timeoutMs: number | undefined):
 export function assertRequiredString(factory: string, option: string, value: unknown): asserts value is string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`[siteping] ${factory}: ${option} is required (a non-empty string)`);
+  }
+}
+
+/**
+ * An option sent verbatim as an HTTP header value: not blank, and printable
+ * ASCII on a single line (spaces included). `Headers` refuses a line break or
+ * a NUL on every request or response, quoting the value in its error, and
+ * passes other control characters and non-ASCII bytes through as they are,
+ * which a backend or a cache may refuse or misread. A tab is legal in a header
+ * but never needed. A blank value would send no directive at all. The value is
+ * never echoed.
+ *
+ * @param factory - Public factory validating it, named in the error.
+ * @param option - Name of the option.
+ * @param value - Its value, typed `string` but unchecked at runtime.
+ */
+export function assertHeaderValue(factory: string, option: string, value: unknown): void {
+  assertRequiredString(factory, option, value);
+  if (/[^\x20-\x7e]/.test(value)) {
+    throw new Error(
+      `[siteping] ${factory}: ${option} must be printable ASCII (no line break, tab or other control character, no non-ASCII character)`,
+    );
   }
 }
 

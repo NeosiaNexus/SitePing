@@ -5,11 +5,11 @@ import {
   S3_ERROR_CODE_PATTERN,
   S3_ERROR_MESSAGE_PATTERN,
 } from "../constants/s3.js";
-import { SERVED_SCREENSHOT_CACHE_CONTROL } from "../constants/screenshots.js";
+import { DEFAULT_SERVED_SCREENSHOT_CACHE_CONTROL } from "../constants/screenshots.js";
 import { normalizeBaseUrl } from "../core/base-url.js";
 import { ObjectStoreRequestError, sendBackendRequest } from "../core/http.js";
 import type { ScreenshotObjectStore } from "../core/object-store.js";
-import { assertRequiredString, assertTimeoutMs } from "../core/option-checks.js";
+import { assertHeaderValue, assertRequiredString, assertTimeoutMs } from "../core/option-checks.js";
 import { createPublicUrlMapping } from "../core/public-url.js";
 import { encodeRfc3986, type SigV4Credentials, sha256Hex, signS3Request } from "./sigv4.js";
 
@@ -51,6 +51,18 @@ export interface S3ObjectStoreOptions extends SigV4Credentials {
    * Deletes need no mapping (S3 answers `204` for a missing key). Defaults to `false`.
    */
   treatAccessDeniedAsMissing?: boolean | undefined;
+  /**
+   * `Cache-Control` stored with each object, which a public bucket and a CDN
+   * in front of it send with the screenshot. Defaults to
+   * `public, max-age=31536000, immutable`: a key is never reused, so any cache
+   * may keep it, but `delete` cannot reach those copies. Shorten it (e.g.
+   * `public, max-age=86400`) when a deleted screenshot must stop being served
+   * sooner, such as for erasure requests. Written into each object at upload:
+   * a change only applies to later uploads. Printable ASCII on one line. A
+   * private bucket served by `createScreenshotServeHandler` answers with the
+   * handler's `cacheControl` instead.
+   */
+  cacheControl?: string | undefined;
 }
 
 /**
@@ -96,6 +108,7 @@ export function createS3ObjectStore({
   timeoutMs,
   now = () => new Date(),
   treatAccessDeniedAsMissing = false,
+  cacheControl = DEFAULT_SERVED_SCREENSHOT_CACHE_CONTROL,
 }: S3ObjectStoreOptions): ScreenshotObjectStore {
   const factory = "createS3ObjectStore";
   assertRequiredString(factory, "bucket", bucket);
@@ -103,6 +116,7 @@ export function createS3ObjectStore({
   assertRequiredString(factory, "accessKeyId", accessKeyId);
   assertRequiredString(factory, "secretAccessKey", secretAccessKey);
   assertTimeoutMs(factory, timeoutMs);
+  assertHeaderValue(factory, "cacheControl", cacheControl);
   const credentials: SigV4Credentials = { accessKeyId, secretAccessKey, ...(sessionToken ? { sessionToken } : {}) };
   const endpointBase = normalizeBaseUrl(endpoint, "endpoint");
   // R2's dashboard shows its S3 API URL with the bucket appended: pasted as is,
@@ -164,7 +178,7 @@ export function createS3ObjectStore({
       await send("PUT", key, {
         body: bytes,
         headers: { "content-type": contentType },
-        unsignedHeaders: { "cache-control": SERVED_SCREENSHOT_CACHE_CONTROL },
+        unsignedHeaders: { "cache-control": cacheControl },
         isUpload: true,
       });
     },
