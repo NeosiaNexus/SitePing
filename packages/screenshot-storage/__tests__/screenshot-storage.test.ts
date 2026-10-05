@@ -419,7 +419,7 @@ describe("createScreenshotServeHandler", () => {
     const handler = createScreenshotServeHandler(objectStore, { cacheControl: "public, max-age=86400" });
     const etag = (await handler.GET(new Request(url))).headers.get("etag") ?? "";
 
-    await storage.delete(url);
+    await storage.delete?.(url);
     const revalidation = await handler.GET(new Request(url, { headers: { "If-None-Match": etag } }));
 
     expect(revalidation.status).toBe(404);
