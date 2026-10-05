@@ -1,6 +1,6 @@
 {
   "name": "@siteping/server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Store- and framework-agnostic HTTP handler for Siteping — any SitepingStore behind one Fetch API endpoint",
   "type": "module",
   "sideEffects": false,
