@@ -397,6 +397,39 @@ describe("createScreenshotServeHandler", () => {
     expect(afterRevocation.status).toBe(403);
   });
 
+  it("answers with the configured cacheControl when there is no authorize", async () => {
+    const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
+    const { url } = await createScreenshotStorage(objectStore).upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    const handler = createScreenshotServeHandler(objectStore, { cacheControl: "public, max-age=86400" });
+
+    const response = await handler.GET(new Request(url));
+    const etag = response.headers.get("etag") ?? "";
+    const revalidation = await handler.GET(new Request(url, { headers: { "If-None-Match": etag } }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=86400");
+    expect(revalidation.status).toBe(304);
+    expect(revalidation.headers.get("cache-control")).toBe("public, max-age=86400");
+  });
+
+  it("keeps private, no-cache behind an authorize callback, whatever cacheControl says", async () => {
+    const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
+    const { url } = await createScreenshotStorage(objectStore).upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    const handler = createScreenshotServeHandler(objectStore, {
+      authorize: () => true,
+      cacheControl: "public, max-age=86400",
+    });
+
+    const response = await handler.GET(new Request(url));
+    const etag = response.headers.get("etag") ?? "";
+    const revalidation = await handler.GET(new Request(url, { headers: { "If-None-Match": etag } }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-cache");
+    expect(revalidation.status).toBe(304);
+    expect(revalidation.headers.get("cache-control")).toBe("private, no-cache");
+  });
+
   describe("revalidation against a private S3 bucket", () => {
     const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };
 
@@ -714,25 +747,46 @@ describe("createS3ObjectStore — deletes", () => {
 });
 
 describe("createS3ObjectStore — uploads", () => {
-  it("stores each object with an immutable Cache-Control, left out of the signature like the AWS SDK does", async () => {
-    const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };
+  const credentials = { accessKeyId: "AKIDEXAMPLE", secretAccessKey: "s3-secret" };
+  const openS3 = (options: { cacheControl?: string } = {}) => {
     const fake = createFakeS3({ bucket: "screens", region: "auto", ...credentials });
     const objectStore = createS3ObjectStore({
       endpoint: "https://account.r2.cloudflarestorage.com",
       bucket: "screens",
       publicBaseUrl: "https://screens.example.com",
       ...credentials,
+      ...options,
       fetch: fake.fetch,
     });
+    return { fake, objectStore };
+  };
+
+  it("stores each object with an immutable Cache-Control, left out of the signature like the AWS SDK does", async () => {
+    const { fake, objectStore } = openS3();
 
     await createScreenshotStorage(objectStore).upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
 
     // The fake bucket re-signs every request with the AWS SDK's signer, which never signs Cache-Control
     // (a proxy may rewrite it), and refuses a mismatch: a stored object proves the signature holds.
-    expect(fake.objects.size).toBe(1);
+    expect([...fake.objects.values()].map(({ cacheControl }) => cacheControl)).toEqual([
+      "public, max-age=31536000, immutable",
+    ]);
     const [put] = fake.requests;
     expect(put?.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(put?.headers.get("authorization")).toContain("SignedHeaders=content-type;host;");
+  });
+
+  it.each([
+    ["a shorter lifetime", "public, max-age=86400", "public, max-age=86400"],
+    ["two consecutive spaces, which a signed header would collapse", "public,  max-age=60", "public,  max-age=60"],
+    ["surrounding spaces, which are not part of a header value", "  no-store ", "no-store"],
+  ])("stores each object with the configured cacheControl: %s", async (_label, cacheControl, stored) => {
+    const { fake, objectStore } = openS3({ cacheControl });
+
+    await createScreenshotStorage(objectStore).upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+
+    expect([...fake.objects.values()].map((object) => object.cacheControl)).toEqual([stored]);
+    expect(fake.requests[0]?.headers.get("authorization")).toContain("SignedHeaders=content-type;host;");
   });
 });
 
@@ -1054,6 +1108,81 @@ describe("backend factories — required options", () => {
 
     expect(url).toBe("https://imagedelivery.net/hash-1/siteping-a.jpg/w=400,sharpen=3");
     expect(objectStore.keyFromUrl(url)).toBe("siteping-a.jpg");
+  });
+});
+
+describe("cacheControl — construction checks", () => {
+  const factories: [string, (cacheControl: string) => unknown][] = [
+    [
+      "createS3ObjectStore",
+      (cacheControl) =>
+        createS3ObjectStore({
+          endpoint: "https://account.r2.cloudflarestorage.com",
+          bucket: "screens",
+          publicBaseUrl: PUBLIC_BASE_URL,
+          accessKeyId: "AKIDEXAMPLE",
+          secretAccessKey: "s3-secret",
+          cacheControl,
+        }),
+    ],
+    [
+      "createScreenshotServeHandler",
+      (cacheControl) =>
+        createScreenshotServeHandler(createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL }), { cacheControl }),
+    ],
+    [
+      "createScreenshotServeHandler",
+      (cacheControl) =>
+        createScreenshotServeHandler(createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL }), {
+          authorize: () => true,
+          cacheControl,
+        }),
+    ],
+  ];
+
+  /** What a thrown error shows once logged, or `undefined` when nothing was thrown. */
+  const loggedFailure = (open: () => unknown) => {
+    try {
+      open();
+    } catch (error) {
+      return inspect(error, { depth: null });
+    }
+    return undefined;
+  };
+
+  it.each([
+    ["a CR LF, which would end the header", "max-age=60\r\nSet-Cookie: SECRET"],
+    ["a lone LF", "max-age=60\nSECRET"],
+    ["a lone CR", "max-age=60\rSECRET"],
+    ["a NUL", "max-age=60\u0000SECRET"],
+    ["a tab", "max-age=60,\tSECRET"],
+    ["another control character", "max-age=60\u0001SECRET"],
+    ["DEL", "max-age=60\u007fSECRET"],
+    ["a non-ASCII letter", "max-age=60, SECRET-é"],
+    ["a Unicode line separator", "max-age=60\u2028SECRET"],
+  ])("refuses a value with %s, without quoting it", (_label, cacheControl) => {
+    for (const [factory, open] of factories) {
+      expect(() => open(cacheControl)).toThrow(
+        new Error(
+          `[siteping] ${factory}: cacheControl must be printable ASCII (no line break, tab or other control character, no non-ASCII character)`,
+        ),
+      );
+      expect(loggedFailure(() => open(cacheControl))).not.toContain("SECRET");
+    }
+  });
+
+  it.each(["", "   "])("refuses the blank value %j, which would send no directive", (cacheControl) => {
+    for (const [factory, open] of factories) {
+      expect(() => open(cacheControl)).toThrow(
+        new Error(`[siteping] ${factory}: cacheControl is required (a non-empty string)`),
+      );
+    }
+  });
+
+  it("accepts every printable ASCII character, spaces included", () => {
+    const printableAscii = String.fromCharCode(...Array.from({ length: 0x7f - 0x20 }, (_, index) => 0x20 + index));
+
+    for (const [, open] of factories) expect(() => open(printableAscii)).not.toThrow();
   });
 });
 

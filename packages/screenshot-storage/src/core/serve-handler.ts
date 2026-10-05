@@ -1,13 +1,14 @@
 import {
   AUTHORIZED_SERVED_SCREENSHOT_CACHE_CONTROL,
   DEFAULT_KEY_PREFIX,
+  DEFAULT_SERVED_SCREENSHOT_CACHE_CONTROL,
   DOWNLOAD_ONLY_CONTENT_TYPE,
-  SERVED_SCREENSHOT_CACHE_CONTROL,
   SERVED_SCREENSHOT_CONTENT_SECURITY_POLICY,
 } from "../constants/screenshots.js";
 import { inertImageContentType } from "./active-content.js";
 import { assertKeyPrefix, isGeneratedKey } from "./generated-key.js";
 import type { ScreenshotObjectStore } from "./object-store.js";
+import { assertHeaderValue } from "./option-checks.js";
 import { safeDecodeURIComponent } from "./safe-decode-uri-component.js";
 
 /** The screenshot a request asks for, handed to `authorize`. */
@@ -28,6 +29,16 @@ export interface ScreenshotServeHandlerOptions {
    * Receives the requested key for per-screenshot decisions.
    */
   authorize?: ((request: Request, target: ScreenshotServeRequestTarget) => boolean | Promise<boolean>) | undefined;
+  /**
+   * `Cache-Control` of the responses when there is no `authorize`. Defaults to
+   * `public, max-age=31536000, immutable`: a key names the same bytes forever,
+   * so any cache may keep a screenshot, but `delete` cannot reach those
+   * copies. Shorten it (e.g. `public, max-age=86400`) when a deleted
+   * screenshot must stop being served sooner, such as for erasure requests.
+   * Printable ASCII on one line, checked even with `authorize`, whose
+   * responses stay `private, no-cache` whatever this says.
+   */
+  cacheControl?: string | undefined;
   /**
    * Namespace served: only keys `<keyPrefix><hex>.<ext>` are read, anything
    * else answers `404`. Use the `keyPrefix` given to `createScreenshotStorage`
@@ -59,16 +70,21 @@ export interface ScreenshotServeHandlerOptions {
  */
 export function createScreenshotServeHandler(
   objectStore: ScreenshotObjectStore,
-  { authorize, keyPrefix = DEFAULT_KEY_PREFIX }: ScreenshotServeHandlerOptions = {},
+  {
+    authorize,
+    cacheControl = DEFAULT_SERVED_SCREENSHOT_CACHE_CONTROL,
+    keyPrefix = DEFAULT_KEY_PREFIX,
+  }: ScreenshotServeHandlerOptions = {},
 ): { GET: (request: Request) => Promise<Response> } {
   assertKeyPrefix(keyPrefix, "createScreenshotServeHandler");
+  assertHeaderValue("createScreenshotServeHandler", "cacheControl", cacheControl);
   const read = objectStore.get?.bind(objectStore);
   if (!read) {
     throw new Error(
       `[siteping] createScreenshotServeHandler: ${objectStore.name} has no get() — it serves screenshots from its own URLs`,
     );
   }
-  const cacheControl = authorize ? AUTHORIZED_SERVED_SCREENSHOT_CACHE_CONTROL : SERVED_SCREENSHOT_CACHE_CONTROL;
+  const responseCacheControl = authorize ? AUTHORIZED_SERVED_SCREENSHOT_CACHE_CONTROL : cacheControl;
 
   return {
     async GET(request) {
@@ -78,7 +94,7 @@ export function createScreenshotServeHandler(
       if (key === null || !isGeneratedKey(key, keyPrefix)) return new Response(null, { status: 404 });
       if (authorize && !(await authorize(request, { key }))) return new Response(null, { status: 403 });
       const etag = servedScreenshotEtag(key);
-      const cacheHeaders = { "Cache-Control": cacheControl, ETag: etag };
+      const cacheHeaders = { "Cache-Control": responseCacheControl, ETag: etag };
       const ifNoneMatch = parseIfNoneMatch(request.headers.get("If-None-Match"));
       // The ETag is the key, and a key names the same bytes forever: a client
       // listing it already holds this exact screenshot, so the (just
