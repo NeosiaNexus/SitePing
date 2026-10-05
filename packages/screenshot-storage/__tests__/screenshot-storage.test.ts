@@ -412,6 +412,21 @@ describe("createScreenshotServeHandler", () => {
     expect(revalidation.headers.get("cache-control")).toBe("public, max-age=86400");
   });
 
+  it("answers a revalidation of a deleted screenshot with a 404 when there is no authorize, so caches drop it", async () => {
+    const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
+    const storage = createScreenshotStorage(objectStore);
+    const { url } = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT);
+    const handler = createScreenshotServeHandler(objectStore, { cacheControl: "public, max-age=86400" });
+    const etag = (await handler.GET(new Request(url))).headers.get("etag") ?? "";
+
+    await storage.delete(url);
+    const revalidation = await handler.GET(new Request(url, { headers: { "If-None-Match": etag } }));
+
+    expect(revalidation.status).toBe(404);
+    expect(revalidation.headers.get("cache-control")).toBeNull();
+    expect(revalidation.headers.get("etag")).toBeNull();
+  });
+
   it("keeps private, no-cache behind an authorize callback, whatever cacheControl says", async () => {
     const objectStore = createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL });
     const { url } = await createScreenshotStorage(objectStore).upload(JPEG_DATA_URL, UPLOAD_CONTEXT);

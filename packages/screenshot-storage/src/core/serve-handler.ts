@@ -34,7 +34,8 @@ export interface ScreenshotServeHandlerOptions {
    * `public, max-age=31536000, immutable`: a key names the same bytes forever,
    * so any cache may keep a screenshot, but `delete` cannot reach those
    * copies. Shorten it (e.g. `public, max-age=86400`) when a deleted
-   * screenshot must stop being served sooner, such as for erasure requests.
+   * screenshot must stop being served sooner, such as for erasure requests: a
+   * revalidation reads the object, so a deleted one answers `404`.
    * Printable ASCII on one line, checked even with `authorize`, whose
    * responses stay `private, no-cache` whatever this says.
    */
@@ -99,11 +100,19 @@ export function createScreenshotServeHandler(
       // The ETag is the key, and a key names the same bytes forever: a client
       // listing it already holds this exact screenshot, so the (just
       // re-authorized) revalidation is answered without reading the object.
-      if (ifNoneMatch.listedTags.includes(etag)) return new Response(null, { status: 304, headers: cacheHeaders });
+      // Its `private, no-cache` keeps that copy out of shared caches.
+      if (authorize && ifNoneMatch.listedTags.includes(etag)) {
+        return new Response(null, { status: 304, headers: cacheHeaders });
+      }
       const object = await read(key);
       if (!object) return new Response(null, { status: 404 });
-      // `*` only matches an existing object, so it is answered after the read.
-      if (ifNoneMatch.matchesAny) return new Response(null, { status: 304, headers: cacheHeaders });
+      // Without `authorize`, a 304 renews a shared cache's copy for another
+      // `cacheControl` lifetime, so it is only sent while the object exists: a
+      // deleted screenshot answers 404, and caches stop serving it once their
+      // copy goes stale. `*` only matches an existing object either.
+      if (ifNoneMatch.matchesAny || ifNoneMatch.listedTags.includes(etag)) {
+        return new Response(null, { status: 304, headers: cacheHeaders });
+      }
       const inertType = inertImageContentType(object.contentType);
       return new Response(object.bytes, {
         headers: {
