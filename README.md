@@ -138,6 +138,7 @@ This project follows the [all-contributors](https://allcontributors.org) specifi
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/imikemiller"><img src="https://avatars.githubusercontent.com/u/24856374?v=4?s=100" width="100px;" alt="Mike Miller"/><br /><sub><b>Mike Miller</b></sub></a><br /><a href="https://github.com/NeosiaNexus/SitePing/commits?author=imikemiller" title="Code">💻</a> <a href="https://github.com/NeosiaNexus/SitePing/commits?author=imikemiller" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jinwoo0103"><img src="https://avatars.githubusercontent.com/u/48249867?v=4?s=100" width="100px;" alt="Jinwoo"/><br /><sub><b>Jinwoo</b></sub></a><br /><a href="#translation-jinwoo0103" title="Translation">🌍</a></td>
     </tr>
   </tbody>
 </table>
