@@ -29,6 +29,7 @@ const LOCALES = [
   ["pt", "Português"],
   ["ru", "Русский"],
   ["ja", "日本語"],
+  ["ko", "한국어"],
 ] as const;
 
 type LocaleCode = (typeof LOCALES)[number][0];

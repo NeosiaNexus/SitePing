@@ -98,6 +98,14 @@ describe("createT", () => {
     expect(t("export.json")).toBe("JSON で出力");
   });
 
+  // Browsers break Hangul between any two syllables too: the 180px export
+  // menu wrapped JSON으로 내보내기 mid-word (JSON으로 내보내/기).
+  it("keeps the Korean export menu items short", () => {
+    const t = createT("ko");
+    expect(t("export.csv")).toBe("CSV 내보내기");
+    expect(t("export.json")).toBe("JSON 내보내기");
+  });
+
   it("is case-insensitive on the locale prefix", () => {
     expect(createT("EN")("panel.close")).toBe("Close panel");
     expect(createT("FR-FR")("panel.close")).toBe("Fermer le panneau");
