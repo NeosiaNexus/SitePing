@@ -171,6 +171,6 @@ export const ko: Translations = {
 
   // Export controls
   "export.label": "내보내기",
-  "export.csv": "CSV로 내보내기",
-  "export.json": "JSON으로 내보내기",
+  "export.csv": "CSV 내보내기",
+  "export.json": "JSON 내보내기",
 };
