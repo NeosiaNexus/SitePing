@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.1](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.11.0...widget-v0.11.1) (2026-10-18)
+
+
+### Features
+
+* **i18n:** add a Korean (ko) locale to the widget and dashboard ([#430](https://github.com/NeosiaNexus/SitePing/issues/430)) ([90fbdee](https://github.com/NeosiaNexus/SitePing/commit/90fbdee725e0c56207bc2c1856aeb22a96ceca1d))
+
+
+### Miscellaneous
+
+* **deps-dev:** bump the size-limit group across 1 directory with 2 updates ([#428](https://github.com/NeosiaNexus/SitePing/issues/428)) ([d10d533](https://github.com/NeosiaNexus/SitePing/commit/d10d53309a234f501782fd918085c594b2cffc76))
+* **deps-dev:** bump the size-limit group with 2 updates ([#433](https://github.com/NeosiaNexus/SitePing/issues/433)) ([4719aff](https://github.com/NeosiaNexus/SitePing/commit/4719affea784de15538e4c8376a8e8f1ff4c6825))
+
 ## [0.11.0](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.10.10...widget-v0.11.0) (2026-10-05)
 
 
