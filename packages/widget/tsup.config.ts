@@ -1,4 +1,4 @@
-import { defineConfig } from "tsup";
+import { defineConfig, type Options } from "tsup";
 import { terserPass } from "../../tsup.preset.js";
 import { cssLiteralsPlugin } from "./scripts/css-literals.js";
 
@@ -12,7 +12,10 @@ import { cssLiteralsPlugin } from "./scripts/css-literals.js";
 //    browsers run exactly as shipped (no consumer bundler minifies it again),
 //    so Terser takes a second pass after esbuild's minifier (`terserPass`).
 //  - ESM+CJS React entry (`@siteping/widget/react`): React stays external so
-//    consumers pin their own version.
+//    consumers pin their own version, and the widget comes from the main
+//    entry (`reactUsesMainEntry`). The files open with `"use client"`, which
+//    tsup's Rollup tree-shaking pass would drop: this build doesn't need that
+//    pass (esbuild already tree-shakes), nor splitting (no dynamic import).
 //
 // `cssLiteralsPlugin` minifies the `/* css */`-marked template literals —
 // the stylesheet and inline styles — which the JS minifier ships verbatim.
@@ -31,6 +34,24 @@ const pureCalls = ["console.debug", "console.info"] as const;
 // plain browsers without `process` fall through via readNodeEnv's try/catch.
 // `scripts/verify-dist-guard.mjs` asserts this after every build.
 const keepNodeEnvLiteral = { "process.env.NODE_ENV": "process.env.NODE_ENV" } as const;
+
+type EsbuildPlugin = NonNullable<Options["esbuildPlugins"]>[number];
+
+// The React entry imports the widget from the main entry's built file, in
+// the same format, instead of bundling a second copy of it: an app importing
+// both entries runs one module state, so one widget singleton and one locale
+// registry (#386). The source keeps its relative `./index.js` import, so
+// type-checking and tests need no build. `scripts/verify-dist-guard.mjs`
+// asserts the shipped files import the main entry and carry no widget code.
+const reactUsesMainEntry: EsbuildPlugin = {
+  name: "react-uses-main-entry",
+  setup(build) {
+    const mainEntry = `./index${build.initialOptions.outExtension?.[".js"] ?? ".js"}`;
+    build.onResolve({ filter: /^\.\/index\.js$/ }, (args) =>
+      /[\\/]src[\\/]react\.ts$/.test(args.importer) ? { path: mainEntry, external: true } : undefined,
+    );
+  },
+};
 
 export default defineConfig([
   {
@@ -80,11 +101,12 @@ export default defineConfig([
     sourcemap: true,
     clean: false,
     minify: true,
-    splitting: true,
-    treeshake: "recommended",
+    splitting: false,
+    treeshake: false,
     noExternal: ["@medv/finder", "@siteping/core"],
     external: ["react"],
-    esbuildPlugins: [cssLiteralsPlugin],
+    banner: { js: '"use client";' },
+    esbuildPlugins: [cssLiteralsPlugin, reactUsesMainEntry],
     esbuildOptions(o) {
       o.pure = [...pureCalls];
       o.define = { ...o.define, ...keepNodeEnvLiteral };
