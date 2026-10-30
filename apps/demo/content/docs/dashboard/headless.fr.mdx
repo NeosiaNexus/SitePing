@@ -29,7 +29,7 @@ Les options forment une union sur les trois modes de source : fournissez **exact
 | `pageSize` | `number` | `50` | Borné entre 1 et 100 |
 | `onStatusChange` | `(feedback, previousStatus) => void` | — | Après confirmation du serveur |
 | `onDelete` | `(feedback) => void` | — | Après confirmation du serveur |
-| `onError` | `(error) => void` | — | Chaque chargement ou mutation en échec |
+| `onError` | `(error) => void` | — | Chaque chargement ou mutation en échec. Les sources intégrées lèvent des erreurs que `isSitepingError` reconnaît, typées par `code` ; celles d'une source personnalisée arrivent telles quelles |
 | `author` | `{ name, email? }` | — | Qui poste les réponses depuis cette inbox — voir [Fils de discussion](#fils-de-discussion). Sans lui, les fils sont en lecture seule |
 | `readOnly` | `boolean` | `false` | Aucun changement de statut ni aucune suppression, de feedback comme de réponse — voir [Permissions](#permissions) |
 

@@ -407,12 +407,13 @@ export interface SitepingBaseConfig {
    *
    * The widget always emits a `SitepingError` (or a subclass:
    * `SitepingNetworkError`, `SitepingValidationError`, `SitepingAuthError`)
-   * for HTTP-mode failures — host apps can `instanceof` to drive retry
-   * logic, or read `error.code` (`"NETWORK" | "VALIDATION" | "AUTH" |
-   * "SERVER"`) and `error.retryable` — and an `AUTH` error's `status`
-   * (`401` for missing or dead credentials, `403` for a refusal). The type
-   * is widened to `Error` so direct-store callers can still surface raw
-   * errors without breaking the contract.
+   * for a failed call — match it with `isSitepingError(error)` (not
+   * `instanceof`: the classes aren't exported), then read `error.code`
+   * (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`),
+   * `error.retryable` and an `AUTH` error's `status` (`401` for missing or
+   * dead credentials, `403` for a refusal). The type is widened to `Error`
+   * because a store in `store` mode may throw its own errors, which reach
+   * here unchanged.
    *
    * Also receives whatever a `panelActions` callback throws or rejects with
    * (non-`Error` values are wrapped). Those host failures are not API

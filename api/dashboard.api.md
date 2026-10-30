@@ -12,6 +12,7 @@ Runtime exports (ESM and CJS):
 - `createEndpointSource: function`
 - `createStoreSource: function`
 - `isClosedStatus: function`
+- `isSitepingError: function`
 - `registerLocale: function`
 - `useSitepingInbox: function`
 
@@ -202,6 +203,10 @@ export interface SitepingCapabilities {
     deleteComments?: boolean | undefined;
 }
 
+export type SitepingClientError = SitepingAuthError | SitepingError<"SERVER" | "TIMEOUT"> | SitepingNetworkError | SitepingValidationError;
+
+export type SitepingErrorCode = "AUTH" | "NETWORK" | "SERVER" | "TIMEOUT" | "VALIDATION";
+
 export function SitepingInbox(props: SitepingInboxProps): ReactElement;
 
 export interface SitepingInboxPresentationProps {
@@ -236,6 +241,8 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
 export function createStoreSource(store: SitepingStore): InboxSource;
 
 export function isClosedStatus(status: FeedbackStatus): status is ClosedFeedbackStatus;
+
+export function isSitepingError(error: unknown): error is SitepingClientError;
 
 export const registerLocale: (code: string, translations: Partial<Translations>) => void;
 
@@ -410,7 +417,27 @@ interface ScreenshotRegion {
     yPct: number;
 }
 
+class SitepingAuthError extends SitepingError<"AUTH"> {
+    constructor(message: string, status: 401 | 403);
+    readonly status: 401 | 403;
+}
+
+class SitepingError<TCode extends SitepingErrorCode = SitepingErrorCode> extends Error {
+    constructor(message: string, code: TCode, retryable: boolean);
+    readonly code: TCode;
+    readonly retryable: boolean;
+}
+
 type SitepingLocale = (string & {}) | BuiltinLocale;
+
+class SitepingNetworkError extends SitepingError<"NETWORK"> {
+    constructor(message: string);
+}
+
+class SitepingValidationError extends SitepingError<"VALIDATION"> {
+    constructor(message: string, status?: number);
+    readonly status: number | undefined;
+}
 
 interface Translations {
     "comments.delete": string;
