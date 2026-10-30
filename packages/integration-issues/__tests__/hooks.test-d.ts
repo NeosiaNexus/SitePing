@@ -5,9 +5,14 @@
  */
 
 import type { SitepingStore } from "@siteping/core";
-import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
+import {
+  createSitepingHandler,
+  type SitepingDeletionTarget,
+  type SitepingHandler,
+  type SitepingLifecycleHooks,
+} from "@siteping/server";
 import { describe, expectTypeOf, it } from "vitest";
-import { createIssueTrackerHooks, formatIssue, type IssueTracker } from "../src/index.js";
+import { createIssueTrackerHooks, formatIssue, type IssueTracker, type IssueTrackerHooks } from "../src/index.js";
 import { createGitHubTracker } from "../src/providers/github.js";
 import { createGitLabTracker } from "../src/providers/gitlab.js";
 
@@ -19,6 +24,22 @@ interface Reviewer {
   isAdmin: boolean;
 }
 declare function sessionUser(request: Request): Promise<Reviewer | null>;
+
+describe("IssueTrackerHooks without a @siteping/server dependency", () => {
+  // The package restates the server types it needs instead of importing them,
+  // so a 0.x release installs next to any server. These locks fail as soon as
+  // the server's shapes drift from the restated ones.
+  it("takes exactly the server's deletion target", () => {
+    expectTypeOf<Parameters<IssueTrackerHooks["onDeleting"]>[0]>().toEqualTypeOf<SitepingDeletionTarget>();
+  });
+
+  it("is lifecycle hooks of either access policy, whatever the principal", () => {
+    expectTypeOf<IssueTrackerHooks>().toExtend<SitepingLifecycleHooks<null>>();
+    expectTypeOf<IssueTrackerHooks>().toExtend<SitepingLifecycleHooks<Reviewer>>();
+    // Every hook it returns is one the server calls: no name lost to a rename.
+    expectTypeOf<keyof IssueTrackerHooks>().toExtend<keyof SitepingLifecycleHooks<null>>();
+  });
+});
 
 describe("createIssueTrackerHooks", () => {
   it("plugs into the apiKey policy", () => {
