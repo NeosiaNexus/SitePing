@@ -47,7 +47,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
 | Option | Type | Default | What it does |
 |---|---|---|---|
 | `accentColor` | `string` | `"#0066ff"` | **Hex only** (`#RGB`, `#RRGGBB`, `#RRGGBBAA`). Named colors, `rgb()`, `hsl()` etc. log a warning and fall back to the default |
-| `theme` | `"light"` \| `"dark"` \| `"auto"` | `"light"` | `auto` reads the system preference **once at init** — an OS theme change mid-session doesn't re-theme the widget |
+| `theme` | `"light"` \| `"dark"` \| `"auto"` | `"light"` | `auto` follows the system preference **live**, as the dashboard does: an OS theme change mid-session re-themes the widget (an open comment form keeps its look until it closes) |
 | `locale` | `string` | `"en"` | Any BCP-47 tag; see [Languages](/docs/widget/i18n) |
 
 ## Features
@@ -57,7 +57,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
 | `enableScreenshot` | `boolean` | `false` | Capture a JPEG of the annotated area on submit — see [Screenshots](/docs/widget/screenshots) |
 | `enableRightClickComment` | `boolean` | `false` | Right-click anywhere to comment instantly — see [Right-click comments](/docs/widget/right-click) |
 | `captureDiagnostics` | `boolean` or object | `false` | Attach recent console entries (max 50) and failed network requests (max 20, URL recorded without credentials, query string or hash) to each feedback. `true` enables both; an object picks channels and lower limits (`maxConsoleEntries` / `maxNetworkEntries` — larger values are clamped to 50 / 20, the server's caps) |
-| `deepLink` | `boolean` or `{ param?: string }` | `false` | On first load, focus the feedback referenced by `?siteping=<id>` (or your custom param). Initial load only — for route changes, call `focusFeedback()` |
+| `deepLink` | `boolean` or `{ param?: string }` | `false` | On first load, focus the feedback referenced by `?siteping=<id>` (or your custom param) and open its detail view, thread included, in the panel. Initial load only — for route changes, call `focusFeedback()` |
 | `identity` | `{ name, email }` | — | Pre-fill author fields from the host app's session (e.g. SSO, or [Better Auth](/docs/server#recipe-better-auth)): skips the identity modal, never persisted to localStorage. It does not authenticate API requests — a server [`access`](/docs/server#custom-access) policy does, from your session cookie on the same origin or a bearer token sent with `headers`. Read at init: remount the widget after an account change |
 | `panelActions` | array | — | Your own buttons and links in the feedback detail view — create a ticket, open it in your tracker. See [Panel actions](/docs/widget/panel-actions) |
 
@@ -73,7 +73,7 @@ For a client who reviews while your team triages. On top of it, the widget hides
 
 | Option | Type | Default | What it does |
 |---|---|---|---|
-| `scopeAnnotationsByUrl` | `boolean` | `true` | Only show markers created on the current page. Filtered both server-side and client-side, so annotations can't leak across pages |
+| `scopeAnnotationsByUrl` | `boolean` | `true` | Only show markers created on the current page. Filtered both server-side and client-side, so annotations can't leak across pages. `false` gives a project-wide view: the panel lists every feedback, and a marker shows wherever its anchor resolves — for feedback on what every page shares, such as a header |
 | `getPageScope` | `() => { url, urlPattern }` | pathname | Customize what "the current page" means — return a stable `url` (and optionally a template like `/products/:id` as `urlPattern`) so dynamic routes share their feedback |
 | `watchNavigation` | `boolean` | `true` | Re-fetch feedbacks on SPA navigation (History API patch + `popstate`/`hashchange`). Data only — it never scrolls or refocuses. Set `false` and call `refresh()` yourself to opt out |
 

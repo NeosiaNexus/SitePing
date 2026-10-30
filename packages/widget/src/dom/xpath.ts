@@ -1,3 +1,5 @@
+import { ANCHOR_ELEMENT_ID_MAX } from "@siteping/core";
+
 /**
  * Generate an optimized XPath for a DOM element.
  *
@@ -8,12 +10,14 @@
  * - Cap depth at 6 levels to keep paths short — a path that does not reach
  *   <body> (truncated, or no parent left) is emitted relative (//tag[n]/…)
  * - Inside a shadow tree: a path rooted at its shadow root (see shadowXPath)
+ * - An id over ANCHOR_ELEMENT_ID_MAX is passed over (see pathId)
  */
 export function generateXPath(element: Element): string {
   if (element.getRootNode() instanceof ShadowRoot) return shadowXPath(element);
 
-  if (element.id) {
-    return `//${element.localName}[@id=${xpathLiteral(element.id)}]`;
+  const id = pathId(element);
+  if (id) {
+    return `//${element.localName}[@id=${xpathLiteral(id)}]`;
   }
 
   const segments: string[] = [];
@@ -23,8 +27,9 @@ export function generateXPath(element: Element): string {
     const tag = current.localName;
     const parent: Element | null = current.parentElement;
 
-    if (current.id) {
-      segments.unshift(`/${tag}[@id=${xpathLiteral(current.id)}]`);
+    const currentId = pathId(current);
+    if (currentId) {
+      segments.unshift(`/${tag}[@id=${xpathLiteral(currentId)}]`);
       return "/" + segments.join("");
     }
 
@@ -63,8 +68,9 @@ function shadowXPath(element: Element): string {
   let path = "";
   for (let current: Element | null = element; current; current = current.parentElement) {
     const tag = current.localName;
-    if (current.id) {
-      path = `/${tag}[@id=${xpathLiteral(current.id)}]${path}`;
+    const id = pathId(current);
+    if (id) {
+      path = `/${tag}[@id=${xpathLiteral(id)}]${path}`;
       continue;
     }
     // Siblings, not parent.children: a top-level element's parent is the
@@ -76,6 +82,17 @@ function shadowXPath(element: Element): string {
     path = `/${tag}[${position}]${path}`;
   }
   return `.${path}`;
+}
+
+/**
+ * The id a path may embed — none past ANCHOR_ELEMENT_ID_MAX, the cap past
+ * which `elementId` is dropped too. A longer one would push the path past the
+ * server's 2000-character `xpath` cap and get the feedback refused; the
+ * positional segment stands in for it. At the cap, even a `concat()` literal
+ * with a quote in every character stays far below it.
+ */
+function pathId(element: Element): string | undefined {
+  return element.id && element.id.length <= ANCHOR_ELEMENT_ID_MAX ? element.id : undefined;
 }
 
 /** An XPath string literal for `value` (`concat()` when it holds a quote). */
