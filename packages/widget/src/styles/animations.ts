@@ -161,8 +161,10 @@ export const ANIMATION_CSS = /* css */ `
   /* ---- Reduced motion ---- */
 
   @media (prefers-reduced-motion: reduce) {
+    /* No stagger either: a delayed card would sit invisible for its delay. */
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
+      animation-delay: 0s !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
