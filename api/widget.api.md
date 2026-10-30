@@ -299,6 +299,7 @@ export interface Translations {
     "type.label": string;
     "type.other": string;
     "type.question": string;
+    "panel.notOnPage": string;
     "comments.full": string;
     "comments.title": string;
     "comments.team": string;

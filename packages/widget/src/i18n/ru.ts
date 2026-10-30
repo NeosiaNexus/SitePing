@@ -17,6 +17,7 @@ export const ru: Translations = {
   "panel.retry": "Повторить",
   "panel.empty": "Пока нет отзывов",
   "panel.showMore": "Показать больше",
+  "panel.notOnPage": "Не видно на этой странице",
   "panel.showLess": "Показать меньше",
   "panel.resolve": "Решено",
   "panel.reopen": "Открыть заново",

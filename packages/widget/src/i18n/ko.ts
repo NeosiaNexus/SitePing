@@ -17,6 +17,7 @@ export const ko: Translations = {
   "panel.retry": "다시 시도",
   "panel.empty": "아직 피드백이 없습니다",
   "panel.showMore": "더 보기",
+  "panel.notOnPage": "이 페이지에서 보이지 않음",
   "panel.showLess": "접기",
   "panel.resolve": "해결",
   "panel.reopen": "다시 열기",

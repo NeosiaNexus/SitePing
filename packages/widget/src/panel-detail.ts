@@ -1036,6 +1036,8 @@ export interface DetailCallbacks {
   onGoToAnnotation: (feedback: FeedbackResponse) => void;
   /** False hides "Go to annotation" (e.g. the feedback belongs to another page). */
   canGoToAnnotation?: (feedback: FeedbackResponse) => boolean;
+  /** "Not visible on this page" under "Go to annotation", kept current by the panel. */
+  lostNote?: (feedbackId: string) => HTMLElement;
   /** Runs a host-defined button action. Never rejects: the panel contains and reports host failures. */
   onCustomAction: (action: SitepingPanelButtonAction, feedback: SitepingPanelActionFeedback) => Promise<void>;
   /** Reports a host `visible()`/`href()` that threw or an unsafe computed href — the action is hidden. */
@@ -1517,6 +1519,8 @@ export class DetailView {
     });
 
     wrapper.appendChild(gotoBtn);
+    const lost = this.callbacks.lostNote?.(feedback.id);
+    if (lost) wrapper.appendChild(lost);
   }
 
   /**

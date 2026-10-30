@@ -37,6 +37,7 @@ function createMockMarkers() {
     pinHighlight: vi.fn(),
     // No live pin by default — "Go to annotation" falls back to the stored offsets.
     revealPin: vi.fn().mockReturnValue(false),
+    isLost: vi.fn().mockReturnValue(false),
     addFeedback: vi.fn(),
     destroy: vi.fn(),
     count: 0,
@@ -107,6 +108,65 @@ describe("Panel", () => {
   afterEach(() => {
     panel.destroy();
     shadow.host.remove();
+  });
+
+  // -------------------------------------------------------------------------
+  // "Not visible on this page" (#304)
+  // -------------------------------------------------------------------------
+
+  describe("lost pins", () => {
+    it("notes a feedback without a pin on its card and in its detail view, live", async () => {
+      markers.isLost.mockImplementation((id: string) => id === "fb-lost");
+      const annotation = {
+        id: "ann-ok",
+        feedbackId: "fb-ok",
+        cssSelector: "div",
+        xpath: "/html/body/div",
+        textSnippet: "",
+        elementTag: "DIV",
+        elementId: null,
+        textPrefix: "",
+        textSuffix: "",
+        fingerprint: "0:0:0",
+        neighborText: "",
+        anchorKey: null,
+        xPct: 0.1,
+        yPct: 0.2,
+        wPct: 0.3,
+        hPct: 0.4,
+        scrollX: 0,
+        scrollY: 0,
+        viewportW: 1920,
+        viewportH: 1080,
+        devicePixelRatio: 1,
+        createdAt: new Date().toISOString(),
+      };
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [
+          makeFeedback({ id: "fb-lost", url: "/" }),
+          makeFeedback({ id: "fb-ok", url: "/", annotations: [annotation] }),
+        ],
+        total: 2,
+      });
+      await panel.open();
+      const note = (id: string) => shadow.querySelector<HTMLElement>(`.sp-card [data-lost-for="${id}"]`)!;
+      expect(note("fb-lost").hidden).toBe(false);
+      expect(note("fb-lost").textContent).toBe(t("panel.notOnPage"));
+      expect(note("fb-ok").hidden).toBe(true);
+
+      // The pin comes back (lazy content loaded): the note goes on the next placement.
+      markers.isLost.mockReturnValue(false);
+      bus.emit("markers:placed");
+      expect(note("fb-lost").hidden).toBe(true);
+
+      markers.isLost.mockReturnValue(true);
+      shadow.querySelector<HTMLElement>('.sp-card[data-feedback-id="fb-ok"]')!.click();
+      const detailNote = shadow.querySelector<HTMLElement>('.sp-detail [data-lost-for="fb-ok"]')!;
+      expect(detailNote.hidden).toBe(false);
+      markers.isLost.mockReturnValue(false);
+      bus.emit("markers:placed");
+      expect(detailNote.hidden).toBe(true);
+    });
   });
 
   // -------------------------------------------------------------------------
