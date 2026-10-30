@@ -1,0 +1,62 @@
+---
+title: Frameworks
+description: SitePing in SvelteKit, Nuxt, Astro, a Vite SPA or plain HTML — the widget in the browser, one handler on your server, a store behind it.
+---
+
+Every stack has the same two pieces: the [widget](/docs/widget), which runs in the browser, and the [handler](/docs/server) from `@siteping/server`, which serves one URL over a [store](/docs/adapters). Pick your stack:
+
+| Stack | Page |
+|---|---|
+| Next.js | [Quickstart](/docs/quickstart) |
+| SvelteKit | [SvelteKit](/docs/frameworks/sveltekit) |
+| Vue with Nuxt | [Nuxt](/docs/frameworks/nuxt) |
+| Astro | [Astro](/docs/frameworks/astro) |
+| Vue, React or vanilla on Vite, without a server framework | [Vite SPA](/docs/frameworks/vite) |
+| WordPress, Webflow, plain HTML — no bundler | [Script tag](/docs/widget/script-tag) |
+| Hono, Express, Bun, Deno, a Cloudflare Worker | [Server › Mounting](/docs/server#mounting) |
+
+```bash
+npm i @siteping/widget @siteping/server @siteping/adapter-memory
+```
+
+Each page starts on `@siteping/adapter-memory`, which needs no database: feedback lives until the server restarts. Swap in a real store when you are ready — see [Pick a store](#pick-a-store).
+
+## Three rules every stack follows
+
+- **The widget only runs in the browser.** It needs the DOM, so mount it where your framework runs code on the client only: `onMount` in Svelte, a `.client` plugin in Nuxt, a `<script>` in Astro. Importing `@siteping/widget` on the server is fine; calling `initSiteping` there is not.
+- **One URL, five methods.** `createSitepingHandler` returns `GET`, `POST`, `PATCH`, `DELETE` and `OPTIONS`; route all five of one URL to it. The widget and the dashboard talk to that URL.
+- **Build the handler on the first request.** In production, the handler refuses to start without an `apiKey` (or a custom [`access`](/docs/server#custom-access) policy). A production build often imports your routes to analyse them, where the runtime secret isn't set: create the handler lazily, as every page here does, so a missing key fails a request with a clear error instead of failing the build.
+
+With a key, only the widget's submissions skip it: listing needs the key too, so reviewers without it can send feedback but see no pins. To show them pins and threads, add `publicEndpoints: ["GET", "POST", "OPTIONS"]` — anyone with the URL and a project name can then read the feedback, author emails redacted. See [the security model](/docs/server#the-security-model-honestly).
+
+By default the widget shows in development builds only. On a staging site that builds in production mode, pass `forceShow: true` — see [when it shows](/docs/widget#when-the-widget-shows--and-when-it-doesnt).
+
+## Pick a store
+
+The memory store is for trying things out. For feedback that survives a restart, give the handler a store over your database — the rest of your code doesn't change.
+
+**PostgreSQL through Drizzle** — Neon, Supabase, Vercel Postgres or any server, with [`@siteping/adapter-drizzle/pg`](/docs/adapters/drizzle):
+
+```ts
+// Neon over HTTP — swap the `drizzle` import for any other PostgreSQL driver
+import { neon } from "@neondatabase/serverless";
+import { createPgSitepingStore } from "@siteping/adapter-drizzle/pg";
+import { drizzle } from "drizzle-orm/neon-http";
+
+export const store = createPgSitepingStore(drizzle(neon(process.env.DATABASE_URL!)));
+```
+
+**Turso / libSQL through Drizzle** — a Turso database, an embedded replica or a local file:
+
+```ts
+import { createLibSQLSitepingStore } from "@siteping/adapter-drizzle/libsql";
+import { drizzle } from "drizzle-orm/libsql";
+
+export const store = createLibSQLSitepingStore(
+  drizzle({ connection: { url: process.env.TURSO_DATABASE_URL!, authToken: process.env.TURSO_AUTH_TOKEN } }),
+);
+```
+
+Both need the SitePing tables in your Drizzle schema and a migration first — [step 1 of the Drizzle adapter](/docs/adapters/drizzle#1-add-the-tables-to-your-schema) shows the three lines to export.
+
+**Prisma** — [`@siteping/adapter-prisma`](/docs/adapters/prisma), with a CLI that adds the models to your schema.

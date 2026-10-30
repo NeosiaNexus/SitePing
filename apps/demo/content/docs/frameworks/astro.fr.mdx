@@ -1,0 +1,90 @@
+---
+title: Astro
+description: Un endpoint SitePing en route Astro rendue à la demande et le widget dans un script client — avec le cas du ClientRouter.
+---
+
+```bash
+npm i @siteping/widget @siteping/server @siteping/adapter-memory
+```
+
+L'endpoint est rendu à la demande : le site a besoin d'un [adaptateur serveur](https://docs.astro.build/fr/guides/on-demand-rendering/) — `@astrojs/node`, Vercel, Netlify ou Cloudflare. Les pages peuvent rester statiques.
+
+## 1. L'endpoint
+
+```ts
+// src/pages/api/siteping.ts
+import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
+import type { APIRoute } from "astro";
+import { SITEPING_API_KEY } from "astro:env/server";
+
+// Rendue à la demande : le handler répond à chaque requête.
+export const prerender = false;
+
+const store = new MemoryStore();
+
+// Construit à la première requête, pas à l'import : le handler refuse de
+// démarrer en production sans clé.
+let handler: SitepingHandler | undefined;
+const siteping = () => (handler ??= createSitepingHandler({ store, apiKey: SITEPING_API_KEY }));
+
+export const GET: APIRoute = ({ request }) => siteping().GET(request);
+export const POST: APIRoute = ({ request }) => siteping().POST(request);
+export const PATCH: APIRoute = ({ request }) => siteping().PATCH(request);
+export const DELETE: APIRoute = ({ request }) => siteping().DELETE(request);
+export const OPTIONS: APIRoute = ({ request }) => siteping().OPTIONS(request);
+```
+
+Déclarez la clé avec `astro:env`, comme secret serveur : elle est lue au démarrage du serveur, jamais inscrite dans le build.
+
+```js
+// astro.config.mjs
+import node from "@astrojs/node";
+import { defineConfig, envField } from "astro/config";
+
+export default defineConfig({
+  adapter: node({ mode: "standalone" }),
+  env: {
+    schema: {
+      SITEPING_API_KEY: envField.string({ context: "server", access: "secret", optional: true }),
+    },
+  },
+});
+```
+
+## 2. Le widget
+
+Astro compile un `<script>` de composant en module navigateur : le widget ne tourne jamais côté serveur et aucun framework d'interface n'est nécessaire. Placez-le dans votre layout :
+
+```astro
+<!-- src/layouts/Layout.astro -->
+<script>
+  import { initSiteping } from "@siteping/widget";
+
+  initSiteping({ endpoint: "/api/siteping", projectName: "mon-projet" });
+</script>
+```
+
+Lancez `npm run dev` et regardez en bas à droite. Dessinez un rectangle, tapez un commentaire, envoyez : le feedback passe par votre route jusqu'au store.
+
+### Avec `<ClientRouter />`
+
+Le `ClientRouter` remplace tout le `<body>` à chaque navigation, et le widget vit dans le body : monté une fois, il disparaît dès le premier clic. Montez-le à chaque chargement de page et libérez-le avant chaque remplacement :
+
+```astro
+<script>
+  import { initSiteping } from "@siteping/widget";
+
+  let siteping: ReturnType<typeof initSiteping> | undefined;
+  document.addEventListener("astro:page-load", () => {
+    siteping = initSiteping({ endpoint: "/api/siteping", projectName: "mon-projet" });
+  });
+  document.addEventListener("astro:before-swap", () => siteping?.destroy());
+</script>
+```
+
+## Pour aller plus loin
+
+- Un store qui survit aux redémarrages : [Choisir un store](/fr/docs/frameworks#choisir-un-store).
+- Avant la mise en ligne, définissez `SITEPING_API_KEY` et lisez ce qu'elle verrouille — [trois règles communes à toutes les piles](/fr/docs/frameworks#trois-règles-communes-à-toutes-les-piles).
+- Un site statique sans aucun serveur peut quand même recueillir des feedbacks dans le navigateur — [la version sans serveur](/fr/docs/quickstart#sans-serveur).

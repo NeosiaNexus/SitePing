@@ -1,0 +1,79 @@
+---
+title: SPA Vite
+description: Le widget dans une app Vue, React ou vanilla construite avec Vite, qui parle à un endpoint SitePing sur votre serveur d'API.
+---
+
+Une application monopage n'a pas de serveur à elle : l'endpoint vit sur votre serveur d'API, et Vite le relaie en développement pour que le widget l'appelle sur la même origine.
+
+```bash
+npm i @siteping/widget
+npm i @siteping/server @siteping/adapter-memory # sur le serveur d'API
+```
+
+## 1. Le widget
+
+Appelez `initSiteping` une seule fois, dans votre fichier d'entrée — il ne s'exécute que dans le navigateur. Le widget suit seul la navigation côté client : il n'a pas sa place dans un composant qui se monte et se démonte.
+
+```ts
+// src/main.ts (Vue)
+import { initSiteping } from "@siteping/widget";
+import { createApp } from "vue";
+import App from "./App.vue";
+
+createApp(App).mount("#app");
+
+initSiteping({ endpoint: "/api/siteping", projectName: "mon-projet" });
+```
+
+Le même appel fonctionne après `createRoot(...).render(...)` en React, ou seul en TypeScript vanilla. Une app React peut aussi utiliser [le hook `useSiteping`](/fr/docs/widget#react).
+
+## 2. L'endpoint
+
+Montez le handler sur votre serveur d'API. Avec Hono sur Node :
+
+```ts
+// server.ts
+import { serve } from "@hono/node-server";
+import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler } from "@siteping/server";
+import { Hono } from "hono";
+
+const siteping = createSitepingHandler({ store: new MemoryStore(), apiKey: process.env.SITEPING_API_KEY });
+
+const app = new Hono();
+app.on(["GET", "POST", "PATCH", "DELETE", "OPTIONS"], "/api/siteping", (c) => {
+  // Hono exécute aussi les routes GET pour HEAD, une méthode que SitePing ne sert pas.
+  const handle = siteping[c.req.method as keyof typeof siteping];
+  return handle ? handle(c.req.raw) : c.body(null, 405, { Allow: "GET, POST, PATCH, DELETE, OPTIONS" });
+});
+
+serve({ fetch: app.fetch, port: 8787 });
+```
+
+Express, Bun, Deno et les Workers sont dans [Serveur › Le montage](/fr/docs/server#le-montage).
+
+## 3. Le proxy
+
+```ts
+// vite.config.ts
+import vue from "@vitejs/plugin-vue";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [vue()],
+  server: {
+    // Même origine en développement : le serveur d'API tourne à côté de Vite.
+    proxy: { "/api": "http://localhost:8787" },
+  },
+});
+```
+
+Démarrez les deux serveurs (`node server.ts` et `npm run dev`) et regardez en bas à droite. Dessinez un rectangle, tapez un commentaire, envoyez : le feedback passe par le proxy jusqu'à votre endpoint.
+
+En production, servez l'app et l'API depuis une même origine, ou pointez `endpoint` sur l'URL complète de l'API et listez l'origine de l'app dans `allowedOrigins` du handler — voir [un backend sur une autre origine](/fr/docs/widget/script-tag#un-backend-sur-une-autre-origine).
+
+## Pour aller plus loin
+
+- Un store qui survit aux redémarrages : [Choisir un store](/fr/docs/frameworks#choisir-un-store).
+- Aucun backend — prototypes, démos : [la version sans serveur](/fr/docs/quickstart#sans-serveur).
+- Avant la mise en ligne, définissez `SITEPING_API_KEY` et lisez ce qu'elle verrouille — [trois règles communes à toutes les piles](/fr/docs/frameworks#trois-règles-communes-à-toutes-les-piles).
