@@ -2,8 +2,10 @@ import { MemoryStore } from "@siteping/adapter-memory";
 import {
   ANCHOR_ELEMENT_ID_MAX,
   ANCHOR_ELEMENT_TAG_MAX,
+  CLIENT_ID_MAX_LENGTH,
   type FeedbackRecord,
   IDENTITY_FIELD_MAX_LENGTH,
+  PROJECT_NAME_MAX_LENGTH,
 } from "@siteping/core";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_MAX_BODY_BYTES, MAX_VALIDATION_ISSUES } from "../src/constants.js";
@@ -272,7 +274,7 @@ describe("createSitepingHandler — request body size", () => {
       },
     };
     return {
-      projectName: text(200),
+      projectName: text(PROJECT_NAME_MAX_LENGTH),
       type: "question",
       message: text(5000),
       url: text(2000),
@@ -282,7 +284,7 @@ describe("createSitepingHandler — request body size", () => {
       authorName: text(IDENTITY_FIELD_MAX_LENGTH),
       authorEmail: `${text(64)}@${text(63)}.${text(63)}.de`,
       annotations: Array.from({ length: 50 }, () => annotation),
-      clientId: text(200),
+      clientId: text(CLIENT_ID_MAX_LENGTH),
       screenshotDataUrl: `data:image/jpeg;base64,${text(1_500_000 - 23)}`,
       screenshotRegion: { xPct: 0, yPct: 0, wPct: 1, hPct: 1 },
       diagnostics: {
