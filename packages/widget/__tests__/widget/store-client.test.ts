@@ -5,6 +5,7 @@ import {
   type FeedbackCreateInput,
   type FeedbackPayload,
   type FeedbackRecord,
+  SitepingAuthError,
   SitepingError,
   type SitepingStore,
   StoreDuplicateError,
@@ -434,6 +435,18 @@ describe("StoreClient", () => {
         status: undefined,
         search: undefined,
       });
+    });
+
+    // The HTTP client's publicEndpoints advice (#280) is about the endpoint's
+    // policy; a store's own refusal is surfaced as is, with no console note.
+    it("surfaces a store's auth refusal without the HTTP client's console advice", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const refusal = new SitepingAuthError("not allowed", 401);
+      vi.mocked(store.getFeedbacks).mockRejectedValue(refusal);
+
+      await expect(client.getFeedbacks("my-project")).rejects.toBe(refusal);
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
 
     it("serializes dates in returned feedbacks", async () => {
