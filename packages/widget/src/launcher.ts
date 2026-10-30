@@ -19,7 +19,12 @@ import { NetworkBuffer } from "./diagnostics/network-buffer.js";
 import { EventBus, type WidgetEvents } from "./events.js";
 import { Fab } from "./fab.js";
 import { createFocusTracker } from "./focus-tracker.js";
-import { installHostIsolationGuard, isolateFromHost, registerEscapeLayer } from "./host-isolation.js";
+import {
+  addSurfaceKeydownListener,
+  installHostIsolationGuard,
+  isolateFromHost,
+  registerEscapeLayer,
+} from "./host-isolation.js";
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
 import { getIdentity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
@@ -966,7 +971,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
     const stopKeyboardTracking = trackKeyboardInset((inset) => modal.style.setProperty("--sp-kb", `${inset}px`));
 
     const closeModal = (result: SitepingIdentity | null) => {
-      backdrop.removeEventListener("keydown", onKeydown);
+      removeKeydown();
       unregisterEscapeLayer();
       stopKeyboardTracking();
       backdrop.classList.remove("sp-identity--open");
@@ -1009,8 +1014,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
 
     // Focus trap: cycle Tab/Shift+Tab within the modal
     const focusableSelectors = 'input, button, [tabindex]:not([tabindex="-1"])';
-    const onKeydown = (e: Event) => {
-      const ke = e as KeyboardEvent;
+    const onKeydown = (ke: KeyboardEvent) => {
       if (ke.key === "Escape") {
         // Cancel the prompt only — opened from a thread, the panel's detail view stays.
         ke.stopPropagation();
@@ -1037,7 +1041,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
         }
       }
     };
-    backdrop.addEventListener("keydown", onKeydown);
+    const removeKeydown = addSurfaceKeydownListener(backdrop, onKeydown);
     const unregisterEscapeLayer = registerEscapeLayer(backdrop, () => true);
 
     // Close on backdrop click

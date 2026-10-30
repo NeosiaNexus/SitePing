@@ -19,14 +19,18 @@
  *   before the surface: capture-phase ones on `document`, and the `focusout`
  *   fired on the host element that focus leaves for the widget. It acts only
  *   while a host modal is open, so a page without one keeps every event.
+ *   Tab is one of them: the widget's traps register through
+ *   {@link addSurfaceKeydownListener}, so the guard runs them first and a
+ *   host's capture-phase trap never sees the key.
  *
  * Known limits: a native `<dialog>` opened with `showModal()` makes the rest
  * of the page inert with no attribute to undo, and capture-phase host
- * listeners for `mousedown`, `touchstart`, `click` or Tab still see the
- * widget's events (its own listeners need them). So do capture-phase key
- * listeners on `window` or `document` for the keys typed in a widget field:
- * the surface stops those keys in the bubble phase only, which covers the
- * usual shortcut handlers.
+ * listeners for `mousedown`, `touchstart` or `click` still see the widget's
+ * events (its own listeners need them). So do capture-phase key listeners on
+ * `window` or `document` for the keys typed in a widget field (the surface
+ * stops those keys in the bubble phase only, which covers the usual shortcut
+ * handlers), and a host's own capture-phase listeners on `window` registered
+ * before the widget, which run ahead of the guard.
  */
 
 /** Events a host modal reads as an outside interaction, or cancels (wheel scroll locks). */
@@ -52,6 +56,8 @@ const ownInert = new WeakSet<Element>();
 const shadowRoots = new WeakMap<Element, ShadowRoot>();
 /** Open-state predicates of the widget layers that close on Escape, by the node they listen on. */
 const escapeLayers = new WeakMap<Node, Set<() => boolean>>();
+/** Widget `keydown` listeners that handle Tab, by the node they listen on. */
+const tabListeners = new WeakMap<Node, Set<(event: KeyboardEvent) => void>>();
 
 /** Parent of `node`, crossing from a shadow root to its host. */
 const composedParent = (node: Node): Node | null => (node instanceof ShadowRoot ? node.host : node.parentNode);
@@ -143,6 +149,31 @@ export function registerEscapeLayer(scope: Node, isOpen: () => boolean): () => v
 }
 
 /**
+ * Listen for `keydown` on a widget node — an element of a surface, or the
+ * shadow root — with a listener that handles Tab (a focus trap). It runs like
+ * any listener; and while a host modal is open, the guard runs it for a Tab
+ * from `window` in the capture phase, then hides that Tab from the page: a
+ * host trap listening on `document` in the capture phase (focus-trap,
+ * Headless UI) would otherwise move focus back into its dialog first.
+ * `check:consistency` rejects a Tab-handling listener added any other way.
+ *
+ * @returns Cleanup removing the listener.
+ */
+export function addSurfaceKeydownListener(target: Node, listener: (event: KeyboardEvent) => void): () => void {
+  let listeners = tabListeners.get(target);
+  if (!listeners) {
+    listeners = new Set();
+    tabListeners.set(target, listeners);
+  }
+  listeners.add(listener);
+  target.addEventListener("keydown", listener as EventListener);
+  return () => {
+    listeners.delete(listener);
+    target.removeEventListener("keydown", listener as EventListener);
+  };
+}
+
+/**
  * A host modal is open: an `aria-modal="true"` element is rendered and visible
  * outside the widget, or `<body>` is click-through (how Radix / shadcn modals
  * disable the rest of the page). A `visibility: hidden` element still has
@@ -216,14 +247,19 @@ export function installHostIsolationGuard(): () => void {
     }
   };
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (
-      event.key === "Escape" &&
-      isSurfaceTarget(event.target) &&
-      isHostModalOpen() &&
-      willWidgetConsumeEscape(event)
-    ) {
-      event.preventDefault();
+    if (event.key !== "Tab" && event.key !== "Escape") return;
+    if (!isSurfaceTarget(event.target) || !isHostModalOpen()) return;
+    if (event.key === "Escape") {
+      if (willWidgetConsumeEscape(event)) event.preventDefault();
+      return;
     }
+    // Tab: run the widget's traps now, innermost first as the event would
+    // reach them, then stop it — the browser still moves focus by default
+    // when no trap prevented it, but no page listener sees the key.
+    for (let node = focusedTarget(event); node; node = composedParent(node)) {
+      for (const listener of [...(tabListeners.get(node) ?? [])]) listener(event);
+    }
+    event.stopImmediatePropagation();
   };
   const listeners = [
     ["pointerdown", hideFromHost],
