@@ -1212,8 +1212,11 @@ describe("Panel", () => {
 
       panel.showFeedback("fb-2");
 
-      expect(shadow.querySelector(".sp-detail")?.classList.contains("sp-detail--visible")).toBe(true);
-      expect(shadow.querySelector(".sp-detail-title")?.textContent).toBe(t("detail.title").replace("{number}", "2"));
+      // Told apart by message: both fixtures take `new Date()`, so whether
+      // they share a millisecond decides the sort, and with it the numbers.
+      const detail = shadow.querySelector(".sp-detail");
+      expect(detail?.classList.contains("sp-detail--visible")).toBe(true);
+      expect(detail?.textContent).toContain("Second one");
     });
 
     it("waits for a list still loading, then opens the detail view", async () => {
