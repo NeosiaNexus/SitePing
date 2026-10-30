@@ -7,7 +7,7 @@ description: Les questions que tout le monde pose, répondues d'après le compor
 
 Par ordre de probabilité :
 
-1. **Vous êtes dans un build de production.** Le widget passe son tour quand `NODE_ENV` vaut `production` (seul `process.env.NODE_ENV` est lu). Passez `forceShow: true` en staging, ou vérifiez avec `onSkip`.
+1. **Vous êtes dans un build de production.** Le widget passe son tour quand `NODE_ENV` vaut `production` (seul `process.env.NODE_ENV` est lu). Sans bundler, comme avec le [bundle `<script>`](/fr/docs/widget/script-tag), tout hôte autre que `localhost` compte comme de la production. Passez `forceShow: true` en staging, ou vérifiez avec `onSkip`.
 2. **Config invalide** — un `endpoint`/`store` ou un `projectName` manquant affiche un `console.error` et ne monte rien. Ce cas ne déclenche *pas* `onSkip`, donc ouvrez la console.
 3. **Il est déjà monté.** Un second `initSiteping()` renvoie un handle sur le widget existant au lieu d'un deuxième bouton, et sa config est ignorée.
 4. **La fenêtre est plus étroite que votre `minViewportWidth`.** Seulement si vous en avez défini un — par défaut le widget s'affiche à toutes les largeurs, téléphones compris (avant la 0.11, le défaut était 768 px). `onSkip("mobile")` vous le dit.
@@ -22,7 +22,7 @@ Licence MIT, aucune offre payante, aucune télémétrie. Vous hébergez un endpo
 
 ## Quels frameworks fonctionnent ?
 
-- **Widget :** n'importe quel site — c'est un simple script (ESM, CJS ou un `<script>` global). Un hook React (`@siteping/widget/react`) est inclus.
+- **Widget :** n'importe quel site — c'est un simple script (ESM, CJS ou un [`<script>` global](/fr/docs/widget/script-tag)). Un hook React (`@siteping/widget/react`) est inclus.
 - **Serveur :** l'adapter renvoie des handlers standard `Request` → `Response` — Next.js, Remix, SvelteKit, Hono, … Le générateur de route du CLI vise spécifiquement l'App Router de Next.js ; les autres frameworks montent les handlers manuellement.
 - **Dashboard :** React 18 ou 19.
 

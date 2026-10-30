@@ -10,7 +10,8 @@
 //      BUILTIN_LOCALES;
 //   3. a non-private packages/* package is missing from the release-please
 //      config/manifest, or a manifest package is missing its release.yml
-//      wiring (output + publish job);
+//      wiring (output + publish job) or its line in the root CHANGELOG.md
+//      index;
 //   4. a published package's build script forgot the fix-dts chain its
 //      declarations need (cli is exempt: it ships no .d.ts);
 //   5. the root esbuild override drifted from the widget's esbuild spec;
@@ -26,7 +27,9 @@
 //      follows that floor did not move with it (adapter scaffold, oldest CI
 //      node-compat lane, publish jobs' Node, demo runtime image, docs and
 //      README "Node N+" claims);
-//  10. a widget `keydown` listener that handles Tab is added with a plain
+//  10. a published package's peer range admits versions without an upper
+//      bound (`>=18`, `*`) — majors CI never ran.
+//  11. a widget `keydown` listener that handles Tab is added with a plain
 //      addEventListener instead of addSurfaceKeydownListener, so a host
 //      modal's capture-phase focus trap would take the Tab first.
 
@@ -144,6 +147,7 @@ for (const file of [
 const manifest = JSON.parse(read(".release-please-manifest.json"));
 const releaseConfig = JSON.parse(read("release-please-config.json"));
 const releaseYml = read(".github/workflows/release.yml");
+const changelogIndex = read("CHANGELOG.md");
 
 for (const dir of readdirSync(join(root, "packages"))) {
   const pkgJsonPath = join(root, "packages", dir, "package.json");
@@ -168,6 +172,9 @@ for (const pkgPath of Object.keys(manifest)) {
   }
   if (!releaseYml.includes(`${pkgPath}/dist/`)) {
     errors.push(`${pkgPath}/dist/ is missing from the release.yml build artifact paths`);
+  }
+  if (!changelogIndex.includes(`(./${pkgPath}/CHANGELOG.md)`)) {
+    errors.push(`${pkgPath} is missing from the root CHANGELOG.md index`);
   }
 }
 
@@ -356,7 +363,31 @@ if (!floorMajor) {
   }
 }
 
-// --- 10. Widget Tab traps go through addSurfaceKeydownListener -------------
+// --- 10. Peer ranges stop at the last major CI exercises ----------------------
+
+// A peer range is a promise that every version it admits works. Without an
+// upper bound (`>=18`, `*`) it covers majors nobody has run, and widening one
+// later is a minor while narrowing it is a major (the versioning policy):
+// each `||` alternative must be capped — `^x`, `~x`, `x.y.z`, `x.x`, or a
+// range with `<`. Raise the cap when CI runs the next major.
+const UNBOUNDED_ALTERNATIVE = /^(?:\*|x|latest|>=?\s*[\d.x*]+(?:-[\w.]+)?)$/i;
+for (const pkgPath of Object.keys(manifest)) {
+  const pkg = JSON.parse(read(`${pkgPath}/package.json`));
+  for (const [name, spec] of Object.entries(pkg.peerDependencies ?? {})) {
+    if (spec.startsWith("workspace:")) continue;
+    const unbounded = spec
+      .split("||")
+      .map((alternative) => alternative.trim())
+      .filter((alt) => UNBOUNDED_ALTERNATIVE.test(alt));
+    if (unbounded.length > 0) {
+      errors.push(`${pkgPath} peerDependencies "${name}": "${spec}" has no upper bound (${unbounded.join(", ")})`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+// --- 11. Widget Tab traps go through addSurfaceKeydownListener -------------
 // A `keydown` listener that handles Tab must be added with
 // `addSurfaceKeydownListener` (host-isolation.ts): the guard then runs it
 // ahead of a host modal's capture-phase focus trap. A plain

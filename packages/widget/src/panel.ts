@@ -9,12 +9,22 @@ import {
   isClosedStatus,
   MAX_PAGE_LIMIT,
   type PageScope,
+  type SitepingIdentity,
   type SitepingPanelAction,
 } from "@siteping/core";
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
 import { SegmentedControl } from "./components/segmented-control.js";
 import { PAGE_SIZE } from "./constants.js";
-import { el, formatRelativeDate, onClickOutside, parseSvg, setButtonLoading, setHidden, setText } from "./dom-utils.js";
+import {
+  el,
+  formatRelativeDate,
+  onClickOutside,
+  parseSvg,
+  setButtonLoading,
+  setHidden,
+  setInert,
+  setText,
+} from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
 import { addSurfaceKeydownListener, registerEscapeLayer } from "./host-isolation.js";
@@ -34,7 +44,6 @@ import {
   ICON_UNDO,
   ICON_USER,
 } from "./icons.js";
-import type { Identity } from "./identity.js";
 import type { MarkerManager } from "./markers.js";
 import type { OwnFeedback } from "./own-feedback.js";
 import { normalizePanelActions } from "./panel-actions.js";
@@ -88,6 +97,8 @@ export class Panel {
    * once that load renders, dropped if the panel closes meanwhile.
    */
   private pendingScrollId: string | null = null;
+  /** Whether the pending scroll also opens the card's detail view (see `showFeedback`). */
+  private pendingDetail = false;
   /** Tracks feedback IDs with in-flight mutations to prevent spam-click race conditions */
   private pendingMutations = new Set<string>();
   /** Whether the backend takes replies — advertised by the last list response. */
@@ -97,7 +108,7 @@ export class Panel {
   /** Reviewer mode (`config.readOnly`): no triage action, whatever the server allows. */
   private readonly readOnly: boolean;
   /** The visitor a reply is posted as — `null` when they dismiss the identity prompt. */
-  private readonly resolveIdentity: () => Promise<Identity | null>;
+  private readonly resolveIdentity: () => Promise<SitepingIdentity | null>;
 
   // New feature modules
   private readonly stats: PanelStats;
@@ -136,7 +147,7 @@ export class Panel {
       scopeAnnotationsByUrl: boolean;
       panelActions?: readonly SitepingPanelAction[] | undefined;
       ownFeedback?: Pick<OwnFeedback, "ids" | "remove"> | undefined;
-      resolveIdentity?: () => Promise<Identity | null>;
+      resolveIdentity?: () => Promise<SitepingIdentity | null>;
       readOnly?: boolean | undefined;
     },
   ) {
@@ -155,6 +166,8 @@ export class Panel {
     this.root.setAttribute("role", "complementary");
     this.root.setAttribute("aria-label", this.t("panel.ariaLabel"));
     this.root.setAttribute("aria-hidden", "true");
+    // Slid off-screen while closed, but still rendered: out of the tab order.
+    setInert(this.root, true);
 
     // --- Header ---
     const header = el("div", { class: "sp-panel-header" });
@@ -190,7 +203,7 @@ export class Panel {
     header.appendChild(headerRight);
 
     // --- Stats ---
-    this.stats = new PanelStats(colors, this.t);
+    this.stats = new PanelStats(this.t);
 
     // --- Filters ---
     const filters = el("div", { class: "sp-filters" });
@@ -221,7 +234,7 @@ export class Panel {
     filterBar.appendChild(this.buildMineToggle());
 
     // Sort controls
-    this.sortControls = new PanelSortControls(colors, () => this.renderList(), this.t);
+    this.sortControls = new PanelSortControls(() => this.renderList(), this.t);
 
     filters.appendChild(searchWrap);
     filters.appendChild(filterBar);
@@ -465,17 +478,30 @@ export class Panel {
           }
           return true;
         };
+        // The topmost open layer covers the rest of the panel, so Tab cycles
+        // inside it: the help overlay, else the detail view, else the panel.
+        // Closed layers are `inert` (the browser skips them; the walk below
+        // must too, or `first`/`last` land on a control Tab never reaches).
+        const scope = this.shortcuts.isHelpVisible
+          ? this.shortcuts.helpOverlay
+          : this.detail.isVisible
+            ? this.detail.element
+            : this.root;
         const focusable = Array.from(
-          this.root.querySelectorAll<HTMLElement>(
+          scope.querySelectorAll<HTMLElement>(
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
           ),
-        ).filter((el) => isVisible(el) && !el.hasAttribute("disabled"));
+        ).filter((el) => isVisible(el) && !el.hasAttribute("disabled") && !el.closest("[inert]"));
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (!first || !last) return;
         const active = (shadowRoot as ShadowRoot).activeElement;
-        if (ke.shiftKey && active === first) {
+        if (!active || !scope.contains(active)) {
+          // Focus behind the open layer (or nowhere) re-enters it.
+          ke.preventDefault();
+          (ke.shiftKey ? last : first).focus();
+        } else if (ke.shiftKey && active === first) {
           ke.preventDefault();
           last.focus();
         } else if (!ke.shiftKey && active === last) {
@@ -509,6 +535,7 @@ export class Panel {
     this.root.classList.add("sp-panel--open");
     this.scrim.classList.add("sp-scrim--open");
     this.root.setAttribute("aria-hidden", "false");
+    setInert(this.root, false);
     this.bus.emit("open");
     this.shortcuts.enable(this.shadowRoot);
     await this.loadFeedbacks();
@@ -525,10 +552,12 @@ export class Panel {
     this.root.classList.remove("sp-panel--open");
     this.scrim.classList.remove("sp-scrim--open");
     this.root.setAttribute("aria-hidden", "true");
+    setInert(this.root, true);
     this.bus.emit("close");
     this.shortcuts.disable();
     this.detail.hide();
     this.pendingScrollId = null;
+    this.pendingDetail = false;
     // Restore focus to the FAB
     const fab = (this.root.getRootNode() as ShadowRoot).querySelector<HTMLButtonElement>(".sp-fab");
     fab?.focus();
@@ -685,7 +714,7 @@ export class Panel {
       this.stats.update(feedbacks, total);
       this.bulk.reset();
       this.renderList();
-      if (this.pendingScrollId) this.flashCard(this.pendingScrollId);
+      if (this.pendingScrollId) this.flashCard(this.pendingScrollId, this.pendingDetail);
       if (listIsMarkerQuery) this.renderPageMarkers(feedbacks, scope);
     } catch (error) {
       if (signal.aborted) return; // Expected abort, not a real error
@@ -696,6 +725,7 @@ export class Panel {
       if (!signal.aborted) {
         this.isLoading = false;
         this.pendingScrollId = null;
+        this.pendingDetail = false;
       }
     }
   }
@@ -850,7 +880,7 @@ export class Panel {
       const groups = groupFeedbacksByPage(sorted);
       let globalIndex = 0;
       for (const [pagePath, groupFeedbacks] of groups) {
-        const groupHeader = createPageGroupHeader(pagePath, groupFeedbacks.length, this.colors);
+        const groupHeader = createPageGroupHeader(pagePath, groupFeedbacks.length);
         this.listContainer.appendChild(groupHeader);
 
         const groupContent = el("div", { class: "sp-group-content" });
@@ -896,15 +926,13 @@ export class Panel {
     card.setAttribute("role", "listitem");
     card.setAttribute("tabindex", "0");
     // Same accessible name as the feedback's pin, status included.
-    card.setAttribute(
-      "aria-label",
-      tWithParams(this.t, "marker.aria", {
-        number,
-        type: getTypeLabel(feedback.type, this.t),
-        status: getStatusLabel(feedback.status, this.t),
-        message: feedback.message.slice(0, 80),
-      }),
-    );
+    const label = tWithParams(this.t, "marker.aria", {
+      number,
+      type: getTypeLabel(feedback.type, this.t),
+      status: getStatusLabel(feedback.status, this.t),
+      message: feedback.message.slice(0, 80),
+    });
+    card.setAttribute("aria-label", label);
     card.dataset.feedbackId = feedback.id;
     // Display (sort-order) number — the detail title must match the card's #.
     card.dataset.number = String(number);
@@ -920,7 +948,7 @@ export class Panel {
     const header = el("div", { class: "sp-card-header" });
 
     // Bulk checkbox — inline in the header row, when a bulk action can reach the card
-    if (this.selectable(feedback)) header.appendChild(this.bulk.createCheckbox(feedback.id));
+    if (this.selectable(feedback)) header.appendChild(this.bulk.createCheckbox(feedback.id, label));
 
     const num = el("span", { class: "sp-card-number" });
     setText(num, `#${number}`);
@@ -1200,36 +1228,36 @@ export class Panel {
         value: "all",
         label: this.t("panel.filterAll"),
         icon: ICON_LAYERS,
-        color: this.colors.accent,
-        bg: this.colors.accentLight,
+        color: "var(--sp-accent)",
+        bg: "var(--sp-accent-light)",
       },
       {
         value: "question",
         label: this.t("type.question"),
         icon: ICON_QUESTION,
-        color: this.colors.typeQuestion,
-        bg: this.colors.typeQuestionBg,
+        color: "var(--sp-type-question)",
+        bg: "var(--sp-type-question-bg)",
       },
       {
         value: "change",
         label: this.t("type.change"),
         icon: ICON_CHANGE,
-        color: this.colors.typeChange,
-        bg: this.colors.typeChangeBg,
+        color: "var(--sp-type-change)",
+        bg: "var(--sp-type-change-bg)",
       },
       {
         value: "bug",
         label: this.t("type.bug"),
         icon: ICON_BUG,
-        color: this.colors.typeBug,
-        bg: this.colors.typeBugBg,
+        color: "var(--sp-type-bug)",
+        bg: "var(--sp-type-bug-bg)",
       },
       {
         value: "other",
         label: this.t("type.other"),
         icon: ICON_OTHER,
-        color: this.colors.typeOther,
-        bg: this.colors.typeOtherBg,
+        color: "var(--sp-type-other)",
+        bg: "var(--sp-type-other-bg)",
       },
     ];
 
@@ -1359,23 +1387,23 @@ export class Panel {
           value: "all",
           label: this.t("panel.statusAll"),
           icon: ICON_LAYERS,
-          color: this.colors.accent,
-          bg: this.colors.accentLight,
+          color: "var(--sp-accent)",
+          bg: "var(--sp-accent-light)",
         },
         {
           value: "open",
           label: this.t("panel.statusOpen"),
           icon: ICON_DOT_OPEN,
-          color: this.colors.statusOpen,
-          bg: this.colors.statusOpenBg,
+          color: "var(--sp-status-open)",
+          bg: "var(--sp-status-open-bg)",
         },
         {
           // Filters the closed bucket (resolved + wont_fix): labelled "Closed".
           value: "resolved",
           label: this.t("panel.statusClosed"),
           icon: ICON_CHECK,
-          color: this.colors.statusResolved,
-          bg: this.colors.statusResolvedBg,
+          color: "var(--sp-status-resolved)",
+          bg: "var(--sp-status-resolved-bg)",
         },
       ],
       value: "all",
@@ -1459,17 +1487,27 @@ export class Panel {
     card?.querySelector<HTMLElement>(selector)?.click();
   }
 
-  scrollToFeedback(feedbackId: string): void {
+  scrollToFeedback(feedbackId: string, openDetail = false): void {
     // The rendered cards are about to be replaced (or not rendered yet, when
     // the marker click opened the panel): wait for the load to render them.
     if (this.isLoading) {
       this.pendingScrollId = feedbackId;
+      this.pendingDetail = openDetail;
       return;
     }
-    this.flashCard(feedbackId);
+    this.flashCard(feedbackId, openDetail);
   }
 
-  private flashCard(feedbackId: string): void {
+  /**
+   * Scroll to a feedback's card and open its detail view, where its thread
+   * is — what a deep link to it asks for (#381). Does nothing when the card
+   * isn't in the list the panel shows.
+   */
+  showFeedback(feedbackId: string): void {
+    this.scrollToFeedback(feedbackId, true);
+  }
+
+  private flashCard(feedbackId: string, openDetail: boolean): void {
     const escapedId = CSS.escape(feedbackId);
     const card = this.listContainer.querySelector<HTMLElement>(`[data-feedback-id="${escapedId}"]`);
     if (card) {
@@ -1485,7 +1523,7 @@ export class Panel {
       // Phones: the sheet hides the pin that was tapped — open its details
       // rather than leaving the user to find the card in the list.
       const feedback = this.feedbacks.find((f) => f.id === feedbackId);
-      if (feedback && isCompactViewport()) this.detail.show(feedback, Number(card.dataset.number));
+      if (feedback && (openDetail || isCompactViewport())) this.detail.show(feedback, Number(card.dataset.number));
     }
   }
 
