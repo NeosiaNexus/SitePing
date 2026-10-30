@@ -94,6 +94,8 @@ export class Annotator {
    */
   private instantMode = false;
   private popup: Popup;
+  /** The palette changed mid-session: rebuild the popup once the session ends. */
+  private stalePopup = false;
   private savedOverflow = "";
   private preActiveFocusElement: Element | null = null;
   /**
@@ -146,6 +148,19 @@ export class Annotator {
    */
   refreshLabels(): void {
     this.popup.refreshLabels();
+  }
+
+  /**
+   * Rebuild the long-lived popup from the palette, after an `auto` theme
+   * followed the OS. Mid-session it waits for the session to end, so a form
+   * never changes under the visitor; the toolbar and overlay are rebuilt on
+   * every activation anyway.
+   */
+  restyle(): void {
+    this.stalePopup = this.isActive || this.popup.isOpen;
+    if (this.stalePopup) return;
+    this.popup.destroy();
+    this.popup = new Popup(this.colors, this.t);
   }
 
   /**
@@ -394,6 +409,7 @@ export class Annotator {
     }
 
     this.bus.emit("annotation:end");
+    if (this.stalePopup) this.restyle();
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {

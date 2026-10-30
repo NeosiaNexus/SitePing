@@ -75,10 +75,20 @@ function darkenHex(hex: string, amount: number): string {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
+const DARK_QUERY = "(prefers-color-scheme: dark)";
+
 /** Detect if user prefers dark mode via media query */
 function prefersDark(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia(DARK_QUERY).matches;
+}
+
+/** Call `onChange` whenever the OS color scheme flips; returns the unsubscribe. */
+export function watchColorScheme(onChange: () => void): () => void {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
+  const query = window.matchMedia(DARK_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
 }
 
 /** Resolve 'auto' theme to 'light' or 'dark' based on system preference */
@@ -252,6 +262,10 @@ export function cssVariables(colors: ThemeColors): string {
     --sp-type-change-bg: ${colors.typeChangeBg};
     --sp-type-bug-bg: ${colors.typeBugBg};
     --sp-type-other-bg: ${colors.typeOtherBg};
+    --sp-status-open: ${colors.statusOpen};
+    --sp-status-open-bg: ${colors.statusOpenBg};
+    --sp-status-resolved: ${colors.statusResolved};
+    --sp-status-resolved-bg: ${colors.statusResolvedBg};
     --sp-radius: 12px;
     --sp-radius-lg: 16px;
     --sp-radius-xl: 20px;

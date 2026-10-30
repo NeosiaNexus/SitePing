@@ -1,11 +1,14 @@
 /**
- * Outgoing webhook notifications for newly-created feedbacks.
+ * Outgoing webhook notifications.
  *
  * Plug a Slack, Discord, or generic HTTP endpoint into `createSitepingHandler`
- * to receive a payload whenever a feedback is successfully persisted. Webhooks
- * are dispatched as fire-and-forget (`void Promise.all(...)`) so a slow or
- * down receiver never blocks the client response — the feedback is already in
- * the DB by the time we dial out.
+ * to receive a payload once a write succeeds: a feedback created (the
+ * default), its status changed, a feedback or a project's feedback deleted,
+ * a reply posted — each webhook picks its `events`, and every delivery names
+ * its event in the `X-Siteping-Event` header. Webhooks are dispatched as
+ * fire-and-forget (`void Promise.all(...)`) so a slow or down receiver never
+ * blocks the client response — the write is already in the DB by the time we
+ * dial out.
  *
  * - **Type-specific formatting**: Slack uses `{ text, blocks }`, Discord uses
  *   `{ content, embeds }`, generic posts the record as JSON (minus `clientId`).
@@ -14,22 +17,60 @@
  *   mention parsing disabled, so a public feedback form can never be turned
  *   into a channel-wide ping or a disguised link.
  * - **Timeout**: 5s by default (overridable per webhook).
- * - **Error handling**: `config.onError(err, feedback.id)` is invoked when
- *   present; otherwise we log a one-liner to `console.warn` so the issue is
- *   surfaced without crashing the request.
+ * - **Error handling**: `config.onError(err, feedbackId, delivery)` is invoked
+ *   when present; otherwise we log a one-liner to `console.warn` so the issue
+ *   is surfaced without crashing the request.
  */
 
-import type {
-  CommentRecord,
-  CommentResponse,
-  FeedbackRecord,
-  FeedbackType,
-  Prettify,
-  Serialized,
+import {
+  type CommentRecord,
+  type CommentResponse,
+  type FeedbackRecord,
+  type FeedbackStatus,
+  type FeedbackType,
+  type Prettify,
+  type Serialized,
+  SitepingConfigError,
 } from "@siteping/core";
+import type { SitepingCreatedComment, SitepingDeletionTarget } from "./options.js";
 
 /** Supported webhook integrations — drives the JSON body shape. */
 export type WebhookType = "slack" | "discord" | "generic";
+
+/**
+ * What a delivery reports — sent as its `X-Siteping-Event` header, and what a
+ * webhook's `events` subscribes to:
+ *
+ * - `feedback.created` — a feedback was stored (never for a replayed `clientId`).
+ * - `feedback.status_changed` — a PATCH set a feedback's status, even the one it had.
+ * - `feedback.deleted` — one feedback, or every feedback of a project, was deleted.
+ * - `comment.created` — a reply was stored (never for a replayed `clientId`).
+ */
+export type WebhookEvent = keyof GenericWebhookEventMap;
+
+/** Every {@link WebhookEvent}, in the order above — e.g. to validate an `X-Siteping-Event` header. */
+export const WEBHOOK_EVENTS = [
+  "feedback.created",
+  "feedback.status_changed",
+  "feedback.deleted",
+  "comment.created",
+] as const satisfies ReadonlyArray<WebhookEvent>;
+
+/** Compile lock: `WEBHOOK_EVENTS` lists every key of {@link GenericWebhookEventMap}. */
+const _everyEventListed: Exclude<WebhookEvent, (typeof WEBHOOK_EVENTS)[number]> extends never ? true : never = true;
+void _everyEventListed;
+
+/** What a webhook receives when it sets no `events`: the creation alone, as before events existed. */
+const DEFAULT_EVENTS: ReadonlyArray<WebhookEvent> = ["feedback.created"];
+
+/** Header naming a delivery's event — set on every request. */
+const EVENT_HEADER = "X-Siteping-Event";
+
+/** What `onError` learns about the failed delivery, beyond the feedback id. */
+export interface WebhookDeliveryInfo {
+  event: WebhookEvent;
+  projectName: string;
+}
 
 /**
  * Outgoing webhook configuration.
@@ -40,18 +81,24 @@ export type WebhookType = "slack" | "discord" | "generic";
  *   Useful for signed-payload schemes (`X-Signature`, bearer tokens, …).
  * - `timeoutMs` — abort the fetch after this many ms: a positive integer of
  *   at most 2,147,483,647, the longest delay a timer holds. Defaults to 5000.
- * - `onError` — invoked with the underlying error and the feedback id when
- *   the dispatch fails (network error, non-2xx, timeout). The webhook is
- *   fire-and-forget, so this is your only chance to observe failures. An
- *   async one is awaited: the delivery `waitUntil` holds covers it, and its
- *   rejection is reported like a throw, never left unhandled.
+ * - `events` — the {@link WebhookEvent}s this webhook receives: a non-empty
+ *   list, defaulting to `["feedback.created"]`, so a webhook set up before
+ *   events existed gets exactly the deliveries it always did.
+ * - `onError` — invoked with the underlying error, the id of the feedback the
+ *   delivery is about (`""` for a project-wide deletion) and the delivery's
+ *   event and project, when the dispatch fails (network error, non-2xx,
+ *   timeout). The webhook is fire-and-forget, so this is your only chance to
+ *   observe failures. An async one is awaited: the delivery `waitUntil` holds
+ *   covers it, and its rejection is reported like a throw, never left
+ *   unhandled.
  */
 export interface WebhookConfig {
   url: string;
   type?: WebhookType;
   headers?: Record<string, string>;
   timeoutMs?: number;
-  onError?: (err: Error, feedbackId: string) => void | Promise<void>;
+  events?: ReadonlyArray<WebhookEvent>;
+  onError?: (err: Error, feedbackId: string, delivery: WebhookDeliveryInfo) => void | Promise<void>;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -70,19 +117,39 @@ function timeoutProblem(timeoutMs: number | undefined): string | null {
   return `timeoutMs must be a positive integer of at most ${TIMER_MAX_DELAY_MS}, got ${timeoutMs}`;
 }
 
+/** Why `events` cannot route deliveries, or `null` when it can (or is unset). */
+function eventsProblem(events: ReadonlyArray<WebhookEvent> | undefined): string | null {
+  if (events === undefined) return null;
+  if (!Array.isArray(events) || events.length === 0) return "events must list at least one event";
+  const unknown = events.find((event) => !(WEBHOOK_EVENTS as ReadonlyArray<string>).includes(event));
+  if (unknown !== undefined)
+    return `unknown event ${JSON.stringify(unknown)} in events (one of ${WEBHOOK_EVENTS.join(", ")})`;
+  return null;
+}
+
 /**
- * Refuse a webhook whose `timeoutMs` no timer holds, when the handler is
+ * Refuse a webhook whose `timeoutMs` no timer holds, or whose `events` would
+ * route nothing (empty) or name no event (a typo), when the handler is
  * created rather than on every delivery.
  *
- * @throws Error naming the webhook by its origin: its path may be a credential.
+ * @throws SitepingConfigError (`CONFIG_WEBHOOK_TIMEOUT_INVALID`) naming the
+ * webhook by its origin: its path may be a credential.
  */
-export function checkWebhookTimeouts(configs: readonly WebhookConfig[]): void {
+export function checkWebhookConfigs(configs: readonly WebhookConfig[]): void {
   for (const config of configs) {
-    const problem = timeoutProblem(config.timeoutMs);
+    const problem = timeoutProblem(config.timeoutMs) ?? eventsProblem(config.events);
     if (problem) {
-      throw new Error(`[siteping] createSitepingHandler: webhook to ${webhookOrigin(config.url)}: ${problem}.`);
+      throw new SitepingConfigError(
+        "CONFIG_WEBHOOK_TIMEOUT_INVALID",
+        `[siteping] createSitepingHandler: webhook to ${webhookOrigin(config.url)}: ${problem}.`,
+      );
     }
   }
+}
+
+/** Whether `config` receives `event`'s deliveries. */
+export function subscribesTo(config: WebhookConfig, event: WebhookEvent): boolean {
+  return (config.events ?? DEFAULT_EVENTS).includes(event);
 }
 
 /** Decimal RGB colour table used by Discord embeds — keyed by feedback type. */
@@ -154,6 +221,54 @@ type GenericWebhookBody = Omit<FeedbackRecord, "clientId" | "comments"> & {
   comments?: Omit<CommentRecord, "clientId">[] | undefined;
 };
 
+/**
+ * Generic body of `feedback.deleted` — what was deleted, as the `onDeleting`
+ * and `onDeleted` hooks receive it: `{ kind: "single", id, projectName }` for
+ * one feedback, `{ kind: "project", projectName }` for a `deleteAll`, which
+ * fires even when the project held nothing (stores report no count).
+ */
+export type GenericWebhookDeletionPayload = SitepingDeletionTarget;
+
+/**
+ * Generic body of `comment.created` — the stored comment as the receiver
+ * parses it (`createdAt` an ISO string, `clientId` stripped), plus the
+ * project its feedback belongs to. The author's email is unredacted, like
+ * the feedback's in {@link GenericWebhookPayload}.
+ */
+export type GenericWebhookCommentPayload = Prettify<Serialized<Omit<SitepingCreatedComment, "clientId">>>;
+
+/**
+ * The generic body of each {@link WebhookEvent} — what a `"generic"` receiver
+ * parses, read from its `X-Siteping-Event` header. `feedback.created` and
+ * `feedback.status_changed` both carry the feedback as stored after the write.
+ */
+export interface GenericWebhookEventMap {
+  "feedback.created": GenericWebhookPayload;
+  "feedback.status_changed": GenericWebhookPayload;
+  "feedback.deleted": GenericWebhookDeletionPayload;
+  "comment.created": GenericWebhookCommentPayload;
+}
+
+/** One notification: its event and the record it is about. */
+export type WebhookDelivery =
+  | { event: "feedback.created" | "feedback.status_changed"; feedback: FeedbackRecord }
+  | { event: "feedback.deleted"; target: SitepingDeletionTarget }
+  | { event: "comment.created"; comment: SitepingCreatedComment };
+
+/** The feedback id and project a delivery is about — `""` for a project-wide deletion. */
+export function deliverySubject(delivery: WebhookDelivery): { feedbackId: string; projectName: string } {
+  switch (delivery.event) {
+    case "feedback.deleted":
+      return delivery.target.kind === "single"
+        ? { feedbackId: delivery.target.id, projectName: delivery.target.projectName }
+        : { feedbackId: "", projectName: delivery.target.projectName };
+    case "comment.created":
+      return { feedbackId: delivery.comment.feedbackId, projectName: delivery.comment.projectName };
+    default:
+      return { feedbackId: delivery.feedback.id, projectName: delivery.feedback.projectName };
+  }
+}
+
 /** Mapping from webhook type to its concrete body shape. */
 export interface WebhookPayloadMap {
   slack: SlackWebhookPayload;
@@ -201,17 +316,24 @@ function escapeSlackText(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Untrusted text escaped for a Slack `mrkdwn` field, sized to `max` (see `fitEscaped`). */
+const slackField = (value: string, max: number): string => fitEscaped(Array.from(value, escapeSlackText), max);
+
+/** Two halves + "*From:*  ()" stay under the text-object limit. */
+const SLACK_FROM_HALF = Math.floor((SLACK_TEXT_MAX - 11) / 2);
+
+/** `*Project:* …`, sized to the text-object limit. */
+const slackProject = (projectName: string): string => `*Project:* ${slackField(projectName, SLACK_TEXT_MAX - 11)}`;
+
+/** `*URL:* …`, sized to the text-object limit. */
+const slackUrl = (url: string): string => `*URL:* ${slackField(url, SLACK_TEXT_MAX - 7)}`;
+
 /**
- * Slack message: text fallback + Block Kit blocks for rich rendering. Every
- * `mrkdwn` field is escaped; the `plain_text` header is rendered verbatim by
- * Slack (no markup parsing), so it keeps the raw author name.
+ * Slack message: text fallback + Block Kit blocks for rich rendering. The
+ * `plain_text` header is rendered verbatim by Slack (no markup parsing), so it
+ * keeps raw values; `preview` and every `context` field must come escaped.
  */
-function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
-  const preview = escapeSlackText(truncate(feedback.message));
-  const escapeField = (value: string, max: number) => fitEscaped(Array.from(value, escapeSlackText), max);
-  // Two halves + "*From:*  ()" stay under the text-object limit.
-  const fromHalf = Math.floor((SLACK_TEXT_MAX - 11) / 2);
-  const headline = `New ${feedback.type} feedback from ${feedback.authorName}`;
+function slackMessage(headline: string, preview: string, context: readonly string[]): SlackWebhookPayload {
   return {
     text: `${escapeSlackText(headline)}: ${preview}`,
     blocks: [
@@ -225,18 +347,80 @@ function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
       },
       {
         type: "context",
-        elements: [
-          { type: "mrkdwn", text: `*Project:* ${escapeField(feedback.projectName, SLACK_TEXT_MAX - 11)}` },
-          { type: "mrkdwn", text: `*Type:* ${feedback.type}` },
-          { type: "mrkdwn", text: `*URL:* ${escapeField(feedback.url, SLACK_TEXT_MAX - 7)}` },
-          {
-            type: "mrkdwn",
-            text: `*From:* ${escapeField(feedback.authorName, fromHalf)} (${escapeField(feedback.authorEmail, fromHalf)})`,
-          },
-        ],
+        elements: context.map((text) => ({ type: "mrkdwn", text })),
       },
     ],
   };
+}
+
+/** `*From:* name (email)` — an empty email (a dashboard user's reply) drops its parentheses. */
+function slackFrom(authorName: string, authorEmail: string): string {
+  const email = authorEmail ? ` (${slackField(authorEmail, SLACK_FROM_HALF)})` : "";
+  return `*From:* ${slackField(authorName, SLACK_FROM_HALF)}${email}`;
+}
+
+/** How a status change reads in a chat headline. */
+const STATUS_VERBS: Readonly<Record<FeedbackStatus, string>> = {
+  open: "reopened",
+  in_progress: "marked in progress",
+  resolved: "resolved",
+  wont_fix: "marked won't fix",
+};
+
+/** Slack message for `feedback.created`. */
+function buildSlackPayload(feedback: FeedbackRecord): SlackWebhookPayload {
+  return slackMessage(
+    `New ${feedback.type} feedback from ${feedback.authorName}`,
+    escapeSlackText(truncate(feedback.message)),
+    [
+      slackProject(feedback.projectName),
+      `*Type:* ${feedback.type}`,
+      slackUrl(feedback.url),
+      `*From:* ${slackField(feedback.authorName, SLACK_FROM_HALF)} (${slackField(feedback.authorEmail, SLACK_FROM_HALF)})`,
+    ],
+  );
+}
+
+/** Slack message for `feedback.status_changed`. */
+function buildSlackStatusPayload(feedback: FeedbackRecord): SlackWebhookPayload {
+  return slackMessage(
+    `Feedback ${STATUS_VERBS[feedback.status]}: ${feedback.type} from ${feedback.authorName}`,
+    escapeSlackText(truncate(feedback.message)),
+    [
+      slackProject(feedback.projectName),
+      `*Status:* ${feedback.status}`,
+      slackUrl(feedback.url),
+      slackFrom(feedback.authorName, feedback.authorEmail),
+    ],
+  );
+}
+
+/** Slack message for `feedback.deleted`. */
+function buildSlackDeletionPayload(target: SitepingDeletionTarget): SlackWebhookPayload {
+  if (target.kind === "project") {
+    return slackMessage(
+      "All feedback deleted",
+      `Every feedback of ${slackField(target.projectName, SLACK_TEXT_MAX - 30)} was deleted.`,
+      [slackProject(target.projectName)],
+    );
+  }
+  return slackMessage("Feedback deleted", `Feedback ${slackField(target.id, SLACK_TEXT_MAX - 30)} was deleted.`, [
+    slackProject(target.projectName),
+    `*ID:* ${slackField(target.id, SLACK_TEXT_MAX - 6)}`,
+  ]);
+}
+
+/** Slack message for `comment.created`. */
+function buildSlackCommentPayload(comment: SitepingCreatedComment): SlackWebhookPayload {
+  return slackMessage(
+    `New ${comment.authorRole} reply from ${comment.authorName}`,
+    escapeSlackText(truncate(comment.body)),
+    [
+      slackProject(comment.projectName),
+      `*Feedback:* ${slackField(comment.feedbackId, SLACK_TEXT_MAX - 12)}`,
+      slackFrom(comment.authorName, comment.authorEmail),
+    ],
+  );
 }
 
 /**
@@ -352,11 +536,92 @@ function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
   };
 }
 
+/** One Discord embed. */
+type DiscordEmbed = DiscordWebhookPayload["embeds"][number];
+
+/** Embed colour of a reply, which has no feedback type of its own. */
+const COMMENT_DISCORD_COLOR = 0x8b5cf6;
+
+/** A Discord message with mention parsing disabled — every value in it must come escaped. */
+function discordMessage(content: string, embed: DiscordEmbed): DiscordWebhookPayload {
+  return { content, embeds: [embed], allowed_mentions: { parse: [] } };
+}
+
+/** Discord message for `feedback.status_changed`. */
+function buildDiscordStatusPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
+  const contentLead = `Feedback **${STATUS_VERBS[feedback.status]}**: ${feedback.type} from **`;
+  const titleLead = `${feedback.type} — `;
+  return discordMessage(
+    `${contentLead}${escapeDiscordText(feedback.authorName, DISCORD_CONTENT_MAX - contentLead.length - 2)}**`,
+    {
+      title: `${titleLead}${escapeDiscordText(feedback.projectName, DISCORD_TITLE_MAX - titleLead.length)}`,
+      description: escapeDiscordText(feedback.message, 300),
+      color: DISCORD_COLORS[feedback.type] ?? DEFAULT_DISCORD_COLOR,
+      fields: [
+        { name: "Status", value: feedback.status, inline: true },
+        { name: "URL", value: escapeDiscordText(feedback.url, DISCORD_FIELD_VALUE_MAX), inline: false },
+      ],
+      timestamp: new Date(feedback.updatedAt).toISOString(),
+    },
+  );
+}
+
+/** Discord message for `feedback.deleted`, stamped with the time of the delete. */
+function buildDiscordDeletionPayload(target: SitepingDeletionTarget): DiscordWebhookPayload {
+  const project = (max: number) => escapeDiscordText(target.projectName, max);
+  const contentLead = target.kind === "project" ? "All feedback deleted from **" : "Feedback deleted from **";
+  const fields = [{ name: "Project", value: project(DISCORD_FIELD_VALUE_MAX), inline: true }];
+  if (target.kind === "single") {
+    fields.push({ name: "ID", value: escapeDiscordText(target.id, DISCORD_FIELD_VALUE_MAX), inline: true });
+  }
+  return discordMessage(`${contentLead}${project(DISCORD_CONTENT_MAX - contentLead.length - 2)}**`, {
+    title: target.kind === "project" ? "All feedback deleted" : "Feedback deleted",
+    description:
+      target.kind === "project"
+        ? `Every feedback of ${project(300)} was deleted.`
+        : `Feedback ${escapeDiscordText(target.id, 300)} was deleted.`,
+    color: DEFAULT_DISCORD_COLOR,
+    fields,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/** Discord message for `comment.created`. */
+function buildDiscordCommentPayload(comment: SitepingCreatedComment): DiscordWebhookPayload {
+  const contentLead = `New **${comment.authorRole}** reply from **`;
+  const titleLead = "Reply — ";
+  // Two halves + " ()" stay under the field-value limit; a reply from the
+  // dashboard may carry no email at all.
+  const authorHalf = Math.floor((DISCORD_FIELD_VALUE_MAX - 3) / 2);
+  const author = comment.authorEmail
+    ? `${escapeDiscordText(comment.authorName, authorHalf)} (${escapeDiscordText(comment.authorEmail, authorHalf)})`
+    : escapeDiscordText(comment.authorName, DISCORD_FIELD_VALUE_MAX);
+  return discordMessage(
+    `${contentLead}${escapeDiscordText(comment.authorName, DISCORD_CONTENT_MAX - contentLead.length - 2)}**`,
+    {
+      title: `${titleLead}${escapeDiscordText(comment.projectName, DISCORD_TITLE_MAX - titleLead.length)}`,
+      description: escapeDiscordText(comment.body, 300),
+      color: COMMENT_DISCORD_COLOR,
+      fields: [
+        { name: "Feedback", value: escapeDiscordText(comment.feedbackId, DISCORD_FIELD_VALUE_MAX), inline: true },
+        { name: "Author", value: author, inline: true },
+      ],
+      timestamp: new Date(comment.createdAt).toISOString(),
+    },
+  );
+}
+
 /** Generic JSON body — the record minus its `clientId`, and its comments minus theirs. */
 function buildGenericPayload(feedback: FeedbackRecord): GenericWebhookBody {
   const { clientId: _clientId, comments, ...payload } = feedback;
   if (!comments) return payload;
   return { ...payload, comments: comments.map(({ clientId: _commentClientId, ...comment }) => comment) };
+}
+
+/** Generic JSON body of `comment.created` — the comment minus its `clientId`. */
+function buildGenericCommentPayload(comment: SitepingCreatedComment): Omit<SitepingCreatedComment, "clientId"> {
+  const { clientId: _clientId, ...payload } = comment;
+  return payload;
 }
 
 /**
@@ -369,28 +634,58 @@ export function buildWebhookPayload<T extends WebhookType | undefined>(
   type: T,
   feedback: FeedbackRecord,
 ): T extends "slack" ? SlackWebhookPayload : T extends "discord" ? DiscordWebhookPayload : GenericWebhookBody {
-  switch (type) {
-    case "slack":
-      return buildSlackPayload(feedback) as never;
-    case "discord":
-      return buildDiscordPayload(feedback) as never;
-    default:
-      return buildGenericPayload(feedback) as never;
+  return buildDeliveryPayload(type, { event: "feedback.created", feedback }) as never;
+}
+
+/**
+ * Build the JSON body of `delivery` for a webhook of `type`.
+ * Exported for tests; not part of the public API.
+ *
+ * @internal
+ */
+export function buildDeliveryPayload(
+  type: WebhookType | undefined,
+  delivery: WebhookDelivery,
+): SlackWebhookPayload | DiscordWebhookPayload | GenericWebhookBody | object {
+  switch (delivery.event) {
+    case "feedback.created":
+      if (type === "slack") return buildSlackPayload(delivery.feedback);
+      if (type === "discord") return buildDiscordPayload(delivery.feedback);
+      return buildGenericPayload(delivery.feedback);
+    case "feedback.status_changed":
+      if (type === "slack") return buildSlackStatusPayload(delivery.feedback);
+      if (type === "discord") return buildDiscordStatusPayload(delivery.feedback);
+      return buildGenericPayload(delivery.feedback);
+    case "feedback.deleted":
+      if (type === "slack") return buildSlackDeletionPayload(delivery.target);
+      if (type === "discord") return buildDiscordDeletionPayload(delivery.target);
+      return { ...delivery.target };
+    case "comment.created":
+      if (type === "slack") return buildSlackCommentPayload(delivery.comment);
+      if (type === "discord") return buildDiscordCommentPayload(delivery.comment);
+      return buildGenericCommentPayload(delivery.comment);
   }
 }
 
 /**
- * Dispatch a single webhook. Fire-and-forget: never throws, never rejects.
+ * Dispatch a single webhook with `feedback`'s `feedback.created` delivery,
+ * whatever its `events` — the handler routes by `events` itself (see
+ * {@link dispatchWebhooks}). Fire-and-forget: never throws, never rejects.
  *
  * - Builds the type-specific payload.
- * - POSTs with an `AbortSignal` timeout.
+ * - POSTs with an `AbortSignal` timeout and an `X-Siteping-Event` header.
  * - On any error (network, non-2xx, timeout, exception), invokes
- *   `config.onError(err, feedbackId)` if provided; otherwise logs a one-liner.
- *   A `timeoutMs` no timer holds is such an error: nothing is sent.
+ *   `config.onError(err, feedbackId, delivery)` if provided; otherwise logs a
+ *   one-liner. A `timeoutMs` no timer holds is such an error: nothing is sent.
  */
 export async function dispatchWebhook(config: WebhookConfig, feedback: FeedbackRecord): Promise<void> {
+  return deliver(config, { event: "feedback.created", feedback });
+}
+
+/** POST one delivery to one webhook — see {@link dispatchWebhook}. */
+async function deliver(config: WebhookConfig, delivery: WebhookDelivery): Promise<void> {
   const problem = timeoutProblem(config.timeoutMs);
-  if (problem) return reportError(config, new RangeError(problem), feedback.id);
+  if (problem) return reportError(config, new RangeError(problem), delivery);
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -399,16 +694,21 @@ export async function dispatchWebhook(config: WebhookConfig, feedback: FeedbackR
   // `createdAt` makes Discord's `toISOString()` throw a RangeError), and the
   // handler drops this promise, so a rejection would go unhandled.
   try {
-    const body = JSON.stringify(buildWebhookPayload(config.type ?? "generic", feedback));
+    const body = JSON.stringify(buildDeliveryPayload(config.type ?? "generic", delivery));
 
     // Build merged headers — caller-supplied entries override `Content-Type`
     // when they explicitly need a different mime (rare for chat webhooks, but
-    // possible for some generic receivers). Names are case-insensitive: a
-    // `content-type` spread next to our `Content-Type` would make fetch send
-    // both values combined, so the default is dropped for any spelling.
+    // possible for some generic receivers), and the event header the same
+    // way. Names are case-insensitive: a `content-type` spread next to our
+    // `Content-Type` would make fetch send both values combined, so a default
+    // is dropped for any spelling.
     const custom = config.headers ?? {};
-    const setsContentType = Object.keys(custom).some((name) => name.toLowerCase() === "content-type");
-    const headers = setsContentType ? custom : { "Content-Type": "application/json", ...custom };
+    const customNames = new Set(Object.keys(custom).map((name) => name.toLowerCase()));
+    const headers = {
+      ...(customNames.has("content-type") ? {} : { "Content-Type": "application/json" }),
+      ...(customNames.has(EVENT_HEADER.toLowerCase()) ? {} : { [EVENT_HEADER]: delivery.event }),
+      ...custom,
+    };
 
     // Use AbortSignal.timeout when available (Node 17.3+, all modern browsers).
     // Fall back to a manual controller for environments lacking it.
@@ -424,35 +724,34 @@ export async function dispatchWebhook(config: WebhookConfig, feedback: FeedbackR
 
     if (!response.ok) {
       const err = new Error(`Webhook responded with HTTP ${response.status}`);
-      await reportError(config, err, feedback.id);
+      await reportError(config, err, delivery);
     }
   } catch (rawError) {
     clearTimeout(timer);
     const err = rawError instanceof Error ? rawError : new Error(String(rawError));
-    await reportError(config, err, feedback.id);
+    await reportError(config, err, delivery);
   }
 }
 
-async function reportError(config: WebhookConfig, err: Error, feedbackId: string): Promise<void> {
+async function reportError(config: WebhookConfig, err: Error, delivery: WebhookDelivery): Promise<void> {
+  const { feedbackId, projectName } = deliverySubject(delivery);
+  const subject = feedbackId ? `feedback ${feedbackId}` : `project ${projectName}`;
   if (config.onError) {
     try {
       // Awaited, so an async callback's rejection lands here like a throw.
-      await config.onError(err, feedbackId);
+      await config.onError(err, feedbackId, { event: delivery.event, projectName });
     } catch (callbackErr) {
       // Defense-in-depth: a thrown user callback must not bubble back up
-      // and crash the request that already succeeded persisting the
-      // feedback. Surface the original error too so it isn't silently lost.
+      // and crash the request whose write already succeeded. Surface the
+      // original error too so it isn't silently lost.
       warnWithoutUrl(
         config.url,
-        `webhook onError() callback threw for feedback ${feedbackId}: ${String(callbackErr)} (original error: ${err.message})`,
+        `webhook onError() callback threw for ${subject}: ${String(callbackErr)} (original error: ${err.message})`,
       );
     }
     return;
   }
-  warnWithoutUrl(
-    config.url,
-    `webhook to ${webhookOrigin(config.url)} failed for feedback ${feedbackId}: ${err.message}`,
-  );
+  warnWithoutUrl(config.url, `webhook to ${webhookOrigin(config.url)} failed for ${subject}: ${err.message}`);
 }
 
 /**
@@ -479,12 +778,20 @@ function warnWithoutUrl(url: string, message: string): void {
 }
 
 /**
- * Dispatch every configured webhook in parallel. Awaiting the returned promise
- * lets tests synchronize on completion, but production callers should drop the
- * promise on the floor (`void dispatchWebhooks(...)`) so the HTTP response
- * isn't held back on slow receivers.
+ * Dispatch `feedback`'s `feedback.created` delivery to every configured
+ * webhook that subscribes to it (every webhook without `events`), in
+ * parallel. Awaiting the returned promise lets tests synchronize on
+ * completion, but production callers should drop the promise on the floor
+ * (`void dispatchWebhooks(...)`) so the HTTP response isn't held back on slow
+ * receivers.
  */
 export async function dispatchWebhooks(configs: readonly WebhookConfig[], feedback: FeedbackRecord): Promise<void> {
-  if (configs.length === 0) return;
-  await Promise.all(configs.map((c) => dispatchWebhook(c, feedback)));
+  await dispatchDelivery(configs, { event: "feedback.created", feedback });
+}
+
+/** Dispatch `delivery` to every webhook of `configs` that subscribes to its event, in parallel. Never rejects. */
+export async function dispatchDelivery(configs: readonly WebhookConfig[], delivery: WebhookDelivery): Promise<void> {
+  const subscribed = configs.filter((config) => subscribesTo(config, delivery.event));
+  if (subscribed.length === 0) return;
+  await Promise.all(subscribed.map((config) => deliver(config, delivery)));
 }

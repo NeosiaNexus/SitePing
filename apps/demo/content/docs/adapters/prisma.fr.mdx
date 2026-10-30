@@ -57,7 +57,7 @@ Une clé manquante fait alors échouer la première requête, avec le même mess
 
 Les types imposent cette séparation : aucune source, `prisma` à côté de `store`, ou `screenshotStorage` / `caseInsensitiveSearch` à côté d'un `store` personnalisé est une erreur de compilation, pas une option ignorée en silence.
 
-Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent aussi — `apiKey`, `allowedOrigins`, `webhooks`, `access`, les hooks… Un seul ajout : quand une table SitePing manque, la `500` vous indique de lancer `npx prisma db push` (un `describeError` que vous passez a la priorité). Leurs types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) sont réexportés ici : un gestionnaire de paquets strict comme pnpm n'a pas besoin de `@siteping/server` en dépendance directe pour typer une politique à part.
+Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent aussi — `apiKey`, `allowedOrigins`, `webhooks`, `access`, les hooks… Un `logger` doté d'une méthode `warn` (`console`, winston…) reçoit aussi les avertissements du store — un envoi ou un nettoyage qui échoue, des captures en ligne — qui partent sinon vers `console.warn` ; un `PrismaStore` que vous construisez vous-même prend `{ logger }` directement. Un seul ajout : quand une table SitePing manque, la `500` vous indique de lancer `npx prisma db push` (un `describeError` que vous passez a la priorité). Leurs types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) sont réexportés ici : un gestionnaire de paquets strict comme pnpm n'a pas besoin de `@siteping/server` en dépendance directe pour typer une politique à part.
 
 ## Schéma de base de données
 
@@ -184,15 +184,15 @@ createSitepingHandler({
 });
 ```
 
-Donnez à chaque envoi une URL qu'aucun autre envoi n'obtient : une clé aléatoire neuve, jamais dérivée de `feedbackId` — ici c'est le `clientId` du client, que chaque nouvel essai renvoie — ni du contenu de l'image.
+Donnez à chaque envoi une URL qu'aucun autre envoi n'obtient : une clé aléatoire neuve, jamais dérivée de `feedbackId` seul ni du contenu de l'image. `feedbackId` est l'id sous lequel le feedback est enregistré : le store insère d'abord le feedback, puis envoie la capture, puis y attache l'URL.
 
-Si un envoi échoue, le feedback est quand même enregistré (avec `screenshotUrl: null`) et un avertissement est journalisé — un bucket cassé ne fait jamais perdre le commentaire d'un client.
+Si un envoi échoue, le feedback est quand même enregistré (avec `screenshotUrl: null`) et un avertissement part vers le logger — un bucket cassé ne fait jamais perdre le commentaire d'un client.
 
 Renvoyez une URL `https:` : la vue détail du widget n'affiche que les images `https:`, plus le `http:` simple sur la machine locale (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`), pour qu'un MinIO ou un localstack local fonctionne en développement.
 
 Ajoutez un `delete(url)` optionnel et l'adapter l'appelle à la suppression d'un feedback — `DELETE` unitaire comme `deleteAll` — pour ne rien laisser traîner dans votre bucket. C'est du meilleur effort : un `delete` qui échoue est journalisé et ne fait jamais échouer la suppression (un objet orphelin vaut mieux qu'une ligne qui refuse de partir). Les URL `data:` en ligne ne lui sont jamais passées. Au plus 32 suppressions tournent en même temps : une suppression de projet libérant des milliers d'objets ne sature pas votre stockage et n'épuise pas les sockets d'une fonction serverless. La suppression les attend : avec des milliers de captures et un bucket lent ou injoignable, elle peut dépasser la durée maximale d'une fonction serverless, et les objets qu'elle n'a pas encore supprimés restent dans le bucket.
 
-Il est aussi appelé quand une création est refusée parce que son `clientId` est déjà enregistré (un nouvel essai en concurrence avec le premier), pour supprimer la capture envoyée par cette tentative — sauf si le feedback enregistré pointe vers cette même URL. C'est le cas avec une clé dérivée de `feedbackId` : le nouvel essai a réécrit l'objet du feedback enregistré, qui est donc conservé — et a remplacé son image, ce qu'une clé aléatoire évite. Une capture dont l'insertion a échoué pour une autre raison reste dans votre bucket, car un nouvel essai sur une autre instance peut être sur le point de la référencer.
+Une création refusée parce que son `clientId` est déjà enregistré — un nouvel essai en concurrence avec le premier — n'envoie rien, puisque l'insertion vient d'abord ; une insertion qui échoue pour une autre raison non plus. `delete` est aussi appelé si l'URL d'une capture envoyée ne peut pas être attachée : le feedback est conservé sans elle, comme après un envoi raté, et l'objet envoyé pour lui disparaît.
 
 ## Utiliser un store personnalisé
 
