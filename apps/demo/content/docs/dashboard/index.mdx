@@ -24,7 +24,7 @@ export function Triage() {
 }
 ```
 
-It works with React 18 and 19, ships ESM and CJS, and has zero dependencies besides React. Give it a container with a height — the inbox fills its parent (minimum 480 px).
+It works with React 18 and 19, ships ESM and CJS, and has zero dependencies besides React. The package carries its own `"use client"` directive, so a Server Component can render `<SitepingInbox />` directly — as long as every prop is serializable (`endpoint`, not `store` or `source`). Give it a container with a height — the inbox fills its parent (minimum 480 px).
 
 ## Props
 

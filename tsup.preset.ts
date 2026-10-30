@@ -41,10 +41,14 @@ export function sitepingLibrary(overrides: Partial<Options> & Pick<Options, "pla
  * chains the two maps itself and leaves the code that has no original
  * position unmapped. `ascii_only` keeps esbuild's ASCII-only output, so a
  * classic `<script>` decodes the same under any page charset.
+ *
+ * `preamble` is printed verbatim on the first line, with the map shifted to
+ * match. It is the only way to ship a directive such as `"use client"`:
+ * Terser drops non-standard directives from the code it minifies.
  */
 export async function terserPass(
   file: string,
-  options: Pick<MinifyOptions, "module" | "toplevel"> = {},
+  { preamble, ...options }: Pick<MinifyOptions, "module" | "toplevel"> & { preamble?: string } = {},
 ): Promise<void> {
   const name = basename(file);
   const [code, map] = await Promise.all([readFile(file, "utf8"), readFile(`${file}.map`, "utf8")]);
@@ -53,7 +57,7 @@ export async function terserPass(
     {
       ...options,
       compress: { passes: 2 },
-      format: { ascii_only: true },
+      format: preamble === undefined ? { ascii_only: true } : { ascii_only: true, preamble },
       sourceMap: { content: map, url: `${name}.map` },
     },
   );
