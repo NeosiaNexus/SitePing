@@ -23,13 +23,10 @@ React 18 or 19 (peer dependency). Ships ESM **and** CJS, zero runtime dependenci
 ```tsx
 import { SitepingInbox } from "@siteping/dashboard";
 
-<SitepingInbox
-  projects="my-app"
-  endpoint="/api/siteping"
-  apiKey={KEY}
-  theme="auto"
-/>
+<SitepingInbox projects="my-app" endpoint="/api/siteping" theme="auto" />
 ```
+
+Mount it on an admin page behind your app's login: on the endpoint's origin it sends your session cookie, for the server's [`access`](https://siteping.dev/docs/server#custom-access) policy to check. Never put the `apiKey` in a client bundle (`NEXT_PUBLIC_*`, `VITE_*`): it authorizes every status change and delete.
 
 Give it a container with a height — it fills its parent (min 480 px) and adapts to the container's width, not the viewport.
 

@@ -12,17 +12,15 @@ npm i @siteping/dashboard
 ```tsx
 import { SitepingInbox } from "@siteping/dashboard";
 
+// Une page d'administration de votre app, derrière sa connexion
 export function Triage() {
-  return (
-    <SitepingInbox
-      projects="mon-projet"
-      endpoint="https://mon-site.com/api/siteping"
-      apiKey={process.env.NEXT_PUBLIC_SITEPING_KEY}
-      theme="auto"
-    />
-  );
+  return <SitepingInbox projects="mon-projet" endpoint="/api/siteping" theme="auto" />;
 }
 ```
+
+Monté sur l'origine de l'endpoint, l'inbox envoie votre cookie de session avec chaque requête : protégez l'endpoint par une politique [`access`](/fr/docs/server#accès-personnalisé) qui réserve le tri à votre équipe. [Sources de données](/fr/docs/dashboard/sources#mode-endpoint-le-défaut-en-production) couvre les autres accès — un jeton dans `headers` depuis une autre origine, un store, une source personnalisée.
+
+> **N'envoyez jamais l'`apiKey` au navigateur.** Elle autorise chaque changement de statut et chaque suppression : une variable `NEXT_PUBLIC_*` ou `VITE_*`, que le build inline dans le bundle client, la donne à quiconque ouvre la page. Ne passez `apiKey` que là où le code n'atteint jamais le visiteur : un outil interne sur un réseau privé, ou un script exécuté côté serveur.
 
 Compatible React 18 et 19, livré en ESM et CJS, sans aucune dépendance en dehors de React. Le package porte sa propre directive `"use client"` : un Server Component peut donc rendre `<SitepingInbox />` directement, tant que chaque prop est sérialisable (`endpoint`, pas `store` ni `source`). Donnez-lui un conteneur avec une hauteur — l'inbox remplit son parent (minimum 480 px).
 
@@ -67,7 +65,7 @@ Quatre statuts : `open`, `in_progress`, `resolved`, `wont_fix`. Le dashboard peu
 Le tiroir montre le fil du feedback ouvert — les réponses du relecteur depuis le widget, celles de votre équipe depuis ici. Passez `author` pour répondre et supprimer depuis l'inbox :
 
 ```tsx
-<SitepingInbox projects="my-project" endpoint="/api/siteping" apiKey={KEY} author={{ name: "Alex" }} />
+<SitepingInbox projects="my-project" endpoint="/api/siteping" author={{ name: "Alex" }} />
 ```
 
 Sans `author`, les fils sont en lecture seule. Les réponses demandent le rôle `team`, que votre serveur n'accorde qu'aux appelants de confiance — les détails sont dans [Fils de discussion](/fr/docs/comments#dans-le-dashboard).
