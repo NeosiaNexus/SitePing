@@ -146,6 +146,17 @@ describe("registerLocale", () => {
     expect(t("panel.close")).toBe("Somente isto");
     expect(t("popup.submit")).toBe(en["popup.submit"]);
   });
+
+  // The registry is a module singleton (and setup-i18n.ts has loaded every
+  // built-in): the overridden key is one no other test in this file asserts
+  // on in French.
+  it("overrides one key of a built-in locale and keeps the rest of it (#303)", async () => {
+    registerLocale("fr", { "fab.annotate": "Commenter" });
+    const t = createT("fr");
+    expect(t("fab.annotate")).toBe("Commenter");
+    expect(t("popup.submit")).toBe("Envoyer");
+    expect((await loadLocale("fr"))?.["fab.annotate"]).toBe("Commenter");
+  });
 });
 
 // ---------------------------------------------------------------------------
