@@ -53,7 +53,7 @@ Un attribut `data-feedback-anchor` à la racine de chaque section est l'ancre qu
 
 ## Écrans tactiles
 
-Le widget s'affiche sur téléphones et tablettes, avec une mise en page dédiée, mais l'annotation au toucher a encore des manques : un simple appui sans glisser est ignoré, un appui long sur iOS et iPadOS n'ouvre pas la fenêtre de saisie, et la catégorie doit être choisie. Ils sont suivis dans [#305](https://github.com/NeosiaNexus/SitePing/issues/305).
+Le widget s'affiche sur téléphones et tablettes, avec une mise en page dédiée : en mode annotation, un appui commente l'élément sous le doigt et un glisser encadre une zone. Un appui long n'ouvre la fenêtre de saisie que là où le navigateur déclenche `contextmenu` (Android, avec le [commentaire au clic droit](/fr/docs/widget/right-click) activé) : iOS et iPadOS ne le déclenchent jamais ([bug WebKit 213953](https://bugs.webkit.org/show_bug.cgi?id=213953)), là le point d'entrée est donc le mode annotation.
 
 ## Navigateurs pris en charge
 

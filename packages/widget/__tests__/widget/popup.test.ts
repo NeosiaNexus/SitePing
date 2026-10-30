@@ -310,8 +310,8 @@ describe("Popup", () => {
       expect(submitBtn.style.pointerEvents).toBe("none");
     });
 
-    it("does not enable submit with only message (no type selected)", () => {
-      popup.show(makeBounds());
+    it("sends a message without a category as 'other' (#305)", async () => {
+      const promise = popup.show(makeBounds());
 
       const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
       textarea.value = "Some message";
@@ -319,7 +319,11 @@ describe("Popup", () => {
 
       const buttons = document.querySelectorAll<HTMLButtonElement>("button");
       const submitBtn = Array.from(buttons).find((btn) => btn.textContent === t("popup.submit"))!;
-      expect(submitBtn.style.pointerEvents).toBe("none");
+      expect(submitBtn.disabled).toBe(false);
+      expect(submitBtn.style.pointerEvents).toBe("auto");
+      submitBtn.click();
+
+      expect(await promise).toEqual({ type: "other", message: "Some message" });
     });
 
     it("resolves with type and message on submit", async () => {

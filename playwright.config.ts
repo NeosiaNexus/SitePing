@@ -16,6 +16,10 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    // Phone review on WebKit with an iPhone's user agent and touch input — the
+    // phone flows only, to keep CI time down. It is not iOS Safari: a long
+    // press (which never fires `contextmenu` there) still needs a real device.
+    { name: "iphone", use: { ...devices["iPhone 15"] }, testMatch: "**/mobile.spec.ts" },
   ],
   webServer: [
     // Fake in-memory API — widget.spec.ts

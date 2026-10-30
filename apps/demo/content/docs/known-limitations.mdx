@@ -53,7 +53,7 @@ A `data-feedback-anchor` attribute on each section root is the anchor that survi
 
 ## Touch devices
 
-The widget renders on phones and tablets, with a layout of its own, but touch annotation still has gaps: a tap without a drag is discarded, a long press on iOS and iPadOS doesn't open the composer, and the category must be chosen. They are tracked in [#305](https://github.com/NeosiaNexus/SitePing/issues/305).
+The widget renders on phones and tablets, with a layout of its own: in annotate mode, a tap comments on the element under the finger and a drag frames an area. A long press opens the composer only where the browser fires `contextmenu` (Android, with [right-click commenting](/docs/widget/right-click) on): iOS and iPadOS never fire it ([WebKit bug 213953](https://bugs.webkit.org/show_bug.cgi?id=213953)), so there the way in is annotate mode.
 
 ## Browser support
 
