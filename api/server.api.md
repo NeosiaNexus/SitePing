@@ -171,7 +171,7 @@ export interface SitepingHandlerBaseOptions<Principal> {
     beforeCreate?(input: FeedbackCreateInput, context: SitepingRequestContext<Principal>): FeedbackCreateInput | Promise<FeedbackCreateInput>;
     describeError?(error: unknown): string | undefined;
     hooks?: SitepingLifecycleHooks<Principal>;
-    logger?: SitepingLogger;
+    logger?: SitepingLogger | undefined;
     maxBodyBytes?: number | undefined;
     presentFeedback?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): FeedbackRecord;
     store: SitepingStore;
@@ -192,6 +192,7 @@ export interface SitepingLifecycleHooks<Principal> {
 
 export interface SitepingLogger {
     error(message: string, context: Record<string, unknown>): Promise<void> | void;
+    warn?(message: string, context: Record<string, unknown>): Promise<void> | void;
 }
 
 export type SitepingPrincipal = number | object | string;

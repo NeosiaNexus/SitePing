@@ -1,4 +1,10 @@
-import type { CommentPermissions, CommentRecord, FeedbackPermissions, FeedbackRecord } from "@siteping/core";
+import type {
+  CommentPermissions,
+  CommentRecord,
+  FeedbackPermissions,
+  FeedbackRecord,
+  SitepingLogger,
+} from "@siteping/core";
 import type { AccessGate, AccessOutcome } from "./access.js";
 import { DRY_RUN_CONCURRENCY, ERROR_MESSAGES } from "./constants.js";
 import { buildCorsHeaders, type CorsHeaders, withCors } from "./cors.js";
@@ -7,7 +13,6 @@ import type {
   SitepingAuthorizationContext,
   SitepingHandlerBaseOptions,
   SitepingHttpMethod,
-  SitepingLogger,
   SitepingRequestContext,
 } from "./options.js";
 import { formatValidationErrors } from "./validation.js";
@@ -36,7 +41,7 @@ interface Schema<Output> {
 interface PipelineDependencies<Principal> {
   gate: AccessGate<Principal>;
   allowedOrigins: ReadonlyArray<string> | undefined;
-  logger: SitepingLogger;
+  logger: Pick<SitepingLogger, "error">;
   describeError: SitepingHandlerBaseOptions<Principal>["describeError"];
   presentFeedback: SitepingHandlerBaseOptions<Principal>["presentFeedback"];
   maxBodyBytes: number;

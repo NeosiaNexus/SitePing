@@ -16,6 +16,7 @@ export type {
   ScreenshotRegion,
   SitepingCapabilities,
   SitepingConfigErrorCode,
+  SitepingLogger,
   SitepingStore,
 } from "@siteping/core";
 // The guard, not the class: `createSitepingHandler` throws it for options it
@@ -35,7 +36,6 @@ export type {
   SitepingHandlerOptions,
   SitepingHttpMethod,
   SitepingLifecycleHooks,
-  SitepingLogger,
   SitepingPrincipal,
   SitepingProjectContext,
   SitepingRequestContext,

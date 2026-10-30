@@ -1,4 +1,11 @@
-import type { CommentPayload, CommentRecord, FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
+import type {
+  CommentPayload,
+  CommentRecord,
+  FeedbackCreateInput,
+  FeedbackRecord,
+  SitepingLogger,
+  SitepingStore,
+} from "@siteping/core";
 import type { WebhookConfig } from "./webhooks.js";
 
 /** HTTP methods served by `createSitepingHandler`. */
@@ -143,20 +150,6 @@ export interface SitepingLifecycleHooks<Principal> {
   onCommentCreated?(comment: SitepingCreatedComment, context: SitepingRequestContext<Principal>): void | Promise<void>;
 }
 
-/**
- * Where the handler reports unexpected failures. Defaults to `console.error`.
- * A logger that throws, or returns a promise that rejects (a log shipper
- * down), falls back to `console.error`: it never fails the request, nor
- * leaves a rejection unhandled.
- *
- * The arguments come in console's and winston's order. pino's `error` takes
- * the context first and type-checks here anyway, then drops the context:
- * adapt it — `{ error: (message, { error, ...context }) => log.error({ err: error, ...context }, message) }`.
- */
-export interface SitepingLogger {
-  error(message: string, context: Record<string, unknown>): void | Promise<void>;
-}
-
 /** Options shared by both access policies. */
 export interface SitepingHandlerBaseOptions<Principal> {
   /** Persistence backend — any `SitepingStore` (Prisma, Drizzle, memory, your own). */
@@ -232,8 +225,15 @@ export interface SitepingHandlerBaseOptions<Principal> {
   presentFeedback?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): FeedbackRecord;
   /** Lifecycle side effects — see `SitepingLifecycleHooks`. */
   hooks?: SitepingLifecycleHooks<Principal>;
-  /** Where unexpected failures are reported. Defaults to `console.error`. */
-  logger?: SitepingLogger;
+  /**
+   * Where unexpected failures are reported, through `error` — the one level
+   * the handler uses, so `{ error }` alone is enough. Defaults to
+   * `console.error`. A logger that throws, or returns a promise that rejects
+   * (a log shipper down), falls back to `console.error`: it never fails the
+   * request, nor leaves a rejection unhandled. adapter-prisma also hands it
+   * to the `PrismaStore` it builds when it takes warnings (`warn`).
+   */
+  logger?: SitepingLogger | undefined;
   /**
    * Map an unexpected failure to the `error` string sent to the client.
    * Return `undefined` for the default (`"Internal server error"`). Store
