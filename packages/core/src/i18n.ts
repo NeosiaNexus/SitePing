@@ -13,7 +13,7 @@
  * English anymore.
  */
 
-import { BUILTIN_LOCALES, type BuiltinLocale } from "./types.js";
+import type { BuiltinLocale } from "./types.js";
 
 /**
  * Lazy dictionary loaders for every non-English built-in locale. Use static
@@ -30,7 +30,8 @@ export interface I18n<T> {
   /**
    * Create a translation function for the given locale.
    *
-   * Locale resolution: exact language match > English fallback, per key.
+   * Locale resolution, per key: `registerLocale` override > built-in
+   * dictionary of the language > English fallback.
    * Non-English built-in locales are lazy-loaded via `loadLocale` — call
    * `await loadLocale(locale)` at init if you want the UI to render in the
    * target language immediately; until the dictionary lands, keys resolve
@@ -38,17 +39,20 @@ export interface I18n<T> {
    */
   createT(locale: string): TranslateFunction<T>;
   /**
-   * Dynamically import a built-in locale and register it. Returns the
-   * loaded dictionary, or `null` if the locale isn't a known built-in.
-   * Custom locales registered via `registerLocale` bypass this loader —
-   * they are already in the registry (and are returned as registered, so a
-   * partial custom dictionary comes back partial).
+   * Dynamically import a built-in locale (once) and register it. Returns the
+   * locale as `createT` resolves it — the built-in dictionary with any
+   * `registerLocale` overrides on top — or `null` for a code that is neither
+   * built in nor registered. A custom code never hits a loader: it comes
+   * back as registered, so a partial custom dictionary comes back partial.
    */
   loadLocale(locale: string): Promise<Partial<T> | null>;
   /**
-   * Register a custom locale at runtime. Partial dictionaries are welcome —
-   * missing keys fall back to English per key, so overriding a single
-   * string never requires copying the whole catalog.
+   * Register translations at runtime, for a new locale or over a built-in
+   * one. Partial dictionaries are welcome: the keys given override the
+   * built-in dictionary (whenever it loads), every other key keeps its
+   * built-in value, then falls back to English — so overriding a single
+   * string never requires copying the whole catalog. Calls for the same
+   * code accumulate.
    */
   registerLocale(code: string, translations: Partial<T>): void;
 }
@@ -105,38 +109,39 @@ export function canonicalizeLocale(locale: string): string {
  * @param loaders — lazy import thunks for every other built-in locale.
  */
 export function createI18n<T extends Record<keyof T & string, string>>(en: T, loaders: LocaleLoaders<T>): I18n<T> {
-  const locales: Record<string, Partial<T>> = { en };
+  // Built-in dictionaries and host overrides live apart, so neither erases
+  // the other: an override hides only the keys it names, and a chunk that
+  // lands after `registerLocale` never overwrites it. Call order is moot.
+  // Prototype-free, so a code like `constructor` reads as unregistered.
+  const builtins: Record<string, Partial<T>> = Object.assign(Object.create(null), { en });
+  const overrides: Record<string, Partial<T>> = Object.create(null);
 
+  // The loader map is typed to hold exactly the non-English built-ins, so
+  // its own keys are the list — no copy of `BUILTIN_LOCALES` ships at runtime.
   function isBuiltinNonEn(lang: string): lang is Exclude<BuiltinLocale, "en"> {
-    return lang !== "en" && (BUILTIN_LOCALES as readonly string[]).includes(lang);
+    return Object.hasOwn(loaders, lang);
   }
 
   return {
     registerLocale(code, translations) {
-      locales[normaliseLang(code)] = translations;
+      const lang = normaliseLang(code);
+      overrides[lang] = { ...overrides[lang], ...translations };
     },
 
     async loadLocale(locale) {
       const lang = normaliseLang(locale);
-      const cached = locales[lang];
-      if (cached) return cached; // already loaded (en, custom, or previously fetched)
-      if (!isBuiltinNonEn(lang)) return null;
-      const dict = await loaders[lang]();
-      locales[lang] = dict;
-      return dict;
+      if (isBuiltinNonEn(lang)) builtins[lang] ??= await loaders[lang]();
+      return overrides[lang] ? { ...builtins[lang], ...overrides[lang] } : (builtins[lang] ?? null);
     },
 
     createT(locale) {
       const lang = normaliseLang(locale);
-      if (lang !== "en" && !locales[lang] && !isBuiltinNonEn(lang)) {
+      if (!builtins[lang] && !overrides[lang] && !isBuiltinNonEn(lang)) {
         console.warn(`[siteping] Unknown locale "${locale}", falling back to "en"`);
       }
       // Read the registry at call time so the returned function picks up
       // dictionaries registered/loaded after it was created.
-      return (key) => {
-        const dict = locales[lang];
-        return dict?.[key] ?? en[key] ?? key;
-      };
+      return (key) => overrides[lang]?.[key] ?? builtins[lang]?.[key] ?? en[key] ?? key;
     },
   };
 }

@@ -8,8 +8,9 @@
  *
  * Usage on the widget side (api-client.ts):
  *   - fetch failures / aborts / timeouts → `SitepingNetworkError` (retryable)
- *   - HTTP 4xx (except 401/403)         → `SitepingValidationError` (not retryable)
+ *   - HTTP 4xx (except 401/403/408/429) → `SitepingValidationError` (not retryable)
  *   - HTTP 401 / 403                    → `SitepingAuthError` (not retryable)
+ *   - HTTP 408 / 429                    → `SitepingError` code `"SERVER"` (retryable)
  *   - everything else                   → `SitepingError` generic
  *
  * Store mode (store-client.ts): a `createFeedback` that does not settle in

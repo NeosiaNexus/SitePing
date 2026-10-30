@@ -896,9 +896,15 @@ export class Panel {
     card.classList.toggle("sp-card--selected", this.bulk.isSelected(feedback.id));
     card.setAttribute("role", "listitem");
     card.setAttribute("tabindex", "0");
+    // Same accessible name as the feedback's pin, status included.
     card.setAttribute(
       "aria-label",
-      `Feedback #${number}: ${getTypeLabel(feedback.type, this.t)} — ${feedback.message.slice(0, 80)}`,
+      tWithParams(this.t, "marker.aria", {
+        number,
+        type: getTypeLabel(feedback.type, this.t),
+        status: getStatusLabel(feedback.status, this.t),
+        message: feedback.message.slice(0, 80),
+      }),
     );
     card.dataset.feedbackId = feedback.id;
     // Display (sort-order) number — the detail title must match the card's #.
@@ -1366,8 +1372,9 @@ export class Panel {
           bg: this.colors.statusOpenBg,
         },
         {
+          // Filters the closed bucket (resolved + wont_fix): labelled "Closed".
           value: "resolved",
-          label: this.t("panel.statusResolved"),
+          label: this.t("panel.statusClosed"),
           icon: ICON_CHECK,
           color: this.colors.statusResolved,
           bg: this.colors.statusResolvedBg,

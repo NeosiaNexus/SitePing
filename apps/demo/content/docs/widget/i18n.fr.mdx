@@ -22,7 +22,7 @@ initSiteping({
 
 ## Locales personnalisées
 
-`registerLocale(code, translations)` ajoute une langue que le widget ne fournit pas, et `loadLocale(code)` charge un dictionnaire intégré à l'avance. Les deux sont des exports runtime de `@siteping/widget` :
+`registerLocale(code, translations)` ajoute une langue que le widget ne fournit pas, ou reformule des libellés d'une langue qu'il fournit, et `loadLocale(code)` charge un dictionnaire intégré à l'avance. Les deux sont des exports runtime de `@siteping/widget` :
 
 ```ts
 import { initSiteping, registerLocale, type Translations } from "@siteping/widget";
@@ -31,7 +31,15 @@ registerLocale("nl", { "panel.title": "Feedbacks", "fab.annotate": "Nieuwe annot
 initSiteping({ endpoint: "/api/siteping", projectName: "mon-projet", locale: "nl" });
 ```
 
-**Les dictionnaires partiels sont acceptés.** Les clés manquantes retombent sur l'anglais clé par clé : redéfinir une seule chaîne n'oblige jamais à recopier tout le catalogue — passez le type `Translations` uniquement si vous voulez que l'ensemble complet soit vérifié. Deux règles que l'implémentation impose : enregistrez sous le **code de langue de base** (`"nl"`, pas `"nl-BE"` — les recherches se normalisent vers la base), et appelez `registerLocale` **avant** `initSiteping`.
+**Les dictionnaires partiels sont acceptés.** Sous un code intégré, les clés passées remplacent uniquement ces libellés et le reste du dictionnaire intégré est conservé ; sous un nouveau code, les clés manquantes retombent sur l'anglais clé par clé. Dans les deux cas, redéfinir une seule chaîne n'oblige jamais à recopier tout le catalogue — passez le type `Translations` uniquement si vous voulez que l'ensemble complet soit vérifié :
+
+```ts
+// L'interface française partout, avec votre propre formulation pour un libellé
+registerLocale("fr", { "fab.annotate": "Commenter" });
+initSiteping({ endpoint: "/api/siteping", projectName: "mon-projet", locale: "fr" });
+```
+
+Les appels pour un même code s'additionnent au lieu de se remplacer. Deux règles que l'implémentation impose : enregistrez sous le **code de langue de base** (`"nl"`, pas `"nl-BE"` — les recherches se normalisent vers la base), et appelez `registerLocale` **avant** `initSiteping`.
 
 Faites `await loadLocale("fr")` avant l'init si vous voulez une locale intégrée à l'écran dès le premier rendu, sans bref passage par l'anglais.
 

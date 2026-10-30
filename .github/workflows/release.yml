@@ -60,6 +60,21 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      # The release PR body renders every issue a commit references, `Refs #N`
+      # footers included, as `closes #N` — so merging it closed issues that
+      # were still open (#356 closed nine). Rewrite them to `refs` each time
+      # release-please creates or refreshes the PR; an issue a change fixes is
+      # closed by that change's own PR.
+      - name: Keep the release PR from closing issues
+        if: ${{ steps.release.outputs.prs_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .body > "$RUNNER_TEMP/body.md"
+          sed -E -i 's/, closes (\[#[0-9]+\])/, refs \1/g' "$RUNNER_TEMP/body.md"
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" -F "body=@$RUNNER_TEMP/body.md" --silent
+
   build:
     needs: release-please
     if: |
@@ -132,7 +147,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/widget
@@ -175,7 +190,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       # adapter-prisma depends on @siteping/server through `workspace:^`,
@@ -220,7 +235,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/cli
@@ -259,7 +274,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/adapter-memory
@@ -298,7 +313,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/dashboard
@@ -337,7 +352,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/adapter-localstorage
@@ -376,7 +391,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/adapter-kit
@@ -415,7 +430,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/adapter-drizzle
@@ -454,7 +469,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       # Idempotent, unlike the other publish jobs: adapter-prisma waits for
@@ -502,7 +517,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/screenshot-storage
@@ -511,10 +526,11 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # After the server, like adapter-prisma: the @siteping/server version its
-  # peer range pins must reach npm first.
+  # Depends on no other @siteping package (it mirrors the server's hook types
+  # instead, see scripts/check-consistency.mjs rule 7), so nothing to pin and
+  # no publish to wait for.
   publish-integration-issues:
-    needs: [release-please, build, publish-server]
+    needs: [release-please, build]
     if: |
       !failure() && !cancelled() &&
       (needs.release-please.outputs.integration-issues-release_created == 'true' ||
@@ -543,22 +559,8 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
-
-      # The @siteping/server peer is `workspace:^`, which npm cannot resolve:
-      # pin a range from the server release this commit carries up to its next
-      # major. Not `^`: on 0.x it refuses the next minor, which is every
-      # breaking server release, and nothing releases this package along with
-      # the server, so npm would refuse the pair (ERESOLVE) until this package
-      # happened to change. Only the server's hook types are used, and a server
-      # change that breaks them breaks this package's type check in CI, so it
-      # ships with its fix.
-      - name: Pin the @siteping/server peer dependency
-        run: |
-          range=$(node -p 'const v = require("../server/package.json").version; ">=" + v + " <" + (parseInt(v, 10) + 1) + ".0.0"')
-          npm pkg set "peerDependencies.@siteping/server=$range"
-        working-directory: packages/integration-issues
 
       - name: Publish @siteping/integration-issues
         run: npm publish --access public --provenance
@@ -602,7 +604,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Verify npm versions match the release-please manifest
         run: node scripts/verify-npm-publish.mjs

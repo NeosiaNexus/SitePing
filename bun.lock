@@ -153,9 +153,6 @@
         "@siteping/server": "workspace:*",
         "mdast-util-from-markdown": "^2.1.0",
       },
-      "peerDependencies": {
-        "@siteping/server": "workspace:^",
-      },
     },
     "packages/screenshot-storage": {
       "name": "@siteping/screenshot-storage",

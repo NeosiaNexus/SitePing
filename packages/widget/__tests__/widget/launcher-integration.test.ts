@@ -1233,14 +1233,17 @@ describe("launcher — annotation:complete integration", () => {
   // -------------------------------------------------------------------------
 
   describe("double init guard", () => {
-    it("returns existing instance on duplicate launch() calls", () => {
+    it("hands duplicate launch() calls a handle over the existing widget", () => {
       const instance1 = launch(defaultConfig());
       const instance2 = launch(defaultConfig());
 
-      // Both should be the same instance
-      expect(instance1).toBe(instance2);
+      // One widget behind both handles; it stays until the last is destroyed
+      expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
 
       instance1.destroy();
+      expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
+      instance2.destroy();
+      expect(document.querySelector("siteping-widget")).toBeNull();
     });
   });
 

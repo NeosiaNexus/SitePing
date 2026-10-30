@@ -1,6 +1,12 @@
+// The generator first, as in the CLI: what it sets up before parsing (the
+// Object.groupBy polyfill, while Node 20 is supported) is in place before
+// prisma-ast loads below.
+import "../../src/generators/prisma.js";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { getSchema } from "@mrleebo/prisma-ast";
+import { type FieldDef, SITEPING_MODELS } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +85,82 @@ model User {
   id    String @id @default(cuid())
   email String @unique
   name  String
+}
+`;
+
+/**
+ * The Siteping models as `sync` wrote them for MySQL before the columns were
+ * sized from the server's caps (cli 0.5.7): every plain `String` a
+ * `VARCHAR(191)`, the inline screenshot a 64 KB `TEXT`.
+ */
+const MYSQL_MODELS_BEFORE_SIZING = `
+model SitepingFeedback {
+  id               String               @id @default(cuid())
+  projectName      String
+  type             String
+  message          String               @db.Text
+  status           String               @default("open")
+  url              String
+  urlPattern       String?
+  screenshotUrl    String?              @db.Text
+  screenshotRegion Json?
+  diagnostics      Json?
+  viewport         String
+  userAgent        String
+  authorName       String
+  authorEmail      String
+  clientId         String               @unique
+  resolvedAt       DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  annotations      SitepingAnnotation[]
+  comments         SitepingComment[]
+
+  @@index([projectName])
+  @@index([projectName, status, createdAt])
+  @@index([projectName, url])
+}
+
+model SitepingAnnotation {
+  id               String           @id @default(cuid())
+  feedbackId       String
+  feedback         SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  cssSelector      String           @db.Text
+  xpath            String           @db.Text
+  textSnippet      String           @db.Text
+  elementTag       String
+  elementId        String?
+  textPrefix       String           @db.Text
+  textSuffix       String           @db.Text
+  fingerprint      String
+  neighborText     String           @db.Text
+  anchorKey        String?
+  xPct             Float
+  yPct             Float
+  wPct             Float
+  hPct             Float
+  scrollX          Float
+  scrollY          Float
+  viewportW        Int
+  viewportH        Int
+  devicePixelRatio Float            @default(1)
+  createdAt        DateTime         @default(now())
+
+  @@index([feedbackId])
+}
+
+model SitepingComment {
+  id          String           @id @default(cuid())
+  feedbackId  String
+  feedback    SitepingFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  body        String           @db.Text
+  authorName  String
+  authorEmail String
+  authorRole  String           @default("client")
+  clientId    String           @unique
+  createdAt   DateTime         @default(now())
+
+  @@index([feedbackId, createdAt])
 }
 `;
 
@@ -477,6 +559,143 @@ describe("syncPrismaModels", () => {
       syncPrismaModels(schemaPath);
 
       expect(readFileSync(schemaPath, "utf-8")).toMatch(/^\s*message\s+String\s+@db\.Text$/m);
+    });
+  });
+
+  describe("MySQL column sizes", () => {
+    const MYSQL_SCHEMA = MINIMAL_SCHEMA.replace('"postgresql"', '"mysql"');
+    /** Bytes each MySQL text type holds; a plain `String` is a `VARCHAR(191)`. */
+    const TEXT_TYPE_BYTES: Partial<Record<string, number>> = {
+      Text: 65_535,
+      MediumText: 16_777_215,
+      LongText: 4_294_967_295,
+    };
+
+    /** The `@db.<type>` of every Siteping field in `source`, keyed `Model.field`. */
+    function nativeTypes(source: string): Map<string, string | undefined> {
+      const types = new Map<string, string | undefined>();
+      for (const block of getSchema(source).list) {
+        if (block.type !== "model") continue;
+        for (const prop of block.properties) {
+          if (prop.type !== "field") continue;
+          types.set(`${block.name}.${prop.name}`, prop.attributes?.find((attr) => attr.group === "db")?.name);
+        }
+      }
+      return types;
+    }
+
+    it("sizes every column for its maxLength in 4-byte characters", () => {
+      writeFileSync(schemaPath, MYSQL_SCHEMA);
+
+      syncPrismaModels(schemaPath);
+
+      const types = nativeTypes(readFileSync(schemaPath, "utf-8"));
+      for (const [model, { fields }] of Object.entries(SITEPING_MODELS)) {
+        for (const [field, def] of Object.entries<FieldDef>(fields)) {
+          if (def.maxLength === undefined) continue;
+          const type = types.get(`${model}.${field}`);
+          const fits = type === undefined ? def.maxLength <= 191 : (TEXT_TYPE_BYTES[type] ?? 0) >= def.maxLength * 4;
+          expect(fits, `${model}.${field} (${type ?? "VARCHAR(191)"}) holds ${def.maxLength} characters`).toBe(true);
+        }
+      }
+    });
+
+    it("keeps the indexed identifiers plain, and gives an inline screenshot a MEDIUMTEXT", () => {
+      writeFileSync(schemaPath, MYSQL_SCHEMA);
+
+      syncPrismaModels(schemaPath);
+
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).toMatch(/^\s*projectName\s+String$/m);
+      expect(output).toMatch(/^\s*clientId\s+String\s+@unique$/m);
+      expect(output).toMatch(/^\s*url\s+String\s+@db\.Text$/m);
+      expect(output).toMatch(/^\s*screenshotUrl\s+String\?\s+@db\.MediumText$/m);
+    });
+
+    it("indexes a text column on a 191-character prefix, and nothing else", () => {
+      writeFileSync(schemaPath, MYSQL_SCHEMA);
+
+      syncPrismaModels(schemaPath);
+
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).toContain("@@index([projectName, url(length: 191)])");
+      expect(output.match(/length:/g)).toHaveLength(1);
+    });
+
+    it.each(["postgresql", "sqlite"])("changes nothing on %s, whose plain String is unbounded", (provider) => {
+      writeFileSync(schemaPath, MINIMAL_SCHEMA.replace('"postgresql"', `"${provider}"`));
+
+      syncPrismaModels(schemaPath);
+
+      const output = readFileSync(schemaPath, "utf-8");
+      expect(output).toMatch(/^\s*url\s+String$/m);
+      expect(output).toMatch(/^\s*userAgent\s+String$/m);
+      expect(output).not.toContain("MediumText");
+      expect(output).toContain("@@index([projectName, url])");
+    });
+
+    it("widens a schema an earlier sync wrote for MySQL, index included", () => {
+      writeFileSync(schemaPath, MYSQL_SCHEMA + MYSQL_MODELS_BEFORE_SIZING);
+
+      const result = syncPrismaModels(schemaPath);
+
+      const widened = (model: string, field: string, detail = "+@db.Text") => ({
+        model,
+        field,
+        action: "updated",
+        detail,
+      });
+      expect(result.addedModels).toEqual([]);
+      expect(result.changes).toEqual([
+        widened("SitepingFeedback", "url"),
+        widened("SitepingFeedback", "urlPattern"),
+        widened("SitepingFeedback", "screenshotUrl", "@db.Text → @db.MediumText"),
+        widened("SitepingFeedback", "userAgent"),
+        widened("SitepingFeedback", "authorName"),
+        widened("SitepingFeedback", "authorEmail"),
+        widened("SitepingFeedback", "@@index([projectName, url])", "url → url(length: 191)"),
+        widened("SitepingAnnotation", "fingerprint"),
+        widened("SitepingAnnotation", "anchorKey"),
+        widened("SitepingComment", "authorName"),
+        widened("SitepingComment", "authorEmail"),
+      ]);
+      // The same schema a fresh sync writes, with nothing left to change.
+      const upgraded = readFileSync(schemaPath, "utf-8");
+      expect(syncPrismaModels(schemaPath).changes).toEqual([]);
+      writeFileSync(schemaPath, MYSQL_SCHEMA);
+      syncPrismaModels(schemaPath);
+      expect(upgraded).toBe(readFileSync(schemaPath, "utf-8"));
+    });
+
+    it("keeps a prefix length already set, and the column's other options", () => {
+      writeFileSync(schemaPath, MYSQL_SCHEMA);
+      syncPrismaModels(schemaPath);
+      const custom = readFileSync(schemaPath, "utf-8").replace("url(length: 191)", "url(length: 100, sort: Desc)");
+      expect(custom).toContain("@@index([projectName, url(length: 100, sort: Desc)])");
+      writeFileSync(schemaPath, custom);
+
+      expect(syncPrismaModels(schemaPath).changes).toEqual([]);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(custom);
+    });
+
+    it("drops a prefix length where the connector has none, keeping the other options", () => {
+      const synced = syncedSchema().replace(
+        "@@index([projectName, url])",
+        "@@index([projectName, url(length: 191, sort: Desc)])",
+      );
+      writeFileSync(schemaPath, synced);
+
+      const result = syncPrismaModels(schemaPath);
+
+      expect(result.changes).toEqual([
+        {
+          model: "SitepingFeedback",
+          field: "@@index([projectName, url])",
+          action: "updated",
+          detail: "url(length: 191, sort: Desc) → url(sort: Desc)",
+        },
+      ]);
+      expect(readFileSync(schemaPath, "utf-8")).toContain("@@index([projectName, url(sort: Desc)])");
     });
   });
 

@@ -77,7 +77,7 @@ writeFileSync(
       },
       bugs: { url: "https://github.com/NeosiaNexus/SitePing/issues" },
       publishConfig: { access: "public" },
-      engines: { node: ">=20" },
+      engines: { node: ">=22" },
       devDependencies: { "@siteping/core": "workspace:*" },
     },
     null,

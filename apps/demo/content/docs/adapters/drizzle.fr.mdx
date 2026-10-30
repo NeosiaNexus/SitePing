@@ -10,7 +10,7 @@ description: Un store de production sur PostgreSQL ou Turso / libSQL via Drizzle
 | `@siteping/adapter-drizzle/pg` | PostgreSQL | N'importe quel driver PostgreSQL de Drizzle — node-postgres, postgres.js, Neon (serverless et HTTP), Vercel Postgres, Supabase, PGlite… |
 | `@siteping/adapter-drizzle/libsql` | Turso / libSQL | `drizzle-orm/libsql` uniquement — Turso distant, réplicas embarqués, fichiers locaux |
 
-Il exige Node 20+ et `drizzle-orm` 0.45 ou plus récent (sous la 1.0), en dépendance peer. `@siteping/server` sert le store en HTTP (étape 3) :
+Il exige Node 22+ et `drizzle-orm` 0.45 ou plus récent (sous la 1.0), en dépendance peer. `@siteping/server` sert le store en HTTP (étape 3) :
 
 ```bash
 npm i @siteping/adapter-drizzle @siteping/server drizzle-orm
@@ -121,6 +121,8 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   apiKey: process.env.SITEPING_API_KEY,
 });
 ```
+
+Avec une clé, le widget peut envoyer mais pas lister ses pins tant que `GET` n'est pas public — voir [le modèle de sécurité](/fr/docs/server#le-modèle-de-sécurité-franchement).
 
 ## Options
 

@@ -3,7 +3,6 @@
   "include-component-in-tag": true,
   "bump-patch-for-minor-pre-major": true,
   "initial-version": "0.1.0",
-  "changelog-notes-type": "github",
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
     { "type": "fix", "section": "Bug Fixes" },

@@ -15,7 +15,7 @@ No database column is added: the first line of each issue is a hidden marker nam
 npm i @siteping/integration-issues
 ```
 
-It runs wherever the [server](/docs/server) runs (Fetch API only) and takes `@siteping/server` as a peer dependency; [`@siteping/adapter-prisma`](/docs/adapters/prisma) already brings it, and passes `hooks` through like every other server option.
+It runs wherever the [server](/docs/server) runs (Fetch API only). It depends on no server version: its hooks match the server's types structurally, so it installs next to `@siteping/server` or [`@siteping/adapter-prisma`](/docs/adapters/prisma), which passes `hooks` through like every other server option.
 
 ## GitHub
 

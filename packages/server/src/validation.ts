@@ -10,6 +10,7 @@ import type {
 import {
   ANCHOR_ELEMENT_ID_MAX,
   ANCHOR_ELEMENT_TAG_MAX,
+  CLIENT_ID_MAX_LENGTH,
   COMMENT_AUTHOR_ROLES,
   COMMENT_BODY_MAX_LENGTH,
   CONSOLE_DIAGNOSTIC_LEVELS,
@@ -17,6 +18,7 @@ import {
   FEEDBACK_STATUSES,
   FEEDBACK_TYPES,
   IDENTITY_FIELD_MAX_LENGTH,
+  PROJECT_NAME_MAX_LENGTH,
 } from "@siteping/core";
 import * as zod from "zod";
 import { MAX_VALIDATION_ISSUES } from "./constants.js";
@@ -120,11 +122,11 @@ export const screenshotRegionSchema = z.strictObject({
 const clientIdSchema = z
   .string()
   .min(1)
-  .max(200)
+  .max(CLIENT_ID_MAX_LENGTH)
   .regex(/^[a-zA-Z0-9_-]+$/, "clientId must be alphanumeric (a-z, A-Z, 0-9, _, -)");
 
 export const feedbackCreateSchema = z.object({
-  projectName: z.string().min(1).max(200),
+  projectName: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH),
   type: z.enum(FEEDBACK_TYPES),
   message: z.string().min(1).max(5000),
   // Page-scope identifier the widget uses to group feedbacks. Defaults to
@@ -170,7 +172,7 @@ export const feedbackCreateSchema = z.object({
 // `feedbackId` names the thread — its presence is what routes a POST here
 // rather than to `feedbackCreateSchema`.
 export const commentCreateSchema = z.object({
-  projectName: z.string().min(1).max(200),
+  projectName: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH),
   feedbackId: z.string().min(1).max(200),
   // Trimmed, so a whitespace-only reply is a 400 rather than an empty bubble.
   body: z.string().trim().min(1).max(COMMENT_BODY_MAX_LENGTH),
@@ -185,24 +187,24 @@ export const commentCreateSchema = z.object({
 });
 
 export const commentDeleteSchema = z.object({
-  projectName: z.string().min(1).max(200),
+  projectName: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH),
   feedbackId: z.string().min(1).max(200),
   commentId: z.string().min(1).max(200),
 });
 
 export const feedbackPatchSchema = z.object({
   id: z.string().min(1),
-  projectName: z.string().min(1).max(200),
+  projectName: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH),
   status: z.enum(FEEDBACK_STATUSES),
 });
 
 export const feedbackDeleteSchema = z.union([
-  z.object({ id: z.string().min(1), projectName: z.string().min(1).max(200) }),
-  z.object({ projectName: z.string().min(1).max(200), deleteAll: z.literal(true) }),
+  z.object({ id: z.string().min(1), projectName: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH) }),
+  z.object({ projectName: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH), deleteAll: z.literal(true) }),
 ]);
 
 export const getQuerySchema = z.object({
-  projectName: z.string().min(1).max(200),
+  projectName: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   type: z.enum(FEEDBACK_TYPES).optional(),

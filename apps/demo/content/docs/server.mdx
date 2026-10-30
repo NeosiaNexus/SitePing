@@ -3,7 +3,7 @@ title: Server
 description: One HTTP endpoint over any store, for any framework — auth, CORS, validation, redaction, hooks and webhooks on the Fetch API.
 ---
 
-`@siteping/server` turns any [store](/docs/adapters) into the HTTP API the widget and the dashboard talk to. It speaks the Fetch API only (`Request` → `Response`) and imports no Node built-in, so the same handler runs on Node 20+, Bun, Deno and edge workers, mounted by Next.js, Hono, Express or anything else.
+`@siteping/server` turns any [store](/docs/adapters) into the HTTP API the widget and the dashboard talk to. It speaks the Fetch API only (`Request` → `Response`) and imports no Node built-in, so the same handler runs on Node 22+, Bun, Deno and edge workers, mounted by Next.js, Hono, Express or anything else.
 
 ```bash
 npm i @siteping/server
@@ -139,6 +139,7 @@ createSitepingHandler({
 ## The security model, honestly
 
 - **Reads are public by default.** Without an `apiKey`, anyone who knows the URL can list feedbacks (with emails redacted — see below).
+- **With an `apiKey`, they are not.** `publicEndpoints` then defaults to `["POST", "OPTIONS"]`: a visitor without the key can submit, but `GET` answers `401`, so the widget shows no pins and an empty panel (it says why in the browser console, once). For reviewers without the key, set `publicEndpoints: ["GET", "POST", "OPTIONS"]`: anyone with the URL and a project name can then read its feedback and threads, emails redacted. Keep the default for a submit-only widget, or sign reviewers in with [`access`](#custom-access).
 - **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key, unless you opted out. That check reads `process.env.NODE_ENV`, so it only runs where `process` exists; elsewhere the `401` still applies.
 - `OPTIONS` is always public — preflights must work.
 - **Cross-project checks need the store.** PATCH and DELETE verify that the record belongs to the `projectName` they name through the store's optional `verifyProjectOwnership` — every bundled store and anything built on `createCollectionStore` implements it. A hand-written store that omits it skips the check: any caller who knows a feedback `id` can then modify it regardless of `projectName`, so implement the method (see [writing an adapter](/docs/adapters/writing-an-adapter#project-ownership)) or put the endpoint behind an `apiKey`.
@@ -576,11 +577,11 @@ One endpoint, five methods. All bodies are JSON.
 
 **DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
 
-**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`, the first 20 issues; a body over `maxBodyBytes` → `413`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project, a comment's `clientId` already used on another feedback, or a `client` comment on a full thread → `409 { error }`; a value longer than the store holds (a `VARCHAR(191)` column on MySQL) → `422 { error }`; comment write on a store without comments → `501 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
+**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`, the first 20 issues; a body over `maxBodyBytes` → `413`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project, a comment's `clientId` already used on another feedback, or a `client` comment on a full thread → `409 { error }`; a value longer than the store holds (a MySQL column `sync` has not [widened](/docs/adapters/prisma#database-schema) yet) → `422 { error }`; comment write on a store without comments → `501 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
 
 ### Validation limits worth knowing
 
-The whole body ≤ `maxBodyBytes` (4 MiB) · `message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · comment `body` ≤ 5000 chars, 100 `client` comments per thread (`team` replies are not capped) · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `clientId` matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
+The whole body ≤ `maxBodyBytes` (4 MiB) · `message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · comment `body` ≤ 5000 chars, 100 `client` comments per thread (`team` replies are not capped) · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `projectName` ≤ 191 chars · `clientId` ≤ 191 chars and matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
 
 ## Webhooks
 

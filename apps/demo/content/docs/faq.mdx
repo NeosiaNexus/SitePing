@@ -9,7 +9,7 @@ In order of likelihood:
 
 1. **You're in a production build.** The widget skips when `NODE_ENV` is `production` (only `process.env.NODE_ENV` is read). Pass `forceShow: true` on staging, or check with `onSkip`.
 2. **Invalid config** — a missing `endpoint`/`store` or `projectName` logs a `console.error` and mounts nothing. This case does *not* fire `onSkip`, so open the console.
-3. **It's already mounted.** A second `initSiteping()` returns the existing instance instead of a second button.
+3. **It's already mounted.** A second `initSiteping()` returns a handle over the existing widget instead of a second button, and its config is ignored.
 4. **The viewport is narrower than your `minViewportWidth`.** Only when you set one — by default the widget renders at every width, phones included (before 0.11 the default was 768 px). `onSkip("mobile")` tells you.
 
 ## Do my clients need an account?
@@ -32,7 +32,7 @@ The comment, its type and status, the page (the URL **path** only by default —
 
 ## Can anyone read my feedback API?
 
-Reads are public by default, with author emails redacted for unauthenticated callers, and `clientId` never exposed. Destructive calls (status changes, deletes) require an `apiKey` out of the box — and in production the server adapter refuses to start without one. [Details](/docs/server#the-security-model-honestly). Behind your own login, [custom access](/docs/server#custom-access) decides per user instead, with recipes for [Better Auth](/docs/server#recipe-better-auth) and [OpenID Connect](/docs/server#recipe-openid-connect).
+Without an `apiKey`, reads are public, with author emails redacted for unauthenticated callers, and `clientId` never exposed. Destructive calls (status changes, deletes) require an `apiKey` out of the box — and in production the server adapter refuses to start without one. With a key, reads need it too unless you list `"GET"` in `publicEndpoints`, which a widget needs to show pins to reviewers without the key. [Details](/docs/server#the-security-model-honestly). Behind your own login, [custom access](/docs/server#custom-access) decides per user instead, with recipes for [Better Auth](/docs/server#recipe-better-auth) and [OpenID Connect](/docs/server#recipe-openid-connect).
 
 ## What happens if the network drops mid-submit?
 
@@ -44,4 +44,4 @@ The marker hides on that page (nothing to anchor to) rather than pointing at the
 
 ## My language isn't built in.
 
-The dashboard accepts runtime locales via `registerLocale`. The widget's locales are compiled in — adding one is the friendliest first contribution to the project: see [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md).
+Register it at runtime: the widget and the dashboard each export `registerLocale`, which takes a full or partial dictionary — see [Languages](/docs/widget/i18n#custom-locales). Shipping it as a built-in locale for everyone is the friendliest first contribution to the project: see [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md).

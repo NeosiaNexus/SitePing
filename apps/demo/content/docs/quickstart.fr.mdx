@@ -54,6 +54,8 @@ Lancez votre serveur de dev et regardez en bas à droite : le bouton SitePing es
 
 Par défaut le widget apparaît en développement mais **jamais dans un build de production** — c'est voulu : les clients relisent sur des URLs de dev/staging. Pour un staging construit en mode production, passez `forceShow: true`.
 
+**Avant la mise en ligne, définissez `SITEPING_API_KEY`** : la route générée refuse de démarrer en production sans elle. Avec une clé, seuls les envois du widget restent publics. Les changements de statut et les suppressions demandent la clé, la liste aussi : un relecteur sans clé peut envoyer un feedback mais ne voit aucun pin, et la console du navigateur dit pourquoi. Pour que les relecteurs voient les pins et les fils, décommentez `publicEndpoints: ["GET", "POST", "OPTIONS"]` dans la route. Quiconque connaît l'URL et le nom du projet peut alors lire les feedbacks, e-mails des auteurs masqués — voir [le modèle de sécurité](/fr/docs/server#le-modèle-de-sécurité-franchement).
+
 ### 4. Trier ce qui arrive
 
 ```tsx

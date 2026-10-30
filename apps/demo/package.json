@@ -10,7 +10,7 @@
     "clean": "rm -rf .next"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@siteping/adapter-localstorage": "workspace:*",

@@ -71,15 +71,12 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "devDependencies": {
     "@siteping/adapter-memory": "workspace:*",
     "@siteping/core": "workspace:*",
     "@siteping/server": "workspace:*",
     "mdast-util-from-markdown": "^2.1.0"
-  },
-  "peerDependencies": {
-    "@siteping/server": "workspace:^"
   }
 }

@@ -31,6 +31,7 @@ export const ru: Translations = {
   "panel.statusResolved": "Решён",
   "panel.statusInProgress": "В работе",
   "panel.statusWontFix": "Не будет исправлено",
+  "panel.statusClosed": "Закрыт",
 
   // Feedback type labels
   "type.label": "Тип",
@@ -85,7 +86,7 @@ export const ru: Translations = {
 
   // Markers
   "marker.approximate": "Приблизительная позиция (точность: {confidence}%)",
-  "marker.aria": "Отзыв #{number}: {type} — {message}",
+  "marker.aria": "Отзыв #{number}: {type}, {status} — {message}",
   "marker.count": "Отображено маркеров отзывов: {count}",
 
   // FAB badge
@@ -117,9 +118,9 @@ export const ru: Translations = {
 
   // Stats bar
   "stats.open": "Открытые",
-  "stats.resolved": "Решённые",
+  "stats.closed": "Закрытые",
   "stats.bugs": "Баги",
-  "stats.progress": "Решено: {percent}%",
+  "stats.progress": "Закрыто: {percent}%",
 
   // Detail view
   "detail.back": "Назад",

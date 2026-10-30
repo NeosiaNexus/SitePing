@@ -14,7 +14,7 @@ The HTTP endpoint of [SitePing](https://github.com/NeosiaNexus/SitePing) over an
 npm install @siteping/server
 ```
 
-Node ≥ 20, or any runtime with the Fetch API.
+Node ≥ 22, or any runtime with the Fetch API.
 
 ## Quick start
 

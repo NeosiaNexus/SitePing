@@ -25,7 +25,7 @@ const siteping = initSiteping({
 `initSiteping` runs a series of guards, in this order. When one skips, you get a no-op instance back (every method exists, nothing renders):
 
 1. **Server-side rendering** — no `window`? The widget skips with `onSkip("ssr")`. Never bypassed.
-2. **Already initialized** — a second `initSiteping()` call returns the *existing* instance (one widget per page). `destroy()` resets this.
+2. **Already initialized** — a second `initSiteping()` call returns a new handle over the *existing* widget (one widget per page) and ignores its config. The widget stays until every handle has been destroyed.
 3. **Production** — when `process.env.NODE_ENV === "production"`, the widget skips with `onSkip("production")`. This is the "clients see it during review, visitors never do" default. Bypass with `forceShow: true` for staging/preview environments. Note: only `process.env.NODE_ENV` is read — no `import.meta.env`.
 4. **Minimum width (opt-in)** — below `minViewportWidth` it skips with `onSkip("mobile")`. The default, `0`, renders at every width: phones get the [compact layout](#on-phones-and-tablets). Also bypassed by `forceShow`.
 5. **Config validation** — no `endpoint`/`store`, or no `projectName`? The widget logs a `console.error` and no-ops. This one does **not** call `onSkip` — check the console, not the callback.
@@ -61,8 +61,10 @@ siteping.close();                 // close it
 siteping.refresh();               // re-fetch feedbacks for the current page (never throws)
 siteping.focusFeedback(id);       // scroll to + highlight a marker; false if unknown
 const off = siteping.on("feedback:sent", (feedback) => { ... });
-siteping.destroy();               // full teardown, restores all patched globals
+siteping.destroy();               // release this handle; the last one tears down and restores all patched globals
 ```
+
+`destroy()` also detaches the listeners added through that handle's `on()`, and the handle does nothing afterwards. A second call is a no-op.
 
 `on()` returns an unsubscribe function. Eight public events are available:
 
@@ -95,6 +97,8 @@ export function Feedback() {
 
 The hook returns `null` until it mounts, then the instance. Changing `endpoint` or another structural option requires a remount; changing a callback does not — **every** callback the config accepts (`onFeedbackSent`, `onCommentAdded`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) is read at call time, so a handler that closes over fresh state fires with that state — and so are the [panel actions](/docs/widget/panel-actions#react) callbacks. They also go quiet after unmount, so a late response can't call into a torn-down tree.
 
+Several components can call the hook, a layout and a page for instance. They share one widget, which stays mounted until the last of them unmounts. The widget keeps the options of the component that created it (in React, the deepest one, since child effects run first), and the callbacks in those options go quiet once that component unmounts. The simplest setup calls the hook once, from a component that stays mounted such as the root layout. A component that needs events of its own can subscribe through the `on()` of the instance its hook returns: each handle keeps its own listeners, dropped when that component unmounts.
+
 ## Handling errors
 
 `onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, the last one only in `store` mode) and `retryable` (boolean). An `AUTH` error also carries the HTTP `status`: `401` when the credentials are missing or dead, `403` when they work and the server's policy refuses the request:
@@ -115,6 +119,17 @@ Branch on `error.code`, not `instanceof` — the error classes themselves are no
 ## Statuses, from the widget's side
 
 Feedback has four statuses (`open`, `in_progress`, `resolved`, `wont_fix`). The widget **displays** all four but its own actions are deliberately binary: resolve and reopen. The in-between states belong to your triage workflow in the [dashboard](/docs/dashboard).
+
+On the page, a pin's shape tells the status, not its colour alone:
+
+| Status | Pin |
+|---|---|
+| `open` | Its number, ringed in the feedback type's colour |
+| `in_progress` | Its number, with half the ring faded |
+| `resolved` | Muted, with a check |
+| `wont_fix` | Muted, with a slash (⊘), never a check |
+
+Hovering or focusing a pin shows the status in its tooltip, and screen readers announce it with the pin and the panel card. The panel's stats bar and its third tab count `resolved` and `wont_fix` together as **Closed**: a declined request is never reported as resolved.
 
 ## Filtering the panel
 
@@ -145,6 +160,6 @@ Limits: a native `<dialog>` opened with `showModal()` makes everything outside i
 
 ## Reliability details you get for free
 
-- **Retry with backoff** — failed submissions retry 3 times (10 s timeout, exponential backoff with jitter). Server errors and network failures retry; validation errors don't.
-- **Offline queue** — when a submission still fails after the retries, the payload is queued in localStorage (up to 20 entries) and flushed on the next page load. Only transient failures are queued (network errors, 5xx): a 4xx is the server's verdict on the payload and would fail identically on replay, so it is reported through `onError` and never queued. Every resend from the same popup keeps the feedback's id, so it replaces its queued attempt and the server never stores it twice. The queue stores payloads only — never tokens or headers, which are recomputed at flush time. If localStorage runs out of space, queued screenshots are dropped first (oldest first), then the oldest entries, and a console warning says what was dropped.
+- **Retry with backoff** — failed submissions retry 3 times (10 s timeout, exponential backoff with jitter). Server errors, timeouts (408), rate limits (429) and network failures retry — after the response's `Retry-After` when it sets one, up to 10 s; a longer one ends the retries at once. Validation errors don't retry.
+- **Offline queue** — when a submission still fails after the retries, the payload is queued in localStorage (up to 20 entries) and flushed on the next page load. Only transient failures are queued (network errors, 5xx, 408, 429): any other 4xx is the server's verdict on the payload and would fail identically on replay, so it is reported through `onError` and never queued. Every resend from the same popup keeps the feedback's id, so it replaces its queued attempt and the server never stores it twice. The queue stores payloads only — never tokens or headers, which are recomputed at flush time. If localStorage runs out of space, queued screenshots are dropped first (oldest first), then the oldest entries, and a console warning says what was dropped.
 - **Nothing hangs a send** — its response body gets a 10 s window too (a server that sends its headers and then stalls counts as a timeout), and a `headers` factory must settle within 10 s. Retries and the queue apply to HTTP mode (`endpoint`). In client-side [`store` mode](/docs/adapters/localstorage) nothing is retried or queued: the widget stops waiting on the store's `createFeedback` after 30 s and reports a retryable error (code `"TIMEOUT"`), but cannot cancel the call — a network-backed [custom store](/docs/adapters/writing-an-adapter) should bound its own calls.

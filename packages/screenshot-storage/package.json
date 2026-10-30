@@ -116,7 +116,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.45.0 <1"

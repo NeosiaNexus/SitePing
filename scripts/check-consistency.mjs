@@ -17,10 +17,15 @@
 //   6. Node tooling (configs, scripts/, e2e/) takes a filesystem path from a
 //      file URL's .pathname instead of fileURLToPath();
 //   7. adapter-prisma's source imports @prisma/client, which it declares as
-//      an optional peer dependency;
+//      an optional peer dependency, or integration-issues' source imports
+//      @siteping/server, which it does not declare at all;
 //   8. a published package depends on another through `workspace:` without
 //      the release.yml step that pins the range before `npm publish`, or
-//      its publish job does not wait for the dependency's.
+//      its publish job does not wait for the dependency's;
+//   9. a workspace's `engines.node` differs from core's, or something that
+//      follows that floor did not move with it (adapter scaffold, oldest CI
+//      node-compat lane, publish jobs' Node, demo runtime image, docs and
+//      README "Node N+" claims).
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -236,22 +241,28 @@ for (const dir of toolingDirs) {
   }
 }
 
-// --- 7. @prisma/client stays an optional peer --------------------------------
+// --- 7. Packages typed structurally never import what they mirror ----------
 
-// Stores other than Prisma mount through adapter-prisma too, so its
-// @prisma/client peer is optional (#306): npm, pnpm and Bun then leave it
-// out. That is only safe while the source never imports it — not even as a
-// type, which would leave an import the consumer may not resolve in the
-// published declarations. The client shape is structural on purpose
-// (SitepingPrismaClient).
-const PRISMA_CLIENT_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']@prisma\/client(?:\/[^"']*)?["']/;
-const prismaSourceFiles = (dir) =>
+// A source import — even a type, which would leave an import in the
+// published declarations — of a package the consumer may not have:
+// - Stores other than Prisma mount through adapter-prisma too, so its
+//   @prisma/client peer is optional (#306): npm, pnpm and Bun then leave it
+//   out. The client shape is structural on purpose (SitepingPrismaClient).
+// - integration-issues declares no @siteping/server dependency, so one 0.x
+//   release installs next to any server: the hook types are restated, and a
+//   type test keeps them identical to the server's.
+const STRUCTURAL_ONLY = [
+  ["packages/adapter-prisma/src", "@prisma/client", "adapter-prisma declares it as an optional peer (#306)"],
+  ["packages/integration-issues/src", "@siteping/server", "integration-issues mirrors the server's hook types"],
+];
+const sourceFiles = (dir) =>
   readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? prismaSourceFiles(`${dir}/${e.name}`) : /\.[cm]?tsx?$/.test(e.name) ? [`${dir}/${e.name}`] : [],
+    e.isDirectory() ? sourceFiles(`${dir}/${e.name}`) : /\.[cm]?tsx?$/.test(e.name) ? [`${dir}/${e.name}`] : [],
   );
-for (const file of prismaSourceFiles("packages/adapter-prisma/src")) {
-  if (PRISMA_CLIENT_IMPORT.test(read(file))) {
-    errors.push(`${file} imports @prisma/client — adapter-prisma declares it as an optional peer (#306)`);
+for (const [dir, name, why] of STRUCTURAL_ONLY) {
+  const importOf = new RegExp(`(?:\\bfrom|\\bimport|\\brequire)\\s*\\(?\\s*["']${name}(?:/[^"']*)?["']`);
+  for (const file of sourceFiles(dir)) {
+    if (importOf.test(read(file))) errors.push(`${file} imports ${name} — ${why}`);
   }
 }
 
@@ -286,6 +297,57 @@ for (const pkgPath of Object.keys(manifest)) {
       const dependencyJob = pkgPathByName.has(name) && publishJobOf(pkgPathByName.get(name));
       if (dependencyJob && !needsOf(publishJobOf(pkgPath)).includes(dependencyJob.name)) {
         errors.push(`${pkgPath}'s publish job does not wait for ${dependencyJob.name} (${name}) in release.yml`);
+      }
+    }
+  }
+}
+
+// --- 9. One Node.js floor ----------------------------------------------------
+
+// The packages' `engines.node` is the oldest Node SitePing supports. Raising
+// it (Node 20 → 22, #421) touches places package.json can't see: the scaffold
+// new adapters copy, the oldest lane CI tests, the Node the publish jobs run,
+// the demo's runtime image, and every "Node N+" a reader trusts.
+const nodeFloor = JSON.parse(read("packages/core/package.json")).engines?.node;
+const floorMajor = /^>=(\d+)$/.exec(nodeFloor ?? "")?.[1];
+if (!floorMajor) {
+  errors.push(`packages/core engines.node must read ">=<major>" (found ${JSON.stringify(nodeFloor)})`);
+} else {
+  for (const dir of workspaceDirs) {
+    if (!existsSync(join(root, dir, "package.json"))) continue;
+    const floor = JSON.parse(read(`${dir}/package.json`)).engines?.node;
+    if (floor !== nodeFloor) {
+      errors.push(`${dir} declares engines.node ${JSON.stringify(floor)} but packages/core declares "${nodeFloor}"`);
+    }
+  }
+  if (!read("scripts/new-adapter.mjs").includes(`engines: { node: "${nodeFloor}" }`)) {
+    errors.push(`scripts/new-adapter.mjs does not scaffold engines.node "${nodeFloor}"`);
+  }
+  const oldestLane = /^ +node-version: \[(\d+)/m.exec(read(".github/workflows/ci.yml"))?.[1];
+  if (oldestLane !== floorMajor) {
+    errors.push(`ci.yml's node-compat matrix starts at Node ${oldestLane} but the floor is Node ${floorMajor}`);
+  }
+  for (const m of releaseYml.matchAll(/node-version: (\S+)/g)) {
+    if (m[1] !== floorMajor) errors.push(`release.yml publishes on Node ${m[1]} but the floor is Node ${floorMajor}`);
+  }
+  const runnerImage = /^FROM node:(\d+)-/m.exec(read("apps/demo/Dockerfile"))?.[1];
+  if (runnerImage !== floorMajor) {
+    errors.push(`apps/demo/Dockerfile runs on node:${runnerImage} but the floor is Node ${floorMajor}`);
+  }
+  // "Node 22+", "Node ≥ 22", "Node 22 or newer", "Node 22 ou plus récent".
+  const NODE_CLAIM = /\bNode(?:\.js)? (?:≥ ?(\d+)|(\d+)(?:\+| or newer| ou plus récent))/g;
+  const claimFiles = [
+    "README.md",
+    ...readdirSync(join(root, "packages")).map((d) => `packages/${d}/README.md`),
+    ...walk("apps/demo/content/docs", ".mdx"),
+  ].filter((file) => existsSync(join(root, file)));
+  for (const file of claimFiles) {
+    const content = read(file);
+    for (const m of content.matchAll(NODE_CLAIM)) {
+      const major = m[1] ?? m[2];
+      if (major !== floorMajor) {
+        const line = content.slice(0, m.index).split("\n").length;
+        errors.push(`${file}:${line} says "${m[0]}" but the floor is Node ${floorMajor}`);
       }
     }
   }

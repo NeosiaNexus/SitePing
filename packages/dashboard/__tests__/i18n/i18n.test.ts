@@ -113,6 +113,19 @@ describe("registerLocale", () => {
     registerLocale("xx", custom);
     expect(createT("xx")("status.open")).toBe("OPENED");
   });
+
+  // The registry is a module singleton: the overridden key is one no other
+  // test in this file asserts on in French.
+  it("overrides one key of a built-in locale and keeps the rest of it (#303)", async () => {
+    registerLocale("fr", { "inbox.refresh": "Recharger" });
+    const dict = await loadLocale("fr");
+    expect(dict?.["inbox.refresh"]).toBe("Recharger");
+    expect(dict?.["status.resolved"]).toBe(fr["status.resolved"]);
+    const t = createT("fr-FR");
+    expect(t("inbox.refresh")).toBe("Recharger");
+    expect(t("status.resolved")).toBe(fr["status.resolved"]);
+    expect(t("status.open")).toBe(fr["status.open"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
