@@ -205,6 +205,8 @@ export interface SitepingPrismaClient {
     sitepingFeedback: PrismaModelDelegate;
 }
 
+export { SitepingProjectContext } from "@siteping/server";
+
 export { SitepingRequestContext } from "@siteping/server";
 
 export interface SitepingStore {

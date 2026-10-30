@@ -4,6 +4,7 @@
  */
 
 import type {
+  CommentPermissions,
   CommentResponse,
   FeedbackPermissions,
   FeedbackResponse,
@@ -28,13 +29,17 @@ import type { WireFeedbackList } from "../src/operations/list-feedbacks.js";
 import type { WireComment, WireFeedback } from "../src/pipeline.js";
 
 test("the wire shapes serialize to the API types clients read", () => {
-  expectTypeOf<Prettify<Serialized<WireComment>>>().toEqualTypeOf<CommentResponse>();
+  expectTypeOf<Prettify<Serialized<Omit<WireComment, "permissions">>>>().toEqualTypeOf<
+    Prettify<Omit<CommentResponse, "permissions">>
+  >();
   expectTypeOf<Prettify<Serialized<Omit<WireFeedback, "comments" | "permissions">>>>().toEqualTypeOf<
     Prettify<Omit<FeedbackResponse, "comments" | "permissions">>
   >();
   // Always sent: clients only meet a missing thread, or missing permissions,
   // on servers that predate them.
-  expectTypeOf<Serialized<WireFeedback>["comments"]>().toEqualTypeOf<CommentResponse[]>();
+  expectTypeOf<Serialized<WireComment>["permissions"]>().toEqualTypeOf<CommentPermissions>();
+  expectTypeOf<Serialized<WireFeedback>["comments"]>().toEqualTypeOf<Serialized<WireComment>[]>();
+  expectTypeOf<Serialized<WireComment>>().toExtend<CommentResponse>();
   expectTypeOf<Serialized<WireFeedback>["permissions"]>().toEqualTypeOf<FeedbackPermissions>();
 });
 

@@ -49,7 +49,7 @@ export function createCommentOperation<Principal>({
       // browser: the role a request claims is kept only when the access
       // policy vouches for the caller.
       const role: CommentAuthorRole =
-        authorRole === "team" && (await pipeline.canCommentAsTeam(scope)) ? "team" : "client";
+        authorRole === "team" && (await pipeline.canCommentAsTeam(scope, projectName)) ? "team" : "client";
       const input = { ...comment, authorRole: role };
       // Only a store that reports its inserts can tell a new reply from a
       // retried one: without `addCommentIfAbsent`, no reply counts as created
@@ -72,7 +72,7 @@ export function createCommentOperation<Principal>({
           );
         }
       }
-      return pipeline.json(scope, pipeline.presentCreatedComment(scope, stored), { status: 201 });
+      return pipeline.json(scope, await pipeline.presentCreatedComment(scope, stored, projectName), { status: 201 });
     } catch (error) {
       if (isStoreNotFound(error)) return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);
       if (isStoreLimit(error)) return pipeline.error(scope, 409, ERROR_MESSAGES.tooManyComments);

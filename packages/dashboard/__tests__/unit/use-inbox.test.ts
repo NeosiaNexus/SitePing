@@ -2251,6 +2251,44 @@ describe("useSitepingInbox — permissions and readOnly", () => {
     expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r2", "demo", "c-2");
   });
 
+  it("follows each reply's own permission over the record's (#393)", async () => {
+    const reply = (id: string, canDelete: boolean | undefined) => ({
+      id,
+      feedbackId: "r1",
+      body: id,
+      authorName: "Alex",
+      authorEmail: "",
+      authorRole: "client" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-20T10:00:00Z"),
+      ...(canDelete === undefined ? {} : { permissions: { canDelete } }),
+    });
+    // The server refuses the whole thread but grants the author's own reply.
+    const records = recordsWith({ ...ALL, canDeleteComment: false }).map((r) =>
+      r.id === "r1"
+        ? { ...r, comments: [reply("c-mine", true), reply("c-theirs", false), reply("c-old", undefined)] }
+        : r,
+    );
+    const source = threaded(records);
+    const { result, rerender } = await ready({ projects: "demo", source, author });
+    const r1 = record(result.current.items, "r1");
+    const [mine, theirs, old] = r1.comments ?? [];
+
+    expect(result.current.commentPermissionsOf(r1, mine!)).toEqual({ canDelete: true });
+    expect(result.current.commentPermissionsOf(r1, theirs!)).toEqual({ canDelete: false });
+    // A reply without permissions (a store, an older server) follows the record's.
+    expect(result.current.commentPermissionsOf(r1, old!)).toEqual({ canDelete: false });
+
+    await act(() => result.current.deleteComment("r1", "c-theirs"));
+    await act(() => result.current.deleteComment("r1", "c-old"));
+    await act(() => result.current.deleteComment("r1", "c-mine"));
+    expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r1", "demo", "c-mine");
+
+    // What the inbox cannot do stays refused, whatever the server grants.
+    rerender({ projects: "demo", source, author, readOnly: true });
+    expect(result.current.commentPermissionsOf(r1, mine!)).toEqual({ canDelete: false });
+  });
+
   it("posts no reply on a record that refuses it", async () => {
     const source = threaded(recordsWith({ ...ALL, canComment: false }));
     const { result } = await ready({ projects: "demo", source, author });

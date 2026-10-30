@@ -91,7 +91,7 @@ Il répond `200 { "deleted": true }`. Comme tout `DELETE`, il exige l'`apiKey` �
 
 ### Lire les fils
 
-La liste `GET` ne change pas, à trois ajouts près : les `comments` de chaque feedback ; un objet `capabilities` qui dit si le store accepte les commentaires (`comments`) et sait les supprimer (`deleteComments`) — un client peut ainsi masquer sa zone de réponse, ou ses boutons de suppression, d'emblée au lieu de tomber sur un `501` ; et les [`permissions`](/fr/docs/server#ce-que-chaque-appelant-peut-faire) de ce demandeur, sur chaque feedback et, avec `canDeleteAll`, sur la liste :
+La liste `GET` ne change pas, à trois ajouts près : les `comments` de chaque feedback ; un objet `capabilities` qui dit si le store accepte les commentaires (`comments`) et sait les supprimer (`deleteComments`) — un client peut ainsi masquer sa zone de réponse, ou ses boutons de suppression, d'emblée au lieu de tomber sur un `501` ; et les [`permissions`](/fr/docs/server#ce-que-chaque-appelant-peut-faire) de ce demandeur, sur chaque feedback, sur chaque commentaire (`canDelete`) et, avec `canDeleteAll`, sur la liste :
 
 ```json
 {
@@ -132,7 +132,7 @@ Le widget poste depuis des navigateurs anonymes : l'`authorRole` qu'envoie une r
 
 Le nom et l'e-mail ne sont que des prétentions eux aussi : un visiteur peut signer une réponse de ceux de n'importe qui, comme un feedback. Pour les prendre de la session — et nettoyer le corps, ou imposer le projet —, utilisez [`beforeComment`](/fr/docs/server#points-dextension), le `beforeCreate` des réponses, comme le font les [recettes](/fr/docs/server#recette--openid-connect) ; la vérification du rôle ci-dessus s'applique toujours à ce qu'il renvoie.
 
-`authorize` voit deux actions de plus : `createComment` et `deleteComment`, avec le `feedbackId` — et le `commentId` pour une suppression. Lors d'un `dryRun`, qui remplit les [`permissions`](/fr/docs/server#ce-que-chaque-appelant-peut-faire) du feedback, `deleteComment` arrive sans `commentId` et sa réponse vaut pour tout le fil : protégez une règle par auteur avec `if (!commentId) return false`, qui masque les boutons de suppression tandis que le vrai `DELETE` passe toujours par votre règle.
+`authorize` voit deux actions de plus : `createComment` et `deleteComment`, avec le `feedbackId` — et le `commentId` pour une suppression. Lors d'un `dryRun`, qui remplit les [`permissions`](/fr/docs/server#ce-que-chaque-appelant-peut-faire) du feedback, `deleteComment` arrive d'abord sans `commentId`, sa réponse valant pour tout le fil : protégez une règle par auteur avec `if (!commentId) return false`. Chaque commentaire de ce fil est ensuite interrogé avec son `commentId` : la règle accorde ainsi aux réponses de chaque auteur leur `permissions.canDelete` — le dashboard n'affiche le bouton de suppression que sur celles-là — tandis que le vrai `DELETE` passe toujours par votre règle.
 
 ```ts
 createSitepingHandler({

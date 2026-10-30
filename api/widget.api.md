@@ -39,7 +39,13 @@ export interface AnnotationPayload {
 
 export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
 
-export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+export interface CommentPermissions {
+    canDelete: boolean;
+}
+
+export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">> & {
+    permissions?: CommentPermissions | undefined;
+}>;
 
 export interface FeedbackPayload {
     annotations: AnnotationPayload[];

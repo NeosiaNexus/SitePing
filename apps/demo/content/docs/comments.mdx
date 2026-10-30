@@ -91,7 +91,7 @@ It answers `200 { "deleted": true }`. Like every `DELETE`, it needs the `apiKey`
 
 ### Read threads
 
-The `GET` list is unchanged, with three additions: each feedback's `comments`; a `capabilities` object that says whether the store can take comments (`comments`) and delete them (`deleteComments`) — so a client can hide its reply box, or its delete buttons, up front instead of meeting a `501`; and the [`permissions`](/docs/server#what-each-requester-may-do) of this requester, on each feedback and, with `canDeleteAll`, on the list:
+The `GET` list is unchanged, with three additions: each feedback's `comments`; a `capabilities` object that says whether the store can take comments (`comments`) and delete them (`deleteComments`) — so a client can hide its reply box, or its delete buttons, up front instead of meeting a `501`; and the [`permissions`](/docs/server#what-each-requester-may-do) of this requester, on each feedback, on each comment (`canDelete`) and, with `canDeleteAll`, on the list:
 
 ```json
 {
@@ -132,7 +132,7 @@ The widget posts from anonymous browsers, so the `authorRole` a request sends is
 
 The name and email are claims too: a visitor may sign a reply with anyone's, as they may a feedback. To take them from the session — and scrub the body, or pin the project — use [`beforeComment`](/docs/server#extension-points), the replies' `beforeCreate`, as the [recipes](/docs/server#recipe-openid-connect) do; the role check above still applies to what it returns.
 
-`authorize` sees two more actions: `createComment` and `deleteComment`, with the `feedbackId` — and the `commentId` for a delete. On a `dryRun`, which fills in the feedback's [`permissions`](/docs/server#what-each-requester-may-do), `deleteComment` comes without a `commentId` and its answer covers the whole thread: guard a per-author rule with `if (!commentId) return false`, which hides the delete buttons while the real `DELETE` still goes through your rule.
+`authorize` sees two more actions: `createComment` and `deleteComment`, with the `feedbackId` — and the `commentId` for a delete. On a `dryRun`, which fills in the feedback's [`permissions`](/docs/server#what-each-requester-may-do), `deleteComment` first comes without a `commentId`, its answer covering the whole thread: guard a per-author rule with `if (!commentId) return false`. Each comment of that thread is then asked about with its `commentId`, so the rule grants each author's own replies their `permissions.canDelete` — the dashboard shows the delete button on those only — while the real `DELETE` still goes through your rule.
 
 ```ts
 createSitepingHandler({
