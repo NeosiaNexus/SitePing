@@ -29,6 +29,7 @@
     "pkg-checks": "node scripts/pkg-checks.mjs",
     "api:check": "node scripts/api-surface.mjs",
     "api:update": "node scripts/api-surface.mjs --update",
+    "skew": "node scripts/version-skew.mjs",
     "check:consistency": "node scripts/check-consistency.mjs",
     "knip": "knip",
     "new:locale": "node scripts/new-locale.mjs",
