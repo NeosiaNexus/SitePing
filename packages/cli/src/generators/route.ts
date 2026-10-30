@@ -13,9 +13,12 @@ function getHandler(): SitepingHandler {
   handler ??= createSitepingHandler({
     prisma,
     // Required in production — the handler refuses to start without a key.
-    // Status changes and deletes then need \`Authorization: Bearer <key>\`;
-    // feedback submissions from the widget stay open.
+    // Requests then need \`Authorization: Bearer <key>\`, except the widget's
+    // submissions (POST). To let reviewers without the key see existing pins
+    // and threads, open GET too — feedback becomes readable without the key,
+    // author emails stay redacted:
     apiKey: process.env.SITEPING_API_KEY,
+    // publicEndpoints: ["GET", "POST", "OPTIONS"],
     // allowedOrigins: ["https://your-site.com"],
   });
   return handler;

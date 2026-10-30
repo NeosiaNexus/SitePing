@@ -122,6 +122,10 @@ describe("generateRoute", () => {
     // production without one, so the generated route must not hide it.
     expect(content).toContain("apiKey: process.env.SITEPING_API_KEY,");
     expect(content).not.toContain("// apiKey");
+    // With a key, GET stays private by default (#280): the route says so and
+    // shows the opt-in, commented out, so a reviewer-facing widget is one
+    // uncommented line away from listing its pins.
+    expect(content).toContain('// publicEndpoints: ["GET", "POST", "OPTIONS"],');
     expect(content).toContain('// allowedOrigins: ["https://your-site.com"],');
   });
 
