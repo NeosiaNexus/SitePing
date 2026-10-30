@@ -319,7 +319,8 @@ export interface SitepingBaseConfig {
    * `window.location.search` right after the initial markers load. If the
    * value matches a visible feedback ID, the widget scrolls the annotation
    * into view, pins its highlight, and pulses the marker — the same visual
-   * affordance a marker click produces.
+   * affordance a marker click produces — then opens the panel on that
+   * feedback's detail view, where its discussion thread is.
    *
    * - `false` / `undefined` (default): no URL parsing. Existing behavior
    *   unchanged, no host URL inspection.

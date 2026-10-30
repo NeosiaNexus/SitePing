@@ -638,6 +638,17 @@ export function launch(config: SitepingConfig): SitepingInstance {
             log(
               `deepLink ?${deepLinkOpts.param}=${focusId} ${matched ? "focused" : "did not match a visible feedback"}`,
             );
+            // A link to a feedback — "Open on page", a reply notification —
+            // opens its detail view too, where its thread is (#381).
+            if (matched) {
+              loadPanel()
+                .then(async (panel) => {
+                  if (!panel || destroyed) return;
+                  await panel.open();
+                  panel.showFeedback(focusId);
+                })
+                .catch((err) => log("deepLink could not open the feedback:", err));
+            }
           }
         } catch (e) {
           log("deepLink parsing failed:", e);

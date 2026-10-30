@@ -88,6 +88,8 @@ export class Panel {
    * once that load renders, dropped if the panel closes meanwhile.
    */
   private pendingScrollId: string | null = null;
+  /** Whether the pending scroll also opens the card's detail view (see `showFeedback`). */
+  private pendingDetail = false;
   /** Tracks feedback IDs with in-flight mutations to prevent spam-click race conditions */
   private pendingMutations = new Set<string>();
   /** Whether the backend takes replies — advertised by the last list response. */
@@ -530,6 +532,7 @@ export class Panel {
     this.shortcuts.disable();
     this.detail.hide();
     this.pendingScrollId = null;
+    this.pendingDetail = false;
     // Restore focus to the FAB
     const fab = (this.root.getRootNode() as ShadowRoot).querySelector<HTMLButtonElement>(".sp-fab");
     fab?.focus();
@@ -686,7 +689,7 @@ export class Panel {
       this.stats.update(feedbacks, total);
       this.bulk.reset();
       this.renderList();
-      if (this.pendingScrollId) this.flashCard(this.pendingScrollId);
+      if (this.pendingScrollId) this.flashCard(this.pendingScrollId, this.pendingDetail);
       if (listIsMarkerQuery) this.renderPageMarkers(feedbacks, scope);
     } catch (error) {
       if (signal.aborted) return; // Expected abort, not a real error
@@ -697,6 +700,7 @@ export class Panel {
       if (!signal.aborted) {
         this.isLoading = false;
         this.pendingScrollId = null;
+        this.pendingDetail = false;
       }
     }
   }
@@ -1461,17 +1465,27 @@ export class Panel {
     card?.querySelector<HTMLElement>(selector)?.click();
   }
 
-  scrollToFeedback(feedbackId: string): void {
+  scrollToFeedback(feedbackId: string, openDetail = false): void {
     // The rendered cards are about to be replaced (or not rendered yet, when
     // the marker click opened the panel): wait for the load to render them.
     if (this.isLoading) {
       this.pendingScrollId = feedbackId;
+      this.pendingDetail = openDetail;
       return;
     }
-    this.flashCard(feedbackId);
+    this.flashCard(feedbackId, openDetail);
   }
 
-  private flashCard(feedbackId: string): void {
+  /**
+   * Scroll to a feedback's card and open its detail view, where its thread
+   * is — what a deep link to it asks for (#381). Does nothing when the card
+   * isn't in the list the panel shows.
+   */
+  showFeedback(feedbackId: string): void {
+    this.scrollToFeedback(feedbackId, true);
+  }
+
+  private flashCard(feedbackId: string, openDetail: boolean): void {
     const escapedId = CSS.escape(feedbackId);
     const card = this.listContainer.querySelector<HTMLElement>(`[data-feedback-id="${escapedId}"]`);
     if (card) {
@@ -1487,7 +1501,7 @@ export class Panel {
       // Phones: the sheet hides the pin that was tapped — open its details
       // rather than leaving the user to find the card in the list.
       const feedback = this.feedbacks.find((f) => f.id === feedbackId);
-      if (feedback && isCompactViewport()) this.detail.show(feedback, Number(card.dataset.number));
+      if (feedback && (openDetail || isCompactViewport())) this.detail.show(feedback, Number(card.dataset.number));
     }
   }
 
