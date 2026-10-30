@@ -12,6 +12,7 @@ import type {
   Serialized,
 } from "@siteping/core";
 import { expectTypeOf, test } from "vitest";
+import type * as Server from "../src/index.js";
 import type { GenericWebhookPayload } from "../src/index.js";
 import type { WireFeedbackList } from "../src/operations/list-feedbacks.js";
 import type { WireComment, WireFeedback } from "../src/pipeline.js";
@@ -35,4 +36,15 @@ test("the list wire shape is what clients read, protocol version always sent", (
 test("the generic webhook body is typed as the JSON a receiver parses", () => {
   // Dates as ISO strings, no clientId on the record or its comments; no permissions, which answer a requester.
   expectTypeOf<GenericWebhookPayload>().toEqualTypeOf<Prettify<Omit<FeedbackResponse, "permissions">>>();
+});
+
+test("the server exports the wire types it answers with", () => {
+  expectTypeOf<Server.FeedbackResponse>().toEqualTypeOf<FeedbackResponse>();
+  expectTypeOf<Server.CommentResponse>().toEqualTypeOf<CommentResponse>();
+  expectTypeOf<Server.FeedbackPermissions>().toEqualTypeOf<FeedbackPermissions>();
+  expectTypeOf<Server.FeedbackResponseList["feedbacks"]>().toEqualTypeOf<FeedbackResponse[]>();
+  expectTypeOf<NonNullable<Server.FeedbackResponseList["capabilities"]>>().toEqualTypeOf<Server.SitepingCapabilities>();
+  expectTypeOf<
+    NonNullable<Server.FeedbackResponseList["permissions"]>
+  >().toEqualTypeOf<Server.FeedbackListPermissions>();
 });
