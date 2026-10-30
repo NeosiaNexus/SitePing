@@ -14,7 +14,7 @@ import { isolateFromHost } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { getTypeColor, type ThemeColors } from "./styles/theme.js";
 import type { Tooltip } from "./tooltip.js";
-import { isCoarsePointer, isCompactViewport } from "./viewport.js";
+import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
 
 type Annotation = FeedbackResponse["annotations"][number];
 
@@ -124,6 +124,18 @@ function clusterBase(cluster: Cluster): MarkerPos | undefined {
 
 /** Whether a marker is on the page — an unresolved anchor's marker stays `display:none`. */
 const isShown = (marker: HTMLElement): boolean => marker.style.display !== "none";
+
+/**
+ * Play a marker animation through the Web Animations API. Markers live in the
+ * page's DOM, outside the Shadow root whose stylesheet defines the widget's
+ * `@keyframes` (and `--sp-*` variables), so a CSS `animation` naming them never
+ * played; keyframes passed to `animate()` need no stylesheet, which a strict
+ * CSP would block anyway. Skipped under `prefers-reduced-motion`, and where
+ * `animate` is missing (jsdom).
+ */
+function play(element: HTMLElement, keyframes: Keyframe[], options: KeyframeAnimationOptions): void {
+  if (!prefersReducedMotion() && typeof element.animate === "function") element.animate(keyframes, options);
+}
 
 const HIGHLIGHT_FADE = 300;
 const REPOSITION_DEBOUNCE = 200;
@@ -435,7 +447,11 @@ export class MarkerManager {
   addFeedback(feedback: FeedbackResponse, index: number): void {
     const entry = this.buildEntry(feedback, index);
     for (const m of entry.elements) {
-      m.style.animation = "sp-marker-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both";
+      // `scale`, not `transform`: the marker's position and hover zoom own transform.
+      play(m, [{ scale: 0, opacity: 0 }, { scale: 1.2, opacity: 1, offset: 0.6 }, { scale: 1 }], {
+        duration: 350,
+        easing: "cubic-bezier(0.34,1.56,0.64,1)",
+      });
     }
     this.entries.push(entry);
     this.buildClusters();
@@ -774,13 +790,14 @@ export class MarkerManager {
     for (const entry of this.entries) {
       if (entry.feedback.id === feedbackId) {
         for (const markerEl of entry.elements) {
-          markerEl.style.animation = "sp-pulse-ring 0.7s ease-out";
-          markerEl.addEventListener(
-            "animationend",
-            () => {
-              markerEl.style.animation = "";
-            },
-            { once: true },
+          play(
+            markerEl,
+            [
+              { boxShadow: `0 0 0 0 ${this.colors.accentGlow}` },
+              { boxShadow: "0 0 0 8px transparent", offset: 0.7 },
+              { boxShadow: "0 0 0 0 transparent" },
+            ],
+            { duration: 700, easing: "ease-out" },
           );
         }
       }
