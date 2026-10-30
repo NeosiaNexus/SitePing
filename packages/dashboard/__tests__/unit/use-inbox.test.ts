@@ -401,6 +401,114 @@ describe("useSitepingInbox — latest-wins", () => {
   });
 });
 
+// A page 1 the server read before a save landed must not drop the save (#402).
+describe("useSitepingInbox — a save landing while page 1 loads", () => {
+  /** Mount on the Open tab, then hold the next page 1 the hook asks for. */
+  async function mountWithHeldPage() {
+    const records = demoRecords();
+    const source = makeSource(records);
+    const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const page = deferred<FeedbackPage>();
+    return { records, source, result, page };
+  }
+
+  it("keeps a status change saved before the target tab's stale page commits", async () => {
+    const { records, source, result, page } = await mountWithHeldPage();
+    const patch = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => patch.promise);
+    let changing!: Promise<void>;
+    act(() => {
+      changing = result.current.changeStatus("r1", "resolved");
+    });
+
+    source.list.mockImplementationOnce(() => page.promise);
+    act(() => result.current.setStatus("resolved"));
+    await waitFor(() => expect(source.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: "resolved" })));
+
+    // The PATCH answers first, then the page the server read before applying it.
+    const now = new Date();
+    await act(async () => {
+      patch.resolve({ ...records[0]!, status: "resolved", resolvedAt: now, updatedAt: now });
+      await changing;
+    });
+    await act(async () => {
+      page.resolve({ feedbacks: [records[4]!], total: 1 });
+    });
+
+    expect(ids(result.current.items)).toEqual(["r1", "r5"]);
+    expect(result.current.total).toBe(2);
+  });
+
+  it("leaves a page that already holds the save as it is, newer thread included", async () => {
+    const { records, source, result, page } = await mountWithHeldPage();
+    const patch = deferred<FeedbackRecord>();
+    source.setStatus.mockImplementationOnce(() => patch.promise);
+    let changing!: Promise<void>;
+    act(() => {
+      changing = result.current.changeStatus("r1", "resolved");
+    });
+
+    source.list.mockImplementationOnce(() => page.promise);
+    act(() => result.current.setStatus("resolved"));
+    await waitFor(() => expect(source.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: "resolved" })));
+
+    const now = new Date();
+    const saved: FeedbackRecord = { ...records[0]!, status: "resolved", resolvedAt: now, updatedAt: now };
+    await act(async () => {
+      patch.resolve(saved);
+      await changing;
+    });
+    // Read after the PATCH applied — and after a reply someone posted since.
+    const reply = {
+      id: "c-1",
+      feedbackId: "r1",
+      body: "Thanks, fixed",
+      authorName: "Studio",
+      authorEmail: "",
+      authorRole: "team" as const,
+      clientId: "",
+      createdAt: now,
+    };
+    await act(async () => {
+      page.resolve({ feedbacks: [{ ...saved, comments: [reply] }, records[4]!], total: 2 });
+    });
+
+    expect(ids(result.current.items)).toEqual(["r1", "r5"]);
+    expect(result.current.total).toBe(2);
+    expect(result.current.items[0]?.comments?.map((c) => c.body)).toEqual(["Thanks, fixed"]);
+  });
+
+  it("drops a deleted row that a reload read before the delete applied", async () => {
+    const { records, source, result, page } = await mountWithHeldPage();
+    const removal = deferred<void>();
+    source.remove.mockImplementationOnce(() => removal.promise);
+    let deleting!: Promise<void>;
+    act(() => {
+      deleting = result.current.deleteFeedback("r2");
+    });
+
+    source.list.mockImplementationOnce(() => page.promise);
+    let reloading!: Promise<void>;
+    act(() => {
+      reloading = result.current.refresh();
+    });
+    await waitFor(() => expect(source.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, limit: 50 })));
+
+    await act(async () => {
+      removal.resolve();
+      await deleting;
+    });
+    await act(async () => {
+      page.resolve({ feedbacks: [records[0]!, records[1]!, records[2]!], total: 3 });
+      await reloading;
+    });
+
+    expect(ids(result.current.items)).toEqual(["r1", "r3"]);
+    expect(result.current.total).toBe(2);
+  });
+});
+
 describe("useSitepingInbox — refresh & project prop changes", () => {
   it("refresh re-runs the current query", async () => {
     const source = makeSource(demoRecords());

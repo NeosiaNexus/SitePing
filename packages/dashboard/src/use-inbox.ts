@@ -219,6 +219,15 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const mutationSeqRef = useRef(0);
   /** loadMore's own token: appending must not invalidate anything else, only an older append. */
   const loadMoreTokenRef = useRef(0);
+  /**
+   * Saves that landed — a status change, a delete — each numbered, with what
+   * the server now holds (`null` once deleted). A page 1 requested before a
+   * save may have been read before the server applied it, so `load()`
+   * re-places the records saved since it started once its page commits (#402).
+   */
+  const saveSeqRef = useRef(0);
+  const savedRef = useRef(new Map<string, { seq: number; record: FeedbackRecord | null }>());
+  const replaceSavedSinceRef = useRef<(since: number) => void>(() => {});
   /** Bumped on every project switch — a mutation failing after one must not touch the new project's state. */
   const projectEpochRef = useRef(0);
   /**
@@ -372,6 +381,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const load = useCallback(async (): Promise<void> => {
     const token = ++tokenRef.current;
     const keepThread = keepThreads();
+    const savedSince = saveSeqRef.current;
     const countsToken = ++countsTokenRef.current;
     setLoading(true);
     setErrorState(null);
@@ -393,11 +403,12 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       totalRef.current = page.total;
       setItems(feedbacks);
       setTotal(page.total);
+      replaceSavedSinceRef.current(savedSince);
       setLoading(false);
       // A focus left on a row the new list doesn't contain would point
       // aria-activedescendant at nothing and make Enter open an invisible drawer.
       const focused = focusedIdRef.current;
-      if (focused !== null && !feedbacks.some((f) => f.id === focused)) {
+      if (focused !== null && !itemsRef.current.some((f) => f.id === focused)) {
         focusedIdRef.current = null;
         setFocusedId(null);
       }
@@ -597,6 +608,40 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     [belongsInList, commitItems, commitTotal],
   );
 
+  /**
+   * Whether `record` falls inside the loaded window: newer than some loaded
+   * row, or anywhere once the whole list is loaded. An older one sits on a
+   * page not loaded yet, where appending it would misplace it.
+   */
+  const fitsLoadedWindow = useCallback((record: FeedbackRecord): boolean => {
+    const list = itemsRef.current;
+    const createdAt = record.createdAt.getTime();
+    return (
+      list.some((f) => f.id === record.id || f.createdAt.getTime() < createdAt) ||
+      (totalRef.current !== null && list.length >= totalRef.current)
+    );
+  }, []);
+
+  /** Note a save that is its record's latest word, for the load that may have read the list before it. */
+  const noteSaved = useCallback((id: string, record: FeedbackRecord | null) => {
+    savedRef.current.set(id, { seq: ++saveSeqRef.current, record });
+  }, []);
+
+  // Once a page 1 commits: re-place what was saved since its request started.
+  // A row with a mutation still pending is that mutation's to place.
+  replaceSavedSinceRef.current = (since: number) => {
+    for (const [id, { seq, record }] of savedRef.current) {
+      if (seq <= since) {
+        savedRef.current.delete(id); // the page was read after it: nothing to re-place
+        continue;
+      }
+      if (inFlightRef.current.has(id)) continue;
+      // The page already holds this save — its copy of the row may be newer still.
+      if (record !== null && itemsRef.current.find((f) => f.id === id)?.status === record.status) continue;
+      if (record === null || fitsLoadedWindow(record)) placeRecord(id, record);
+    }
+  };
+
   /** Register an optimistic step, chained behind any mutation still pending on the same feedback. */
   const beginMutation = useCallback(
     (
@@ -759,17 +804,13 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
           // Place, not map: a page refetched meanwhile may still hold the
           // pre-change row, which must leave if the saved status doesn't fit,
           // or lack it although it now fits. Such a row comes back only inside
-          // the loaded window — older than every loaded row, it sits on a page
-          // not loaded yet, and appending it would misplace it.
-          const list = itemsRef.current;
-          const createdAt = saved.createdAt.getTime();
-          if (
-            list.some((f) => f.id === id || f.createdAt.getTime() < createdAt) ||
-            (totalRef.current !== null && list.length >= totalRef.current)
-          ) {
+          // the loaded window. A page 1 still loading may predate the save
+          // too: it re-places it once it commits.
+          if (fitsLoadedWindow(saved)) {
             const { removedAt } = placeRecord(id, saved);
             if (removedAt !== -1 && focusedIdRef.current === id) moveFocusAfterRemoval(itemsRef.current, removedAt);
           }
+          noteSaved(id, saved);
           if (openedCacheRef.current?.id === id) commitOpenedCache(saved);
           if (undoRecordRef.current?.id === id) undoRecordRef.current = saved;
         }
@@ -803,6 +844,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       commitPendingUndo,
       commitOpenedCache,
       keepThreads,
+      fitsLoadedWindow,
+      noteSaved,
     ],
   );
 
@@ -858,7 +901,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
 
       try {
         await srcRef.current.remove(id, projectRef.current);
-        settleMutation(id, handle, true);
+        // A page 1 still loading may predate the delete: it drops the row on commit.
+        if (settleMutation(id, handle, true)) noteSaved(id, null);
         callbacksRef.current.onDelete?.(record);
       } catch (cause) {
         const latest = settleMutation(id, handle, false);
@@ -893,6 +937,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       commitCounts,
       commitPendingUndo,
       commitOpenedCache,
+      noteSaved,
     ],
   );
 
