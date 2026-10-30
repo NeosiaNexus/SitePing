@@ -18,6 +18,7 @@ Types:
 ```ts
 export class MemoryStore implements SitepingStore {
     addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     clear(): void;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
@@ -35,6 +36,7 @@ export class MemoryStore implements SitepingStore {
 
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -150,6 +152,11 @@ interface CommentCreateInput {
     authorRole: CommentAuthorRole;
     body: string;
     clientId: string;
+}
+
+interface CommentCreateOutcome {
+    comment: CommentRecord;
+    created: boolean;
 }
 
 interface CommentRecord {

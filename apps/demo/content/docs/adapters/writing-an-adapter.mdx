@@ -53,13 +53,13 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 | `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
 | `generateId()` | A unique id, used for feedback, annotation and comment records |
 
-`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional — with `createFeedbackIfAbsent` guaranteed too, and `addComment` and `deleteComment` once you pass `comments: true` — so you can delegate to them without a null check.
+`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional — with `createFeedbackIfAbsent` guaranteed too, and `addComment`, `addCommentIfAbsent` and `deleteComment` once you pass `comments: true` — so you can delegate to them without a null check.
 
 **A failed `persist` leaves your snapshot untouched.** The engine never mutates the array `load()` returned — every write builds a new array and hands it to `persist`. So if `load()` serves a cached array and the write throws, no phantom record stays visible, and the widget's retry of the same `clientId` is written for real instead of being deduplicated against something that never reached storage.
 
 **Quota pressure drops screenshots first.** When `persist` throws during `createFeedback` and the record carries an inline screenshot, the engine clears `screenshotUrl` — by far the heaviest field — and retries once, so the written comment survives a full storage bucket. If that second write also fails, the error propagates: returning the record would claim a success that never happened.
 
-**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback`, `deleteAllFeedbacks`, `addComment` and `deleteComment` so each starts from the previous one's result — a comment posted while a feedback is resolved keeps both changes; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
+**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback`, `deleteAllFeedbacks`, `addComment`, `addCommentIfAbsent` and `deleteComment` so each starts from the previous one's result — a comment posted while a feedback is resolved keeps both changes; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
 
 ## Query backends
 
@@ -144,10 +144,11 @@ Implement it whenever your store serves more than one project. When it's absent,
 
 - Return the thread on every record, as `comments`, oldest first — an empty array when there is none, starting with the record `createFeedback` returns. `buildFeedbackRecord` leaves `comments` out so its record still maps to your feedback row: add `comments: []` yourself.
 - `addComment` is idempotent on `data.clientId`: when a comment with that `clientId` exists, on any thread, return it unchanged. The handler refuses a replay aimed at another feedback.
+- `addCommentIfAbsent(feedbackId, data)`, optional beside them, is `addComment` reporting whether this call inserted the comment — `{ comment, created }` — with the same atomicity as [`createFeedbackIfAbsent`](#exactly-once-creation-effects): of concurrent calls with one `clientId`, exactly one reports `created: true`. The handler writes through it when present, and needs it to fire the `comment.created` [webhook](/docs/server#events) and the `onCommentCreated` hook once per reply: without it, it refuses to start with either.
 - `deleteComment` is scoped to the thread it names, which the caller was authorized for: a comment of another thread is "not found".
 - A thread holds at most `MAX_COMMENTS_PER_FEEDBACK` (100) `client` comments — `team` ones neither count nor are refused —, a comment leaves the feedback's `updatedAt` alone, and deleting a feedback deletes its thread.
 
-`buildCommentRecord(data, { id, feedbackId })` builds the record, and `createCollectionStore` implements both methods when you pass `comments: true`. Pass it once `load` hands back each comment's `createdAt` as a `Date` — a JSON backend revives it like the record's own dates. Threads are off by default, so a snapshot adapter written before them keeps its surface, and its storage format, when the kit updates.
+`buildCommentRecord(data, { id, feedbackId })` builds the record, and `createCollectionStore` implements all three methods when you pass `comments: true`. Pass it once `load` hands back each comment's `createdAt` as a `Date` — a JSON backend revives it like the record's own dates. Threads are off by default, so a snapshot adapter written before them keeps its surface, and its storage format, when the kit updates.
 
 ## Prove it: the conformance suite
 
@@ -177,7 +178,7 @@ testSitepingStore(() => new PostgresStore(db), {
 });
 ```
 
-`verifyProjectOwnership`, `createFeedbackIfAbsent`, `addComment` and `deleteComment` are covered too: stores that don't implement them skip the assertions, so adding any of them later is checked automatically with no test changes. The comment cases include a comment racing status changes on the same store.
+`verifyProjectOwnership`, `createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` and `deleteComment` are covered too: stores that don't implement them skip the assertions, so adding any of them later is checked automatically with no test changes. The comment cases include a comment racing status changes on the same store.
 
 ## Using your adapter
 

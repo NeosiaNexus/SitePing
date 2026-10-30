@@ -1,5 +1,6 @@
 import {
   type CommentCreateInput,
+  type CommentCreateOutcome,
   type CommentRecord,
   createCollectionStore,
   type FeedbackCreateInput,
@@ -91,6 +92,10 @@ export class MemoryStore implements SitepingStore {
 
   addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> {
     return this.engine.addComment(feedbackId, data);
+  }
+
+  addCommentIfAbsent(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome> {
+    return this.engine.addCommentIfAbsent(feedbackId, data);
   }
 
   deleteComment(feedbackId: string, commentId: string): Promise<void> {

@@ -48,6 +48,7 @@ export type {
   ClosedFeedbackStatus,
   CommentAuthorRole,
   CommentCreateInput,
+  CommentCreateOutcome,
   CommentDeletePayload,
   CommentPayload,
   CommentRecord,

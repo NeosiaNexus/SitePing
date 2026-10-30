@@ -6,6 +6,7 @@
 
 Runtime exports (ESM and CJS):
 
+- `WEBHOOK_EVENTS: object`
 - `createSitepingHandler: function`
 - `dispatchWebhook: function`
 - `dispatchWebhooks: function`
@@ -19,6 +20,11 @@ export interface CommentCreateInput {
     authorRole: CommentAuthorRole;
     body: string;
     clientId: string;
+}
+
+export interface CommentCreateOutcome {
+    comment: CommentRecord;
+    created: boolean;
 }
 
 export interface CommentPayload extends CommentCreateInput {
@@ -93,6 +99,17 @@ export interface FeedbackRecord {
     viewport: string;
 }
 
+export type GenericWebhookCommentPayload = Prettify<Serialized<Omit<SitepingCreatedComment, "clientId">>>;
+
+export type GenericWebhookDeletionPayload = SitepingDeletionTarget;
+
+export interface GenericWebhookEventMap {
+    "comment.created": GenericWebhookCommentPayload;
+    "feedback.created": GenericWebhookPayload;
+    "feedback.deleted": GenericWebhookDeletionPayload;
+    "feedback.status_changed": GenericWebhookPayload;
+}
+
 export type GenericWebhookPayload = Prettify<Serialized<Omit<FeedbackRecord, "clientId" | "comments">> & {
     comments?: CommentResponse[] | undefined;
 }>;
@@ -142,6 +159,10 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
     projectName: string;
 }
 
+export interface SitepingCreatedComment extends CommentRecord {
+    projectName: string;
+}
+
 export type SitepingDeletionTarget = {
     id: string;
     kind: "single";
@@ -178,6 +199,7 @@ export type SitepingHandlerOptions<Principal extends SitepingPrincipal = Sitepin
 export type SitepingHttpMethod = "DELETE" | "GET" | "OPTIONS" | "PATCH" | "POST";
 
 export interface SitepingLifecycleHooks<Principal> {
+    onCommentCreated?(comment: SitepingCreatedComment, context: SitepingRequestContext<Principal>): Promise<void> | void;
     onCreated?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): Promise<void> | void;
     onDeleted?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): Promise<void> | void;
     onDeleting?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): Promise<void> | void;
@@ -197,6 +219,7 @@ export interface SitepingRequestContext<Principal> {
 
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -218,13 +241,28 @@ export interface ValidationIssue {
     message: string;
 }
 
+export const WEBHOOK_EVENTS: readonly [
+    "feedback.created",
+    "feedback.status_changed",
+    "feedback.deleted",
+    "comment.created"
+];
+
 export interface WebhookConfig {
+    events?: ReadonlyArray<WebhookEvent>;
     headers?: Record<string, string>;
-    onError?: (err: Error, feedbackId: string) => Promise<void> | void;
+    onError?: (err: Error, feedbackId: string, delivery: WebhookDeliveryInfo) => Promise<void> | void;
     timeoutMs?: number;
     type?: WebhookType;
     url: string;
 }
+
+export interface WebhookDeliveryInfo {
+    event: WebhookEvent;
+    projectName: string;
+}
+
+export type WebhookEvent = keyof GenericWebhookEventMap;
 
 export interface WebhookPayloadMap {
     discord: DiscordWebhookPayload;
