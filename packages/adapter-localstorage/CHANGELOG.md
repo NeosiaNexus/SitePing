@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.0](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.5.5...adapter-localstorage-v0.6.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core,adapter-kit:** make a repeated clientId throw StoreDuplicateError in every store ([#517](https://github.com/NeosiaNexus/SitePing/issues/517))
+* **server,widget,dashboard:** freeze the error contract on structural guards ([#473](https://github.com/NeosiaNexus/SitePing/issues/473))
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460))
+
+### Features
+
+* **adapter-kit:** add a persistence-failure leg to the conformance suite ([#471](https://github.com/NeosiaNexus/SitePing/issues/471)) ([5772dc5](https://github.com/NeosiaNexus/SitePing/commit/5772dc50f6612af76423c15c521ab8a58f421bb2))
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460)) ([c9799ae](https://github.com/NeosiaNexus/SitePing/commit/c9799aecad15434b84a8df4ee78d3735017daf9d))
+* **server:** notify status changes, deletions and replies through opt-in webhook events ([#483](https://github.com/NeosiaNexus/SitePing/issues/483)) ([1847516](https://github.com/NeosiaNexus/SitePing/commit/18475163282a7c44f19a03f9223e8875372da3ea))
+
+
+### Bug Fixes
+
+* **core,adapter-kit:** make a repeated clientId throw StoreDuplicateError in every store ([#517](https://github.com/NeosiaNexus/SitePing/issues/517)) ([060d935](https://github.com/NeosiaNexus/SitePing/commit/060d935500b484a123746cfa5888c562fc437ddb))
+* **server,widget,dashboard:** freeze the error contract on structural guards ([#473](https://github.com/NeosiaNexus/SitePing/issues/473)) ([fc1013c](https://github.com/NeosiaNexus/SitePing/commit/fc1013c9b3e3f4ea1655451ca386657ccc34831b))
+
 ## [0.5.5](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.5.4...adapter-localstorage-v0.5.5) (2026-10-05)
 
 
