@@ -1,0 +1,216 @@
+---
+title: Upgrading to 1.0
+description: Every breaking change between the last 0.x releases and 1.0, package by package, with what to change.
+---
+
+This page takes you from the last 0.x releases — `@siteping/widget` 0.11, `@siteping/dashboard` 0.2, `@siteping/server` 0.1, `@siteping/adapter-prisma` 0.6, `@siteping/cli` 0.5 — to 1.0, the line [Versioning](/docs/versioning) covers. Most changes are compile errors your type checker points at; the few that only change behavior are listed apart, in each package's last section.
+
+From 1.0.0, 0.x receives no security fixes: see the [security policy](https://github.com/NeosiaNexus/SitePing/blob/main/SECURITY.md#supported-versions).
+
+## Checklist
+
+1. **Upgrade the 1.0 packages together** — `@siteping/widget`, `@siteping/dashboard`, `@siteping/server`, `@siteping/adapter-prisma`, `@siteping/adapter-memory`, `@siteping/adapter-localstorage`, `@siteping/adapter-kit`, `@siteping/cli`. Any 1.x widget or dashboard works with any 1.x server; a 0.x server is not supported.
+2. **Run Node.js 22 or later** on the server, in CI and wherever you run the CLI.
+3. **Sync the schema** with `npx @siteping/cli sync`, then apply it — `npx prisma migrate dev` (or `db push`). On MySQL this widens columns; an older install also gets the comments table.
+4. **Run your type checker.** Search your code for `InboxTheme`, `Identity`, `TFunction`, `FeedbackCreateSchemaInput`, inbox `setStatus(` / `setType(` calls, `stats.resolved` in a `registerLocale` dictionary, and `createSitepingHandler` calls passing both `prisma` and `store`.
+5. **A `<script>` install on a deployed site** needs `forceShow` — see [below](#the-script-bundle-stays-hidden-on-a-deployed-site).
+6. **With an `apiKey`**, decide whether reviewers without it see existing pins and threads: `publicEndpoints: ["GET", "POST", "OPTIONS"]` — see [the server section](#lists-under-an-apikey).
+
+## Everywhere
+
+### Node.js 22 or later
+
+Every package declares `engines.node >= 22`: Node.js 20 reached its end of life on 2026-04-30. Browsers are unaffected — the widget and the dashboard run wherever they ran before.
+
+### React 18 or 19
+
+The dashboard and `@siteping/widget/react` declare `react` as `^18.0.0 || ^19.0.0` (was `>=18`): the versions CI runs. No released React is excluded.
+
+## @siteping/widget
+
+### A second `initSiteping()` returns its own handle
+
+`initSiteping()` called while a widget is mounted — two components calling `useSiteping`, a layout and a page — used to return the same object, and one `destroy()` removed the widget for everybody. Each call now returns its own handle over the one widget, which leaves the page when the last handle is destroyed.
+
+```ts
+const a = initSiteping(config);
+const b = initSiteping(config); // the same widget, another handle
+
+b.destroy(); // 0.x: the widget is gone, for `a` too — 1.0: `a` keeps it
+a.destroy(); // 1.0: the last handle — now the widget leaves the page
+```
+
+Destroy every handle you create. `destroy()` also drops the listeners added through that handle's `on()`, and a destroyed handle does nothing afterwards; a second call is a no-op. With `useSiteping`, nothing to change: each component's handle is released when it unmounts.
+
+### The `<script>` bundle stays hidden on a deployed site
+
+Without a bundler, nothing tells the script bundle it runs in production, and in 0.x it showed the widget to every visitor of a public site. It now decides by the page's host: it shows on a local page (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`, `file:`) and stays hidden anywhere else, calling `onSkip("production")`. To show it on a staging or review URL, say so:
+
+```html
+<script>
+  SitePing.initSiteping({ endpoint: "/api/siteping", projectName: "my-site", forceShow: true });
+</script>
+```
+
+Bundled installs are unchanged: their `NODE_ENV` decides, as before. See [When it shows](/docs/widget/script-tag#when-it-shows).
+
+### Errors: match them with the guard, by code
+
+The error classes were never exported, and still aren't: an error is recognized structurally, so it works across two bundled copies. 1.0 adds the guard and the types to name what you receive.
+
+```ts
+import { isSitepingError, initSiteping } from "@siteping/widget";
+
+initSiteping({
+  endpoint: "/api/siteping",
+  projectName: "my-site",
+  onError: (error) => {
+    if (!isSitepingError(error)) return;
+    if (error.code === "AUTH") showLogin(error.status); // 401 | 403
+  },
+});
+```
+
+Two changes can break code that compiled before:
+
+- **`SitepingErrorCode` is closed** — `NETWORK`, `VALIDATION`, `AUTH`, `SERVER`, `TIMEOUT`. Comparing `code` with any other string is now a type error.
+- **A 5xx is `retryable: true`**, like a 408 or a 429: the same request may succeed later. Code that read `retryable` to decide whether to tell the reviewer "try again" now sees `true` for server failures.
+
+### Translation keys
+
+The stats bar and the third panel tab now say "Closed" for `resolved` and `wont_fix` alike, and pins name their status. In a `registerLocale` dictionary:
+
+```ts
+registerLocale("fr", {
+  // 0.x: "stats.resolved": "Résolus",
+  "stats.closed": "Clôturés",
+  "marker.aria": "Feedback n°{number} : {type}, {status} — {message}", // {status} is new
+});
+```
+
+`stats.resolved` is renamed `stats.closed`; `panel.statusClosed` is new; `marker.aria` takes a `{status}` parameter (a dictionary without it still works, it just leaves the status out). Keys added in 1.0 fall back to your built-in language until you override them.
+
+### Removed type exports
+
+| 0.x | 1.0 |
+|---|---|
+| `Identity` | `SitepingIdentity` |
+| `TFunction` | removed — no public signature takes it |
+
+### `refresh()` returns a promise
+
+`instance.refresh()` returns `Promise<void>`, resolved once the feedback is shown and never rejected — `await` it if you sequence work after it. Ignoring the promise keeps working.
+
+### Behavior changes
+
+These compile as before and only behave differently:
+
+- **`theme: "auto"` follows the system live**, as the dashboard's always did, instead of being read once at mount. The default stays `"light"`.
+- **A deep link opens the feedback's detail view**, where its thread is, instead of only focusing its pin.
+- **`focusFeedback(id)` returns `false` when no pin of that feedback is on the page**, as its contract says; it returned `true` for a feedback whose anchor wasn't found.
+- **408 and 429 are retried and queued** like a 5xx, honoring `Retry-After`; `onError` no longer receives them as a `VALIDATION` error.
+- **`registerLocale` merges** over the built-in dictionary instead of replacing it, and calls for the same code add up.
+- **"Delete all" waits up to 60 seconds** and is never resent after a timeout.
+- **The CSV export starts with a UTF-8 byte-order mark**, so Excel reads accents — strip it if a script parses the file.
+- **A refused list logs one console warning** explaining `publicEndpoints` (see [Lists under an `apiKey`](#lists-under-an-apikey)).
+
+## @siteping/dashboard
+
+### Filter setters renamed
+
+On the state `useSitepingInbox()` returns, `setStatus` and `setType` set the **filters** — and collided with `InboxSource.setStatus`, which persists a change.
+
+```ts
+const inbox = useSitepingInbox(options);
+inbox.setStatusFilter("resolved"); // 0.x: inbox.setStatus("resolved")
+inbox.setTypeFilter("bug");        // 0.x: inbox.setType("bug")
+```
+
+### `InboxTheme` is `SitepingTheme`
+
+The theme type is the widget's: `InboxTheme` is removed, import `SitepingTheme` from either package. The `headers` option is typed `SitepingHeadersOption`, the widget's name for the same shape — a value that compiled before still does.
+
+### Errors
+
+The dashboard exports the same `isSitepingError`, `SitepingClientError` and `SitepingErrorCode` as the widget, with the same two changes: [a closed code union, and a retryable 5xx](#errors-match-them-with-the-guard-by-code).
+
+## @siteping/server
+
+### `projectName` and `clientId` hold 191 characters
+
+Both are capped at 191 characters (was 200), on every store: the longest value every MySQL version indexes. A longer one answers `400`. The widget generates 36-character client ids; check only a `projectName` you build yourself.
+
+### Lists under an `apiKey`
+
+Unchanged, but the first thing that surprises an upgrade: with an `apiKey`, only `POST` (and `OPTIONS`) skip authentication, so a widget without the key submits but cannot list pins or threads. To let reviewers see them, open `GET` — feedback then becomes readable to anyone who knows the endpoint and a project name; author emails stay redacted:
+
+```ts
+createSitepingHandler({
+  store,
+  apiKey: process.env.SITEPING_API_KEY,
+  publicEndpoints: ["GET", "POST", "OPTIONS"],
+});
+```
+
+The widget logs a console warning when its list is refused. A custom [`access`](/docs/server#custom-access) policy is the alternative when reviewers log in.
+
+### New in 1.0, nothing to change
+
+- Configuration errors carry a stable `code` (`CONFIG_STORE_MISSING`…), matched with `isSitepingConfigError` — see [Configuration errors](/docs/server#configuration-errors). Messages are unchanged.
+- Every webhook delivery carries an `X-Siteping-Event` header; status changes, deletions and replies are opt-in [events](/docs/server#events). The `feedback.created` body is byte-identical.
+- The protocol is published as `@siteping/server/openapi.json`, and list responses carry a `protocol` version — see [Wire protocol](/docs/server#wire-protocol).
+
+## @siteping/adapter-prisma
+
+### Options: `prisma` or `store`, never both
+
+`createSitepingHandler` takes a Prisma client **or** a store, and the type now says so. These no longer compile: no source at all (it threw at startup), `prisma` together with `store` (`store` used to win silently), and `screenshotStorage` or `caseInsensitiveSearch` next to a `store` (they were ignored).
+
+```ts
+// 0.x compiled — 1.0: pick one
+createSitepingHandler({ prisma, store, apiKey });
+
+createSitepingHandler({ prisma, apiKey });         // the built-in PrismaStore
+createSitepingHandler({ store: myStore, apiKey }); // your store, its own screenshots
+```
+
+`HandlerOptions` and `PrismaAccessHandlerOptions` are now unions: an interface can't `extends` them — use a type alias. `FeedbackCreateSchemaInput` is removed: import `FeedbackPayload`, re-exported here.
+
+### Screenshots upload after the insert
+
+With a `screenshotStorage`, `PrismaStore` inserts the feedback first, uploads under the id it was stored with, then attaches the URL. `ctx.feedbackId` in `upload()` is therefore the **record id** — it was the `clientId`. A storage that named objects after `ctx.feedbackId` now gets the record id; a replayed `clientId` or a failed insert uploads nothing. Store warnings carry a `[siteping] PrismaStore:` prefix and go to the new `logger` option (default `console`).
+
+### MySQL: widen the columns
+
+A MySQL schema synced by an earlier CLI keeps `VARCHAR(191)` columns that some values overflow (`422` on submit). Run `npx @siteping/cli sync`, then migrate — see [Database schema](/docs/adapters/prisma#database-schema). PostgreSQL, SQLite, SQL Server and CockroachDB see no change.
+
+## Custom stores
+
+### `verifyProjectOwnership` is required
+
+A store you implement — directly or with `@siteping/adapter-kit` — must implement `verifyProjectOwnership(id, projectName)`; it was optional, though the server refused a custom `access` policy without it. `createCollectionStore` provides it.
+
+```ts
+class KvStore implements SitepingStore {
+  async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
+    return (await this.read(id))?.projectName === projectName;
+  }
+  // …
+}
+```
+
+### New conformance cases
+
+`testSitepingStore` now checks text holding NUL or an unpaired surrogate (stored as sent, or with U+FFFD — `toStorableText` from `@siteping/adapter-kit` does it), a replayed reply through the optional `addCommentIfAbsent`, and, when you pass `failWrites`, that failed writes reject with `StorePersistenceError`. A suite that passed on 0.x may need the first fix; see [the conformance suite](/docs/adapters/writing-an-adapter#prove-it-the-conformance-suite).
+
+## Coming from an older 0.x
+
+If you skipped releases, these changed before the last 0.x:
+
+- **Widget 0.11** — `minViewportWidth` defaults to `0` (was `768`), so the widget renders on phones. Pass `minViewportWidth: 768` to keep it off narrow screens.
+- **adapter-prisma 0.6.7** — `createSitepingHandler` delegates to `@siteping/server` (installed with it) and accepts every server option; its types are re-exported.
+- **Discussion threads** need the `SitepingComment` model: `npx @siteping/cli sync`, then migrate; on Prisma 7, run `npx prisma generate` afterwards.
+
+## Deprecated, still working
+
+Nothing in the 1.0 packages is deprecated. In `@siteping/screenshot-storage`, which stays on 0.x, `isScreenshotUploadRejected` is renamed `isScreenshotUploadRejectedError`; the old name delegates to it.
