@@ -20,6 +20,7 @@ import {
   type ScreenshotStorage,
   type SitepingStore,
   type SitepingWarnLogger,
+  StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
@@ -175,8 +176,11 @@ export class DrizzleSitepingStore implements DrizzleStore {
     this.now = options.now ?? systemClock;
   }
 
+  /** Throws `StoreDuplicateError` when a feedback with the same `clientId` exists. */
   async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
-    return (await this.createFeedbackIfAbsent(data)).feedback;
+    const { feedback, created } = await this.createFeedbackIfAbsent(data);
+    if (!created) throw new StoreDuplicateError(`A feedback with clientId ${data.clientId} already exists`);
+    return feedback;
   }
 
   /**

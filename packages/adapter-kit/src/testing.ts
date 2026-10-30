@@ -1,7 +1,8 @@
 /**
  * The `SitepingStore` conformance suite, published for third-party adapter
  * authors (requires `vitest` — an optional peer dependency of this
- * package).
+ * package). It holds every store to one duplicate form: `createFeedback`
+ * throws `StoreDuplicateError` on a repeated `clientId`.
  *
  * @example
  * ```ts

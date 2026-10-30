@@ -1103,19 +1103,17 @@ export interface FeedbackPage {
  *
  * - **`updateFeedback` / `deleteFeedback`**: throw `StoreNotFoundError` when
  *   the record does not exist.
- * - **`createFeedback`**: either return the existing record on duplicate
- *   `clientId` (idempotent) or throw `StoreDuplicateError`. The handler
- *   handles both patterns — but only a throw, or the optional
- *   `createFeedbackIfAbsent`, tells it the record was not inserted by this
- *   call; stores that return the existing record should implement
- *   `createFeedbackIfAbsent` so creation side effects never run twice.
+ * - **`createFeedback`**: throw `StoreDuplicateError` on a duplicate
+ *   `clientId` — never return the existing record, so a caller always knows
+ *   whether this call inserted. The optional `createFeedbackIfAbsent`
+ *   reports the existing record instead, as `{ created: false }`.
  * - **All mutations**: when a write is accepted but cannot be persisted
  *   (e.g. storage quota), throw `StorePersistenceError` instead of reporting
  *   a phantom success. Detect it with `isStorePersistence`.
  * - Other methods should not throw on empty results — return empty arrays or `null`.
  */
 export interface SitepingStore {
-  /** Create a feedback with its annotations. Idempotent on `clientId` — return existing record on duplicate, or throw `StoreDuplicateError`. Throws `StorePersistenceError` when the write cannot be persisted. */
+  /** Create a feedback with its annotations. Throws `StoreDuplicateError` when a feedback with the same `clientId` exists, `StorePersistenceError` when the write cannot be persisted. */
   createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
   /** Paginated query with optional filters. Returns empty array (not error) when no results. */
   getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage>;
@@ -1144,11 +1142,10 @@ export interface SitepingStore {
    * processes need an atomic backend primitive (unique constraint,
    * transaction, compare-and-set).
    *
-   * HTTP handlers prefer it over `createFeedback` to fire creation side
-   * effects (webhooks) exactly once when concurrent requests race on the
-   * same `clientId`. Stores whose `createFeedback` throws
-   * `StoreDuplicateError` on a duplicate already give that signal and may
-   * leave it out.
+   * HTTP handlers prefer it over `createFeedback`: a replayed or racing
+   * submission resolves to the stored record in one atomic call, without a
+   * `StoreDuplicateError` to catch and a lookup to follow it. Without it,
+   * they fall back to `createFeedback` and recover its duplicate error.
    */
   createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
   /**

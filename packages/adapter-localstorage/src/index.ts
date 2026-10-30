@@ -162,6 +162,7 @@ export class LocalStorageStore implements SitepingStore {
   // SitepingStore implementation — delegated to the collection engine
   // ---------------------------------------------------------------------------
 
+  /** Throws `StoreDuplicateError` when a feedback with the same `clientId` exists. */
   createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
     return this.engine.createFeedback(data);
   }
