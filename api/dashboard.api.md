@@ -173,8 +173,8 @@ export interface InboxState {
     search: string;
     setProject(p: string): void;
     setSearch(s: string): void;
-    setStatus(s: InboxStatusFilter): void;
-    setType(t: InboxTypeFilter): void;
+    setStatusFilter(s: InboxStatusFilter): void;
+    setTypeFilter(t: InboxTypeFilter): void;
     status: InboxStatusFilter;
     total: null | number;
     type: InboxTypeFilter;
