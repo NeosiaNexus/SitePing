@@ -13,7 +13,7 @@ The inbox reads and writes through a small abstraction with three ways to supply
 
 Talks to your [SitePing endpoint](/docs/server): `GET` for lists, `PATCH` for statuses, `DELETE` for removals, always with `cache: "no-store"`. Errors arrive typed by `code` (`AUTH` for 401/403 and `VALIDATION` for other 4xx, each with the HTTP `status`, `SERVER` for 5xx, `NETWORK` for fetch failures). There are deliberately **no retries** — a triage UI should tell you immediately.
 
-Behind your app's login, leave `apiKey` out: mounted on the endpoint's origin, the inbox sends your session cookie with every request, for a server [`access`](/docs/server#custom-access) policy to read — see the [Better Auth recipe](/docs/server#recipe-better-auth). From another origin, send a token with `headers`.
+Behind your app's login, leave `apiKey` out: mounted on the endpoint's origin, the inbox sends your session cookie with every request, for a server [`access`](/docs/server#custom-access) policy to read — see the [Better Auth recipe](/docs/server#recipe-better-auth). From another origin, send a token with `headers`. The `apiKey` authorizes every write, so it never belongs in a client bundle (`NEXT_PUBLIC_*`, `VITE_*`): keep it for code that runs out of the visitor's reach.
 
 ## Store mode
 
