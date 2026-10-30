@@ -16,6 +16,7 @@ import {
   MAX_COMMENTS_PER_FEEDBACK,
   SCREENSHOT_DELETE_CONCURRENCY,
   type ScreenshotStorage,
+  SitepingConfigError,
   type SitepingStore,
   StoreDuplicateError,
   StoreLimitError,
@@ -43,7 +44,11 @@ export type {
 } from "@siteping/core";
 export {
   flattenAnnotation,
+  isStoreDuplicate,
+  isStoreLimit,
+  isStoreNotFound,
   isStorePersistence,
+  isStoreValueTooLong,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
@@ -61,6 +66,8 @@ export type {
   SitepingAccessControl,
   SitepingAction,
   SitepingAuthorizationContext,
+  SitepingConfigError,
+  SitepingConfigErrorCode,
   SitepingDeletionTarget,
   SitepingHandler,
   SitepingHandlerBaseOptions,
@@ -74,7 +81,7 @@ export type {
   WebhookPayloadMap,
   WebhookType,
 } from "@siteping/server";
-export { dispatchWebhook, dispatchWebhooks } from "@siteping/server";
+export { dispatchWebhook, dispatchWebhooks, isSitepingConfigError } from "@siteping/server";
 
 // ---------------------------------------------------------------------------
 // Minimal PrismaClient shape expected by this adapter
@@ -769,7 +776,10 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>({
   // clear error rather than a store that fails on the first request. One
   // passing both keeps the historical precedence: `store` wins.
   if (!providedStore && !prisma) {
-    throw new Error("[siteping] createSitepingHandler requires either `store` or `prisma`.");
+    throw new SitepingConfigError(
+      "CONFIG_STORE_MISSING",
+      "[siteping] createSitepingHandler requires either `store` or `prisma`.",
+    );
   }
 
   // Safe: the throw above guarantees at least one is defined

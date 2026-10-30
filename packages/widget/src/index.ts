@@ -12,11 +12,16 @@ export type {
   FeedbackStatus,
   FeedbackType,
   RectData,
+  SitepingAuthError,
+  SitepingClientError,
   SitepingConfig,
+  SitepingError,
+  SitepingErrorCode,
   SitepingHeadersOption,
   SitepingHttpConfig,
   SitepingInstance,
   SitepingLocale,
+  SitepingNetworkError,
   SitepingPanelAction,
   SitepingPanelActionContext,
   SitepingPanelActionFeedback,
@@ -25,7 +30,11 @@ export type {
   SitepingPublicEvents,
   SitepingStore,
   SitepingStoreConfig,
+  SitepingValidationError,
 } from "@siteping/core";
+// The guard, not the classes: an error matched by `instanceof` against one
+// package's copy of a class fails against another's.
+export { isSitepingError } from "@siteping/core";
 export type { TFunction, TranslationKey, Translations } from "./i18n/index.js";
 export { loadLocale, registerLocale } from "./i18n/index.js";
 export type { Identity } from "./identity.js";

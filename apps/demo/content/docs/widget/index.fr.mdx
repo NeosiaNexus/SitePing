@@ -101,20 +101,21 @@ Plusieurs composants peuvent appeler le hook, un layout et une page par exemple.
 
 ## Gérer les erreurs
 
-`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable` (booléen). Une erreur `AUTH` porte aussi le `status` HTTP : `401` quand les identifiants manquent ou sont morts, `403` quand ils fonctionnent et que la politique du serveur refuse la requête :
+`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable`, vrai quand la même requête peut réussir plus tard sans changement (une panne réseau, un `5xx`, un `408` ou un `429`, un délai dépassé). Une erreur `AUTH` porte aussi le `status` HTTP : `401` quand les identifiants manquent ou sont morts, `403` quand ils fonctionnent et que la politique du serveur refuse la requête. Reconnaissez-les avec `isSitepingError`, qui type `code` et `status` pour vous :
 
 ```ts
+import { initSiteping, isSitepingError } from "@siteping/widget";
+
 initSiteping({
   endpoint: "/api/siteping",
   projectName: "mon-projet",
   onError: (error) => {
-    const code = (error as { code?: string }).code;
-    if (code === "AUTH") console.warn("vérifiez votre apiKey");
+    if (isSitepingError(error) && error.code === "AUTH") console.warn(`vérifiez votre apiKey (${error.status})`);
   },
 });
 ```
 
-Branchez sur `error.code`, pas sur `instanceof` — les classes d'erreur elles-mêmes ne sont pas exportées par le package. Quand l'utilisateur annule la demande d'identité, aucune erreur n'est émise : c'est une annulation, pas un échec.
+La garde lit les champs de l'erreur plutôt que sa classe : les classes ne sont pas exportées, car chaque package embarque sa propre copie et `instanceof` échouerait de l'une à l'autre (leurs types le sont — `SitepingError`, `SitepingAuthError`, `SitepingClientError`, `SitepingErrorCode`…). Tout le reste qui atteint `onError`, une erreur levée par votre `store` ou par une [action du panneau](/fr/docs/widget/panel-actions#erreurs), échoue la garde. Quand l'utilisateur annule la demande d'identité, aucune erreur n'est émise : c'est une annulation, pas un échec.
 
 ## Les statuts, côté widget
 

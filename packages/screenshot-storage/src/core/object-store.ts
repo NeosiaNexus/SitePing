@@ -42,7 +42,7 @@ export interface ScreenshotObjectStore {
  * reclaim. Any other error is treated as an unknown outcome.
  *
  * Custom backends may throw this class or any error whose `code` is
- * `"SCREENSHOT_UPLOAD_REJECTED"`; match it with {@link isScreenshotUploadRejected}.
+ * `"SCREENSHOT_UPLOAD_REJECTED"`; match it with {@link isScreenshotUploadRejectedError}.
  */
 export class ScreenshotUploadRejectedError extends Error {
   readonly code = SCREENSHOT_UPLOAD_REJECTED_CODE;
@@ -60,6 +60,13 @@ export class ScreenshotUploadRejectedError extends Error {
  *
  * @param error - Any thrown value.
  */
-export function isScreenshotUploadRejected(error: unknown): error is ScreenshotUploadRejectedError {
+export function isScreenshotUploadRejectedError(error: unknown): error is ScreenshotUploadRejectedError {
   return hasErrorCode(error, SCREENSHOT_UPLOAD_REJECTED_CODE);
 }
+
+/**
+ * @deprecated Renamed {@link isScreenshotUploadRejectedError}, after its class
+ * like every other error guard of this package; removed in the next major.
+ */
+export const isScreenshotUploadRejected: (error: unknown) => error is ScreenshotUploadRejectedError =
+  isScreenshotUploadRejectedError;
