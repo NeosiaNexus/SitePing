@@ -21,8 +21,10 @@ mockMatchMedia(false);
 const mockSendFeedback = vi.fn<(payload: FeedbackPayload) => Promise<FeedbackResponse>>();
 const mockGetFeedbacks = vi.fn().mockResolvedValue({ feedbacks: [], total: 0 });
 const mockAddComment = vi.fn();
+const mockQueueOutcome = vi.fn<(error: unknown) => boolean | undefined>();
 
 vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
+  queueOutcome: (error: unknown) => mockQueueOutcome(error),
   ApiClient: vi.fn(function (this: unknown) {
     return {
       sendFeedback: mockSendFeedback,
@@ -197,6 +199,7 @@ describe("launcher — annotation:complete integration", () => {
     }
     capturedBus = null;
     vi.clearAllMocks();
+    mockQueueOutcome.mockReset();
     mockGetIdentity.mockReturnValue({ name: "Test User", email: "test@example.com" });
     mockMarkersFocusFeedback.mockReturnValue(false);
     // Reset any test-set URL — jsdom keeps it across cases otherwise.
@@ -322,6 +325,93 @@ describe("launcher — annotation:complete integration", () => {
       });
 
       instance.destroy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Submission outcome toast (#308)
+  // -------------------------------------------------------------------------
+
+  describe("submission outcome toast", () => {
+    const toast = () => document.querySelector("siteping-widget")!.shadowRoot!.querySelector<HTMLElement>(".sp-toast")!;
+    const liveRegion = () => document.querySelector<HTMLElement>('body > [role="status"][aria-live="polite"]')!;
+    // Destroyed even when an assertion throws, so no widget leaks into the next case.
+    let instance: { destroy: () => void } | null = null;
+    afterEach(() => {
+      instance?.destroy();
+      instance = null;
+      vi.useRealTimers();
+    });
+
+    /** Submit once and wait for the outcome to reach the live region. */
+    async function submit(): Promise<void> {
+      liveRegion().textContent = "";
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+      await vi.waitFor(() => expect(liveRegion().textContent).not.toBe(""));
+    }
+
+    it("shows the sent confirmation, read once through the live region", async () => {
+      mockSendFeedback.mockResolvedValue(makeFeedbackResponse());
+      instance = launch(defaultConfig());
+      expect(toast().hidden).toBe(true);
+
+      await submit();
+
+      expect(toast().hidden).toBe(false);
+      expect(toast().textContent).toBe("Feedback sent successfully");
+      expect(toast().classList.contains("sp-toast--error")).toBe(false);
+      expect(toast().getAttribute("aria-hidden")).toBe("true");
+      expect(liveRegion().textContent).toBe("Feedback sent successfully");
+    });
+
+    it("closes the popup and says the feedback is saved when the failed send was queued", async () => {
+      mockSendFeedback.mockRejectedValue(new Error("Failed to send feedback: network"));
+      mockQueueOutcome.mockReturnValue(true);
+      const onError = vi.fn();
+      instance = launch(defaultConfig({ onError }));
+      const order: string[] = [];
+      capturedBus!.on("feedback:queued", () => order.push("queued"));
+      capturedBus!.on("feedback:error", () => order.push("error"));
+
+      await submit();
+
+      // Queued first: the annotator settles the popup as on success before the error.
+      expect(order).toEqual(["queued", "error"]);
+      expect(onError).toHaveBeenCalledOnce();
+      expect(toast().textContent).toBe("Saved on this device. It will be sent on your next visit.");
+      expect(toast().classList.contains("sp-toast--error")).toBe(false);
+    });
+
+    it("keeps the popup and reports the failure when the failed send could not be queued either", async () => {
+      mockSendFeedback.mockRejectedValue(new Error("Failed to send feedback: network"));
+      mockQueueOutcome.mockReturnValue(false);
+      const queued = vi.fn();
+      instance = launch(defaultConfig());
+      capturedBus!.on("feedback:queued", queued);
+
+      await submit();
+
+      expect(queued).not.toHaveBeenCalled();
+      expect(toast().textContent).toBe("Failed to send feedback");
+      expect(toast().classList.contains("sp-toast--error")).toBe(true);
+    });
+
+    it("shows the send error for a final rejection, and hides it on a tap or after a while", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      mockSendFeedback.mockRejectedValue(new Error("Failed to send feedback: 400"));
+      mockQueueOutcome.mockReturnValue(undefined);
+      instance = launch(defaultConfig());
+
+      await submit();
+      expect(toast().textContent).toBe("Failed to send feedback");
+      expect(toast().classList.contains("sp-toast--error")).toBe(true);
+      toast().click();
+      expect(toast().hidden).toBe(true);
+
+      await submit();
+      expect(toast().hidden).toBe(false);
+      vi.advanceTimersByTime(8000);
+      expect(toast().hidden).toBe(true);
     });
   });
 

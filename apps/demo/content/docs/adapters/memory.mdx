@@ -26,7 +26,7 @@ initSiteping({ store, projectName: "preview" });
 ## Behavior notes
 
 - **Newest first** — new feedbacks are prepended, so lists come back in reverse chronological order without sorting.
-- **Duplicate submissions are absorbed** — creating a feedback with an existing `clientId` returns the already-stored record instead of erroring. That's what makes the widget's retry queue safe.
+- **Duplicate submissions are stored once** — creating a feedback with an existing `clientId` throws `StoreDuplicateError` and keeps the stored record, and `createFeedbackIfAbsent` returns it with `created: false`. The handler answers a replay with that record, which is what makes the widget's retry queue safe.
 - **Records are returned by reference.** If you mutate an object the store gave you, you mutate the store. Clone before editing (`structuredClone(feedback)`) if you need a scratch copy.
 - **Unbounded** — there is no size cap or eviction. Fine for tests; don't leave it collecting feedback on a long-lived server.
 - **Threads included** — [comments](/docs/comments) live on each record, with the same deduplication on their `clientId`, and go away with their feedback.

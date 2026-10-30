@@ -8,7 +8,7 @@ import {
   SitepingValidationError,
 } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
+import { ApiClient, flushRetryQueue, queueOutcome } from "../../src/api-client.js";
 import { ownFeedback } from "../../src/own-feedback.js";
 
 /** Burn through resilientFetch's three backoffs (1s + 2s + 4s, ±500ms jitter) under fake timers. */
@@ -374,6 +374,33 @@ describe("ApiClient", () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  it("reports on the thrown error whether the failed send was saved (#308)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sendOffline = async (clientId: string): Promise<unknown> => {
+      vi.useFakeTimers();
+      try {
+        vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+        const failure = client.sendFeedback({ ...basePayload, clientId }).catch((e: unknown) => e);
+        await drainRetryBackoff();
+        return await failure;
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    try {
+      stubLocalStorage();
+      expect(queueOutcome(await sendOffline("cid-saved"))).toBe(true);
+
+      stubLocalStorage(10); // no queue write can fit
+      expect(queueOutcome(await sendOffline("cid-unsaved"))).toBe(false);
+
+      vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+      expect(queueOutcome(await client.sendFeedback(basePayload).catch((e: unknown) => e))).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("does not queue a 4xx rejection — a replay would fail identically", async () => {

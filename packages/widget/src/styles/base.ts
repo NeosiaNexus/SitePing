@@ -146,6 +146,42 @@ export function buildStyles(colors: ThemeColors): string {
       line-height: 1;
     }
 
+    /* ---- Submission outcome toast ---- */
+
+    .sp-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 92px;
+      transform: translateX(-50%);
+      max-width: min(360px, calc(100vw - 32px));
+      padding: 10px 14px;
+      border-radius: var(--sp-radius-lg);
+      background: var(--sp-text);
+      color: var(--sp-bg);
+      font: 500 13px/1.4 var(--sp-font);
+      box-shadow: var(--sp-shadow-lg);
+      cursor: pointer;
+      animation: sp-toast-in 0.2s ease-out;
+    }
+
+    .sp-toast[hidden] {
+      display: none;
+    }
+
+    .sp-toast--error {
+      border-left: 4px solid var(--sp-type-bug);
+    }
+
+    @keyframes sp-toast-in {
+      from { opacity: 0; transform: translate(-50%, 8px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sp-toast {
+        animation: none;
+      }
+    }
+
     /* ============================
        Radial Menu
        ============================ */

@@ -96,6 +96,7 @@ export const ko: Translations = {
   // Accessibility — screen reader announcements
   "feedback.sent.confirmation": "피드백을 보냈습니다",
   "feedback.error.message": "피드백을 보내지 못했습니다",
+  "feedback.queued": "이 기기에 저장했습니다. 다음 방문 시 전송됩니다.",
   "feedback.deleted.confirmation": "피드백을 삭제했습니다",
 
   // Badge

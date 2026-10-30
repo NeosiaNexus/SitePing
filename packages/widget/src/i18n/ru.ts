@@ -96,6 +96,7 @@ export const ru: Translations = {
   // Accessibility — screen reader announcements
   "feedback.sent.confirmation": "Отзыв успешно отправлен",
   "feedback.error.message": "Не удалось отправить отзыв",
+  "feedback.queued": "Сохранено на этом устройстве. Отправится при следующем посещении.",
   "feedback.deleted.confirmation": "Отзыв удалён",
 
   // Badge

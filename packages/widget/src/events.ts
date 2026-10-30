@@ -76,6 +76,13 @@ export interface WidgetEvents {
    */
   "submission:cancelled": [];
   /**
+   * Internal-only: a send failed but its payload is saved for the next page
+   * load. Emitted before `feedback:error` so the annotator closes the popup:
+   * the feedback is accepted locally, and resending it would only replace the
+   * queued copy.
+   */
+  "feedback:queued": [];
+  /**
    * Internal-only: a host `panelActions` callback threw or rejected. Kept off
    * `feedback:error` on purpose — the annotator settles its pending popup
    * submission on that event, so a host failure must never reach it. The

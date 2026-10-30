@@ -803,11 +803,17 @@ export class Annotator {
     await new Promise<void>((resolve, reject) => {
       const cleanup = () => {
         unsubSent();
+        unsubQueued();
         unsubError();
         unsubCancelled();
         this.rejectPendingSubmission = null;
       };
       const unsubSent = this.bus.on("feedback:sent", () => {
+        cleanup();
+        resolve();
+      });
+      // Saved for the next page load: the popup closes as on success.
+      const unsubQueued = this.bus.on("feedback:queued", () => {
         cleanup();
         resolve();
       });

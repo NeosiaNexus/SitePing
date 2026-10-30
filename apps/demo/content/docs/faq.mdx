@@ -42,7 +42,7 @@ Without an `apiKey`, reads are public, with author emails redacted for unauthent
 
 ## What happens if the network drops mid-submit?
 
-The widget retries (3 attempts with backoff), then queues the payload in localStorage (up to 20 entries) and flushes it on the next page load. Comments don't get lost to a flaky connection.
+The widget retries 3 times after the first attempt, with backoff, then queues the payload in localStorage (up to 20 entries), tells the visitor it is saved on this device, and sends it on the next page load. Comments don't get lost to a flaky connection.
 
 ## An annotated element was deleted. Where's the annotation?
 

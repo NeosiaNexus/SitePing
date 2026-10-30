@@ -96,6 +96,7 @@ export const ja: Translations = {
   // Accessibility — screen reader announcements
   "feedback.sent.confirmation": "フィードバックを送信しました",
   "feedback.error.message": "フィードバックの送信に失敗しました",
+  "feedback.queued": "この端末に保存しました。次回のアクセス時に送信されます。",
   "feedback.deleted.confirmation": "フィードバックを削除しました",
 
   // Badge

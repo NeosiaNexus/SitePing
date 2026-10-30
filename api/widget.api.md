@@ -356,6 +356,7 @@ export interface Translations {
     "type.other": string;
     "type.question": string;
     "bulk.selectFeedback": string;
+    "feedback.queued": string;
     "panel.notOnPage": string;
     "comments.full": string;
     "comments.title": string;

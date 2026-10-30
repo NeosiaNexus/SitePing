@@ -40,6 +40,7 @@ vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
     };
   }),
   flushRetryQueue: flushRetryQueueMock,
+  queueOutcome: vi.fn(),
 }));
 
 // Mock heavy dependencies to keep tests fast and focused on launcher logic
