@@ -136,11 +136,23 @@ createSitepingHandler({
 });
 ```
 
+### Configuration errors
+
+`createSitepingHandler` checks its options when it is created, never per request: a problem throws a `SitepingConfigError` whose message says how to fix it. Match it with `isSitepingConfigError`, exported by `@siteping/server` and `@siteping/adapter-prisma`, and branch on its stable `code`:
+
+| `code` | Thrown when |
+|---|---|
+| `CONFIG_STORE_MISSING` | No `store` — with adapter-prisma, neither `store` nor `prisma` |
+| `CONFIG_MAX_BODY_BYTES_INVALID` | `maxBodyBytes` is not a positive integer |
+| `CONFIG_OWNERSHIP_CHECK_MISSING` | `access.authorize` over a store without `verifyProjectOwnership` |
+| `CONFIG_WEBHOOK_TIMEOUT_INVALID` | A webhook `timeoutMs` no timer holds (the message names the webhook by its origin only) |
+| `CONFIG_API_KEY_REQUIRED` | `NODE_ENV=production` without `apiKey`, `access` or `requireAuthForDestructive: false` |
+
 ## The security model, honestly
 
 - **Reads are public by default.** Without an `apiKey`, anyone who knows the URL can list feedbacks (with emails redacted — see below).
 - **With an `apiKey`, they are not.** `publicEndpoints` then defaults to `["POST", "OPTIONS"]`: a visitor without the key can submit, but `GET` answers `401`, so the widget shows no pins and an empty panel (it says why in the browser console, once). For reviewers without the key, set `publicEndpoints: ["GET", "POST", "OPTIONS"]`: anyone with the URL and a project name can then read its feedback and threads, emails redacted. Keep the default for a submit-only widget, or sign reviewers in with [`access`](#custom-access).
-- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key, unless you opted out. That check reads `process.env.NODE_ENV`, so it only runs where `process` exists; elsewhere the `401` still applies.
+- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key, unless you opted out ([`CONFIG_API_KEY_REQUIRED`](#configuration-errors)). That check reads `process.env.NODE_ENV`, so it only runs where `process` exists; elsewhere the `401` still applies.
 - `OPTIONS` is always public — preflights must work.
 - **Cross-project checks need the store.** PATCH and DELETE verify that the record belongs to the `projectName` they name through the store's optional `verifyProjectOwnership` — every bundled store and anything built on `createCollectionStore` implements it. A hand-written store that omits it skips the check: any caller who knows a feedback `id` can then modify it regardless of `projectName`, so implement the method (see [writing an adapter](/docs/adapters/writing-an-adapter#project-ownership)) or put the endpoint behind an `apiKey`.
 

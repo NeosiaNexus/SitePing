@@ -19,13 +19,14 @@
  *   surfaced without crashing the request.
  */
 
-import type {
-  CommentRecord,
-  CommentResponse,
-  FeedbackRecord,
-  FeedbackType,
-  Prettify,
-  Serialized,
+import {
+  type CommentRecord,
+  type CommentResponse,
+  type FeedbackRecord,
+  type FeedbackType,
+  type Prettify,
+  type Serialized,
+  SitepingConfigError,
 } from "@siteping/core";
 
 /** Supported webhook integrations — drives the JSON body shape. */
@@ -74,13 +75,17 @@ function timeoutProblem(timeoutMs: number | undefined): string | null {
  * Refuse a webhook whose `timeoutMs` no timer holds, when the handler is
  * created rather than on every delivery.
  *
- * @throws Error naming the webhook by its origin: its path may be a credential.
+ * @throws SitepingConfigError (`CONFIG_WEBHOOK_TIMEOUT_INVALID`) naming the
+ * webhook by its origin: its path may be a credential.
  */
 export function checkWebhookTimeouts(configs: readonly WebhookConfig[]): void {
   for (const config of configs) {
     const problem = timeoutProblem(config.timeoutMs);
     if (problem) {
-      throw new Error(`[siteping] createSitepingHandler: webhook to ${webhookOrigin(config.url)}: ${problem}.`);
+      throw new SitepingConfigError(
+        "CONFIG_WEBHOOK_TIMEOUT_INVALID",
+        `[siteping] createSitepingHandler: webhook to ${webhookOrigin(config.url)}: ${problem}.`,
+      );
     }
   }
 }

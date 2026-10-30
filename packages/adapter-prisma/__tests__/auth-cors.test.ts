@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSitepingHandler } from "../src/index.js";
+import { createSitepingHandler, isSitepingConfigError } from "../src/index.js";
 import { validPayloadNoAnnotations } from "./fixtures.js";
 
 // ---------------------------------------------------------------------------
@@ -350,6 +350,22 @@ describe("Authentication", () => {
     it("does not throw in production when requireAuthForDestructive=false (delegated auth)", () => {
       process.env.NODE_ENV = "production";
       expect(() => createSitepingHandler({ prisma, requireAuthForDestructive: false })).not.toThrow();
+    });
+  });
+
+  describe("configuration errors", () => {
+    it.each([
+      ["CONFIG_STORE_MISSING", () => createSitepingHandler({} as Parameters<typeof createSitepingHandler>[0])],
+      ["CONFIG_MAX_BODY_BYTES_INVALID", () => createSitepingHandler({ prisma, maxBodyBytes: -1 })],
+    ])("throws %s, matched by the guard this package re-exports", (code, create) => {
+      let thrown: unknown;
+      try {
+        create();
+      } catch (error) {
+        thrown = error;
+      }
+      expect(isSitepingConfigError(thrown)).toBe(true);
+      expect(thrown).toMatchObject({ code });
     });
   });
 });

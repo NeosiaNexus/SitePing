@@ -1,4 +1,4 @@
-import { hasOwn } from "@siteping/core";
+import { hasOwn, SitepingConfigError } from "@siteping/core";
 import { type AccessGate, createAccessGate, createApiKeyGate } from "./access.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./constants.js";
 import { preflightResponse } from "./cors.js";
@@ -123,10 +123,11 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   } = options as SitepingHandlerBaseOptions<Principal>;
   if (!store) {
-    throw new Error("[siteping] createSitepingHandler requires a `store`.");
+    throw new SitepingConfigError("CONFIG_STORE_MISSING", "[siteping] createSitepingHandler requires a `store`.");
   }
   if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes <= 0) {
-    throw new Error(
+    throw new SitepingConfigError(
+      "CONFIG_MAX_BODY_BYTES_INVALID",
       `[siteping] createSitepingHandler: \`maxBodyBytes\` must be a positive integer, got ${maxBodyBytes}.`,
     );
   }
@@ -134,7 +135,8 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
   // address records by id: without the ownership check, the project a caller
   // claims (and is authorized for) need not be the record's. Fail closed.
   if (options.access?.authorize && !store.verifyProjectOwnership) {
-    throw new Error(
+    throw new SitepingConfigError(
+      "CONFIG_OWNERSHIP_CHECK_MISSING",
       "[siteping] createSitepingHandler: `access.authorize` needs a store implementing `verifyProjectOwnership`. " +
         "Without it, a caller authorized for one project could PATCH or DELETE another project's feedback by id.",
     );

@@ -101,20 +101,21 @@ Several components can call the hook, a layout and a page for instance. They sha
 
 ## Handling errors
 
-`onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, the last one only in `store` mode) and `retryable` (boolean). An `AUTH` error also carries the HTTP `status`: `401` when the credentials are missing or dead, `403` when they work and the server's policy refuses the request:
+`onError` receives errors with two useful fields — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, the last one only in `store` mode) and `retryable`, true when the same request may succeed later unchanged (a network failure, a `5xx`, `408` or `429`, a timeout). An `AUTH` error also carries the HTTP `status`: `401` when the credentials are missing or dead, `403` when they work and the server's policy refuses the request. Match them with `isSitepingError`, which types `code` and `status` for you:
 
 ```ts
+import { initSiteping, isSitepingError } from "@siteping/widget";
+
 initSiteping({
   endpoint: "/api/siteping",
   projectName: "my-project",
   onError: (error) => {
-    const code = (error as { code?: string }).code;
-    if (code === "AUTH") console.warn("check your apiKey");
+    if (isSitepingError(error) && error.code === "AUTH") console.warn(`check your apiKey (${error.status})`);
   },
 });
 ```
 
-Branch on `error.code`, not `instanceof` — the error classes themselves are not exported from the package. When the user cancels the identity prompt, no error fires: that's a cancellation, not a failure.
+The guard reads the error's fields rather than its class: the classes are not exported, as each package bundles its own copy and `instanceof` would fail across them. The types are: `SitepingClientError`, the union the guard narrows to, and `SitepingErrorCode`. Anything else reaching `onError`, an error your `store` throws or one from a [panel action](/docs/widget/panel-actions#errors), fails it. When the user cancels the identity prompt, no error fires: that's a cancellation, not a failure.
 
 ## Statuses, from the widget's side
 
