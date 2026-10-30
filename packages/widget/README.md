@@ -7,7 +7,7 @@
 
 **Client feedback, pinned to the page.**
 
-A lightweight feedback widget that lets your clients annotate websites during development. Draw rectangles (or right-click), leave comments, track bugs — directly on the live site, anchored to the exact DOM element.
+The widget of SitePing, the open-source, self-hosted alternative to Marker.io. Your clients draw rectangles (or right-click, or tap an element on a phone), leave comments and reply in a thread — directly on your dev or staging site, anchored to the exact DOM element.
 
 Part of [SitePing](https://github.com/NeosiaNexus/SitePing) — **[live demo](https://siteping.dev/demo)** · **[documentation](https://siteping.dev/docs/widget)**.
 

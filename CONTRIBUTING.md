@@ -411,6 +411,8 @@ Releases are **fully automated** via [Release Please](https://github.com/googlea
 - Create git tags — auto-created on release
 - Run `npm publish` — CI handles it
 
+A prerelease version (`1.0.0-rc.1`, set with a `Release-As:` footer) publishes under the `next` dist-tag, never `latest` — `scripts/npm-dist-tag.mjs` picks the tag in every publish job, and the post-release check fails if a version sits on the wrong one.
+
 ## Public API snapshots
 
 `api/<package>.api.md` records the public API of each package of the 1.0 set

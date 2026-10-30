@@ -1,0 +1,79 @@
+---
+title: Vite SPA
+description: The widget in a Vue, React or vanilla app built with Vite, talking to a SitePing endpoint on your API server.
+---
+
+A single-page app has no server of its own, so the endpoint lives on your API server, and Vite proxies it in development so the widget calls it on the same origin.
+
+```bash
+npm i @siteping/widget
+npm i @siteping/server @siteping/adapter-memory # on the API server
+```
+
+## 1. The widget
+
+Call `initSiteping` once, in your entry file — it runs in the browser only. The widget follows client-side navigation by itself, so it doesn't belong in a component that mounts and unmounts.
+
+```ts
+// src/main.ts (Vue)
+import { initSiteping } from "@siteping/widget";
+import { createApp } from "vue";
+import App from "./App.vue";
+
+createApp(App).mount("#app");
+
+initSiteping({ endpoint: "/api/siteping", projectName: "my-project" });
+```
+
+The same call works after `createRoot(...).render(...)` in React, or alone in vanilla TypeScript. React apps can use the [`useSiteping` hook](/docs/widget#react) instead.
+
+## 2. The endpoint
+
+Mount the handler on your API server. With Hono on Node:
+
+```ts
+// server.ts
+import { serve } from "@hono/node-server";
+import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler } from "@siteping/server";
+import { Hono } from "hono";
+
+const siteping = createSitepingHandler({ store: new MemoryStore(), apiKey: process.env.SITEPING_API_KEY });
+
+const app = new Hono();
+app.on(["GET", "POST", "PATCH", "DELETE", "OPTIONS"], "/api/siteping", (c) => {
+  // Hono runs GET routes for HEAD too, a method SitePing does not serve.
+  const handle = siteping[c.req.method as keyof typeof siteping];
+  return handle ? handle(c.req.raw) : c.body(null, 405, { Allow: "GET, POST, PATCH, DELETE, OPTIONS" });
+});
+
+serve({ fetch: app.fetch, port: 8787 });
+```
+
+Express, Bun, Deno and Workers are on [Server › Mounting](/docs/server#mounting).
+
+## 3. The proxy
+
+```ts
+// vite.config.ts
+import vue from "@vitejs/plugin-vue";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [vue()],
+  server: {
+    // Same origin in development: the API server runs beside Vite.
+    proxy: { "/api": "http://localhost:8787" },
+  },
+});
+```
+
+Start both servers (`node server.ts` and `npm run dev`) and look bottom-right. Draw a rectangle, type a comment, send it: the feedback goes through the proxy to your endpoint.
+
+In production, serve the app and the API from one origin, or point `endpoint` at the API's full URL and list the app's origin in the handler's `allowedOrigins` — see [a backend on another origin](/docs/widget/script-tag#a-backend-on-another-origin).
+
+## Going further
+
+- A store that survives restarts: [Pick a store](/docs/frameworks#pick-a-store).
+- No backend at all — prototypes, demos: [zero-server setup](/docs/quickstart#zero-server-setup).
+- Before going live, set `SITEPING_API_KEY` and read what it locks — [three rules every stack follows](/docs/frameworks#three-rules-every-stack-follows).
