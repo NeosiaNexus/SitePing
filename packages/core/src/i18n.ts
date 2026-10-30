@@ -112,15 +112,14 @@ export function createI18n<T extends Record<keyof T & string, string>>(en: T, lo
   // Built-in dictionaries and host overrides live apart, so neither erases
   // the other: an override hides only the keys it names, and a chunk that
   // lands after `registerLocale` never overwrites it. Call order is moot.
-  const builtins: Record<string, Partial<T>> = { en };
-  const overrides: Record<string, Partial<T>> = {};
+  // Prototype-free, so a code like `constructor` reads as unregistered.
+  const builtins: Record<string, Partial<T>> = Object.assign(Object.create(null), { en });
+  const overrides: Record<string, Partial<T>> = Object.create(null);
 
   // The loader map is typed to hold exactly the non-English built-ins, so
-  // its keys are the list — no copy of `BUILTIN_LOCALES` ships at runtime.
-  // An inherited key (`constructor`) never reaches a loader: `builtins`
-  // inherits it too, so `??=` below short-circuits.
+  // its own keys are the list — no copy of `BUILTIN_LOCALES` ships at runtime.
   function isBuiltinNonEn(lang: string): lang is Exclude<BuiltinLocale, "en"> {
-    return lang in loaders;
+    return Object.hasOwn(loaders, lang);
   }
 
   return {

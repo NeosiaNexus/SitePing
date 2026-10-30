@@ -155,12 +155,17 @@ describe("createI18n — registerLocale overrides (#303)", () => {
     expect(t("cancel")).toBe("Annuler");
   });
 
-  it("treats an inherited key like `constructor` as a plain custom code", async () => {
+  it("treats an inherited key like `constructor` as an unknown code until registered", async () => {
     const { i18n, loader } = setup();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await i18n.loadLocale("constructor")).toBeNull();
+    expect(i18n.createT("constructor")("greet")).toBe("Hello");
+    expect(warn).toHaveBeenCalledOnce();
+
     i18n.registerLocale("constructor", { greet: "Yo" });
     expect(Object.hasOwn(Object, "greet")).toBe(false); // the global Object is untouched
     expect(i18n.createT("constructor")("greet")).toBe("Yo");
-    await i18n.loadLocale("constructor");
+    expect(await i18n.loadLocale("constructor")).toEqual({ greet: "Yo" });
     expect(loader).not.toHaveBeenCalled();
   });
 });
