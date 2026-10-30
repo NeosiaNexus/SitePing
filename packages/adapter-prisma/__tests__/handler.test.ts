@@ -809,7 +809,7 @@ describe.each<[string, (code: StoreErrorCode) => unknown]>([
   ["an Error class from another copy of core", (code) => new ForeignStoreError(code)],
   ["a plain { code } object", (code) => ({ code })],
 ])("createSitepingHandler — store errors thrown as %s", (_label, storeError) => {
-  /** A third-party store without the optional `verifyProjectOwnership`. */
+  /** A third-party store whose ownership check passes, so its own errors reach the handler. */
   function foreignStore(overrides: Partial<SitepingStore>): SitepingStore {
     return {
       createFeedback: vi.fn(),
@@ -818,6 +818,7 @@ describe.each<[string, (code: StoreErrorCode) => unknown]>([
       updateFeedback: vi.fn(),
       deleteFeedback: vi.fn(),
       deleteAllFeedbacks: vi.fn(),
+      verifyProjectOwnership: vi.fn().mockResolvedValue(true),
       ...overrides,
     };
   }
