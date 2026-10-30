@@ -20,9 +20,9 @@ export function Toolbar({ state, searchRef }: ToolbarProps): ReactElement {
       {state.projects.length > 1 ? (
         <ProjectSwitcher projects={state.projects} project={state.project} onChange={state.setProject} />
       ) : null}
-      <StatusTabs status={state.status} counts={state.counts} onChange={state.setStatus} />
+      <StatusTabs status={state.status} counts={state.counts} onChange={state.setStatusFilter} />
       <div className="spd-toolbar-spacer" />
-      <TypeFilter type={state.type} onChange={state.setType} />
+      <TypeFilter type={state.type} onChange={state.setTypeFilter} />
       <SearchInput value={state.search} onChange={state.setSearch} inputRef={searchRef} />
       <button
         type="button"

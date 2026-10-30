@@ -1063,6 +1063,53 @@ describe("Panel", () => {
       // Should not throw
       expect(() => panel.scrollToFeedback("nonexistent")).not.toThrow();
     });
+
+    it("keeps the list in view: scrolling to a card does not open its detail view on a wide screen", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.scrollIntoView = vi.fn();
+
+      panel.scrollToFeedback("fb-1");
+
+      expect(shadow.querySelector(".sp-detail")?.classList.contains("sp-detail--visible")).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // showFeedback — what a deep link asks for (#381)
+  // -------------------------------------------------------------------------
+
+  describe("showFeedback", () => {
+    it("opens the feedback's detail view, where its thread is", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1" }), makeFeedback({ id: "fb-2", message: "Second one" })],
+        total: 2,
+      });
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-2"]')!.scrollIntoView = vi.fn();
+
+      panel.showFeedback("fb-2");
+
+      expect(shadow.querySelector(".sp-detail")?.classList.contains("sp-detail--visible")).toBe(true);
+      expect(shadow.querySelector(".sp-detail-title")?.textContent).toBe(t("detail.title").replace("{number}", "2"));
+    });
+
+    it("waits for a list still loading, then opens the detail view", async () => {
+      // jsdom has no scrollIntoView, and the card to stub isn't rendered yet.
+      const scroll = vi.fn();
+      Element.prototype.scrollIntoView = scroll;
+      let answer: (value: { feedbacks: ReturnType<typeof makeFeedback>[]; total: number }) => void = () => {};
+      apiClient.getFeedbacks.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+      const opened = panel.open();
+
+      panel.showFeedback("fb-1");
+      answer({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
+      await opened;
+
+      expect(scroll).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+      expect(shadow.querySelector(".sp-detail")?.classList.contains("sp-detail--visible")).toBe(true);
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -1185,6 +1232,66 @@ describe("Panel", () => {
       shadow.dispatchEvent(tabEvent);
 
       expect(preventSpy).toHaveBeenCalled();
+    });
+
+    describe("closed layers stay out of the tab order (#394)", () => {
+      const focusablesIn = (scope: Element) =>
+        Array.from(
+          scope.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => !el.closest("[inert]") && el.style.display !== "none" && !el.hasAttribute("disabled"));
+      const pressTab = (active: HTMLElement, shiftKey = false) => {
+        Object.defineProperty(shadow, "activeElement", { value: active, configurable: true });
+        const tab = new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true });
+        const preventDefault = vi.spyOn(tab, "preventDefault");
+        shadow.dispatchEvent(tab);
+        return preventDefault;
+      };
+
+      it("keeps the panel inert while it is closed", async () => {
+        const panelRoot = shadow.querySelector<HTMLElement>(".sp-panel")!;
+        expect(panelRoot.hasAttribute("inert")).toBe(true);
+        await panel.open();
+        expect(panelRoot.hasAttribute("inert")).toBe(false);
+        panel.close();
+        expect(panelRoot.hasAttribute("inert")).toBe(true);
+      });
+
+      it("keeps Tab inside the open detail view, never on the list behind it", async () => {
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
+        await panel.open();
+        shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+        const detail = shadow.querySelector<HTMLElement>(".sp-detail")!;
+        const inDetail = focusablesIn(detail);
+        const first = inDetail[0]!;
+        const last = inDetail[inDetail.length - 1]!;
+        const focusFirst = vi.spyOn(first, "focus");
+        const focusLast = vi.spyOn(last, "focus");
+
+        expect(pressTab(last)).toHaveBeenCalled();
+        expect(focusFirst).toHaveBeenCalled();
+        expect(pressTab(first, true)).toHaveBeenCalled();
+        expect(focusLast).toHaveBeenCalled();
+
+        // Focus left behind the view (the search field) re-enters it.
+        focusFirst.mockClear();
+        expect(pressTab(shadow.querySelector<HTMLElement>(".sp-search")!)).toHaveBeenCalled();
+        expect(focusFirst).toHaveBeenCalled();
+      });
+
+      it("never wraps onto a control of a closed layer", async () => {
+        await panel.open();
+        const panelRoot = shadow.querySelector<HTMLElement>(".sp-panel")!;
+        const reachable = focusablesIn(panelRoot);
+        // The bulk bar, the detail view and the help overlay are closed: none of their controls is reachable.
+        expect(reachable.filter((el) => el.closest(".sp-bulk-bar, .sp-detail, .sp-shortcuts-overlay"))).toEqual([]);
+        const last = reachable[reachable.length - 1]!;
+        const focusFirst = vi.spyOn(reachable[0]!, "focus");
+
+        expect(pressTab(last)).toHaveBeenCalled();
+        expect(focusFirst).toHaveBeenCalled();
+      });
     });
 
     describe("Escape closes only the innermost layer", () => {
@@ -1891,6 +1998,20 @@ describe("Panel", () => {
         );
       },
     );
+
+    it("names each card checkbox after its feedback, in the panel's locale (#395)", async () => {
+      const fb = makeFeedback({ id: "cmg4opaque", message: "Le logo est flou" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="cmg4opaque"]')!;
+      const label = card.querySelector(".sp-bulk-checkbox")!.getAttribute("aria-label")!;
+      expect(label).toBe(tWithParams(t, "bulk.selectFeedback", { label: card.getAttribute("aria-label")! }));
+      expect(label).toContain("Sélectionner");
+      expect(label).toContain("Le logo est flou");
+      expect(label).not.toContain("cmg4opaque");
+    });
 
     it("selection stays visible on cards after a re-render (group toggle / sort / load more)", async () => {
       const fb1 = makeFeedback({ id: "fb-1" });
@@ -5048,7 +5169,9 @@ describe("Panel on phones", () => {
     await panel.open();
     const reachable = Array.from(
       root().querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
-    ).filter((el) => !el.closest("[style*='display: none']") && !el.matches(".sp-shortcuts-hint"));
+    ).filter(
+      (el) => !el.closest("[style*='display: none']") && !el.closest("[inert]") && !el.matches(".sp-shortcuts-hint"),
+    );
     const last = reachable[reachable.length - 1]!;
     expect(last.matches(".sp-shortcuts-hint")).toBe(false);
 

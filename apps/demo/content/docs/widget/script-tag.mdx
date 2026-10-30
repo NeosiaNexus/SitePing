@@ -1,0 +1,98 @@
+---
+title: Script tag
+description: Install the widget without a bundler — WordPress, Webflow, Shopify or plain HTML — from a CDN, with SRI, a review gate and a strict CSP.
+---
+
+A site without a build step loads the widget's script bundle: one file that defines a `SitePing` global. It talks to a SitePing [endpoint](/docs/server), so a backend still runs somewhere — only the page needs no bundler.
+
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/@siteping/widget@X.Y.Z/dist/index.global.js"
+  integrity="sha384-…"
+  crossorigin="anonymous"
+></script>
+<script src="/siteping-init.js"></script>
+```
+
+```js
+// siteping-init.js
+SitePing.initSiteping({
+  endpoint: "https://api.example.com/api/siteping",
+  projectName: "my-project",
+  forceShow: location.hostname === "staging.example.com",
+});
+```
+
+Replace `X.Y.Z` with the version you install (`npm view @siteping/widget version`). unpkg serves the same file at `https://unpkg.com/@siteping/widget@X.Y.Z/dist/index.global.js`. Keep the init in a file of your own rather than an inline `<script>`: a [Content Security Policy](#content-security-policy) then needs no exception for it.
+
+## Pin the version, check the bytes
+
+Pin an exact version and spell out the file path: that is the URL [Subresource Integrity](https://developer.mozilla.org/docs/Web/Security/Subresource_Integrity) can lock. The hash covers the file's exact bytes, so it changes with every release — generate it for the version you pin, and again when you upgrade:
+
+```bash
+curl -s https://cdn.jsdelivr.net/npm/@siteping/widget@X.Y.Z/dist/index.global.js \
+  | openssl dgst -sha384 -binary | openssl base64 -A
+```
+
+The output goes into `integrity="sha384-…"`, next to `crossorigin="anonymous"`. A range such as `@1` follows new releases, which a pinned hash would then reject. Use SRI on the `/dist/index.global.js` path only: behind other URLs (`+esm`, `.min.js`), jsDelivr serves files it builds itself.
+
+## When it shows
+
+A bundler tells the widget whether it runs in production through `process.env.NODE_ENV`. A script tag has no bundler, so the page's host stands in:
+
+- on a local page — `localhost`, any `*.localhost`, `127.0.0.1`, `[::1]`, or a file opened from disk — the widget shows;
+- everywhere else it stays hidden and calls `onSkip("production")`, exactly as in a production build.
+
+Pass `forceShow: true` where reviewers should see it. A staging hostname is the simplest gate (above). For a review link on the live site, remember a query parameter for the tab:
+
+```js
+// siteping-init.js — https://client-site.com/?review opens the widget for this tab
+const reviewing = (() => {
+  try {
+    if (new URLSearchParams(location.search).has("review")) sessionStorage.setItem("siteping-review", "1");
+    return sessionStorage.getItem("siteping-review") === "1";
+  } catch {
+    return false; // storage blocked: no review mode
+  }
+})();
+
+SitePing.initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "my-project", forceShow: reviewing });
+```
+
+That gate decides who **sees** the widget, not who may post: anyone who opens the link can send feedback, since submissions are public by design. To decide per person, give the server an [`access` policy](/docs/server#custom-access). Don't name the parameter `siteping` — the widget's [deep links](/docs/widget/configuration#features) read it.
+
+jsDelivr's `/+esm` URL is a different build: jsDelivr bundles it again and replaces `process.env.NODE_ENV` with `"production"`, so the widget it serves needs `forceShow` everywhere, `localhost` included.
+
+## The `SitePing` global
+
+| Member | What it does |
+|---|---|
+| `SitePing.initSiteping(config)` | Mounts the widget and returns its instance — the same function, [options](/docs/widget/configuration) and [instance](/docs/widget#the-instance) as the package's `initSiteping` |
+| `SitePing.registerLocale(code, translations)` | Adds or rewords translations — see [Languages](/docs/widget/i18n#custom-locales) |
+| `SitePing.loadLocale(code)` | Fetches a built-in dictionary ahead of time — it is already in the file here, so this only resolves it |
+
+The bundle carries the whole widget — the panel, the screenshot engine and the nine built-in dictionaries — in one file of about 140 kB gzipped. A bundled install loads about 59 kB up front and the rest when it is first used.
+
+No store ships as a global, so the script bundle always talks to an endpoint.
+
+## A backend on another origin
+
+A script tag usually runs on a site the endpoint doesn't serve. On the server:
+
+- **List the site in `allowedOrigins`** — exact origins, no wildcard. Without it the handler sends no CORS headers, and the browser blocks every call.
+- **Decide what reviewers may read.** With an `apiKey`, a widget without the key can submit but not list, so it shows no pins and no threads (the browser console says why). Add `"GET"` to `publicEndpoints` to let it: anyone who knows the endpoint and the project name can then read the feedback, author emails redacted. See [the security model](/docs/server#the-security-model-honestly).
+- **Never put the `apiKey` in the page.** It authorizes status changes and deletes.
+
+## Content Security Policy
+
+The widget runs under a strict policy — no `'unsafe-inline'`, no `'unsafe-eval'`. On top of what your site already allows, it needs:
+
+| Directive | Allow | For |
+|---|---|---|
+| `script-src` | the CDN (`https://cdn.jsdelivr.net`), or `'self'` when you host the file | the bundle; your init file is covered by `'self'` |
+| `connect-src` | the endpoint's origin | every API call |
+| `img-src` | `data:` | screenshots stored inline (the default without a [screenshot storage](/docs/adapters/screenshot-storage)) shown in the panel; with a storage, its public origin instead |
+
+Styles need nothing: the widget styles its Shadow DOM through a constructable stylesheet and its other elements through the CSSOM, which `style-src` doesn't restrict.
+
+With `enableScreenshot`, the capture engine renders a copy of the page. Safari draws that copy blank unless `style-src` allows `'unsafe-inline'`; Chrome and Firefox capture without it. Without `data:` in `img-src`, the engine's start-up check logs a violation, which is harmless.

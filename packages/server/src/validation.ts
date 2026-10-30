@@ -116,9 +116,9 @@ export const screenshotRegionSchema = z.strictObject({
 
 // Restrict to URL-safe identifiers. The widget generates UUIDs (or a
 // Date+Math.random fallback), both of which match. Anything outside this
-// alphabet — `..`, `/`, NUL, etc. — would be a path-traversal vector once
-// the adapter forwards clientId to `screenshotStorage.upload({ feedbackId })`
-// (e.g. an S3 key prefix or a local FS path).
+// alphabet — `..`, `/`, NUL, etc. — would be a path-traversal vector wherever
+// a custom store or storage puts the clientId in an object key or a local
+// path (the bundled stores hand `screenshotStorage.upload` the stored id).
 const clientIdSchema = z
   .string()
   .min(1)
