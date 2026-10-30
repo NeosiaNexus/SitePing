@@ -328,7 +328,7 @@ export function Features() {
             <DiagnosticsVisual />
           </article>
 
-          {/* ── Row 3: i18n (1) + Accessibility (1) + Auth & privacy (1) = 3 cols ── */}
+          {/* Triage inbox (2 cols) completes row 2 */}
 
           {/* Triage inbox */}
           <article
@@ -356,7 +356,8 @@ export function Features() {
               Drop <code className="font-mono text-sm text-accent-light">&lt;SitepingInbox /&gt;</code> into your admin
               page and work through reports with <kbd className="font-mono text-sm text-gray-300">j</kbd>/
               <kbd className="font-mono text-sm text-gray-300">k</kbd> — four statuses, the client&apos;s annotation
-              re-drawn on the screenshot. Slack, Discord, and generic webhooks ping your team the moment feedback lands.
+              re-drawn on the screenshot. Slack, Discord, and generic webhooks ping your team the moment feedback lands
+              — and, if you opt in, when it changes status, is deleted or gets a reply.
             </p>
             <TriageInboxVisual />
             <Link
@@ -367,7 +368,109 @@ export function Features() {
             </Link>
           </article>
 
+          {/* ── Row 3: Discussion threads (1) + Issue trackers (1) + Phones & tablets (1) = 3 cols ── */}
+
+          {/* Discussion threads */}
+          <article
+            data-gsap="feature-card"
+            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"
+                />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-white">Discussion threads</h3>
+            <p className="mt-2 text-sm leading-relaxed text-gray-400">
+              Reviewers reply in the widget, your team answers from the inbox. The conversation stays next to the
+              report, served by the endpoint you already mounted.
+            </p>
+            <div className="mt-4 space-y-1.5 text-xs">
+              <p className="w-fit rounded-lg rounded-bl-sm border border-gray-800/60 bg-gray-950/80 px-3 py-1.5 text-gray-300">
+                16 or 24&nbsp;px?
+              </p>
+              <p className="ml-auto flex w-fit items-center gap-1.5 rounded-lg rounded-br-sm border border-accent/20 bg-accent/5 px-3 py-1.5 text-gray-300">
+                <span className="rounded bg-accent/20 px-1 text-[10px] font-medium text-accent-light">Team</span>
+                24&nbsp;px, shipped
+              </p>
+            </div>
+          </article>
+
+          {/* GitHub & GitLab issues */}
+          <article
+            data-gsap="feature-card"
+            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
+                />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-white">GitHub &amp; GitLab issues</h3>
+            <p className="mt-2 text-sm leading-relaxed text-gray-400">
+              One issue per feedback, with the page, a deep link and the annotated elements. Resolving the feedback
+              closes it, reopening reopens it.
+            </p>
+            <div className="mt-4 rounded-lg border border-gray-800/60 bg-gray-950/80 px-3 py-2">
+              <code className="font-mono text-xs text-accent-light">createIssueTrackerHooks()</code>
+            </div>
+          </article>
+
+          {/* Phones & tablets */}
+          <article
+            data-gsap="feature-card"
+            className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="h-6 w-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
+                />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-white">Phones &amp; tablets</h3>
+            <p className="mt-2 text-sm leading-relaxed text-gray-400">
+              Clients tap an element to comment. On a phone, the form and the panel become bottom sheets, and the form
+              stays above the keyboard.
+            </p>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/5 px-3 py-1 text-xs font-medium text-accent-light">
+              Nothing to configure
+            </div>
+          </article>
+
           {/* 9 languages built in */}
+          {/* ── Row 4: i18n (1) + Accessibility (1) + Access & reviewer mode (1) = 3 cols ── */}
           <article
             data-gsap="feature-card"
             className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900"
@@ -421,14 +524,15 @@ export function Features() {
             </div>
             <h3 className="mt-4 text-lg font-semibold text-white">Keyboard-first accessibility</h3>
             <p className="mt-2 text-sm leading-relaxed text-gray-400">
-              Designed for WCAG 2.1 AA. Clients can annotate without a mouse — Tab to the element, press Enter.
+              Designed for WCAG 2.1 AA, and checked with axe on every change, in light and dark. Clients can annotate
+              without a mouse — Tab to the element, press Enter.
             </p>
             <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/5 px-3 py-1 text-xs font-medium text-accent-light">
-              Targets WCAG 2.1 AA
+              axe-checked in CI
             </div>
           </article>
 
-          {/* Auth & privacy */}
+          {/* Access & reviewer mode */}
           <article
             data-gsap="feature-card"
             className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900"
@@ -449,17 +553,17 @@ export function Features() {
                 />
               </svg>
             </div>
-            <h3 className="mt-4 text-lg font-semibold text-white">Auth &amp; privacy</h3>
+            <h3 className="mt-4 text-lg font-semibold text-white">Access &amp; reviewer mode</h3>
             <p className="mt-2 text-sm leading-relaxed text-gray-400">
-              Set an API key and admin routes require a Bearer token. Reads without one get reviewer emails blanked by
-              default.
+              An API key or your own login. The widget and the inbox hide what the server says a visitor may not do, and
+              read-only mode keeps clients to commenting and replying. Reviewer emails stay blanked by default.
             </p>
             <div className="mt-4 rounded-lg border border-gray-800/60 bg-gray-950/80 px-3 py-2">
-              <code className="font-mono text-xs text-gray-400">Authorization: Bearer &bull;&bull;&bull;</code>
+              <code className="font-mono text-xs text-accent-light">readOnly: true</code>
             </div>
           </article>
 
-          {/* ── Row 4: npm Install (1) + Open Source (1) + CLI Scaffold (1) = 3 cols ── */}
+          {/* ── Row 5: npm Install (1) + Open Source (1) + CLI Scaffold (1) = 3 cols ── */}
 
           {/* npm Install & Go */}
           <article
@@ -555,7 +659,7 @@ export function Features() {
             </div>
           </article>
 
-          {/* ── Row 5: Shadow DOM Isolated (3 cols, bannière) ── */}
+          {/* ── Row 6: Shadow DOM Isolated (3 cols, bannière) ── */}
           <article
             data-gsap="feature-card"
             className="relative overflow-hidden rounded-2xl border border-gray-800/50 bg-gray-900/50 p-6 transition-all duration-300 hover:border-white/10 hover:bg-gray-900 sm:col-span-2 lg:col-span-3"
