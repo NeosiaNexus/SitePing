@@ -1,15 +1,9 @@
 import type { FeedbackPermissions, FeedbackRecord, FeedbackStatus } from "@siteping/core";
 import type { ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import {
-  buildDeepLink,
-  formatAbsolute,
-  formatRelativeTime,
-  resolveRecordUrl,
-  shortId,
-  toDateTimeAttr,
-} from "../format.js";
+import { formatAbsolute, formatRelativeTime, recordPageUrl, shortId, toDateTimeAttr } from "../format.js";
 import { getStatusLabel, getTypeLabel } from "../i18n/index.js";
+import type { InboxSiteUrl } from "../types.js";
 import { STATUS_ICONS, trapTab, useInboxUi } from "./context.js";
 import { Diagnostics } from "./diagnostics.js";
 import { EvidenceCard } from "./evidence-card.js";
@@ -22,6 +16,8 @@ interface DrawerProps {
   /** True below the 960cq container breakpoint — drawer overlays the list with a backdrop and traps focus. */
   overlay: boolean;
   deepLinkParam: string;
+  /** Base for a relative record URL — see `InboxSharedOptions.siteUrl`. */
+  siteUrl?: InboxSiteUrl | undefined;
   onClose: () => void;
   onChangeStatus: (id: string, status: FeedbackStatus) => void;
   onDelete: (id: string) => void;
@@ -41,6 +37,7 @@ export function Drawer({
   record,
   overlay,
   deepLinkParam,
+  siteUrl,
   onClose,
   onChangeStatus,
   onDelete,
@@ -81,8 +78,8 @@ export function Drawer({
   const diagnostics = record.diagnostics;
   const hasDiagnostics = diagnostics !== null && diagnostics.console.length + diagnostics.network.length > 0;
   // Null for non-http(s) record URLs — the link/CTA render as plain text / not at all.
-  const pageUrl = resolveRecordUrl(record.url);
-  const deepLink = buildDeepLink(record, deepLinkParam);
+  const pageUrl = recordPageUrl(record, { siteUrl });
+  const deepLink = recordPageUrl(record, { siteUrl, deepLinkParam });
   const StatusIcon = STATUS_ICONS[record.status];
 
   return (

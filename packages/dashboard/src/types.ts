@@ -120,7 +120,22 @@ export interface InboxSharedOptions {
    * hides: the server decides what it accepts.
    */
   readOnly?: boolean | undefined;
+  /**
+   * Base for relative feedback URLs — the widget stores page pathnames — in
+   * "Open on page" and the drawer's page link: one site's origin, or a map
+   * keyed by project name for an inbox over several sites. Defaults to the
+   * inbox's own location, which is right only when the inbox runs on the
+   * site's origin. Absolute record URLs are kept as stored. A headless UI
+   * passes the same value to `recordPageUrl`.
+   */
+  siteUrl?: InboxSiteUrl | undefined;
 }
+
+/**
+ * `siteUrl` — an absolute http(s) URL (`"https://client.example.com"`), or
+ * one per project name. A project without an entry keeps the default.
+ */
+export type InboxSiteUrl = string | Readonly<Record<string, string>>;
 
 /** Custom-source mode — bring your own `InboxSource` (tRPC, GraphQL, …). */
 export interface InboxCustomSourceOptions extends InboxSharedOptions {

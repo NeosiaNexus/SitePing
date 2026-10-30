@@ -4,6 +4,7 @@ import {
   formatAbsolute,
   formatRelativeTime,
   pathFromUrl,
+  recordPageUrl,
   resolveRecordUrl,
   shortId,
   toDateTimeAttr,
@@ -134,6 +135,55 @@ describe("buildDeepLink", () => {
 
   it("returns null for non-http(s) schemes (stored-XSS guard)", () => {
     expect(buildDeepLink({ id: "fb-1", url: "javascript:alert(1)" }, "siteping")).toBeNull();
+  });
+});
+
+describe("recordPageUrl — siteUrl (#309)", () => {
+  const record = (url: string, projectName = "client") => ({ id: "fb-1", url, projectName });
+
+  it("resolves a relative URL against siteUrl, wherever the inbox runs", () => {
+    const options = { siteUrl: "https://client.example.com" };
+    expect(recordPageUrl(record("/pricing"), options)).toBe("https://client.example.com/pricing");
+    expect(recordPageUrl(record("/pricing"), { ...options, deepLinkParam: "siteping" })).toBe(
+      "https://client.example.com/pricing?siteping=fb-1",
+    );
+  });
+
+  it("resolves each project against its own entry, and keeps the default for a project without one", () => {
+    const siteUrl = { client: "https://client.example.com", shop: "https://shop.example.com/" };
+    expect(recordPageUrl(record("/a", "client"), { siteUrl })).toBe("https://client.example.com/a");
+    expect(recordPageUrl(record("/a", "shop"), { siteUrl })).toBe("https://shop.example.com/a");
+    expect(recordPageUrl(record("/a", "other"), { siteUrl })).toBe("http://localhost/a");
+    // An inherited key is not an entry.
+    expect(recordPageUrl(record("/a", "constructor"), { siteUrl })).toBe("http://localhost/a");
+  });
+
+  it("keeps an absolute record URL as stored", () => {
+    const url = recordPageUrl(record("https://staging.example.com/p"), { siteUrl: "https://client.example.com" });
+    expect(url).toBe("https://staging.example.com/p");
+  });
+
+  it("still refuses non-http(s) record URLs", () => {
+    const options = { siteUrl: "https://client.example.com", deepLinkParam: "siteping" };
+    expect(recordPageUrl(record("javascript:alert(1)"), options)).toBeNull();
+    expect(recordPageUrl(record("data:text/html,x"), options)).toBeNull();
+  });
+
+  it("ignores an invalid siteUrl with one warning per value, and never links from it", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const siteUrl of ["javascript:alert(1)", "javascript:alert(1)", "client.example.com"]) {
+      expect(recordPageUrl(record("/p"), { siteUrl })).toBe("http://localhost/p");
+    }
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls[0]?.[0]).toContain('Invalid siteUrl "javascript:alert(1)"');
+    warn.mockRestore();
+  });
+
+  it("matches the inbox's own location without siteUrl", () => {
+    expect(recordPageUrl(record("/pricing"))).toBe(resolveRecordUrl("/pricing"));
+    expect(recordPageUrl(record("/pricing"), { deepLinkParam: "fb" })).toBe(
+      buildDeepLink({ id: "fb-1", url: "/pricing" }, "fb"),
+    );
   });
 });
 

@@ -12,6 +12,7 @@ Runtime exports (ESM and CJS):
 - `createEndpointSource: function`
 - `createStoreSource: function`
 - `isClosedStatus: function`
+- `recordPageUrl: function`
 - `registerLocale: function`
 - `useSitepingInbox: function`
 
@@ -129,7 +130,10 @@ export interface InboxSharedOptions {
     pageSize?: number | undefined;
     projects: readonly string[] | string;
     readOnly?: boolean | undefined;
+    siteUrl?: InboxSiteUrl | undefined;
 }
+
+export type InboxSiteUrl = Readonly<Record<string, string>> | string;
 
 export interface InboxSource {
     addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord>;
@@ -195,6 +199,11 @@ export type InboxTheme = "auto" | "dark" | "light";
 
 export type InboxTypeFilter = "all" | FeedbackType;
 
+export interface RecordPageUrlOptions {
+    deepLinkParam?: string | undefined;
+    siteUrl?: InboxSiteUrl | undefined;
+}
+
 export type ResolvedTheme = "dark" | "light";
 
 export interface SitepingCapabilities {
@@ -236,6 +245,8 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
 export function createStoreSource(store: SitepingStore): InboxSource;
 
 export function isClosedStatus(status: FeedbackStatus): status is ClosedFeedbackStatus;
+
+export function recordPageUrl(record: Pick<FeedbackRecord, "id" | "projectName" | "url">, options?: RecordPageUrlOptions): null | string;
 
 export const registerLocale: (code: string, translations: Partial<Translations>) => void;
 

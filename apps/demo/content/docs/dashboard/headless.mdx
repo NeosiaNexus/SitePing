@@ -32,6 +32,7 @@ The options are a union over the three source modes: supply **exactly one** of `
 | `onError` | `(error) => void` | — | Every failed load or mutation |
 | `author` | `{ name, email? }` | — | Who posts replies from this inbox — see [Discussion threads](#discussion-threads). Without it, threads are read-only |
 | `readOnly` | `boolean` | `false` | No status change and no deletion, of feedbacks or of replies — see [Permissions](#permissions) |
+| `siteUrl` | `string` or `Record<projectName, string>` | the inbox's location | Base for relative feedback URLs (the widget stores pathnames), when the inbox runs on another origin than the site — see [Pages on another origin](/docs/dashboard#pages-on-another-origin). In your own UI, build links with `recordPageUrl(record, { siteUrl, deepLinkParam })`, which returns `null` for a URL that is not safe to link |
 
 Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions`, the shared `InboxSharedOptions`, and the `UseSitepingInboxOptions` union — so a wrapper component can accept just the mode it supports. Plain-JavaScript callers get the old behavior: no source at all still throws at render.
 
