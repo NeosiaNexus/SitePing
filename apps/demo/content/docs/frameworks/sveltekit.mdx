@@ -1,0 +1,76 @@
+---
+title: SvelteKit
+description: A SitePing endpoint as a SvelteKit route, and the widget mounted in onMount — written for SvelteKit 3, with the SvelteKit 2 differences.
+---
+
+```bash
+npm i @siteping/widget @siteping/server @siteping/adapter-memory
+```
+
+## 1. The endpoint
+
+A `+server.ts` route exports one function per method; each one calls the handler's own.
+
+```ts
+// src/routes/api/siteping/+server.ts
+import { SITEPING_API_KEY } from "$app/env/private";
+import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
+import type { RequestHandler } from "./$types";
+
+const store = new MemoryStore();
+
+// Built on the first request, not at import: `vite build` imports this module
+// to analyse it, and the handler refuses to start in production without a key.
+let handler: SitepingHandler | undefined;
+const siteping = () => (handler ??= createSitepingHandler({ store, apiKey: SITEPING_API_KEY }));
+
+export const GET: RequestHandler = ({ request }) => siteping().GET(request);
+export const POST: RequestHandler = ({ request }) => siteping().POST(request);
+export const PATCH: RequestHandler = ({ request }) => siteping().PATCH(request);
+export const DELETE: RequestHandler = ({ request }) => siteping().DELETE(request);
+export const OPTIONS: RequestHandler = ({ request }) => siteping().OPTIONS(request);
+```
+
+SvelteKit 3 only exposes the environment variables you declare, read when the app starts:
+
+```ts
+// src/env.ts
+import { defineEnvVars } from "@sveltejs/kit/env";
+
+export const variables = defineEnvVars({
+  // Optional in development; the handler refuses to start in production without it.
+  SITEPING_API_KEY: { schema: (value) => value },
+});
+```
+
+On SvelteKit 2, skip `src/env.ts` and read the key with `import { env } from "$env/dynamic/private"`, then `apiKey: env.SITEPING_API_KEY`. On SvelteKit 3 that module still loads but only sees declared variables, so the key would be `undefined`.
+
+## 2. The widget
+
+`onMount` runs in the browser only, never during server rendering. Mounting in the root layout keeps one widget for the whole site, across client-side navigations.
+
+```svelte
+<!-- src/routes/+layout.svelte -->
+<script lang="ts">
+  import { initSiteping } from "@siteping/widget";
+  import { onMount } from "svelte";
+
+  let { children } = $props();
+
+  onMount(() => {
+    const siteping = initSiteping({ endpoint: "/api/siteping", projectName: "my-project" });
+    return () => siteping.destroy();
+  });
+</script>
+
+{@render children()}
+```
+
+Run `npm run dev` and look bottom-right. Draw a rectangle, type a comment, send it: the feedback goes through your route into the store.
+
+## Going further
+
+- A store that survives restarts: [Pick a store](/docs/frameworks#pick-a-store).
+- Before going live, set `SITEPING_API_KEY` and read what it locks — [three rules every stack follows](/docs/frameworks#three-rules-every-stack-follows).
+- The triage inbox is a React component; in a Svelte app, mount it on a separate admin page built with React, or point it at the same endpoint from another app — see [the dashboard](/docs/dashboard).
