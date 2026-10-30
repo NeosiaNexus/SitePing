@@ -62,7 +62,7 @@
   "devDependencies": {
     "@siteping/adapter-memory": "workspace:*",
     "@siteping/core": "workspace:*",
-    "better-auth": "^1.7.9",
-    "jose": "^6.2.12"
+    "better-auth": "^1.7.12",
+    "jose": "^6.2.13"
   }
 }
