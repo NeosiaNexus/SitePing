@@ -141,25 +141,27 @@ export class PrismaStore implements SitepingStore {
     readonly deleteComment?: (feedbackId: string, commentId: string) => Promise<void>;
     deleteFeedback(id: string): Promise<void>;
     private discardScreenshots;
-    private discardUnreferencedUpload;
     findByClientId(clientId: string): Promise<FeedbackRecord | null>;
     private findComment;
     getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage>;
     private readonly include;
     private inlineFallbackWarned;
+    private inlineScreenshot;
     private insertComment;
     private insertFeedback;
-    private persistScreenshot;
+    private readonly logger;
     private prisma;
     private removeComment;
     private readonly screenshotStorage;
     private storedScreenshotUrls;
     updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord>;
+    private uploadScreenshot;
     verifyProjectOwnership(id: string, projectName: string): Promise<boolean>;
 }
 
 export interface PrismaStoreOptions {
     caseInsensitiveSearch?: boolean;
+    logger?: SitepingWarnLogger | undefined;
     screenshotStorage?: ScreenshotStorage | undefined;
 }
 
@@ -212,6 +214,8 @@ export interface SitepingStore {
     updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord>;
     verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
 }
+
+export type SitepingWarnLogger = Required<Pick<SitepingLogger, "warn">>;
 
 export { SlackWebhookPayload } from "@siteping/server";
 
@@ -458,5 +462,10 @@ interface ScreenshotRegion {
     wPct: number;
     xPct: number;
     yPct: number;
+}
+
+interface SitepingLogger {
+    error(message: string, context: Record<string, unknown>): Promise<void> | void;
+    warn?(message: string, context: Record<string, unknown>): Promise<void> | void;
 }
 ```
