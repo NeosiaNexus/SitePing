@@ -33,7 +33,8 @@
     "check:consistency": "node scripts/check-consistency.mjs",
     "knip": "knip",
     "new:locale": "node scripts/new-locale.mjs",
-    "new:adapter": "node scripts/new-adapter.mjs"
+    "new:adapter": "node scripts/new-adapter.mjs",
+    "openapi:update": "vitest run packages/server/__tests__/openapi.test.ts --update"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
