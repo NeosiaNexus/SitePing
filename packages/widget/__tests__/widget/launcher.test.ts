@@ -829,24 +829,24 @@ describe("launch", () => {
       }
     }
 
-    it("mounts on a local page when process is undefined (browser context)", () => {
-      withoutProcess(() => {
-        const instance = launch({ endpoint: "/api", projectName: "test" });
-        expect(document.querySelector("siteping-widget")).not.toBeNull();
+    /** Whether `launch(config)` mounts a widget — destroyed either way, so no state leaks. */
+    function mounts(config: Partial<SitepingHttpConfig> = {}): boolean {
+      const instance = launch({ endpoint: "/api", projectName: "test", ...config });
+      try {
+        return document.querySelector("siteping-widget") !== null;
+      } finally {
         instance.destroy();
-      });
+      }
+    }
+
+    it("mounts on a local page when process is undefined (browser context)", () => {
+      withoutProcess(() => expect(mounts()).toBe(true));
     });
 
     it.each(["http://127.0.0.1:5173/", "http://app.localhost/", "http://[::1]:8080/"])(
       "treats %s as a local page",
       (url) => {
-        onHost(url, () =>
-          withoutProcess(() => {
-            const instance = launch({ endpoint: "/api", projectName: "test" });
-            expect(document.querySelector("siteping-widget")).not.toBeNull();
-            instance.destroy();
-          }),
-        );
+        onHost(url, () => withoutProcess(() => expect(mounts()).toBe(true)));
       },
     );
 
@@ -854,21 +854,15 @@ describe("launch", () => {
       onHost("https://client-site.example/", () =>
         withoutProcess(() => {
           const onSkip = vi.fn();
-          const instance = launch({ endpoint: "/api", projectName: "test", onSkip });
-          expect(document.querySelector("siteping-widget")).toBeNull();
+          expect(mounts({ onSkip })).toBe(false);
           expect(onSkip).toHaveBeenCalledWith("production");
-          instance.destroy();
         }),
       );
     });
 
     it("mounts on a public host with forceShow", () => {
       onHost("https://staging.client-site.example/", () =>
-        withoutProcess(() => {
-          const instance = launch({ endpoint: "/api", projectName: "test", forceShow: true });
-          expect(document.querySelector("siteping-widget")).not.toBeNull();
-          instance.destroy();
-        }),
+        withoutProcess(() => expect(mounts({ forceShow: true })).toBe(true)),
       );
     });
 
@@ -876,11 +870,7 @@ describe("launch", () => {
       const original = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
       try {
-        onHost("https://client-site.example/", () => {
-          const instance = launch({ endpoint: "/api", projectName: "test" });
-          expect(document.querySelector("siteping-widget")).not.toBeNull();
-          instance.destroy();
-        });
+        onHost("https://client-site.example/", () => expect(mounts()).toBe(true));
       } finally {
         process.env.NODE_ENV = original;
       }
