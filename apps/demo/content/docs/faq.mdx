@@ -18,7 +18,9 @@ No. The first time they send feedback, the widget asks for a name and email (kep
 
 ## Is it really free? What do I host?
 
-MIT license, no paid tier, no phoning home. You host one API endpoint (any framework that speaks Web `Request`/`Response`) and your own database via Prisma or Drizzle. Feedback data never touches anyone else's servers.
+MIT license, no paid tier, no phoning home. You host one API endpoint (any framework that speaks Web `Request`/`Response`) and your own database via Prisma or Drizzle. Feedback is stored in that database, and leaves it only through what you turn on: [webhooks](/docs/server#webhooks) to Slack, Discord or your own endpoints, [issue-tracker sync](/docs/issue-trackers) to GitHub or GitLab, a [screenshot storage](/docs/adapters/screenshot-storage) on a bucket you choose.
+
+Reviewers' names and emails are personal data. Complying with the GDPR — a lawful basis, a retention period, telling reviewers what you collect — is up to you as the site operator: a library can't be compliant on its own, but it keeps the data where you put it.
 
 ## Which frameworks work?
 
