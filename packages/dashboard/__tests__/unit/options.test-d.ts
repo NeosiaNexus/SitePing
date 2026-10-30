@@ -11,6 +11,7 @@ import type {
   EndpointSourceOptions,
   FeedbackPermissions,
   FeedbackQuery,
+  InboxComment,
   InboxRecord,
   registerLocale,
   ScreenshotRegion,
@@ -78,8 +79,11 @@ describe("InboxSource", () => {
     };
     expectTypeOf(legacy).toExtend<InboxSource>();
     expectTypeOf<NonNullable<InboxSource["addComment"]>>().toEqualTypeOf<
-      (feedbackId: string, projectName: string, input: CommentCreateInput) => Promise<CommentRecord>
+      (feedbackId: string, projectName: string, input: CommentCreateInput) => Promise<InboxComment>
     >();
+    // A source resolving a plain stored comment, without permissions, still fits.
+    const storeLike = { ...legacy, addComment: async () => ({}) as CommentRecord };
+    expectTypeOf(storeLike).toExtend<InboxSource>();
   });
 
   it("names the capabilities list() may return through the package itself", () => {

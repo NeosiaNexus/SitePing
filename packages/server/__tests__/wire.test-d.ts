@@ -4,6 +4,7 @@
  */
 
 import type {
+  CommentPermissions,
   CommentResponse,
   FeedbackPermissions,
   FeedbackResponse,
@@ -28,13 +29,17 @@ import type { WireFeedbackList } from "../src/operations/list-feedbacks.js";
 import type { WireComment, WireFeedback } from "../src/pipeline.js";
 
 test("the wire shapes serialize to the API types clients read", () => {
-  expectTypeOf<Prettify<Serialized<WireComment>>>().toEqualTypeOf<CommentResponse>();
+  expectTypeOf<Prettify<Serialized<Omit<WireComment, "permissions">>>>().toEqualTypeOf<
+    Prettify<Omit<CommentResponse, "permissions">>
+  >();
   expectTypeOf<Prettify<Serialized<Omit<WireFeedback, "comments" | "permissions">>>>().toEqualTypeOf<
     Prettify<Omit<FeedbackResponse, "comments" | "permissions">>
   >();
   // Always sent: clients only meet a missing thread, or missing permissions,
   // on servers that predate them.
-  expectTypeOf<Serialized<WireFeedback>["comments"]>().toEqualTypeOf<CommentResponse[]>();
+  expectTypeOf<Serialized<WireComment>["permissions"]>().toEqualTypeOf<CommentPermissions>();
+  expectTypeOf<Serialized<WireFeedback>["comments"]>().toEqualTypeOf<Serialized<WireComment>[]>();
+  expectTypeOf<Serialized<WireComment>>().toExtend<CommentResponse>();
   expectTypeOf<Serialized<WireFeedback>["permissions"]>().toEqualTypeOf<FeedbackPermissions>();
 });
 
@@ -66,8 +71,11 @@ test("each webhook event names its generic body, and the event list covers them 
   expectTypeOf<(typeof WEBHOOK_EVENTS)[number]>().toEqualTypeOf<WebhookEvent>();
   expectTypeOf<GenericWebhookEventMap["feedback.status_changed"]>().toEqualTypeOf<GenericWebhookPayload>();
   expectTypeOf<GenericWebhookDeletionPayload>().toEqualTypeOf<SitepingDeletionTarget>();
-  // The reply as clients read it, plus its project.
-  expectTypeOf<GenericWebhookCommentPayload>().toEqualTypeOf<Prettify<CommentResponse & { projectName: string }>>();
+  // The reply as clients read it, plus its project — without permissions: a
+  // webhook has no requester to answer for.
+  expectTypeOf<GenericWebhookCommentPayload>().toEqualTypeOf<
+    Prettify<Omit<CommentResponse, "permissions"> & { projectName: string }>
+  >();
 });
 
 test("a webhook subscribes to known events only, and onCommentCreated gets the reply with its project", () => {

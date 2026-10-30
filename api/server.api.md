@@ -45,7 +45,9 @@ export interface CommentRecord {
     id: string;
 }
 
-export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">> & {
+    permissions?: CommentPermissions | undefined;
+}>;
 
 export interface DiagnosticsSnapshot {
     console: ConsoleDiagnosticEntry[];
@@ -186,8 +188,8 @@ export interface ScreenshotRegion {
 export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
     authenticate(request: Request): Principal | Promise<Principal | null | undefined> | null | undefined;
     authorize?(context: SitepingAuthorizationContext<Principal>): Promise<boolean> | boolean;
-    canCommentAsTeam?(principal: Principal): Promise<boolean> | boolean;
-    canReadAuthorEmail?(principal: Principal): Promise<boolean> | boolean;
+    canCommentAsTeam?(principal: Principal, context: SitepingProjectContext): Promise<boolean> | boolean;
+    canReadAuthorEmail?(principal: Principal, context: SitepingProjectContext): Promise<boolean> | boolean;
 }
 
 export interface SitepingAccessHandlerOptions<Principal extends SitepingPrincipal> extends SitepingHandlerBaseOptions<Principal> {
@@ -275,6 +277,11 @@ export interface SitepingLogger {
 }
 
 export type SitepingPrincipal = number | object | string;
+
+export interface SitepingProjectContext {
+    projectName: string;
+    request: Request;
+}
 
 export interface SitepingRequestContext<Principal> {
     principal: Principal;
@@ -419,6 +426,10 @@ const CONSOLE_DIAGNOSTIC_LEVELS: readonly [
 type ClosedFeedbackStatus = (typeof CLOSED_FEEDBACK_STATUSES)[number];
 
 type CommentAuthorRole = (typeof COMMENT_AUTHOR_ROLES)[number];
+
+interface CommentPermissions {
+    canDelete: boolean;
+}
 
 interface ConsoleDiagnosticEntry {
     level: ConsoleDiagnosticLevel;

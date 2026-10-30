@@ -1173,6 +1173,9 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/CommentPermissions"
           }
         },
         "required": [
@@ -1182,7 +1185,19 @@
           "authorName",
           "authorEmail",
           "authorRole",
-          "createdAt"
+          "createdAt",
+          "permissions"
+        ]
+      },
+      "CommentPermissions": {
+        "type": "object",
+        "properties": {
+          "canDelete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "canDelete"
         ]
       },
       "ScreenshotRegion": {

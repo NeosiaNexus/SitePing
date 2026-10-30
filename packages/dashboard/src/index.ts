@@ -2,6 +2,7 @@
 export type {
   BuiltinLocale,
   CommentCreateInput,
+  CommentPermissions,
   CommentRecord,
   DiagnosticsSnapshot,
   FeedbackPermissions,
@@ -26,6 +27,7 @@ export { createEndpointSource, createStoreSource } from "./source.js";
 export type { ResolvedTheme } from "./theme.js";
 export type {
   EndpointSourceOptions,
+  InboxComment,
   InboxCustomSourceOptions,
   InboxEndpointOptions,
   InboxPage,
