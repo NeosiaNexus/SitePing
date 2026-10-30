@@ -12,6 +12,7 @@ import {
   mergeRequestHeaders,
   networkErrorFromException,
   type Prettify,
+  SitepingAuthError,
   SitepingError,
   type SitepingHeadersOption,
   SitepingNetworkError,
@@ -462,6 +463,9 @@ async function parseJsonAs<T>(response: Response): Promise<T> {
 async function ignoreBody(): Promise<void> {}
 
 export class ApiClient implements WidgetClient {
+  /** Whether the console already explained a refused list (see `getFeedbacks`). */
+  private listRefusalExplained = false;
+
   constructor(
     private readonly endpoint: string,
     private readonly projectName: string,
@@ -515,7 +519,18 @@ export class ApiClient implements WidgetClient {
       { method: "GET", cache: "no-store", ...(Object.keys(headers).length > 0 ? { headers } : {}) },
       label,
       parseJsonAs<FeedbackResponseList>,
-    );
+    ).catch((error: unknown) => {
+      // With an `apiKey`, the server keeps GET behind it by default (#280): a
+      // key-less widget submits fine but never shows a pin, with nothing on
+      // screen to say why. Say it in the console, once per client.
+      if (error instanceof SitepingAuthError && !this.listRefusalExplained) {
+        this.listRefusalExplained = true;
+        console.warn(
+          `[siteping] Listing feedback was refused (${error.status}). With an apiKey, the server lists only to requests carrying it unless publicEndpoints includes "GET": pins and the panel stay empty until then. https://siteping.dev/docs/server#the-security-model-honestly`,
+        );
+      }
+      throw error;
+    });
   }
 
   async addComment(feedbackId: string, input: CommentCreateInput): Promise<CommentResponse> {

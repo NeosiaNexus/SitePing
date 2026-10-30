@@ -122,6 +122,8 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 ```
 
+With a key, the widget can submit but not list its pins until `GET` is public — see [the security model](/docs/server#the-security-model-honestly).
+
 ## Options
 
 Both factories take the same options:
