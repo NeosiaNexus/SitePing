@@ -368,6 +368,26 @@ describe("MarkerManager", () => {
       expect(marker.style.borderStyle).toBe("solid");
     });
 
+    it("keeps the low-confidence look across reposition ticks served from the cache (#304)", () => {
+      vi.useFakeTimers();
+      try {
+        mockState.confidence = 0.5;
+        mockState.element = null;
+        markers.render([makeFeedback()]);
+        const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
+
+        // Tick 1 resolves and fills the anchor cache; ticks 2 and 3 are cache hits.
+        for (const event of ["resize", "scroll", "scroll"]) {
+          window.dispatchEvent(new Event(event));
+          vi.advanceTimersByTime(400);
+          expect(marker.style.borderStyle).toBe("dashed");
+          expect(marker.title).toBe("Position approximative (confiance : 50%)");
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("does not apply dashed border for resolved feedback even if low confidence", () => {
       mockState.confidence = 0.3;
       mockState.element = null;
@@ -494,8 +514,9 @@ describe("MarkerManager", () => {
 
       expect(markers.revealPin("fb-orphan")).toBe(false);
       expect(scrollIntoView).not.toHaveBeenCalled();
-      // The public focusFeedback contract is unchanged: the entry exists
-      expect(markers.focusFeedback("fb-orphan")).toBe(true);
+      // The public contract: `true` only when a visible feedback matched (#304).
+      expect(markers.focusFeedback("fb-orphan")).toBe(false);
+      expect(scrollIntoView).not.toHaveBeenCalled();
     });
 
     it("returns false while the markers are hidden with the eye toggle", () => {
@@ -710,6 +731,47 @@ describe("MarkerManager", () => {
       } finally {
         localMarkers.destroy();
         liveRegion.remove();
+      }
+    });
+
+    it("counts only the feedback with a marker on the page in the announcement (#304)", () => {
+      const liveRegion = document.createElement("div");
+      liveRegion.setAttribute("role", "status");
+      document.body.appendChild(liveRegion);
+      const localMarkers = new MarkerManager(colors, tooltip, bus, t, liveRegion);
+
+      try {
+        // The second feedback's anchor isn't on this page.
+        mockState.nullSchedule = [false, true];
+        localMarkers.render([makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-orphan" })]);
+        expect(liveRegion.textContent).toContain("1");
+        expect(liveRegion.textContent).not.toContain("2");
+      } finally {
+        localMarkers.destroy();
+        liveRegion.remove();
+      }
+    });
+
+    it("shows an annotation unresolved at render once its anchor renders (#304)", () => {
+      vi.useFakeTimers();
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = vi.fn(); // jsdom lacks it
+      try {
+        mockState.nullSchedule = [true];
+        markers.render([makeFeedback({ id: "fb-late" })]);
+        const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-late"]')!;
+        expect(marker.style.display).toBe("none");
+        expect(markers.focusFeedback("fb-late")).toBe(false);
+
+        // The host renders the anchor; the next layout tick resolves it.
+        window.dispatchEvent(new Event("resize"));
+        vi.advanceTimersByTime(400);
+
+        expect(marker.style.display).toBe("flex");
+        expect(markers.focusFeedback("fb-late")).toBe(true);
+      } finally {
+        Element.prototype.scrollIntoView = original;
+        vi.useRealTimers();
       }
     });
 
