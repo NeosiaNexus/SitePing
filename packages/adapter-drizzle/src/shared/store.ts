@@ -19,6 +19,7 @@ import {
   SCREENSHOT_DELETE_CONCURRENCY,
   type ScreenshotStorage,
   type SitepingStore,
+  type SitepingWarnLogger,
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
@@ -26,6 +27,7 @@ import {
   settleWithConcurrencyLimit,
   toStorableText,
   toStorableValue,
+  warnSafely,
 } from "@siteping/core";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../constants/deletes.js";
 import {
@@ -59,11 +61,11 @@ export type DrizzleStore = SitepingStore &
 
 /**
  * Where the store reports degraded-but-non-fatal situations (failed
- * screenshot uploads or cleanups, inline screenshots). `console` satisfies it.
+ * screenshot uploads or cleanups, inline screenshots) — SitePing's shared
+ * logger, with `warn`: `console` satisfies it, and so does the logger handed
+ * to the server. A logger that throws or rejects never fails the store.
  */
-export interface DrizzleStoreLogger {
-  warn(message: string, context: Record<string, unknown>): void;
-}
+export type DrizzleStoreLogger = SitepingWarnLogger;
 
 export interface DrizzleStoreOptions {
   /**
@@ -495,7 +497,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
         });
         return url;
       } catch (error) {
-        this.logger.warn(
+        warnSafely(
+          this.logger,
           "[siteping] DrizzleStore: screenshotStorage.upload failed — feedback saved without screenshot",
           { clientId, feedbackId, error },
         );
@@ -504,7 +507,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
     }
     if (!this.inlineScreenshotWarned) {
       this.inlineScreenshotWarned = true;
-      this.logger.warn(
+      warnSafely(
+        this.logger,
         "[siteping] DrizzleStore: no screenshotStorage configured — screenshots are stored inline as base64. Configure a ScreenshotStorage for production.",
         {},
       );
@@ -552,7 +556,8 @@ export class DrizzleSitepingStore implements DrizzleStore {
     try {
       referenced = await this.findReferencedScreenshotUrls(candidates);
     } catch (lookupError) {
-      this.logger.warn(
+      warnSafely(
+        this.logger,
         `${DRIZZLE_STORE_MESSAGE_PREFIX}: screenshot references could not be checked — screenshots kept`,
         { ...context, screenshotUrls: candidates, error: lookupError },
       );
@@ -564,11 +569,15 @@ export class DrizzleSitepingStore implements DrizzleStore {
     );
     results.forEach((result, index) => {
       if (result.status === "rejected") {
-        this.logger.warn(`${DRIZZLE_STORE_MESSAGE_PREFIX}: screenshotStorage.delete failed — object left in place`, {
-          ...context,
-          screenshotUrl: unreferenced[index],
-          error: result.reason,
-        });
+        warnSafely(
+          this.logger,
+          `${DRIZZLE_STORE_MESSAGE_PREFIX}: screenshotStorage.delete failed — object left in place`,
+          {
+            ...context,
+            screenshotUrl: unreferenced[index],
+            error: result.reason,
+          },
+        );
       }
     });
   }
