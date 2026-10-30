@@ -51,6 +51,16 @@ export interface SitepingIdentity {
  */
 export const IDENTITY_FIELD_MAX_LENGTH = 200;
 
+/**
+ * Max length of a `projectName` and of a feedback's or comment's `clientId`
+ * — the identifiers the stores index. 191 characters is the longest
+ * `VARCHAR` every MySQL version indexes under `utf8mb4` (767 bytes), which
+ * is why Prisma maps a plain `String` to `VARCHAR(191)` there: the HTTP
+ * schema caps them at that length, so their columns need no prefix index.
+ */
+export const PROJECT_NAME_MAX_LENGTH = 191;
+export const CLIENT_ID_MAX_LENGTH = 191;
+
 /** Deep-link configuration — controls how a feedback id is read from the URL. */
 export interface SitepingDeepLinkOptions {
   /** Query parameter name carrying the feedback id. Defaults to `"siteping"`. */
@@ -479,7 +489,13 @@ export type SitepingConfig = SitepingHttpConfig | SitepingStoreConfig;
 
 /** Instance returned by initSiteping() with lifecycle methods. */
 export interface SitepingInstance {
-  /** Remove the widget from the DOM and clean up all listeners. */
+  /**
+   * Release this handle and detach the listeners added through its `on()`.
+   * Every `initSiteping()` call returns its own handle over the one widget,
+   * which leaves the DOM, all its listeners cleaned up, once the last handle
+   * is destroyed. A repeat call is a no-op, and the handle's other methods do
+   * nothing afterwards.
+   */
   destroy: () => void;
   /** Open the panel programmatically */
   open: () => void;
@@ -927,9 +943,10 @@ export class StoreLimitError extends Error {
 
 /**
  * Thrown when a value is longer than the store can hold, though the HTTP
- * validation accepts it — on MySQL, Prisma maps a plain `String` to
- * `VARCHAR(191)`. Handlers translate this to HTTP 422: the submission can
- * never be stored as it is, so a client must not retry it.
+ * validation accepts it — a MySQL schema that predates the columns `sync`
+ * now sizes from the HTTP caps keeps Prisma's `VARCHAR(191)` for a plain
+ * `String`. Handlers translate this to HTTP 422: the submission can never be
+ * stored as it is, so a client must not retry it.
  */
 export class StoreValueTooLongError extends Error {
   readonly code = "STORE_VALUE_TOO_LONG" as const;

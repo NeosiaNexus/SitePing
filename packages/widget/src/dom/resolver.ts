@@ -456,7 +456,8 @@ function sweepScanCandidates(
     if (signals.snippetBigramTotal > 0) {
       // collapseWhitespace, not full normalizeText: NFC on every candidate is
       // the prefilter's dominant hidden cost; survivors get re-normalized in
-      // full scoring anyway.
+      // full scoring anyway. Raw text, masked included: the native text-only
+      // walker keeps the sweep cheap, and full scoring compares both forms.
       const text = collapseWhitespace(boundedText(el, CANDIDATE_TEXT_CAP));
       const charDice = diceAgainst(signals.snippetBigrams, signals.snippetBigramTotal, text);
       // Character bigrams are order-blind: on shared-vocabulary pages (card
@@ -555,10 +556,19 @@ function verificationScore(candidate: Element, s: AnchorSignals): SignalScores |
   const out: SignalScores = { blend: 0, strongest: 0 };
 
   // --- Text snippet (weight 40 — most reliable under reordering) ---
+  // Capture leaves masked text out of the snippet, so the candidate's is left
+  // out too. Snippets stored before that kept it: when masking changed the
+  // candidate's text, its raw text is compared as well.
   if (s.snippet) {
     totalWeight += 40;
-    const candidateText = normalizeText(boundedText(candidate, CANDIDATE_TEXT_CAP));
-    out.text = fuzzyIncludes(candidateText, s.snippet, 0.5);
+    const candidateText = boundedText(candidate, CANDIDATE_TEXT_CAP, true);
+    out.text = fuzzyIncludes(normalizeText(candidateText), s.snippet, 0.5);
+    if (out.text < 1) {
+      const rawText = boundedText(candidate, CANDIDATE_TEXT_CAP);
+      if (rawText !== candidateText) {
+        out.text = Math.max(out.text, fuzzyIncludes(normalizeText(rawText), s.snippet, 0.5));
+      }
+    }
     score += out.text * 40;
   }
 

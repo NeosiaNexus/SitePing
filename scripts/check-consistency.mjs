@@ -17,7 +17,8 @@
 //   6. Node tooling (configs, scripts/, e2e/) takes a filesystem path from a
 //      file URL's .pathname instead of fileURLToPath();
 //   7. adapter-prisma's source imports @prisma/client, which it declares as
-//      an optional peer dependency;
+//      an optional peer dependency, or integration-issues' source imports
+//      @siteping/server, which it does not declare at all;
 //   8. a published package depends on another through `workspace:` without
 //      the release.yml step that pins the range before `npm publish`, or
 //      its publish job does not wait for the dependency's;
@@ -240,22 +241,28 @@ for (const dir of toolingDirs) {
   }
 }
 
-// --- 7. @prisma/client stays an optional peer --------------------------------
+// --- 7. Packages typed structurally never import what they mirror ----------
 
-// Stores other than Prisma mount through adapter-prisma too, so its
-// @prisma/client peer is optional (#306): npm, pnpm and Bun then leave it
-// out. That is only safe while the source never imports it — not even as a
-// type, which would leave an import the consumer may not resolve in the
-// published declarations. The client shape is structural on purpose
-// (SitepingPrismaClient).
-const PRISMA_CLIENT_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']@prisma\/client(?:\/[^"']*)?["']/;
-const prismaSourceFiles = (dir) =>
+// A source import — even a type, which would leave an import in the
+// published declarations — of a package the consumer may not have:
+// - Stores other than Prisma mount through adapter-prisma too, so its
+//   @prisma/client peer is optional (#306): npm, pnpm and Bun then leave it
+//   out. The client shape is structural on purpose (SitepingPrismaClient).
+// - integration-issues declares no @siteping/server dependency, so one 0.x
+//   release installs next to any server: the hook types are restated, and a
+//   type test keeps them identical to the server's.
+const STRUCTURAL_ONLY = [
+  ["packages/adapter-prisma/src", "@prisma/client", "adapter-prisma declares it as an optional peer (#306)"],
+  ["packages/integration-issues/src", "@siteping/server", "integration-issues mirrors the server's hook types"],
+];
+const sourceFiles = (dir) =>
   readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? prismaSourceFiles(`${dir}/${e.name}`) : /\.[cm]?tsx?$/.test(e.name) ? [`${dir}/${e.name}`] : [],
+    e.isDirectory() ? sourceFiles(`${dir}/${e.name}`) : /\.[cm]?tsx?$/.test(e.name) ? [`${dir}/${e.name}`] : [],
   );
-for (const file of prismaSourceFiles("packages/adapter-prisma/src")) {
-  if (PRISMA_CLIENT_IMPORT.test(read(file))) {
-    errors.push(`${file} imports @prisma/client — adapter-prisma declares it as an optional peer (#306)`);
+for (const [dir, name, why] of STRUCTURAL_ONLY) {
+  const importOf = new RegExp(`(?:\\bfrom|\\bimport|\\brequire)\\s*\\(?\\s*["']${name}(?:/[^"']*)?["']`);
+  for (const file of sourceFiles(dir)) {
+    if (importOf.test(read(file))) errors.push(`${file} imports ${name} — ${why}`);
   }
 }
 

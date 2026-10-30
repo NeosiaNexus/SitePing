@@ -32,23 +32,29 @@ const i18n = createI18n<Translations>(en, {
 });
 
 /**
- * Register a custom locale at runtime. Partial dictionaries are welcome —
- * missing keys fall back to English per key, so overriding a single string
- * never requires copying the whole catalog.
+ * Register translations at runtime, for a new locale or over a built-in one —
+ * call it before the inbox mounts. Partial dictionaries are welcome: under a
+ * built-in code (`registerLocale("fr", { "status.open": "À traiter" })`) the
+ * keys given override the built-in dictionary and every other key keeps its
+ * built-in value; elsewhere missing keys fall back to English per key. So
+ * overriding a single string never requires copying the whole catalog.
+ * Calls for the same code accumulate.
  */
 export const registerLocale: (code: string, translations: Partial<Translations>) => void = i18n.registerLocale;
 
 /**
- * Dynamically import a built-in locale and register it. Returns the loaded
- * translations or `null` if the locale isn't a known built-in. Custom
- * locales registered via {@link registerLocale} bypass this loader.
+ * Dynamically import a built-in locale (once) and register it. Returns the
+ * locale as the inbox resolves it — the built-in dictionary with any
+ * {@link registerLocale} overrides on top — or `null` for a code that is
+ * neither built in nor registered. A custom code never hits a loader.
  */
 export const loadLocale: (locale: string) => Promise<Partial<Translations> | null> = i18n.loadLocale;
 
 /**
  * Create a translation function for the given locale.
  *
- * Locale resolution: exact match > language prefix > English fallback.
+ * Locale resolution, per key: {@link registerLocale} override > built-in
+ * dictionary of the language (`fr-CA` reads `fr`) > English fallback.
  * Non-English built-in locales are lazy-loaded via {@link loadLocale} — call
  * `await loadLocale(locale)` at init if you want the inbox to render in the
  * target language immediately. Otherwise it renders in English until the

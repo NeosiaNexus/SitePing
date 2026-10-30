@@ -23,20 +23,45 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ pri
 
 C'est le handler de [`@siteping/server`](/fr/docs/server) avec un store Prisma intégré : même surface HTTP, même modèle de sécurité et mêmes [recettes de montage](/fr/docs/server#le-montage) pour Hono, Express et les autres frameworks.
 
+`next build` importe chaque route, et en production la factory lève une erreur sans `apiKey`. Si votre hébergeur n'injecte les secrets qu'à l'exécution (Coolify, certaines configurations Docker), construisez plutôt le handler à la première requête — c'est la route que génère `npx @siteping/cli init` :
+
+```ts
+// app/api/siteping/route.ts
+import { createSitepingHandler, type SitepingHandler } from "@siteping/adapter-prisma";
+import { prisma } from "@/lib/prisma";
+
+let handler: SitepingHandler | undefined;
+
+function getHandler(): SitepingHandler {
+  handler ??= createSitepingHandler({ prisma, apiKey: process.env.SITEPING_API_KEY });
+  return handler;
+}
+
+export const GET: SitepingHandler["GET"] = (request) => getHandler().GET(request);
+export const POST: SitepingHandler["POST"] = (request) => getHandler().POST(request);
+export const PATCH: SitepingHandler["PATCH"] = (request) => getHandler().PATCH(request);
+export const DELETE: SitepingHandler["DELETE"] = (request) => getHandler().DELETE(request);
+export const OPTIONS: SitepingHandler["OPTIONS"] = (request) => getHandler().OPTIONS(request);
+```
+
+Une clé manquante fait alors échouer la première requête, avec le même message, plutôt que le build.
+
 ## Options
 
 | Option | Type | Défaut | Ce que ça fait |
 |---|---|---|---|
-| `prisma` | `SitepingPrismaClient` | — | Votre client Prisma. Obligatoire sauf si vous passez `store` |
-| `store` | `SitepingStore` | — | Utiliser n'importe quel store au lieu de Prisma (prioritaire) |
-| `screenshotStorage` | `ScreenshotStorage` | — | Envoyer les captures quelque part de réel au lieu de les inliner en URL `data:`. Ignoré quand vous passez un `store` personnalisé |
-| `caseInsensitiveSearch` | `boolean` | détecté automatiquement | Détecté depuis le provider Prisma (actif pour PostgreSQL, MongoDB, CockroachDB). Ne s'applique que si `prisma` est fourni |
+| `prisma` | `SitepingPrismaClient` | — | Votre client Prisma. Passez-le, ou `store`, jamais les deux |
+| `store` | `SitepingStore` | — | Utiliser n'importe quel store au lieu de Prisma |
+| `screenshotStorage` | `ScreenshotStorage` | — | Envoyer les captures quelque part de réel au lieu de les inliner en URL `data:`. Avec `prisma` uniquement |
+| `caseInsensitiveSearch` | `boolean` | détecté automatiquement | Détecté depuis le provider Prisma (actif pour PostgreSQL, MongoDB, CockroachDB). Avec `prisma` uniquement |
+
+Les types imposent cette séparation : aucune source, `prisma` à côté de `store`, ou `screenshotStorage` / `caseInsensitiveSearch` à côté d'un `store` personnalisé est une erreur de compilation, pas une option ignorée en silence.
 
 Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent aussi — `apiKey`, `allowedOrigins`, `webhooks`, `access`, les hooks… Un seul ajout : quand une table SitePing manque, la `500` vous indique de lancer `npx prisma db push` (un `describeError` que vous passez a la priorité). Leurs types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) sont réexportés ici : un gestionnaire de paquets strict comme pnpm n'a pas besoin de `@siteping/server` en dépendance directe pour typer une politique à part.
 
 ## Schéma de base de données
 
-Voici le schéma exact dont l'adapter a besoin — c'est ce que génère `npx @siteping/cli sync`. Préférez le CLI ; si vous l'écrivez à la main, ne retirez pas de colonnes : l'adapter écrit `urlPattern`, `screenshotUrl` et `anchorKey` à chaque insertion, donc un schéma partiel échoue dès le premier envoi.
+Voici le schéma exact dont l'adapter a besoin — c'est ce que génère `npx @siteping/cli sync` pour PostgreSQL. Préférez le CLI ; si vous l'écrivez à la main, ne retirez pas de colonnes : l'adapter écrit `urlPattern`, `screenshotUrl` et `anchorKey` à chaque insertion, donc un schéma partiel échoue dès le premier envoi.
 
 ```prisma
 model SitepingFeedback {
@@ -111,7 +136,9 @@ model SitepingComment {
 
 > `@db.Text` cible PostgreSQL et MySQL. SQLite et CockroachDB le refusent, et un `String` simple y est déjà sans limite — `sync` lit le `provider` de votre datasource et y omet `@db.Text`. Vous écrivez le schéma à la main ? Retirez ces attributs vous-même.
 
-> Sur MySQL, un `String` simple est un `VARCHAR(191)`, plus court que ce qu'accepte le serveur pour `projectName`, `url`, `urlPattern`, `userAgent`, les noms, les e-mails et `clientId`, ainsi que pour le `fingerprint` et l'`anchorKey` d'une annotation. Une valeur qui n'y tient pas — le user agent du navigateur intégré d'Instagram ou de Facebook, qui dépasse 200 caractères, une URL de page complète venue de `getPageScope` — fait répondre au `POST` un `422`, que le widget ne rejoue pas, et le handler journalise `[siteping] A value is too long for the store`.
+> Sur MySQL, où un `String` simple est un `VARCHAR(191)`, `sync` dimensionne chaque colonne pour la plus longue valeur qu'accepte le serveur. `projectName` et `clientId` restent simples : le serveur les plafonne à 191 caractères. Les colonnes de texte plus longues — `url`, `urlPattern`, `userAgent`, les noms, les e-mails, le `fingerprint` et l'`anchorKey` d'une annotation — reçoivent `@db.Text`, `screenshotUrl` reçoit `@db.MediumText` pour qu'une capture inline y tienne, et l'index `(projectName, url)` prend les 191 premiers caractères de l'URL : `@@index([projectName, url(length: 191)])`.
+
+> **Mise à jour sur MySQL.** Un schéma synchronisé par un `@siteping/cli` antérieur garde des colonnes `VARCHAR(191)`. Une valeur qui n'y tient pas — le user agent du navigateur intégré d'Instagram ou de Facebook, une URL de page complète venue de `getPageScope` — fait répondre au `POST` un `422`, que le widget ne rejoue pas, et le handler journalise `[siteping] A value is too long for the store`. `npx @siteping/cli status` signale ces colonnes ; lancez `npx @siteping/cli sync`, puis `npx prisma migrate dev` (ou `db push`). La migration élargit les colonnes et reconstruit l'index sur l'URL ; les lignes existantes gardent leurs valeurs.
 
 ## Fils de discussion
 
@@ -171,4 +198,4 @@ Il est aussi appelé quand une création est refusée parce que son `clientId` e
 
 Pas sur Prisma ? Montez votre store directement avec [`@siteping/server`](/fr/docs/server) — même handler, rien de Prisma à installer. `createSitepingHandler({ store })` fonctionne toujours ici aussi : `@prisma/client` est une dépendance peer optionnelle, installée seulement si vous passez `prisma`.
 
-`screenshotStorage` et `caseInsensitiveSearch` ne s'appliquent qu'au chemin Prisma intégré ; avec un store personnalisé, gérez les captures à l'intérieur de votre store.
+`screenshotStorage` et `caseInsensitiveSearch` appartiennent au chemin Prisma intégré, et les types les refusent à côté d'un store personnalisé : gérez les captures à l'intérieur de votre store.

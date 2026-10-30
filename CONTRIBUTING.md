@@ -302,6 +302,29 @@ a regression test. `packages/core/__tests__/filters.property.test.ts` is the
 worked example: it caught a pagination bug that only surfaced for a
 non-positive page number, which no hand-written case had thought to try.
 
+### Bundle budgets
+
+The widget and the dashboard ship to every visitor, so CI fails a PR that
+outgrows a budget: `bun run size` in `packages/widget` and
+`packages/dashboard`, after a build. Each budget covers what a browser
+downloads for one load step, gzipped — an entry with every chunk it imports
+statically (the first load), or what a dynamic import adds on top of it (the
+widget panel, the locale dictionaries). `scripts/size-limit.mjs` derives the
+file lists from the built imports, so a new shared chunk counts where it
+loads.
+
+Each limit is the measured size plus 1 kB, rounded up to the next 0.5 kB. When
+a change needs more:
+
+1. Look for the bytes first: a smaller implementation, code moved behind a
+   dynamic import, a dependency dropped.
+2. Otherwise raise the limit in the same PR, to the new measured size plus
+   1 kB rounded up to the next 0.5 kB, and state in the PR description the
+   growth (before and after, from the CI step summary) and what it buys.
+
+A limit goes down the same way when a change saves a kilobyte or more, so the
+headroom stays around 1 kB and every kilobyte is a decision.
+
 ## Supply-chain posture
 
 The repo is scored by [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/NeosiaNexus/SitePing)
@@ -358,11 +381,14 @@ Releases are **fully automated** via [Release Please](https://github.com/googlea
 | `fix(scope):` | Patch | Patch | `fix(widget): prevent double submit` |
 | `feat(scope):` | Minor | Patch | `feat(panel): add dark mode` |
 | `feat(scope)!:` | Major | Minor | `feat(api)!: redesign payload format` |
-| `docs:` / `test:` / `chore:` | — (included in next release) | — | `docs(widget): clarify config` |
+| `perf:` / `refactor:` / `test:` / `docs:` / `chore:` | Patch | Patch | `docs(widget): clarify config` |
+| `build:` / `ci:` | — (no release) | — (no release) | `ci: pin actionlint` |
 
 > **Note:** The commit scope (`widget`, `cli`) is cosmetic. Release-please routes commits to packages based on which **files** the commit touches, not the scope name.
 
-> **Pre-1.0 behavior** (all current packages): `feat` bumps **patch** instead of minor, breaking changes (`!`) bump **minor** instead of major. `docs` / `test` / `chore` commits don't trigger releases on their own — they're included in the next release triggered by `feat` or `fix`.
+> **Pre-1.0 behavior** (all current packages): `feat` bumps **patch** instead of minor, breaking changes (`!`) bump **minor** instead of major.
+
+> **Every type listed in `changelog-sections`** (`release-please-config.json`: feat, fix, perf, refactor, test, docs, chore) releases the packages whose files it touches — a `docs:` edit to a package README publishes a patch. `build:` and `ci:` are the types that never release. Dependabot's `chore(deps)` and `chore(deps-dev)` bumps therefore release a patch too, even for a dev dependency that ships nothing.
 
 **What you don't need to do:**
 - Edit `package.json` version — Release Please does it

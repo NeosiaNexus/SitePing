@@ -15,7 +15,7 @@ Aucune colonne n'est ajoutée à la base : la première ligne de chaque ticket e
 npm i @siteping/integration-issues
 ```
 
-Il tourne partout où tourne le [serveur](/fr/docs/server) (API Fetch uniquement) et prend `@siteping/server` en dépendance peer ; [`@siteping/adapter-prisma`](/fr/docs/adapters/prisma) l'apporte déjà, et transmet `hooks` comme toutes les autres options du serveur.
+Il tourne partout où tourne le [serveur](/fr/docs/server) (API Fetch uniquement). Il ne dépend d'aucune version du serveur : ses hooks correspondent structurellement aux types du serveur, il s'installe donc à côté de `@siteping/server` ou de [`@siteping/adapter-prisma`](/fr/docs/adapters/prisma), qui transmet `hooks` comme toutes les autres options du serveur.
 
 ## GitHub
 

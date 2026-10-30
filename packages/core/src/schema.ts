@@ -11,7 +11,17 @@
  */
 
 import type { AssertEqual } from "./type-utils.js";
-import type { AnnotationRecord, CommentRecord, FeedbackRecord } from "./types.js";
+import {
+  ANCHOR_ELEMENT_ID_MAX,
+  ANCHOR_ELEMENT_TAG_MAX,
+  type AnnotationRecord,
+  CLIENT_ID_MAX_LENGTH,
+  COMMENT_BODY_MAX_LENGTH,
+  type CommentRecord,
+  type FeedbackRecord,
+  IDENTITY_FIELD_MAX_LENGTH,
+  PROJECT_NAME_MAX_LENGTH,
+} from "./types.js";
 
 /** Prisma scalar types supported by Siteping field definitions. */
 export type PrismaScalarType =
@@ -70,6 +80,13 @@ export interface FieldDef {
   isUnique?: boolean;
   /** Prisma native type attribute (e.g. "Text" for @db.Text) — used for MySQL compatibility on long strings */
   nativeType?: PrismaNativeType;
+  /**
+   * Longest value the HTTP handler accepts for this column, in characters —
+   * set on every `String` column filled from a request body, and checked
+   * against the handler's own caps. The CLI sizes the column from it where a
+   * plain `String` is shorter: on MySQL, a `VARCHAR(191)`.
+   */
+  maxLength?: number;
   /** Prisma @updatedAt attribute */
   isUpdatedAt?: boolean;
 }
@@ -99,20 +116,21 @@ const _SITEPING_MODELS = {
   SitepingFeedback: {
     fields: {
       id: { type: "String", isId: true, default: "cuid()" },
-      projectName: { type: "String" },
+      projectName: { type: "String", maxLength: PROJECT_NAME_MAX_LENGTH },
       type: { type: "String" },
-      message: { type: "String", nativeType: "Text" },
+      message: { type: "String", nativeType: "Text", maxLength: 5000 },
       status: { type: "String", default: '"open"' },
-      url: { type: "String" },
-      urlPattern: { type: "String", optional: true },
-      screenshotUrl: { type: "String", optional: true, nativeType: "Text" },
+      url: { type: "String", maxLength: 2000 },
+      urlPattern: { type: "String", optional: true, maxLength: 2000 },
+      // The data URL itself when no `ScreenshotStorage` is plugged in.
+      screenshotUrl: { type: "String", optional: true, nativeType: "Text", maxLength: 1_500_000 },
       screenshotRegion: { type: "Json", optional: true },
       diagnostics: { type: "Json", optional: true },
-      viewport: { type: "String" },
-      userAgent: { type: "String" },
-      authorName: { type: "String" },
-      authorEmail: { type: "String" },
-      clientId: { type: "String", isUnique: true },
+      viewport: { type: "String", maxLength: 50 },
+      userAgent: { type: "String", maxLength: 500 },
+      authorName: { type: "String", maxLength: IDENTITY_FIELD_MAX_LENGTH },
+      authorEmail: { type: "String", maxLength: IDENTITY_FIELD_MAX_LENGTH },
+      clientId: { type: "String", isUnique: true, maxLength: CLIENT_ID_MAX_LENGTH },
       resolvedAt: { type: "DateTime", optional: true },
       createdAt: { type: "DateTime", default: "now()" },
       updatedAt: { type: "DateTime", isUpdatedAt: true },
@@ -145,16 +163,16 @@ const _SITEPING_MODELS = {
           onDelete: "Cascade",
         },
       },
-      cssSelector: { type: "String", nativeType: "Text" },
-      xpath: { type: "String", nativeType: "Text" },
-      textSnippet: { type: "String", nativeType: "Text" },
-      elementTag: { type: "String" },
-      elementId: { type: "String", optional: true },
-      textPrefix: { type: "String", nativeType: "Text" },
-      textSuffix: { type: "String", nativeType: "Text" },
-      fingerprint: { type: "String" },
-      neighborText: { type: "String", nativeType: "Text" },
-      anchorKey: { type: "String", optional: true },
+      cssSelector: { type: "String", nativeType: "Text", maxLength: 2000 },
+      xpath: { type: "String", nativeType: "Text", maxLength: 2000 },
+      textSnippet: { type: "String", nativeType: "Text", maxLength: 500 },
+      elementTag: { type: "String", maxLength: ANCHOR_ELEMENT_TAG_MAX },
+      elementId: { type: "String", optional: true, maxLength: ANCHOR_ELEMENT_ID_MAX },
+      textPrefix: { type: "String", nativeType: "Text", maxLength: 200 },
+      textSuffix: { type: "String", nativeType: "Text", maxLength: 200 },
+      fingerprint: { type: "String", maxLength: 200 },
+      neighborText: { type: "String", nativeType: "Text", maxLength: 500 },
+      anchorKey: { type: "String", optional: true, maxLength: 200 },
       xPct: { type: "Float" },
       yPct: { type: "Float" },
       wPct: { type: "Float" },
@@ -182,11 +200,11 @@ const _SITEPING_MODELS = {
           onDelete: "Cascade",
         },
       },
-      body: { type: "String", nativeType: "Text" },
-      authorName: { type: "String" },
-      authorEmail: { type: "String" },
+      body: { type: "String", nativeType: "Text", maxLength: COMMENT_BODY_MAX_LENGTH },
+      authorName: { type: "String", maxLength: IDENTITY_FIELD_MAX_LENGTH },
+      authorEmail: { type: "String", maxLength: IDENTITY_FIELD_MAX_LENGTH },
       authorRole: { type: "String", default: '"client"' },
-      clientId: { type: "String", isUnique: true },
+      clientId: { type: "String", isUnique: true, maxLength: CLIENT_ID_MAX_LENGTH },
       createdAt: { type: "DateTime", default: "now()" },
     },
     // A thread is read oldest first, one feedback at a time.

@@ -12,19 +12,17 @@ npm i @siteping/dashboard
 ```tsx
 import { SitepingInbox } from "@siteping/dashboard";
 
+// An admin page of your app, behind its login
 export function Triage() {
-  return (
-    <SitepingInbox
-      projects="my-project"
-      endpoint="https://my-site.com/api/siteping"
-      apiKey={process.env.NEXT_PUBLIC_SITEPING_KEY}
-      theme="auto"
-    />
-  );
+  return <SitepingInbox projects="my-project" endpoint="/api/siteping" theme="auto" />;
 }
 ```
 
-It works with React 18 and 19, ships ESM and CJS, and has zero dependencies besides React. Give it a container with a height — the inbox fills its parent (minimum 480 px).
+Mounted on the endpoint's origin, the inbox sends your session cookie with every request: protect the endpoint with an [`access`](/docs/server#custom-access) policy that lets only your team triage. [Data sources](/docs/dashboard/sources#endpoint-mode-production-default) covers the other ways in — a token in `headers` from another origin, a store, a custom source.
+
+> **Never ship the `apiKey` to the browser.** It authorizes every status change and every delete, so a `NEXT_PUBLIC_*` or `VITE_*` variable, which the build inlines into the client bundle, hands it to anyone who opens the page. Pass `apiKey` only where the code never reaches the visitor: an internal tool on a private network, or a script run server-side.
+
+It works with React 18 and 19, ships ESM and CJS, and has zero dependencies besides React. The package carries its own `"use client"` directive, so a Server Component can render `<SitepingInbox />` directly — as long as every prop is serializable (`endpoint`, not `store` or `source`). Give it a container with a height — the inbox fills its parent (minimum 480 px).
 
 ## Props
 
@@ -67,7 +65,7 @@ Four statuses: `open`, `in_progress`, `resolved`, `wont_fix`. The dashboard can 
 The drawer shows the opened feedback's thread — the reviewer's replies from the widget, your team's from here. Pass `author` to reply and delete from the inbox:
 
 ```tsx
-<SitepingInbox projects="my-project" endpoint="/api/siteping" apiKey={KEY} author={{ name: "Alex" }} />
+<SitepingInbox projects="my-project" endpoint="/api/siteping" author={{ name: "Alex" }} />
 ```
 
 Without `author`, threads are read-only. Replies ask for the `team` role, which your server grants only to callers it trusts — the details are in [Discussion threads](/docs/comments#in-the-dashboard).
@@ -95,4 +93,4 @@ registerLocale("nl", { "status.open": "Open", "status.resolved": "Opgelost" });
 // later: <SitepingInbox locale="nl" ... />
 ```
 
-**Partial dictionaries are accepted** — any key you leave out falls back to English on its own, so correcting a single label doesn't mean maintaining the whole catalog. Two rules the implementation enforces: register under the **base language code** (`"nl"`, not `"nl-BE"` — lookups normalize to the base), and call `registerLocale` **before the inbox mounts**. The widget's `registerLocale` works the same way against [its own key set](/docs/widget/i18n).
+**Partial dictionaries are accepted** — under a built-in code, the keys you pass override only those labels and the rest of the built-in dictionary stays (`registerLocale("fr", { "status.open": "À traiter" })` keeps every other French string); under a new code, any key you leave out falls back to English on its own. Either way, correcting a single label doesn't mean maintaining the whole catalog, and calls for the same code add up. Two rules the implementation enforces: register under the **base language code** (`"nl"`, not `"nl-BE"` — lookups normalize to the base), and call `registerLocale` **before the inbox mounts**. The widget's `registerLocale` works the same way against [its own key set](/docs/widget/i18n).

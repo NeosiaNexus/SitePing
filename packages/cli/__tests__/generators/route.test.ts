@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { generateRoute } from "../../src/generators/route.js";
 
 // Pass-through, so every write is real. The EACCES test below makes one
@@ -110,15 +110,106 @@ describe("generateRoute", () => {
     const result = generateRoute(tmpDir);
     const content = readFileSync(result.path, "utf-8");
 
-    expect(content).toContain('import { createSitepingHandler } from "@siteping/adapter-prisma"');
+    expect(content).toContain('import { createSitepingHandler, type SitepingHandler } from "@siteping/adapter-prisma"');
     expect(content).toContain('import { prisma } from "@/lib/prisma"');
-    expect(content).toContain("export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({");
+    for (const method of ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]) {
+      expect(content).toContain(
+        `export const ${method}: SitepingHandler["${method}"] = (request) => getHandler().${method}(request);`,
+      );
+    }
     expect(content).toContain("prisma,");
     // The key is wired, not commented out: the handler refuses to start in
     // production without one, so the generated route must not hide it.
     expect(content).toContain("apiKey: process.env.SITEPING_API_KEY,");
     expect(content).not.toContain("// apiKey");
+    // With a key, GET stays private by default (#280): the route says so and
+    // shows the opt-in, commented out, so a reviewer-facing widget is one
+    // uncommented line away from listing its pins.
+    expect(content).toContain('// publicEndpoints: ["GET", "POST", "OPTIONS"],');
     expect(content).toContain('// allowedOrigins: ["https://your-site.com"],');
+  });
+
+  // -------------------------------------------------------------------------
+  // Generated handler at runtime
+  // -------------------------------------------------------------------------
+
+  describe("generated handler", () => {
+    const METHODS = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"] as const;
+    type Method = (typeof METHODS)[number];
+    type Route = Record<Method, (request: Request) => Response | Promise<Response>>;
+
+    const PRISMA = { client: "prisma" };
+    const request = new Request("https://site.test/api/siteping");
+
+    /** A handler whose every method answers a `Response` naming that method. */
+    function fakeHandler(): Record<Method, Mock<(request: Request) => Response>> {
+      const handler = {} as Record<Method, Mock<(request: Request) => Response>>;
+      for (const method of METHODS) handler[method] = vi.fn(() => new Response(method));
+      return handler;
+    }
+
+    /**
+     * Generate the route and import it with its two imports pointed at local
+     * stubs, mocked so `createSitepingHandler` is `create`. Vitest can't mock a
+     * bare specifier that resolves nowhere, hence the rewrite.
+     */
+    async function importRoute(create: (options: unknown) => unknown): Promise<Route> {
+      mkdirSync(join(tmpDir, "app"), { recursive: true });
+      const source = readFileSync(generateRoute(tmpDir).path, "utf-8");
+      const adapter = join(tmpDir, "adapter-prisma.ts");
+      const prisma = join(tmpDir, "prisma.ts");
+      writeFileSync(adapter, "export {};\n");
+      writeFileSync(prisma, "export {};\n");
+      const rewritten = source
+        .replace('from "@siteping/adapter-prisma"', `from ${JSON.stringify(adapter)}`)
+        .replace('from "@/lib/prisma"', `from ${JSON.stringify(prisma)}`);
+      expect(rewritten).not.toContain('"@siteping/adapter-prisma"');
+      expect(rewritten).not.toContain('"@/lib/prisma"');
+      const route = join(tmpDir, "route.ts");
+      writeFileSync(route, rewritten);
+      vi.doMock(adapter, () => ({ createSitepingHandler: create }));
+      vi.doMock(prisma, () => ({ prisma: PRISMA }));
+      return import(route);
+    }
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("builds the handler on the first request, not at import, and reuses it", async () => {
+      vi.stubEnv("SITEPING_API_KEY", "sk_test");
+      const handler = fakeHandler();
+      const create = vi.fn(() => handler);
+
+      const route = await importRoute(create);
+
+      // `next build` imports the module: nothing may be built yet.
+      expect(create).not.toHaveBeenCalled();
+      for (const method of METHODS) {
+        expect(await (await route[method](request)).text()).toBe(method);
+        expect(handler[method]).toHaveBeenCalledWith(request);
+      }
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledWith({ prisma: PRISMA, apiKey: "sk_test" });
+    });
+
+    it("raises a construction error on the request, then retries on the next one", async () => {
+      const handler = fakeHandler();
+      const create = vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error("[siteping] createSitepingHandler: apiKey is required in production.");
+        })
+        .mockImplementation(() => handler);
+
+      // A build without the runtime secret: the import itself must not throw.
+      const route = await importRoute(create);
+
+      expect(() => route.POST(request)).toThrow("apiKey is required in production");
+      // A failed build caches nothing, so the next request tries again.
+      expect(await (await route.POST(request)).text()).toBe("POST");
+      expect(create).toHaveBeenCalledTimes(2);
+    });
   });
 
   // -------------------------------------------------------------------------
