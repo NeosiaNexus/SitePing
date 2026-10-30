@@ -32,6 +32,7 @@ Les options forment une union sur les trois modes de source : fournissez **exact
 | `onError` | `(error) => void` | — | Chaque chargement ou mutation en échec. Les sources intégrées lèvent des erreurs que `isSitepingError` reconnaît, typées par `code` ; celles d'une source personnalisée arrivent telles quelles |
 | `author` | `{ name, email? }` | — | Qui poste les réponses depuis cette inbox — voir [Fils de discussion](#fils-de-discussion). Sans lui, les fils sont en lecture seule |
 | `readOnly` | `boolean` | `false` | Aucun changement de statut ni aucune suppression, de feedback comme de réponse — voir [Permissions](#permissions) |
+| `siteUrl` | `string` ou `Record<projectName, string>` | l'adresse de l'inbox | Base des URL de feedback relatives (le widget enregistre des chemins), quand l'inbox tourne sur une autre origine que le site — voir [Des pages sur une autre origine](/fr/docs/dashboard#des-pages-sur-une-autre-origine). Dans votre propre interface, construisez les liens avec `recordPageUrl(record, { siteUrl, deepLinkParam })`, qui renvoie `null` pour une URL qu'il n'est pas sûr de lier |
 
 Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions`, le socle commun `InboxSharedOptions` et l'union `UseSitepingInboxOptions` — pour qu'un composant d'enrobage n'accepte que le mode qu'il gère. En JavaScript pur, le comportement d'avant demeure : aucune source du tout lève toujours au rendu.
 

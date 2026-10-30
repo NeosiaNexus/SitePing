@@ -38,6 +38,18 @@ Compatible React 18 et 19, livré en ESM et CJS, sans aucune dépendance en deho
 | `emptyState` | `ReactNode` | — | Nœud personnalisé pour l'état « aucun feedback dans ce projet » uniquement — les états inbox-zéro et aucun-résultat gardent leurs valeurs par défaut |
 | `className` | `string` | — | Ajouté aux classes de l'élément racine |
 
+### Des pages sur une autre origine
+
+Le widget enregistre la page de chaque feedback sous forme de chemin (`/pricing`) : « Ouvrir sur la page » et le lien de page du tiroir le résolvent donc par défaut contre **l'adresse de l'inbox elle-même** — ce qui est juste quand l'inbox tourne sur l'origine du site. Quand elle tourne ailleurs (une app d'administration, un autre sous-domaine), passez `siteUrl`, l'une des [options de `useSitepingInbox`](/fr/docs/dashboard/headless#options) : l'origine du site, ou une par nom de projet pour une inbox sur plusieurs sites. Un projet sans entrée garde le comportement par défaut, une URL de feedback absolue est gardée telle quelle, et un `siteUrl` qui n'est pas une URL http(s) absolue est ignoré avec un avertissement en console.
+
+```tsx
+<SitepingInbox
+  projects={["client", "shop"]}
+  endpoint="/api/siteping"
+  siteUrl={{ client: "https://client.example.com", shop: "https://shop.example.com" }}
+/>
+```
+
 ## Clavier
 
 Donnez le focus à la liste une fois, puis :
