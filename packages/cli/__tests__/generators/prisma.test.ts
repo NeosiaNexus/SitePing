@@ -667,6 +667,7 @@ describe("syncPrismaModels", () => {
       writeFileSync(schemaPath, MYSQL_SCHEMA);
       syncPrismaModels(schemaPath);
       const custom = readFileSync(schemaPath, "utf-8").replace("url(length: 191)", "url(length: 100, sort: Desc)");
+      expect(custom).toContain("@@index([projectName, url(length: 100, sort: Desc)])");
       writeFileSync(schemaPath, custom);
 
       expect(syncPrismaModels(schemaPath).changes).toEqual([]);
