@@ -307,13 +307,13 @@ describe("MarkerManager", () => {
 
       const open = document.querySelector<HTMLElement>('[data-feedback-id="fb-open"]')!;
       const wip = document.querySelector<HTMLElement>('[data-feedback-id="fb-wip"]')!;
-      // jsdom serializes colours as rgb()/rgba(): `#ef4444` and `#ef444440`.
+      // jsdom serializes colours as rgb()/rgba(): `#d01f1f` and `#d01f1f40`.
       const full = open.style.borderColor;
-      expect(full).toBe("rgb(239, 68, 68)");
+      expect(full).toBe("rgb(208, 31, 31)");
       expect([wip.style.borderTopColor, wip.style.borderRightColor]).toEqual([full, full]);
       expect([wip.style.borderBottomColor, wip.style.borderLeftColor]).toEqual([
-        "rgba(239, 68, 68, 0.25)",
-        "rgba(239, 68, 68, 0.25)",
+        "rgba(208, 31, 31, 0.25)",
+        "rgba(208, 31, 31, 0.25)",
       ]);
       expect(wip.style.color).toBe(open.style.color);
     });

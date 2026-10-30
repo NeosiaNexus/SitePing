@@ -103,6 +103,7 @@ export const es: Translations = {
   "badge.count": "{count} comentarios sin resolver",
 
   // Bulk actions toolbar
+  "bulk.aria": "Acciones en lote",
   "bulk.selectAll": "Seleccionar todo",
   "bulk.selectFeedback": "Seleccionar {label}",
   "bulk.selected": "{count} seleccionados",
@@ -120,6 +121,7 @@ export const es: Translations = {
   "group.feedbacks": "{count} comentarios",
 
   // Stats bar
+  "stats.aria": "Estadísticas de comentarios",
   "stats.open": "Abiertos",
   "stats.closed": "Cerrados",
   "stats.bugs": "Errores",
@@ -127,6 +129,7 @@ export const es: Translations = {
 
   // Detail view
   "detail.back": "Atrás",
+  "detail.aria": "Detalle del comentario",
   "detail.title": "Comentario #{number}",
   "detail.status": "Estado",
   "detail.message": "Mensaje",

@@ -102,6 +102,7 @@ export const ru: Translations = {
   "badge.count": "Нерешённых отзывов: {count}",
 
   // Bulk actions toolbar
+  "bulk.aria": "Массовые действия",
   "bulk.selectAll": "Выбрать все",
   "bulk.selectFeedback": "Выбрать: {label}",
   "bulk.selected": "Выбрано: {count}",
@@ -119,6 +120,7 @@ export const ru: Translations = {
   "group.feedbacks": "Отзывов: {count}",
 
   // Stats bar
+  "stats.aria": "Статистика отзывов",
   "stats.open": "Открытые",
   "stats.closed": "Закрытые",
   "stats.bugs": "Баги",
@@ -126,6 +128,7 @@ export const ru: Translations = {
 
   // Detail view
   "detail.back": "Назад",
+  "detail.aria": "Подробности отзыва",
   "detail.title": "Отзыв #{number}",
   "detail.status": "Статус",
   "detail.message": "Сообщение",

@@ -13,7 +13,8 @@
  * 2. **Query backends** (SQL, ORMs): implement {@link SitepingStore}
  *    directly; {@link buildFeedbackRecord} / {@link buildAnnotationRecord} /
  *    {@link buildCommentRecord} handle input→record construction, and the
- *    JSDoc on `SitepingStore` documents the exact error contract.
+ *    JSDoc on `SitepingStore` documents the exact error contract — a
+ *    repeated `clientId` makes `createFeedback` throw `StoreDuplicateError`.
  *
  * Either way, verify with the conformance suite from
  * `@siteping/adapter-kit/testing`:

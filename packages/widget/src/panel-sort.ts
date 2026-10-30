@@ -220,14 +220,12 @@ export class PanelSortControls {
     this.sortBtn.className = "sp-sort-btn";
     this.sortBtn.setAttribute("aria-haspopup", "listbox");
     this.sortBtn.setAttribute("aria-expanded", "false");
-    this.sortBtn.setAttribute("aria-label", this.t("sort.label"));
 
     const sortIcon = parseSvg(ICON_SORT);
     this.sortBtn.appendChild(sortIcon);
 
-    const sortLabel = el("span", { class: "sp-sort-btn-label" });
-    setText(sortLabel, this.t("sort.newest"));
-    this.sortBtn.appendChild(sortLabel);
+    this.sortBtn.appendChild(el("span", { class: "sp-sort-btn-label" }));
+    this.updateSortLabel();
 
     this.sortBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -307,7 +305,7 @@ export class PanelSortControls {
 
       if (opt.mode === this._sortMode) {
         item.style.background = "var(--sp-accent-light)";
-        item.style.color = "var(--sp-accent)";
+        item.style.color = "var(--sp-accent-text)";
       }
 
       setText(item, opt.label);
@@ -349,8 +347,11 @@ export class PanelSortControls {
       "by-type": this.t("sort.byType"),
       "open-first": this.t("sort.openFirst"),
     };
+    const text = labelMap[this._sortMode];
     const label = this.sortBtn.querySelector(".sp-sort-btn-label");
-    if (label) setText(label as HTMLElement, labelMap[this._sortMode]);
+    if (label) setText(label as HTMLElement, text);
+    // The name holds the visible mode, which speech users read off the button (WCAG 2.5.3).
+    this.sortBtn.setAttribute("aria-label", `${this.t("sort.label")}: ${text}`);
   }
 
   destroy(): void {
@@ -412,13 +413,13 @@ export const SORT_CSS = /* css */ `
 
   .sp-sort-btn:hover {
     border-color: var(--sp-accent);
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
     background: var(--sp-accent-light);
   }
 
   .sp-sort-btn[aria-expanded="true"] {
     border-color: var(--sp-accent);
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
     background: var(--sp-accent-light);
   }
 
@@ -484,7 +485,7 @@ export const SORT_CSS = /* css */ `
 
   .sp-sort-option--active:hover {
     background: var(--sp-accent-light);
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
   }
 
   /* ============================
@@ -519,7 +520,7 @@ export const SORT_CSS = /* css */ `
   .sp-group-toggle:hover,
   .sp-mine-toggle:hover {
     border-color: var(--sp-accent);
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
     background: var(--sp-accent-light);
   }
 

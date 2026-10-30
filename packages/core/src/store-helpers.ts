@@ -29,7 +29,7 @@ import type {
   FeedbackUpdateInput,
   SitepingStore,
 } from "./types.js";
-import { MAX_COMMENTS_PER_FEEDBACK, StoreLimitError, StoreNotFoundError } from "./types.js";
+import { MAX_COMMENTS_PER_FEEDBACK, StoreDuplicateError, StoreLimitError, StoreNotFoundError } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Record construction
@@ -176,8 +176,9 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
 /**
  * Build a fully conformant `SitepingStore` on top of a snapshot backend.
  *
- * The engine implements the whole store contract: clientId dedup (idempotent
- * create, with `createFeedbackIfAbsent` reporting inserts), newest-first
+ * The engine implements the whole store contract: clientId dedup (a repeated
+ * `clientId` makes `createFeedback` throw `StoreDuplicateError`, and
+ * `createFeedbackIfAbsent` report the existing record), newest-first
  * ordering, the standard filter/pagination pipeline, `StoreNotFoundError` on
  * missing update/delete, project-scoped bulk delete,
  * `verifyProjectOwnership`, and — with `comments: true` — discussion threads
@@ -288,7 +289,9 @@ export function createCollectionStore(
     createFeedbackIfAbsent,
 
     async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
-      return (await createFeedbackIfAbsent(data)).feedback;
+      const { feedback, created } = await createFeedbackIfAbsent(data);
+      if (!created) throw new StoreDuplicateError(`A feedback with clientId ${data.clientId} already exists`);
+      return feedback;
     },
 
     async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {

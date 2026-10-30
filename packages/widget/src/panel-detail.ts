@@ -338,7 +338,7 @@ export const DETAIL_CSS = /* css */ `
   .sp-detail-btn-reopen {
     border: 1.5px solid var(--sp-accent);
     background: var(--sp-accent-light);
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
   }
 
   .sp-detail-btn-reopen:hover {
@@ -379,7 +379,7 @@ export const DETAIL_CSS = /* css */ `
   .sp-detail-btn-custom:hover {
     background: var(--sp-bg-hover);
     border-color: var(--sp-accent);
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
     box-shadow: 0 0 16px var(--sp-accent-glow);
     transform: translateY(-1px);
   }
@@ -1056,7 +1056,7 @@ export class DetailView {
     // Root container
     this.element = el("div", { class: "sp-detail" });
     this.element.setAttribute("role", "dialog");
-    this.element.setAttribute("aria-label", "Feedback detail");
+    this.element.setAttribute("aria-label", t("detail.aria"));
     this.element.setAttribute("aria-hidden", "true");
     // Slid off-screen while closed, but still rendered: out of the tab order.
     setInert(this.element, true);

@@ -102,6 +102,7 @@ export const ko: Translations = {
   "badge.count": "해결되지 않은 피드백 {count}건",
 
   // Bulk actions toolbar
+  "bulk.aria": "일괄 작업",
   "bulk.selectAll": "모두 선택",
   "bulk.selectFeedback": "{label} 선택",
   "bulk.selected": "{count}건 선택됨",
@@ -119,6 +120,7 @@ export const ko: Translations = {
   "group.feedbacks": "피드백 {count}건",
 
   // Stats bar
+  "stats.aria": "피드백 통계",
   "stats.open": "열림",
   "stats.closed": "종료됨",
   "stats.bugs": "버그",
@@ -126,6 +128,7 @@ export const ko: Translations = {
 
   // Detail view
   "detail.back": "뒤로",
+  "detail.aria": "피드백 상세",
   "detail.title": "피드백 #{number}",
   "detail.status": "상태",
   "detail.message": "내용",

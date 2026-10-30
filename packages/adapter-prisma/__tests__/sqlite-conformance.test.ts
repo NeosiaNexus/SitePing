@@ -86,8 +86,6 @@ describe("PrismaStore on SQLite", () => {
       return new PrismaStore(prisma, { caseInsensitiveSearch: false });
     },
     {
-      // A repeated clientId hits the unique index: P2002, mapped to StoreDuplicateError.
-      duplicateBehavior: "throw",
       // No `mode: "insensitive"` on SQLite: `contains` is its `LIKE`, which
       // folds ASCII only, so the suite asserts same-case matching.
       caseInsensitiveSearch: false,

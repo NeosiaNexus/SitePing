@@ -496,7 +496,6 @@ Types:
 ```ts
 export interface StoreConformanceOptions {
     caseInsensitiveSearch?: boolean | undefined;
-    duplicateBehavior?: "return" | "throw" | undefined;
     failWrites?: ((store: SitepingStore) => () => void) | undefined;
 }
 

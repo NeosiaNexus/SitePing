@@ -63,6 +63,7 @@ export class MemoryStore implements SitepingStore {
     comments: true,
   });
 
+  /** Throws `StoreDuplicateError` when a feedback with the same `clientId` exists. */
   createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
     return this.engine.createFeedback(data);
   }

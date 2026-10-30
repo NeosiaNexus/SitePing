@@ -112,7 +112,7 @@ describe("Tooltip", () => {
       const [badge, chip] = document.getElementById("sp-tooltip")!.querySelectorAll("span");
       expect(badge!.textContent).toBe("Bug");
       expect(chip!.textContent).toBe("Sans suite");
-      expect(chip!.style.color).toBe("rgb(100, 116, 139)"); // statusWontFix, light theme
+      expect(chip!.style.color).toBe("rgb(91, 103, 120)"); // statusWontFix (#5b6778), light theme
     });
 
     it("renders message preview", () => {

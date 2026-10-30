@@ -55,6 +55,20 @@ describe("Fab", () => {
       expect(btn!.tagName).toBe("BUTTON");
     });
 
+    // WCAG 2.5.3 (axe label-content-name-mismatch): the badge's count is text
+    // inside the button, so the button's name must contain it.
+    it("names the FAB with the count its badge shows, and drops it with the badge", () => {
+      const btn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      fab.updateBadge(3);
+      expect(btn.getAttribute("aria-label")).toContain(createT("fr")("fab.aria"));
+      expect(btn.getAttribute("aria-label")).toContain(shadow.querySelector(".sp-fab-badge")!.textContent);
+      fab.updateBadge(150);
+      expect(shadow.querySelector(".sp-fab-badge")!.textContent).toBe("99+");
+      expect(btn.getAttribute("aria-label")).toContain("99+");
+      fab.updateBadge(0);
+      expect(btn.getAttribute("aria-label")).toBe(createT("fr")("fab.aria"));
+    });
+
     it("sets correct ARIA label on the FAB button", () => {
       const btn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
       expect(btn.getAttribute("aria-label")).toBe(createT("fr")("fab.aria"));
