@@ -11,7 +11,7 @@ L'inbox lit et écrit à travers une petite abstraction, que vous pouvez fournir
 <SitepingInbox projects="mon-projet" endpoint="/api/siteping" apiKey={KEY} />
 ```
 
-Parle à votre [endpoint SitePing](/fr/docs/server) : `GET` pour les listes, `PATCH` pour les statuts, `DELETE` pour les suppressions, toujours avec `cache: "no-store"`. Les erreurs arrivent typées par `code` (`AUTH` pour 401/403 et `VALIDATION` pour les autres 4xx, chacun avec le `status` HTTP, `SERVER` pour les 5xx, ainsi que pour les 408 et les 429 avec `retryable: true`, `NETWORK` pour les échecs de fetch). Il n'y a volontairement **aucun réessai** — une interface de tri doit vous dire les choses tout de suite.
+Parle à votre [endpoint SitePing](/fr/docs/server) : `GET` pour les listes, `PATCH` pour les statuts, `DELETE` pour les suppressions, toujours avec `cache: "no-store"`. Les erreurs arrivent typées par `code` (`AUTH` pour 401/403 et `VALIDATION` pour les autres 4xx, chacun avec le `status` HTTP, `SERVER` pour les 5xx, les 408 et les 429, tous avec `retryable: true`, `NETWORK` pour les échecs de fetch) ; reconnaissez-les avec `isSitepingError`, exporté par le package. Il n'y a volontairement **aucun réessai** — une interface de tri doit vous dire les choses tout de suite.
 
 Derrière la connexion de votre application, laissez `apiKey` de côté : montée sur l'origine de l'endpoint, l'inbox envoie votre cookie de session à chaque requête, et une politique [`access`](/fr/docs/server#accès-personnalisé) côté serveur le lit — voir la [recette Better Auth](/fr/docs/server#recette--better-auth). Depuis une autre origine, envoyez un jeton avec `headers`. L'`apiKey` autorise toutes les écritures : elle n'a jamais sa place dans un bundle client (`NEXT_PUBLIC_*`, `VITE_*`), gardez-la pour du code hors de portée du visiteur.
 
@@ -69,7 +69,17 @@ const source: InboxSource = {
 
 Un enregistrement peut porter `permissions` — `{ canChangeStatus, canDelete, canComment, canDeleteComment }`, ce que l'appelant peut en faire — depuis `list()` comme depuis `setStatus()`. L'inbox masque alors ce qu'elles refusent (voir [Permissions](/fr/docs/dashboard/headless#permissions)) ; un enregistrement sans elles ne refuse rien. Quand `setStatus()` renvoie un enregistrement sans elles, il garde celles de `list()`. La source endpoint transmet celles du serveur.
 
-Les deux briques qui sous-tendent les modes intégrés sont également exportées — `createEndpointSource({ endpoint, apiKey, headers })` et `createStoreSource(store)` — pour que vous puissiez les envelopper, les composer ou les décorer (par exemple ajouter de la journalisation autour du client HTTP) plutôt que de repartir de zéro.
+Les deux briques qui sous-tendent les modes intégrés sont également exportées — `createEndpointSource({ endpoint, apiKey, headers, fetchFn })` et `createStoreSource(store)` — pour que vous puissiez les envelopper, les composer ou les décorer plutôt que de repartir de zéro. `fetchFn` remplace le `fetch` par lequel passe chaque requête (`globalThis.fetch` par défaut) : enveloppez-le pour journaliser ou tracer les requêtes, ou pour fixer une option de requête que la source n'expose pas, puis passez le résultat en `source` :
+
+```tsx
+const source = createEndpointSource({
+  endpoint: "https://api.example.com/siteping",
+  // Envoie le cookie de session vers une autre origine (son CORS doit autoriser les credentials)
+  fetchFn: (input, init) => fetch(input, { ...init, credentials: "include" }),
+});
+
+<SitepingInbox projects="mon-projet" source={source} />;
+```
 
 ## Des types sans dépendance supplémentaire
 

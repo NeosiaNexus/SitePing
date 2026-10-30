@@ -12,9 +12,12 @@ export type {
   FeedbackStatus,
   FeedbackType,
   RectData,
+  SitepingClientError,
   SitepingConfig,
+  SitepingErrorCode,
   SitepingHeadersOption,
   SitepingHttpConfig,
+  SitepingIdentity,
   SitepingInstance,
   SitepingLocale,
   SitepingPanelAction,
@@ -26,9 +29,13 @@ export type {
   SitepingStore,
   SitepingStoreConfig,
 } from "@siteping/core";
-export type { TFunction, TranslationKey, Translations } from "./i18n/index.js";
+// The guard and the union it narrows to, not the classes: an error matched
+// by `instanceof` against one package's copy of a class fails against
+// another's (and a type-only class export would read as a value in the
+// bundled .d.ts, where `instanceof` would type-check, then throw).
+export { isSitepingError } from "@siteping/core";
+export type { TranslationKey, Translations } from "./i18n/index.js";
 export { loadLocale, registerLocale } from "./i18n/index.js";
-export type { Identity } from "./identity.js";
 
 /**
  * Initialize the Siteping feedback widget.

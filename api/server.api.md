@@ -6,9 +6,11 @@
 
 Runtime exports (ESM and CJS):
 
+- `SITEPING_PROTOCOL_VERSION: number`
 - `createSitepingHandler: function`
 - `dispatchWebhook: function`
 - `dispatchWebhooks: function`
+- `isSitepingConfigError: function`
 
 Types:
 
@@ -109,6 +111,8 @@ export interface GetQueryInput {
     urlPattern?: string | undefined;
 }
 
+export const SITEPING_PROTOCOL_VERSION = 1;
+
 export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
     authenticate(request: Request): Principal | Promise<Principal | null | undefined> | null | undefined;
     authorize?(context: SitepingAuthorizationContext<Principal>): Promise<boolean> | boolean;
@@ -141,6 +145,8 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
     feedbackId?: string;
     projectName: string;
 }
+
+export type SitepingConfigErrorCode = "CONFIG_API_KEY_REQUIRED" | "CONFIG_MAX_BODY_BYTES_INVALID" | "CONFIG_OWNERSHIP_CHECK_MISSING" | "CONFIG_STORE_MISSING" | "CONFIG_WEBHOOK_TIMEOUT_INVALID";
 
 export type SitepingDeletionTarget = {
     id: string;
@@ -243,6 +249,8 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(optio
 export function dispatchWebhook(config: WebhookConfig, feedback: FeedbackRecord): Promise<void>;
 
 export function dispatchWebhooks(configs: readonly WebhookConfig[], feedback: FeedbackRecord): Promise<void>;
+
+export function isSitepingConfigError(error: unknown): error is SitepingConfigError;
 ```
 
 Referenced, not exported:
@@ -429,6 +437,11 @@ interface ScreenshotRegion {
 type Serialized<T> = {
     [K in keyof T]: T[K] extends Date ? string : T[K] extends Date | null ? null | string : T[K] extends (infer U)[] ? Serialized<U>[] : T[K];
 };
+
+class SitepingConfigError extends Error {
+    constructor(code: SitepingConfigErrorCode, message: string);
+    readonly code: SitepingConfigErrorCode;
+}
 
 interface SlackContextBlock {
     elements: ReadonlyArray<{

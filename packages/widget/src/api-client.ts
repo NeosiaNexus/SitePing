@@ -15,10 +15,10 @@ import {
   SitepingAuthError,
   SitepingError,
   type SitepingHeadersOption,
+  type SitepingIdentity,
   SitepingNetworkError,
   withSearchParams,
 } from "@siteping/core";
-import type { Identity } from "./identity.js";
 import { ownFeedback } from "./own-feedback.js";
 
 /**
@@ -357,7 +357,7 @@ function normalizeEmail(value: string): string {
  */
 export async function flushRetryQueue(
   endpoint: string,
-  currentIdentity?: Identity | null,
+  currentIdentity?: SitepingIdentity | null,
   auth: ApiClientAuth = {},
 ): Promise<void> {
   await withRetryLock(async () => {

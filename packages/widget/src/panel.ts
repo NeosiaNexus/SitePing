@@ -9,6 +9,7 @@ import {
   isClosedStatus,
   MAX_PAGE_LIMIT,
   type PageScope,
+  type SitepingIdentity,
   type SitepingPanelAction,
 } from "@siteping/core";
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
@@ -34,7 +35,6 @@ import {
   ICON_UNDO,
   ICON_USER,
 } from "./icons.js";
-import type { Identity } from "./identity.js";
 import type { MarkerManager } from "./markers.js";
 import type { OwnFeedback } from "./own-feedback.js";
 import { normalizePanelActions } from "./panel-actions.js";
@@ -97,7 +97,7 @@ export class Panel {
   /** Reviewer mode (`config.readOnly`): no triage action, whatever the server allows. */
   private readonly readOnly: boolean;
   /** The visitor a reply is posted as — `null` when they dismiss the identity prompt. */
-  private readonly resolveIdentity: () => Promise<Identity | null>;
+  private readonly resolveIdentity: () => Promise<SitepingIdentity | null>;
 
   // New feature modules
   private readonly stats: PanelStats;
@@ -136,7 +136,7 @@ export class Panel {
       scopeAnnotationsByUrl: boolean;
       panelActions?: readonly SitepingPanelAction[] | undefined;
       ownFeedback?: Pick<OwnFeedback, "ids" | "remove"> | undefined;
-      resolveIdentity?: () => Promise<Identity | null>;
+      resolveIdentity?: () => Promise<SitepingIdentity | null>;
       readOnly?: boolean | undefined;
     },
   ) {

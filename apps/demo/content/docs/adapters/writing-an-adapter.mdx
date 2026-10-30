@@ -108,7 +108,7 @@ Handlers and the dashboard read behavior off these errors, so throw the kit's cl
 | A mutation accepted but not persisted | Throw `StorePersistenceError` instead of reporting a phantom success |
 | Empty results on `getFeedbacks` / `findByClientId` | Don't throw — return an empty array or `null` |
 
-Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Use them instead of `instanceof` when you catch across package boundaries — every package bundles its own copy of the classes, so `instanceof` can fail on an error thrown by another one. The guards also recognize Prisma's `P2025` and `P2002` codes.
+Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Use them instead of `instanceof` when you catch across package boundaries — every package bundles its own copy of the classes, so `instanceof` can fail on an error thrown by another one. The guards also recognize Prisma's `P2025` and `P2002` codes. Every store package — this kit, `adapter-prisma`, `adapter-memory`, `adapter-localstorage` and both `adapter-drizzle` entries — re-exports the same five classes and five guards.
 
 ### Query semantics to match
 
