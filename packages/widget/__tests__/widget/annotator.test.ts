@@ -434,7 +434,9 @@ describe("Annotator", () => {
       window.requestAnimationFrame = origRAF;
     });
 
-    it("rejects mouse drag smaller than 10px in width", async () => {
+    // A drag under 10px on either axis points at the element under the pointer
+    // ("click on an element" tests below); with nothing there, no form opens.
+    it("draws no rectangle from a drag narrower than 10px, with nothing under the pointer", async () => {
       bus.emit("annotation:start");
 
       const listener = vi.fn();
@@ -451,7 +453,7 @@ describe("Annotator", () => {
       });
     });
 
-    it("rejects mouse drag smaller than 10px in height", async () => {
+    it("draws no rectangle from a drag shorter than 10px, with nothing under the pointer", async () => {
       bus.emit("annotation:start");
 
       const listener = vi.fn();
@@ -1886,6 +1888,38 @@ describe("Annotator on touch screens", () => {
     await vi.waitFor(() => expect(popupMocks.showCount).toBe(1));
     expect(generateAnchor).toHaveBeenCalledWith(target);
     expect(popupMocks.lastRect).toMatchObject({ x: 10, y: 600, width: 200, height: 40 });
+  });
+
+  it("a mouse click on an element comments on it, like a tap (#305)", async () => {
+    const target = pageElement();
+    document.elementFromPoint = vi.fn(() => target);
+    const complete = vi.fn();
+    bus.on("annotation:complete", complete);
+
+    bus.emit("annotation:start");
+    const overlay = findOverlay()!;
+    overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 60, clientY: 620, bubbles: true }));
+    overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 62, clientY: 621, bubbles: true }));
+
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce());
+    expect(document.elementFromPoint).toHaveBeenCalledWith(62, 621);
+    expect(generateAnchor).toHaveBeenCalledWith(target);
+    expect(complete.mock.calls[0]![0].annotation.rect).toEqual({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
+    expect(popupMocks.lastRect).toMatchObject({ x: 10, y: 600, width: 200, height: 40 });
+  });
+
+  it("a mouse drag too thin to frame an area comments on the element under the pointer (#305)", async () => {
+    const target = pageElement();
+    document.elementFromPoint = vi.fn(() => target);
+
+    bus.emit("annotation:start");
+    const overlay = findOverlay()!;
+    // 200×6 px along a line of text
+    overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 20, clientY: 620, bubbles: true }));
+    overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 220, clientY: 626, bubbles: true }));
+
+    await vi.waitFor(() => expect(popupMocks.showCount).toBe(1));
+    expect(generateAnchor).toHaveBeenCalledWith(target);
   });
 
   it("a second tap while the form is open does not open another one (#163)", async () => {
