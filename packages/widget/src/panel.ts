@@ -17,7 +17,7 @@ import { PAGE_SIZE } from "./constants.js";
 import { el, formatRelativeDate, onClickOutside, parseSvg, setButtonLoading, setHidden, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
-import { registerEscapeLayer } from "./host-isolation.js";
+import { addSurfaceKeydownListener, registerEscapeLayer } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import {
   ICON_BUG,
@@ -436,8 +436,7 @@ export class Panel {
     // confirm dialog) stop Escape before it bubbles here; the help overlay's
     // handler sits on this same shadow root but runs later, so defer to it.
     registerEscapeLayer(shadowRoot, () => this.isOpen);
-    shadowRoot.addEventListener("keydown", (e) => {
-      const ke = e as KeyboardEvent;
+    addSurfaceKeydownListener(shadowRoot, (ke) => {
       if (ke.key === "Escape" && this.isOpen) {
         if (this.shortcuts.isHelpVisible) return;
         // If detail view is open, close it instead
@@ -1111,7 +1110,7 @@ export class Panel {
       const close = (result: boolean) => {
         if (closed) return;
         closed = true;
-        backdrop.removeEventListener("keydown", onKeydown);
+        removeKeydown();
         backdrop.style.opacity = "0";
         dialog.style.transform = "translateY(8px) scale(0.97)";
         setTimeout(() => {
@@ -1121,8 +1120,7 @@ export class Panel {
       };
 
       // Focus trap: Tab cycles between cancel and confirm
-      const onKeydown = (e: Event) => {
-        const ke = e as KeyboardEvent;
+      const onKeydown = (ke: KeyboardEvent) => {
         if (ke.key === "Escape") {
           ke.stopPropagation(); // Cancel the dialog only, not the panel
           close(false);
@@ -1138,7 +1136,7 @@ export class Panel {
           }
         }
       };
-      backdrop.addEventListener("keydown", onKeydown);
+      const removeKeydown = addSurfaceKeydownListener(backdrop, onKeydown);
 
       cancelBtn.addEventListener("click", () => close(false));
       confirmBtn.addEventListener("click", () => close(true));

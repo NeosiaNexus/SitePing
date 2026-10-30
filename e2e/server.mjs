@@ -47,6 +47,60 @@ const MODAL_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// Host page with a modal trapped the way the focus-trap library traps one
+// (also the core of Headless UI's and many design systems' traps): listeners
+// on `document` in the capture phase. A Tab from outside the dialog goes to
+// its first (Shift+Tab: last) tabbable element, and focus that lands outside
+// on `focusin` goes back in; an outside `mousedown` is prevented, so a click
+// there never moves focus. Same ?closedShadow=1 switch as MODAL_HTML.
+const FOCUS_TRAP_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Siteping E2E focus-trap modal</title></head>
+<body style="margin:0;font-family:system-ui">
+  <p id="page-content" style="padding:40px">Page behind the modal.</p>
+  <div id="trap-dialog" role="dialog" aria-modal="true" aria-label="Host dialog"
+       style="position:fixed;top:120px;left:120px;width:420px;padding:24px;background:#fff;border:1px solid #ccc">
+    <input id="trap-first" aria-label="Host field">
+    <button id="trap-last" type="button">Host action</button>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    globalThis.process = { env: { NODE_ENV: params.get("closedShadow") === "1" ? "production" : "test" } };
+    const dialog = document.getElementById("trap-dialog");
+    const first = document.getElementById("trap-first");
+    const last = document.getElementById("trap-last");
+    const outside = (event) => !dialog.contains(event.target);
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Tab") return;
+      if (outside(event)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (!event.shiftKey && event.target === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && event.target === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    }, true);
+    document.addEventListener("focusin", (event) => {
+      if (outside(event)) first.focus();
+    }, true);
+    for (const type of ["mousedown", "touchstart"]) {
+      document.addEventListener(type, (event) => {
+        if (outside(event)) event.preventDefault();
+      }, { capture: true, passive: false });
+    }
+    first.focus();
+  </script>
+  <script type="module">
+    import { initSiteping } from "/widget.js";
+    const projectName = new URLSearchParams(location.search).get("project") || "e2e-test";
+    window.__siteping = initSiteping({ endpoint: "/api/siteping", projectName, forceShow: true });
+  </script>
+</body>
+</html>`;
+
 /** In-memory feedback store */
 let feedbacks = [];
 let idCounter = 1;
@@ -226,6 +280,13 @@ const server = createServer((req, res) => {
   if (url.pathname === "/modal") {
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end(MODAL_HTML);
+    return;
+  }
+
+  // Host page with a focus-trap style modal (see FOCUS_TRAP_HTML)
+  if (url.pathname === "/focus-trap") {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(FOCUS_TRAP_HTML);
     return;
   }
 
