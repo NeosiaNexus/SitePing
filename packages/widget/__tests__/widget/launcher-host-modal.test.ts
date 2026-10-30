@@ -34,6 +34,7 @@ const store = {
   updateFeedback: vi.fn(),
   deleteFeedback: vi.fn(),
   deleteAllFeedbacks: vi.fn(),
+  verifyProjectOwnership: vi.fn(),
 } satisfies SitepingStore;
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 30));

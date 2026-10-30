@@ -270,7 +270,7 @@ export interface SitepingStore {
     findByClientId(clientId: string): Promise<FeedbackRecord | null>;
     getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage>;
     updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord>;
-    verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
+    verifyProjectOwnership(id: string, projectName: string): Promise<boolean>;
 }
 
 export type SitepingTheme = "auto" | "dark" | "light";
