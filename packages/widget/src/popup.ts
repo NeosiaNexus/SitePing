@@ -1,7 +1,7 @@
 import type { FeedbackType } from "@siteping/core";
 import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
 import { el, isMacPlatform, parseSvg, setText } from "./dom-utils.js";
-import { isolateFromHost, setSurfaceInert } from "./host-isolation.js";
+import { addSurfaceKeydownListener, isolateFromHost, setSurfaceInert } from "./host-isolation.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
 import {
@@ -68,7 +68,8 @@ export class Popup {
   private hint: HTMLElement;
   private resolve: ((result: PopupResult | null) => void) | null = null;
   private previouslyFocused: HTMLElement | null = null;
-  private onKeydownTrap: ((e: KeyboardEvent) => void) | null = null;
+  /** Removes the focus trap `show()` installs (see `addSurfaceKeydownListener`). */
+  private removeKeydownTrap: (() => void) | null = null;
   private onSubmit: PopupSubmitHandler | null = null;
   private submittingState = false;
   /**
@@ -388,7 +389,8 @@ export class Popup {
 
       // Install focus trap. Escape cancels from any control, not only the
       // textarea, and bubbles on so the annotator ends the session too.
-      this.onKeydownTrap = (e: KeyboardEvent) => {
+      this.removeKeydownTrap?.();
+      this.removeKeydownTrap = addSurfaceKeydownListener(this.root, (e) => {
         if (e.key === "Escape") this.dismiss();
         if (e.key === "Tab") {
           const focusableEls = Array.from(
@@ -412,8 +414,7 @@ export class Popup {
             }
           }
         }
-      };
-      this.root.addEventListener("keydown", this.onKeydownTrap);
+      });
 
       this.root.style.transition = prefersReducedMotion() ? "none" : POPUP_TRANSITION;
 
@@ -691,10 +692,8 @@ export class Popup {
   private hideElement(): void {
     this.cancelPendingTransition();
     // Remove focus trap
-    if (this.onKeydownTrap) {
-      this.root.removeEventListener("keydown", this.onKeydownTrap);
-      this.onKeydownTrap = null;
-    }
+    this.removeKeydownTrap?.();
+    this.removeKeydownTrap = null;
     // Make sure the submitting decoration doesn't leak into the next show()
     if (this.submittingState) this.exitSubmittingState();
     this.onSubmit = null;
@@ -738,10 +737,8 @@ export class Popup {
     this.resolve?.(null);
     this.resolve = null;
     this.onSubmit = null;
-    if (this.onKeydownTrap) {
-      this.root.removeEventListener("keydown", this.onKeydownTrap);
-      this.onKeydownTrap = null;
-    }
+    this.removeKeydownTrap?.();
+    this.removeKeydownTrap = null;
     this.stopKeyboardTracking?.();
     this.stopKeyboardTracking = null;
     this.root.remove();
