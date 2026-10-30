@@ -36,32 +36,6 @@ export const ANIMATION_CSS = /* css */ `
     50% { box-shadow: 0 4px 28px var(--sp-accent-glow), 0 2px 12px rgba(0, 0, 0, 0.1); }
   }
 
-  @keyframes sp-marker-in {
-    0% {
-      transform: scale(0);
-      opacity: 0;
-    }
-    60% {
-      transform: scale(1.2);
-      opacity: 1;
-    }
-    100% {
-      transform: scale(1);
-    }
-  }
-
-  @keyframes sp-pulse-ring {
-    0% {
-      box-shadow: 0 0 0 0 var(--sp-accent-glow);
-    }
-    70% {
-      box-shadow: 0 0 0 8px transparent;
-    }
-    100% {
-      box-shadow: 0 0 0 0 transparent;
-    }
-  }
-
   @keyframes sp-flash-bg {
     0% { background-color: var(--sp-accent-light); }
     100% { background-color: transparent; }
@@ -92,14 +66,6 @@ export const ANIMATION_CSS = /* css */ `
 
   .sp-anim-fab-in {
     animation: sp-fab-in 0.5s ${SPRING_LINEAR} both;
-  }
-
-  .sp-anim-marker-in {
-    animation: sp-marker-in 0.35s ${SPRING_OVERSHOOT} both;
-  }
-
-  .sp-anim-pulse {
-    animation: sp-pulse-ring 0.7s ease-out;
   }
 
   .sp-anim-flash {
