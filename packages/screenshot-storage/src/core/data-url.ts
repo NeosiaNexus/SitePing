@@ -1,3 +1,4 @@
+import { INVALID_SCREENSHOT_CODE } from "../constants/errors.js";
 import {
   BASE64_BYTES_PER_GROUP,
   BASE64_CHARACTERS_PER_GROUP,
@@ -7,6 +8,7 @@ import {
   IMAGE_CONTENT_TYPE_PATTERN,
   IMAGE_DATA_URL_PATTERN,
 } from "../constants/screenshots.js";
+import { hasErrorCode } from "./error-code.js";
 
 /** A decoded image data URL. */
 export interface DecodedImage {
@@ -14,12 +16,27 @@ export interface DecodedImage {
   bytes: Uint8Array<ArrayBuffer>;
 }
 
-/** Why a data URL was refused — part of the error message, never the payload. */
+/**
+ * Why a data URL was refused — part of the error message, never the payload.
+ * Match it with {@link isInvalidScreenshotError} rather than `instanceof`
+ * (CommonJS entry points each bundle their own copy of the class).
+ */
 export class InvalidScreenshotError extends Error {
+  readonly code = INVALID_SCREENSHOT_CODE;
   constructor(reason: string) {
     super(`[siteping] screenshot rejected: ${reason}`);
     this.name = "InvalidScreenshotError";
   }
+}
+
+/**
+ * Whether `error` is a data URL refused by validation, matched on its stable
+ * `code` so it holds across bundle copies of the class.
+ *
+ * @param error - Any thrown value.
+ */
+export function isInvalidScreenshotError(error: unknown): error is InvalidScreenshotError {
+  return hasErrorCode(error, INVALID_SCREENSHOT_CODE);
 }
 
 /**

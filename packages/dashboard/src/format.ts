@@ -1,4 +1,4 @@
-import { buildDeepLink as buildDeepLinkFrom, type FeedbackRecord, parseHttpUrl } from "@siteping/core";
+import { buildDeepLink as buildDeepLinkFrom, type FeedbackRecord, isSafeImageUrl, parseHttpUrl } from "@siteping/core";
 import { type TFunction, tWithParams } from "./i18n/index.js";
 
 const MINUTE = 60;
@@ -89,6 +89,16 @@ export function resolveRecordUrl(url: string): string | null {
  */
 export function buildDeepLink(record: Pick<FeedbackRecord, "id" | "url">, param: string): string | null {
   return buildDeepLinkFrom(record, param, currentBase());
+}
+
+/**
+ * The record's screenshot when it is safe to render, as the widget's panel
+ * decides (`isSafeImageUrl`): a store can hold any string there, and an
+ * unchecked one would make the inbox fetch from an arbitrary host. Null shows
+ * the no-screenshot view instead.
+ */
+export function safeScreenshotUrl(record: Pick<FeedbackRecord, "screenshotUrl">): string | null {
+  return record.screenshotUrl && isSafeImageUrl(record.screenshotUrl) ? record.screenshotUrl : null;
 }
 
 /** First 8 chars of a feedback id — the mono `#short-id` in the drawer head. */

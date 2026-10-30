@@ -10,7 +10,7 @@ import { Popup } from "./popup.js";
 import { NO_VIEWPORT_INSETS, type ViewportInsets } from "./popup-placement.js";
 import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screenshot.js";
 import type { ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport } from "./viewport.js";
+import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
 
 /** Below this size (px) a drawn rect is an accidental click — or, on touch, a tap. */
 const MIN_RECT_SIZE = 10;
@@ -82,6 +82,9 @@ function newPopupSession(): PopupSession {
 export class Annotator {
   private overlay: HTMLElement | null = null;
   private toolbar: HTMLElement | null = null;
+  /** The toolbar's Cancel, and whether it is frozen while a send is in flight (#397). */
+  private toolbarCancel: HTMLButtonElement | null = null;
+  private cancelFrozen = false;
   private drawingRect: HTMLElement | null = null;
   private startX = 0;
   private startY = 0;
@@ -94,6 +97,8 @@ export class Annotator {
    */
   private instantMode = false;
   private popup: Popup;
+  /** The palette changed mid-session: rebuild the popup once the session ends. */
+  private stalePopup = false;
   private savedOverflow = "";
   private preActiveFocusElement: Element | null = null;
   /**
@@ -146,6 +151,19 @@ export class Annotator {
    */
   refreshLabels(): void {
     this.popup.refreshLabels();
+  }
+
+  /**
+   * Rebuild the long-lived popup from the palette, after an `auto` theme
+   * followed the OS. Mid-session it waits for the session to end, so a form
+   * never changes under the visitor; the toolbar and overlay are rebuilt on
+   * every activation anyway.
+   */
+  restyle(): void {
+    this.stalePopup = this.isActive || this.popup.isOpen;
+    if (this.stalePopup) return;
+    this.popup.destroy();
+    this.popup = new Popup(this.colors, this.t);
   }
 
   /**
@@ -246,17 +264,20 @@ export class Annotator {
           width:8px;height:8px;border-radius:50%;flex-shrink:0;
           background:${this.colors.accent};
           box-shadow:0 0 8px ${this.colors.accentGlow};
-          animation:pulse 1.5s ease-in-out infinite;
         `,
       });
 
-      // Add pulse animation inline (respects prefers-reduced-motion)
-      const style = document.createElement("style");
-      style.textContent = [
-        "@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}",
-        "@media(prefers-reduced-motion:reduce){@keyframes pulse{from,to{opacity:1}}}",
-      ].join("");
-      this.toolbar.appendChild(style);
+      // Pulse through the Web Animations API rather than a <style> element:
+      // no global `@keyframes` name to collide with the host's, and nothing a
+      // strict CSP (`style-src` without 'unsafe-inline') blocks. The guard is
+      // for jsdom in tests, where `animate` may be undefined.
+      if (!prefersReducedMotion() && typeof dot.animate === "function") {
+        dot.animate([{ opacity: 1 }, { opacity: 0.4 }, { opacity: 1 }], {
+          duration: 1500,
+          easing: "ease-in-out",
+          iterations: Infinity,
+        });
+      }
 
       const instructionEl = el("span", { style: "font-weight:500;letter-spacing:-0.01em;min-width:0;" });
       setText(instructionEl, touch ? this.t("annotator.touchInstruction") : instruction);
@@ -273,15 +294,10 @@ export class Annotator {
       setText(cancelBtn, this.t("annotator.cancel"));
       cancelBtn.addEventListener("click", () => this.cancelSession());
       cancelBtn.addEventListener("mouseenter", () => {
-        cancelBtn.style.borderColor = this.colors.typeBug;
-        cancelBtn.style.color = this.colors.typeBug;
-        cancelBtn.style.background = this.colors.typeBugBg;
+        if (!this.cancelFrozen) this.paintCancel(true);
       });
-      cancelBtn.addEventListener("mouseleave", () => {
-        cancelBtn.style.borderColor = this.colors.border;
-        cancelBtn.style.color = this.colors.textTertiary;
-        cancelBtn.style.background = this.colors.glassBg;
-      });
+      cancelBtn.addEventListener("mouseleave", () => this.paintCancel(false));
+      this.toolbarCancel = cancelBtn;
 
       this.toolbar.appendChild(dot);
       this.toolbar.appendChild(instructionEl);
@@ -356,6 +372,31 @@ export class Annotator {
     this.deactivate();
   }
 
+  /** The toolbar Cancel's red hover look, or its resting one. */
+  private paintCancel(hover: boolean): void {
+    const btn = this.toolbarCancel;
+    if (!btn) return;
+    btn.style.borderColor = hover ? this.colors.typeBug : this.colors.border;
+    btn.style.color = hover ? this.colors.typeBug : this.colors.textTertiary;
+    btn.style.background = hover ? this.colors.typeBugBg : this.colors.glassBg;
+  }
+
+  /**
+   * While a send is in flight `cancelSession` ignores the toolbar Cancel, so
+   * it mirrors the popup's frozen Cancel rather than look ready to act:
+   * dimmed, no hover, `aria-disabled` (#397).
+   */
+  private freezeCancel(frozen: boolean): void {
+    this.cancelFrozen = frozen;
+    const btn = this.toolbarCancel;
+    if (!btn) return;
+    if (frozen) this.paintCancel(false);
+    btn.style.opacity = frozen ? "0.5" : "1";
+    btn.style.cursor = frozen ? "not-allowed" : "pointer";
+    if (frozen) btn.setAttribute("aria-disabled", "true");
+    else btn.removeAttribute("aria-disabled");
+  }
+
   private deactivate(): void {
     if (!this.isActive) return;
     this.isActive = false;
@@ -380,6 +421,8 @@ export class Annotator {
     this.drawingRect?.remove();
     this.overlay = null;
     this.toolbar = null;
+    this.toolbarCancel = null;
+    this.cancelFrozen = false;
     this.drawingRect = null;
 
     // Removing the focused overlay drops focus to <body> — hand it back to the
@@ -391,6 +434,7 @@ export class Annotator {
     }
 
     this.bus.emit("annotation:end");
+    if (this.stalePopup) this.restyle();
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
@@ -701,7 +745,10 @@ export class Annotator {
     const session = newPopupSession();
     const shown = this.popup.show(
       rect,
-      (formResult) => this.runSubmission(annotation, formResult, captureRect, session),
+      (formResult) => {
+        this.freezeCancel(true);
+        return this.runSubmission(annotation, formResult, captureRect, session).finally(() => this.freezeCancel(false));
+      },
       this.toolbarInsets(),
     );
     this.revealSelection(rect);

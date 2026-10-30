@@ -218,7 +218,7 @@ export function statusCommand(options: StatusCommandOptions): void {
     !widgetFile;
 
   if (hasError) {
-    p.outro("Some items are missing — run `siteping init` to set up.");
+    p.outro("Some items are missing — run `npx @siteping/cli init` to set up.");
     process.exit(1);
   } else if (hasWarning) {
     p.outro("Some adjustments needed — run `siteping sync` to update.");
