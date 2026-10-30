@@ -15,6 +15,7 @@ export type {
   SitepingConfig,
   SitepingHeadersOption,
   SitepingHttpConfig,
+  SitepingIdentity,
   SitepingInstance,
   SitepingLocale,
   SitepingPanelAction,
@@ -26,9 +27,8 @@ export type {
   SitepingStore,
   SitepingStoreConfig,
 } from "@siteping/core";
-export type { TFunction, TranslationKey, Translations } from "./i18n/index.js";
+export type { TranslationKey, Translations } from "./i18n/index.js";
 export { loadLocale, registerLocale } from "./i18n/index.js";
-export type { Identity } from "./identity.js";
 
 /**
  * Initialize the Siteping feedback widget.

@@ -13,11 +13,13 @@ import type {
 } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
 import type { GetFeedbacksOptions } from "../../src/api-client.js";
+import type * as Widget from "../../src/index.js";
 import {
   type CommentResponse,
   initSiteping,
   registerLocale,
   type SitepingConfig,
+  type SitepingIdentity,
   type SitepingPanelAction,
   type SitepingPanelActionContext,
   type SitepingPanelActionFeedback,
@@ -172,5 +174,19 @@ describe("custom locales", () => {
 
   it("keeps values as strings", () => {
     expectTypeOf<Translations["panel.title"]>().toEqualTypeOf<string>();
+  });
+});
+
+describe("identity", () => {
+  it("is named SitepingIdentity, the shape the `identity` option takes", () => {
+    expectTypeOf<NonNullable<SitepingConfig["identity"]>>().toEqualTypeOf<SitepingIdentity>();
+  });
+
+  it("no longer exports the Identity alias or the internal TFunction", () => {
+    // @ts-expect-error — removed before 1.0: use SitepingIdentity
+    type RemovedIdentity = Widget.Identity;
+    // @ts-expect-error — internal: no public signature takes a translate function
+    type RemovedTFunction = Widget.TFunction;
+    expectTypeOf<[RemovedIdentity, RemovedTFunction]>().toBeArray();
   });
 });

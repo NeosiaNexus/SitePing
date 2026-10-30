@@ -446,11 +446,11 @@ The session also spares signed-in users the widget's identity prompt: pass it as
 ```tsx
 // app/feedback.tsx — mounted in your root layout
 "use client";
-import type { Identity } from "@siteping/widget";
+import type { SitepingIdentity } from "@siteping/widget";
 import { useSiteping } from "@siteping/widget/react";
 import { authClient } from "@/lib/auth-client"; // createAuthClient() from "better-auth/react"
 
-function Widget({ identity }: { identity: Identity | undefined }) {
+function Widget({ identity }: { identity: SitepingIdentity | undefined }) {
   useSiteping({ endpoint: "/api/siteping", projectName: "acme", identity });
   return null;
 }
