@@ -6,21 +6,26 @@ import {
   type SitepingStore,
 } from "@siteping/core";
 import { ERROR_MESSAGES } from "../constants.js";
-import type { SitepingHandlerBaseOptions } from "../options.js";
+import type { Notify } from "../notify.js";
+import type { SitepingCreatedComment, SitepingHandlerBaseOptions, SitepingLifecycleHooks } from "../options.js";
 import type { Pipeline, Scope } from "../pipeline.js";
 import { commentCreateSchema } from "../validation.js";
 
 interface CreateCommentDependencies<Principal> {
   store: SitepingStore;
   pipeline: Pipeline<Principal>;
+  notify: Notify<Principal>;
   beforeComment: SitepingHandlerBaseOptions<Principal>["beforeComment"];
+  onCommentCreated: SitepingLifecycleHooks<Principal>["onCommentCreated"];
 }
 
 /** `POST` with a `feedbackId` — add a comment to that feedback's thread, idempotent on `clientId`. */
 export function createCommentOperation<Principal>({
   store,
   pipeline,
+  notify,
   beforeComment,
+  onCommentCreated,
 }: CreateCommentDependencies<Principal>) {
   return async (scope: Scope<Principal>, body: unknown): Promise<Response> => {
     const payload = pipeline.validate(scope, commentCreateSchema, body);
@@ -45,12 +50,27 @@ export function createCommentOperation<Principal>({
       // policy vouches for the caller.
       const role: CommentAuthorRole =
         authorRole === "team" && (await pipeline.canCommentAsTeam(scope, projectName)) ? "team" : "client";
-      const stored = await store.addComment(feedbackId, { ...comment, authorRole: role });
+      const input = { ...comment, authorRole: role };
+      // Only a store that reports its inserts can tell a new reply from a
+      // retried one: without `addCommentIfAbsent`, no reply counts as created
+      // (the handler refuses to start with comment notifications then).
+      const { comment: stored, created } = store.addCommentIfAbsent
+        ? await store.addCommentIfAbsent(feedbackId, input)
+        : { comment: await store.addComment(feedbackId, input), created: false };
 
       // A clientId is unique across every thread, so a replay that resolves to
       // another feedback's comment is a boundary violation, not a dedup.
       if (stored.feedbackId !== feedbackId) {
         return pipeline.error(scope, 409, ERROR_MESSAGES.clientIdUsedByAnotherFeedback);
+      }
+      if (created) {
+        const reply: SitepingCreatedComment = { ...stored, projectName };
+        notify(scope, { event: "comment.created", comment: reply });
+        if (onCommentCreated) {
+          await pipeline.runHook(scope, "onCommentCreated", { feedbackId, projectName, commentId: stored.id }, () =>
+            onCommentCreated(reply, scope.context),
+          );
+        }
       }
       return pipeline.json(scope, await pipeline.presentCreatedComment(scope, stored, projectName), { status: 201 });
     } catch (error) {

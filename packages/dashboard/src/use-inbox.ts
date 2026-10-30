@@ -141,8 +141,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   // -------------------------------------------------------------------------
 
   const [project, setProjectState] = useState(firstProject);
-  const [status, setStatusFilter] = useState<InboxStatusFilter>("open");
-  const [type, setTypeFilter] = useState<InboxTypeFilter>("all");
+  const [status, setStatusState] = useState<InboxStatusFilter>("open");
+  const [type, setTypeState] = useState<InboxTypeFilter>("all");
   const [search, setSearchState] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [items, setItems] = useState<FeedbackRecord[]>([]);
@@ -995,8 +995,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     [commitPendingUndo, commitOpenedCache],
   );
 
-  const setStatus = useCallback((s: InboxStatusFilter) => setStatusFilter(s), []);
-  const setType = useCallback((t: InboxTypeFilter) => setTypeFilter(t), []);
+  const setStatusFilter = useCallback((s: InboxStatusFilter) => setStatusState(s), []);
+  const setTypeFilter = useCallback((t: InboxTypeFilter) => setTypeState(t), []);
   const setSearch = useCallback((s: string) => setSearchState(s), []);
 
   const hasMore = !exhausted && total !== null && items.length < total;
@@ -1012,9 +1012,9 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     projects,
     setProject,
     status,
-    setStatus,
+    setStatusFilter,
     type,
-    setType,
+    setTypeFilter,
     search,
     setSearch,
     items,

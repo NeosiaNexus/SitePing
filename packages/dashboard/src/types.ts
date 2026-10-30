@@ -8,11 +8,12 @@ import type {
   FeedbackStatus,
   FeedbackType,
   SitepingCapabilities,
+  SitepingHeadersOption,
   SitepingLocale,
   SitepingStore,
+  SitepingTheme,
 } from "@siteping/core";
 import type { ReactNode } from "react";
-import type { InboxTheme } from "./theme.js";
 
 // ---------------------------------------------------------------------------
 // Data source
@@ -90,8 +91,13 @@ export interface EndpointSourceOptions {
    * request — e.g. a fresh session token. An explicit `Authorization` entry
    * here takes precedence over `apiKey`.
    */
-  headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>) | undefined;
-  /** Test seam — defaults to `globalThis.fetch`. */
+  headers?: SitepingHeadersOption | undefined;
+  /**
+   * The `fetch` the source sends every request with — `globalThis.fetch` by
+   * default. Wrap it to log or trace requests, to set a request option such
+   * as `credentials: "include"` for cookie auth across origins, or to route
+   * requests to a test double.
+   */
   fetchFn?: typeof fetch | undefined;
 }
 
@@ -118,8 +124,9 @@ export interface InboxSharedOptions {
   /** Called on every load or mutation failure, with a typed `SitepingError` where available. */
   onError?: ((error: Error) => void) | undefined;
   /**
-   * Who replies from this inbox — typically the signed-in team member. Without
-   * it, threads are read-only. Replies ask for the `team` role, which the
+   * Who replies from this inbox — typically the signed-in team member, not the
+   * widget's `identity`, which names the reviewer. Without it, threads are
+   * read-only. Replies ask for the `team` role, which the
    * server grants only to a caller its access policy vouches for (the
    * `apiKey`, or `canCommentAsTeam`); any other reply is stored as `client`.
    */
@@ -199,10 +206,12 @@ export interface InboxState {
   setProject(p: string): void;
   /** Active status tab. */
   status: InboxStatusFilter;
-  setStatus(s: InboxStatusFilter): void;
+  /** Switch the status tab — a filter, unlike `InboxSource.setStatus`, which changes a feedback's status. */
+  setStatusFilter(s: InboxStatusFilter): void;
   /** Active type filter. */
   type: InboxTypeFilter;
-  setType(t: InboxTypeFilter): void;
+  /** Switch the type filter. */
+  setTypeFilter(t: InboxTypeFilter): void;
   /** Raw search input — updates synchronously; the refetch is debounced 250ms. */
   search: string;
   setSearch(s: string): void;
@@ -317,7 +326,7 @@ export interface SitepingInboxPresentationProps {
   /** Accent color (any `#RGB`/`#RRGGBB`/`#RRGGBBAA` hex) — defaults to `"#0066ff"`. */
   accentColor?: string | undefined;
   /** Color theme — defaults to `"auto"`, which tracks the system preference live. */
-  theme?: InboxTheme | undefined;
+  theme?: SitepingTheme | undefined;
   /** Row density — defaults to `"comfortable"`. */
   density?: "comfortable" | "compact" | undefined;
   /** UI locale — defaults to `"en"`; non-English built-ins are lazy-loaded. */

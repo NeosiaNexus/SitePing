@@ -6,9 +6,12 @@
 
 Runtime exports (ESM and CJS):
 
+- `SITEPING_PROTOCOL_VERSION: number`
+- `WEBHOOK_EVENTS: object`
 - `createSitepingHandler: function`
 - `dispatchWebhook: function`
 - `dispatchWebhooks: function`
+- `isSitepingConfigError: function`
 
 Types:
 
@@ -21,9 +24,34 @@ export interface CommentCreateInput {
     clientId: string;
 }
 
+export interface CommentCreateOutcome {
+    comment: CommentRecord;
+    created: boolean;
+}
+
 export interface CommentPayload extends CommentCreateInput {
     feedbackId: string;
     projectName: string;
+}
+
+export interface CommentRecord {
+    authorEmail: string;
+    authorName: string;
+    authorRole: CommentAuthorRole;
+    body: string;
+    clientId: string;
+    createdAt: Date;
+    feedbackId: string;
+    id: string;
+}
+
+export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">> & {
+    permissions?: CommentPermissions | undefined;
+}>;
+
+export interface DiagnosticsSnapshot {
+    console: ConsoleDiagnosticEntry[];
+    network: NetworkDiagnosticEntry[];
 }
 
 export interface DiscordWebhookPayload {
@@ -64,10 +92,21 @@ export interface FeedbackCreateInput {
 
 export type FeedbackDeleteInput = FeedbackDeleteAll | FeedbackDeleteSingle;
 
+export interface FeedbackListPermissions {
+    canDeleteAll: boolean;
+}
+
 export interface FeedbackPatchInput {
     id: string;
     projectName: string;
     status: FeedbackStatus;
+}
+
+export interface FeedbackPermissions {
+    canChangeStatus: boolean;
+    canComment: boolean;
+    canDelete: boolean;
+    canDeleteComment: boolean;
 }
 
 export interface FeedbackRecord {
@@ -93,6 +132,34 @@ export interface FeedbackRecord {
     viewport: string;
 }
 
+export type FeedbackResponse = Prettify<Serialized<Omit<FeedbackRecord, "clientId" | "comments">> & {
+    comments?: CommentResponse[] | undefined;
+    permissions?: FeedbackPermissions | undefined;
+}>;
+
+export interface FeedbackResponseList {
+    capabilities?: SitepingCapabilities | undefined;
+    feedbacks: FeedbackResponse[];
+    permissions?: FeedbackListPermissions | undefined;
+    protocol?: number | undefined;
+    total: number;
+}
+
+export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
+
+export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
+
+export type GenericWebhookCommentPayload = Prettify<Serialized<Omit<SitepingCreatedComment, "clientId">>>;
+
+export type GenericWebhookDeletionPayload = SitepingDeletionTarget;
+
+export interface GenericWebhookEventMap {
+    "comment.created": GenericWebhookCommentPayload;
+    "feedback.created": GenericWebhookPayload;
+    "feedback.deleted": GenericWebhookDeletionPayload;
+    "feedback.status_changed": GenericWebhookPayload;
+}
+
 export type GenericWebhookPayload = Prettify<Serialized<Omit<FeedbackRecord, "clientId" | "comments">> & {
     comments?: CommentResponse[] | undefined;
 }>;
@@ -107,6 +174,15 @@ export interface GetQueryInput {
     type?: FeedbackType | undefined;
     url?: string | undefined;
     urlPattern?: string | undefined;
+}
+
+export const SITEPING_PROTOCOL_VERSION = 1;
+
+export interface ScreenshotRegion {
+    hPct: number;
+    wPct: number;
+    xPct: number;
+    yPct: number;
 }
 
 export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
@@ -139,6 +215,17 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
     commentId?: string;
     dryRun?: boolean;
     feedbackId?: string;
+    projectName: string;
+}
+
+export interface SitepingCapabilities {
+    comments: boolean;
+    deleteComments?: boolean | undefined;
+}
+
+export type SitepingConfigErrorCode = "CONFIG_API_KEY_REQUIRED" | "CONFIG_MAX_BODY_BYTES_INVALID" | "CONFIG_OWNERSHIP_CHECK_MISSING" | "CONFIG_STORE_MISSING" | "CONFIG_WEBHOOK_TIMEOUT_INVALID";
+
+export interface SitepingCreatedComment extends CommentRecord {
     projectName: string;
 }
 
@@ -178,6 +265,7 @@ export type SitepingHandlerOptions<Principal extends SitepingPrincipal = Sitepin
 export type SitepingHttpMethod = "DELETE" | "GET" | "OPTIONS" | "PATCH" | "POST";
 
 export interface SitepingLifecycleHooks<Principal> {
+    onCommentCreated?(comment: SitepingCreatedComment, context: SitepingRequestContext<Principal>): Promise<void> | void;
     onCreated?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): Promise<void> | void;
     onDeleted?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): Promise<void> | void;
     onDeleting?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): Promise<void> | void;
@@ -202,6 +290,7 @@ export interface SitepingRequestContext<Principal> {
 
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -223,13 +312,28 @@ export interface ValidationIssue {
     message: string;
 }
 
+export const WEBHOOK_EVENTS: readonly [
+    "feedback.created",
+    "feedback.status_changed",
+    "feedback.deleted",
+    "comment.created"
+];
+
 export interface WebhookConfig {
+    events?: ReadonlyArray<WebhookEvent>;
     headers?: Record<string, string>;
-    onError?: (err: Error, feedbackId: string) => Promise<void> | void;
+    onError?: (err: Error, feedbackId: string, delivery: WebhookDeliveryInfo) => Promise<void> | void;
     timeoutMs?: number;
     type?: WebhookType;
     url: string;
 }
+
+export interface WebhookDeliveryInfo {
+    event: WebhookEvent;
+    projectName: string;
+}
+
+export type WebhookEvent = keyof GenericWebhookEventMap;
 
 export interface WebhookPayloadMap {
     discord: DiscordWebhookPayload;
@@ -248,6 +352,8 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(optio
 export function dispatchWebhook(config: WebhookConfig, feedback: FeedbackRecord): Promise<void>;
 
 export function dispatchWebhooks(configs: readonly WebhookConfig[], feedback: FeedbackRecord): Promise<void>;
+
+export function isSitepingConfigError(error: unknown): error is SitepingConfigError;
 ```
 
 Referenced, not exported:
@@ -325,21 +431,6 @@ interface CommentPermissions {
     canDelete: boolean;
 }
 
-interface CommentRecord {
-    authorEmail: string;
-    authorName: string;
-    authorRole: CommentAuthorRole;
-    body: string;
-    clientId: string;
-    createdAt: Date;
-    feedbackId: string;
-    id: string;
-}
-
-type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">> & {
-    permissions?: CommentPermissions | undefined;
-}>;
-
 interface ConsoleDiagnosticEntry {
     level: ConsoleDiagnosticLevel;
     message: string;
@@ -347,11 +438,6 @@ interface ConsoleDiagnosticEntry {
 }
 
 type ConsoleDiagnosticLevel = (typeof CONSOLE_DIAGNOSTIC_LEVELS)[number];
-
-interface DiagnosticsSnapshot {
-    console: ConsoleDiagnosticEntry[];
-    network: NetworkDiagnosticEntry[];
-}
 
 const FEEDBACK_STATUSES: readonly [
     "open",
@@ -399,10 +485,6 @@ interface FeedbackQuery {
     urlPattern?: string | undefined;
 }
 
-type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
-
-type FeedbackType = (typeof FEEDBACK_TYPES)[number];
-
 type FeedbackUpdateInput = {
     resolvedAt: Date;
     status: ClosedFeedbackStatus;
@@ -430,16 +512,14 @@ type Prettify<T> = {
     [K in keyof T]: T[K];
 } & {};
 
-interface ScreenshotRegion {
-    hPct: number;
-    wPct: number;
-    xPct: number;
-    yPct: number;
-}
-
 type Serialized<T> = {
     [K in keyof T]: T[K] extends Date ? string : T[K] extends Date | null ? null | string : T[K] extends (infer U)[] ? Serialized<U>[] : T[K];
 };
+
+class SitepingConfigError extends Error {
+    constructor(code: SitepingConfigErrorCode, message: string);
+    readonly code: SitepingConfigErrorCode;
+}
 
 interface SlackContextBlock {
     elements: ReadonlyArray<{

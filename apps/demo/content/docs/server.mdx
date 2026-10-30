@@ -114,12 +114,12 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 | `access` | `SitepingAccessControl` | — | Your own authentication instead of the four options above — see [custom access](#custom-access) |
 | `allowedOrigins` | `string[]` | — | Exact-match CORS allowlist. **No wildcard support** — `["*"]` matches nothing; unset means no CORS headers at all. Listed origins may send `Content-Type`, `Authorization`, and any custom header their preflight asks for (e.g. from the widget's `headers` option) |
 | `maxBodyBytes` | `number` | 4 MiB | Largest request body, in bytes — twice the largest submission the validation accepts. A longer one answers `413` before any of it is parsed |
-| `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Fire on each new feedback — see [webhooks](#webhooks) |
+| `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Fire on each new feedback, and on the [events](#events) each one opts into — see [webhooks](#webhooks) |
 | `waitUntil` | `(promise) => void` | — | Keeps webhook deliveries alive after the response on serverless and edge runtimes — see [webhooks](#webhooks) |
 | `beforeCreate` | `(input, context) => input` | — | Rewrite a submission before it is stored — see [extension points](#extension-points) |
 | `beforeComment` | `(input, context) => input` | — | The same for a [thread](/docs/comments) reply |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transform each record before it is sent |
-| `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
+| `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted`, `onCommentCreated` |
 | `logger` | `{ error(message, context) }` | `console.error` | Where unexpected failures go, with the request's method and path — and for a failed hook, the feedback or deletion it concerns. Webhook failures go to their own [`onError`](#webhooks) instead. A logger that throws or rejects falls back to `console.error` |
 | `describeError` | `(error) => string \| undefined` | — | The message of a `500` instead of `"Internal server error"`, e.g. a "run your migrations" hint. Never return the error's own details |
 
@@ -136,11 +136,23 @@ createSitepingHandler({
 });
 ```
 
+### Configuration errors
+
+`createSitepingHandler` checks its options when it is created, never per request: a problem throws a `SitepingConfigError` whose message says how to fix it. Match it with `isSitepingConfigError`, exported by `@siteping/server` and `@siteping/adapter-prisma`, and branch on its stable `code`:
+
+| `code` | Thrown when |
+|---|---|
+| `CONFIG_STORE_MISSING` | No `store` — with adapter-prisma, neither `store` nor `prisma` |
+| `CONFIG_MAX_BODY_BYTES_INVALID` | `maxBodyBytes` is not a positive integer |
+| `CONFIG_OWNERSHIP_CHECK_MISSING` | `access.authorize` over a store without `verifyProjectOwnership` |
+| `CONFIG_WEBHOOK_TIMEOUT_INVALID` | A webhook `timeoutMs` no timer holds (the message names the webhook by its origin only) |
+| `CONFIG_API_KEY_REQUIRED` | `NODE_ENV=production` without `apiKey`, `access` or `requireAuthForDestructive: false` |
+
 ## The security model, honestly
 
 - **Reads are public by default.** Without an `apiKey`, anyone who knows the URL can list feedbacks (with emails redacted — see below).
 - **With an `apiKey`, they are not.** `publicEndpoints` then defaults to `["POST", "OPTIONS"]`: a visitor without the key can submit, but `GET` answers `401`, so the widget shows no pins and an empty panel (it says why in the browser console, once). For reviewers without the key, set `publicEndpoints: ["GET", "POST", "OPTIONS"]`: anyone with the URL and a project name can then read its feedback and threads, emails redacted. Keep the default for a submit-only widget, or sign reviewers in with [`access`](#custom-access).
-- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key, unless you opted out. That check reads `process.env.NODE_ENV`, so it only runs where `process` exists; elsewhere the `401` still applies.
+- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key, unless you opted out ([`CONFIG_API_KEY_REQUIRED`](#configuration-errors)). That check reads `process.env.NODE_ENV`, so it only runs where `process` exists; elsewhere the `401` still applies.
 - `OPTIONS` is always public — preflights must work.
 - **Cross-project checks need the store.** PATCH and DELETE verify that the record belongs to the `projectName` they name through the store's optional `verifyProjectOwnership` — every bundled store and anything built on `createCollectionStore` implements it. A hand-written store that omits it skips the check: any caller who knows a feedback `id` can then modify it regardless of `projectName`, so implement the method (see [writing an adapter](/docs/adapters/writing-an-adapter#project-ownership)) or put the endpoint behind an `apiKey`.
 
@@ -448,11 +460,11 @@ The session also spares signed-in users the widget's identity prompt: pass it as
 ```tsx
 // app/feedback.tsx — mounted in your root layout
 "use client";
-import type { Identity } from "@siteping/widget";
+import type { SitepingIdentity } from "@siteping/widget";
 import { useSiteping } from "@siteping/widget/react";
 import { authClient } from "@/lib/auth-client"; // createAuthClient() from "better-auth/react"
 
-function Widget({ identity }: { identity: Identity | undefined }) {
+function Widget({ identity }: { identity: SitepingIdentity | undefined }) {
   useSiteping({ endpoint: "/api/siteping", projectName: "acme", identity });
   return null;
 }
@@ -554,7 +566,7 @@ createSitepingHandler({
 
 - **`beforeCreate`** runs on the validated submission, before `authorize` — which sees the project it returns. **`beforeComment`** does the same for a [reply](/docs/comments), `projectName` and `feedbackId` included — so it runs before the feedback is looked up too, and may run for one that turns out not to exist. The `authorRole` it returns stays a claim, `team` being kept only for a caller [your policy vouches for](/docs/comments#who-speaks-as-the-team). Without it, a reply keeps the name and email its client sent.
 - **`presentFeedback`** runs on each record just before it is sent; `clientId` stripping and email redaction still apply after it.
-- **`onCreated`**, **`onUpdated`** and **`onDeleted`** are awaited before the response, so serverless runtimes don't cut them off. A throw is logged and never fails the request: the write already happened. `onCreated` runs once per stored feedback, never for a replayed `clientId`.
+- **`onCreated`**, **`onUpdated`**, **`onDeleted`** and **`onCommentCreated`** are awaited before the response, so serverless runtimes don't cut them off. A throw is logged and never fails the request: the write already happened. `onCreated` runs once per stored feedback and `onCommentCreated` once per stored [reply](/docs/comments) — the comment record with the `projectName` of its feedback — never for a replayed `clientId`. `onCommentCreated` needs a store implementing `addCommentIfAbsent`, which tells a new reply from a retried one: every bundled store does, and the handler refuses to start without it.
 - **`onDeleting`** runs before the delete, with `{ kind: "single", id, projectName }` or `{ kind: "project", projectName }`. A throw keeps the record and answers `502`.
 
 These callbacks get `{ request, principal }` as their context; `principal` is `null` under the `apiKey` policy. Hooks written as class methods keep their `this`.
@@ -568,7 +580,7 @@ One endpoint, five methods. All bodies are JSON.
 | Method | Purpose | Success |
 |---|---|---|
 | `POST` | Create feedback (widget submissions) — or [a comment](/docs/comments#post-a-comment), when the body has a `feedbackId` | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks or `onCreated` twice); a `clientId` already used by **another** project is refused with `409` |
-| `GET` | List feedbacks, each with its thread and [`permissions`](#what-each-requester-may-do) | `200` + `{ feedbacks, total, capabilities, permissions }`, with `Cache-Control: private, max-age=5` (`no-store` under `access`) |
+| `GET` | List feedbacks, each with its thread and [`permissions`](#what-each-requester-may-do) | `200` + `{ feedbacks, total, protocol, capabilities, permissions }`, with `Cache-Control: private, max-age=5` (`no-store` under `access`) |
 | `PATCH` | Change a status | `200` + updated record |
 | `DELETE` | Delete one or all — or [a comment](/docs/comments#delete-a-comment), when the body has a `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | CORS preflight | `204` |
@@ -581,13 +593,31 @@ One endpoint, five methods. All bodies are JSON.
 
 **Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`, the first 20 issues; a body over `maxBodyBytes` → `413`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project, a comment's `clientId` already used on another feedback, or a `client` comment on a full thread → `409 { error }`; a value longer than the store holds (a MySQL column `sync` has not [widened](/docs/adapters/prisma#database-schema) yet) → `422 { error }`; comment write on a store without comments → `501 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
 
+### Wire protocol
+
+The protocol ships with `@siteping/server` as an OpenAPI 3.1 document, generated from the schemas the handler validates with and checked against the types it sends — a client generator, a mock server or an API explorer can read it:
+
+```ts
+import spec from "@siteping/server/openapi.json" with { type: "json" };
+```
+
+Every list response carries `protocol`, the version of the protocol the server speaks (`SITEPING_PROTOCOL_VERSION`, exported by `@siteping/server`: `1`). It rises with each addition a client may rely on, so a client checks `protocol >= N` before using what version N added, rather than probing for fields. Servers that predate it send none: read that as `0`.
+
+What 1.x keeps stable:
+
+- **One endpoint, routed by method and body.** A `POST` body with a `feedbackId` posts a comment, any other creates a feedback; a `DELETE` body with a `commentId` deletes a comment, any other deletes feedback. A payload of one resource never carries the other's key.
+- **`DELETE` carries a JSON body.** `fetch` sends it and every runtime the handler targets reads it, but HTTP gives such a body no defined meaning, and some proxies drop it — the request then answers `400`. Keep the endpoint behind a proxy that forwards it.
+- **Three `409`s, none worth a retry:** a feedback whose `clientId` another project already uses; a comment whose `clientId` is already used on another feedback; a `client` comment on a thread that holds 100 of them.
+- **Status codes and JSON shapes are the contract, `error` strings are not.** They are English and informational, and a minor release may reword one: branch on the status.
+- **Widget and dashboard 1.x need a 1.x server** — `@siteping/server` or `@siteping/adapter-prisma`, protocol 1. Within 1.x they use what a later protocol version adds only after reading `protocol`, so a newer widget keeps working against an older 1.x server.
+
 ### Validation limits worth knowing
 
 The whole body ≤ `maxBodyBytes` (4 MiB) · `message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · comment `body` ≤ 5000 chars, 100 `client` comments per thread (`team` replies are not capped) · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `projectName` ≤ 191 chars · `clientId` ≤ 191 chars and matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
 
 ## Webhooks
 
-Get pinged on every new feedback:
+Get pinged on every new feedback — and, for the webhooks that [opt in](#events), on status changes, deletions and replies:
 
 ```ts
 createSitepingHandler({
@@ -599,7 +629,7 @@ createSitepingHandler({
 });
 ```
 
-`type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the record as JSON with the author's email unredacted, so treat generic webhook targets as trusted; `clientId` is stripped like everywhere else, from its comments too, and `GenericWebhookPayload` types the body as the receiver parses it, dates as ISO strings). Each call has a 5-second timeout by default — set `timeoutMs` per webhook, a positive integer up to 2,147,483,647, the longest delay a timer holds; the factory throws on any other value. Failures never block the submission, and an optional `onError(err, feedbackId)` lets you log them — an async one is awaited, and its own failure is reported to `console.warn`. A replayed `clientId` never fires them again, and two overlapping submissions of the same `clientId` (the widget retrying a request that timed out) notify once when they reach the same server process. Across several instances only the store can tell them apart: Prisma's `@unique` on `clientId` does, and so does the unique index of the [Drizzle store](/docs/adapters/drizzle). The memory and localStorage stores, like any store built on `createCollectionStore`, deduplicate only within one store instance, and a custom store that returns the existing record on a duplicate may notify twice unless it implements `createFeedbackIfAbsent` atomically — see [Writing an adapter](/docs/adapters/writing-an-adapter#exactly-once-creation-effects).
+`type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the record as JSON with the author's email unredacted, so treat generic webhook targets as trusted; `clientId` is stripped like everywhere else, from its comments too, and `GenericWebhookPayload` types the body as the receiver parses it, dates as ISO strings). Each call has a 5-second timeout by default — set `timeoutMs` per webhook, a positive integer up to 2,147,483,647, the longest delay a timer holds; the factory throws on any other value. Failures never block the submission, and an optional `onError(err, feedbackId, { event, projectName })` lets you log them — `feedbackId` is `""` for a project-wide deletion; an async one is awaited, and its own failure is reported to `console.warn`. A replayed `clientId` never fires them again, and two overlapping submissions of the same `clientId` (the widget retrying a request that timed out) notify once when they reach the same server process. Across several instances only the store can tell them apart: Prisma's `@unique` on `clientId` does, and so does the unique index of the [Drizzle store](/docs/adapters/drizzle). The memory and localStorage stores, like any store built on `createCollectionStore`, deduplicate only within one store instance, and a custom store that returns the existing record on a duplicate may notify twice unless it implements `createFeedbackIfAbsent` atomically — see [Writing an adapter](/docs/adapters/writing-an-adapter#exactly-once-creation-effects).
 
 Deliveries are not awaited: the widget gets its answer first. A serverless or edge runtime may freeze or cancel that work once the response is out, so hand it over with `waitUntil`:
 
@@ -612,3 +642,29 @@ createSitepingHandler({ store, webhooks, waitUntil: after });
 `waitUntil` from `@vercel/functions` or from `cloudflare:workers` works the same way — pass a standalone function, not an unbound method.
 
 Feedback text is typed by anonymous visitors, so the chat payloads are hardened: Slack text is escaped (a comment containing `<!channel>` is shown literally, never as a notification) and Discord messages are sent with mention parsing disabled (`allowed_mentions: { parse: [] }`) and their markdown escaped (a `[Reset your password](https://…)` masked link is shown as typed, never as a disguised link) — a public form can't be used to ping your whole server or phish it. Long values are truncated to Slack's and Discord's size limits (after escaping), so a 2000-character page URL never gets the whole notification rejected.
+
+### Events
+
+Every delivery names what happened in its `X-Siteping-Event` header. A webhook receives `feedback.created` alone unless its `events` says otherwise, so a webhook set up before events existed gets exactly the deliveries it always did:
+
+```ts
+createSitepingHandler({
+  store,
+  webhooks: [
+    { url: process.env.SLACK_WEBHOOK_URL!, type: "slack" }, // feedback.created only
+    {
+      url: "https://my-api.dev/hooks/siteping",
+      events: ["feedback.created", "feedback.status_changed", "feedback.deleted", "comment.created"],
+    },
+  ],
+});
+```
+
+| Event | Fires after | Generic body |
+|---|---|---|
+| `feedback.created` | A feedback is stored — never for a replayed `clientId` | The record (`GenericWebhookPayload`) |
+| `feedback.status_changed` | A `PATCH` sets a status — even the one the feedback already had: the store keeps no previous status to compare with | The record as stored after the write, same shape |
+| `feedback.deleted` | One feedback is deleted, or every feedback of a project (`deleteAll`) — which fires even for a project that held nothing, stores report no count | `{ kind: "single", id, projectName }` or `{ kind: "project", projectName }`, as `onDeleting` receives it |
+| `comment.created` | A [reply](/docs/comments) is stored — never for a replayed or racing `clientId` | The comment, `clientId` stripped, plus the `projectName` of its feedback (`GenericWebhookCommentPayload`) |
+
+Slack and Discord get a message of their own for each event ("Feedback resolved: bug from Alice", "New client reply from Bob"), escaped like a feedback's. A delivery fires only once its write has succeeded: never for a request refused by validation, auth or the ownership check, nor for an unknown id. `GenericWebhookEventMap` types each generic body by event, and `WEBHOOK_EVENTS` lists the events, to check the header against. `events` must be a non-empty list of known events — the factory throws otherwise — and `comment.created` needs a store implementing `addCommentIfAbsent`, like `onCommentCreated`.
