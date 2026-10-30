@@ -11,7 +11,7 @@ import {
   type ViewportInsets,
 } from "./popup-placement.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport, trackKeyboardInset } from "./viewport.js";
+import { isCoarsePointer, isCompactViewport, prefersReducedMotion, trackKeyboardInset } from "./viewport.js";
 
 // Map each feedback type to its translation key, so `refreshLabels()` can
 // re-localize the existing type buttons without re-rendering the popup.
@@ -28,11 +28,6 @@ const TYPE_LABEL_KEYS: Record<FeedbackType, keyof Translations> = {
  * root has no other transition (an empty inline value removes it).
  */
 const POPUP_TRANSITION = `opacity ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1),transform ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`;
-
-/** Read live, not cached at construction, so an OS setting change applies to the next open or close. */
-function prefersReducedMotion(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 interface PopupResult {
   type: FeedbackType;
@@ -166,7 +161,9 @@ export class Popup {
         padding:0 12px;
       `;
       const icon = parseSvg(option.icon);
-      icon.setAttribute("style", "width:13px;height:13px;flex-shrink:0;");
+      // Through the CSSOM, not a `style` attribute: a strict CSP
+      // (`style-src` without 'unsafe-inline') blocks the attribute only.
+      icon.style.cssText = "width:13px;height:13px;flex-shrink:0;";
       btn.appendChild(icon);
       btn.appendChild(document.createElement("span"));
       btn.dataset.type = option.type;
