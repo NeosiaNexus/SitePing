@@ -332,6 +332,13 @@ describe("createEndpointSource — error mapping", () => {
     });
   });
 
+  it.each([408, 429])("maps %i (a proxy timeout or a rate limit) to a retryable SERVER error", async (status) => {
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(status) });
+    const error = await source.list({ projectName: "demo" }).catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(SitepingValidationError);
+    expect(error).toMatchObject({ code: "SERVER", retryable: true });
+  });
+
   it("includes the status and body text in the error message", async () => {
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(422, "invalid status value") });
     await expect(source.list({ projectName: "demo" })).rejects.toThrow(/422 invalid status value/);
