@@ -31,6 +31,7 @@ export const ja: Translations = {
   "panel.statusResolved": "解決済み",
   "panel.statusInProgress": "対応中",
   "panel.statusWontFix": "対応しない",
+  "panel.statusClosed": "クローズ済み",
 
   // Feedback type labels
   "type.label": "種類",
@@ -85,7 +86,7 @@ export const ja: Translations = {
 
   // Markers
   "marker.approximate": "おおよその位置（確度: {confidence}%）",
-  "marker.aria": "フィードバック #{number}: {type} — {message}",
+  "marker.aria": "フィードバック #{number}: {type}、{status} — {message}",
   "marker.count": "{count} 件のフィードバックマーカーを表示中",
 
   // FAB badge
@@ -117,9 +118,9 @@ export const ja: Translations = {
 
   // Stats bar
   "stats.open": "未対応",
-  "stats.resolved": "解決済み",
+  "stats.closed": "クローズ済み",
   "stats.bugs": "不具合",
-  "stats.progress": "{percent}% 解決済み",
+  "stats.progress": "{percent}% クローズ済み",
 
   // Detail view
   "detail.back": "戻る",

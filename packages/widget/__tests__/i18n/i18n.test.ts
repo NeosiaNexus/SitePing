@@ -181,9 +181,9 @@ describe("interpolate", () => {
   });
 
   it("tWithParams fills every placeholder of a multi-param template", () => {
-    expect(tWithParams(createT("en"), "marker.aria", { number: 2, type: "Bug", message: "oops" })).toBe(
-      "Feedback #2: Bug — oops",
-    );
+    expect(
+      tWithParams(createT("en"), "marker.aria", { number: 2, type: "Bug", status: "In progress", message: "oops" }),
+    ).toBe("Feedback #2: Bug, In progress — oops");
   });
 });
 

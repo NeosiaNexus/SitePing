@@ -438,6 +438,24 @@ describe("Panel", () => {
       expect(label).toContain("Crash on load");
     });
 
+    it("names the status in a localized card aria-label (#302)", async () => {
+      const feedback = makeFeedback({ type: "bug", status: "in_progress", message: "Crash on load" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [feedback], total: 1 });
+
+      await panel.open();
+
+      const card = shadow.querySelector<HTMLElement>('[role="listitem"]')!;
+      expect(card.getAttribute("aria-label")).toBe("Feedback n°1 : Bug, En cours — Crash on load");
+    });
+
+    it("labels the closed-bucket tab 'Clôturé', never 'Résolu' (#302)", async () => {
+      await panel.open();
+
+      const tab = shadow.querySelector<HTMLButtonElement>('[data-status-filter="resolved"]')!;
+      expect(tab.textContent).toContain("Clôturé");
+      expect(tab.textContent).not.toContain("Résolu");
+    });
+
     it("sets data-feedback-id on cards", async () => {
       const feedback = makeFeedback({ id: "fb-42" });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [feedback], total: 1 });

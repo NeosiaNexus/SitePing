@@ -2,8 +2,8 @@ import type { FeedbackResponse } from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
 import { el, formatRelativeDate, setText } from "./dom-utils.js";
 import { isolateFromHost } from "./host-isolation.js";
-import { createT, getTypeLabel } from "./i18n/index.js";
-import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
+import { createT, getStatusLabel, getTypeLabel } from "./i18n/index.js";
+import { getStatusBgColor, getStatusColor, getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 const SHOW_DELAY = 120;
 const HIDE_DELAY = 80;
@@ -144,23 +144,35 @@ export class Tooltip {
     const t = createT(this.locale);
     const typeLabel = getTypeLabel(feedback.type, t);
 
-    // Header row: badge + date
-    const header = el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:8px;" });
-
-    const badge = el("span", {
-      style: /* css */ `
-        padding:3px 10px;border-radius:9999px;
-        font-size:11px;font-weight:600;
-        color:${typeColor};background:${typeBg};
-        letter-spacing:0.02em;
-      `,
+    // Header row: type badge + status chip + date
+    const header = el("div", {
+      style: "display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-bottom:8px;",
     });
-    setText(badge, typeLabel);
+
+    const chip = (label: string, color: string, bg: string): HTMLElement => {
+      const span = el("span", {
+        style: /* css */ `
+          padding:3px 10px;border-radius:9999px;
+          font-size:11px;font-weight:600;white-space:nowrap;
+          color:${color};background:${bg};
+          letter-spacing:0.02em;
+        `,
+      });
+      setText(span, label);
+      return span;
+    };
 
     const date = el("span", { style: `font-size:11px;color:${this.colors.textSecondary};margin-left:auto;` });
     setText(date, formatRelativeDate(feedback.createdAt, this.locale));
 
-    header.appendChild(badge);
+    header.appendChild(chip(typeLabel, typeColor, typeBg));
+    header.appendChild(
+      chip(
+        getStatusLabel(feedback.status, t),
+        getStatusColor(feedback.status, this.colors),
+        getStatusBgColor(feedback.status, this.colors),
+      ),
+    );
     header.appendChild(date);
 
     // Message body (safe — textContent only)
