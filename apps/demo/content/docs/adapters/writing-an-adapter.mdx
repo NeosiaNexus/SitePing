@@ -9,7 +9,7 @@ The four bundled adapters cover most setups, but SitePing stores are pluggable: 
 npm i -D @siteping/adapter-kit vitest
 ```
 
-`vitest` is an **optional peer dependency**, needed only by the `@siteping/adapter-kit/testing` entry. If you don't run the conformance suite, skip it. The kit itself has no runtime dependencies (`@siteping/core` is bundled into its `dist`), so a dev dependency works when you bundle your own package; if you publish unbundled output, move it to `dependencies`.
+`vitest` is an **optional peer dependency** (3, 4 or 5), needed only by the `@siteping/adapter-kit/testing` entry. If you don't run the conformance suite, skip it. The kit itself has no runtime dependencies (`@siteping/core` is bundled into its `dist`), so a dev dependency works when you bundle your own package; if you publish unbundled output, move it to `dependencies`.
 
 > Why a separate package: `@siteping/core` is an internal package — it exports raw TypeScript and is never published to npm. The kit is the supported way to depend on those types and helpers from outside this repo.
 
