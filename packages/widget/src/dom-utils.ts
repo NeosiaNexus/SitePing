@@ -89,6 +89,22 @@ export function setHidden(element: HTMLElement, hidden: boolean): void {
 }
 
 /**
+ * Take a closed layer out of the tab order and the accessibility tree, or
+ * put it back. Layers that animate out (a transform, an opacity fade) stay
+ * rendered while closed, so without `inert` Tab still walks into them.
+ */
+export function setInert(element: HTMLElement, inert: boolean): void {
+  element.toggleAttribute("inert", inert);
+}
+
+/** Whether focus — in this element's own tree, shadow roots included — sits inside it. */
+export function hasFocusWithin(element: HTMLElement): boolean {
+  const root = element.getRootNode() as Document | ShadowRoot;
+  const active = root.activeElement;
+  return active !== null && element.contains(active);
+}
+
+/**
  * Replace a button's children with a small spinner and disable it.
  * Returns a `restore` callback that swaps the original content back and
  * re-enables the button. Used by every async button (delete, resolve, …)

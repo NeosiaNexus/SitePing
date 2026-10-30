@@ -631,6 +631,62 @@ describe("DetailView", () => {
       setup.view.hide();
       expect(setup.view.isVisible).toBe(false);
     });
+
+    it("is inert while hidden, so Tab never reaches it (#394)", () => {
+      expect(setup.view.element.hasAttribute("inert")).toBe(true);
+      setup.view.show(makeFeedback(), 1);
+      expect(setup.view.element.hasAttribute("inert")).toBe(false);
+      setup.view.hide();
+      expect(setup.view.element.hasAttribute("inert")).toBe(true);
+    });
+
+    it("hands focus back to the card that opened it", async () => {
+      const card = document.createElement("div");
+      card.className = "sp-card";
+      card.tabIndex = 0;
+      setup.host.appendChild(card);
+      card.focus();
+
+      setup.view.show(makeFeedback(), 1);
+      await nextFrame();
+      expect(document.activeElement).toBe(setup.view.element.querySelector(".sp-detail-back"));
+
+      setup.view.hide();
+      expect(document.activeElement).toBe(card);
+    });
+
+    it("hands focus to the feedback's re-rendered card when the opener is gone", async () => {
+      const opener = document.createElement("div");
+      opener.tabIndex = 0;
+      setup.host.appendChild(opener);
+      opener.focus();
+      setup.view.show(makeFeedback({ id: "fb-77" }), 1);
+      await nextFrame();
+      // A reload replaced the list: the opener is gone, the feedback's card is new.
+      opener.remove();
+      const card = document.createElement("div");
+      card.className = "sp-card";
+      card.dataset.feedbackId = "fb-77";
+      card.tabIndex = 0;
+      setup.host.appendChild(card);
+
+      setup.view.hide();
+      expect(document.activeElement).toBe(card);
+    });
+
+    it("leaves focus alone when it already moved out of the view", async () => {
+      const card = document.createElement("div");
+      card.tabIndex = 0;
+      const other = document.createElement("button");
+      setup.host.append(card, other);
+      card.focus();
+      setup.view.show(makeFeedback(), 1);
+      await nextFrame();
+      other.focus();
+
+      setup.view.hide();
+      expect(document.activeElement).toBe(other);
+    });
   });
 
   describe("destroy()", () => {
