@@ -19,7 +19,7 @@ export interface GitLabTrackerOptions {
   token: string;
   /** Self-managed instance API root, e.g. `https://gitlab.acme.com/api/v4`. */
   apiBaseUrl?: string | undefined;
-  fetch?: typeof fetch;
+  fetch?: typeof fetch | undefined;
   timeoutMs?: number | undefined;
   /**
    * Most pages of 100 issues listed, newest first: on a project-wide delete,
