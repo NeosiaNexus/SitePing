@@ -82,6 +82,9 @@ function newPopupSession(): PopupSession {
 export class Annotator {
   private overlay: HTMLElement | null = null;
   private toolbar: HTMLElement | null = null;
+  /** The toolbar's Cancel, and whether it is frozen while a send is in flight (#397). */
+  private toolbarCancel: HTMLButtonElement | null = null;
+  private cancelFrozen = false;
   private drawingRect: HTMLElement | null = null;
   private startX = 0;
   private startY = 0;
@@ -273,15 +276,10 @@ export class Annotator {
       setText(cancelBtn, this.t("annotator.cancel"));
       cancelBtn.addEventListener("click", () => this.cancelSession());
       cancelBtn.addEventListener("mouseenter", () => {
-        cancelBtn.style.borderColor = this.colors.typeBug;
-        cancelBtn.style.color = this.colors.typeBug;
-        cancelBtn.style.background = this.colors.typeBugBg;
+        if (!this.cancelFrozen) this.paintCancel(true);
       });
-      cancelBtn.addEventListener("mouseleave", () => {
-        cancelBtn.style.borderColor = this.colors.border;
-        cancelBtn.style.color = this.colors.textTertiary;
-        cancelBtn.style.background = this.colors.glassBg;
-      });
+      cancelBtn.addEventListener("mouseleave", () => this.paintCancel(false));
+      this.toolbarCancel = cancelBtn;
 
       this.toolbar.appendChild(dot);
       this.toolbar.appendChild(instructionEl);
@@ -356,6 +354,31 @@ export class Annotator {
     this.deactivate();
   }
 
+  /** The toolbar Cancel's red hover look, or its resting one. */
+  private paintCancel(hover: boolean): void {
+    const btn = this.toolbarCancel;
+    if (!btn) return;
+    btn.style.borderColor = hover ? this.colors.typeBug : this.colors.border;
+    btn.style.color = hover ? this.colors.typeBug : this.colors.textTertiary;
+    btn.style.background = hover ? this.colors.typeBugBg : this.colors.glassBg;
+  }
+
+  /**
+   * While a send is in flight `cancelSession` ignores the toolbar Cancel, so
+   * it mirrors the popup's frozen Cancel rather than look ready to act:
+   * dimmed, no hover, `aria-disabled` (#397).
+   */
+  private freezeCancel(frozen: boolean): void {
+    this.cancelFrozen = frozen;
+    const btn = this.toolbarCancel;
+    if (!btn) return;
+    if (frozen) this.paintCancel(false);
+    btn.style.opacity = frozen ? "0.5" : "1";
+    btn.style.cursor = frozen ? "not-allowed" : "pointer";
+    if (frozen) btn.setAttribute("aria-disabled", "true");
+    else btn.removeAttribute("aria-disabled");
+  }
+
   private deactivate(): void {
     if (!this.isActive) return;
     this.isActive = false;
@@ -380,6 +403,8 @@ export class Annotator {
     this.drawingRect?.remove();
     this.overlay = null;
     this.toolbar = null;
+    this.toolbarCancel = null;
+    this.cancelFrozen = false;
     this.drawingRect = null;
 
     // Removing the focused overlay drops focus to <body> — hand it back to the
@@ -701,7 +726,10 @@ export class Annotator {
     const session = newPopupSession();
     const shown = this.popup.show(
       rect,
-      (formResult) => this.runSubmission(annotation, formResult, captureRect, session),
+      (formResult) => {
+        this.freezeCancel(true);
+        return this.runSubmission(annotation, formResult, captureRect, session).finally(() => this.freezeCancel(false));
+      },
       this.toolbarInsets(),
     );
     this.revealSelection(rect);

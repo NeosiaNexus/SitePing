@@ -1315,6 +1315,40 @@ describe("Annotator", () => {
       expect(completeListener).toHaveBeenCalledOnce();
     });
 
+    it("freezes the toolbar Cancel while a submission is in flight, then restores it (#397)", async () => {
+      popupMocks.keepShowPending = true;
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+      const cancelBtn = Array.from(document.body.querySelectorAll("button")).find(
+        (btn) => btn.textContent === t("annotator.cancel"),
+      )!;
+      const restingBorder = cancelBtn.style.borderColor;
+      expect(cancelBtn.hasAttribute("aria-disabled")).toBe(false);
+
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      // In flight: dimmed, marked disabled, and no red hover.
+      expect(cancelBtn.getAttribute("aria-disabled")).toBe("true");
+      expect(cancelBtn.style.opacity).toBe("0.5");
+      cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      expect(cancelBtn.style.borderColor).toBe(restingBorder);
+
+      // Settled: back to an active button.
+      bus.emit("feedback:error", new Error("offline"));
+      await popupMocks.lastSubmitPromise?.catch(() => {});
+      expect(cancelBtn.hasAttribute("aria-disabled")).toBe(false);
+      expect(cancelBtn.style.opacity).toBe("1");
+      cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      expect(cancelBtn.style.borderColor).not.toBe(restingBorder);
+    });
+
     it("ignores keyboard Enter annotation while a submission is in flight", async () => {
       popupMocks.keepShowPending = true;
 
