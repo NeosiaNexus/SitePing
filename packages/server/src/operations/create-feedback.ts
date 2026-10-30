@@ -8,16 +8,15 @@ import {
   type SitepingStore,
 } from "@siteping/core";
 import { ERROR_MESSAGES, MAX_ANNOTATIONS_PER_FEEDBACK } from "../constants.js";
+import type { Notify } from "../notify.js";
 import type { SitepingHandlerBaseOptions, SitepingLifecycleHooks } from "../options.js";
 import type { Pipeline, Scope } from "../pipeline.js";
 import { feedbackCreateSchema } from "../validation.js";
-import { dispatchWebhooks, type WebhookConfig } from "../webhooks.js";
 
 interface CreateFeedbackDependencies<Principal> {
   store: SitepingStore;
   pipeline: Pipeline<Principal>;
-  webhooks: ReadonlyArray<WebhookConfig>;
-  waitUntil: SitepingHandlerBaseOptions<Principal>["waitUntil"];
+  notify: Notify<Principal>;
   beforeCreate: SitepingHandlerBaseOptions<Principal>["beforeCreate"];
   onCreated: SitepingLifecycleHooks<Principal>["onCreated"];
 }
@@ -55,8 +54,7 @@ function toCreateInput(data: FeedbackPayload): FeedbackCreateInput {
 export function createFeedbackOperation<Principal>({
   store,
   pipeline,
-  webhooks,
-  waitUntil,
+  notify,
   beforeCreate,
   onCreated,
 }: CreateFeedbackDependencies<Principal>) {
@@ -154,17 +152,7 @@ export function createFeedbackOperation<Principal>({
       // Creation side effects run once per insert: never for a replay, and
       // never for a request that joined another one's in-flight create.
       if (owner && inserted && feedback.projectName === input.projectName) {
-        // Fire-and-forget: never awaited, so the widget isn't held back on
-        // slow Slack/Discord/generic receivers. `dispatchWebhooks` traps its
-        // own errors and reports them through `WebhookConfig.onError`.
-        if (webhooks.length > 0) {
-          const delivery = dispatchWebhooks(webhooks, feedback);
-          try {
-            waitUntil?.(delivery);
-          } catch (error) {
-            pipeline.logError(scope, "[siteping] waitUntil failed", { error, ...subject });
-          }
-        }
+        notify(scope, { event: "feedback.created", feedback });
         if (onCreated) await pipeline.runHook(scope, "onCreated", subject, () => onCreated(feedback, scope.context));
       }
 

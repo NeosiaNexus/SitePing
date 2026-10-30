@@ -107,22 +107,22 @@ describe("useSitepingInbox — initial fetch & counts", () => {
 });
 
 describe("useSitepingInbox — filters refetch", () => {
-  it("setStatus refetches with the new status", async () => {
+  it("setStatusFilter refetches with the new status", async () => {
     const source = makeSource(demoRecords());
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    act(() => result.current.setStatus("resolved"));
+    act(() => result.current.setStatusFilter("resolved"));
     await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
     expect(result.current.total).toBe(1);
   });
 
-  it("setType refetches within the current status", async () => {
+  it("setTypeFilter refetches within the current status", async () => {
     const source = makeSource(demoRecords());
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    act(() => result.current.setType("question"));
+    act(() => result.current.setTypeFilter("question"));
     await waitFor(() => expect(ids(result.current.items)).toEqual(["r2"]));
   });
 
@@ -244,7 +244,7 @@ describe("useSitepingInbox — focus survives only in the list it points into", 
     });
     expect(result.current.focusedId).toBe("r2");
 
-    act(() => result.current.setStatus("resolved"));
+    act(() => result.current.setStatusFilter("resolved"));
     await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
     expect(result.current.focusedId).toBeNull();
   });
@@ -255,7 +255,7 @@ describe("useSitepingInbox — focus survives only in the list it points into", 
     expect(result.current.openedId).toBe("r5");
     expect(result.current.opened).toBeNull();
 
-    act(() => result.current.setStatus("resolved"));
+    act(() => result.current.setStatusFilter("resolved"));
     await waitFor(() => expect(result.current.opened?.id).toBe("r5"));
   });
 });
@@ -293,7 +293,7 @@ describe("useSitepingInbox — changeStatus / undo", () => {
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(ids(result.current.items)).toHaveLength(6));
 
     await act(async () => {
@@ -379,7 +379,7 @@ describe("useSitepingInbox — latest-wins", () => {
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source }));
     await waitFor(() => expect(list).toHaveBeenCalledTimes(1)); // main A pending
 
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2)); // main B pending
 
     // Resolve the OLD request first — it must be ignored (token superseded).
@@ -569,7 +569,7 @@ describe("useSitepingInbox — resilience & drawer survival", () => {
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(result.current.items).toHaveLength(6));
 
     await act(async () => {
@@ -625,7 +625,7 @@ describe("useSitepingInbox — edge branches", () => {
     const source = makeSource(demoRecords());
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize: 2 }));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     // Gate on total===6 (unique to the "all" filter) so we don't race the
     // initial open-filter load, which also shows 2 rows at pageSize 2.
     await waitFor(() => expect(result.current.total).toBe(6));
@@ -702,7 +702,7 @@ describe("useSitepingInbox — edge branches", () => {
     const source = makeSource(demoRecords());
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source }));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    act(() => result.current.setStatus("resolved"));
+    act(() => result.current.setStatusFilter("resolved"));
     await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
     act(() => result.current.focus("r5"));
     await act(async () => {
@@ -848,7 +848,7 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
 
   it("a failed change does not resurrect a record deleted meanwhile", async () => {
     const { source, result } = await mountDemo();
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(result.current.items).toHaveLength(6));
     await settle();
 
@@ -905,7 +905,7 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
 
   it("a change made after the latest one failed still chains behind an earlier one in flight", async () => {
     const { source, result } = await mountDemo();
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(result.current.items).toHaveLength(6));
     await settle();
     const heldA = deferred<FeedbackRecord>();
@@ -942,7 +942,7 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
 
   it("an earlier failure never rebases onto a change started after a later success", async () => {
     const { source, result } = await mountDemo();
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(result.current.items).toHaveLength(6));
     await settle();
     const heldA = deferred<FeedbackRecord>();
@@ -981,7 +981,7 @@ describe("useSitepingInbox — concurrent mutations roll back per record", () =>
     ]);
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize: 1 }));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(ids(result.current.items)).toEqual(["q"]));
     await settle();
     await act(async () => {
@@ -1075,7 +1075,7 @@ describe("useSitepingInbox — a failure on a record the loaded list no longer h
     );
     const hook = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize: 2 }));
     await waitFor(() => expect(hook.result.current.loading).toBe(false));
-    act(() => hook.result.current.setStatus(status));
+    act(() => hook.result.current.setStatusFilter(status));
     await waitFor(() => expect(hook.result.current.loading).toBe(false));
     await settle();
     await act(async () => {
@@ -1355,7 +1355,7 @@ describe("useSitepingInbox — a success landing in a list refetched meanwhile",
     act(() => {
       change = result.current.changeStatus("r1", "resolved");
     });
-    act(() => result.current.setStatus("resolved"));
+    act(() => result.current.setStatusFilter("resolved"));
     // The Resolved tab loads before the server applied the change.
     await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
     await settle();
@@ -1377,7 +1377,7 @@ describe("useSitepingInbox — a success landing in a list refetched meanwhile",
     );
     const { result } = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize: 2 }));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     await settle();
     await act(async () => {
@@ -1414,7 +1414,7 @@ describe("useSitepingInbox — re-entering rows respect the whole query", () => 
     await act(async () => {
       await result.current.changeStatus("r1", "resolved"); // r1 is a bug
     });
-    act(() => result.current.setType("question"));
+    act(() => result.current.setTypeFilter("question"));
     await waitFor(() => expect(ids(result.current.items)).toEqual(["r2"]));
     await settle();
     expect(result.current.counts).toMatchObject({ all: 1, open: 1, resolved: 0 });
@@ -1485,7 +1485,7 @@ describe("useSitepingInbox — a server search broader than the local predicate"
     });
     const hook = renderHook(() => useSitepingInbox({ projects: "demo", source, pageSize }));
     await waitFor(() => expect(hook.result.current.loading).toBe(false));
-    act(() => hook.result.current.setStatus(status));
+    act(() => hook.result.current.setStatusFilter(status));
     act(() => hook.result.current.setSearch("cafe"));
     await waitFor(() => expect(hook.result.current.total).toBe(2), { timeout: 1500 });
     await settle();
@@ -1658,7 +1658,7 @@ describe("useSitepingInbox — undo state after a failed mutation", () => {
     const { result } = renderHook(() => useSitepingInbox({ projects: ["A", "B"], source }));
     await waitFor(() => expect(result.current.loading).toBe(false));
     // "All" tab: the resolved row stays listed, so only the cleared undo stops the undo.
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     await settle();
     await act(async () => {
@@ -1829,7 +1829,7 @@ describe("useSitepingInbox — discussion thread", () => {
       const change = deferred<FeedbackRecord>();
       source.setStatus.mockReturnValueOnce(change.promise);
       const { result } = await ready({ projects: "demo", source, author });
-      act(() => result.current.setStatus("all"));
+      act(() => result.current.setStatusFilter("all"));
       await waitFor(() => expect(result.current.loading).toBe(false));
       act(() => result.current.openFeedback("r1"));
 
@@ -1897,10 +1897,10 @@ describe("useSitepingInbox — discussion thread", () => {
       const source = threadedSource();
       const { result } = await ready({ projects: "demo", source, author, pageSize: 2 });
       // r4, opened under its filter, is held by the drawer only once "all" lists r1 and r2.
-      act(() => result.current.setStatus("in_progress"));
+      act(() => result.current.setStatusFilter("in_progress"));
       await waitFor(() => expect(ids(result.current.items)).toEqual(["r4"]));
       act(() => result.current.openFeedback("r4"));
-      act(() => result.current.setStatus("all"));
+      act(() => result.current.setStatusFilter("all"));
       await waitFor(() => expect(ids(result.current.items)).toEqual(["r1", "r2"]));
 
       const page = deferred<Awaited<ReturnType<InboxSource["list"]>>>();
@@ -1929,7 +1929,7 @@ describe("useSitepingInbox — discussion thread", () => {
     source.setStatus.mockReturnValueOnce(change.promise);
     const { result } = await ready({ projects: "demo", source, author, onError: vi.fn() });
     act(() => result.current.openFeedback("r1"));
-    act(() => result.current.setStatus("resolved"));
+    act(() => result.current.setStatusFilter("resolved"));
     await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
 
     let failed!: Promise<void>;
@@ -1953,7 +1953,7 @@ describe("useSitepingInbox — discussion thread", () => {
     source.setStatus.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     const { result } = await ready({ projects: "demo", source, author, onError: vi.fn() });
     act(() => result.current.openFeedback("r1"));
-    act(() => result.current.setStatus("wont_fix"));
+    act(() => result.current.setStatusFilter("wont_fix"));
     await waitFor(() => expect(ids(result.current.items)).toEqual(["r6"]));
 
     let firstFailed!: Promise<void>;
@@ -2069,7 +2069,7 @@ describe("useSitepingInbox — discussion thread", () => {
     const source = threadedSource();
     const { result } = await ready({ projects: "demo", source, author });
     act(() => result.current.openFeedback("r1"));
-    act(() => result.current.setStatus("resolved"));
+    act(() => result.current.setStatusFilter("resolved"));
     await waitFor(() => expect(ids(result.current.items)).toEqual(["r5"]));
 
     await act(() => result.current.addComment("r1", "Reply"));
@@ -2251,6 +2251,44 @@ describe("useSitepingInbox — permissions and readOnly", () => {
     expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r2", "demo", "c-2");
   });
 
+  it("follows each reply's own permission over the record's (#393)", async () => {
+    const reply = (id: string, canDelete: boolean | undefined) => ({
+      id,
+      feedbackId: "r1",
+      body: id,
+      authorName: "Alex",
+      authorEmail: "",
+      authorRole: "client" as const,
+      clientId: "",
+      createdAt: new Date("2026-07-20T10:00:00Z"),
+      ...(canDelete === undefined ? {} : { permissions: { canDelete } }),
+    });
+    // The server refuses the whole thread but grants the author's own reply.
+    const records = recordsWith({ ...ALL, canDeleteComment: false }).map((r) =>
+      r.id === "r1"
+        ? { ...r, comments: [reply("c-mine", true), reply("c-theirs", false), reply("c-old", undefined)] }
+        : r,
+    );
+    const source = threaded(records);
+    const { result, rerender } = await ready({ projects: "demo", source, author });
+    const r1 = record(result.current.items, "r1");
+    const [mine, theirs, old] = r1.comments ?? [];
+
+    expect(result.current.commentPermissionsOf(r1, mine!)).toEqual({ canDelete: true });
+    expect(result.current.commentPermissionsOf(r1, theirs!)).toEqual({ canDelete: false });
+    // A reply without permissions (a store, an older server) follows the record's.
+    expect(result.current.commentPermissionsOf(r1, old!)).toEqual({ canDelete: false });
+
+    await act(() => result.current.deleteComment("r1", "c-theirs"));
+    await act(() => result.current.deleteComment("r1", "c-old"));
+    await act(() => result.current.deleteComment("r1", "c-mine"));
+    expect(source.removeComment).toHaveBeenCalledExactlyOnceWith("r1", "demo", "c-mine");
+
+    // What the inbox cannot do stays refused, whatever the server grants.
+    rerender({ projects: "demo", source, author, readOnly: true });
+    expect(result.current.commentPermissionsOf(r1, mine!)).toEqual({ canDelete: false });
+  });
+
   it("posts no reply on a record that refuses it", async () => {
     const source = threaded(recordsWith({ ...ALL, canComment: false }));
     const { result } = await ready({ projects: "demo", source, author });
@@ -2288,7 +2326,7 @@ describe("useSitepingInbox — permissions and readOnly", () => {
       permissions: { ...ALL, canDelete: false },
     }));
     const { result } = await ready({ projects: "demo", source });
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(result.current.items).toHaveLength(6));
 
     await act(() => result.current.changeStatus("r1", "resolved"));
@@ -2304,7 +2342,7 @@ describe("useSitepingInbox — permissions and readOnly", () => {
       return { ...stored, status };
     });
     const { result } = await ready({ projects: "demo", source });
-    act(() => result.current.setStatus("all"));
+    act(() => result.current.setStatusFilter("all"));
     await waitFor(() => expect(result.current.items).toHaveLength(6));
 
     await act(() => result.current.changeStatus("r1", "resolved"));

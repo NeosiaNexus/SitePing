@@ -9,6 +9,7 @@ import {
   isClosedStatus,
   MAX_PAGE_LIMIT,
   type PageScope,
+  type SitepingIdentity,
   type SitepingPanelAction,
 } from "@siteping/core";
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
@@ -34,7 +35,6 @@ import {
   ICON_UNDO,
   ICON_USER,
 } from "./icons.js";
-import type { Identity } from "./identity.js";
 import type { MarkerManager } from "./markers.js";
 import type { OwnFeedback } from "./own-feedback.js";
 import { normalizePanelActions } from "./panel-actions.js";
@@ -99,7 +99,7 @@ export class Panel {
   /** Reviewer mode (`config.readOnly`): no triage action, whatever the server allows. */
   private readonly readOnly: boolean;
   /** The visitor a reply is posted as — `null` when they dismiss the identity prompt. */
-  private readonly resolveIdentity: () => Promise<Identity | null>;
+  private readonly resolveIdentity: () => Promise<SitepingIdentity | null>;
 
   // New feature modules
   private readonly stats: PanelStats;
@@ -138,7 +138,7 @@ export class Panel {
       scopeAnnotationsByUrl: boolean;
       panelActions?: readonly SitepingPanelAction[] | undefined;
       ownFeedback?: Pick<OwnFeedback, "ids" | "remove"> | undefined;
-      resolveIdentity?: () => Promise<Identity | null>;
+      resolveIdentity?: () => Promise<SitepingIdentity | null>;
       readOnly?: boolean | undefined;
     },
   ) {
@@ -192,7 +192,7 @@ export class Panel {
     header.appendChild(headerRight);
 
     // --- Stats ---
-    this.stats = new PanelStats(colors, this.t);
+    this.stats = new PanelStats(this.t);
 
     // --- Filters ---
     const filters = el("div", { class: "sp-filters" });
@@ -223,7 +223,7 @@ export class Panel {
     filterBar.appendChild(this.buildMineToggle());
 
     // Sort controls
-    this.sortControls = new PanelSortControls(colors, () => this.renderList(), this.t);
+    this.sortControls = new PanelSortControls(() => this.renderList(), this.t);
 
     filters.appendChild(searchWrap);
     filters.appendChild(filterBar);
@@ -855,7 +855,7 @@ export class Panel {
       const groups = groupFeedbacksByPage(sorted);
       let globalIndex = 0;
       for (const [pagePath, groupFeedbacks] of groups) {
-        const groupHeader = createPageGroupHeader(pagePath, groupFeedbacks.length, this.colors);
+        const groupHeader = createPageGroupHeader(pagePath, groupFeedbacks.length);
         this.listContainer.appendChild(groupHeader);
 
         const groupContent = el("div", { class: "sp-group-content" });
@@ -1206,36 +1206,36 @@ export class Panel {
         value: "all",
         label: this.t("panel.filterAll"),
         icon: ICON_LAYERS,
-        color: this.colors.accent,
-        bg: this.colors.accentLight,
+        color: "var(--sp-accent)",
+        bg: "var(--sp-accent-light)",
       },
       {
         value: "question",
         label: this.t("type.question"),
         icon: ICON_QUESTION,
-        color: this.colors.typeQuestion,
-        bg: this.colors.typeQuestionBg,
+        color: "var(--sp-type-question)",
+        bg: "var(--sp-type-question-bg)",
       },
       {
         value: "change",
         label: this.t("type.change"),
         icon: ICON_CHANGE,
-        color: this.colors.typeChange,
-        bg: this.colors.typeChangeBg,
+        color: "var(--sp-type-change)",
+        bg: "var(--sp-type-change-bg)",
       },
       {
         value: "bug",
         label: this.t("type.bug"),
         icon: ICON_BUG,
-        color: this.colors.typeBug,
-        bg: this.colors.typeBugBg,
+        color: "var(--sp-type-bug)",
+        bg: "var(--sp-type-bug-bg)",
       },
       {
         value: "other",
         label: this.t("type.other"),
         icon: ICON_OTHER,
-        color: this.colors.typeOther,
-        bg: this.colors.typeOtherBg,
+        color: "var(--sp-type-other)",
+        bg: "var(--sp-type-other-bg)",
       },
     ];
 
@@ -1365,23 +1365,23 @@ export class Panel {
           value: "all",
           label: this.t("panel.statusAll"),
           icon: ICON_LAYERS,
-          color: this.colors.accent,
-          bg: this.colors.accentLight,
+          color: "var(--sp-accent)",
+          bg: "var(--sp-accent-light)",
         },
         {
           value: "open",
           label: this.t("panel.statusOpen"),
           icon: ICON_DOT_OPEN,
-          color: this.colors.statusOpen,
-          bg: this.colors.statusOpenBg,
+          color: "var(--sp-status-open)",
+          bg: "var(--sp-status-open-bg)",
         },
         {
           // Filters the closed bucket (resolved + wont_fix): labelled "Closed".
           value: "resolved",
           label: this.t("panel.statusClosed"),
           icon: ICON_CHECK,
-          color: this.colors.statusResolved,
-          bg: this.colors.statusResolvedBg,
+          color: "var(--sp-status-resolved)",
+          bg: "var(--sp-status-resolved-bg)",
         },
       ],
       value: "all",
