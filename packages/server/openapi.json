@@ -1,0 +1,1517 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SitePing HTTP API",
+    "version": "1",
+    "description": "The protocol `createSitepingHandler` (`@siteping/server`) serves: one endpoint, mounted at any path (`/api/siteping` here, what `npx @siteping/cli init` generates), five methods, JSON bodies. `info.version` is the protocol version a list response sends as `protocol`. Error strings are informational: branch on the status code. See https://siteping.dev/docs/server#wire-protocol.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    }
+  },
+  "x-siteping-protocol": 1,
+  "paths": {
+    "/api/siteping": {
+      "get": {
+        "operationId": "listFeedbacks",
+        "summary": "List a project's feedbacks",
+        "description": "A page of feedbacks, newest first, each with its thread and the requester's permissions. Author emails are blanked unless the access policy lets the requester read them; `clientId` is never sent.",
+        "parameters": [
+          {
+            "name": "projectName",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "question",
+                "change",
+                "bug",
+                "other"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "in_progress",
+                "resolved",
+                "wont_fix"
+              ]
+            }
+          },
+          {
+            "name": "statuses",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxItems": 4,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "in_progress",
+                  "resolved",
+                  "wont_fix"
+                ]
+              }
+            },
+            "style": "form",
+            "explode": false,
+            "description": "Statuses to include, comma-separated; takes precedence over `status`."
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          },
+          {
+            "name": "urlPattern",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "headers": {
+              "Cache-Control": {
+                "description": "`private, max-age=5` under the `apiKey` policy, `no-store` under `access`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrors"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createFeedbackOrComment",
+        "summary": "Create a feedback, or a comment on one",
+        "description": "Routed by the body: one carrying `feedbackId` posts a comment to that feedback's thread, any other creates a feedback. Both are idempotent on `clientId`: a replay answers `201` with the stored record.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/FeedbackCreate",
+                    "not": {
+                      "required": [
+                        "feedbackId"
+                      ]
+                    }
+                  },
+                  {
+                    "$ref": "#/components/schemas/CommentCreate"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The feedback (fresh or replayed), or the comment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Feedback"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Comment"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Comment: the feedback does not exist in this project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Feedback: its `clientId` is already used by another project. Comment: the thread holds 100 `client` comments, or the comment's `clientId` is already used on another feedback. None is worth a retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValueTooLong"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "501": {
+            "description": "Comment: the store behind the endpoint keeps no comments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateFeedbackStatus",
+        "summary": "Change a feedback's status",
+        "description": "`resolvedAt` follows: set when the status becomes `resolved` or `wont_fix`, cleared otherwise.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated feedback.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Feedback"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The feedback does not exist in this project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFeedbackOrComment",
+        "summary": "Delete a feedback, every feedback of a project, or a comment",
+        "description": "Routed by the body: one carrying `commentId` deletes that comment from the feedback's thread, any other deletes feedback. The body is required: a proxy that strips `DELETE` bodies makes it a `400`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/FeedbackDelete",
+                    "not": {
+                      "required": [
+                        "commentId"
+                      ]
+                    }
+                  },
+                  {
+                    "$ref": "#/components/schemas/FeedbackDeleteAll",
+                    "not": {
+                      "required": [
+                        "commentId"
+                      ]
+                    }
+                  },
+                  {
+                    "$ref": "#/components/schemas/CommentDelete"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The feedback, or the comment, does not exist in this project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "501": {
+            "description": "Comment: the store behind the endpoint keeps no comments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "An `onDeleting` hook threw: nothing was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {
+        "operationId": "preflight",
+        "summary": "CORS preflight",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "CORS headers for an origin listed in `allowedOrigins`; none otherwise, and the browser blocks the request."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FeedbackCreate": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "question",
+              "change",
+              "bug",
+              "other"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "urlPattern": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "viewport": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "userAgent": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "authorName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "authorEmail": {
+            "type": "string",
+            "maxLength": 200,
+            "format": "email",
+            "pattern": "^(?!\\.)(?!.*\\.\\.)[\\p{L}\\p{M}\\p{N}!#$%&'*+/=?^_`{|}~.-]{0,63}[\\p{L}\\p{M}\\p{N}!#$%&'*+/=?^_`{|}~-]@(?:[\\p{L}\\p{N}](?:[\\p{L}\\p{M}\\p{N}-]{0,61}[\\p{L}\\p{M}\\p{N}])?\\.)+[\\p{L}\\p{N}][\\p{L}\\p{M}\\p{N}-]{0,61}[\\p{L}\\p{M}\\p{N}]$"
+          },
+          "annotations": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "anchor": {
+                  "type": "object",
+                  "properties": {
+                    "cssSelector": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "xpath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "textSnippet": {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "elementTag": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 191
+                    },
+                    "elementId": {
+                      "type": "string"
+                    },
+                    "textPrefix": {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "textSuffix": {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "fingerprint": {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "neighborText": {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "anchorKey": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "cssSelector",
+                    "xpath",
+                    "textSnippet",
+                    "elementTag",
+                    "textPrefix",
+                    "textSuffix",
+                    "fingerprint",
+                    "neighborText"
+                  ]
+                },
+                "rect": {
+                  "type": "object",
+                  "properties": {
+                    "xPct": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "yPct": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "wPct": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "hPct": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "required": [
+                    "xPct",
+                    "yPct",
+                    "wPct",
+                    "hPct"
+                  ]
+                },
+                "scrollX": {
+                  "type": "number"
+                },
+                "scrollY": {
+                  "type": "number"
+                },
+                "viewportW": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                "viewportH": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                "devicePixelRatio": {
+                  "default": 1,
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "anchor",
+                "rect",
+                "scrollX",
+                "scrollY",
+                "viewportW",
+                "viewportH"
+              ]
+            }
+          },
+          "clientId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "screenshotDataUrl": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1500000,
+                "pattern": "^data:image\\/(jpeg|png|webp);base64,"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "screenshotRegion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScreenshotRegion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "console": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "level": {
+                          "type": "string",
+                          "enum": [
+                            "log",
+                            "info",
+                            "warn",
+                            "error"
+                          ]
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "maxLength": 50
+                        },
+                        "message": {
+                          "type": "string",
+                          "maxLength": 600
+                        }
+                      },
+                      "required": [
+                        "level",
+                        "timestamp",
+                        "message"
+                      ]
+                    }
+                  },
+                  "network": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "maxLength": 2000
+                        },
+                        "method": {
+                          "type": "string",
+                          "maxLength": 20
+                        },
+                        "status": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 599
+                        },
+                        "durationMs": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 600000
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "maxLength": 50
+                        }
+                      },
+                      "required": [
+                        "url",
+                        "method",
+                        "status",
+                        "durationMs",
+                        "timestamp"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "console",
+                  "network"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "projectName",
+          "type",
+          "message",
+          "url",
+          "viewport",
+          "userAgent",
+          "authorName",
+          "authorEmail",
+          "annotations",
+          "clientId"
+        ]
+      },
+      "CommentCreate": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "feedbackId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          },
+          "authorName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "authorEmail": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": ""
+              },
+              {
+                "type": "string",
+                "maxLength": 200,
+                "format": "email",
+                "pattern": "^(?!\\.)(?!.*\\.\\.)[\\p{L}\\p{M}\\p{N}!#$%&'*+/=?^_`{|}~.-]{0,63}[\\p{L}\\p{M}\\p{N}!#$%&'*+/=?^_`{|}~-]@(?:[\\p{L}\\p{N}](?:[\\p{L}\\p{M}\\p{N}-]{0,61}[\\p{L}\\p{M}\\p{N}])?\\.)+[\\p{L}\\p{N}][\\p{L}\\p{M}\\p{N}-]{0,61}[\\p{L}\\p{M}\\p{N}]$"
+              }
+            ]
+          },
+          "authorRole": {
+            "default": "client",
+            "type": "string",
+            "enum": [
+              "client",
+              "team"
+            ]
+          },
+          "clientId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          }
+        },
+        "required": [
+          "projectName",
+          "feedbackId",
+          "body",
+          "authorName",
+          "authorEmail",
+          "clientId"
+        ]
+      },
+      "FeedbackPatch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_progress",
+              "resolved",
+              "wont_fix"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "projectName",
+          "status"
+        ]
+      },
+      "FeedbackDelete": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "id",
+          "projectName"
+        ]
+      },
+      "FeedbackDeleteAll": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "deleteAll": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "projectName",
+          "deleteAll"
+        ]
+      },
+      "CommentDelete": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "feedbackId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "commentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "projectName",
+          "feedbackId",
+          "commentId"
+        ]
+      },
+      "Feedback": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "question",
+              "change",
+              "bug",
+              "other"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_progress",
+              "resolved",
+              "wont_fix"
+            ]
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "urlPattern": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "authorEmail": {
+            "type": "string"
+          },
+          "viewport": {
+            "type": "string"
+          },
+          "userAgent": {
+            "type": "string"
+          },
+          "resolvedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "annotations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Annotation"
+            }
+          },
+          "comments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            }
+          },
+          "screenshotUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "screenshotRegion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScreenshotRegion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Diagnostics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/FeedbackPermissions"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "message",
+          "status",
+          "projectName",
+          "url",
+          "urlPattern",
+          "authorName",
+          "authorEmail",
+          "viewport",
+          "userAgent",
+          "resolvedAt",
+          "createdAt",
+          "updatedAt",
+          "annotations",
+          "comments",
+          "screenshotUrl",
+          "screenshotRegion",
+          "diagnostics",
+          "permissions"
+        ]
+      },
+      "Annotation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "feedbackId": {
+            "type": "string"
+          },
+          "cssSelector": {
+            "type": "string"
+          },
+          "xpath": {
+            "type": "string"
+          },
+          "textSnippet": {
+            "type": "string"
+          },
+          "elementTag": {
+            "type": "string"
+          },
+          "elementId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "textPrefix": {
+            "type": "string"
+          },
+          "textSuffix": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "neighborText": {
+            "type": "string"
+          },
+          "anchorKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "xPct": {
+            "type": "number"
+          },
+          "yPct": {
+            "type": "number"
+          },
+          "wPct": {
+            "type": "number"
+          },
+          "hPct": {
+            "type": "number"
+          },
+          "scrollX": {
+            "type": "number"
+          },
+          "scrollY": {
+            "type": "number"
+          },
+          "viewportW": {
+            "type": "number"
+          },
+          "viewportH": {
+            "type": "number"
+          },
+          "devicePixelRatio": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "feedbackId",
+          "cssSelector",
+          "xpath",
+          "textSnippet",
+          "elementTag",
+          "elementId",
+          "textPrefix",
+          "textSuffix",
+          "fingerprint",
+          "neighborText",
+          "anchorKey",
+          "xPct",
+          "yPct",
+          "wPct",
+          "hPct",
+          "scrollX",
+          "scrollY",
+          "viewportW",
+          "viewportH",
+          "devicePixelRatio",
+          "createdAt"
+        ]
+      },
+      "Comment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "feedbackId": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "authorEmail": {
+            "type": "string"
+          },
+          "authorRole": {
+            "type": "string",
+            "enum": [
+              "client",
+              "team"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "feedbackId",
+          "body",
+          "authorName",
+          "authorEmail",
+          "authorRole",
+          "createdAt"
+        ]
+      },
+      "ScreenshotRegion": {
+        "type": "object",
+        "properties": {
+          "xPct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "yPct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "wPct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "hPct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "xPct",
+          "yPct",
+          "wPct",
+          "hPct"
+        ],
+        "additionalProperties": false
+      },
+      "Diagnostics": {
+        "type": "object",
+        "properties": {
+          "console": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "string",
+                  "enum": [
+                    "log",
+                    "info",
+                    "warn",
+                    "error"
+                  ]
+                },
+                "timestamp": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "level",
+                "timestamp",
+                "message"
+              ]
+            }
+          },
+          "network": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "method": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "number"
+                },
+                "durationMs": {
+                  "type": "number"
+                },
+                "timestamp": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url",
+                "method",
+                "status",
+                "durationMs",
+                "timestamp"
+              ]
+            }
+          }
+        },
+        "required": [
+          "console",
+          "network"
+        ]
+      },
+      "FeedbackPermissions": {
+        "type": "object",
+        "properties": {
+          "canChangeStatus": {
+            "type": "boolean"
+          },
+          "canDelete": {
+            "type": "boolean"
+          },
+          "canComment": {
+            "type": "boolean"
+          },
+          "canDeleteComment": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "canChangeStatus",
+          "canDelete",
+          "canComment",
+          "canDeleteComment"
+        ]
+      },
+      "FeedbackList": {
+        "type": "object",
+        "properties": {
+          "feedbacks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Feedback"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "protocol": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/FeedbackListPermissions"
+          }
+        },
+        "required": [
+          "feedbacks",
+          "total",
+          "protocol",
+          "capabilities",
+          "permissions"
+        ]
+      },
+      "Capabilities": {
+        "type": "object",
+        "properties": {
+          "comments": {
+            "type": "boolean"
+          },
+          "deleteComments": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "comments",
+          "deleteComments"
+        ]
+      },
+      "FeedbackListPermissions": {
+        "type": "object",
+        "properties": {
+          "canDeleteAll": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "canDeleteAll"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "ValidationErrors": {
+        "type": "object",
+        "properties": {
+          "errors": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "message"
+              ]
+            }
+          }
+        },
+        "required": [
+          "errors"
+        ]
+      },
+      "Deleted": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "deleted"
+        ]
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The body is not JSON, failed validation (the first issues, as `errors`), or holds too many annotations.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "$ref": "#/components/schemas/ValidationErrors"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "No credentials, or wrong ones, for a method the policy does not open.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The access policy refused the action, or, under `access`, a mutation came from an origin outside `allowedOrigins`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "The body is over `maxBodyBytes` (4 MiB by default).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "Under `access`, a mutation without `Content-Type: application/json`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ValueTooLong": {
+        "description": "A value is longer than the store's column holds: not worth a retry.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Never sent by `@siteping/server`, which leaves rate limiting to the platform: a limiter in front of it may. Clients retry after `Retry-After`."
+      },
+      "InternalServerError": {
+        "description": "An unexpected failure, logged; the message `describeError` returns, if any.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "apiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The `apiKey` policy: `Authorization: Bearer <apiKey>`, required on every method `publicEndpoints` does not open. A custom `access` policy reads whatever credential it chooses (a session cookie, a JWT)."
+      }
+    }
+  },
+  "security": [
+    {},
+    {
+      "apiKey": []
+    }
+  ]
+}
