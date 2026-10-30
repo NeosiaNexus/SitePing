@@ -378,6 +378,17 @@ describe("MarkerManager", () => {
       // Resolved feedback bypasses low-confidence styling
       expect(marker.style.borderStyle).toBe("solid");
     });
+
+    it("dashes a low-confidence in_progress pin and keeps its half ring", () => {
+      mockState.confidence = 0.3;
+      mockState.element = null;
+
+      markers.render([makeFeedback({ status: "in_progress" })]);
+
+      const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
+      expect(marker.style.borderStyle).toBe("dashed");
+      expect(marker.style.borderTopColor).not.toBe(marker.style.borderLeftColor);
+    });
   });
 
   // -------------------------------------------------------------------------
