@@ -4677,7 +4677,11 @@ describe("Panel", () => {
       posting.resolve(reply);
       await vi.waitFor(() => expect(added).toHaveBeenCalled());
       // …then the stale list, without the reply.
-      answerList({ feedbacks: [makeFeedback({ id: "fb-1", comments: [] })], total: 1, capabilities: { comments: true } });
+      answerList({
+        feedbacks: [makeFeedback({ id: "fb-1", comments: [] })],
+        total: 1,
+        capabilities: { comments: true },
+      });
       await reloading;
       reopen();
 
