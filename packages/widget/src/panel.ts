@@ -94,6 +94,13 @@ export class Panel {
   private canComment = false;
   /** Each feedback's composer state, by id — see `ThreadDraft`. */
   private readonly threadDrafts = new Map<string, ThreadDraft>();
+  /**
+   * Every reply that lands takes the next number, and its feedback keeps the
+   * replies posted from here (#420): a list requested before the last of
+   * them may have been read before the server stored it — see `keepThreads`.
+   */
+  private threadWriteCount = 0;
+  private readonly threadWrites = new Map<string, { seq: number; replies: CommentResponse[] }>();
   /** Reviewer mode (`config.readOnly`): no triage action, whatever the server allows. */
   private readonly readOnly: boolean;
   /** The visitor a reply is posted as — `null` when they dismiss the identity prompt. */
@@ -661,6 +668,7 @@ export class Panel {
     // not wipe the open markers. The list result serves them when its query
     // is theirs; otherwise their query runs alongside the list's.
     const listIsMarkerQuery = !this.mineOnly && this.isMarkerQuery(options, scope);
+    const keepThread = this.keepThreads();
     this.isLoading = true;
     try {
       const listRequest = this.mineOnly
@@ -678,7 +686,7 @@ export class Panel {
       }
       if (signal.aborted) return; // Stale response — a newer request superseded this one
       this.currentPage = page;
-      this.feedbacks = feedbacks;
+      this.feedbacks = feedbacks.map(keepThread);
       this.totalFeedbacks = total;
       // Absent from a server that predates threads — which then has none.
       this.canComment = first.capabilities?.comments === true;
@@ -734,12 +742,13 @@ export class Panel {
     let restoreBtn: (() => void) | undefined;
     if (loadMoreBtn) restoreBtn = setButtonLoading(loadMoreBtn);
 
+    const keepThread = this.keepThreads();
     try {
       const { feedbacks, total } = await this.client.getFeedbacks(this.projectName, options);
       if (controller !== this.loadController) return; // Filter/search changed — discard stale page
       this.currentPage = nextPage;
       this.totalFeedbacks = total;
-      this.feedbacks = [...this.feedbacks, ...feedbacks];
+      this.feedbacks = [...this.feedbacks, ...feedbacks.map(keepThread)];
       this.stats.update(this.feedbacks, total);
       this.renderList();
       // Under a filter, the markers keep the page query's result
@@ -1526,12 +1535,35 @@ export class Panel {
           record.comments = [...(record.comments ?? []), comment];
         }
       }
+      const replies = this.threadWrites.get(feedback.id)?.replies ?? [];
+      this.threadWrites.set(feedback.id, { seq: ++this.threadWriteCount, replies: [...replies, comment] });
       this.bus.emit("comment:added", comment);
       return comment;
     } catch (error) {
       this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
+  }
+
+  /**
+   * Call when a list request starts; pass each record it brings back to the
+   * function returned. A reply posted after the request started may be
+   * missing from it — the server read the list before storing the reply —
+   * so the replies posted here since are merged back in, by id and in date
+   * order. A list requested after the last reply is taken whole (#420).
+   */
+  private keepThreads(): (record: FeedbackResponse) => FeedbackResponse {
+    const since = this.threadWriteCount;
+    return (record) => {
+      const written = this.threadWrites.get(record.id);
+      if (!written || written.seq <= since) return record;
+      const known = new Set(record.comments?.map((c) => c.id));
+      const missing = written.replies.filter((c) => !known.has(c.id));
+      if (missing.length === 0) return record;
+      const comments = [...(record.comments ?? []), ...missing];
+      comments.sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+      return { ...record, comments };
+    };
   }
 
   /**
