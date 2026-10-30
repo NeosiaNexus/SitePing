@@ -13,15 +13,19 @@ import type {
 } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
 import type { GetFeedbacksOptions } from "../../src/api-client.js";
+import type * as Widget from "../../src/index.js";
 import {
   type CommentResponse,
   type DiagnosticsCaptureOptions,
   type DiagnosticsSnapshot,
   initSiteping,
+  isSitepingError,
   type PageScope,
   registerLocale,
   type SitepingConfig,
   type SitepingDeepLinkOptions,
+  type SitepingErrorCode,
+  type SitepingIdentity,
   type SitepingPanelAction,
   type SitepingPanelActionContext,
   type SitepingPanelActionFeedback,
@@ -30,6 +34,7 @@ import {
   type SitepingPosition,
   type SitepingPublicEventListener,
   type SitepingSkipReason,
+  type SitepingTheme,
   type SitepingUnsubscribe,
   type Translations,
 } from "../../src/index.js";
@@ -180,6 +185,44 @@ describe("custom locales", () => {
 
   it("keeps values as strings", () => {
     expectTypeOf<Translations["panel.title"]>().toEqualTypeOf<string>();
+  });
+});
+
+describe("errors reaching onError", () => {
+  it("are matched with the exported guard, then told apart by code", () => {
+    initSiteping({
+      endpoint: "/api/siteping",
+      projectName: "demo",
+      onError: (error) => {
+        if (!isSitepingError(error)) return;
+        expectTypeOf(error.code).toEqualTypeOf<SitepingErrorCode>();
+        if (error.code === "AUTH") expectTypeOf(error.status).toEqualTypeOf<401 | 403>();
+      },
+    });
+  });
+});
+
+describe("identity", () => {
+  it("is named SitepingIdentity, the shape the `identity` option takes", () => {
+    expectTypeOf<NonNullable<SitepingConfig["identity"]>>().toEqualTypeOf<SitepingIdentity>();
+  });
+
+  it("no longer exports the Identity alias or the internal TFunction", () => {
+    // @ts-expect-error — removed before 1.0: use SitepingIdentity
+    type RemovedIdentity = Widget.Identity;
+    // @ts-expect-error — internal: no public signature takes a translate function
+    type RemovedTFunction = Widget.TFunction;
+    expectTypeOf<[RemovedIdentity, RemovedTFunction]>().toBeArray();
+  });
+});
+
+describe("shared with the dashboard", () => {
+  it("exports the theme type the dashboard exports", () => {
+    expectTypeOf<NonNullable<SitepingConfig["theme"]>>().toEqualTypeOf<SitepingTheme>();
+  });
+
+  it("returns a promise from refresh(), like the dashboard's", () => {
+    expectTypeOf<ReturnType<SitepingInstance["refresh"]>>().toEqualTypeOf<Promise<void>>();
   });
 });
 

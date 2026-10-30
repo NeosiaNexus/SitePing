@@ -10,7 +10,8 @@
 //      BUILTIN_LOCALES;
 //   3. a non-private packages/* package is missing from the release-please
 //      config/manifest, or a manifest package is missing its release.yml
-//      wiring (output + publish job);
+//      wiring (output + publish job) or its line in the root CHANGELOG.md
+//      index;
 //   4. a published package's build script forgot the fix-dts chain its
 //      declarations need (cli is exempt: it ships no .d.ts);
 //   5. the root esbuild override drifted from the widget's esbuild spec;
@@ -141,6 +142,7 @@ for (const file of [
 const manifest = JSON.parse(read(".release-please-manifest.json"));
 const releaseConfig = JSON.parse(read("release-please-config.json"));
 const releaseYml = read(".github/workflows/release.yml");
+const changelogIndex = read("CHANGELOG.md");
 
 for (const dir of readdirSync(join(root, "packages"))) {
   const pkgJsonPath = join(root, "packages", dir, "package.json");
@@ -165,6 +167,9 @@ for (const pkgPath of Object.keys(manifest)) {
   }
   if (!releaseYml.includes(`${pkgPath}/dist/`)) {
     errors.push(`${pkgPath}/dist/ is missing from the release.yml build artifact paths`);
+  }
+  if (!changelogIndex.includes(`(./${pkgPath}/CHANGELOG.md)`)) {
+    errors.push(`${pkgPath} is missing from the root CHANGELOG.md index`);
   }
 }
 

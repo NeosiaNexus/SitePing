@@ -1,8 +1,16 @@
 export { settleWithConcurrencyLimit } from "./concurrency.js";
 export { buildDeepLink, parseHttpUrl } from "./deep-link.js";
 export { EMAIL_PATTERN, isValidEmail } from "./email.js";
-export type { SitepingErrorCode } from "./errors.js";
-export { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
+export type { SitepingClientError, SitepingConfigErrorCode, SitepingErrorCode } from "./errors.js";
+export {
+  isSitepingConfigError,
+  isSitepingError,
+  SitepingAuthError,
+  SitepingConfigError,
+  SitepingError,
+  SitepingNetworkError,
+  SitepingValidationError,
+} from "./errors.js";
 export type { FilterResult, Pagination } from "./filters.js";
 export {
   applyFeedbackFilters,
@@ -119,6 +127,7 @@ export {
   MAX_COMMENTS_PER_FEEDBACK,
   OPEN_FEEDBACK_STATUSES,
   PROJECT_NAME_MAX_LENGTH,
+  SITEPING_PROTOCOL_VERSION,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,

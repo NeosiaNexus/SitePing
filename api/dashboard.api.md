@@ -12,6 +12,7 @@ Runtime exports (ESM and CJS):
 - `createEndpointSource: function`
 - `createStoreSource: function`
 - `isClosedStatus: function`
+- `isSitepingError: function`
 - `registerLocale: function`
 - `useSitepingInbox: function`
 
@@ -48,7 +49,7 @@ export interface EndpointSourceOptions {
     apiKey?: string | undefined;
     endpoint: string;
     fetchFn?: typeof fetch | undefined;
-    headers?: (() => Promise<Record<string, string>> | Record<string, string>) | Record<string, string> | undefined;
+    headers?: SitepingHeadersOption | undefined;
 }
 
 export const FEEDBACK_STATUSES: readonly [
@@ -191,8 +192,8 @@ export interface InboxState {
     search: string;
     setProject(p: string): void;
     setSearch(s: string): void;
-    setStatus(s: InboxStatusFilter): void;
-    setType(t: InboxTypeFilter): void;
+    setStatusFilter(s: InboxStatusFilter): void;
+    setTypeFilter(t: InboxTypeFilter): void;
     status: InboxStatusFilter;
     total: null | number;
     type: InboxTypeFilter;
@@ -210,8 +211,6 @@ export interface InboxStoreOptions extends InboxSharedOptions {
     store: SitepingStore;
 }
 
-export type InboxTheme = "auto" | "dark" | "light";
-
 export type InboxTypeFilter = "all" | FeedbackType;
 
 export type ResolvedTheme = "dark" | "light";
@@ -228,6 +227,12 @@ export interface SitepingCapabilities {
     deleteComments?: boolean | undefined;
 }
 
+export type SitepingClientError = SitepingAuthError | SitepingError<"SERVER" | "TIMEOUT"> | SitepingNetworkError | SitepingValidationError;
+
+export type SitepingErrorCode = "AUTH" | "NETWORK" | "SERVER" | "TIMEOUT" | "VALIDATION";
+
+export type SitepingHeadersOption = (() => Promise<Record<string, string>> | Record<string, string>) | Record<string, string>;
+
 export function SitepingInbox(props: SitepingInboxProps): ReactElement;
 
 export interface SitepingInboxPresentationProps {
@@ -237,7 +242,7 @@ export interface SitepingInboxPresentationProps {
     density?: "comfortable" | "compact" | undefined;
     emptyState?: ReactNode | undefined;
     locale?: SitepingLocale | undefined;
-    theme?: InboxTheme | undefined;
+    theme?: SitepingTheme | undefined;
 }
 
 export type SitepingInboxProps = UseSitepingInboxOptions & SitepingInboxPresentationProps;
@@ -256,6 +261,8 @@ export interface SitepingStore {
     updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord>;
     verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
 }
+
+export type SitepingTheme = "auto" | "dark" | "light";
 
 export type TranslationKey = keyof Translations;
 
@@ -348,6 +355,8 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
 export function createStoreSource(store: SitepingStore): InboxSource;
 
 export function isClosedStatus(status: FeedbackStatus): status is ClosedFeedbackStatus;
+
+export function isSitepingError(error: unknown): error is SitepingClientError;
 
 export const registerLocale: (code: string, translations: Partial<Translations>) => void;
 
@@ -495,4 +504,24 @@ const OPEN_FEEDBACK_STATUSES: readonly [
 ];
 
 type OpenFeedbackStatus = (typeof OPEN_FEEDBACK_STATUSES)[number];
+
+class SitepingAuthError extends SitepingError<"AUTH"> {
+    constructor(message: string, status: 401 | 403);
+    readonly status: 401 | 403;
+}
+
+class SitepingError<TCode extends SitepingErrorCode = SitepingErrorCode> extends Error {
+    constructor(message: string, code: TCode, retryable: boolean);
+    readonly code: TCode;
+    readonly retryable: boolean;
+}
+
+class SitepingNetworkError extends SitepingError<"NETWORK"> {
+    constructor(message: string);
+}
+
+class SitepingValidationError extends SitepingError<"VALIDATION"> {
+    constructor(message: string, status?: number);
+    readonly status: number | undefined;
+}
 ```
