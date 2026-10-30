@@ -1187,6 +1187,66 @@ describe("Panel", () => {
       expect(preventSpy).toHaveBeenCalled();
     });
 
+    describe("closed layers stay out of the tab order (#394)", () => {
+      const focusablesIn = (scope: Element) =>
+        Array.from(
+          scope.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => !el.closest("[inert]") && el.style.display !== "none" && !el.hasAttribute("disabled"));
+      const pressTab = (active: HTMLElement, shiftKey = false) => {
+        Object.defineProperty(shadow, "activeElement", { value: active, configurable: true });
+        const tab = new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true });
+        const preventDefault = vi.spyOn(tab, "preventDefault");
+        shadow.dispatchEvent(tab);
+        return preventDefault;
+      };
+
+      it("keeps the panel inert while it is closed", async () => {
+        const panelRoot = shadow.querySelector<HTMLElement>(".sp-panel")!;
+        expect(panelRoot.hasAttribute("inert")).toBe(true);
+        await panel.open();
+        expect(panelRoot.hasAttribute("inert")).toBe(false);
+        panel.close();
+        expect(panelRoot.hasAttribute("inert")).toBe(true);
+      });
+
+      it("keeps Tab inside the open detail view, never on the list behind it", async () => {
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
+        await panel.open();
+        shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+        const detail = shadow.querySelector<HTMLElement>(".sp-detail")!;
+        const inDetail = focusablesIn(detail);
+        const first = inDetail[0]!;
+        const last = inDetail[inDetail.length - 1]!;
+        const focusFirst = vi.spyOn(first, "focus");
+        const focusLast = vi.spyOn(last, "focus");
+
+        expect(pressTab(last)).toHaveBeenCalled();
+        expect(focusFirst).toHaveBeenCalled();
+        expect(pressTab(first, true)).toHaveBeenCalled();
+        expect(focusLast).toHaveBeenCalled();
+
+        // Focus left behind the view (the search field) re-enters it.
+        focusFirst.mockClear();
+        expect(pressTab(shadow.querySelector<HTMLElement>(".sp-search")!)).toHaveBeenCalled();
+        expect(focusFirst).toHaveBeenCalled();
+      });
+
+      it("never wraps onto a control of a closed layer", async () => {
+        await panel.open();
+        const panelRoot = shadow.querySelector<HTMLElement>(".sp-panel")!;
+        const reachable = focusablesIn(panelRoot);
+        // The bulk bar, the detail view and the help overlay are closed: none of their controls is reachable.
+        expect(reachable.filter((el) => el.closest(".sp-bulk-bar, .sp-detail, .sp-shortcuts-overlay"))).toEqual([]);
+        const last = reachable[reachable.length - 1]!;
+        const focusFirst = vi.spyOn(reachable[0]!, "focus");
+
+        expect(pressTab(last)).toHaveBeenCalled();
+        expect(focusFirst).toHaveBeenCalled();
+      });
+    });
+
     describe("Escape closes only the innermost layer", () => {
       const escapeOn = (target: EventTarget) =>
         target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
@@ -5010,7 +5070,9 @@ describe("Panel on phones", () => {
     await panel.open();
     const reachable = Array.from(
       root().querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
-    ).filter((el) => !el.closest("[style*='display: none']") && !el.matches(".sp-shortcuts-hint"));
+    ).filter(
+      (el) => !el.closest("[style*='display: none']") && !el.closest("[inert]") && !el.matches(".sp-shortcuts-hint"),
+    );
     const last = reachable[reachable.length - 1]!;
     expect(last.matches(".sp-shortcuts-hint")).toBe(false);
 

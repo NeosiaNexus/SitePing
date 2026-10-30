@@ -14,7 +14,16 @@ import {
 import type { GetFeedbacksOptions, WidgetClient } from "./api-client.js";
 import { SegmentedControl } from "./components/segmented-control.js";
 import { PAGE_SIZE } from "./constants.js";
-import { el, formatRelativeDate, onClickOutside, parseSvg, setButtonLoading, setHidden, setText } from "./dom-utils.js";
+import {
+  el,
+  formatRelativeDate,
+  onClickOutside,
+  parseSvg,
+  setButtonLoading,
+  setHidden,
+  setInert,
+  setText,
+} from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
 import { registerEscapeLayer } from "./host-isolation.js";
@@ -155,6 +164,8 @@ export class Panel {
     this.root.setAttribute("role", "complementary");
     this.root.setAttribute("aria-label", this.t("panel.ariaLabel"));
     this.root.setAttribute("aria-hidden", "true");
+    // Slid off-screen while closed, but still rendered: out of the tab order.
+    setInert(this.root, true);
 
     // --- Header ---
     const header = el("div", { class: "sp-panel-header" });
@@ -466,17 +477,30 @@ export class Panel {
           }
           return true;
         };
+        // The topmost open layer covers the rest of the panel, so Tab cycles
+        // inside it: the help overlay, else the detail view, else the panel.
+        // Closed layers are `inert` (the browser skips them; the walk below
+        // must too, or `first`/`last` land on a control Tab never reaches).
+        const scope = this.shortcuts.isHelpVisible
+          ? this.shortcuts.helpOverlay
+          : this.detail.isVisible
+            ? this.detail.element
+            : this.root;
         const focusable = Array.from(
-          this.root.querySelectorAll<HTMLElement>(
+          scope.querySelectorAll<HTMLElement>(
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
           ),
-        ).filter((el) => isVisible(el) && !el.hasAttribute("disabled"));
+        ).filter((el) => isVisible(el) && !el.hasAttribute("disabled") && !el.closest("[inert]"));
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (!first || !last) return;
         const active = (shadowRoot as ShadowRoot).activeElement;
-        if (ke.shiftKey && active === first) {
+        if (!active || !scope.contains(active)) {
+          // Focus behind the open layer (or nowhere) re-enters it.
+          ke.preventDefault();
+          (ke.shiftKey ? last : first).focus();
+        } else if (ke.shiftKey && active === first) {
           ke.preventDefault();
           last.focus();
         } else if (!ke.shiftKey && active === last) {
@@ -510,6 +534,7 @@ export class Panel {
     this.root.classList.add("sp-panel--open");
     this.scrim.classList.add("sp-scrim--open");
     this.root.setAttribute("aria-hidden", "false");
+    setInert(this.root, false);
     this.bus.emit("open");
     this.shortcuts.enable(this.shadowRoot);
     await this.loadFeedbacks();
@@ -526,6 +551,7 @@ export class Panel {
     this.root.classList.remove("sp-panel--open");
     this.scrim.classList.remove("sp-scrim--open");
     this.root.setAttribute("aria-hidden", "true");
+    setInert(this.root, true);
     this.bus.emit("close");
     this.shortcuts.disable();
     this.detail.hide();
