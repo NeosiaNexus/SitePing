@@ -1070,6 +1070,45 @@ export function testSitepingStore(
         for (const thread of await threadsOf("raced-post")) expect(thread?.map((c) => c.id)).toEqual([results[0]?.id]);
       });
 
+      it("reports an insert, then the existing comment for the same clientId (when implemented)", async () => {
+        if (!store.addCommentIfAbsent) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "reported-post" }));
+        const input = commentInput({ clientId: "reported-comment" });
+        const first = await store.addCommentIfAbsent(fb.id, input);
+        const second = await store.addCommentIfAbsent(fb.id, input);
+        const viaAddComment = await store.addComment?.(fb.id, input);
+
+        expect(first).toEqual({
+          comment: expect.objectContaining({ feedbackId: fb.id, clientId: input.clientId }),
+          created: true,
+        });
+        expect(second).toEqual({ comment: first.comment, created: false });
+        expect(viaAddComment).toEqual(first.comment);
+        for (const thread of await threadsOf("reported-post")) expect(thread).toEqual([first.comment]);
+      });
+
+      it("reports exactly one insert when concurrent posts race on the same clientId (when implemented)", async () => {
+        if (!store.addCommentIfAbsent) return;
+        const addCommentIfAbsent = store.addCommentIfAbsent.bind(store);
+
+        const fb = await store.createFeedback(createInput({ clientId: "reported-race" }));
+        const input = commentInput({ clientId: "raced-comment" });
+        const outcomes = await Promise.all(Array.from({ length: 4 }, () => addCommentIfAbsent(fb.id, input)));
+
+        const inserted = outcomes.filter((outcome) => outcome.created);
+        expect(inserted).toHaveLength(1);
+        for (const outcome of outcomes) expect(outcome.comment.id).toBe(inserted[0]?.comment.id);
+        for (const thread of await threadsOf("reported-race"))
+          expect(thread?.map((c) => c.id)).toEqual([inserted[0]?.comment.id]);
+      });
+
+      it("throws addComment's errors from addCommentIfAbsent too (when implemented)", async () => {
+        if (!store.addCommentIfAbsent) return;
+
+        await expect(store.addCommentIfAbsent("unknown-id", commentInput())).rejects.toSatisfy(isStoreNotFound);
+      });
+
       it("throws StoreNotFoundError when commenting on an unknown feedback (when implemented)", async () => {
         if (!store.addComment) return;
 

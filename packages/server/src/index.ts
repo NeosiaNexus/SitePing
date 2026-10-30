@@ -1,5 +1,6 @@
 export type {
   CommentCreateInput,
+  CommentCreateOutcome,
   CommentPayload,
   CommentRecord,
   CommentResponse,
@@ -27,6 +28,7 @@ export type {
   SitepingAction,
   SitepingApiKeyHandlerOptions,
   SitepingAuthorizationContext,
+  SitepingCreatedComment,
   SitepingDeletionTarget,
   SitepingHandler,
   SitepingHandlerBaseOptions,
@@ -40,10 +42,15 @@ export type {
 export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput, ValidationIssue } from "./validation.js";
 export type {
   DiscordWebhookPayload,
+  GenericWebhookCommentPayload,
+  GenericWebhookDeletionPayload,
+  GenericWebhookEventMap,
   GenericWebhookPayload,
   SlackWebhookPayload,
   WebhookConfig,
+  WebhookDeliveryInfo,
+  WebhookEvent,
   WebhookPayloadMap,
   WebhookType,
 } from "./webhooks.js";
-export { dispatchWebhook, dispatchWebhooks } from "./webhooks.js";
+export { dispatchWebhook, dispatchWebhooks, WEBHOOK_EVENTS } from "./webhooks.js";

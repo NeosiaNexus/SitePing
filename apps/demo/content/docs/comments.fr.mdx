@@ -74,7 +74,9 @@ Content-Type: application/json
 }
 ```
 
-Il répond `201` avec le commentaire. `authorRole` est optionnel et vaut `client` par défaut. `clientId` est obligatoire — `[a-zA-Z0-9_-]`, jusqu'à 200 caractères : générez-en un par commentaire (`crypto.randomUUID()`) et renvoyez le même en cas de relance du même texte. Une réponse modifiée est un nouveau commentaire, avec un nouveau `clientId` : le serveur ne compare que le `clientId`, donc une première tentative bel et bien arrivée reviendrait à sa place. Le widget et le dashboard font les deux.
+Il répond `201` avec le commentaire. `authorRole` est optionnel et vaut `client` par défaut. `clientId` est obligatoire — `[a-zA-Z0-9_-]`, jusqu'à 191 caractères : générez-en un par commentaire (`crypto.randomUUID()`) et renvoyez le même en cas de relance du même texte. Une réponse modifiée est un nouveau commentaire, avec un nouveau `clientId` : le serveur ne compare que le `clientId`, donc une première tentative bel et bien arrivée reviendrait à sa place. Le widget et le dashboard font les deux.
+
+Une réponse enregistrée déclenche le [hook](/fr/docs/server#points-dextension) `onCommentCreated` et le [webhook](/fr/docs/server#événements) `comment.created` pour les webhooks qui s'y abonnent — une seule fois : un renvoi qui retrouve le commentaire enregistré ne déclenche ni l'un ni l'autre.
 
 ### Supprimer un commentaire
 
@@ -164,4 +166,4 @@ L'`authorEmail` d'un commentaire est masqué exactement comme celui du feedback 
 | [Prisma](/fr/docs/adapters/prisma#fils-de-discussion) | Lancez `npx @siteping/cli sync` pour ajouter le modèle `SitepingComment`, puis `npx prisma db push` (ou `npx prisma migrate dev`) et `npx prisma generate` — Prisma 7 ne génère plus le client depuis ces commandes. Tant que le client n'est pas généré avec lui, les fils se lisent vides et les écritures de commentaires répondent `501` |
 | [Drizzle](/fr/docs/adapters/drizzle) | Rien de plus que l'installation : `sitepingComments` est l'une des trois tables dont le store a besoin. Il lit le fil de chaque feedback, donc les listes échouent sans elle |
 | [Memory](/fr/docs/adapters/memory), [localStorage](/fr/docs/adapters/localstorage) | Rien — les deux gardent les fils. Les données localStorage enregistrées par une version antérieure se lisent avec des fils vides |
-| [Le vôtre](/fr/docs/adapters/writing-an-adapter#fils-de-discussion) | Implémentez les méthodes optionnelles `addComment` et `deleteComment` — `createCollectionStore` fournit les deux avec `comments: true` |
+| [Le vôtre](/fr/docs/adapters/writing-an-adapter#fils-de-discussion) | Implémentez les méthodes optionnelles `addComment` et `deleteComment`, et `addCommentIfAbsent` pour les notifications de réponse — `createCollectionStore` fournit les trois avec `comments: true` |

@@ -1,4 +1,4 @@
-import type { CommentPayload, FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
+import type { CommentPayload, CommentRecord, FeedbackCreateInput, FeedbackRecord, SitepingStore } from "@siteping/core";
 import type { WebhookConfig } from "./webhooks.js";
 
 /** HTTP methods served by `createSitepingHandler`. */
@@ -92,14 +92,28 @@ export type SitepingDeletionTarget =
   | { kind: "project"; projectName: string };
 
 /**
+ * A stored reply, as `onCommentCreated` and the `comment.created` webhook
+ * receive it: the comment record plus the project of its feedback — the one
+ * the request named, checked against the feedback when the store implements
+ * `verifyProjectOwnership`.
+ */
+export interface SitepingCreatedComment extends CommentRecord {
+  projectName: string;
+}
+
+/**
  * Side effects around persistence — issue trackers, chat notifications,
  * search indexes, audit logs. Hooks receive the stored record, `clientId` and
  * `authorEmail` included.
  *
- * `onCreated`, `onUpdated` and `onDeleted` are awaited before the response
- * (so serverless runtimes do not freeze them mid-flight); a throw is logged
- * and never fails the request — the write already happened. `onCreated`
- * runs once per inserted feedback, never for a replayed `clientId`.
+ * `onCreated`, `onUpdated`, `onDeleted` and `onCommentCreated` are awaited
+ * before the response (so serverless runtimes do not freeze them
+ * mid-flight); a throw is logged and never fails the request — the write
+ * already happened. `onCreated` runs once per inserted feedback and
+ * `onCommentCreated` once per inserted reply, never for a replayed
+ * `clientId`; `onCommentCreated` needs a store implementing
+ * `addCommentIfAbsent`, which tells the two apart (the handler refuses to
+ * start without it).
  * `onDeleting` runs before the delete: throw to abort it (the record is kept
  * and the request answers 502), e.g. when a resource tied to the feedback
  * could not be cleaned up and the delete must be retried.
@@ -109,6 +123,7 @@ export interface SitepingLifecycleHooks<Principal> {
   onUpdated?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): void | Promise<void>;
   onDeleting?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): void | Promise<void>;
   onDeleted?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): void | Promise<void>;
+  onCommentCreated?(comment: SitepingCreatedComment, context: SitepingRequestContext<Principal>): void | Promise<void>;
 }
 
 /**
@@ -144,13 +159,18 @@ export interface SitepingHandlerBaseOptions<Principal> {
    */
   maxBodyBytes?: number | undefined;
   /**
-   * Outgoing webhooks fired after a feedback is successfully persisted.
+   * Outgoing webhooks fired after a write succeeds — by default when a
+   * feedback is stored; each config's `events` opts into status changes,
+   * deletions and replies (see `WebhookEvent`).
    *
-   * Pass a single config or an array — every entry receives a POST with a
-   * type-specific payload (Slack, Discord, or generic JSON). Dispatch is
+   * Pass a single config or an array — every entry subscribed to an event
+   * receives a POST with a type-specific payload (Slack, Discord, or generic
+   * JSON) and an `X-Siteping-Event` header naming it. Dispatch is
    * fire-and-forget: the HTTP response is returned to the widget before
    * webhook delivery completes, so a slow receiver never blocks the client.
-   * Provide `onError` on each config to observe failures.
+   * Provide `onError` on each config to observe failures. A `comment.created`
+   * subscription needs a store implementing `addCommentIfAbsent` (the
+   * handler refuses to start without it).
    */
   webhooks?: WebhookConfig | ReadonlyArray<WebhookConfig>;
   /**
@@ -158,7 +178,7 @@ export interface SitepingHandlerBaseOptions<Principal> {
    * or cancel them once the response is sent (serverless functions, edge
    * workers): Next.js `after`, `waitUntil` from `@vercel/functions` or from
    * `cloudflare:workers` — a standalone function, not an unbound method.
-   * Called once per notified feedback with a promise that never rejects; a
+   * Called once per notified event with a promise that never rejects; a
    * throw is logged and the delivery still runs.
    */
   waitUntil?: ((promise: Promise<unknown>) => void) | undefined;
