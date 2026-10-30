@@ -82,6 +82,7 @@ vi.mock(new URL("../../src/markers.js", import.meta.url).pathname, () => ({
       pinHighlight: vi.fn(),
       addFeedback: mockMarkersAddFeedback,
       focusFeedback: mockMarkersFocusFeedback,
+      isLost: vi.fn(() => false),
       destroy: vi.fn(),
       count: 0,
     };

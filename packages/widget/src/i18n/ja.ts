@@ -17,6 +17,7 @@ export const ja: Translations = {
   "panel.retry": "再試行",
   "panel.empty": "フィードバックはまだありません",
   "panel.showMore": "もっと見る",
+  "panel.notOnPage": "このページでは表示されていません",
   "panel.showLess": "折りたたむ",
   "panel.resolve": "解決",
   "panel.reopen": "再オープン",

@@ -19,6 +19,7 @@ export const it: Translations = {
   "panel.retry": "Riprova",
   "panel.empty": "Nessun feedback ancora",
   "panel.showMore": "Mostra di più",
+  "panel.notOnPage": "Non visibile in questa pagina",
   "panel.showLess": "Mostra meno",
   "panel.resolve": "Risolvi",
   "panel.reopen": "Riapri",

@@ -769,6 +769,12 @@ export function buildStyles(colors: ThemeColors): string {
       margin-left: auto;
     }
 
+    .sp-lost {
+      font-size: 11px;
+      color: var(--sp-text-tertiary);
+      margin-top: 4px;
+    }
+
     .sp-card-message {
       font-size: 13px;
       line-height: 1.5;

@@ -132,6 +132,8 @@ On the page, a pin's shape tells the status, not its colour alone:
 
 Hovering or focusing a pin shows the status in its tooltip, and screen readers announce it with the pin and the panel card. The panel's stats bar and its third tab count `resolved` and `wont_fix` together as **Closed**: a declined request is never reported as resolved.
 
+A feedback of the current page whose element is gone or hidden has no pin. Its panel card and its detail view say **Not visible on this page**, and the note goes away as soon as the pin can be placed again (content loaded later, a section expanded). "Go to annotation" then scrolls to where the reviewer was.
+
 ## Filtering the panel
 
 The panel's filters combine, and narrow the list only — the markers on the page keep showing the page's feedback:

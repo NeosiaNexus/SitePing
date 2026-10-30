@@ -371,7 +371,10 @@ export class MarkerManager {
       if (!validKeys.has(key)) this.hiddenRecheckAt.delete(key);
     }
 
-    if (visibilityChanged) this.buildClusters();
+    if (visibilityChanged) {
+      this.buildClusters();
+      this.bus.emit("markers:placed");
+    }
     this.applyClusterPositions();
 
     // Re-render the pinned highlight rectangle so it tracks the layout after
@@ -426,6 +429,7 @@ export class MarkerManager {
       this.liveRegion.textContent = tWithParams(this.t, "marker.count", { count: visible });
     }
     this.emitMarkersChanged();
+    this.bus.emit("markers:placed");
   }
 
   addFeedback(feedback: FeedbackResponse, index: number): void {
@@ -436,6 +440,7 @@ export class MarkerManager {
     this.entries.push(entry);
     this.buildClusters();
     this.emitMarkersChanged();
+    this.bus.emit("markers:placed");
   }
 
   private buildEntry(feedback: FeedbackResponse, index: number): MarkerEntry {
@@ -752,6 +757,17 @@ export class MarkerManager {
    */
   revealPin(feedbackId: string): boolean {
     return this.container.style.display !== "none" && this.focusFeedback(feedbackId);
+  }
+
+  /**
+   * Whether a feedback rendered on this page has no pin on it: every anchor
+   * failed to resolve, or resolved to a hidden element. Independent of the
+   * eye toggle, which hides pins the page still holds. `markers:placed`
+   * announces when the answer may have changed.
+   */
+  isLost(feedbackId: string): boolean {
+    const entries = this.entries.filter((e) => e.feedback.id === feedbackId);
+    return entries.length > 0 && entries.every((e) => e.elements.every((m) => m.style.display === "none"));
   }
 
   highlight(feedbackId: string): void {
