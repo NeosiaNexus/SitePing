@@ -445,7 +445,7 @@ describe("ApiClient", () => {
     expect(warn).toHaveBeenCalledOnce();
     expect(warn.mock.calls[0]?.[0]).toMatch(
       new RegExp(
-        `refused \\(${status}\\)\\..*publicEndpoints includes "GET".*siteping\\.dev/docs/server#the-security-model-honestly`,
+        `refused \\(${status}\\): .*publicEndpoints includes "GET".*pins and panel stay empty.*siteping\\.dev/docs/server#the-security-model-honestly`,
       ),
     );
     // Another widget's client explains it again.

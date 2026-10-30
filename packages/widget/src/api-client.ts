@@ -526,7 +526,7 @@ export class ApiClient implements WidgetClient {
       if (error instanceof SitepingAuthError && !this.listRefusalExplained) {
         this.listRefusalExplained = true;
         console.warn(
-          `[siteping] Listing feedback was refused (${error.status}). With an apiKey, the server lists only to requests carrying it unless publicEndpoints includes "GET": pins and the panel stay empty until then. https://siteping.dev/docs/server#the-security-model-honestly`,
+          `[siteping] Feedback list refused (${error.status}): with an apiKey, GET needs it unless publicEndpoints includes "GET"; pins and panel stay empty. https://siteping.dev/docs/server#the-security-model-honestly`,
         );
       }
       throw error;
