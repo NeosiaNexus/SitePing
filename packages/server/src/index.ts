@@ -5,6 +5,7 @@ export type {
   FeedbackRecord,
   SitepingStore,
 } from "@siteping/core";
+export { SITEPING_PROTOCOL_VERSION } from "@siteping/core";
 export { createSitepingHandler } from "./handler.js";
 export type {
   SitepingAccessControl,
