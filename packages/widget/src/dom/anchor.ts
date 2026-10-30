@@ -1,7 +1,7 @@
 import { finder } from "@medv/finder";
 import { ANCHOR_ELEMENT_ID_MAX, ANCHOR_ELEMENT_TAG_MAX, type AnchorData, type RectData } from "@siteping/core";
 import { generateFingerprint } from "./fingerprint.js";
-import { adjacentText, neighborText } from "./text-context.js";
+import { adjacentText, boundedText, neighborText } from "./text-context.js";
 import { generateXPath } from "./xpath.js";
 
 /** HTML attribute hosts use to mark stable semantic anchors. */
@@ -78,13 +78,19 @@ export function generateAnchor(element: Element): AnchorData {
 
   const xpath = generateXPath(element);
 
-  const rawText = element.textContent?.trim() ?? "";
-  const textSnippet = rawText.slice(0, 120);
+  // Text context is stored with the feedback (and shown in the dashboard and
+  // issue bodies), so masked text stays out of it. Inside a masked subtree —
+  // a rect drawn over the masked element itself — every nearby text is the
+  // host's to hide, the element's and its siblings' alike: none is kept.
+  // Otherwise masked descendants are skipped; reading past the 120 kept chars
+  // leaves room for the leading whitespace that trimming discards.
+  const masked = closestCrossShadow(element, '[data-siteping-ignore="true"]') !== null;
+  const textSnippet = masked ? "" : boundedText(element, 256, true).trim().slice(0, 120);
 
-  const textPrefix = adjacentText(element, "before");
-  const textSuffix = adjacentText(element, "after");
+  const textPrefix = masked ? "" : adjacentText(element, "before");
+  const textSuffix = masked ? "" : adjacentText(element, "after");
   const fingerprint = generateFingerprint(element);
-  const neighbor = neighborText(element);
+  const neighbor = masked ? "" : neighborText(element);
 
   const semanticAncestor = closestCrossShadow(element, `[${ANCHOR_KEY_ATTR}]`);
   const anchorKey = semanticAncestor?.getAttribute(ANCHOR_KEY_ATTR) ?? null;
