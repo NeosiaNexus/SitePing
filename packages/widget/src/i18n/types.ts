@@ -96,6 +96,8 @@ export interface Translations {
   // Accessibility — screen reader announcements
   "feedback.sent.confirmation": string;
   "feedback.error.message": string;
+  /** A failed send saved on the device for the next page load. */
+  "feedback.queued": string;
   "feedback.deleted.confirmation": string;
 
   // Badge

@@ -1350,6 +1350,25 @@ describe("Annotator", () => {
       expect(cancelBtn.style.borderColor).not.toBe(restingBorder);
     });
 
+    it("settles a submission whose failed send was queued as accepted, so the popup closes (#308)", async () => {
+      popupMocks.keepShowPending = true;
+      const completeListener = vi.fn();
+      bus.on("annotation:complete", completeListener);
+
+      bus.emit("annotation:start");
+      const overlay = findOverlay()!;
+      overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
+      overlay.dispatchEvent(new MouseEvent("mouseup", { clientX: 200, clientY: 150, bubbles: true }));
+      await vi.waitFor(() => {
+        expect(completeListener).toHaveBeenCalledOnce();
+      });
+
+      // The launcher's order: saved for the next page load, then the error for the host.
+      bus.emit("feedback:queued");
+      bus.emit("feedback:error", new Error("offline"));
+      await expect(popupMocks.lastSubmitPromise).resolves.toBeUndefined();
+    });
+
     it("ignores keyboard Enter annotation while a submission is in flight", async () => {
       popupMocks.keepShowPending = true;
 

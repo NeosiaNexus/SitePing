@@ -42,7 +42,7 @@ Sans `apiKey`, les lectures sont publiques, avec les e-mails des auteurs masqué
 
 ## Que se passe-t-il si le réseau lâche en plein envoi ?
 
-Le widget réessaie (3 tentatives avec backoff), puis met la charge utile en file dans le localStorage (jusqu'à 20 entrées) et la vide au chargement suivant. Les commentaires ne se perdent pas à cause d'une connexion capricieuse.
+Le widget réessaie 3 fois après la première tentative, avec backoff, puis met la charge utile en file dans le localStorage (jusqu'à 20 entrées), indique au visiteur qu'elle est enregistrée sur cet appareil, et l'envoie au chargement suivant. Les commentaires ne se perdent pas à cause d'une connexion capricieuse.
 
 ## Un élément annoté a été supprimé. Où est passée l'annotation ?
 

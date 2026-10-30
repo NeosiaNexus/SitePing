@@ -8,7 +8,7 @@ import {
   SitepingValidationError,
 } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiClient, flushRetryQueue } from "../../src/api-client.js";
+import { ApiClient, flushRetryQueue, queueOutcome } from "../../src/api-client.js";
 import { ownFeedback } from "../../src/own-feedback.js";
 
 /** Burn through resilientFetch's three backoffs (1s + 2s + 4s, ±500ms jitter) under fake timers. */
@@ -372,6 +372,30 @@ describe("ApiClient", () => {
     expect(warn).toHaveBeenCalledExactlyOnceWith(
       "[siteping] feedback could not be queued for retry — localStorage is full or unavailable",
     );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("reports on the thrown error whether the failed send was saved (#308)", async () => {
+    stubLocalStorage();
+    vi.useFakeTimers();
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+    const saved = client.sendFeedback(basePayload).catch((e: unknown) => e);
+    await drainRetryBackoff();
+    expect(queueOutcome(await saved)).toBe(true);
+    vi.useRealTimers();
+
+    stubLocalStorage(10); // no queue write can fit
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.useFakeTimers();
+    const unsaved = client.sendFeedback({ ...basePayload, clientId: "cid-unsaved" }).catch((e: unknown) => e);
+    await drainRetryBackoff();
+    expect(queueOutcome(await unsaved)).toBe(false);
+    vi.useRealTimers();
+
+    vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+    const final = await client.sendFeedback(basePayload).catch((e: unknown) => e);
+    expect(queueOutcome(final)).toBeUndefined();
 
     vi.unstubAllGlobals();
   });
