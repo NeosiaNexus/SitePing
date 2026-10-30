@@ -21,7 +21,7 @@ export interface GitHubTrackerOptions {
   token: string;
   /** GitHub Enterprise Server API root, e.g. `https://github.acme.com/api/v3`. */
   apiBaseUrl?: string | undefined;
-  fetch?: typeof fetch;
+  fetch?: typeof fetch | undefined;
   timeoutMs?: number | undefined;
   /**
    * Most pages of 100 issues listed, newest first: on a project-wide delete,
