@@ -330,14 +330,14 @@ export class PrismaStore implements SitepingStore {
     }
   }
 
-  async createFeedback(submitted: FeedbackCreateInput): Promise<FeedbackRecord> {
-    const data = toStorableValue(submitted);
-    const screenshotUrl = await this.persistScreenshot(data.screenshotDataUrl, data.clientId);
+  async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
+    const storable = toStorableValue(data);
+    const screenshotUrl = await this.persistScreenshot(storable.screenshotDataUrl, storable.clientId);
 
     try {
-      return await this.insertFeedback(data, screenshotUrl);
+      return await this.insertFeedback(storable, screenshotUrl);
     } catch (error) {
-      if (isStoreDuplicate(error)) await this.discardUnreferencedUpload(screenshotUrl, data.clientId);
+      if (isStoreDuplicate(error)) await this.discardUnreferencedUpload(screenshotUrl, storable.clientId);
       throw toStoreError(error);
     }
   }
@@ -513,12 +513,12 @@ export class PrismaStore implements SitepingStore {
     })) as FeedbackRecord | null;
   }
 
-  async getFeedbacks(submittedQuery: FeedbackQuery): Promise<FeedbackPage> {
-    const query = toStorableValue(submittedQuery);
-    const { projectName, type, status, statuses, search, url, urlPattern } = query;
+  async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
+    const storable = toStorableValue(query);
+    const { projectName, type, status, statuses, search, url, urlPattern } = storable;
     // Same clamp as the in-memory pipeline: the HTTP schema already bounds
     // page/limit, but direct callers reach the store without it.
-    const { limit, skip } = clampPagination(query);
+    const { limit, skip } = clampPagination(storable);
 
     const where: FeedbackWhereInput = { projectName };
     if (type) where.type = type;
@@ -644,13 +644,13 @@ export class PrismaStore implements SitepingStore {
     await this.discardScreenshots([deleted?.screenshotUrl]);
   }
 
-  async deleteAllFeedbacks(submittedProjectName: string): Promise<void> {
-    const projectName = toStorableText(submittedProjectName);
+  async deleteAllFeedbacks(projectName: string): Promise<void> {
+    const storableName = toStorableText(projectName);
     // Rows first, storage second: a failed storage cleanup leaves orphaned
     // objects (acceptable), the reverse would leave rows pointing at deleted
     // screenshots.
-    const screenshotUrls = await this.storedScreenshotUrls(projectName);
-    await this.prisma.sitepingFeedback.deleteMany({ where: { projectName } });
+    const screenshotUrls = await this.storedScreenshotUrls(storableName);
+    await this.prisma.sitepingFeedback.deleteMany({ where: { projectName: storableName } });
     await this.discardScreenshots(screenshotUrls);
   }
 
