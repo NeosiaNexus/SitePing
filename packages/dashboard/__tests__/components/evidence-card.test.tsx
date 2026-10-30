@@ -116,6 +116,28 @@ describe("EvidenceCard — screenshot without region (legacy)", () => {
   });
 });
 
+describe("EvidenceCard — unsafe screenshot URL (#403)", () => {
+  it.each([
+    "javascript:alert(1)",
+    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><image href='https://evil.test/p'/></svg>",
+    "http://tracker.example.com/pixel.png",
+  ])("never renders %s as an image, and shows the anchor view instead", (screenshotUrl) => {
+    const record = withScreenshot({ screenshotUrl });
+    const { container } = renderWithUi(<EvidenceCard record={record} />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("button", { name: record.annotations[0]!.cssSelector })).not.toBeNull();
+  });
+
+  it("renders a loopback http screenshot (a local MinIO), without a referrer", () => {
+    const { container } = renderWithUi(
+      <EvidenceCard record={withScreenshot({ screenshotUrl: "http://localhost:9000/shots/a.png" })} />,
+    );
+    const img = container.querySelector<HTMLImageElement>(".spd-evidence-img");
+    expect(img?.getAttribute("src")).toBe("http://localhost:9000/shots/a.png");
+    expect(img?.getAttribute("referrerpolicy")).toBe("no-referrer");
+  });
+});
+
 describe("EvidenceCard — no screenshot", () => {
   it("falls back to the anchor view with a copyable selector and snippet", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);

@@ -15,10 +15,10 @@ import {
   SitepingAuthError,
   SitepingError,
   type SitepingHeadersOption,
+  type SitepingIdentity,
   SitepingNetworkError,
   withSearchParams,
 } from "@siteping/core";
-import type { Identity } from "./identity.js";
 import { ownFeedback } from "./own-feedback.js";
 
 /**
@@ -61,6 +61,13 @@ const TIMEOUT_MS = 10_000;
  * queued for the next page load, a read or a reply reports its error.
  */
 const MAX_RETRY_AFTER_MS = 10_000;
+/**
+ * A project delete can legitimately run long — an issue tracker closing each
+ * issue, a screenshot store emptying its objects (#413) — so it gets its own
+ * window, and is never sent again after it: the server may still be running
+ * the first request.
+ */
+const DELETE_ALL_TIMEOUT_MS = 60_000;
 const RETRY_QUEUE_KEY = "siteping_retry_queue";
 const MAX_QUEUE_SIZE = 20;
 
@@ -119,6 +126,11 @@ export async function buildRequestHeaders(auth: ApiClientAuth, json: boolean): P
  * typed error, just without the server's detail. Reads leave it unbounded:
  * a page of inline screenshots can legitimately take longer on a slow link.
  *
+ * `timeoutMs` widens each attempt's window, and `resendOnTimeout: false`
+ * stops at an attempt that timed out instead of sending it again: a request
+ * the server may still be running must not start twice. Network failures
+ * before an answer and transient statuses keep their retries.
+ *
  * Failures come out typed: a non-OK status as `errorFromResponse` maps it,
  * anything else (fetch, abort, body read or parse) as a `SitepingNetworkError`.
  */
@@ -127,15 +139,17 @@ async function resilientFetch<T>(
   init: RequestInit,
   label: string,
   read: (response: Response) => Promise<T>,
-  { boundBody = false } = {},
+  { boundBody = false, timeoutMs = TIMEOUT_MS, resendOnTimeout = true } = {},
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     const controller = new AbortController();
-    let timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    let timeout = setTimeout(() => controller.abort(), timeoutMs);
     let delay: number;
     try {
       const response = await fetch(url, { ...init, signal: controller.signal }).catch((error: unknown) => {
-        if (attempt === MAX_RETRIES) throw networkErrorFromException(error, label);
+        if (attempt === MAX_RETRIES || (!resendOnTimeout && controller.signal.aborted)) {
+          throw networkErrorFromException(error, label);
+        }
         return null;
       });
       delay = retryDelay(response, attempt);
@@ -357,7 +371,7 @@ function normalizeEmail(value: string): string {
  */
 export async function flushRetryQueue(
   endpoint: string,
-  currentIdentity?: Identity | null,
+  currentIdentity?: SitepingIdentity | null,
   auth: ApiClientAuth = {},
 ): Promise<void> {
   await withRetryLock(async () => {
@@ -607,6 +621,7 @@ export class ApiClient implements WidgetClient {
       },
       label,
       ignoreBody,
+      { timeoutMs: DELETE_ALL_TIMEOUT_MS, resendOnTimeout: false },
     );
   }
 }

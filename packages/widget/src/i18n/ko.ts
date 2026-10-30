@@ -102,6 +102,7 @@ export const ko: Translations = {
 
   // Bulk actions toolbar
   "bulk.selectAll": "모두 선택",
+  "bulk.selectFeedback": "{label} 선택",
   "bulk.selected": "{count}건 선택됨",
   "bulk.resolve": "해결",
   "bulk.delete": "삭제",

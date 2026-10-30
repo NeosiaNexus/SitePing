@@ -1,5 +1,6 @@
 import type {
   CommentCreateInput,
+  CommentPermissions,
   CommentRecord,
   FeedbackPermissions,
   FeedbackQuery,
@@ -7,11 +8,12 @@ import type {
   FeedbackStatus,
   FeedbackType,
   SitepingCapabilities,
+  SitepingHeadersOption,
   SitepingLocale,
   SitepingStore,
+  SitepingTheme,
 } from "@siteping/core";
 import type { ReactNode } from "react";
-import type { InboxTheme } from "./theme.js";
 
 // ---------------------------------------------------------------------------
 // Data source
@@ -22,7 +24,17 @@ import type { InboxTheme } from "./theme.js";
  * requester may do with it when the source says — the endpoint source
  * passes on the server's `permissions`. Without them, nothing is refused.
  */
-export type InboxRecord = FeedbackRecord & { permissions?: FeedbackPermissions | undefined };
+export type InboxRecord = Omit<FeedbackRecord, "comments"> & {
+  comments?: InboxComment[] | undefined;
+  permissions?: FeedbackPermissions | undefined;
+};
+
+/**
+ * A reply as the inbox holds it: the stored comment, plus what the requester
+ * may do with it when the source says — the endpoint source passes on the
+ * server's `permissions`. Without them, the record's decide.
+ */
+export type InboxComment = CommentRecord & { permissions?: CommentPermissions | undefined };
 
 /** What `InboxSource.list` resolves: a page of records and what the source supports. */
 export interface InboxPage {
@@ -63,7 +75,7 @@ export interface InboxSource {
    * Optional — post a reply on a feedback's thread and resolve the stored
    * comment. A source without it has read-only threads.
    */
-  addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord>;
+  addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<InboxComment>;
   /** Optional — delete a reply from a feedback's thread. `projectName` comes second, as in every method here. */
   removeComment?(feedbackId: string, projectName: string, commentId: string): Promise<void>;
 }
@@ -79,8 +91,13 @@ export interface EndpointSourceOptions {
    * request — e.g. a fresh session token. An explicit `Authorization` entry
    * here takes precedence over `apiKey`.
    */
-  headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>) | undefined;
-  /** Test seam — defaults to `globalThis.fetch`. */
+  headers?: SitepingHeadersOption | undefined;
+  /**
+   * The `fetch` the source sends every request with — `globalThis.fetch` by
+   * default. Wrap it to log or trace requests, to set a request option such
+   * as `credentials: "include"` for cookie auth across origins, or to route
+   * requests to a test double.
+   */
   fetchFn?: typeof fetch | undefined;
 }
 
@@ -107,8 +124,9 @@ export interface InboxSharedOptions {
   /** Called on every load or mutation failure, with a typed `SitepingError` where available. */
   onError?: ((error: Error) => void) | undefined;
   /**
-   * Who replies from this inbox — typically the signed-in team member. Without
-   * it, threads are read-only. Replies ask for the `team` role, which the
+   * Who replies from this inbox — typically the signed-in team member, not the
+   * widget's `identity`, which names the reviewer. Without it, threads are
+   * read-only. Replies ask for the `team` role, which the
    * server grants only to a caller its access policy vouches for (the
    * `apiKey`, or `canCommentAsTeam`); any other reply is stored as `client`.
    */
@@ -188,10 +206,12 @@ export interface InboxState {
   setProject(p: string): void;
   /** Active status tab. */
   status: InboxStatusFilter;
-  setStatus(s: InboxStatusFilter): void;
+  /** Switch the status tab — a filter, unlike `InboxSource.setStatus`, which changes a feedback's status. */
+  setStatusFilter(s: InboxStatusFilter): void;
   /** Active type filter. */
   type: InboxTypeFilter;
-  setType(t: InboxTypeFilter): void;
+  /** Switch the type filter. */
+  setTypeFilter(t: InboxTypeFilter): void;
   /** Raw search input — updates synchronously; the refetch is debounced 250ms. */
   search: string;
   setSearch(s: string): void;
@@ -269,6 +289,13 @@ export interface InboxState {
    */
   permissionsOf(record: InboxRecord): FeedbackPermissions;
   /**
+   * What the user may do with one reply of a record here: delete it when
+   * `canDeleteComment` allows and the reply's `permissions` grant it — or,
+   * without them, the record's `canDeleteComment`. A server that lets
+   * authors delete only their own replies grants it reply by reply.
+   */
+  commentPermissionsOf(record: InboxRecord, comment: InboxComment): CommentPermissions;
+  /**
    * Post a reply as `author`. Not optimistic: the thread shows it once the
    * source has stored it. Rejects after `onError`. Pass the `clientId` of a
    * failed attempt to resend it — the server answers with the stored reply
@@ -279,8 +306,9 @@ export interface InboxState {
   addComment(id: string, body: string, clientId?: string): Promise<void>;
   /**
    * Delete a reply once the source confirms it. Rejects after `onError`.
-   * Does nothing for a record the inbox does not hold, or whose
-   * `permissionsOf` refuses it.
+   * Does nothing for a record the inbox does not hold, or when
+   * `commentPermissionsOf` refuses the reply — `permissionsOf`, for a reply
+   * the record does not hold.
    */
   deleteComment(id: string, commentId: string): Promise<void>;
   /** Last status change eligible for undo, or `null`. */
@@ -298,7 +326,7 @@ export interface SitepingInboxPresentationProps {
   /** Accent color (any `#RGB`/`#RRGGBB`/`#RRGGBBAA` hex) — defaults to `"#0066ff"`. */
   accentColor?: string | undefined;
   /** Color theme — defaults to `"auto"`, which tracks the system preference live. */
-  theme?: InboxTheme | undefined;
+  theme?: SitepingTheme | undefined;
   /** Row density — defaults to `"comfortable"`. */
   density?: "comfortable" | "compact" | undefined;
   /** UI locale — defaults to `"en"`; non-English built-ins are lazy-loaded. */

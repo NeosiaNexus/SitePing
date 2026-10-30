@@ -68,18 +68,30 @@ const relativePath = (path) => posix(path).slice(posix(root).length);
 
 // --- Entry points ------------------------------------------------------------
 
+/**
+ * A subpath that exports a data file as is — `./package.json`, the server's
+ * `./openapi.json` — has no code surface: its own check owns its content.
+ */
+const isDataExport = (target) => typeof target === "string" && target.endsWith(".json");
+
 /** One subpath of a package's `exports` map, with its built files. */
 function entriesOf(pkg) {
   const dir = join(root, "packages", pkg);
   const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
   return Object.entries(manifest.exports)
-    .filter(([subpath]) => subpath !== "./package.json")
-    .map(([subpath, conditions]) => ({
-      name: subpath === "." ? manifest.name : `${manifest.name}/${subpath.slice(2)}`,
-      types: join(dir, conditions.import.types),
-      esm: join(dir, conditions.import.default),
-      cjs: join(dir, conditions.require.default),
-    }));
+    .filter(([, conditions]) => !isDataExport(conditions))
+    .map(([subpath, conditions]) => {
+      // A code subpath of another shape must not slip past the gate unread.
+      if (!conditions?.import?.types || !conditions.import.default || !conditions.require?.default) {
+        throw new Error(`api: ${manifest.name} exports "${subpath}" without import/require conditions to read`);
+      }
+      return {
+        name: subpath === "." ? manifest.name : `${manifest.name}/${subpath.slice(2)}`,
+        types: join(dir, conditions.import.types),
+        esm: join(dir, conditions.import.default),
+        cjs: join(dir, conditions.require.default),
+      };
+    });
 }
 
 const packages = PACKAGES.map((pkg) => ({

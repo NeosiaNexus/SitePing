@@ -51,7 +51,14 @@
     }
   },
   "files": {
-    "includes": ["**", "!**/dist/", "!**/node_modules/", "!**/bun.lock", "!**/e2e/server.mjs"]
+    "includes": [
+      "**",
+      "!**/dist/",
+      "!**/node_modules/",
+      "!**/bun.lock",
+      "!**/e2e/server.mjs",
+      "!packages/server/openapi.json"
+    ]
   },
   "overrides": [
     {

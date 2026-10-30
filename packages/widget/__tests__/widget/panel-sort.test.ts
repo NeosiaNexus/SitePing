@@ -4,7 +4,6 @@ import type { FeedbackResponse } from "@siteping/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
 import { createPageGroupHeader, groupFeedbacksByPage, PanelSortControls, sortFeedbacks } from "../../src/panel-sort.js";
-import { buildThemeColors } from "../../src/styles/theme.js";
 import { trackClickListeners } from "../helpers.js";
 
 function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackResponse {
@@ -127,7 +126,7 @@ describe("PanelSortControls", () => {
 
   it("renders English controls, chooses a sort mode, and notifies once", () => {
     const onChange = vi.fn();
-    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("en"));
+    const controls = new PanelSortControls(onChange, createT("en"));
     document.body.appendChild(controls.element);
 
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
@@ -146,7 +145,7 @@ describe("PanelSortControls", () => {
 
   it("toggles group-by-page state and renders French labels", () => {
     const onChange = vi.fn();
-    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("fr"));
+    const controls = new PanelSortControls(onChange, createT("fr"));
     document.body.appendChild(controls.element);
 
     const groupToggle = controls.element.querySelector<HTMLButtonElement>(".sp-group-toggle")!;
@@ -161,7 +160,7 @@ describe("PanelSortControls", () => {
   });
 
   it("destroy without an open menu is a no-op (closeMenu handles null menuEl)", () => {
-    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
+    const controls = new PanelSortControls(vi.fn(), createT("en"));
     document.body.appendChild(controls.element);
 
     // No menu has been opened — destroy should still set aria-expanded=false safely
@@ -176,7 +175,7 @@ describe("PanelSortControls", () => {
       cb(0);
       return 0;
     });
-    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
+    const controls = new PanelSortControls(vi.fn(), createT("en"));
     document.body.appendChild(controls.element);
 
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
@@ -194,7 +193,7 @@ describe("PanelSortControls", () => {
       return 0;
     });
     const onChange = vi.fn();
-    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("en"));
+    const controls = new PanelSortControls(onChange, createT("en"));
     document.body.appendChild(controls.element);
 
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
@@ -214,7 +213,7 @@ describe("PanelSortControls", () => {
       return 0;
     });
     const onChange = vi.fn();
-    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("en"));
+    const controls = new PanelSortControls(onChange, createT("en"));
     document.body.appendChild(controls.element);
 
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
@@ -236,7 +235,7 @@ describe("PanelSortControls", () => {
       cb(0);
       return 0;
     });
-    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
+    const controls = new PanelSortControls(vi.fn(), createT("en"));
     document.body.appendChild(controls.element);
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
 
@@ -263,7 +262,7 @@ describe("PanelSortControls", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = host.attachShadow({ mode: "closed" });
-    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
+    const controls = new PanelSortControls(vi.fn(), createT("en"));
     const elsewhere = document.createElement("button");
     root.append(controls.element, elsewhere);
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
@@ -287,7 +286,7 @@ describe("PanelSortControls", () => {
     document.body.appendChild(host);
     const root = host.attachShadow({ mode: "closed" });
     const onChange = vi.fn();
-    const controls = new PanelSortControls(buildThemeColors(), onChange, createT("en"));
+    const controls = new PanelSortControls(onChange, createT("en"));
     root.append(controls.element);
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
     const groupToggle = controls.element.querySelector<HTMLButtonElement>(".sp-group-toggle")!;
@@ -312,7 +311,7 @@ describe("PanelSortControls", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = host.attachShadow({ mode: "closed" });
-    const controls = new PanelSortControls(buildThemeColors(), vi.fn(), createT("en"));
+    const controls = new PanelSortControls(vi.fn(), createT("en"));
     root.append(controls.element);
     const liveClickListeners = trackClickListeners(document, root);
     try {
@@ -334,7 +333,7 @@ describe("createPageGroupHeader", () => {
   });
 
   it("renders a short path verbatim (no truncation, no title attribute)", () => {
-    const header = createPageGroupHeader("/short", 2, buildThemeColors());
+    const header = createPageGroupHeader("/short", 2);
     document.body.appendChild(header);
 
     const path = header.querySelector<HTMLElement>(".sp-group-header-path")!;
@@ -343,7 +342,7 @@ describe("createPageGroupHeader", () => {
   });
 
   it("toggling a header without a sp-group-content sibling still flips its own state", () => {
-    const header = createPageGroupHeader("/page", 1, buildThemeColors());
+    const header = createPageGroupHeader("/page", 1);
     // Sibling is something other than sp-group-content
     const sibling = document.createElement("div");
     sibling.className = "sp-other";
@@ -359,7 +358,7 @@ describe("createPageGroupHeader", () => {
   });
 
   it("ignores keys that are not Enter or Space on the header", () => {
-    const header = createPageGroupHeader("/page", 1, buildThemeColors());
+    const header = createPageGroupHeader("/page", 1);
     const content = document.createElement("div");
     content.className = "sp-group-content";
     document.body.append(header, content);
@@ -371,7 +370,7 @@ describe("createPageGroupHeader", () => {
   });
 
   it("supports Space as a toggle key", () => {
-    const header = createPageGroupHeader("/page", 1, buildThemeColors());
+    const header = createPageGroupHeader("/page", 1);
     const content = document.createElement("div");
     content.className = "sp-group-content";
     document.body.append(header, content);
@@ -382,11 +381,7 @@ describe("createPageGroupHeader", () => {
   });
 
   it("renders a collapsible accessible header with truncated title", () => {
-    const header = createPageGroupHeader(
-      "/very/long/path/that/should/be/truncated/inside/the/header/component",
-      7,
-      buildThemeColors(),
-    );
+    const header = createPageGroupHeader("/very/long/path/that/should/be/truncated/inside/the/header/component", 7);
     const content = document.createElement("div");
     content.className = "sp-group-content";
     document.body.append(header, content);

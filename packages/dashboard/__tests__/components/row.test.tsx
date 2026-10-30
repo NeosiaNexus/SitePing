@@ -99,6 +99,9 @@ describe("Row", () => {
     expect(withShot.row.querySelector(".spd-row-camera")).not.toBeNull();
     const without = renderRow({ screenshotUrl: null });
     expect(without.row.querySelector(".spd-row-camera")).toBeNull();
+    // The drawer won't render an unsafe URL (#403), so the row doesn't promise one.
+    const unsafe = renderRow({ screenshotUrl: "javascript:alert(1)" });
+    expect(unsafe.row.querySelector(".spd-row-camera")).toBeNull();
   });
 
   it("renders the timestamp with an absolute title and machine-readable dateTime", () => {

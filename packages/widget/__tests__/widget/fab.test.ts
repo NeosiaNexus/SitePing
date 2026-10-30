@@ -215,6 +215,16 @@ describe("Fab", () => {
       }
     });
 
+    it("keeps the closed menu inert, so Tab from the FAB skips its hidden items (#394)", () => {
+      const btn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
+      const menu = shadow.querySelector<HTMLElement>(".sp-radial")!;
+      expect(menu.hasAttribute("inert")).toBe(true);
+      btn.click(); // open
+      expect(menu.hasAttribute("inert")).toBe(false);
+      btn.click(); // close
+      expect(menu.hasAttribute("inert")).toBe(true);
+    });
+
     it("closes radial menu on second FAB click — aria-expanded becomes false", () => {
       const btn = shadow.querySelector<HTMLButtonElement>(".sp-fab")!;
       btn.click(); // open
