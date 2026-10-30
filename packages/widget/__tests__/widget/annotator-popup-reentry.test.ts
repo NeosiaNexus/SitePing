@@ -304,7 +304,7 @@ describe("draw flow — popup re-entry guards (#196, real Popup)", () => {
       diagnostics: null,
     };
     const client = { getFeedbacks: vi.fn().mockResolvedValue({ feedbacks: [feedback], total: 1 }) };
-    const markers = { render: vi.fn(), highlight: vi.fn() };
+    const markers = { render: vi.fn(), highlight: vi.fn(), isLost: vi.fn(() => false) };
     const onAction = vi.fn(() => Promise.reject(new Error("host down")));
     const panel = new Panel(shadow, buildThemeColors(), bus, client as never, "p", markers as never, t, "en", {
       getScope: () => ({ url: "/", urlPattern: null }),

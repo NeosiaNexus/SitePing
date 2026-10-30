@@ -16,6 +16,8 @@ export interface Translations {
   "panel.retry": string;
   "panel.empty": string;
   "panel.showMore": string;
+  /** A feedback of this page whose pin can't be placed (its element is gone or hidden). */
+  "panel.notOnPage": string;
   "panel.showLess": string;
   "panel.resolve": string;
   "panel.reopen": string;
@@ -101,6 +103,8 @@ export interface Translations {
 
   // Bulk actions toolbar
   "bulk.selectAll": string;
+  /** A card's selection checkbox; `{label}` is the card's accessible name. */
+  "bulk.selectFeedback": string;
   "bulk.selected": string;
   "bulk.resolve": string;
   "bulk.delete": string;

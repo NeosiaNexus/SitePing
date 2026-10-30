@@ -1,13 +1,16 @@
 import { MemoryStore } from "@siteping/adapter-memory";
-import { createCollectionStore, type FeedbackRecord } from "@siteping/core";
+import { createCollectionStore, type FeedbackRecord, StoreNotFoundError } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSitepingHandler } from "../src/index.js";
 import {
+  buildDeliveryPayload,
   buildWebhookPayload,
   dispatchWebhook,
   dispatchWebhooks,
   type GenericWebhookPayload,
+  WEBHOOK_EVENTS,
   type WebhookConfig,
+  type WebhookEvent,
 } from "../src/webhooks.js";
 import { validPayloadNoAnnotations } from "./fixtures.js";
 
@@ -372,6 +375,7 @@ describe("dispatchWebhook", () => {
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
     expect(init.headers).toEqual({
       "Content-Type": "application/json",
+      "X-Siteping-Event": "feedback.created",
       "X-Signature": "abc",
       Authorization: "Bearer xyz",
     });
@@ -381,7 +385,7 @@ describe("dispatchWebhook", () => {
     await dispatchWebhook({ url: "https://hooks.example.com", headers: { "content-type": "text/plain" } }, FEEDBACK);
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
     // Keeping both keys would make fetch send "application/json, text/plain".
-    expect(init.headers).toEqual({ "content-type": "text/plain" });
+    expect(init.headers).toEqual({ "X-Siteping-Event": "feedback.created", "content-type": "text/plain" });
   });
 
   it("invokes onError on a 500 response and does not throw", async () => {
@@ -512,7 +516,10 @@ describe("dispatchWebhook", () => {
       await dispatchWebhook({ url: "https://hooks.example.com", timeoutMs, onError }, FEEDBACK);
 
       expect(fetchSpy).not.toHaveBeenCalled();
-      expect(onError).toHaveBeenCalledWith(expect.any(RangeError), FEEDBACK.id);
+      expect(onError).toHaveBeenCalledWith(expect.any(RangeError), FEEDBACK.id, {
+        event: "feedback.created",
+        projectName: FEEDBACK.projectName,
+      });
       expect(String(onError.mock.calls[0]?.[0])).toContain(`got ${timeoutMs}`);
     },
   );
@@ -831,11 +838,297 @@ describe("createSitepingHandler — waitUntil", () => {
     const { id } = (await response.json()) as FeedbackRecord;
     expect(logger.error).toHaveBeenCalledWith("[siteping] waitUntil failed", {
       error: failure,
+      event: "feedback.created",
       feedbackId: id,
       projectName: validPayloadNoAnnotations.projectName,
       method: "POST",
       path: "/api/siteping",
     });
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Events — opt-in per webhook, named by X-Siteping-Event (#310, #381)
+// ---------------------------------------------------------------------------
+
+describe("webhook events — payloads", () => {
+  const COMMENT = {
+    id: "cm-1",
+    feedbackId: FEEDBACK.id,
+    projectName: FEEDBACK.projectName,
+    body: "Still broken <!channel> @everyone [click](https://evil.example)",
+    authorName: "Bob",
+    authorEmail: "bob@example.com",
+    authorRole: "client" as const,
+    clientId: "comment-client-1",
+    createdAt: new Date("2026-05-15T09:00:00Z"),
+  };
+  const RESOLVED: FeedbackRecord = {
+    ...FEEDBACK,
+    status: "resolved",
+    resolvedAt: new Date("2026-05-15T10:00:00Z"),
+    updatedAt: new Date("2026-05-15T10:00:00Z"),
+  };
+
+  it("gives a status change the created body, as stored after the write", () => {
+    const body = buildDeliveryPayload("generic", { event: "feedback.status_changed", feedback: RESOLVED });
+    expect(body).toEqual(buildWebhookPayload("generic", RESOLVED));
+    expect(body).not.toHaveProperty("clientId");
+    expect(body).toMatchObject({ status: "resolved" });
+  });
+
+  it("names the new status in the Slack and Discord messages of a status change", () => {
+    const slack = buildDeliveryPayload("slack", { event: "feedback.status_changed", feedback: RESOLVED });
+    expect(slack).toMatchObject({ text: expect.stringContaining("Feedback resolved: bug from Alice") });
+    const wontFix = { ...RESOLVED, status: "wont_fix" as const };
+    const discord = buildDeliveryPayload("discord", { event: "feedback.status_changed", feedback: wontFix });
+    expect(discord).toMatchObject({
+      content: "Feedback **marked won't fix**: bug from **Alice**",
+      allowed_mentions: { parse: [] },
+      embeds: [{ fields: expect.arrayContaining([{ name: "Status", value: "wont_fix", inline: true }]) }],
+    });
+  });
+
+  it("sends the deletion target as the generic body of a deletion", () => {
+    const single = { kind: "single", id: FEEDBACK.id, projectName: FEEDBACK.projectName } as const;
+    const project = { kind: "project", projectName: FEEDBACK.projectName } as const;
+    expect(buildDeliveryPayload("generic", { event: "feedback.deleted", target: single })).toEqual(single);
+    expect(buildDeliveryPayload("generic", { event: "feedback.deleted", target: project })).toEqual(project);
+    expect(buildDeliveryPayload("slack", { event: "feedback.deleted", target: project })).toMatchObject({
+      text: "All feedback deleted: Every feedback of test-project was deleted.",
+    });
+  });
+
+  it("sends the reply minus its clientId, with its project, as the generic body of a reply", () => {
+    const body = buildDeliveryPayload("generic", { event: "comment.created", comment: COMMENT });
+    const { clientId: _clientId, ...expected } = COMMENT;
+    expect(body).toEqual(expected);
+  });
+
+  it("escapes a reply's text in Slack and Discord like a feedback's", () => {
+    const slack = JSON.stringify(buildDeliveryPayload("slack", { event: "comment.created", comment: COMMENT }));
+    expect(slack).toContain("&lt;!channel&gt;");
+    expect(slack).not.toContain("<!channel>");
+    const discord = buildDeliveryPayload("discord", { event: "comment.created", comment: COMMENT });
+    expect(discord).toMatchObject({ content: "New **client** reply from **Bob**", allowed_mentions: { parse: [] } });
+    expect((discord as { embeds: { description: string }[] }).embeds[0]?.description).toContain(
+      String.raw`\[click\]\(https://evil.example)`,
+    );
+  });
+
+  it("drops the parentheses of a dashboard reply without an email", () => {
+    const team = { ...COMMENT, authorRole: "team" as const, authorEmail: "" };
+    const slack = buildDeliveryPayload("slack", { event: "comment.created", comment: team });
+    expect(JSON.stringify(slack)).toContain('*From:* Bob"');
+    expect(slack).toMatchObject({ text: expect.stringContaining("New team reply from Bob") });
+  });
+});
+
+describe("webhook events — routing", () => {
+  const PROJECT = validPayloadNoAnnotations.projectName;
+  const ENDPOINT = "http://localhost/api/siteping";
+  const API_KEY = "routing-key";
+  // Status changes and deletes need the key; sending it everywhere keeps the cases about routing.
+  const send = (method: string, body: unknown) =>
+    new Request(ENDPOINT, {
+      method,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}` },
+      body: JSON.stringify(body),
+    });
+  let commentIds = 0;
+  const commentBody = (feedbackId: string, overrides: Record<string, unknown> = {}) => ({
+    projectName: PROJECT,
+    feedbackId,
+    body: "Is it 16 or 24 px?",
+    authorName: "Bob",
+    authorEmail: "bob@example.com",
+    clientId: `routed-comment-${++commentIds}`,
+    ...overrides,
+  });
+
+  /** Every delivery so far: URL, event header, parsed body. */
+  const deliveries = () =>
+    fetchSpy.mock.calls.map(([url, init]) => {
+      const { headers, body } = init as RequestInit;
+      return {
+        url,
+        event: (headers as Record<string, string>)["X-Siteping-Event"],
+        body: JSON.parse(body as string) as Record<string, unknown>,
+      };
+    });
+
+  async function setup(webhooks: WebhookConfig[], store = new MemoryStore()) {
+    const handler = createSitepingHandler({ store, webhooks, apiKey: API_KEY });
+    const created = await handler.POST(send("POST", validPayloadNoAnnotations));
+    const feedback = (await created.json()) as { id: string };
+    // Let a creation delivery, if any, land before the case starts counting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchSpy.mockClear();
+    return { handler, store, id: feedback.id };
+  }
+
+  /** Lets a fire-and-forget delivery that should not happen have its chance. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+  it("keeps a webhook without events on creations only, now with the event header", async () => {
+    const { handler, id } = await setup([{ url: "https://default.example.com" }]);
+    await handler.PATCH(send("PATCH", { id, projectName: PROJECT, status: "resolved" }));
+    await handler.POST(send("POST", commentBody(id)));
+    await handler.DELETE(send("DELETE", { id, projectName: PROJECT }));
+    await settle();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    await handler.POST(send("POST", { ...validPayloadNoAnnotations, clientId: "second-feedback" }));
+    await vi.waitFor(() => expect(deliveries()).toEqual([expect.objectContaining({ event: "feedback.created" })]));
+  });
+
+  it("notifies a status change once, with the record as stored and its event header", async () => {
+    const { handler, id } = await setup([{ url: "https://status.example.com", events: ["feedback.status_changed"] }]);
+
+    const response = await handler.PATCH(send("PATCH", { id, projectName: PROJECT, status: "in_progress" }));
+
+    expect(response.status).toBe(200);
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
+    expect(deliveries()[0]).toEqual({
+      url: "https://status.example.com",
+      event: "feedback.status_changed",
+      body: expect.objectContaining({ id, status: "in_progress", resolvedAt: null }),
+    });
+    expect(deliveries()[0]?.body).not.toHaveProperty("clientId");
+  });
+
+  it("never notifies a status change that did not happen", async () => {
+    const store = new MemoryStore();
+    const { handler, id } = await setup(
+      [{ url: "https://status.example.com", events: ["feedback.status_changed"] }],
+      store,
+    );
+
+    const invalid = await handler.PATCH(send("PATCH", { id, projectName: PROJECT, status: "done" }));
+    const foreign = await handler.PATCH(send("PATCH", { id, projectName: "another-project", status: "resolved" }));
+    store.updateFeedback = () => Promise.reject(new StoreNotFoundError());
+    const vanished = await handler.PATCH(send("PATCH", { id, projectName: PROJECT, status: "resolved" }));
+    await settle();
+
+    expect([invalid.status, foreign.status, vanished.status]).toEqual([400, 404, 404]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("notifies a single delete and a deleteAll with their targets", async () => {
+    const { handler, id } = await setup([{ url: "https://deleted.example.com", events: ["feedback.deleted"] }]);
+
+    const foreign = await handler.DELETE(send("DELETE", { id, projectName: "another-project" }));
+    await settle();
+    expect(foreign.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    await handler.DELETE(send("DELETE", { id, projectName: PROJECT }));
+    await handler.DELETE(send("DELETE", { projectName: PROJECT, deleteAll: true }));
+
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(deliveries().map(({ event, body }) => ({ event, body }))).toEqual([
+      { event: "feedback.deleted", body: { kind: "single", id, projectName: PROJECT } },
+      { event: "feedback.deleted", body: { kind: "project", projectName: PROJECT } },
+    ]);
+  });
+
+  it("notifies a reply once — never for a replayed or racing clientId", async () => {
+    const { handler, id } = await setup([{ url: "https://replies.example.com", events: ["comment.created"] }]);
+    const body = commentBody(id);
+
+    const responses = await Promise.all([1, 2, 3].map(() => handler.POST(send("POST", body))));
+    const replay = await handler.POST(send("POST", body));
+
+    expect([...responses, replay].map((response) => response.status)).toEqual([201, 201, 201, 201]);
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
+    await settle();
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const { clientId: _clientId, ...sent } = body;
+    expect(deliveries()[0]).toEqual({
+      url: "https://replies.example.com",
+      event: "comment.created",
+      body: { ...sent, id: expect.any(String), authorRole: "client", createdAt: expect.any(String) },
+    });
+  });
+
+  it("calls onCommentCreated once per stored reply, with its project", async () => {
+    const onCommentCreated = vi.fn();
+    const handler = createSitepingHandler({ store: new MemoryStore(), hooks: { onCommentCreated } });
+    const created = await handler.POST(send("POST", validPayloadNoAnnotations));
+    const { id } = (await created.json()) as { id: string };
+    const body = commentBody(id);
+
+    await handler.POST(send("POST", body));
+    await handler.POST(send("POST", body));
+
+    expect(onCommentCreated).toHaveBeenCalledOnce();
+    expect(onCommentCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ feedbackId: id, projectName: PROJECT, clientId: body.clientId }),
+      expect.objectContaining({ principal: null }),
+    );
+  });
+
+  it("sends each webhook only the events it subscribes to", async () => {
+    const { handler, id } = await setup([
+      { url: "https://everything.example.com", events: [...WEBHOOK_EVENTS] },
+      { url: "https://replies.example.com", events: ["comment.created"] },
+    ]);
+
+    await handler.POST(send("POST", commentBody(id)));
+    await handler.PATCH(send("PATCH", { id, projectName: PROJECT, status: "resolved" }));
+
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(3));
+    expect(deliveries().map(({ url, event }) => `${url} ${event}`)).toEqual([
+      "https://everything.example.com comment.created",
+      "https://replies.example.com comment.created",
+      "https://everything.example.com feedback.status_changed",
+    ]);
+  });
+
+  it("tells onError which project a project-wide deletion was about", async () => {
+    const onError = vi.fn();
+    const { handler } = await setup([{ url: "https://deleted.example.com", events: ["feedback.deleted"], onError }]);
+    fetchSpy.mockResolvedValue(new Response("nope", { status: 503 }));
+
+    await handler.DELETE(send("DELETE", { projectName: PROJECT, deleteAll: true }));
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), "", { event: "feedback.deleted", projectName: PROJECT });
+  });
+
+  it("dispatchWebhooks skips a webhook that does not subscribe to creations", async () => {
+    await dispatchWebhooks(
+      [
+        { url: "https://status.example.com", events: ["feedback.status_changed"] },
+        { url: "https://default.example.com" },
+      ],
+      FEEDBACK,
+    );
+    expect(deliveries().map(({ url }) => url)).toEqual(["https://default.example.com"]);
+  });
+
+  it.each([
+    [[], "events must list at least one event"],
+    [["feedback.updated"], 'unknown event "feedback.updated" in events'],
+  ])("refuses to start with events %j, naming the webhook by its origin only", (events, problem) => {
+    const create = () =>
+      createSitepingHandler({
+        store: new MemoryStore(),
+        webhooks: { url: "https://hooks.slack.com/services/T0/B0/SECRET", events: events as WebhookEvent[] },
+      });
+    expect(create).toThrow(`[siteping] createSitepingHandler: webhook to https://hooks.slack.com: ${problem}`);
+  });
+
+  it("refuses to notify replies over a store that cannot tell a new one from a retry", () => {
+    const store = new MemoryStore();
+    (store as { addCommentIfAbsent?: unknown }).addCommentIfAbsent = undefined;
+    const message = "need a store implementing `addCommentIfAbsent`";
+
+    expect(() =>
+      createSitepingHandler({ store, webhooks: { url: "https://x.example.com", events: ["comment.created"] } }),
+    ).toThrow(message);
+    expect(() => createSitepingHandler({ store, hooks: { onCommentCreated: () => {} } })).toThrow(message);
+    expect(() => createSitepingHandler({ store, webhooks: { url: "https://x.example.com" } })).not.toThrow();
   });
 });

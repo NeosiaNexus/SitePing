@@ -481,6 +481,23 @@ describe("SitepingInbox — drawer", () => {
     );
   });
 
+  it("resolves a relative record URL against siteUrl, for the CTA and the page link (#309)", async () => {
+    const records = seed();
+    records[0] = { ...records[0]!, url: "/pricing" };
+    renderInbox({ siteUrl: "https://client.example.com" }, records);
+    await openFirst();
+    const dialog = screen.getByRole("dialog", { name: /Feedback details/ });
+    expect(
+      within(dialog)
+        .getByRole("link", { name: /Open on page/ })
+        .getAttribute("href"),
+    ).toBe("https://client.example.com/pricing?siteping=o1");
+    const pageLinks = within(dialog)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(pageLinks).toContain("https://client.example.com/pricing");
+  });
+
   it("opens the status menu with the four statuses", async () => {
     renderInbox();
     await openFirst();

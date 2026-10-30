@@ -1,4 +1,4 @@
-import { COMMENT_BODY_MAX_LENGTH, type FeedbackRecord, newClientId } from "@siteping/core";
+import { COMMENT_BODY_MAX_LENGTH, type CommentRecord, type FeedbackRecord, newClientId } from "@siteping/core";
 import type { ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useId, useRef, useState } from "react";
 import { formatAbsolute, formatRelativeTime, toDateTimeAttr } from "../format.js";
@@ -17,8 +17,8 @@ interface ThreadProps {
   record: FeedbackRecord;
   /** Replies can be posted — see `InboxState.canComment`. */
   canComment: boolean;
-  /** Replies can be deleted — see `InboxState.canDeleteComment`. */
-  canDelete: boolean;
+  /** Whether this reply can be deleted — see `InboxState.commentPermissionsOf`. */
+  canDelete: (comment: CommentRecord) => boolean;
   onAdd: (body: string, clientId: string) => Promise<void>;
   onDelete: (commentId: string) => Promise<void>;
 }
@@ -117,7 +117,7 @@ export function Thread({ record, canComment, canDelete, onAdd, onDelete }: Threa
               <time dateTime={toDateTimeAttr(comment.createdAt)} title={formatAbsolute(comment.createdAt, locale)}>
                 {formatRelativeTime(comment.createdAt, t)}
               </time>
-              {canDelete ? (
+              {canDelete(comment) ? (
                 <button
                   type="button"
                   className="spd-icon-btn"

@@ -6,7 +6,7 @@ import {
   type RectData,
 } from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
-import { resolveAnnotation } from "./dom/resolver.js";
+import { type ResolvedAnnotation, resolveAnnotation } from "./dom/resolver.js";
 import { classifyVisibility } from "./dom/visibility.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
@@ -122,6 +122,9 @@ function clusterBase(cluster: Cluster): MarkerPos | undefined {
   return elIdx === undefined ? undefined : cluster.entries[0]?.positions[elIdx];
 }
 
+/** Whether a marker is on the page — an unresolved anchor's marker stays `display:none`. */
+const isShown = (marker: HTMLElement): boolean => marker.style.display !== "none";
+
 /**
  * Play a marker animation through the Web Animations API. Markers live in the
  * page's DOM, outside the Shadow root whose stylesheet defines the widget's
@@ -159,7 +162,13 @@ export class MarkerManager {
   private mutationObserver: MutationObserver | null = null;
   private scrollHandler: (() => void) | null = null;
   private resizeHandler: (() => void) | null = null;
-  private anchorCache = new Map<string, WeakRef<Element>>();
+  /**
+   * The element each annotation last resolved to, with that resolution's
+   * confidence and strategy: the fast path recomputes the rect from the live
+   * element and keeps the verdict, so a low-confidence pin keeps its
+   * "approximate position" warning past the first cache hit (#304).
+   */
+  private anchorCache = new Map<string, Omit<ResolvedAnnotation, "element" | "rect"> & { ref: WeakRef<Element> }>();
   /** Whether a resize/mutation happened since the last reposition pass —
    * the only triggers that can flip an anchor's visibility (responsive
    * breakpoint, SPA re-render). Pure scroll ticks keep the fast path. */
@@ -307,15 +316,15 @@ export class MarkerManager {
         validKeys.add(cacheKey);
 
         // Try cached element first to avoid full resolution chain.
-        const cachedRef = this.anchorCache.get(cacheKey);
-        const cachedEl = cachedRef?.deref();
+        const cached = this.anchorCache.get(cacheKey);
+        const cachedEl = cached?.ref.deref();
         let resolved: ReturnType<typeof resolveAnnotation>;
 
         const backedOff = (this.hiddenRecheckAt.get(cacheKey) ?? 0) > now;
         const cacheUsable =
           cachedEl?.isConnected && (backedOff || !(recheckVisibility && classifyVisibility(cachedEl) === "hidden"));
 
-        if (cachedEl && cacheUsable) {
+        if (cached && cachedEl && cacheUsable) {
           const anchorRect = cachedEl.getBoundingClientRect();
           const r = toRectData(annotation);
           resolved = {
@@ -326,8 +335,8 @@ export class MarkerManager {
               r.wPct * anchorRect.width,
               r.hPct * anchorRect.height,
             ),
-            confidence: 1,
-            strategy: "css",
+            confidence: cached.confidence,
+            strategy: cached.strategy,
           };
         } else if (backedOff) {
           // A recent full resolution concluded hidden/orphaned and the anchor
@@ -341,7 +350,8 @@ export class MarkerManager {
             // than what the sweep would find; never cache it, retry next tick.
           } else {
             if (resolved?.element) {
-              this.anchorCache.set(cacheKey, new WeakRef(resolved.element));
+              const { confidence, strategy } = resolved;
+              this.anchorCache.set(cacheKey, { ref: new WeakRef(resolved.element), confidence, strategy });
             }
             if (!resolved || classifyVisibility(resolved.element) === "hidden") {
               this.hiddenRecheckAt.set(cacheKey, now + HIDDEN_RECHECK_MS);
@@ -373,7 +383,10 @@ export class MarkerManager {
       if (!validKeys.has(key)) this.hiddenRecheckAt.delete(key);
     }
 
-    if (visibilityChanged) this.buildClusters();
+    if (visibilityChanged) {
+      this.buildClusters();
+      this.bus.emit("markers:placed");
+    }
     this.applyClusterPositions();
 
     // Re-render the pinned highlight rectangle so it tracks the layout after
@@ -418,14 +431,17 @@ export class MarkerManager {
       this.entries.push(entry);
     });
     this.buildClusters();
-    // Announce the number of visible markers to assistive tech (WCAG 4.1.3).
+    // Announce the number of visible markers to assistive tech (WCAG 4.1.3):
+    // a feedback whose anchor isn't on the page has none to point at (#304).
     // Skip the announcement when the host page has not provided a live
     // region (tests, embedded use cases) and when no marker is visible to
     // avoid noisy "0 markers" updates on every navigation.
-    if (this.liveRegion && this.entries.length > 0) {
-      this.liveRegion.textContent = tWithParams(this.t, "marker.count", { count: this.entries.length });
+    const visible = this.entries.filter((entry) => entry.elements.some(isShown)).length;
+    if (this.liveRegion && visible > 0) {
+      this.liveRegion.textContent = tWithParams(this.t, "marker.count", { count: visible });
     }
     this.emitMarkersChanged();
+    this.bus.emit("markers:placed");
   }
 
   addFeedback(feedback: FeedbackResponse, index: number): void {
@@ -440,6 +456,7 @@ export class MarkerManager {
     this.entries.push(entry);
     this.buildClusters();
     this.emitMarkersChanged();
+    this.bus.emit("markers:placed");
   }
 
   private buildEntry(feedback: FeedbackResponse, index: number): MarkerEntry {
@@ -726,8 +743,10 @@ export class MarkerManager {
    * Scroll the annotation into view, pin its highlight, and pulse its marker.
    *
    * Powers the `deepLink` config option and the public
-   * `instance.focusFeedback(id)` method. Returns `false` when no entry
-   * matches — caller logs that case, the manager stays silent.
+   * `instance.focusFeedback(id)` method. Returns `false` when no marker of
+   * that feedback is on the page — none matches, or its anchor doesn't
+   * resolve here (#304), as the public contract says — and then does
+   * nothing; the caller logs that case, the manager stays silent.
    *
    * Scrolling uses the marker element's current document position via
    * `scrollIntoView`, not the original `scrollX/scrollY` captured at
@@ -737,11 +756,9 @@ export class MarkerManager {
    */
   focusFeedback(feedbackId: string): boolean {
     const entry = this.entries.find((e) => e.feedback.id === feedbackId);
-    if (!entry) return false;
-    const markerEl = entry.elements.find((m) => m.style.display !== "none");
-    if (markerEl) {
-      markerEl.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    const markerEl = entry?.elements.find(isShown);
+    if (!entry || !markerEl) return false;
+    markerEl.scrollIntoView({ behavior: "smooth", block: "center" });
     this.pinHighlight(entry.feedback);
     this.highlight(feedbackId);
     return true;
@@ -755,11 +772,18 @@ export class MarkerManager {
    * scroll offsets.
    */
   revealPin(feedbackId: string): boolean {
-    return (
-      this.container.style.display !== "none" &&
-      this.entries.some((e) => e.feedback.id === feedbackId && e.elements.some((m) => m.style.display !== "none")) &&
-      this.focusFeedback(feedbackId)
-    );
+    return this.container.style.display !== "none" && this.focusFeedback(feedbackId);
+  }
+
+  /**
+   * Whether a feedback rendered on this page has no pin on it: every anchor
+   * failed to resolve, or resolved to a hidden element. Independent of the
+   * eye toggle, which hides pins the page still holds. `markers:placed`
+   * announces when the answer may have changed.
+   */
+  isLost(feedbackId: string): boolean {
+    const entries = this.entries.filter((e) => e.feedback.id === feedbackId);
+    return entries.length > 0 && entries.every((e) => e.elements.every((m) => m.style.display === "none"));
   }
 
   highlight(feedbackId: string): void {
