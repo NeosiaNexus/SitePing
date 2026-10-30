@@ -43,7 +43,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les 67 tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
+C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
 
 **Les trois primitives :**
 
@@ -108,7 +108,7 @@ Les handlers et le dashboard déduisent leur comportement de ces erreurs : levez
 | Une mutation acceptée mais non persistée | Levez `StorePersistenceError` au lieu d'annoncer une réussite fantôme |
 | Résultat vide sur `getFeedbacks` / `findByClientId` | Ne levez pas — renvoyez un tableau vide ou `null` |
 
-Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma.
+Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma. Chaque package de store — ce kit, `adapter-prisma`, `adapter-memory`, `adapter-localstorage` et les deux entrées d'`adapter-drizzle` — réexporte les mêmes cinq classes et les mêmes cinq gardes.
 
 ### Les sémantiques de requête à respecter
 
@@ -120,6 +120,8 @@ Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`
 - `page` commence à 1, `limit` vaut 50 par défaut et est plafonné à 100.
 
 Vous gardez un instantané en mémoire ? `applyFeedbackFilters(records, query)` est exporté précisément pour ça et implémente tout ce qui précède. Vous interrogez une base ? `clampPagination(query)` renvoie le `{ page, limit, skip }` normalisé — le même plafonnement que le pipeline en mémoire et `PrismaStore`, à passer tel quel à votre `LIMIT`/`OFFSET`. Testez d'abord `isUnreachableOffset(skip)` : un `page` énorme venu d'un appel direct donne un offset au-delà de `Number.MAX_SAFE_INTEGER` (ou `Infinity`) que les bases SQL rejettent, et la suite attend `{ feedbacks: [], total }` — répondez avec votre seule requête de comptage.
+
+Le texte peut contenir des caractères qu'une base refuse : PostgreSQL rejette NUL dans `text` et `jsonb`, et un surrogate isolé (ce par quoi finit une chaîne coupée au milieu d'un emoji) dans `jsonb`. La suite accepte ce texte gardé tel quel, ou avec U+FFFD à la place de chacune de ces unités, pourvu qu'un enregistrement se relise tel que l'écriture l'a renvoyé et qu'une recherche contenant les mêmes caractères le retrouve. Sur un backend qui les refuse, passez tout ce que vous écrivez par `toStorableValue`, et chaque id, clientId, nom de projet et requête que vous cherchez par `toStorableText` — tous deux exportés par le kit, et ce que font `PrismaStore` et le store Drizzle.
 
 ## Appartenance au projet
 
@@ -151,7 +153,7 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 
 ## La preuve : la suite de conformité
 
-La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — 67 tests :
+La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — environ 70 tests :
 
 ```ts
 // __tests__/my-store.test.ts
@@ -163,17 +165,33 @@ testSitepingStore(() => new MyStore());
 
 En plus des appels un par un, elle lance ensemble des mises à jour, des suppressions et des créations dans un `Promise.all` — comme le font les actions en masse du widget — et vérifie que chaque écriture a abouti.
 
-La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Deux réglages couvrent les variations de contrat légitimement propres au backend :
+La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Trois options couvrent ce qui varie légitimement d'un backend à l'autre :
 
 | Option | Défaut | À régler quand |
 |---|---|---|
 | `duplicateBehavior` | `"return"` | Votre `createFeedback` lève `StoreDuplicateError` sur un `clientId` répété au lieu de renvoyer l'existant — passez `"throw"`. Un store qui le renvoie mais lève quand il perd une course d'insertion concurrente reste sur `"return"` |
 | `caseInsensitiveSearch` | `true` | Votre collation rend `search` sensible à la casse — passez `false` et la suite ne teste que la correspondance à casse identique |
+| `failWrites` | — | Votre backend peut accepter une écriture puis la perdre (quota, stockage révoqué) — passez une fonction qui lui fait refuser toute écriture jusqu'à l'appel de la fonction qu'elle renvoie. Sans elle, les cas d'échec de persistance sont signalés comme sautés |
 
 ```ts
 testSitepingStore(() => new PostgresStore(db), {
   duplicateBehavior: "throw",
   caseInsensitiveSearch: false,
+});
+```
+
+Avec `failWrites`, chaque mutation doit être rejetée avec `StorePersistenceError` tant que les écritures échouent, et laisser ce que renvoient les lectures tel quel — pas d'enregistrement fantôme, pas de mise à jour perdue :
+
+```ts
+let writesFail = false; // lu par le `persist` de votre backend
+
+testSitepingStore(() => new KvStore(), {
+  failWrites: () => {
+    writesFail = true;
+    return () => {
+      writesFail = false;
+    };
+  },
 });
 ```
 

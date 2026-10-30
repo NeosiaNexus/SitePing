@@ -16,6 +16,7 @@ import {
   MAX_COMMENTS_PER_FEEDBACK,
   SCREENSHOT_DELETE_CONCURRENCY,
   type ScreenshotStorage,
+  SitepingConfigError,
   type SitepingStore,
   StoreDuplicateError,
   StoreLimitError,
@@ -23,6 +24,8 @@ import {
   StoreValueTooLongError,
   screenshotMimeType,
   settleWithConcurrencyLimit,
+  toStorableText,
+  toStorableValue,
 } from "@siteping/core";
 import {
   createSitepingHandler as createServerHandler,
@@ -43,7 +46,11 @@ export type {
 } from "@siteping/core";
 export {
   flattenAnnotation,
+  isStoreDuplicate,
+  isStoreLimit,
+  isStoreNotFound,
   isStorePersistence,
+  isStoreValueTooLong,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
@@ -61,6 +68,7 @@ export type {
   SitepingAccessControl,
   SitepingAction,
   SitepingAuthorizationContext,
+  SitepingConfigErrorCode,
   SitepingDeletionTarget,
   SitepingHandler,
   SitepingHandlerBaseOptions,
@@ -74,7 +82,7 @@ export type {
   WebhookPayloadMap,
   WebhookType,
 } from "@siteping/server";
-export { dispatchWebhook, dispatchWebhooks } from "@siteping/server";
+export { dispatchWebhook, dispatchWebhooks, isSitepingConfigError } from "@siteping/server";
 
 // ---------------------------------------------------------------------------
 // Minimal PrismaClient shape expected by this adapter
@@ -278,6 +286,11 @@ function isStoredScreenshotUrl(url: unknown): url is string {
  * widget's data URL is uploaded and only the returned URL is persisted, so
  * the database stays small. Without `screenshotStorage`, the data URL is
  * persisted inline (logged once on first use as a heads-up).
+ *
+ * Text a database may refuse — NUL, an unpaired surrogate — is replaced by
+ * U+FFFD in everything the store writes or looks up (`toStorableText`), as
+ * PostgreSQL rejects it: such a submission is stored instead of failing, and
+ * a lookup holding the same characters finds it.
  */
 export class PrismaStore implements SitepingStore {
   /** @internal */
@@ -324,12 +337,13 @@ export class PrismaStore implements SitepingStore {
   }
 
   async createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord> {
-    const screenshotUrl = await this.persistScreenshot(data.screenshotDataUrl, data.clientId);
+    const storable = toStorableValue(data);
+    const screenshotUrl = await this.persistScreenshot(storable.screenshotDataUrl, storable.clientId);
 
     try {
-      return await this.insertFeedback(data, screenshotUrl);
+      return await this.insertFeedback(storable, screenshotUrl);
     } catch (error) {
-      if (isStoreDuplicate(error)) await this.discardUnreferencedUpload(screenshotUrl, data.clientId);
+      if (isStoreDuplicate(error)) await this.discardUnreferencedUpload(screenshotUrl, storable.clientId);
       throw toStoreError(error);
     }
   }
@@ -500,16 +514,17 @@ export class PrismaStore implements SitepingStore {
 
   async findByClientId(clientId: string): Promise<FeedbackRecord | null> {
     return (await this.prisma.sitepingFeedback.findUnique({
-      where: { clientId },
+      where: { clientId: toStorableText(clientId) },
       include: this.include,
     })) as FeedbackRecord | null;
   }
 
   async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
-    const { projectName, type, status, statuses, search, url, urlPattern } = query;
+    const storable = toStorableValue(query);
+    const { projectName, type, status, statuses, search, url, urlPattern } = storable;
     // Same clamp as the in-memory pipeline: the HTTP schema already bounds
     // page/limit, but direct callers reach the store without it.
-    const { limit, skip } = clampPagination(query);
+    const { limit, skip } = clampPagination(storable);
 
     const where: FeedbackWhereInput = { projectName };
     if (type) where.type = type;
@@ -552,7 +567,7 @@ export class PrismaStore implements SitepingStore {
   async updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord> {
     try {
       return (await this.prisma.sitepingFeedback.update({
-        where: { id },
+        where: { id: toStorableText(id) },
         data: {
           status: data.status,
           resolvedAt: data.resolvedAt,
@@ -575,9 +590,11 @@ export class PrismaStore implements SitepingStore {
    */
   private async insertComment(
     comments: PrismaModelDelegate,
-    feedbackId: string,
-    data: CommentCreateInput,
+    submittedFeedbackId: string,
+    submitted: CommentCreateInput,
   ): Promise<CommentRecord> {
+    const feedbackId = toStorableText(submittedFeedbackId);
+    const data = toStorableValue(submitted);
     const replayed = await this.findComment(comments, data.clientId);
     if (replayed) return replayed;
     if (
@@ -614,7 +631,8 @@ export class PrismaStore implements SitepingStore {
    * another thread and an unknown one are the same zero-row miss.
    */
   private async removeComment(comments: PrismaModelDelegate, feedbackId: string, commentId: string): Promise<void> {
-    const { count } = (await comments.deleteMany({ where: { id: commentId, feedbackId } })) as { count: number };
+    const where = { id: toStorableText(commentId), feedbackId: toStorableText(feedbackId) };
+    const { count } = (await comments.deleteMany({ where })) as { count: number };
     if (count === 0) throw new StoreNotFoundError();
   }
 
@@ -623,7 +641,7 @@ export class PrismaStore implements SitepingStore {
     try {
       // Prisma returns the deleted row — the only chance to learn which
       // screenshot object the feedback owned.
-      deleted = (await this.prisma.sitepingFeedback.delete({ where: { id } })) as {
+      deleted = (await this.prisma.sitepingFeedback.delete({ where: { id: toStorableText(id) } })) as {
         screenshotUrl?: string | null;
       } | null;
     } catch (error) {
@@ -633,11 +651,12 @@ export class PrismaStore implements SitepingStore {
   }
 
   async deleteAllFeedbacks(projectName: string): Promise<void> {
+    const storableName = toStorableText(projectName);
     // Rows first, storage second: a failed storage cleanup leaves orphaned
     // objects (acceptable), the reverse would leave rows pointing at deleted
     // screenshots.
-    const screenshotUrls = await this.storedScreenshotUrls(projectName);
-    await this.prisma.sitepingFeedback.deleteMany({ where: { projectName } });
+    const screenshotUrls = await this.storedScreenshotUrls(storableName);
+    await this.prisma.sitepingFeedback.deleteMany({ where: { projectName: storableName } });
     await this.discardScreenshots(screenshotUrls);
   }
 
@@ -647,12 +666,12 @@ export class PrismaStore implements SitepingStore {
    */
   async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
     const record = (await this.prisma.sitepingFeedback.findUnique({
-      where: { id },
+      where: { id: toStorableText(id) },
       // Only need projectName for the check — not the annotations, nor an
       // inline screenshot data URL or the diagnostics JSON
       select: { projectName: true },
     })) as { projectName: string } | null;
-    return record !== null && record.projectName === projectName;
+    return record !== null && record.projectName === toStorableText(projectName);
   }
 }
 
@@ -769,7 +788,10 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>({
   // clear error rather than a store that fails on the first request. One
   // passing both keeps the historical precedence: `store` wins.
   if (!providedStore && !prisma) {
-    throw new Error("[siteping] createSitepingHandler requires either `store` or `prisma`.");
+    throw new SitepingConfigError(
+      "CONFIG_STORE_MISSING",
+      "[siteping] createSitepingHandler requires either `store` or `prisma`.",
+    );
   }
 
   // Safe: the throw above guarantees at least one is defined

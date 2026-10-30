@@ -6,7 +6,6 @@ import { en as STATS_I18N_EN } from "../../src/i18n/en.js";
 import { fr as STATS_I18N_FR } from "../../src/i18n/fr.js";
 import { createT } from "../../src/i18n/index.js";
 import { PanelStats, STATS_CSS } from "../../src/panel-stats.js";
-import { buildThemeColors } from "../../src/styles/theme.js";
 
 function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackResponse {
   return {
@@ -54,7 +53,7 @@ describe("PanelStats", () => {
   });
 
   it("creates a hidden stats element by default with English labels", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("en"));
+    const stats = new PanelStats(createT("en"));
     document.body.appendChild(stats.element);
 
     expect(stats.element.classList.contains("sp-stats-bar")).toBe(true);
@@ -71,7 +70,7 @@ describe("PanelStats", () => {
   });
 
   it("renders French labels when locale='fr'", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("fr"));
+    const stats = new PanelStats(createT("fr"));
     document.body.appendChild(stats.element);
 
     const labels = stats.element.querySelectorAll<HTMLElement>(".sp-stats-label");
@@ -84,7 +83,7 @@ describe("PanelStats", () => {
   });
 
   it("falls back to English when locale is unknown", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("zz"));
+    const stats = new PanelStats(createT("zz"));
     document.body.appendChild(stats.element);
 
     const labels = stats.element.querySelectorAll<HTMLElement>(".sp-stats-label");
@@ -92,7 +91,7 @@ describe("PanelStats", () => {
   });
 
   it("hides the bar when total === 0", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("en"));
+    const stats = new PanelStats(createT("en"));
     document.body.appendChild(stats.element);
 
     // Force-show first, then call with total=0 to verify hiding
@@ -103,7 +102,7 @@ describe("PanelStats", () => {
   });
 
   it("shows the bar and updates open/resolved/bug counts", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("en"));
+    const stats = new PanelStats(createT("en"));
     document.body.appendChild(stats.element);
 
     stats.update(
@@ -126,7 +125,7 @@ describe("PanelStats", () => {
   });
 
   it("buckets in_progress as open and wont_fix as closed, never as resolved (#302)", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("en"));
+    const stats = new PanelStats(createT("en"));
     document.body.appendChild(stats.element);
 
     stats.update(
@@ -150,7 +149,7 @@ describe("PanelStats", () => {
   });
 
   it("never reports declined requests as resolved (#302)", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("fr"));
+    const stats = new PanelStats(createT("fr"));
     document.body.appendChild(stats.element);
 
     stats.update([makeFeedback({ id: "1", status: "wont_fix" }), makeFeedback({ id: "2", status: "wont_fix" })], 2);
@@ -163,7 +162,7 @@ describe("PanelStats", () => {
   });
 
   it("computes the percentage closed relative to visible feedbacks", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("en"));
+    const stats = new PanelStats(createT("en"));
     document.body.appendChild(stats.element);
 
     stats.update(
@@ -185,7 +184,7 @@ describe("PanelStats", () => {
   });
 
   it("renders 0% when feedbacks is empty but total > 0 (filtered out)", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("en"));
+    const stats = new PanelStats(createT("en"));
     document.body.appendChild(stats.element);
 
     stats.update([], 5);
@@ -203,7 +202,7 @@ describe("PanelStats", () => {
   });
 
   it("uses the French progress text when locale='fr'", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("fr"));
+    const stats = new PanelStats(createT("fr"));
     document.body.appendChild(stats.element);
 
     stats.update([makeFeedback({ status: "resolved" })], 1);
@@ -214,7 +213,7 @@ describe("PanelStats", () => {
   });
 
   it("rounds percentages (e.g., 1/3 -> 33%)", () => {
-    const stats = new PanelStats(buildThemeColors(), createT("en"));
+    const stats = new PanelStats(createT("en"));
     document.body.appendChild(stats.element);
 
     stats.update(

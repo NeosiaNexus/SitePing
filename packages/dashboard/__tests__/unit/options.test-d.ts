@@ -5,8 +5,29 @@
 
 import type { CommentCreateInput, CommentRecord, FeedbackPage, FeedbackRecord, SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
-import type { FeedbackPermissions, InboxRecord, SitepingCapabilities } from "../../src/index.js";
-import type { InboxSource, InboxState, SitepingInboxProps, UseSitepingInboxOptions } from "../../src/types.js";
+import type * as Dashboard from "../../src/index.js";
+import type {
+  DiagnosticsSnapshot,
+  EndpointSourceOptions,
+  FeedbackPermissions,
+  FeedbackQuery,
+  InboxRecord,
+  registerLocale,
+  ScreenshotRegion,
+  SitepingCapabilities,
+  SitepingHeadersOption,
+  SitepingLocale,
+  SitepingTheme,
+  Translations,
+} from "../../src/index.js";
+import type {
+  InboxSource,
+  InboxState,
+  InboxStatusFilter,
+  InboxTypeFilter,
+  SitepingInboxProps,
+  UseSitepingInboxOptions,
+} from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
 
 declare const store: SitepingStore;
@@ -80,6 +101,13 @@ describe("InboxState", () => {
     expectTypeOf<InboxState["view"]>().toEqualTypeOf<"loading" | "error" | "empty" | "ready">();
   });
 
+  it("names the filter setters apart from InboxSource.setStatus, which persists a change", () => {
+    expectTypeOf<InboxState["setStatusFilter"]>().toEqualTypeOf<(s: InboxStatusFilter) => void>();
+    expectTypeOf<InboxState["setTypeFilter"]>().toEqualTypeOf<(t: InboxTypeFilter) => void>();
+    expectTypeOf<InboxState>().not.toHaveProperty("setStatus");
+    expectTypeOf<InboxState>().not.toHaveProperty("setType");
+  });
+
   it("exposes the thread actions", () => {
     expectTypeOf<InboxState["canComment"]>().toEqualTypeOf<boolean>();
     expectTypeOf<InboxState["canDeleteComment"]>().toEqualTypeOf<boolean>();
@@ -100,8 +128,31 @@ describe("SitepingInboxProps", () => {
   it("combines source modes with presentation props", () => {
     expectTypeOf({ projects: "p", store, theme: "dark" as const }).toExtend<SitepingInboxProps>();
 
-    // @ts-expect-error — "sepia" is not an InboxTheme
+    // @ts-expect-error — "sepia" is not a SitepingTheme
     const badTheme: SitepingInboxProps = { projects: "p", store, theme: "sepia" };
     void badTheme;
+  });
+});
+
+describe("types shared with the widget", () => {
+  it("names the theme and the headers option as the widget does", () => {
+    expectTypeOf<NonNullable<SitepingInboxProps["theme"]>>().toEqualTypeOf<SitepingTheme>();
+    expectTypeOf<EndpointSourceOptions["headers"]>().toEqualTypeOf<SitepingHeadersOption | undefined>();
+  });
+
+  it("no longer exports InboxTheme", () => {
+    // @ts-expect-error — removed before 1.0: use SitepingTheme
+    type RemovedInboxTheme = Dashboard.InboxTheme;
+    expectTypeOf<[RemovedInboxTheme]>().toBeArray();
+  });
+});
+
+describe("types used in public signatures are exported", () => {
+  it("names what a custom source, a locale override and a record reader handle", () => {
+    expectTypeOf<Parameters<InboxSource["list"]>[0]>().toEqualTypeOf<FeedbackQuery>();
+    expectTypeOf<Parameters<typeof registerLocale>[1]>().toEqualTypeOf<Partial<Translations>>();
+    expectTypeOf<SitepingInboxProps["locale"]>().toEqualTypeOf<SitepingLocale | undefined>();
+    expectTypeOf<FeedbackRecord["diagnostics"]>().toEqualTypeOf<DiagnosticsSnapshot | null>();
+    expectTypeOf<FeedbackRecord["screenshotRegion"]>().toEqualTypeOf<ScreenshotRegion | null>();
   });
 });

@@ -48,8 +48,10 @@ export type {
   DiagnosticsSnapshot,
   FeedbackCreateInput,
   FeedbackCreateOutcome,
+  FeedbackListPermissions,
   FeedbackPage,
   FeedbackPayload,
+  FeedbackPermissions,
   FeedbackQuery,
   FeedbackRecord,
   FeedbackResponse,
@@ -65,10 +67,12 @@ export type {
   ScreenshotRegion,
   ScreenshotStorage,
   Serialized,
+  SitepingCapabilities,
   SitepingStore,
 } from "@siteping/core";
 // Status/type constants + helpers
 // Store errors — throw these from adapter implementations
+// Text normalization — for SQL backends that refuse NUL or an unpaired surrogate
 export {
   applyFeedbackFilters,
   buildAnnotationRecord,
@@ -99,4 +103,6 @@ export {
   StorePersistenceError,
   StoreValueTooLongError,
   toFeedbackUpdate,
+  toStorableText,
+  toStorableValue,
 } from "@siteping/core";
