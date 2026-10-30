@@ -1,10 +1,25 @@
 export type {
   CommentCreateInput,
   CommentPayload,
+  CommentRecord,
+  CommentResponse,
+  DiagnosticsSnapshot,
   FeedbackCreateInput,
+  FeedbackListPermissions,
+  FeedbackPermissions,
   FeedbackRecord,
+  FeedbackResponse,
+  FeedbackResponseList,
+  FeedbackStatus,
+  FeedbackType,
+  ScreenshotRegion,
+  SitepingCapabilities,
+  SitepingConfigErrorCode,
   SitepingStore,
 } from "@siteping/core";
+// The guard, not the class: `createSitepingHandler` throws it for options it
+// cannot run with, and adapter-prisma's copy of the class is another one.
+export { isSitepingConfigError, SITEPING_PROTOCOL_VERSION } from "@siteping/core";
 export { createSitepingHandler } from "./handler.js";
 export type {
   SitepingAccessControl,

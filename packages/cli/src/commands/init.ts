@@ -44,13 +44,13 @@ export async function initCommand(): Promise<void> {
         }
       } catch (error) {
         p.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
-        p.outro("Fix the errors above and re-run `siteping init`.");
+        p.outro("Fix the errors above and re-run `npx @siteping/cli init`.");
         process.exit(1);
       }
     }
   } else {
     p.log.warn("No schema.prisma file found. You will need to add the models manually.");
-    p.log.info("See the documentation: https://github.com/NeosiaNexus/SitePing#prisma-schema-1");
+    p.log.info("See the documentation: https://siteping.dev/docs/adapters/prisma#database-schema");
   }
 
   // Step 2: API route
@@ -73,7 +73,7 @@ export async function initCommand(): Promise<void> {
       }
     } catch (error) {
       p.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
-      p.outro("Fix the errors above and re-run `siteping init`.");
+      p.outro("Fix the errors above and re-run `npx @siteping/cli init`.");
       process.exit(1);
     }
   }

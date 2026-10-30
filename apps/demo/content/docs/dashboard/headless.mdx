@@ -29,7 +29,7 @@ The options are a union over the three source modes: supply **exactly one** of `
 | `pageSize` | `number` | `50` | Clamped to 1–100 |
 | `onStatusChange` | `(feedback, previousStatus) => void` | — | After the server confirms |
 | `onDelete` | `(feedback) => void` | — | After the server confirms |
-| `onError` | `(error) => void` | — | Every failed load or mutation |
+| `onError` | `(error) => void` | — | Every failed load or mutation. The built-in sources throw errors `isSitepingError` matches, typed by `code`; a custom source's own errors arrive as they are |
 | `author` | `{ name, email? }` | — | Who posts replies from this inbox — see [Discussion threads](#discussion-threads). Without it, threads are read-only |
 | `readOnly` | `boolean` | `false` | No status change and no deletion, of feedbacks or of replies — see [Permissions](#permissions) |
 
@@ -39,7 +39,7 @@ Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`
 
 **Data** — `items` (all loaded pages), `total` (`null` until the first page lands), `counts` (per-status totals, best-effort), `loading`, `loadingMore`, `error`, `hasMore`, `loadMore()`, `refresh()`.
 
-**Filters** — `project`/`setProject`, `status`/`setStatus` (starts on `"open"`), `type`/`setType`, `search`/`setSearch`. Search updates state instantly and debounces the refetch by 250 ms; queries are trimmed and capped at 200 characters.
+**Filters** — `project`/`setProject`, `status`/`setStatusFilter` (starts on `"open"`), `type`/`setTypeFilter`, `search`/`setSearch`. Search updates state instantly and debounces the refetch by 250 ms; queries are trimmed and capped at 200 characters.
 
 **Focus & drawer** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (the open record — it stays available even if a filter removes its row), `openFeedback(id)`, `closeFeedback()`.
 

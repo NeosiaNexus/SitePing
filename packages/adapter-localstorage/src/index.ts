@@ -18,11 +18,16 @@ import {
 
 export type { SitepingStore } from "@siteping/core";
 export {
+  isStoreDuplicate,
+  isStoreLimit,
+  isStoreNotFound,
   isStorePersistence,
+  isStoreValueTooLong,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
+  StoreValueTooLongError,
 } from "@siteping/core";
 
 const DEFAULT_KEY = "siteping_feedbacks";

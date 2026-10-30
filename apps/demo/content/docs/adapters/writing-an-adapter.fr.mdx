@@ -108,7 +108,7 @@ Les handlers et le dashboard déduisent leur comportement de ces erreurs : levez
 | Une mutation acceptée mais non persistée | Levez `StorePersistenceError` au lieu d'annoncer une réussite fantôme |
 | Résultat vide sur `getFeedbacks` / `findByClientId` | Ne levez pas — renvoyez un tableau vide ou `null` |
 
-Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma.
+Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma. Chaque package de store — ce kit, `adapter-prisma`, `adapter-memory`, `adapter-localstorage` et les deux entrées d'`adapter-drizzle` — réexporte les mêmes cinq classes et les mêmes cinq gardes.
 
 ### Les sémantiques de requête à respecter
 

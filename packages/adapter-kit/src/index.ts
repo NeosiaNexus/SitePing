@@ -48,8 +48,10 @@ export type {
   DiagnosticsSnapshot,
   FeedbackCreateInput,
   FeedbackCreateOutcome,
+  FeedbackListPermissions,
   FeedbackPage,
   FeedbackPayload,
+  FeedbackPermissions,
   FeedbackQuery,
   FeedbackRecord,
   FeedbackResponse,
@@ -65,6 +67,7 @@ export type {
   ScreenshotRegion,
   ScreenshotStorage,
   Serialized,
+  SitepingCapabilities,
   SitepingStore,
 } from "@siteping/core";
 // Status/type constants + helpers

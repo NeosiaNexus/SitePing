@@ -45,8 +45,8 @@ export function EmptyState({ state, custom }: EmptyStateProps): ReactElement {
           type="button"
           className="spd-btn-ghost"
           onClick={() => {
-            state.setStatus("all");
-            state.setType("all");
+            state.setStatusFilter("all");
+            state.setTypeFilter("all");
             state.setSearch("");
           }}
         >

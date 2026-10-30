@@ -1,6 +1,7 @@
 import type { FeedbackQuery, FeedbackStatus, FeedbackUpdateInput, SitepingStore } from "@siteping/core";
 import {
   createCollectionStore,
+  isSitepingError,
   SitepingAuthError,
   SitepingNetworkError,
   SitepingValidationError,
@@ -324,12 +325,11 @@ describe("createEndpointSource — error mapping", () => {
     },
   );
 
-  it("maps 5xx to SitepingError with code SERVER (not retryable)", async () => {
+  it("maps 5xx to a retryable SitepingError with code SERVER, which isSitepingError matches", async () => {
     const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(500, "kaboom") });
-    await expect(source.list({ projectName: "demo" })).rejects.toMatchObject({
-      code: "SERVER",
-      retryable: false,
-    });
+    const error = await source.list({ projectName: "demo" }).catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: "SERVER", retryable: true });
+    expect(isSitepingError(error)).toBe(true);
   });
 
   it.each([408, 429])("maps %i (a proxy timeout or a rate limit) to a retryable SERVER error", async (status) => {
