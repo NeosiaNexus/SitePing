@@ -487,9 +487,15 @@ function diff(before, after) {
   const ops = [];
   let [i, j] = [0, 0];
   while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && a[i] === b[j]) ops.push([" ", a[i++], j++]);
-    else if (j < b.length && (i === a.length || lcs[i][j + 1] >= lcs[i + 1][j])) ops.push(["+", b[j++]]);
-    else ops.push(["-", a[i++]]);
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      ops.push([" ", a[i]]);
+      i++;
+      j++;
+    } else if (i < a.length && (j === b.length || lcs[i + 1][j] >= lcs[i][j + 1])) {
+      ops.push(["-", a[i++]]); // removals first, as in a unified diff
+    } else {
+      ops.push(["+", b[j++]]);
+    }
   }
   const keep = new Set();
   ops.forEach(([op], index) => {
@@ -510,6 +516,7 @@ function diff(before, after) {
 
 const errors = [];
 const changed = [];
+let written = 0;
 for (const pkg of packages) {
   const { file, content } = await snapshot(pkg, errors);
   let current = "";
@@ -522,6 +529,7 @@ for (const pkg of packages) {
   if (update) {
     mkdirSync(join(root, "api"), { recursive: true });
     writeFileSync(file, content, "utf8");
+    written++;
     console.log(`api: updated ${relativePath(file)}`);
   } else {
     changed.push(pkg.pkg);
@@ -543,4 +551,9 @@ if (changed.length > 0) {
   );
 }
 if (errors.length > 0 || changed.length > 0) process.exit(1);
-console.log(`api: ${update ? "snapshots written" : "public API matches the snapshots"} (${PACKAGES.length} packages)`);
+const verdict = !update
+  ? "public API matches the snapshots"
+  : written > 0
+    ? `${written} snapshot(s) updated`
+    : "snapshots already up to date";
+console.log(`api: ${verdict} (${PACKAGES.length} packages)`);
