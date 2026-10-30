@@ -20,6 +20,12 @@ interface Finding {
   targets: string[];
 }
 
+/**
+ * Known findings, each tied to one rule on one target, never a whole rule.
+ * Remove an entry with its fix: a stale one hides nothing, but must go.
+ */
+const KNOWN: ReadonlyArray<{ rule: string; target: string; why: string }> = [];
+
 /** Serious and critical WCAG 2.1 A/AA violations inside `include`, readable in a test diff. */
 async function violations(page: Page, include: string[]): Promise<Finding[]> {
   let builder = new AxeBuilder({ page }).withTags(WCAG_AA);
@@ -27,7 +33,14 @@ async function violations(page: Page, include: string[]): Promise<Finding[]> {
   const { violations } = await builder.analyze();
   return violations
     .filter((v) => v.impact === "serious" || v.impact === "critical")
-    .map((v) => ({ rule: v.id, impact: v.impact, targets: v.nodes.map((n) => n.target.join(" ")) }));
+    .map((v) => ({
+      rule: v.id,
+      impact: v.impact,
+      targets: v.nodes
+        .map((n) => n.target.join(","))
+        .filter((target) => !KNOWN.some((k) => k.rule === v.id && k.target === target)),
+    }))
+    .filter((finding) => finding.targets.length > 0);
 }
 
 async function seedFeedback(page: Page, project: string): Promise<void> {
@@ -36,7 +49,7 @@ async function seedFeedback(page: Page, project: string): Promise<void> {
       projectName: project,
       type: "bug",
       message: "The header overlaps the logo on the pricing page",
-      url: `${ORIGIN}/`,
+      url: "/",
       viewport: "1280x720",
       userAgent: "Playwright",
       authorName: "Axe",
@@ -55,19 +68,19 @@ for (const theme of ["light", "dark"] as const) {
       await seedFeedback(page, project);
       await page.goto(`${ORIGIN}/?project=${project}&theme=${theme}`);
       await expect(page.locator(".sp-fab")).toBeVisible();
-      expect(await violations(page, WIDGET_SURFACES), "FAB").toEqual([]);
+      expect.soft(await violations(page, WIDGET_SURFACES), "FAB").toEqual([]);
 
       await page.locator(".sp-fab").click();
       await expect(page.locator(".sp-radial-item--open").first()).toBeVisible();
-      expect(await violations(page, WIDGET_SURFACES), "FAB menu").toEqual([]);
+      expect.soft(await violations(page, WIDGET_SURFACES), "FAB menu").toEqual([]);
 
       await page.locator('[data-item-id="chat"]').click();
       await expect(page.locator(".sp-card")).toHaveCount(1);
-      expect(await violations(page, WIDGET_SURFACES), "panel").toEqual([]);
+      expect.soft(await violations(page, WIDGET_SURFACES), "panel").toEqual([]);
 
       await page.locator(".sp-card").click();
       await expect(page.locator(".sp-detail--visible")).toBeVisible();
-      expect(await violations(page, WIDGET_SURFACES), "detail view").toEqual([]);
+      expect.soft(await violations(page, WIDGET_SURFACES), "detail view").toEqual([]);
 
       await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
@@ -79,7 +92,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.mouse.move(420, 300, { steps: 5 });
       await page.mouse.up();
       await expect(page.locator('[role="dialog"][data-siteping-ignore] textarea')).toBeFocused();
-      expect(await violations(page, WIDGET_SURFACES), "comment popup").toEqual([]);
+      expect.soft(await violations(page, WIDGET_SURFACES), "comment popup").toEqual([]);
     });
 
     test("inbox: list and open feedback", async ({ page, browserName }) => {
@@ -88,11 +101,11 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto(`${ORIGIN}/inbox?project=${project}&theme=${theme}`);
       const row = page.locator(".spd-row").first();
       await expect(row).toBeVisible();
-      expect(await violations(page, [".spd-root"]), "inbox list").toEqual([]);
+      expect.soft(await violations(page, [".spd-root"]), "inbox list").toEqual([]);
 
       await row.click();
       await expect(page.locator(".spd-drawer")).toBeVisible();
-      expect(await violations(page, [".spd-root"]), "open feedback").toEqual([]);
+      expect.soft(await violations(page, [".spd-root"]), "open feedback").toEqual([]);
     });
   });
 }

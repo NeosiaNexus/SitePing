@@ -70,6 +70,8 @@ describe("BulkActions", () => {
 
     deselect.click();
     expect(document.activeElement).toBe(selectAll.querySelector(".sp-bulk-checkbox"));
+  });
+
   it.each([
     ["en", "Select Feedback fb-1"],
     ["fr", "Sélectionner Feedback fb-1"],
