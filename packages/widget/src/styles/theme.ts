@@ -104,7 +104,8 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
       bgHover: "#1e293b",
       text: "#f1f5f9",
       textSecondary: "#94a3b8",
-      textTertiary: "#64748b",
+      // 5.9:1 on bg, 4.8:1 on bgHover (AA for small text; slate-500 was 3.1–3.8:1).
+      textTertiary: "#8695aa",
       border: "#334155",
       shadow: "rgba(0, 0, 0, 0.3)",
       // Glass tokens — dark frosted glass
