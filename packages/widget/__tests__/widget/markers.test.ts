@@ -309,15 +309,16 @@ describe("MarkerManager", () => {
     });
 
     it("tells the four statuses apart by glyph and ring, not by colour alone", () => {
-      const statuses = ["open", "in_progress", "resolved", "wont_fix"] as const;
-      markers.render(statuses.map((status) => makeFeedback({ id: `fb-${status}`, status })));
-
-      const looks = statuses.map((status) => {
-        const marker = document.querySelector<HTMLElement>(`[data-feedback-id="fb-${status}"]`)!;
+      // One pin at a time, so each is #1 with no cluster badge: only the
+      // status can make the shapes differ.
+      const shapes = (["open", "in_progress", "resolved", "wont_fix"] as const).map((status) => {
+        markers.render([makeFeedback({ status })]);
+        const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
+        const slash = marker.querySelector('span[style*="rotate"]') !== null;
         const fullRing = marker.style.borderTopColor === marker.style.borderLeftColor;
-        return `${marker.textContent}|${marker.childElementCount}|${fullRing}`;
+        return `${marker.textContent}|${slash}|${fullRing}`;
       });
-      expect(new Set(looks).size).toBe(4);
+      expect(new Set(shapes).size).toBe(4);
     });
   });
 
