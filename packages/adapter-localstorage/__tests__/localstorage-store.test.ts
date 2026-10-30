@@ -4,11 +4,25 @@ import { testSitepingStore } from "@siteping/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalStorageStore, StorePersistenceError } from "../src/index.js";
 
-// Run the full SitepingStore conformance suite
-testSitepingStore(() => {
-  localStorage.clear();
-  return new LocalStorageStore({ key: "test_conformance" });
-});
+// Run the full SitepingStore conformance suite — its persistence-failure
+// cases with a full localStorage, as the quota tests below do
+testSitepingStore(
+  () => {
+    localStorage.clear();
+    return new LocalStorageStore({ key: "test_conformance" });
+  },
+  {
+    failWrites: () => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = () => {
+        throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      };
+      return () => {
+        Storage.prototype.setItem = original;
+      };
+    },
+  },
+);
 
 // ---------------------------------------------------------------------------
 // LocalStorageStore-specific tests

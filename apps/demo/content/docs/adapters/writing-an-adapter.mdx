@@ -165,17 +165,33 @@ testSitepingStore(() => new MyStore());
 
 Besides one call at a time, it fires updates, deletes and creates together in a `Promise.all` — the way the widget's bulk actions do — and checks that every write landed.
 
-The factory runs before each test and may be async, which is where you spin up a transaction or a fresh schema. Two knobs cover contract variations that are legitimately backend-specific:
+The factory runs before each test and may be async, which is where you spin up a transaction or a fresh schema. Three options cover what legitimately varies between backends:
 
 | Option | Default | Set it when |
 |---|---|---|
 | `duplicateBehavior` | `"return"` | Your `createFeedback` throws `StoreDuplicateError` on a repeated `clientId` instead of returning the existing record — pass `"throw"`. A store that returns it but throws when it loses a concurrent insert race stays on `"return"` |
 | `caseInsensitiveSearch` | `true` | Your collation makes `search` case-sensitive — pass `false` and the suite only asserts same-case substring matching |
+| `failWrites` | — | Your backend can accept a write and lose it (quota, revoked storage) — pass a function that makes it refuse every write until the function it returns is called. Without it, the persistence-failure cases are reported as skipped |
 
 ```ts
 testSitepingStore(() => new PostgresStore(db), {
   duplicateBehavior: "throw",
   caseInsensitiveSearch: false,
+});
+```
+
+With `failWrites`, each mutation must reject with `StorePersistenceError` while writes fail, and leave what reads return as it was — no phantom record, no lost update:
+
+```ts
+let writesFail = false; // read by your backend's `persist`
+
+testSitepingStore(() => new KvStore(), {
+  failWrites: () => {
+    writesFail = true;
+    return () => {
+      writesFail = false;
+    };
+  },
 });
 ```
 
