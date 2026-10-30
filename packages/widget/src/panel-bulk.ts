@@ -406,12 +406,16 @@ export class BulkActions {
     this.updateButtonLabels();
   }
 
-  /** Create a checkbox element for a card. Returns the checkbox wrapper. */
-  createCheckbox(feedbackId: string): HTMLElement {
+  /**
+   * Create a checkbox element for a card. Returns the checkbox wrapper.
+   * `label` is the card's accessible name, so a screen reader names a
+   * feedback a person recognises, never its id.
+   */
+  createCheckbox(feedbackId: string, label: string): HTMLElement {
     const wrapper = el("div", { class: "sp-bulk-checkbox" });
     wrapper.setAttribute("role", "checkbox");
     wrapper.setAttribute("tabindex", "0");
-    wrapper.setAttribute("aria-label", `Select feedback ${feedbackId}`);
+    wrapper.setAttribute("aria-label", tWithParams(this.t, "bulk.selectFeedback", { label }));
 
     // Click handler
     wrapper.addEventListener("click", (e) => {
