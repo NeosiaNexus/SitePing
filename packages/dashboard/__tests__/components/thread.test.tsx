@@ -34,13 +34,19 @@ function renderThread({
 }: {
   comments?: CommentRecord[];
   canComment?: boolean;
-  canDelete?: boolean;
+  canDelete?: boolean | ((comment: CommentRecord) => boolean);
   onAdd?: (body: string, clientId: string) => Promise<void>;
   onDelete?: (commentId: string) => Promise<void>;
 } = {}) {
   const record = makeRecord({ id: "fb-1", ...(comments ? { comments } : {}) });
   const view = renderWithUi(
-    <Thread record={record} canComment={canComment} canDelete={canDelete} onAdd={onAdd} onDelete={onDelete} />,
+    <Thread
+      record={record}
+      canComment={canComment}
+      canDelete={typeof canDelete === "function" ? canDelete : () => canDelete}
+      onAdd={onAdd}
+      onDelete={onDelete}
+    />,
   );
   const q = <E extends Element>(selector: string) => view.container.querySelector<E>(selector);
   return {
@@ -61,7 +67,7 @@ function LiveThread({ initial, canComment }: { initial: CommentRecord[]; canComm
     <Thread
       record={makeRecord({ id: "fb-1", comments })}
       canComment={canComment}
-      canDelete
+      canDelete={() => true}
       onAdd={async (body) =>
         setComments((thread) => [...thread, makeComment({ id: `new-${thread.length}`, body, authorName: "Studio" })])
       }
@@ -331,6 +337,17 @@ describe("Thread", () => {
     const view = renderThread({ comments: [makeComment()], canDelete: false });
     expect(view.input()).not.toBeNull();
     expect(view.container.querySelector("[data-comment-delete]")).toBeNull();
+  });
+
+  it("offers delete on the replies the user may delete only (#393)", () => {
+    const view = renderThread({
+      comments: [makeComment({ id: "c-mine" }), makeComment({ id: "c-theirs" })],
+      canDelete: (comment) => comment.id === "c-mine",
+    });
+    const offered = [...view.container.querySelectorAll("[data-comment-delete]")].map((button) =>
+      button.getAttribute("data-comment-delete"),
+    );
+    expect(offered).toEqual(["c-mine"]);
   });
 
   it("keeps the question open and says so when a delete fails", async () => {

@@ -118,6 +118,8 @@ describe("comments — POST", () => {
       authorEmail: "bob@example.com",
       authorRole: "client",
       createdAt: expect.any(String),
+      // Without a key, DELETE needs one: nobody here may delete it.
+      permissions: { canDelete: false },
     });
     const listed = await list(handler);
     expect(listed.capabilities).toEqual({ comments: true, deleteComments: true });
@@ -236,7 +238,8 @@ describe("comments — POST", () => {
 
   it("answers 422 to a comment the store cannot hold, logged for the operator", async () => {
     const store = new MemoryStore();
-    store.addComment = () => Promise.reject(new StoreValueTooLongError());
+    // The write path of a store that reports its inserts.
+    store.addCommentIfAbsent = () => Promise.reject(new StoreValueTooLongError());
     const logger = silentLogger();
     const handler = createSitepingHandler({ store, logger });
     const feedback = await createFeedback(handler);
@@ -254,7 +257,7 @@ describe("comments — POST", () => {
   it("reports a store failure as a logged 500", async () => {
     const store = new MemoryStore();
     const failure = new Error("connection refused");
-    store.addComment = () => Promise.reject(failure);
+    store.addCommentIfAbsent = () => Promise.reject(failure);
     const logger = silentLogger();
     const handler = createSitepingHandler({ store, logger });
     const feedback = await createFeedback(handler);

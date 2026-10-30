@@ -1,5 +1,6 @@
 import {
   type CommentCreateInput,
+  type CommentCreateOutcome,
   type CommentRecord,
   createCollectionStore,
   type FeedbackCreateInput,
@@ -13,11 +14,16 @@ import {
 
 export type { SitepingStore } from "@siteping/core";
 export {
+  isStoreDuplicate,
+  isStoreLimit,
+  isStoreNotFound,
   isStorePersistence,
+  isStoreValueTooLong,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
+  StoreValueTooLongError,
 } from "@siteping/core";
 
 /**
@@ -91,6 +97,10 @@ export class MemoryStore implements SitepingStore {
 
   addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> {
     return this.engine.addComment(feedbackId, data);
+  }
+
+  addCommentIfAbsent(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome> {
+    return this.engine.addCommentIfAbsent(feedbackId, data);
   }
 
   deleteComment(feedbackId: string, commentId: string): Promise<void> {

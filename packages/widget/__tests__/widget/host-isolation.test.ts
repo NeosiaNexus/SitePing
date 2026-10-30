@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  addSurfaceKeydownListener,
   installHostIsolationGuard,
   isolateFromHost,
   isWidgetSurface,
@@ -258,6 +259,18 @@ describe("host isolation", () => {
       expect(onDocumentFocusOut).toHaveBeenCalledTimes(1);
     });
 
+    it("delivers Tab to a widget trap once, in the normal order, and to page listeners too (#387)", () => {
+      installGuard();
+      const order: string[] = [];
+      listenOnDocument("keydown", () => order.push("document capture"), true);
+      cleanups.push(addSurfaceKeydownListener(surface, () => order.push("widget trap")));
+      listenOnDocument("keydown", () => order.push("document bubble"), false);
+
+      surfaceButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+
+      expect(order).toEqual(["document capture", "widget trap", "document bubble"]);
+    });
+
     it("lets capture-phase host listeners see pointerdown and focusin on a surface", () => {
       installGuard();
       const onDocumentPointerDown = vi.fn();
@@ -424,6 +437,74 @@ describe("host isolation", () => {
       expect(onSurfaceKeyDown).toHaveBeenCalledTimes(2);
       expect(onDocumentKeyDown).toHaveBeenCalledTimes(2);
       expect(enter.defaultPrevented).toBe(false);
+    });
+
+    describe("Tab traps (#387)", () => {
+      const pressTab = (target: Element, shiftKey = false): KeyboardEvent => {
+        const tab = new KeyboardEvent("keydown", {
+          key: "Tab",
+          shiftKey,
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        });
+        target.dispatchEvent(tab);
+        return tab;
+      };
+
+      it("runs the widget's trap before a host's capture-phase trap, which never sees the Tab", () => {
+        const order: string[] = [];
+        listenOnDocument("keydown", () => order.push("host trap"), true);
+        cleanups.push(
+          addSurfaceKeydownListener(surface, (event) => {
+            order.push("widget trap");
+            event.preventDefault();
+          }),
+        );
+        surfaceButton.focus();
+
+        const tab = pressTab(surfaceButton);
+
+        expect(order).toEqual(["widget trap"]);
+        expect(tab.defaultPrevented).toBe(true);
+      });
+
+      it("runs each trap once, innermost first, up through a closed shadow root", () => {
+        const { shadowRoot, shadowButton } = mountClosedShadowSurface(true);
+        const inner = document.createElement("div");
+        shadowRoot.appendChild(inner);
+        inner.appendChild(shadowButton);
+        const order: string[] = [];
+        cleanups.push(addSurfaceKeydownListener(inner, () => order.push("inner")));
+        cleanups.push(addSurfaceKeydownListener(shadowRoot, () => order.push("shadow root")));
+        shadowButton.focus();
+
+        pressTab(shadowButton, true);
+
+        expect(order).toEqual(["inner", "shadow root"]);
+      });
+
+      it("leaves a Tab nobody prevented to the browser, and Tab from the page to the host", () => {
+        const onHostTrap = vi.fn();
+        listenOnDocument("keydown", onHostTrap, true);
+        cleanups.push(addSurfaceKeydownListener(surface, () => {}));
+        surfaceButton.focus();
+
+        expect(pressTab(surfaceButton).defaultPrevented).toBe(false);
+        expect(onHostTrap).not.toHaveBeenCalled();
+        pressTab(hostInput);
+        expect(onHostTrap).toHaveBeenCalledTimes(1);
+      });
+
+      it("stops running a trap once its cleanup ran", () => {
+        const trap = vi.fn();
+        addSurfaceKeydownListener(surface, trap)();
+        surfaceButton.focus();
+
+        pressTab(surfaceButton);
+
+        expect(trap).not.toHaveBeenCalled();
+      });
     });
 
     it("stops isolating once the guard is removed", () => {

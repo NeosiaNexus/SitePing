@@ -74,7 +74,9 @@ Content-Type: application/json
 }
 ```
 
-It answers `201` with the comment. `authorRole` is optional and defaults to `client`. `clientId` is required — `[a-zA-Z0-9_-]`, up to 200 characters: generate one per comment (`crypto.randomUUID()`) and resend the same one on a retry of the same text. An edited reply is a new comment with a new `clientId`: the server matches on `clientId` alone, so a first attempt that did land would come back in its place. The widget and the dashboard do both.
+It answers `201` with the comment. `authorRole` is optional and defaults to `client`. `clientId` is required — `[a-zA-Z0-9_-]`, up to 191 characters: generate one per comment (`crypto.randomUUID()`) and resend the same one on a retry of the same text. An edited reply is a new comment with a new `clientId`: the server matches on `clientId` alone, so a first attempt that did land would come back in its place. The widget and the dashboard do both.
+
+A stored reply fires the `onCommentCreated` [hook](/docs/server#extension-points) and the `comment.created` [webhook](/docs/server#events) for the webhooks that opt in — once: a retried post that returns the stored comment fires neither.
 
 ### Delete a comment
 
@@ -89,7 +91,7 @@ It answers `200 { "deleted": true }`. Like every `DELETE`, it needs the `apiKey`
 
 ### Read threads
 
-The `GET` list is unchanged, with three additions: each feedback's `comments`; a `capabilities` object that says whether the store can take comments (`comments`) and delete them (`deleteComments`) — so a client can hide its reply box, or its delete buttons, up front instead of meeting a `501`; and the [`permissions`](/docs/server#what-each-requester-may-do) of this requester, on each feedback and, with `canDeleteAll`, on the list:
+The `GET` list is unchanged, with three additions: each feedback's `comments`; a `capabilities` object that says whether the store can take comments (`comments`) and delete them (`deleteComments`) — so a client can hide its reply box, or its delete buttons, up front instead of meeting a `501`; and the [`permissions`](/docs/server#what-each-requester-may-do) of this requester, on each feedback, on each comment (`canDelete`) and, with `canDeleteAll`, on the list:
 
 ```json
 {
@@ -130,7 +132,7 @@ The widget posts from anonymous browsers, so the `authorRole` a request sends is
 
 The name and email are claims too: a visitor may sign a reply with anyone's, as they may a feedback. To take them from the session — and scrub the body, or pin the project — use [`beforeComment`](/docs/server#extension-points), the replies' `beforeCreate`, as the [recipes](/docs/server#recipe-openid-connect) do; the role check above still applies to what it returns.
 
-`authorize` sees two more actions: `createComment` and `deleteComment`, with the `feedbackId` — and the `commentId` for a delete. On a `dryRun`, which fills in the feedback's [`permissions`](/docs/server#what-each-requester-may-do), `deleteComment` comes without a `commentId` and its answer covers the whole thread: guard a per-author rule with `if (!commentId) return false`, which hides the delete buttons while the real `DELETE` still goes through your rule.
+`authorize` sees two more actions: `createComment` and `deleteComment`, with the `feedbackId` — and the `commentId` for a delete. On a `dryRun`, which fills in the feedback's [`permissions`](/docs/server#what-each-requester-may-do), `deleteComment` first comes without a `commentId`, its answer covering the whole thread: guard a per-author rule with `if (!commentId) return false`. Each comment of that thread is then asked about with its `commentId`, so the rule grants each author's own replies their `permissions.canDelete` — the dashboard shows the delete button on those only — while the real `DELETE` still goes through your rule.
 
 ```ts
 createSitepingHandler({
@@ -164,4 +166,4 @@ A comment's `authorEmail` is redacted exactly like the feedback's: blank unless 
 | [Prisma](/docs/adapters/prisma#discussion-threads) | Run `npx @siteping/cli sync` to add the `SitepingComment` model, then `npx prisma db push` (or `npx prisma migrate dev`) and `npx prisma generate` — Prisma 7 no longer generates from those. Until the client is generated with it, threads read empty and comment writes answer `501` |
 | [Drizzle](/docs/adapters/drizzle) | Nothing beyond the setup: `sitepingComments` is one of the three tables the store needs. It reads every feedback's thread, so lists fail without it |
 | [Memory](/docs/adapters/memory), [localStorage](/docs/adapters/localstorage) | Nothing — both keep threads. localStorage data saved by an earlier version reads with empty threads |
-| [Your own](/docs/adapters/writing-an-adapter#discussion-threads) | Implement the optional `addComment` and `deleteComment` — `createCollectionStore` provides both with `comments: true` |
+| [Your own](/docs/adapters/writing-an-adapter#discussion-threads) | Implement the optional `addComment` and `deleteComment`, and `addCommentIfAbsent` for reply notifications — `createCollectionStore` provides all three with `comments: true` |
