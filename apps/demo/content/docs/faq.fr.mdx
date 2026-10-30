@@ -42,6 +42,10 @@ Le widget réessaie (3 tentatives avec backoff), puis met la charge utile en fil
 
 Le marqueur est masqué sur cette page (plus rien à quoi s'ancrer) plutôt que de pointer vers le mauvais élément — mais le feedback lui-même, avec son message et sa capture, reste dans le panneau et dans le dashboard. Voir [comment fonctionne l'ancrage](/fr/docs/widget/anchoring).
 
+## Qu'est-ce que SitePing ne gère pas ?
+
+Le contenu des iframes, les parties de la page que le moteur de capture ne sait pas redessiner, les shadow roots fermés, et quelques manques sur écrans tactiles. Les [limites connues](/fr/docs/known-limitations) les recensent, avec ce qu'exige une Content Security Policy stricte et les navigateurs pris en charge.
+
 ## Ma langue n'est pas intégrée.
 
 Enregistrez-la à l'exécution : le widget et le dashboard exportent chacun `registerLocale`, qui accepte un dictionnaire complet ou partiel — voir [Langues](/fr/docs/widget/i18n#locales-personnalisées). L'intégrer comme locale native pour tout le monde est la contribution la plus accessible du projet : voir [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md).
