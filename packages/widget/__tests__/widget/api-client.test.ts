@@ -377,27 +377,30 @@ describe("ApiClient", () => {
   });
 
   it("reports on the thrown error whether the failed send was saved (#308)", async () => {
-    stubLocalStorage();
-    vi.useFakeTimers();
-    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
-    const saved = client.sendFeedback(basePayload).catch((e: unknown) => e);
-    await drainRetryBackoff();
-    expect(queueOutcome(await saved)).toBe(true);
-    vi.useRealTimers();
-
-    stubLocalStorage(10); // no queue write can fit
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.useFakeTimers();
-    const unsaved = client.sendFeedback({ ...basePayload, clientId: "cid-unsaved" }).catch((e: unknown) => e);
-    await drainRetryBackoff();
-    expect(queueOutcome(await unsaved)).toBe(false);
-    vi.useRealTimers();
+    const sendOffline = async (clientId: string): Promise<unknown> => {
+      vi.useFakeTimers();
+      try {
+        vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+        const failure = client.sendFeedback({ ...basePayload, clientId }).catch((e: unknown) => e);
+        await drainRetryBackoff();
+        return await failure;
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    try {
+      stubLocalStorage();
+      expect(queueOutcome(await sendOffline("cid-saved"))).toBe(true);
 
-    vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
-    const final = await client.sendFeedback(basePayload).catch((e: unknown) => e);
-    expect(queueOutcome(final)).toBeUndefined();
+      stubLocalStorage(10); // no queue write can fit
+      expect(queueOutcome(await sendOffline("cid-unsaved"))).toBe(false);
 
-    vi.unstubAllGlobals();
+      vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
+      expect(queueOutcome(await client.sendFeedback(basePayload).catch((e: unknown) => e))).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("does not queue a 4xx rejection — a replay would fail identically", async () => {
