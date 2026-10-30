@@ -3,9 +3,17 @@
  * serializes is exactly the wire contract core publishes to clients.
  */
 
-import type { CommentResponse, FeedbackPermissions, FeedbackResponse, Prettify, Serialized } from "@siteping/core";
+import type {
+  CommentResponse,
+  FeedbackPermissions,
+  FeedbackResponse,
+  FeedbackResponseList,
+  Prettify,
+  Serialized,
+} from "@siteping/core";
 import { expectTypeOf, test } from "vitest";
 import type { GenericWebhookPayload } from "../src/index.js";
+import type { WireFeedbackList } from "../src/operations/list-feedbacks.js";
 import type { WireComment, WireFeedback } from "../src/pipeline.js";
 
 test("the wire shapes serialize to the API types clients read", () => {
@@ -17,6 +25,11 @@ test("the wire shapes serialize to the API types clients read", () => {
   // on servers that predate them.
   expectTypeOf<Serialized<WireFeedback>["comments"]>().toEqualTypeOf<CommentResponse[]>();
   expectTypeOf<Serialized<WireFeedback>["permissions"]>().toEqualTypeOf<FeedbackPermissions>();
+});
+
+test("the list wire shape is what clients read, protocol version always sent", () => {
+  expectTypeOf<Omit<WireFeedbackList, "feedbacks">>().toExtend<Omit<FeedbackResponseList, "feedbacks">>();
+  expectTypeOf<WireFeedbackList["protocol"]>().toEqualTypeOf<number>();
 });
 
 test("the generic webhook body is typed as the JSON a receiver parses", () => {

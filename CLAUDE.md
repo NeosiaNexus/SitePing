@@ -14,6 +14,7 @@
 - `bun run pkg-checks` — publint + attw over published packages (list derived from release-please manifest)
 - `bun run check:consistency` — locale counts and lists, demo locale pickers, package registration (release-please, release.yml, root CHANGELOG index), fix-dts chains, esbuild override = widget spec, `fileURLToPath` (never a file URL's `.pathname`) in Node tooling, no `@prisma/client` import in adapter-prisma's src (optional peer) nor `@siteping/server` import in integration-issues' src (structural hook types), every published `workspace:` dependency pinned in release.yml with its publish job waiting for the dependency's, one Node floor = core's `engines.node` across workspaces, adapter scaffold, oldest node-compat lane, publish jobs, demo image and docs "Node N+" claims (runs in CI)
 - `bun run new:locale <code>` / `bun run new:adapter <name>` — scaffolds (see CONTRIBUTING)
+- `bun run openapi:update` — regenerate `packages/server/openapi.json` (the wire protocol, from the server's zod schemas and response types) after a protocol change; a test fails while it is stale
 
 ## Architecture
 - **Monorepo** with bun workspaces — 12 packages in `packages/`:

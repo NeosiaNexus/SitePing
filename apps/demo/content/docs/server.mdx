@@ -566,7 +566,7 @@ One endpoint, five methods. All bodies are JSON.
 | Method | Purpose | Success |
 |---|---|---|
 | `POST` | Create feedback (widget submissions) — or [a comment](/docs/comments#post-a-comment), when the body has a `feedbackId` | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks or `onCreated` twice); a `clientId` already used by **another** project is refused with `409` |
-| `GET` | List feedbacks, each with its thread and [`permissions`](#what-each-requester-may-do) | `200` + `{ feedbacks, total, capabilities, permissions }`, with `Cache-Control: private, max-age=5` (`no-store` under `access`) |
+| `GET` | List feedbacks, each with its thread and [`permissions`](#what-each-requester-may-do) | `200` + `{ feedbacks, total, protocol, capabilities, permissions }`, with `Cache-Control: private, max-age=5` (`no-store` under `access`) |
 | `PATCH` | Change a status | `200` + updated record |
 | `DELETE` | Delete one or all — or [a comment](/docs/comments#delete-a-comment), when the body has a `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | CORS preflight | `204` |
@@ -578,6 +578,24 @@ One endpoint, five methods. All bodies are JSON.
 **DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
 
 **Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`, the first 20 issues; a body over `maxBodyBytes` → `413`; missing or wrong credentials → `401`; refused by `authorize` or a CSRF check → `403`; not JSON under `access` → `415`; unknown id → `404`; `clientId` owned by another project, a comment's `clientId` already used on another feedback, or a `client` comment on a full thread → `409 { error }`; a value longer than the store holds (a MySQL column `sync` has not [widened](/docs/adapters/prisma#database-schema) yet) → `422 { error }`; comment write on a store without comments → `501 { error }`; `onDeleting` threw → `502`; anything else → `500 { error: "Internal server error" }`, or the message `describeError` returns.
+
+### Wire protocol
+
+The protocol ships with `@siteping/server` as an OpenAPI 3.1 document, generated from the schemas the handler validates with and checked against the types it sends — a client generator, a mock server or an API explorer can read it:
+
+```ts
+import spec from "@siteping/server/openapi.json" with { type: "json" };
+```
+
+Every list response carries `protocol`, the version of the protocol the server speaks (`SITEPING_PROTOCOL_VERSION`, exported by `@siteping/server`: `1`). It rises with each addition a client may rely on, so a client checks `protocol >= N` before using what version N added, rather than probing for fields. Servers that predate it send none: read that as `0`.
+
+What 1.x keeps stable:
+
+- **One endpoint, routed by method and body.** A `POST` body with a `feedbackId` posts a comment, any other creates a feedback; a `DELETE` body with a `commentId` deletes a comment, any other deletes feedback. A payload of one resource never carries the other's key.
+- **`DELETE` carries a JSON body.** `fetch` sends it and every runtime the handler targets reads it, but HTTP gives such a body no defined meaning, and some proxies drop it — the request then answers `400`. Keep the endpoint behind a proxy that forwards it.
+- **Three `409`s, none worth a retry:** a feedback whose `clientId` another project already uses; a comment whose `clientId` is already used on another feedback; a `client` comment on a thread that holds 100 of them.
+- **Status codes and JSON shapes are the contract, `error` strings are not.** They are English and informational, and a minor release may reword one: branch on the status.
+- **Widget and dashboard 1.x need a 1.x server** — `@siteping/server` or `@siteping/adapter-prisma`, protocol 1. Within 1.x they use what a later protocol version adds only after reading `protocol`, so a newer widget keeps working against an older 1.x server.
 
 ### Validation limits worth knowing
 
