@@ -7,7 +7,7 @@ description: Les questions que tout le monde pose, répondues d'après le compor
 
 Par ordre de probabilité :
 
-1. **Vous êtes dans un build de production.** Le widget passe son tour quand `NODE_ENV` vaut `production` (seul `process.env.NODE_ENV` est lu). Passez `forceShow: true` en staging, ou vérifiez avec `onSkip`.
+1. **Vous êtes dans un build de production.** Le widget passe son tour quand `NODE_ENV` vaut `production` (seul `process.env.NODE_ENV` est lu). Sans bundler, comme avec le [bundle `<script>`](/fr/docs/widget/script-tag), tout hôte autre que `localhost` compte comme de la production. Passez `forceShow: true` en staging, ou vérifiez avec `onSkip`.
 2. **Config invalide** — un `endpoint`/`store` ou un `projectName` manquant affiche un `console.error` et ne monte rien. Ce cas ne déclenche *pas* `onSkip`, donc ouvrez la console.
 3. **Il est déjà monté.** Un second `initSiteping()` renvoie un handle sur le widget existant au lieu d'un deuxième bouton, et sa config est ignorée.
 4. **La fenêtre est plus étroite que votre `minViewportWidth`.** Seulement si vous en avez défini un — par défaut le widget s'affiche à toutes les largeurs, téléphones compris (avant la 0.11, le défaut était 768 px). `onSkip("mobile")` vous le dit.
@@ -18,11 +18,17 @@ Non. La première fois qu'ils envoient un feedback, le widget demande un nom et 
 
 ## C'est vraiment gratuit ? Qu'est-ce que j'héberge ?
 
-Licence MIT, aucune offre payante, aucune télémétrie. Vous hébergez un endpoint d'API (n'importe quel framework qui parle `Request`/`Response` du Web) et votre propre base de données via Prisma ou Drizzle. Les données de feedback ne touchent jamais les serveurs de qui que ce soit d'autre.
+Licence MIT, aucune offre payante, aucune télémétrie. Vous hébergez un endpoint d'API (n'importe quel framework qui parle `Request`/`Response` du Web) et votre propre base de données via Prisma ou Drizzle. Les feedbacks sont stockés dans cette base, et n'en sortent que par ce que vous activez : des [webhooks](/fr/docs/server#webhooks) vers Slack, Discord ou vos propres endpoints, la [synchronisation avec un gestionnaire de tickets](/fr/docs/issue-trackers) GitHub ou GitLab, un [stockage des captures](/fr/docs/adapters/screenshot-storage) sur le bucket de votre choix.
+
+Les noms et e-mails des relecteurs sont des données personnelles. Se conformer au RGPD — une base légale, une durée de conservation, informer les relecteurs de ce que vous collectez — vous revient en tant qu'exploitant du site : une bibliothèque ne peut pas être conforme à elle seule, mais elle garde les données là où vous les mettez.
+
+## Une mise à jour peut-elle casser mon intégration ?
+
+Pas au sein d'une version majeure. À partir de la 1.0, chaque release 1.x garde votre code compilable, vos feedbacks enregistrés résolubles, et votre widget, votre dashboard et votre serveur compatibles entre eux. [Versionnage](/fr/docs/versioning) détaille ce qui est couvert, et ce qui ne l'est pas.
 
 ## Quels frameworks fonctionnent ?
 
-- **Widget :** n'importe quel site — c'est un simple script (ESM, CJS ou un `<script>` global). Un hook React (`@siteping/widget/react`) est inclus.
+- **Widget :** n'importe quel site — c'est un simple script (ESM, CJS ou un [`<script>` global](/fr/docs/widget/script-tag)). Un hook React (`@siteping/widget/react`) est inclus.
 - **Serveur :** l'adapter renvoie des handlers standard `Request` → `Response` — Next.js, Remix, SvelteKit, Hono, … Le générateur de route du CLI vise spécifiquement l'App Router de Next.js ; les autres frameworks montent les handlers manuellement.
 - **Dashboard :** React 18 ou 19.
 
@@ -41,6 +47,10 @@ Le widget réessaie (3 tentatives avec backoff), puis met la charge utile en fil
 ## Un élément annoté a été supprimé. Où est passée l'annotation ?
 
 Le marqueur est masqué sur cette page (plus rien à quoi s'ancrer) plutôt que de pointer vers le mauvais élément — mais le feedback lui-même, avec son message et sa capture, reste dans le panneau et dans le dashboard. Voir [comment fonctionne l'ancrage](/fr/docs/widget/anchoring).
+
+## Qu'est-ce que SitePing ne gère pas ?
+
+Le contenu des iframes, les parties de la page que le moteur de capture ne sait pas redessiner, les shadow roots fermés, et quelques manques sur écrans tactiles. Les [limites connues](/fr/docs/known-limitations) les recensent, avec ce qu'exige une Content Security Policy stricte et les navigateurs pris en charge.
 
 ## Ma langue n'est pas intégrée.
 

@@ -7,7 +7,10 @@ import { type AssertEqual, type DeepReadonly, hasOwn, type Prettify, type Serial
 /** FAB anchor — bottom-corner placement supported by the widget. */
 export type SitepingPosition = "bottom-right" | "bottom-left";
 
-/** Visual theme — `auto` resolves to `light` or `dark` via system preference. */
+/**
+ * Visual theme of the widget and the dashboard — `auto` follows the system
+ * preference, live: an OS switch mid-session re-themes the UI.
+ */
 export type SitepingTheme = "light" | "dark" | "auto";
 
 /** Built-in UI locales shipped with the widget. */
@@ -217,7 +220,7 @@ export interface SitepingBaseConfig {
   minViewportWidth?: number | undefined;
   /** Enable debug logging of lifecycle events — defaults to false */
   debug?: boolean | undefined;
-  /** Color theme — defaults to 'light' */
+  /** Color theme — defaults to `light`; `auto` follows the system preference live. */
   theme?: SitepingTheme | undefined;
   /** UI locale — defaults to 'en'. Built-in: en, fr, de, es, it, pt (Brazilian), ru, ja, ko. Any other string falls back to English. */
   locale?: SitepingLocale | undefined;
@@ -237,7 +240,9 @@ export interface SitepingBaseConfig {
    * When true (default), the widget filters initial markers and panel results
    * by `feedback.url === scope.url`, so annotations created on one page never
    * leak to other pages — even if their CSS selector accidentally matches.
-   * Set to `false` to revert to the legacy project-wide behavior.
+   * Set to `false` for a project-wide view: the panel lists every feedback of
+   * the project, and a marker shows wherever its anchor resolves — for
+   * feedback on what every page shares, such as a header or a footer.
    */
   scopeAnnotationsByUrl?: boolean | undefined;
   /**
@@ -309,7 +314,7 @@ export interface SitepingBaseConfig {
    */
   captureDiagnostics?: boolean | DiagnosticsCaptureOptions | undefined;
   /** Called when the widget is skipped (production mode, viewport under `minViewportWidth`, SSR — no DOM) */
-  onSkip?: (reason: SitepingSkipReason) => void;
+  onSkip?: ((reason: SitepingSkipReason) => void) | undefined;
   /**
    * Auto-focus a specific annotation when its ID appears in the URL query
    * string. Lets hosts deeplink directly into a feedback from external
@@ -319,7 +324,8 @@ export interface SitepingBaseConfig {
    * `window.location.search` right after the initial markers load. If the
    * value matches a visible feedback ID, the widget scrolls the annotation
    * into view, pins its highlight, and pulses the marker — the same visual
-   * affordance a marker click produces.
+   * affordance a marker click produces — then opens the panel on that
+   * feedback's detail view, where its discussion thread is.
    *
    * - `false` / `undefined` (default): no URL parsing. Existing behavior
    *   unchanged, no host URL inspection.
@@ -360,6 +366,8 @@ export interface SitepingBaseConfig {
    * Pre-fill author identity from the host application — typically the
    * currently signed-in user. When set, the widget uses these values
    * directly and never shows the identity modal, even on first feedback.
+   * It names the reviewer who sends feedback — the dashboard's `author` is
+   * the team member who replies, a different person.
    *
    * Use case: SSO-integrated apps where the end user is already
    * authenticated by the host. Avoids the awkward "enter your name and
@@ -407,12 +415,13 @@ export interface SitepingBaseConfig {
    *
    * The widget always emits a `SitepingError` (or a subclass:
    * `SitepingNetworkError`, `SitepingValidationError`, `SitepingAuthError`)
-   * for HTTP-mode failures — host apps can `instanceof` to drive retry
-   * logic, or read `error.code` (`"NETWORK" | "VALIDATION" | "AUTH" |
-   * "SERVER"`) and `error.retryable` — and an `AUTH` error's `status`
-   * (`401` for missing or dead credentials, `403` for a refusal). The type
-   * is widened to `Error` so direct-store callers can still surface raw
-   * errors without breaking the contract.
+   * for a failed call — match it with `isSitepingError(error)` (not
+   * `instanceof`: the classes aren't exported), then read `error.code`
+   * (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`),
+   * `error.retryable` and an `AUTH` error's `status` (`401` for missing or
+   * dead credentials, `403` for a refusal). The type is widened to `Error`
+   * because a store in `store` mode may throw its own errors, which reach
+   * here unchanged.
    *
    * Also receives whatever a `panelActions` callback throws or rejects with
    * (non-`Error` values are wrapped). Those host failures are not API
@@ -501,8 +510,12 @@ export interface SitepingInstance {
   open: () => void;
   /** Close the panel */
   close: () => void;
-  /** Reload feedbacks from server */
-  refresh: () => void;
+  /**
+   * Reload feedbacks from the server. Resolves once the pins (and the open
+   * panel) show the reloaded list; never rejects — like the dashboard's
+   * `refresh()`, a failed reload leaves the current view in place.
+   */
+  refresh: () => Promise<void>;
   /**
    * Scroll the matching annotation into view, pin its highlight, and
    * pulse its marker. Returns `true` when a visible feedback matched the
@@ -1059,6 +1072,20 @@ export interface FeedbackCreateOutcome {
   created: boolean;
 }
 
+/**
+ * Outcome of `SitepingStore.addCommentIfAbsent` — the comment plus whether
+ * this very call inserted it.
+ */
+export interface CommentCreateOutcome {
+  comment: CommentRecord;
+  /**
+   * `true` when this call inserted the comment, `false` when a comment with
+   * the same `clientId` already existed and is returned instead (a replay, or
+   * a concurrent request that won the race).
+   */
+  created: boolean;
+}
+
 /** Paginated result returned by `SitepingStore.getFeedbacks`. */
 export interface FeedbackPage {
   feedbacks: FeedbackRecord[];
@@ -1146,6 +1173,19 @@ export interface SitepingStore {
    * HTTP handlers serve empty threads and answer comment writes with 501.
    */
   addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+  /**
+   * Optional, alongside `addComment` — `addComment` that reports whether this
+   * call inserted the comment (`created: true`) or found one with the same
+   * `clientId` (`created: false`). Same errors as `addComment`, and the dedup
+   * check and the insert must be atomic like `createFeedbackIfAbsent`'s: of N
+   * concurrent calls with the same `clientId`, exactly one may report
+   * `created: true`, and all must return that same comment.
+   *
+   * HTTP handlers need it to fire the `comment.created` webhook and the
+   * `onCommentCreated` hook exactly once per reply — a retried post returns
+   * the stored comment, which `addComment` alone cannot tell from a new one.
+   */
+  addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
   /**
    * Optional — delete comment `commentId` from the thread of `feedbackId`.
    * Scoped to that thread, which the caller was authorized for: throws
@@ -1365,6 +1405,17 @@ export interface FeedbackPermissions {
   canDeleteComment: boolean;
 }
 
+/**
+ * What a requester may do with one comment of a thread, as the server's
+ * access policy decides — finer than the feedback's `canDeleteComment`, which
+ * covers the whole thread: a policy that lets authors delete their own
+ * replies only grants it comment by comment.
+ */
+export interface CommentPermissions {
+  /** Delete it. */
+  canDelete: boolean;
+}
+
 /** What a requester may do with a whole project, sent with each list. */
 export interface FeedbackListPermissions {
   /** Delete every feedback of the project at once. */
@@ -1382,7 +1433,26 @@ export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
  * serialized and `clientId` omitted, like on `FeedbackResponse`. Its
  * `authorEmail` is redacted on the same terms as the feedback's.
  */
-export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+export type CommentResponse = Prettify<
+  Serialized<Omit<CommentRecord, "clientId">> & {
+    /**
+     * What the requester may do with this comment — always sent by
+     * `@siteping/server`. Absent from servers that predate it, and in store
+     * mode: the feedback's `canDeleteComment` decides then.
+     */
+    permissions?: CommentPermissions | undefined;
+  }
+>;
+
+/**
+ * Version of the HTTP protocol `@siteping/server` speaks, sent as `protocol`
+ * on every list response. It rises with each addition a client may rely on —
+ * a route, a field, a status — so a client checks `protocol >= N` before
+ * using what protocol N added, instead of probing for fields. A server that
+ * predates it sends none: read that as 0. The OpenAPI document shipped as
+ * `@siteping/server/openapi.json` describes this version.
+ */
+export const SITEPING_PROTOCOL_VERSION = 1;
 
 /** What the store behind an endpoint supports — advertised on every list response. */
 export interface SitepingCapabilities {
@@ -1400,6 +1470,8 @@ export interface SitepingCapabilities {
 export interface FeedbackResponseList {
   feedbacks: FeedbackResponse[];
   total: number;
+  /** The server's {@link SITEPING_PROTOCOL_VERSION} — absent from servers that predate it: read that as 0. */
+  protocol?: number | undefined;
   /** Always sent by `@siteping/server` — absent from servers that predate it. */
   capabilities?: SitepingCapabilities | undefined;
   /** Always sent by `@siteping/server` — absent from servers that predate it. */

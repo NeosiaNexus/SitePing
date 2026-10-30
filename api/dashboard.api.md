@@ -12,6 +12,7 @@ Runtime exports (ESM and CJS):
 - `createEndpointSource: function`
 - `createStoreSource: function`
 - `isClosedStatus: function`
+- `isSitepingError: function`
 - `recordPageUrl: function`
 - `registerLocale: function`
 - `useSitepingInbox: function`
@@ -19,12 +20,18 @@ Runtime exports (ESM and CJS):
 Types:
 
 ```ts
+export type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
+
 export interface CommentCreateInput {
     authorEmail: string;
     authorName: string;
     authorRole: CommentAuthorRole;
     body: string;
     clientId: string;
+}
+
+export interface CommentPermissions {
+    canDelete: boolean;
 }
 
 export interface CommentRecord {
@@ -38,11 +45,16 @@ export interface CommentRecord {
     id: string;
 }
 
+export interface DiagnosticsSnapshot {
+    console: ConsoleDiagnosticEntry[];
+    network: NetworkDiagnosticEntry[];
+}
+
 export interface EndpointSourceOptions {
     apiKey?: string | undefined;
     endpoint: string;
     fetchFn?: typeof fetch | undefined;
-    headers?: (() => Promise<Record<string, string>> | Record<string, string>) | Record<string, string> | undefined;
+    headers?: SitepingHeadersOption | undefined;
 }
 
 export const FEEDBACK_STATUSES: readonly [
@@ -64,6 +76,18 @@ export interface FeedbackPermissions {
     canComment: boolean;
     canDelete: boolean;
     canDeleteComment: boolean;
+}
+
+export interface FeedbackQuery {
+    limit?: number | undefined;
+    page?: number | undefined;
+    projectName: string;
+    search?: string | undefined;
+    status?: FeedbackStatus | undefined;
+    statuses?: readonly FeedbackStatus[] | undefined;
+    type?: FeedbackType | undefined;
+    url?: string | undefined;
+    urlPattern?: string | undefined;
 }
 
 export interface FeedbackRecord {
@@ -93,6 +117,10 @@ export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
 
 export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 
+export type InboxComment = CommentRecord & {
+    permissions?: CommentPermissions | undefined;
+};
+
 export interface InboxCustomSourceOptions extends InboxSharedOptions {
     apiKey?: never;
     endpoint?: never;
@@ -115,7 +143,8 @@ export interface InboxPage {
     total: number;
 }
 
-export type InboxRecord = FeedbackRecord & {
+export type InboxRecord = Omit<FeedbackRecord, "comments"> & {
+    comments?: InboxComment[] | undefined;
     permissions?: FeedbackPermissions | undefined;
 };
 
@@ -136,7 +165,7 @@ export interface InboxSharedOptions {
 export type InboxSiteUrl = Readonly<Record<string, string>> | string;
 
 export interface InboxSource {
-    addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord>;
+    addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<InboxComment>;
     list(query: FeedbackQuery): Promise<InboxPage>;
     remove(id: string, projectName: string): Promise<void>;
     removeComment?(feedbackId: string, projectName: string, commentId: string): Promise<void>;
@@ -149,6 +178,7 @@ export interface InboxState {
     canDeleteComment: boolean;
     changeStatus(id: string, status: FeedbackStatus): Promise<void>;
     closeFeedback(): void;
+    commentPermissionsOf(record: InboxRecord, comment: InboxComment): CommentPermissions;
     counts: Partial<Record<"all" | FeedbackStatus, number>>;
     deleteComment(id: string, commentId: string): Promise<void>;
     deleteFeedback(id: string): Promise<void>;
@@ -176,8 +206,8 @@ export interface InboxState {
     search: string;
     setProject(p: string): void;
     setSearch(s: string): void;
-    setStatus(s: InboxStatusFilter): void;
-    setType(t: InboxTypeFilter): void;
+    setStatusFilter(s: InboxStatusFilter): void;
+    setTypeFilter(t: InboxTypeFilter): void;
     status: InboxStatusFilter;
     total: null | number;
     type: InboxTypeFilter;
@@ -195,8 +225,6 @@ export interface InboxStoreOptions extends InboxSharedOptions {
     store: SitepingStore;
 }
 
-export type InboxTheme = "auto" | "dark" | "light";
-
 export type InboxTypeFilter = "all" | FeedbackType;
 
 export interface RecordPageUrlOptions {
@@ -206,10 +234,23 @@ export interface RecordPageUrlOptions {
 
 export type ResolvedTheme = "dark" | "light";
 
+export interface ScreenshotRegion {
+    hPct: number;
+    wPct: number;
+    xPct: number;
+    yPct: number;
+}
+
 export interface SitepingCapabilities {
     comments: boolean;
     deleteComments?: boolean | undefined;
 }
+
+export type SitepingClientError = SitepingAuthError | SitepingError<"SERVER" | "TIMEOUT"> | SitepingNetworkError | SitepingValidationError;
+
+export type SitepingErrorCode = "AUTH" | "NETWORK" | "SERVER" | "TIMEOUT" | "VALIDATION";
+
+export type SitepingHeadersOption = (() => Promise<Record<string, string>> | Record<string, string>) | Record<string, string>;
 
 export function SitepingInbox(props: SitepingInboxProps): ReactElement;
 
@@ -220,13 +261,16 @@ export interface SitepingInboxPresentationProps {
     density?: "comfortable" | "compact" | undefined;
     emptyState?: ReactNode | undefined;
     locale?: SitepingLocale | undefined;
-    theme?: InboxTheme | undefined;
+    theme?: SitepingTheme | undefined;
 }
 
 export type SitepingInboxProps = UseSitepingInboxOptions & SitepingInboxPresentationProps;
 
+export type SitepingLocale = (string & {}) | BuiltinLocale;
+
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -238,192 +282,11 @@ export interface SitepingStore {
     verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
 }
 
-export type UseSitepingInboxOptions = InboxCustomSourceOptions | InboxEndpointOptions | InboxStoreOptions;
+export type SitepingTheme = "auto" | "dark" | "light";
 
-export function createEndpointSource(options: EndpointSourceOptions): InboxSource;
+export type TranslationKey = keyof Translations;
 
-export function createStoreSource(store: SitepingStore): InboxSource;
-
-export function isClosedStatus(status: FeedbackStatus): status is ClosedFeedbackStatus;
-
-export function recordPageUrl(record: Pick<FeedbackRecord, "id" | "projectName" | "url">, options?: RecordPageUrlOptions): null | string;
-
-export const registerLocale: (code: string, translations: Partial<Translations>) => void;
-
-export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState;
-```
-
-Referenced, not exported:
-
-```ts
-interface AnnotationCreateInput {
-    anchorKey?: null | string | undefined;
-    cssSelector: string;
-    devicePixelRatio: number;
-    elementId?: string | undefined;
-    elementTag: string;
-    fingerprint: string;
-    hPct: number;
-    neighborText: string;
-    scrollX: number;
-    scrollY: number;
-    textPrefix: string;
-    textSnippet: string;
-    textSuffix: string;
-    viewportH: number;
-    viewportW: number;
-    wPct: number;
-    xPct: number;
-    xpath: string;
-    yPct: number;
-}
-
-interface AnnotationRecord {
-    anchorKey: null | string;
-    createdAt: Date;
-    cssSelector: string;
-    devicePixelRatio: number;
-    elementId: null | string;
-    elementTag: string;
-    feedbackId: string;
-    fingerprint: string;
-    hPct: number;
-    id: string;
-    neighborText: string;
-    scrollX: number;
-    scrollY: number;
-    textPrefix: string;
-    textSnippet: string;
-    textSuffix: string;
-    viewportH: number;
-    viewportW: number;
-    wPct: number;
-    xPct: number;
-    xpath: string;
-    yPct: number;
-}
-
-const BUILTIN_LOCALES: readonly [
-    "en",
-    "fr",
-    "de",
-    "es",
-    "it",
-    "pt",
-    "ru",
-    "ja",
-    "ko"
-];
-
-type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
-
-const CLOSED_FEEDBACK_STATUSES: readonly [
-    "resolved",
-    "wont_fix"
-];
-
-const COMMENT_AUTHOR_ROLES: readonly [
-    "client",
-    "team"
-];
-
-const CONSOLE_DIAGNOSTIC_LEVELS: readonly [
-    "log",
-    "info",
-    "warn",
-    "error"
-];
-
-type ClosedFeedbackStatus = (typeof CLOSED_FEEDBACK_STATUSES)[number];
-
-type CommentAuthorRole = (typeof COMMENT_AUTHOR_ROLES)[number];
-
-interface ConsoleDiagnosticEntry {
-    level: ConsoleDiagnosticLevel;
-    message: string;
-    timestamp: string;
-}
-
-type ConsoleDiagnosticLevel = (typeof CONSOLE_DIAGNOSTIC_LEVELS)[number];
-
-interface DiagnosticsSnapshot {
-    console: ConsoleDiagnosticEntry[];
-    network: NetworkDiagnosticEntry[];
-}
-
-interface FeedbackCreateInput {
-    annotations: AnnotationCreateInput[];
-    authorEmail: string;
-    authorName: string;
-    clientId: string;
-    diagnostics?: DiagnosticsSnapshot | null | undefined;
-    message: string;
-    projectName: string;
-    screenshotDataUrl?: null | string | undefined;
-    screenshotRegion?: ScreenshotRegion | null | undefined;
-    status: FeedbackStatus;
-    type: FeedbackType;
-    url: string;
-    urlPattern?: null | string | undefined;
-    userAgent: string;
-    viewport: string;
-}
-
-interface FeedbackCreateOutcome {
-    created: boolean;
-    feedback: FeedbackRecord;
-}
-
-interface FeedbackPage {
-    feedbacks: FeedbackRecord[];
-    total: number;
-}
-
-interface FeedbackQuery {
-    limit?: number | undefined;
-    page?: number | undefined;
-    projectName: string;
-    search?: string | undefined;
-    status?: FeedbackStatus | undefined;
-    statuses?: readonly FeedbackStatus[] | undefined;
-    type?: FeedbackType | undefined;
-    url?: string | undefined;
-    urlPattern?: string | undefined;
-}
-
-type FeedbackUpdateInput = {
-    resolvedAt: Date;
-    status: ClosedFeedbackStatus;
-} | {
-    resolvedAt: null;
-    status: OpenFeedbackStatus;
-};
-
-interface NetworkDiagnosticEntry {
-    durationMs: number;
-    method: string;
-    status: number;
-    timestamp: string;
-    url: string;
-}
-
-const OPEN_FEEDBACK_STATUSES: readonly [
-    "open",
-    "in_progress"
-];
-
-type OpenFeedbackStatus = (typeof OPEN_FEEDBACK_STATUSES)[number];
-
-interface ScreenshotRegion {
-    hPct: number;
-    wPct: number;
-    xPct: number;
-    yPct: number;
-}
-
-type SitepingLocale = (string & {}) | BuiltinLocale;
-
-interface Translations {
+export interface Translations {
     "comments.delete": string;
     "comments.failed": string;
     "comments.placeholder": string;
@@ -503,5 +366,189 @@ interface Translations {
     "type.question": string;
     "comments.team": string;
     "inbox.resultsCount": string;
+}
+
+export type UseSitepingInboxOptions = InboxCustomSourceOptions | InboxEndpointOptions | InboxStoreOptions;
+
+export function createEndpointSource(options: EndpointSourceOptions): InboxSource;
+
+export function createStoreSource(store: SitepingStore): InboxSource;
+
+export function isClosedStatus(status: FeedbackStatus): status is ClosedFeedbackStatus;
+
+export function isSitepingError(error: unknown): error is SitepingClientError;
+
+export function recordPageUrl(record: Pick<FeedbackRecord, "id" | "projectName" | "url">, options?: RecordPageUrlOptions): null | string;
+
+export const registerLocale: (code: string, translations: Partial<Translations>) => void;
+
+export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState;
+```
+
+Referenced, not exported:
+
+```ts
+interface AnnotationCreateInput {
+    anchorKey?: null | string | undefined;
+    cssSelector: string;
+    devicePixelRatio: number;
+    elementId?: string | undefined;
+    elementTag: string;
+    fingerprint: string;
+    hPct: number;
+    neighborText: string;
+    scrollX: number;
+    scrollY: number;
+    textPrefix: string;
+    textSnippet: string;
+    textSuffix: string;
+    viewportH: number;
+    viewportW: number;
+    wPct: number;
+    xPct: number;
+    xpath: string;
+    yPct: number;
+}
+
+interface AnnotationRecord {
+    anchorKey: null | string;
+    createdAt: Date;
+    cssSelector: string;
+    devicePixelRatio: number;
+    elementId: null | string;
+    elementTag: string;
+    feedbackId: string;
+    fingerprint: string;
+    hPct: number;
+    id: string;
+    neighborText: string;
+    scrollX: number;
+    scrollY: number;
+    textPrefix: string;
+    textSnippet: string;
+    textSuffix: string;
+    viewportH: number;
+    viewportW: number;
+    wPct: number;
+    xPct: number;
+    xpath: string;
+    yPct: number;
+}
+
+const BUILTIN_LOCALES: readonly [
+    "en",
+    "fr",
+    "de",
+    "es",
+    "it",
+    "pt",
+    "ru",
+    "ja",
+    "ko"
+];
+
+const CLOSED_FEEDBACK_STATUSES: readonly [
+    "resolved",
+    "wont_fix"
+];
+
+const COMMENT_AUTHOR_ROLES: readonly [
+    "client",
+    "team"
+];
+
+const CONSOLE_DIAGNOSTIC_LEVELS: readonly [
+    "log",
+    "info",
+    "warn",
+    "error"
+];
+
+type ClosedFeedbackStatus = (typeof CLOSED_FEEDBACK_STATUSES)[number];
+
+type CommentAuthorRole = (typeof COMMENT_AUTHOR_ROLES)[number];
+
+interface CommentCreateOutcome {
+    comment: CommentRecord;
+    created: boolean;
+}
+
+interface ConsoleDiagnosticEntry {
+    level: ConsoleDiagnosticLevel;
+    message: string;
+    timestamp: string;
+}
+
+type ConsoleDiagnosticLevel = (typeof CONSOLE_DIAGNOSTIC_LEVELS)[number];
+
+interface FeedbackCreateInput {
+    annotations: AnnotationCreateInput[];
+    authorEmail: string;
+    authorName: string;
+    clientId: string;
+    diagnostics?: DiagnosticsSnapshot | null | undefined;
+    message: string;
+    projectName: string;
+    screenshotDataUrl?: null | string | undefined;
+    screenshotRegion?: ScreenshotRegion | null | undefined;
+    status: FeedbackStatus;
+    type: FeedbackType;
+    url: string;
+    urlPattern?: null | string | undefined;
+    userAgent: string;
+    viewport: string;
+}
+
+interface FeedbackCreateOutcome {
+    created: boolean;
+    feedback: FeedbackRecord;
+}
+
+interface FeedbackPage {
+    feedbacks: FeedbackRecord[];
+    total: number;
+}
+
+type FeedbackUpdateInput = {
+    resolvedAt: Date;
+    status: ClosedFeedbackStatus;
+} | {
+    resolvedAt: null;
+    status: OpenFeedbackStatus;
+};
+
+interface NetworkDiagnosticEntry {
+    durationMs: number;
+    method: string;
+    status: number;
+    timestamp: string;
+    url: string;
+}
+
+const OPEN_FEEDBACK_STATUSES: readonly [
+    "open",
+    "in_progress"
+];
+
+type OpenFeedbackStatus = (typeof OPEN_FEEDBACK_STATUSES)[number];
+
+class SitepingAuthError extends SitepingError<"AUTH"> {
+    constructor(message: string, status: 401 | 403);
+    readonly status: 401 | 403;
+}
+
+class SitepingError<TCode extends SitepingErrorCode = SitepingErrorCode> extends Error {
+    constructor(message: string, code: TCode, retryable: boolean);
+    readonly code: TCode;
+    readonly retryable: boolean;
+}
+
+class SitepingNetworkError extends SitepingError<"NETWORK"> {
+    constructor(message: string);
+}
+
+class SitepingValidationError extends SitepingError<"VALIDATION"> {
+    constructor(message: string, status?: number);
+    readonly status: number | undefined;
 }
 ```

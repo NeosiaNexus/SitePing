@@ -18,7 +18,7 @@ const siteping = initSiteping({
 });
 ```
 
-`initSiteping` est l'export runtime principal du package, aux côtés des deux helpers i18n (`registerLocale`, `loadLocale`) et des types TypeScript. Il pèse environ **34 KB gzip** (ESM), charge ses parties lourdes à la demande (panneau, locales, moteur de capture) et s'affiche dans un Shadow DOM fermé — les styles de votre page et ceux du widget ne peuvent jamais se marcher dessus.
+`initSiteping` est l'export runtime principal du package, aux côtés des deux helpers i18n (`registerLocale`, `loadLocale`) et des types TypeScript. Son premier chargement pèse environ **59 kB gzip** — l'entrée ESM et le chunk qu'elle importe, tout ce que le navigateur télécharge avant que le widget s'exécute. Les parties lourdes se chargent à la demande : le panneau (une dizaine de kB de plus) à sa première ouverture, le dictionnaire d'une locale non anglaise, le moteur de capture à la première capture. Il s'affiche dans un Shadow DOM fermé — les styles de votre page et ceux du widget ne peuvent jamais se marcher dessus.
 
 ## Quand le widget s'affiche — et quand il ne s'affiche pas
 
@@ -26,7 +26,7 @@ const siteping = initSiteping({
 
 1. **Rendu côté serveur** — pas de `window` ? Le widget passe son tour avec `onSkip("ssr")`. Jamais contournable.
 2. **Déjà initialisé** — un second appel à `initSiteping()` renvoie un nouveau handle sur le widget *existant* (un seul widget par page) et ignore sa config. Le widget reste en place tant que tous les handles n'ont pas été détruits.
-3. **Production** — quand `process.env.NODE_ENV === "production"`, le widget passe son tour avec `onSkip("production")`. C'est le comportement « les clients le voient pendant la relecture, les visiteurs jamais ». Contournez-le avec `forceShow: true` pour les environnements de staging ou de preview. À noter : seul `process.env.NODE_ENV` est lu — pas `import.meta.env`.
+3. **Production** — quand `process.env.NODE_ENV === "production"`, le widget passe son tour avec `onSkip("production")`. C'est le comportement « les clients le voient pendant la relecture, les visiteurs jamais ». Contournez-le avec `forceShow: true` pour les environnements de staging ou de preview. À noter : seul `process.env.NODE_ENV` est lu — pas `import.meta.env`. Sans bundler pour le fournir — le [bundle `<script>`](/fr/docs/widget/script-tag), ou un build qui n'en définit pas —, l'hôte de la page en tient lieu : le widget s'affiche sur `localhost`, `*.localhost`, `127.0.0.1`, `[::1]` et les pages ouvertes depuis le disque, et passe son tour de la même façon partout ailleurs.
 4. **Largeur minimale (optionnelle)** — en dessous de `minViewportWidth`, il passe son tour avec `onSkip("mobile")`. La valeur par défaut, `0`, l'affiche à toutes les largeurs : les téléphones ont droit à la [mise en page compacte](#sur-téléphone-et-tablette). Également contourné par `forceShow`.
 5. **Validation de la config** — pas d'`endpoint`/`store`, ou pas de `projectName` ? Le widget affiche un `console.error` et ne fait rien. Ce cas-là n'appelle **pas** `onSkip` — regardez la console, pas le callback.
 
@@ -58,8 +58,8 @@ const siteping = initSiteping({ ... });
 
 siteping.open();                  // ouvrir le panneau de feedback
 siteping.close();                 // le fermer
-siteping.refresh();               // recharger les feedbacks de la page courante (ne lève jamais)
-siteping.focusFeedback(id);       // faire défiler jusqu'à un marqueur et le mettre en évidence ; false si inconnu
+await siteping.refresh();         // recharger les feedbacks de la page ; résout une fois affichés, ne rejette jamais
+siteping.focusFeedback(id);       // faire défiler jusqu'à un marqueur et le mettre en évidence ; false si aucun n'est sur la page
 const off = siteping.on("feedback:sent", (feedback) => { ... });
 siteping.destroy();               // libère ce handle ; le dernier démonte tout et restaure les globals patchés
 ```
@@ -101,20 +101,21 @@ Plusieurs composants peuvent appeler le hook, un layout et une page par exemple.
 
 ## Gérer les erreurs
 
-`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable` (booléen). Une erreur `AUTH` porte aussi le `status` HTTP : `401` quand les identifiants manquent ou sont morts, `403` quand ils fonctionnent et que la politique du serveur refuse la requête :
+`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable`, vrai quand la même requête peut réussir plus tard sans changement (une panne réseau, un `5xx`, un `408` ou un `429`, un délai dépassé). Une erreur `AUTH` porte aussi le `status` HTTP : `401` quand les identifiants manquent ou sont morts, `403` quand ils fonctionnent et que la politique du serveur refuse la requête. Reconnaissez-les avec `isSitepingError`, qui type `code` et `status` pour vous :
 
 ```ts
+import { initSiteping, isSitepingError } from "@siteping/widget";
+
 initSiteping({
   endpoint: "/api/siteping",
   projectName: "mon-projet",
   onError: (error) => {
-    const code = (error as { code?: string }).code;
-    if (code === "AUTH") console.warn("vérifiez votre apiKey");
+    if (isSitepingError(error) && error.code === "AUTH") console.warn(`vérifiez votre apiKey (${error.status})`);
   },
 });
 ```
 
-Branchez sur `error.code`, pas sur `instanceof` — les classes d'erreur elles-mêmes ne sont pas exportées par le package. Quand l'utilisateur annule la demande d'identité, aucune erreur n'est émise : c'est une annulation, pas un échec.
+La garde lit les champs de l'erreur plutôt que sa classe : les classes ne sont pas exportées, car chaque package embarque sa propre copie et `instanceof` échouerait de l'une à l'autre. Les types le sont : `SitepingClientError`, l'union vers laquelle la garde rétrécit, et `SitepingErrorCode`. Tout le reste qui atteint `onError`, une erreur levée par votre `store` ou par une [action du panneau](/fr/docs/widget/panel-actions#erreurs), échoue la garde. Quand l'utilisateur annule la demande d'identité, aucune erreur n'est émise : c'est une annulation, pas un échec.
 
 ## Les statuts, côté widget
 
@@ -160,6 +161,6 @@ Limites : un `<dialog>` natif ouvert avec `showModal()` rend inerte tout ce qui 
 
 ## La fiabilité, sans rien faire
 
-- **Réessais avec backoff** — les envois échoués sont retentés 3 fois (timeout de 10 s, backoff exponentiel avec jitter). Les erreurs serveur, les timeouts (408), les limites de débit (429) et les pannes réseau sont retentés — après le `Retry-After` de la réponse quand elle en fixe un, jusqu'à 10 s ; un délai plus long arrête aussitôt les réessais. Les erreurs de validation ne sont pas retentées.
+- **Réessais avec backoff** — les envois échoués sont retentés 3 fois (timeout de 10 s, backoff exponentiel avec jitter). Les erreurs serveur, les timeouts (408), les limites de débit (429) et les pannes réseau sont retentés — après le `Retry-After` de la réponse quand elle en fixe un, jusqu'à 10 s ; un délai plus long arrête aussitôt les réessais. Les erreurs de validation ne sont pas retentées. « Tout supprimer » fait exception : la suppression d'un projet peut durer côté serveur, elle attend donc jusqu'à 60 s et n'est jamais renvoyée après cette attente — le serveur peut encore l'exécuter — et le panneau recharge sa liste dans tous les cas, pour montrer ce que le serveur a supprimé.
 - **File d'attente hors ligne** — quand un envoi échoue encore après les réessais, la charge utile est mise en file dans le localStorage (jusqu'à 20 entrées) et vidée au chargement suivant. Seuls les échecs transitoires sont mis en file (pannes réseau, 5xx, 408, 429) : tout autre 4xx est le verdict du serveur sur la charge utile et échouerait à l'identique au rejeu, il est donc signalé via `onError` et jamais mis en file. Chaque renvoi depuis la même popup garde l'identifiant du feedback : il remplace sa tentative en file, et le serveur ne l'enregistre jamais deux fois. La file ne stocke que les charges utiles — jamais de tokens ni d'en-têtes, qui sont recalculés au moment de la purge. Si le localStorage manque de place, les captures en file sont abandonnées d'abord (les plus anciennes en premier), puis les entrées les plus anciennes, et un avertissement dans la console indique ce qui a été abandonné.
 - **Rien ne bloque un envoi** — le corps de sa réponse a lui aussi 10 s pour arriver (un serveur qui envoie ses en-têtes puis se fige compte comme un timeout), et une fabrique `headers` doit répondre en 10 s. Les réessais et la file s'appliquent au mode HTTP (`endpoint`). En [mode `store`](/fr/docs/adapters/localstorage) côté client, rien n'est réessayé ni mis en file : le widget cesse d'attendre le `createFeedback` du store au bout de 30 s et signale une erreur réessayable (code `"TIMEOUT"`), mais ne peut pas annuler l'appel — un [store personnalisé](/fr/docs/adapters/writing-an-adapter) qui passe par le réseau doit borner lui-même ses appels.

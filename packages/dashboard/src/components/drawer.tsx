@@ -1,9 +1,9 @@
-import type { FeedbackPermissions, FeedbackRecord, FeedbackStatus } from "@siteping/core";
+import type { FeedbackPermissions, FeedbackStatus } from "@siteping/core";
 import type { ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { formatAbsolute, formatRelativeTime, recordPageUrl, shortId, toDateTimeAttr } from "../format.js";
 import { getStatusLabel, getTypeLabel } from "../i18n/index.js";
-import type { InboxSiteUrl } from "../types.js";
+import type { InboxRecord, InboxSiteUrl, InboxState } from "../types.js";
 import { STATUS_ICONS, trapTab, useInboxUi } from "./context.js";
 import { Diagnostics } from "./diagnostics.js";
 import { EvidenceCard } from "./evidence-card.js";
@@ -12,7 +12,7 @@ import { StatusMenu } from "./status-menu.js";
 import { Thread } from "./thread.js";
 
 interface DrawerProps {
-  record: FeedbackRecord;
+  record: InboxRecord;
   /** True below the 960cq container breakpoint — drawer overlays the list with a backdrop and traps focus. */
   overlay: boolean;
   deepLinkParam: string;
@@ -23,6 +23,8 @@ interface DrawerProps {
   onDelete: (id: string) => void;
   /** What the user may do with the record — see `InboxState.permissionsOf`. */
   permissions: FeedbackPermissions;
+  /** What the user may do with one reply of it. */
+  commentPermissionsOf: InboxState["commentPermissionsOf"];
   onAddComment: (id: string, body: string, clientId: string) => Promise<void>;
   onDeleteComment: (id: string, commentId: string) => Promise<void>;
 }
@@ -42,6 +44,7 @@ export function Drawer({
   onChangeStatus,
   onDelete,
   permissions,
+  commentPermissionsOf,
   onAddComment,
   onDeleteComment,
 }: DrawerProps): ReactElement {
@@ -173,7 +176,7 @@ export function Drawer({
           <Thread
             record={record}
             canComment={permissions.canComment}
-            canDelete={permissions.canDeleteComment}
+            canDelete={(comment) => commentPermissionsOf(record, comment).canDelete}
             onAdd={(body, clientId) => onAddComment(record.id, body, clientId)}
             onDelete={(commentId) => onDeleteComment(record.id, commentId)}
           />

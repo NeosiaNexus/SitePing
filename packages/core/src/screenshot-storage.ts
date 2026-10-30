@@ -42,35 +42,32 @@ export interface ScreenshotStorage {
    * Adapters call this synchronously inside `createFeedback` — keep it
    * fast or move to a queue if needed.
    *
-   * `ctx.feedbackId` identifies the upload. Adapters that upload before the
-   * record exists pass the *client-generated* `clientId` (Prisma); the
-   * Drizzle adapter passes the server-generated id the create attempt will
-   * insert the record under.
+   * `ctx.feedbackId` is the id the feedback is stored under. The record does
+   * not exist yet, so the store draws it before the upload — fresh for each
+   * create attempt, never client-supplied — and inserts the row under it.
+   * Two submissions of one `clientId` therefore upload under two ids, and
+   * only one of them is stored.
    *
    * **URL ownership:** every call must return a URL no other call returns —
    * key the object by a fresh random value (`crypto.randomUUID()`, as the
    * example does), never by `ctx.feedbackId` alone nor by a content hash.
    * Adapters treat each URL as the property of the one record that stores it
    * and may pass it to `delete` once that record is deleted, or once its
-   * create lost a race: two submissions of one `clientId` both upload, and
-   * the object of the one that is not stored is deleted. Under Prisma,
-   * `ctx.feedbackId` is that client-supplied `clientId`, so an object keyed
-   * by it is rewritten by every replay — a retry, or anyone who learns the
-   * id — and a URL shared by several records lets deleting one remove the
-   * object another still points at.
+   * create lost a race: the object of the submission that is not stored is
+   * deleted, and a URL shared by several records would let deleting one
+   * remove the object another still points at.
    *
-   * **Security note:** treat `ctx.feedbackId` as attacker-controlled:
-   * sanitize before using it in filesystem paths or object keys, even though
-   * server adapters validate its shape upstream.
+   * **Security note:** the bundled stores generate `ctx.feedbackId`, but a
+   * third-party one may not honour the contract: sanitize it before using it
+   * in a filesystem path or an object key.
    */
   upload(dataUrl: string, ctx: { feedbackId: string; mimeType: string }): Promise<{ url: string }>;
   /**
    * Optional cleanup hook called when the feedback is deleted, and for an
    * object uploaded by a create whose record was not stored: one rejected
-   * because its `clientId` is already stored, or — in adapters that key
-   * uploads per attempt, like Drizzle — one whose insert failed. An object a
-   * stored row still references (a deterministic key reused by the replay)
-   * is kept. Receives only URLs returned by {@link ScreenshotStorage.upload}.
+   * because its `clientId` is already stored, or one whose insert failed. An
+   * object a stored row still references (a storage that broke URL
+   * ownership) is kept. Receives only URLs returned by {@link ScreenshotStorage.upload}.
    * Adapters call this best-effort and swallow errors — orphaned objects are
    * preferred over failed deletes.
    */
