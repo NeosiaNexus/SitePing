@@ -27,8 +27,10 @@ bun run test:run           # run unit + type tests once
 bun run test:e2e           # run Playwright E2E tests
 bun run lint               # lint with Biome (includes the type-aware rules domain)
 bun run lint:fix           # auto-fix lint issues
-bun run verify             # build + check + lint + test:run — the full pre-PR gate
+bun run verify             # build + api:check + check + lint + test:run — the full pre-PR gate
 bun run pkg-checks         # publint + attw on every published package (same script CI runs)
+bun run api:check          # built public API of the 1.0 packages vs api/*.api.md (see Public API snapshots)
+bun run api:update         # rewrite api/*.api.md from the build, after an intended API change
 bun run check:consistency  # locale counts/lists + demo pickers, package registration, fix-dts chains, esbuild override,
                            # fileURLToPath in tooling, no @prisma/client import in adapter-prisma, workspace dependencies
                            # pinned before publish
@@ -369,6 +371,45 @@ Releases are **fully automated** via [Release Please](https://github.com/googlea
 - Write `CHANGELOG.md` — auto-generated from commits
 - Create git tags — auto-created on release
 - Run `npm publish` — CI handles it
+
+## Public API snapshots
+
+`api/<package>.api.md` records the public API of each package of the 1.0 set
+(`widget`, `dashboard`, `server`, `adapter-prisma`, `adapter-memory`,
+`adapter-localstorage`, `adapter-kit`), read from the **built** `dist/`, for
+every subpath of its `exports` map:
+
+- the runtime export keys of the ESM and CJS builds;
+- every exported type, function and constant, as declared in the shipped
+  `.d.ts`;
+- every declaration of the package's own `dist/` those reach without being
+  exported. Removing a field from a type the API only references breaks
+  consumers just as much, so it shows up too.
+
+Re-exports from another published package are listed by name, since that
+package's snapshot holds their shape. Comments are left out, except
+`@deprecated` and `@experimental`, which stay as markers. Members and union
+types are sorted, so reordering them doesn't change the file.
+
+`bun run api:check`, part of `bun run verify` and of CI, fails when the build no
+longer matches a snapshot. It also fails, whatever the snapshots say, when the
+ESM and CJS builds export different keys, when a value the `.d.ts` declares is
+missing at runtime (or the reverse), or when a `.d.cts` file drifts from its
+`.d.ts` twin.
+
+When the check fails:
+
+1. If the change is unintended (a type that widened through inference, an
+   export that leaked), fix the source.
+2. If it is intended, run `bun run build && bun run api:update` and commit the
+   updated `api/*.api.md` with the change. Reviewers read the API diff there.
+3. Removing or renaming an export, narrowing a type, adding a required member
+   to an interface that users implement (`SitepingStore`, `InboxSource`…), or
+   making an optional one required is a **breaking change**: mark the commit with
+   `!` (`feat(widget)!: …`). Additions are a `feat`.
+
+When a package joins the 1.0 set, add it to `PACKAGES` in
+`scripts/api-surface.mjs` and run `bun run api:update`.
 
 ## Pull Request Guidelines
 

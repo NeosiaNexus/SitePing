@@ -223,6 +223,13 @@ jobs:
         # package can never be silently skipped by this gate.
         run: bun run pkg-checks
 
+      - name: Public API surface (api/*.api.md)
+        # Same script contributors run locally (`bun run api:check`). A diff
+        # means the built public API of a 1.0 package changed: if intended,
+        # `bun run api:update` and commit the snapshot — with `!` when the
+        # change breaks consumers.
+        run: bun run api:check
+
       - name: Consistency check (locales, package registration, fix-dts chains, esbuild override, file-URL paths)
         run: bun run check:consistency
 
