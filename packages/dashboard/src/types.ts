@@ -7,11 +7,12 @@ import type {
   FeedbackStatus,
   FeedbackType,
   SitepingCapabilities,
+  SitepingHeadersOption,
   SitepingLocale,
   SitepingStore,
+  SitepingTheme,
 } from "@siteping/core";
 import type { ReactNode } from "react";
-import type { InboxTheme } from "./theme.js";
 
 // ---------------------------------------------------------------------------
 // Data source
@@ -79,7 +80,7 @@ export interface EndpointSourceOptions {
    * request — e.g. a fresh session token. An explicit `Authorization` entry
    * here takes precedence over `apiKey`.
    */
-  headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>) | undefined;
+  headers?: SitepingHeadersOption | undefined;
   /** Test seam — defaults to `globalThis.fetch`. */
   fetchFn?: typeof fetch | undefined;
 }
@@ -107,8 +108,9 @@ export interface InboxSharedOptions {
   /** Called on every load or mutation failure, with a typed `SitepingError` where available. */
   onError?: ((error: Error) => void) | undefined;
   /**
-   * Who replies from this inbox — typically the signed-in team member. Without
-   * it, threads are read-only. Replies ask for the `team` role, which the
+   * Who replies from this inbox — typically the signed-in team member, not the
+   * widget's `identity`, which names the reviewer. Without it, threads are
+   * read-only. Replies ask for the `team` role, which the
    * server grants only to a caller its access policy vouches for (the
    * `apiKey`, or `canCommentAsTeam`); any other reply is stored as `client`.
    */
@@ -298,7 +300,7 @@ export interface SitepingInboxPresentationProps {
   /** Accent color (any `#RGB`/`#RRGGBB`/`#RRGGBBAA` hex) — defaults to `"#0066ff"`. */
   accentColor?: string | undefined;
   /** Color theme — defaults to `"auto"`, which tracks the system preference live. */
-  theme?: InboxTheme | undefined;
+  theme?: SitepingTheme | undefined;
   /** Row density — defaults to `"comfortable"`. */
   density?: "comfortable" | "compact" | undefined;
   /** UI locale — defaults to `"en"`; non-English built-ins are lazy-loaded. */

@@ -41,7 +41,7 @@ export interface EndpointSourceOptions {
     apiKey?: string | undefined;
     endpoint: string;
     fetchFn?: typeof fetch | undefined;
-    headers?: (() => Promise<Record<string, string>> | Record<string, string>) | Record<string, string> | undefined;
+    headers?: SitepingHeadersOption | undefined;
 }
 
 export const FEEDBACK_STATUSES: readonly [
@@ -191,8 +191,6 @@ export interface InboxStoreOptions extends InboxSharedOptions {
     store: SitepingStore;
 }
 
-export type InboxTheme = "auto" | "dark" | "light";
-
 export type InboxTypeFilter = "all" | FeedbackType;
 
 export type ResolvedTheme = "dark" | "light";
@@ -201,6 +199,8 @@ export interface SitepingCapabilities {
     comments: boolean;
     deleteComments?: boolean | undefined;
 }
+
+export type SitepingHeadersOption = (() => Promise<Record<string, string>> | Record<string, string>) | Record<string, string>;
 
 export function SitepingInbox(props: SitepingInboxProps): ReactElement;
 
@@ -211,7 +211,7 @@ export interface SitepingInboxPresentationProps {
     density?: "comfortable" | "compact" | undefined;
     emptyState?: ReactNode | undefined;
     locale?: SitepingLocale | undefined;
-    theme?: InboxTheme | undefined;
+    theme?: SitepingTheme | undefined;
 }
 
 export type SitepingInboxProps = UseSitepingInboxOptions & SitepingInboxPresentationProps;
@@ -228,6 +228,8 @@ export interface SitepingStore {
     updateFeedback(id: string, data: FeedbackUpdateInput): Promise<FeedbackRecord>;
     verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
 }
+
+export type SitepingTheme = "auto" | "dark" | "light";
 
 export type UseSitepingInboxOptions = InboxCustomSourceOptions | InboxEndpointOptions | InboxStoreOptions;
 

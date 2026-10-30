@@ -23,6 +23,7 @@ import {
   type SitepingPanelActionFeedback,
   type SitepingPanelButtonAction,
   type SitepingPanelLinkAction,
+  type SitepingTheme,
   type Translations,
 } from "../../src/index.js";
 
@@ -172,5 +173,15 @@ describe("custom locales", () => {
 
   it("keeps values as strings", () => {
     expectTypeOf<Translations["panel.title"]>().toEqualTypeOf<string>();
+  });
+});
+
+describe("shared with the dashboard", () => {
+  it("exports the theme type the dashboard exports", () => {
+    expectTypeOf<NonNullable<SitepingConfig["theme"]>>().toEqualTypeOf<SitepingTheme>();
+  });
+
+  it("returns a promise from refresh(), like the dashboard's", () => {
+    expectTypeOf<ReturnType<SitepingInstance["refresh"]>>().toEqualTypeOf<Promise<void>>();
   });
 });

@@ -25,6 +25,7 @@ export type {
   SitepingPublicEvents,
   SitepingStore,
   SitepingStoreConfig,
+  SitepingTheme,
 } from "@siteping/core";
 export type { TFunction, TranslationKey, Translations } from "./i18n/index.js";
 export { loadLocale, registerLocale } from "./i18n/index.js";
