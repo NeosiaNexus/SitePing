@@ -16,7 +16,7 @@ import type {
   Schema,
 } from "@mrleebo/prisma-ast";
 import { getSchema, printSchema } from "@mrleebo/prisma-ast";
-import { type FieldDef, type IndexDef, SITEPING_MODELS, type SitepingModelName } from "@siteping/core";
+import { type FieldDef, type IndexDef, type ModelDef, SITEPING_MODELS, type SitepingModelName } from "@siteping/core";
 
 const DEFAULT_SCHEMA_PATH = "prisma/schema.prisma";
 
@@ -222,6 +222,7 @@ function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[]): S
 
   for (const [modelName, modelDef] of Object.entries(SITEPING_MODELS)) {
     const existingModel = existingModelsMap.get(modelName);
+    const prefixLength: PrefixLengthOf = (column) => indexPrefixLength(modelDef, column, provider);
 
     if (!existingModel) {
       const model: Model = { type: "model", name: modelName, properties: [] };
@@ -230,7 +231,7 @@ function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[]): S
       }
       if (modelDef.indexes) {
         for (const idx of modelDef.indexes) {
-          model.properties.push(buildBlockIndex(idx));
+          model.properties.push(buildBlockIndex(idx, prefixLength));
         }
       }
       if (databaseSchema) model.properties.push(structuredClone(databaseSchema));
@@ -295,14 +296,16 @@ function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[]): S
     // Sync @@index block attributes
     if (modelDef.indexes) {
       for (const idx of modelDef.indexes) {
-        if (!hasBlockIndex(existingModel, idx)) {
-          existingModel.properties.push(buildBlockIndex(idx));
-          changes.push({
-            model: modelName,
-            field: `@@index([${idx.fields.join(", ")}])`,
-            action: "added",
-            detail: "index",
-          });
+        const field = `@@index([${idx.fields.join(", ")}])`;
+        const columns = findBlockIndexColumns(existingModel, idx);
+        if (!columns) {
+          existingModel.properties.push(buildBlockIndex(idx, prefixLength));
+          changes.push({ model: modelName, field, action: "added", detail: "index" });
+          continue;
+        }
+        const updates = reconcileIndexPrefixes(columns, prefixLength);
+        if (updates.length > 0) {
+          changes.push({ model: modelName, field, action: "updated", detail: updates.join(", ") });
         }
       }
     }
@@ -450,7 +453,8 @@ function describeChange(existing: Field, expected: Field): string {
 
   const existingAttrs = sitepingAttributes(existing).map(attrKey);
   const expectedAttrs = sitepingAttributes(expected).map(attrKey);
-  const nameOf = (key: string) => key.split("(")[0];
+  // A column has one native type: `@db.Text` → `@db.MediumText` is a change of it.
+  const nameOf = (key: string) => (key.startsWith("db.") ? "db" : key.split("(")[0]);
   const removed = existingAttrs.filter((key) => !expectedAttrs.includes(key));
   for (const key of expectedAttrs) {
     if (existingAttrs.includes(key)) continue;
@@ -506,6 +510,57 @@ function supportsNativeType(nativeType: string, provider: string | undefined): b
   return NATIVE_TYPE_PROVIDERS[nativeType as keyof typeof NATIVE_TYPE_PROVIDERS]?.has(provider) ?? false;
 }
 
+/**
+ * Longest value a plain `String` holds on MySQL, in characters: Prisma maps
+ * it to `VARCHAR(191)`, the longest `VARCHAR` every MySQL version indexes
+ * under `utf8mb4` (767 bytes). It is also the prefix an index takes of a
+ * text column, which MySQL can't index whole.
+ */
+const MYSQL_VARCHAR_LENGTH = 191;
+
+/** MySQL's text types, smallest first, with the bytes each holds. */
+const MYSQL_TEXT_TYPES = [
+  ["Text", 65_535],
+  ["MediumText", 16_777_215],
+  ["LongText", 4_294_967_295],
+] as const;
+
+/** Bytes a character can take under `utf8mb4`, the charset Prisma's MySQL tables use. */
+const UTF8MB4_CHAR_BYTES = 4;
+
+function isMysqlTextType(nativeType: string | undefined): boolean {
+  return MYSQL_TEXT_TYPES.some(([name]) => name === nativeType);
+}
+
+/**
+ * The `@db.<type>` a field gets on `provider`, if any: its `nativeType` where
+ * the connector accepts it, except on MySQL, where a `maxLength` a plain
+ * `String` can't hold picks the smallest text type that can — a 1.5 MB
+ * inline screenshot overflows `TEXT` (65,535 bytes). Other connectors' plain
+ * `String` is unbounded already. Without a datasource to go by, the provider
+ * is unknown, and only `nativeType` is emitted.
+ */
+function nativeTypeFor(def: FieldDef, provider: string | undefined): string | undefined {
+  const declared = def.nativeType && supportsNativeType(def.nativeType, provider) ? def.nativeType : undefined;
+  if (provider !== "mysql" || def.maxLength === undefined || def.maxLength <= MYSQL_VARCHAR_LENGTH) return declared;
+  const bytes = def.maxLength * UTF8MB4_CHAR_BYTES;
+  const holds = ([, capacity]: (typeof MYSQL_TEXT_TYPES)[number]) => capacity >= bytes;
+  const declaredType = MYSQL_TEXT_TYPES.find(([name]) => name === declared);
+  if (declaredType && holds(declaredType)) return declared;
+  return MYSQL_TEXT_TYPES.find(holds)?.[0] ?? "LongText";
+}
+
+/**
+ * The prefix length, in characters, an index takes of `column` on `provider`
+ * — MySQL indexes a text column only on a prefix (`url(length: 191)`) — or
+ * `undefined` when the index holds the whole value.
+ */
+function indexPrefixLength(modelDef: ModelDef, column: string, provider: string | undefined): number | undefined {
+  const def: FieldDef | undefined = modelDef.fields[column];
+  if (provider !== "mysql" || def === undefined) return undefined;
+  return isMysqlTextType(nativeTypeFor(def, provider)) ? MYSQL_VARCHAR_LENGTH : undefined;
+}
+
 function buildField(name: string, def: FieldDef, provider: string | undefined): Field {
   const field: Field = {
     type: "field",
@@ -546,8 +601,9 @@ function buildField(name: string, def: FieldDef, provider: string | undefined): 
     });
   }
 
-  if (def.nativeType && supportsNativeType(def.nativeType, provider)) {
-    field.attributes!.push({ type: "attribute", name: def.nativeType, kind: "field", group: "db" });
+  const nativeType = nativeTypeFor(def, provider);
+  if (nativeType) {
+    field.attributes!.push({ type: "attribute", name: nativeType, kind: "field", group: "db" });
   }
 
   if (def.isUpdatedAt) {
@@ -589,7 +645,30 @@ function buildField(name: string, def: FieldDef, provider: string | undefined): 
   return field;
 }
 
-function buildBlockIndex(idx: IndexDef): Property {
+/** An index column: a bare name, or a name with options (`url(length: 191)`, `createdAt(sort: Desc)`). */
+type IndexColumn = string | Func;
+
+/** The prefix length, in characters, an index takes of a column — `undefined` for the whole value. */
+type PrefixLengthOf = (column: string) => number | undefined;
+
+function indexColumnName(column: IndexColumn): string {
+  return typeof column === "string" ? column : column.name;
+}
+
+function isLengthOption(option: unknown): boolean {
+  return isKeyValue(option) && option.key === "length";
+}
+
+/** `column` indexed on its first `length` characters, or whole when `length` is undefined — other options kept. */
+function withPrefixLength(column: IndexColumn, length: number | undefined): IndexColumn {
+  const name = indexColumnName(column);
+  const options = typeof column === "string" ? [] : (column.params ?? []).filter((option) => !isLengthOption(option));
+  // prisma-ast types an option as a `Value`, though it parses one as a `KeyValue`.
+  if (length !== undefined) options.unshift({ type: "keyValue", key: "length", value: String(length) } as never);
+  return options.length > 0 ? { type: "function", name, params: options } : name;
+}
+
+function buildBlockIndex(idx: IndexDef, prefixLength: PrefixLengthOf): Property {
   return {
     type: "attribute",
     kind: "object",
@@ -597,27 +676,48 @@ function buildBlockIndex(idx: IndexDef): Property {
     args: [
       {
         type: "attributeArgument",
-        value: { type: "array", args: idx.fields },
+        value: { type: "array", args: idx.fields.map((column) => withPrefixLength(column, prefixLength(column))) },
       } as AttributeArgument,
     ],
   } as BlockAttribute;
 }
 
 /**
- * Whether the model already indexes `idx`'s columns — in any spelling Prisma
- * accepts: `@@index([a, b])`, `@@index(fields: [a, b])`, or with a column
- * carrying options (`b(sort: Desc)`). A second index on the same columns
- * would clash on the default constraint name (P1012).
+ * The columns of the model's index on `idx`'s columns, if it has one — in any
+ * spelling Prisma accepts: `@@index([a, b])`, `@@index(fields: [a, b])`, or
+ * with a column carrying options (`b(sort: Desc)`). A second index on the
+ * same columns would clash on the default constraint name (P1012).
  */
-function hasBlockIndex(model: Model, idx: IndexDef): boolean {
+function findBlockIndexColumns(model: Model, idx: IndexDef): IndexColumn[] | undefined {
   const key = idx.fields.join(",");
-  return model.properties.some((p) => {
-    if (p.type !== "attribute" || (p as BlockAttribute).name !== "index") return false;
+  for (const p of model.properties) {
+    if (p.type !== "attribute" || (p as BlockAttribute).name !== "index") continue;
     // `args` is absent on a bare `@@index()`, whatever the type says
-    return ((p as BlockAttribute).args ?? []).some((arg) => {
+    for (const arg of (p as BlockAttribute).args ?? []) {
       const val = isKeyValue(arg.value) ? (arg.value.key === "fields" ? arg.value.value : undefined) : arg.value;
-      if (typeof val !== "object" || val === null || !("type" in val) || val.type !== "array") return false;
-      return val.args.map((col) => (typeof col === "string" ? col : (col as Func).name)).join(",") === key;
-    });
+      if (typeof val !== "object" || val === null || !("type" in val) || val.type !== "array") continue;
+      const columns = val.args as IndexColumn[];
+      if (columns.map(indexColumnName).join(",") === key) return columns;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Give the columns of an existing index, in place, the prefix lengths the
+ * connector needs — a `length` on MySQL's text columns, none anywhere else —
+ * and describe each change. A `length` already on a text column is kept:
+ * its value is the user's call.
+ */
+function reconcileIndexPrefixes(columns: IndexColumn[], prefixLength: PrefixLengthOf): string[] {
+  const changes: string[] = [];
+  columns.forEach((column, i) => {
+    const expected = prefixLength(indexColumnName(column));
+    const hasLength = typeof column !== "string" && (column.params ?? []).some(isLengthOption);
+    if (hasLength === (expected !== undefined)) return;
+    const updated = withPrefixLength(column, expected);
+    changes.push(`${printValue(column)} → ${printValue(updated)}`);
+    columns[i] = updated;
   });
+  return changes;
 }
