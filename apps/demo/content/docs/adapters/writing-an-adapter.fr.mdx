@@ -43,7 +43,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les 67 tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
+C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
 
 **Les trois primitives :**
 
@@ -121,6 +121,8 @@ Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`
 
 Vous gardez un instantané en mémoire ? `applyFeedbackFilters(records, query)` est exporté précisément pour ça et implémente tout ce qui précède. Vous interrogez une base ? `clampPagination(query)` renvoie le `{ page, limit, skip }` normalisé — le même plafonnement que le pipeline en mémoire et `PrismaStore`, à passer tel quel à votre `LIMIT`/`OFFSET`. Testez d'abord `isUnreachableOffset(skip)` : un `page` énorme venu d'un appel direct donne un offset au-delà de `Number.MAX_SAFE_INTEGER` (ou `Infinity`) que les bases SQL rejettent, et la suite attend `{ feedbacks: [], total }` — répondez avec votre seule requête de comptage.
 
+Le texte peut contenir des caractères qu'une base refuse : PostgreSQL rejette NUL dans `text` et `jsonb`, et un surrogate isolé (ce par quoi finit une chaîne coupée au milieu d'un emoji) dans `jsonb`. La suite accepte ce texte gardé tel quel, ou avec U+FFFD à la place de chacune de ces unités, pourvu qu'un enregistrement se relise tel que l'écriture l'a renvoyé et qu'une recherche contenant les mêmes caractères le retrouve. Sur un backend qui les refuse, passez tout ce que vous écrivez par `toStorableValue`, et chaque id, clientId, nom de projet et requête que vous cherchez par `toStorableText` — tous deux exportés par le kit, et ce que font `PrismaStore` et le store Drizzle.
+
 ## Appartenance au projet
 
 `verifyProjectOwnership(id, projectName)` est optionnelle. Les handlers HTTP l'appellent avant `PATCH` et `DELETE` et répondent 404 quand elle renvoie `false` — c'est ce qui empêche un projet de modifier les feedbacks d'un autre avec un id deviné. Le typage est structurel ici, donc les adapters tiers bénéficient de la vérification sans rien câbler :
@@ -151,7 +153,7 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 
 ## La preuve : la suite de conformité
 
-La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — 67 tests :
+La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — environ 70 tests :
 
 ```ts
 // __tests__/my-store.test.ts

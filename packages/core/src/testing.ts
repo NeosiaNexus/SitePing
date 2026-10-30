@@ -15,6 +15,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { toStorableText } from "./text.js";
 import type { CommentCreateInput, DiagnosticsSnapshot, FeedbackCreateInput, SitepingStore } from "./types.js";
 import { isStoreDuplicate, isStoreLimit, isStoreNotFound, MAX_COMMENTS_PER_FEEDBACK } from "./types.js";
 
@@ -571,6 +572,91 @@ export function testSitepingStore(
           expect(record?.status).toBe("open");
           expect(record?.resolvedAt).toBeNull();
         }
+      });
+    });
+
+    // ------------------------------------------------------------------
+    // Text a database may refuse — PostgreSQL rejects NUL in `text` and
+    // `jsonb`, and an unpaired surrogate in `jsonb`; a string cut inside an
+    // emoji ends with one. A store keeps such text as sent, or puts U+FFFD
+    // in place of each such code unit (`toStorableText`): either way a
+    // record reads back as the write returned it, and a lookup holding the
+    // same characters finds it.
+    // ------------------------------------------------------------------
+
+    describe("text holding NUL or an unpaired surrogate", () => {
+      /** `actual` is `sent`, or `sent` with U+FFFD for each code unit a database may refuse. */
+      function expectSentOrReplaced(actual: string | null | undefined, sent: string): void {
+        expect([sent, toStorableText(sent)]).toContain(actual);
+      }
+
+      it("is stored in a feedback, its annotation and diagnostics, and found by clientId and search", async () => {
+        const clientId = "odd-\u0000-\uDC00";
+        const message = "Total shows a\u0000b \uD83D";
+        const diagnostics: DiagnosticsSnapshot = {
+          console: [{ level: "error", timestamp: "2026-01-01T00:00:00.000Z", message: "cut \uD83D" }],
+          network: [
+            {
+              url: "https://api.example.com/\u0000",
+              method: "GET",
+              status: 0,
+              durationMs: 1,
+              timestamp: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        };
+        const created = await store.createFeedback(
+          createInput({
+            clientId,
+            message,
+            annotations: [{ ...MINIMAL_ANNOTATION, textSnippet: "Pay\u0000", neighborText: "\uDE00 next" }],
+            diagnostics,
+          }),
+        );
+
+        expectSentOrReplaced(created.clientId, clientId);
+        expectSentOrReplaced(created.message, message);
+        expectSentOrReplaced(created.annotations[0]?.textSnippet, "Pay\u0000");
+        expectSentOrReplaced(created.annotations[0]?.neighborText, "\uDE00 next");
+        expectSentOrReplaced(created.diagnostics?.console[0]?.message, "cut \uD83D");
+        expectSentOrReplaced(created.diagnostics?.network[0]?.url, "https://api.example.com/\u0000");
+
+        const found = await store.findByClientId(clientId);
+        expect(found?.id).toBe(created.id);
+        expect(found?.clientId).toBe(created.clientId);
+        expect(found?.message).toBe(created.message);
+        expect(found?.annotations).toEqual(created.annotations);
+        expect(found?.diagnostics).toEqual(created.diagnostics);
+        for (const search of ["a\u0000b", "\uD83D"]) {
+          const { feedbacks } = await store.getFeedbacks({ projectName: "test-project", search });
+          expect(feedbacks.map((f) => f.id)).toEqual([created.id]);
+        }
+      });
+
+      it("is found in a project name by every project-scoped call", async () => {
+        const projectName = "site-\u0000\uD83D";
+        const created = await store.createFeedback(createInput({ projectName }));
+        expectSentOrReplaced(created.projectName, projectName);
+
+        const { feedbacks, total } = await store.getFeedbacks({ projectName });
+        expect(total).toBe(1);
+        expect(feedbacks[0]?.id).toBe(created.id);
+        if (store.verifyProjectOwnership) {
+          await expect(store.verifyProjectOwnership(created.id, projectName)).resolves.toBe(true);
+        }
+        await store.deleteAllFeedbacks(projectName);
+        expect((await store.getFeedbacks({ projectName })).total).toBe(0);
+      });
+
+      it("is stored in a comment and read back with the thread (when implemented)", async () => {
+        if (!store.addComment) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "odd-thread" }));
+        const body = "Seen \uD83D\u0000";
+        const comment = await store.addComment(fb.id, commentInput({ body, clientId: "odd-comment-\u0000" }));
+
+        expectSentOrReplaced(comment.body, body);
+        expect((await store.findByClientId("odd-thread"))?.comments).toEqual([comment]);
       });
     });
 
