@@ -1,5 +1,4 @@
 import { type FeedbackRecord, isClosedStatus, parseHttpUrl } from "@siteping/core";
-import type { SitepingDeletionTarget } from "@siteping/server";
 import {
   DEFAULT_DEEP_LINK_PARAM,
   DELETED_FEEDBACK_COMMENT_TEMPLATE,
@@ -73,14 +72,23 @@ export interface IssueTrackerHooksOptions {
 }
 
 /**
- * The hooks `createIssueTrackerHooks` returns. They never read the request
+ * What a delete removes: one feedback, or every feedback of a project —
+ * `@siteping/server`'s `SitepingDeletionTarget`, restated so this package
+ * depends on no server version: one 0.x release installs next to any
+ * server. A type test keeps the two identical.
+ */
+type DeletionTarget = { kind: "single"; id: string; projectName: string } | { kind: "project"; projectName: string };
+
+/**
+ * The hooks `createIssueTrackerHooks` returns, typed structurally against
+ * `@siteping/server`'s `SitepingLifecycleHooks`. They never read the request
  * context: they fit either access policy without widening the principal
  * the handler infers, and a hook of your own can call the one it replaces.
  */
 export interface IssueTrackerHooks {
   onCreated(feedback: FeedbackRecord): Promise<void>;
   onUpdated(feedback: FeedbackRecord): Promise<void>;
-  onDeleting(target: SitepingDeletionTarget): Promise<void>;
+  onDeleting(target: DeletionTarget): Promise<void>;
 }
 
 const noRedaction = (text: string): string => text;
