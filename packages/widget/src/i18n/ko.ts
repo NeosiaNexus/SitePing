@@ -31,6 +31,7 @@ export const ko: Translations = {
   "panel.statusResolved": "해결됨",
   "panel.statusInProgress": "진행 중",
   "panel.statusWontFix": "처리 안 함",
+  "panel.statusClosed": "종료됨",
 
   // Feedback type labels
   "type.label": "유형",
@@ -85,7 +86,7 @@ export const ko: Translations = {
 
   // Markers
   "marker.approximate": "대략적인 위치 (신뢰도: {confidence}%)",
-  "marker.aria": "피드백 #{number}: {type} — {message}",
+  "marker.aria": "피드백 #{number}: {type}, {status} — {message}",
   "marker.count": "피드백 마커 {count}개 표시 중",
 
   // FAB badge
@@ -117,9 +118,9 @@ export const ko: Translations = {
 
   // Stats bar
   "stats.open": "열림",
-  "stats.resolved": "해결됨",
+  "stats.closed": "종료됨",
   "stats.bugs": "버그",
-  "stats.progress": "{percent}% 해결",
+  "stats.progress": "{percent}% 종료",
 
   // Detail view
   "detail.back": "뒤로",

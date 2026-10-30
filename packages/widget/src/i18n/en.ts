@@ -31,6 +31,7 @@ export const en: Translations = {
   "panel.statusResolved": "Resolved",
   "panel.statusInProgress": "In progress",
   "panel.statusWontFix": "Won't fix",
+  "panel.statusClosed": "Closed",
 
   // Feedback type labels
   "type.label": "Type",
@@ -85,7 +86,7 @@ export const en: Translations = {
 
   // Markers
   "marker.approximate": "Approximate position (confidence: {confidence}%)",
-  "marker.aria": "Feedback #{number}: {type} — {message}",
+  "marker.aria": "Feedback #{number}: {type}, {status} — {message}",
   "marker.count": "{count} feedback markers displayed",
 
   // FAB badge
@@ -117,9 +118,9 @@ export const en: Translations = {
 
   // Stats bar
   "stats.open": "Open",
-  "stats.resolved": "Resolved",
+  "stats.closed": "Closed",
   "stats.bugs": "Bugs",
-  "stats.progress": "{percent}% resolved",
+  "stats.progress": "{percent}% closed",
 
   // Detail view
   "detail.back": "Back",

@@ -105,6 +105,16 @@ describe("Tooltip", () => {
       expect(badge!.textContent).toContain("Bug");
     });
 
+    it("renders the localized status chip after the type badge (#302)", () => {
+      tooltip.show(makeFeedback({ type: "bug", status: "wont_fix" }), makeDOMRect(100, 200, 26, 26));
+      vi.advanceTimersByTime(200);
+
+      const [badge, chip] = document.getElementById("sp-tooltip")!.querySelectorAll("span");
+      expect(badge!.textContent).toBe("Bug");
+      expect(chip!.textContent).toBe("Sans suite");
+      expect(chip!.style.color).toBe("rgb(100, 116, 139)"); // statusWontFix, light theme
+    });
+
     it("renders message preview", () => {
       const feedback = makeFeedback({ message: "This is a test message" });
       tooltip.show(feedback, makeDOMRect(100, 200, 26, 26));

@@ -229,6 +229,13 @@ describe("MarkerManager", () => {
       expect(label).toContain("Crash on load"); // message
     });
 
+    it("names the status in the marker's aria-label (#302)", () => {
+      markers.render([makeFeedback({ type: "bug", status: "wont_fix", message: "Crash on load" })]);
+
+      const marker = document.querySelector("[data-feedback-id]")!;
+      expect(marker.getAttribute("aria-label")).toBe("Feedback n°1 : Bug, Sans suite — Crash on load");
+    });
+
     it("marker has aria-describedby pointing to tooltip id", () => {
       markers.render([makeFeedback()]);
 
@@ -258,11 +265,14 @@ describe("MarkerManager", () => {
       expect(marker.textContent).toContain("\u2713");
     });
 
-    it("displays checkmark text for wont_fix markers (closed status)", () => {
+    it("never shows a checkmark on wont_fix markers: a slash glyph instead (#302)", () => {
       markers.render([makeFeedback({ status: "wont_fix" })]);
 
       const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
-      expect(marker.textContent).toContain("\u2713");
+      expect(marker.textContent).toBe("");
+      const slash = marker.querySelector<HTMLElement>("span")!;
+      expect(slash.style.transform).toBe("rotate(45deg)");
+      expect(slash.style.background).toBe("currentcolor");
     });
 
     it("displays number for open markers", () => {
@@ -277,6 +287,37 @@ describe("MarkerManager", () => {
 
       const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
       expect(marker.textContent).toContain("1");
+    });
+
+    it("fades half the ring of an in_progress marker, unlike an open one (#302)", () => {
+      markers.render([
+        makeFeedback({ id: "fb-open", type: "bug", status: "open" }),
+        makeFeedback({ id: "fb-wip", type: "bug", status: "in_progress" }),
+      ]);
+
+      const open = document.querySelector<HTMLElement>('[data-feedback-id="fb-open"]')!;
+      const wip = document.querySelector<HTMLElement>('[data-feedback-id="fb-wip"]')!;
+      // jsdom serializes colours as rgb()/rgba(): `#ef4444` and `#ef444440`.
+      const full = open.style.borderColor;
+      expect(full).toBe("rgb(239, 68, 68)");
+      expect([wip.style.borderTopColor, wip.style.borderRightColor]).toEqual([full, full]);
+      expect([wip.style.borderBottomColor, wip.style.borderLeftColor]).toEqual([
+        "rgba(239, 68, 68, 0.25)",
+        "rgba(239, 68, 68, 0.25)",
+      ]);
+      expect(wip.style.color).toBe(open.style.color);
+    });
+
+    it("tells the four statuses apart by glyph and ring, not by colour alone", () => {
+      const statuses = ["open", "in_progress", "resolved", "wont_fix"] as const;
+      markers.render(statuses.map((status) => makeFeedback({ id: `fb-${status}`, status })));
+
+      const looks = statuses.map((status) => {
+        const marker = document.querySelector<HTMLElement>(`[data-feedback-id="fb-${status}"]`)!;
+        const fullRing = marker.style.borderTopColor === marker.style.borderLeftColor;
+        return `${marker.textContent}|${marker.childElementCount}|${fullRing}`;
+      });
+      expect(new Set(looks).size).toBe(4);
     });
   });
 

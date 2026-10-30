@@ -116,6 +116,17 @@ Branchez sur `error.code`, pas sur `instanceof` — les classes d'erreur elles-m
 
 Un feedback a quatre statuts (`open`, `in_progress`, `resolved`, `wont_fix`). Le widget **affiche** les quatre mais ses propres actions sont volontairement binaires : résoudre et rouvrir. Les états intermédiaires appartiennent à votre flux de tri dans le [dashboard](/fr/docs/dashboard).
 
+Sur la page, c'est la forme d'un pin qui indique le statut, pas sa seule couleur :
+
+| Statut | Pin |
+|---|---|
+| `open` | Son numéro, cerclé de la couleur du type de feedback |
+| `in_progress` | Son numéro, avec la moitié du cercle estompée |
+| `resolved` | Atténué, avec une coche |
+| `wont_fix` | Atténué, avec une barre oblique (⊘), jamais une coche |
+
+Survoler ou focaliser un pin affiche le statut dans son infobulle, et les lecteurs d'écran l'annoncent avec le pin et la carte du panneau. La barre de statistiques du panneau et son troisième onglet comptent `resolved` et `wont_fix` ensemble comme **Clôturés** : une demande refusée n'est jamais présentée comme résolue.
+
 ## Filtrer le panneau
 
 Les filtres du panneau se combinent et ne restreignent que la liste — les marqueurs de la page continuent d'afficher les feedbacks de la page :

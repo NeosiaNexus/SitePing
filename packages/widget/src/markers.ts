@@ -1,11 +1,17 @@
-import { type AnchorData, type FeedbackResponse, isClosedStatus, type RectData } from "@siteping/core";
+import {
+  type AnchorData,
+  type FeedbackResponse,
+  type FeedbackStatus,
+  isClosedStatus,
+  type RectData,
+} from "@siteping/core";
 import { Z_INDEX_MAX } from "./constants.js";
 import { resolveAnnotation } from "./dom/resolver.js";
 import { classifyVisibility } from "./dom/visibility.js";
 import { el, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { isolateFromHost } from "./host-isolation.js";
-import { getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
+import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { getTypeColor, type ThemeColors } from "./styles/theme.js";
 import type { Tooltip } from "./tooltip.js";
 import { isCoarsePointer, isCompactViewport } from "./viewport.js";
@@ -33,6 +39,43 @@ function toRectData(a: Annotation): RectData {
 
 /** Half of the 26px marker diameter — used for centering on anchor corner. */
 const MARKER_OFFSET = 13;
+
+interface PinLook {
+  bg: string;
+  /** `border-color` — one value, or four for a partial ring. */
+  ring: string;
+  color: string;
+  shadow: string;
+  hoverShadow: string;
+}
+
+/** Closed pins (resolved, wont_fix) are muted; their glyph tells them apart. */
+const CLOSED_PIN: PinLook = {
+  bg: "rgba(241,245,249,0.9)",
+  ring: "#cbd5e1",
+  color: "#94a3b8",
+  shadow: "0 2px 8px rgba(0,0,0,0.06)",
+  hoverShadow: "0 4px 16px rgba(0,0,0,0.1)",
+};
+
+/**
+ * A pin's look per status, in the dashboard's status language: the shape, not
+ * colour alone, tells the four apart (#302). Open and in-progress pins keep
+ * their number and type colour — they are still actionable — and an
+ * in-progress pin fades half its ring, the dashboard's half-filled ◐. Closed
+ * pins are muted: a check for `resolved`, a slash (⊘) for `wont_fix`, never a
+ * check, since a declined request isn't a fix.
+ */
+function pinLook(status: FeedbackStatus, typeColor: string): PinLook {
+  if (isClosedStatus(status)) return CLOSED_PIN;
+  return {
+    bg: "rgba(255,255,255,0.92)",
+    ring: status === "in_progress" ? `${typeColor} ${typeColor} ${typeColor}40 ${typeColor}40` : typeColor,
+    color: typeColor,
+    shadow: `0 2px 12px ${typeColor}25, 0 2px 6px rgba(0,0,0,0.06)`,
+    hoverShadow: `0 4px 20px ${typeColor}35, 0 4px 12px rgba(0,0,0,0.08)`,
+  };
+}
 
 interface MarkerPos {
   top: number;
@@ -562,9 +605,8 @@ export class MarkerManager {
   }
 
   private createMarker(number: number, feedback: FeedbackResponse, pos: { top: number; left: number }): HTMLElement {
-    const typeColor = getTypeColor(feedback.type, this.colors);
-    // Closed feedbacks (resolved, wont_fix) render as muted checkmark markers.
-    const isResolved = isClosedStatus(feedback.status);
+    const { status } = feedback;
+    const look = pinLook(status, getTypeColor(feedback.type, this.colors));
 
     const marker = el("div", {
       style: /* css */ `
@@ -573,14 +615,15 @@ export class MarkerManager {
         left:${pos.left}px;
         width:26px;height:26px;
         border-radius:50%;
-        background:${isResolved ? "rgba(241,245,249,0.9)" : "rgba(255,255,255,0.92)"};
-        border:2px solid ${isResolved ? "#cbd5e1" : typeColor};
+        background:${look.bg};
+        border:2px solid;
+        border-color:${look.ring};
         display:flex;align-items:center;justify-content:center;
         font-family:"Inter",system-ui,-apple-system,sans-serif;
         font-size:11px;font-weight:700;
-        color:${isResolved ? "#94a3b8" : typeColor};
+        color:${look.color};
         cursor:pointer;pointer-events:auto;
-        box-shadow:${isResolved ? "0 2px 8px rgba(0,0,0,0.06)" : `0 2px 12px ${typeColor}25, 0 2px 6px rgba(0,0,0,0.06)`};
+        box-shadow:${look.shadow};
         transition:top 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), left 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.15s ease, box-shadow 0.15s ease;
         user-select:none;
         -webkit-font-smoothing:antialiased;
@@ -593,28 +636,33 @@ export class MarkerManager {
     const ariaLabel = tWithParams(this.t, "marker.aria", {
       number,
       type: getTypeLabel(feedback.type, this.t),
+      status: getStatusLabel(status, this.t),
       message: truncatedMessage,
     });
     marker.setAttribute("aria-label", ariaLabel);
     marker.setAttribute("aria-describedby", this.tooltip.tooltipId);
-    setText(marker, isResolved ? "\u2713" : String(number));
+    if (status === "wont_fix") {
+      marker.appendChild(
+        el("span", {
+          style: "width:2px;height:16px;border-radius:1px;background:currentColor;transform:rotate(45deg);",
+        }),
+      );
+    } else {
+      setText(marker, status === "resolved" ? "\u2713" : String(number));
+    }
     // Fingers need ~44px: widen the hit area, not the 26px pin.
     if (isCoarsePointer()) marker.appendChild(el("span", { style: "position:absolute;inset:-9px;border-radius:50%;" }));
 
     marker.addEventListener("mouseenter", () => {
       marker.style.transform = "scale(1.2)";
-      marker.style.boxShadow = isResolved
-        ? "0 4px 16px rgba(0,0,0,0.1)"
-        : `0 4px 20px ${typeColor}35, 0 4px 12px rgba(0,0,0,0.08)`;
+      marker.style.boxShadow = look.hoverShadow;
       this.tooltip.show(feedback, marker.getBoundingClientRect());
       if (!this.pinnedFeedback) this.showHighlight(feedback);
     });
 
     marker.addEventListener("mouseleave", () => {
       marker.style.transform = "scale(1)";
-      marker.style.boxShadow = isResolved
-        ? "0 2px 8px rgba(0,0,0,0.06)"
-        : `0 2px 12px ${typeColor}25, 0 2px 6px rgba(0,0,0,0.06)`;
+      marker.style.boxShadow = look.shadow;
       this.tooltip.scheduleHide();
       if (!this.pinnedFeedback) this.clearHighlight();
     });

@@ -30,6 +30,7 @@ export interface Translations {
   "panel.statusResolved": string;
   "panel.statusInProgress": string;
   "panel.statusWontFix": string;
+  "panel.statusClosed": string;
 
   // Feedback type labels (UI display only)
   "type.label": string;
@@ -116,7 +117,7 @@ export interface Translations {
 
   // Stats bar
   "stats.open": string;
-  "stats.resolved": string;
+  "stats.closed": string;
   "stats.bugs": string;
   "stats.progress": string;
 
