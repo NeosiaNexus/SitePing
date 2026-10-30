@@ -24,7 +24,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 200
+              "maxLength": 191
             }
           },
           {
@@ -445,7 +445,7 @@
           "projectName": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 191
           },
           "type": {
             "type": "string",
@@ -634,7 +634,7 @@
           "clientId": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200,
+            "maxLength": 191,
             "pattern": "^[a-zA-Z0-9_-]+$"
           },
           "screenshotDataUrl": {
@@ -764,7 +764,7 @@
           "projectName": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 191
           },
           "feedbackId": {
             "type": "string",
@@ -806,7 +806,7 @@
           "clientId": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200,
+            "maxLength": 191,
             "pattern": "^[a-zA-Z0-9_-]+$"
           }
         },
@@ -829,7 +829,7 @@
           "projectName": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 191
           },
           "status": {
             "type": "string",
@@ -857,7 +857,7 @@
           "projectName": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 191
           }
         },
         "required": [
@@ -871,7 +871,7 @@
           "projectName": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 191
           },
           "deleteAll": {
             "type": "boolean",
@@ -889,7 +889,7 @@
           "projectName": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 191
           },
           "feedbackId": {
             "type": "string",
