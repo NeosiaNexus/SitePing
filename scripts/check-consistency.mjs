@@ -405,9 +405,11 @@ for (const pkgPath of Object.keys(manifest)) {
     }
     return src.slice(open);
   };
+  /** `text` matched literally inside a RegExp. */
+  const literal = (text) => text.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
   /** The body of a listener referenced by name: its assignment's function, one call deep. */
   const namedBody = (src, name) => {
-    const at = src.search(new RegExp(`(?:const |let )?${name.replace(/[.$]/g, "\\$&")}\\s*=\\s*`));
+    const at = src.search(new RegExp(`(?:const |let )?${literal(name)}\\s*=\\s*`));
     if (at < 0) return "";
     const brace = src.indexOf("{", at);
     const lineEnd = src.indexOf(";", at);
