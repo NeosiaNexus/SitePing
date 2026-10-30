@@ -82,6 +82,9 @@ export function withSearchParams(endpoint: string, params: URLSearchParams): str
 /**
  * Map a non-OK `Response` to the appropriate typed error:
  *   - 401 / 403 → `SitepingAuthError`, with its `status`
+ *   - 408 / 429 → generic `SitepingError` (code `"SERVER"`, retryable): a
+ *     timeout or a rate limit in front of the endpoint, not a verdict on the
+ *     request — the same request can succeed once it has waited
  *   - other 4xx → `SitepingValidationError`, with its `status`
  *   - 5xx (or anything else) → generic `SitepingError` (code `"SERVER"`)
  *
@@ -90,11 +93,12 @@ export function withSearchParams(endpoint: string, params: URLSearchParams): str
  * to `"Unknown error"` (kept verbatim — host apps grep for it).
  */
 export async function errorFromResponse(response: Response, label: string): Promise<SitepingError> {
+  const { status } = response;
   const text = await response.text().catch(() => "Unknown error");
-  const detail = text ? `${response.status} ${text}` : `${response.status}`;
-  const message = `${label}: ${detail}`;
-  if (response.status === 401 || response.status === 403) return new SitepingAuthError(message, response.status);
-  if (response.status >= 400 && response.status < 500) return new SitepingValidationError(message, response.status);
+  const message = `${label}: ${text ? `${status} ${text}` : status}`;
+  if (status === 401 || status === 403) return new SitepingAuthError(message, status);
+  if (status === 408 || status === 429) return new SitepingError(message, "SERVER", true);
+  if (status >= 400 && status < 500) return new SitepingValidationError(message, status);
   return new SitepingError(message, "SERVER", false);
 }
 

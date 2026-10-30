@@ -63,6 +63,17 @@ describe("SitepingValidationError", () => {
   });
 });
 
+describe("errorFromResponse", () => {
+  it.each([408, 429])(
+    "maps a %i, a timeout or a rate limit rather than a verdict, to a retryable SERVER error",
+    async (status) => {
+      const err = await errorFromResponse(new Response("Slow down", { status }), "Failed");
+      expect(err).not.toBeInstanceOf(SitepingValidationError);
+      expect(err).toMatchObject({ code: "SERVER", retryable: true, message: `Failed: ${status} Slow down` });
+    },
+  );
+});
+
 describe("thread failures", () => {
   it("tells a full thread from another failure, whether a store or an endpoint refused", async () => {
     expect(isThreadFull(new StoreLimitError())).toBe(true);

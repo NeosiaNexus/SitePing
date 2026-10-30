@@ -54,6 +54,12 @@ export interface ApiClientAuth {
 
 const MAX_RETRIES = 3;
 const TIMEOUT_MS = 10_000;
+/**
+ * Longest `Retry-After` waited out while a call is in flight (the popup holds
+ * the visitor meanwhile). A longer one ends the retries at once: a send is
+ * queued for the next page load, a read or a reply reports its error.
+ */
+const MAX_RETRY_AFTER_MS = 10_000;
 const RETRY_QUEUE_KEY = "siteping_retry_queue";
 const MAX_QUEUE_SIZE = 20;
 
@@ -101,9 +107,10 @@ export async function buildRequestHeaders(auth: ApiClientAuth, json: boolean): P
 
 /**
  * One HTTP call with retry + exponential backoff + jitter: each attempt is
- * aborted if its headers take more than TIMEOUT_MS. Network failures and 5xx
- * retry; the final response is read through `errorFromResponse` for a non-OK
- * status, `read` for a 2xx.
+ * aborted if its headers take more than TIMEOUT_MS. Network failures and
+ * transient statuses (5xx, 408, 429) retry, after the response's
+ * `Retry-After` when it sets one; the final response is read through
+ * `errorFromResponse` for a non-OK status, `read` for a 2xx.
  *
  * With `boundBody` (the send path, #342), the body gets its own TIMEOUT_MS
  * window under the same abort, so one that stalls after the headers errors
@@ -124,13 +131,16 @@ async function resilientFetch<T>(
   for (let attempt = 0; ; attempt++) {
     const controller = new AbortController();
     let timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    let delay: number;
     try {
       const response = await fetch(url, { ...init, signal: controller.signal }).catch((error: unknown) => {
         if (attempt === MAX_RETRIES) throw networkErrorFromException(error, label);
         return null;
       });
-      // Don't retry client errors (4xx) — only server errors (5xx)
-      if (response && (response.ok || (response.status >= 400 && response.status < 500) || attempt === MAX_RETRIES)) {
+      delay = retryDelay(response, attempt);
+      // A non-transient status is the server's answer (a 2xx, or a verdict
+      // like a 400) — final, like the last attempt or a wait too long to hold.
+      if (response && (!isTransientStatus(response.status) || attempt === MAX_RETRIES || delay > MAX_RETRY_AFTER_MS)) {
         clearTimeout(timeout);
         if (boundBody) timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
         if (!response.ok) throw await errorFromResponse(response, label);
@@ -141,12 +151,19 @@ async function resilientFetch<T>(
     } finally {
       clearTimeout(timeout);
     }
-
-    // Exponential backoff with jitter: 1s, 2s, 4s + random ±500ms
-    const baseDelay = 1000 * 2 ** attempt;
-    const jitter = Math.random() * 1000 - 500;
-    await new Promise((r) => setTimeout(r, baseDelay + jitter));
+    await new Promise((r) => setTimeout(r, delay));
   }
+}
+
+/**
+ * Wait before retrying a failed attempt: the response's `Retry-After`
+ * (delta-seconds or an HTTP date) when it holds a valid one, otherwise
+ * exponential backoff with jitter — 1 s, 2 s, 4 s, ±500 ms.
+ */
+function retryDelay(response: Response | null, attempt: number): number {
+  const header = response?.headers.get("Retry-After");
+  const wait = header ? (/^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now()) : Number.NaN;
+  return Number.isNaN(wait) ? 1000 * 2 ** attempt + Math.random() * 1000 - 500 : Math.max(0, wait);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,20 +176,21 @@ interface RetryEntry {
 }
 
 /**
- * Whether a failed submission is worth replaying later. Network failures and
- * server errors (5xx) are transient — the same payload can succeed once the
- * server is back. A 4xx is the server's verdict on the payload itself
- * (validation, auth, size…): replaying it verbatim fails identically every
- * time, so it is surfaced to the host through `onError` and never queued —
- * a queued rejection used to be replayed, and rejected, on every page load.
+ * Whether a failed submission is worth replaying later. Network failures,
+ * server errors (5xx), timeouts (408) and rate limits (429) are transient —
+ * the same payload can succeed once the server is back or has waited. Any
+ * other 4xx is the server's verdict on the payload itself (validation, auth,
+ * size…): replaying it verbatim fails identically every time, so it is
+ * surfaced to the host through `onError` and never queued — a queued
+ * rejection used to be replayed, and rejected, on every page load.
  */
 function isTransientFailure(error: unknown): boolean {
   return error instanceof SitepingNetworkError || (error instanceof SitepingError && error.code === "SERVER");
 }
 
-/** Same verdict for a replayed request: keep 5xx for the next flush, drop 4xx for good. */
+/** Same verdict from a status: retried in flight, kept queued for the next flush — the rest is final. */
 function isTransientStatus(status: number): boolean {
-  return status >= 500;
+  return status >= 500 || status === 408 || status === 429;
 }
 
 const LOCK_NAME = "siteping_retry_queue";
