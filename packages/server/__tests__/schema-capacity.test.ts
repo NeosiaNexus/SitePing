@@ -145,7 +145,10 @@ describe.each(SURFACES)("$model columns hold what the HTTP schema accepts", (sur
 
     // One character more is refused, or dropped (an over-long `elementId`).
     const over = surface.parse(surface.build(field, valueOfLength(field, maxLength + 1)));
-    if (over.success) expect(surface.read(over.data, field)).toBeUndefined();
+    if (over.success) {
+      const kept = surface.read(over.data, field);
+      expect(kept, `a ${maxLength + 1}-character ${field} is kept: the column must grow with the cap`).toBeUndefined();
+    }
   });
 
   it("fills every String column from one of those fields, unless it never takes free text", () => {
