@@ -2,12 +2,16 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-|---------|--------------------|
-| latest  | :white_check_mark: |
-| < latest | :x:               |
+Security fixes ship as a new release of the latest minor of each supported major; older minors get no backports.
 
-Only the latest published version of each `@siteping/*` package receives security updates.
+| Version | Supported |
+|---------|-----------|
+| Latest 0.x release, until 1.0.0 ships | :white_check_mark: |
+| 1.x, once released | :white_check_mark: |
+| 0.x, from the day 1.0.0 ships | :x: |
+| The previous major, once a new major ships | :white_check_mark: for 6 months, latest minor only |
+
+Node.js lines past their end of life, and peer dependency versions outside a package's declared range, are not supported.
 
 ## Reporting a Vulnerability
 
@@ -55,6 +59,7 @@ This policy applies to all packages in the `@siteping/*` scope:
 ## Hardening checklist for self-hosters
 
 - **`apiKey` is required in production.** Starting `createSitepingHandler` (from `@siteping/server` or `@siteping/adapter-prisma`) with `NODE_ENV=production` and neither an `apiKey` nor a custom `access` policy throws at startup. Destructive endpoints (DELETE, PATCH) refuse to operate without authentication unless you explicitly opt out via `requireAuthForDestructive: false` (only safe behind your own auth middleware).
+- **Opening `GET` makes feedback public.** With an `apiKey`, only `POST` (and `OPTIONS`) skip authentication by default, so a widget without the key submits but cannot list pins or threads. Adding `"GET"` to `publicEndpoints` lets reviewers see them, and lets anyone who knows the endpoint and a project name read its feedback; author emails stay redacted and client ids stripped. Keep it closed if feedback is confidential, or use a custom `access` policy that knows your reviewers.
 - **Set `allowedOrigins`.** Without it, no CORS headers are emitted and cross-origin browser requests are blocked. With `allowedOrigins: ["https://your-site.com"]`, only listed origins can call the API.
 - **With a custom `access` policy, set `allowedOrigins` too.** `authenticate` must resolve who is calling — anything falsy answers 401. Such a policy may rely on cookies, which browsers attach to forged requests, so POST/PATCH/DELETE must send `Content-Type: application/json` (415 otherwise), and with `allowedOrigins` a mutation from an origin that is neither listed nor the endpoint's own answers 403. List every origin your widget and dashboard run on, plus your public origin behind a proxy that rewrites the request URL.
 - **Keep screenshots private if they show private data.** In a public bucket or on Cloudflare Images, a screenshot is readable by anyone who has its URL: keys are random and unguessable, but URLs travel in tickets and chats. A private bucket, the filesystem or a database table served by `createScreenshotServeHandler` with `authorize` keeps them behind your login (`@siteping/screenshot-storage`).
