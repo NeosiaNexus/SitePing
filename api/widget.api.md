@@ -258,6 +258,7 @@ export interface Translations {
     "panel.showLess": string;
     "panel.showMore": string;
     "panel.statusAll": string;
+    "panel.statusClosed": string;
     "panel.statusInProgress": string;
     "panel.statusOpen": string;
     "panel.statusResolved": string;
@@ -289,9 +290,9 @@ export interface Translations {
     "sort.oldest": string;
     "sort.openFirst": string;
     "stats.bugs": string;
+    "stats.closed": string;
     "stats.open": string;
     "stats.progress": string;
-    "stats.resolved": string;
     "status.label": string;
     "type.bug": string;
     "type.change": string;
