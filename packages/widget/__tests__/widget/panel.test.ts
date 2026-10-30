@@ -1237,8 +1237,9 @@ describe("Panel", () => {
         await panel.open();
         const panelRoot = shadow.querySelector<HTMLElement>(".sp-panel")!;
         const reachable = focusablesIn(panelRoot);
+        // The bulk bar, the detail view and the help overlay are closed: none of their controls is reachable.
+        expect(reachable.filter((el) => el.closest(".sp-bulk-bar, .sp-detail, .sp-shortcuts-overlay"))).toEqual([]);
         const last = reachable[reachable.length - 1]!;
-        expect(last.closest(".sp-bulk-bar, .sp-detail, .sp-shortcuts-overlay")).toBeNull();
         const focusFirst = vi.spyOn(reachable[0]!, "focus");
 
         expect(pressTab(last)).toHaveBeenCalled();
