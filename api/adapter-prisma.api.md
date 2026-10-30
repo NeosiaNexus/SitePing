@@ -54,12 +54,26 @@ export interface FeedbackCreateInput {
     viewport: string;
 }
 
-// @deprecated
-export type FeedbackCreateSchemaInput = FeedbackPayload;
-
 export { FeedbackDeleteInput } from "@siteping/server";
 
 export { FeedbackPatchInput } from "@siteping/server";
+
+export interface FeedbackPayload {
+    annotations: AnnotationPayload[];
+    authorEmail: string;
+    authorName: string;
+    clientId: string;
+    diagnostics?: DiagnosticsSnapshot | null | undefined;
+    message: string;
+    projectName: string;
+    screenshotDataUrl?: null | string | undefined;
+    screenshotRegion?: ScreenshotRegion | null | undefined;
+    type: FeedbackType;
+    url: string;
+    urlPattern?: null | string | undefined;
+    userAgent: string;
+    viewport: string;
+}
 
 export interface FeedbackRecord {
     annotations: AnnotationRecord[];
@@ -88,10 +102,24 @@ export { GenericWebhookPayload } from "@siteping/server";
 
 export { GetQueryInput } from "@siteping/server";
 
-export interface HandlerOptions extends Omit<SitepingApiKeyHandlerOptions, "store">, PrismaHandlerStoreOptions {
+export type HandlerOptions = Omit<SitepingApiKeyHandlerOptions, "store"> & PrismaHandlerSource;
+
+export type PrismaAccessHandlerOptions<Principal extends SitepingPrincipal> = Omit<SitepingAccessHandlerOptions<Principal>, "store"> & PrismaHandlerSource;
+
+export interface PrismaHandlerPrismaSource {
+    caseInsensitiveSearch?: boolean;
+    prisma: SitepingPrismaClient;
+    screenshotStorage?: ScreenshotStorage;
+    store?: never;
 }
 
-export interface PrismaAccessHandlerOptions<Principal extends SitepingPrincipal> extends Omit<SitepingAccessHandlerOptions<Principal>, "store">, PrismaHandlerStoreOptions {
+export type PrismaHandlerSource = PrismaHandlerPrismaSource | PrismaHandlerStoreSource;
+
+export interface PrismaHandlerStoreSource {
+    caseInsensitiveSearch?: never;
+    prisma?: never;
+    screenshotStorage?: never;
+    store: SitepingStore;
 }
 
 export interface PrismaModelDelegate {
@@ -379,23 +407,6 @@ interface FeedbackPage {
     total: number;
 }
 
-interface FeedbackPayload {
-    annotations: AnnotationPayload[];
-    authorEmail: string;
-    authorName: string;
-    clientId: string;
-    diagnostics?: DiagnosticsSnapshot | null | undefined;
-    message: string;
-    projectName: string;
-    screenshotDataUrl?: null | string | undefined;
-    screenshotRegion?: ScreenshotRegion | null | undefined;
-    type: FeedbackType;
-    url: string;
-    urlPattern?: null | string | undefined;
-    userAgent: string;
-    viewport: string;
-}
-
 interface FeedbackQuery {
     limit?: number | undefined;
     page?: number | undefined;
@@ -434,13 +445,6 @@ const OPEN_FEEDBACK_STATUSES: readonly [
 ];
 
 type OpenFeedbackStatus = (typeof OPEN_FEEDBACK_STATUSES)[number];
-
-interface PrismaHandlerStoreOptions {
-    caseInsensitiveSearch?: boolean;
-    prisma?: SitepingPrismaClient;
-    screenshotStorage?: ScreenshotStorage;
-    store?: SitepingStore;
-}
 
 interface RectData {
     hPct: number;
