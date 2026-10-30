@@ -74,8 +74,6 @@ export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
 
 export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 
-export type Identity = SitepingIdentity;
-
 export interface RectData {
     hPct: number;
     wPct: number;
@@ -96,6 +94,11 @@ export interface SitepingHttpConfig extends SitepingBaseConfig {
     endpoint: string;
     headers?: SitepingHeadersOption | undefined;
     store?: never;
+}
+
+export interface SitepingIdentity {
+    email: string;
+    name: string;
 }
 
 export interface SitepingInstance {
@@ -171,8 +174,6 @@ export interface SitepingStoreConfig extends SitepingBaseConfig {
     headers?: never;
     store: SitepingStore;
 }
-
-export type TFunction = (key: TranslationKey) => string;
 
 export type TranslationKey = keyof Translations;
 
@@ -610,11 +611,6 @@ class SitepingError<TCode extends SitepingErrorCode = SitepingErrorCode> extends
     constructor(message: string, code: TCode, retryable: boolean);
     readonly code: TCode;
     readonly retryable: boolean;
-}
-
-interface SitepingIdentity {
-    email: string;
-    name: string;
 }
 
 class SitepingNetworkError extends SitepingError<"NETWORK"> {

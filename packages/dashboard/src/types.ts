@@ -80,7 +80,12 @@ export interface EndpointSourceOptions {
    * here takes precedence over `apiKey`.
    */
   headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>) | undefined;
-  /** Test seam — defaults to `globalThis.fetch`. */
+  /**
+   * The `fetch` the source sends every request with — `globalThis.fetch` by
+   * default. Wrap it to log or trace requests, to set a request option such
+   * as `credentials: "include"` for cookie auth across origins, or to route
+   * requests to a test double.
+   */
   fetchFn?: typeof fetch | undefined;
 }
 
