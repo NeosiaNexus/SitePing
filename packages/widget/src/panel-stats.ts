@@ -1,7 +1,6 @@
 import { type FeedbackResponse, isClosedStatus } from "@siteping/core";
 import { el, setText } from "./dom-utils.js";
 import { type TFunction, tWithParams } from "./i18n/index.js";
-import type { ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
 // CSS
@@ -110,10 +109,7 @@ export class PanelStats {
   private readonly progressLabel: HTMLElement;
   private readonly t: TFunction;
 
-  constructor(
-    private readonly colors: ThemeColors,
-    t: TFunction,
-  ) {
+  constructor(t: TFunction) {
     this.t = t;
     // Container
     this.element = el("div", { class: "sp-stats-bar" });
@@ -150,7 +146,7 @@ export class PanelStats {
     // Bugs
     const itemBugs = el("div", { class: "sp-stats-item" });
     const dotBugs = el("span", { class: "sp-stats-dot" });
-    dotBugs.style.background = this.colors.typeBug;
+    dotBugs.style.background = "var(--sp-type-bug)";
     this.valueBugs = el("span", { class: "sp-stats-value" });
     setText(this.valueBugs, "0");
     const labelBugs = el("span", { class: "sp-stats-label" });

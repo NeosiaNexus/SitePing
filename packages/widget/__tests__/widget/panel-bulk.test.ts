@@ -36,6 +36,42 @@ describe("BulkActions", () => {
     document.body.replaceChildren();
   });
 
+  it("keeps the bar inert until something is selected (#394)", () => {
+    const { bulk, list } = createBulkActions();
+    expect(bulk.barElement.hasAttribute("inert")).toBe(true);
+    list.querySelector<HTMLElement>('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!.click();
+    expect(bulk.barElement.hasAttribute("inert")).toBe(false);
+    bulk.deselectAll();
+    expect(bulk.barElement.hasAttribute("inert")).toBe(true);
+  });
+
+  it("operates the select-all checkbox from the keyboard", () => {
+    const { bulk, list } = createBulkActions();
+    const selectAll = bulk.createSelectAllBar(["fb-1", "fb-2", "fb-3"], "Select all");
+    list.prepend(selectAll);
+    const checkbox = selectAll.querySelector<HTMLElement>(".sp-bulk-checkbox")!;
+    expect(checkbox.getAttribute("role")).toBe("checkbox");
+    expect(checkbox.getAttribute("tabindex")).toBe("0");
+    expect(checkbox.getAttribute("aria-label")).toBe("Select all");
+
+    checkbox.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    expect(bulk.selectedIds.sort()).toEqual(["fb-1", "fb-2", "fb-3"]);
+    checkbox.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(bulk.selectedIds).toEqual([]);
+  });
+
+  it("hands focus to the select-all checkbox when the bar closes under it", () => {
+    const { bulk, list } = createBulkActions();
+    const selectAll = bulk.createSelectAllBar(["fb-1", "fb-2", "fb-3"], "Select all");
+    list.prepend(selectAll);
+    list.querySelector<HTMLElement>('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!.click();
+    const deselect = bulk.barElement.querySelector<HTMLButtonElement>(".sp-bulk-btn-deselect")!;
+    deselect.focus();
+
+    deselect.click();
+    expect(document.activeElement).toBe(selectAll.querySelector(".sp-bulk-checkbox"));
+  });
+
   it.each([
     ["en", "Select Feedback fb-1"],
     ["fr", "Sélectionner Feedback fb-1"],

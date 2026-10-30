@@ -6,7 +6,7 @@
  * spring animations and smooth transitions.
  */
 
-import { el, parseSvg, setButtonLoading, setHidden, setText } from "./dom-utils.js";
+import { el, hasFocusWithin, parseSvg, setButtonLoading, setHidden, setInert, setText } from "./dom-utils.js";
 import { type TFunction, tWithParams } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -364,6 +364,8 @@ export class BulkActions {
     this.barElement = el("div", { class: "sp-bulk-bar" });
     this.barElement.setAttribute("role", "toolbar");
     this.barElement.setAttribute("aria-label", "Bulk actions");
+    // Closed until something is selected (see `updateBar`).
+    setInert(this.barElement, true);
 
     // Left: count label
     this.countLabel = el("span", { class: "sp-bulk-bar-count" });
@@ -448,7 +450,12 @@ export class BulkActions {
   createSelectAllBar(feedbackIds: string[], label: string): HTMLElement {
     const wrapper = el("div", { class: "sp-bulk-select-all" });
 
+    // Operable from the keyboard like the card checkboxes, and where focus
+    // lands when the bulk bar closes under it.
     const checkbox = el("div", { class: "sp-bulk-checkbox" });
+    checkbox.setAttribute("role", "checkbox");
+    checkbox.setAttribute("tabindex", "0");
+    checkbox.setAttribute("aria-label", label);
     this.selectAllCheckbox = checkbox;
     this.updateSelectAllCheckbox(feedbackIds.length > 0 && feedbackIds.every((id) => this.selected.has(id)));
 
@@ -458,12 +465,20 @@ export class BulkActions {
     wrapper.appendChild(checkbox);
     wrapper.appendChild(labelEl);
 
-    wrapper.addEventListener("click", () => {
+    const toggleAll = () => {
       // If all selected, deselect; otherwise select all
       if (this.selected.size === feedbackIds.length && feedbackIds.length > 0) {
         this.deselectAll();
       } else {
         this.selectAll(feedbackIds);
+      }
+    };
+    wrapper.addEventListener("click", toggleAll);
+    checkbox.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleAll();
       }
     });
 
@@ -563,6 +578,11 @@ export class BulkActions {
     const count = this.selected.size;
     const visible = count > 0;
 
+    // The bar slides out but stays rendered: out of the tab order while
+    // closed. Focus on one of its buttons (Deselect, a finished bulk action)
+    // would drop to the page — hand it to the select-all checkbox instead.
+    if (!visible && hasFocusWithin(this.barElement)) this.selectAllCheckbox?.focus();
+    setInert(this.barElement, !visible);
     this.barElement.classList.toggle("sp-bulk-bar--visible", visible);
     setText(this.countLabel, tWithParams(this.t, "bulk.selected", { count }));
     // Acting on part of a selection would surprise: an action some selected feedback refuses is not offered.

@@ -47,6 +47,47 @@ const MODAL_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+/**
+ * The script-tag install (/embed): the IIFE through a classic <script>, then
+ * an external init script. Nothing inline, no `process` shim unless ?test=1.
+ */
+const EMBED_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Siteping E2E script embed</title></head>
+<body>
+  <main id="target-element">
+    <h1>Script embed</h1>
+    <p>A page that loads the widget through a classic script tag, without a bundler.</p>
+    <p>No inline script or style: under ?csp=1 it runs with no 'unsafe-inline'.</p>
+  </main>
+  <script src="/widget.global.js"></script>
+  <script src="/embed-init.js"></script>
+</body>
+</html>`;
+
+// No 'unsafe-inline' anywhere: what a locked-down site sends (?csp=1).
+const EMBED_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'report-sample'; img-src 'self'; connect-src 'self'";
+
+const EMBED_INIT_JS = `// Records CSP violations, then mounts the widget as the docs show.
+window.__cspViolations = [];
+addEventListener("securitypolicyviolation", (event) => {
+  window.__cspViolations.push(event.violatedDirective + " " + event.blockedURI + " " + (event.sample || ""));
+});
+const params = new URLSearchParams(location.search);
+// ?test=1: the NODE_ENV the other pages report, for an open shadow root to query.
+if (params.get("test") === "1") globalThis.process = { env: { NODE_ENV: "test" } };
+window.__skip = null;
+window.__siteping = SitePing.initSiteping({
+  endpoint: "/api/siteping",
+  projectName: params.get("project") || "e2e-embed",
+  forceShow: params.get("forceShow") === "1",
+  onSkip: (reason) => {
+    window.__skip = reason;
+  },
+});
+`;
+
 /** In-memory feedback store */
 let feedbacks = [];
 let idCounter = 1;
@@ -240,6 +281,22 @@ const server = createServer((req, res) => {
   if (url.pathname === "/widget.global.js") {
     res.writeHead(200, { "Content-Type": "application/javascript" });
     res.end(widgetIifeJs);
+    return;
+  }
+
+  // A site without a bundler, as the script-tag docs install it — no inline
+  // script or style, so ?csp=1 can serve it under a strict policy. The page
+  // reads its parameters itself (embed-init.js) — script-tag.spec.ts.
+  if (url.pathname === "/embed") {
+    const headers = { "Content-Type": "text/html" };
+    if (url.searchParams.get("csp") === "1") headers["Content-Security-Policy"] = EMBED_CSP;
+    res.writeHead(200, headers);
+    res.end(EMBED_HTML);
+    return;
+  }
+  if (url.pathname === "/embed-init.js") {
+    res.writeHead(200, { "Content-Type": "application/javascript" });
+    res.end(EMBED_INIT_JS);
     return;
   }
 

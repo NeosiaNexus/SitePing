@@ -19,6 +19,7 @@ import type {
   AnnotationCreateInput,
   AnnotationRecord,
   CommentCreateInput,
+  CommentCreateOutcome,
   CommentRecord,
   FeedbackCreateInput,
   FeedbackCreateOutcome,
@@ -154,8 +155,9 @@ export interface CollectionStoreBackend {
   /** Generate a unique id for a new feedback, annotation or comment record. */
   generateId(): string;
   /**
-   * Keep discussion threads on the records: the store gains `addComment` and
-   * `deleteComment`, and new records start with `comments: []`. Opt in once
+   * Keep discussion threads on the records: the store gains `addComment`,
+   * `addCommentIfAbsent` and `deleteComment`, and new records start with
+   * `comments: []`. Opt in once
    * `load` hands back what `persist` wrote for them, each comment's
    * `createdAt` a `Date` again (a JSON backend revives it like the record's
    * own dates). Off by default, so an adapter written before threads never
@@ -179,7 +181,8 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * ordering, the standard filter/pagination pipeline, `StoreNotFoundError` on
  * missing update/delete, project-scoped bulk delete,
  * `verifyProjectOwnership`, and — with `comments: true` — discussion threads
- * (`addComment`, `deleteComment`) kept on each record. The snapshot returned by `load` is
+ * (`addComment`, `addCommentIfAbsent` reporting inserts, `deleteComment`)
+ * kept on each record. The snapshot returned by `load` is
  * never mutated: every write hands `persist` a new array, so a failed write leaves
  * a cached snapshot exactly as it was. When `persist` fails during `createFeedback`
  * and the record carries an inline screenshot, the engine retries once
@@ -188,12 +191,13 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  * returning the record would claim a success that was never persisted.
  *
  * Mutations (`createFeedbackIfAbsent`, `createFeedback`, `updateFeedback`,
- * `deleteFeedback`, `deleteAllFeedbacks`, `addComment`, `deleteComment`) run
+ * `deleteFeedback`, `deleteAllFeedbacks`, `addComment`, `addCommentIfAbsent`,
+ * `deleteComment`) run
  * one at a time through a queue owned by the returned store, so concurrent
  * calls — the widget's `Promise.all` bulk resolve/delete, a comment posted
  * while its feedback is resolved — never start from the same snapshot and
- * overwrite each other, and `createFeedbackIfAbsent` reports `created: true`
- * exactly once per `clientId`. A failed mutation rejects with its own error
+ * overwrite each other, and `createFeedbackIfAbsent` and `addCommentIfAbsent`
+ * report `created: true` exactly once per `clientId`. A failed mutation rejects with its own error
  * and does not block the ones queued after it, but `load` and `persist` must
  * always settle: one that never does stalls every later mutation on the
  * store, so give network-backed primitives a timeout. Reads are not queued: they see the
@@ -223,7 +227,8 @@ export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "veri
  */
 export function createCollectionStore(
   backend: CollectionStoreBackend & { comments: true },
-): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent" | "addComment" | "deleteComment">>;
+): CollectionStore &
+  Required<Pick<SitepingStore, "createFeedbackIfAbsent" | "addComment" | "addCommentIfAbsent" | "deleteComment">>;
 export function createCollectionStore(
   backend: CollectionStoreBackend,
 ): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent">>;
@@ -328,30 +333,36 @@ export function createCollectionStore(
   };
   if (!backend.comments) return store;
 
+  const addCommentIfAbsent = (feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome> =>
+    mutate(async (feedbacks) => {
+      // ClientId dedup across every thread — idempotent, like createFeedback
+      const existing = feedbacks.flatMap((f) => f.comments ?? []).find((c) => c.clientId === data.clientId);
+      if (existing) return { comment: existing, created: false };
+
+      const current = feedbacks.find((f) => f.id === feedbackId);
+      if (!current) throw new StoreNotFoundError();
+      const thread = current.comments ?? [];
+      if (
+        data.authorRole === "client" &&
+        thread.filter((c) => c.authorRole === "client").length >= MAX_COMMENTS_PER_FEEDBACK
+      ) {
+        throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} client comments`);
+      }
+
+      const comment = buildCommentRecord(data, { id: backend.generateId(), feedbackId });
+      const updated: FeedbackRecord = { ...current, comments: [...thread, comment] };
+      await backend.persist(feedbacks.map((f) => (f === current ? updated : f)));
+      return { comment, created: true };
+    });
+
   return {
     ...store,
 
-    addComment: (feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> =>
-      mutate(async (feedbacks) => {
-        // ClientId dedup across every thread — idempotent, like createFeedback
-        const existing = feedbacks.flatMap((f) => f.comments ?? []).find((c) => c.clientId === data.clientId);
-        if (existing) return existing;
+    addCommentIfAbsent,
 
-        const current = feedbacks.find((f) => f.id === feedbackId);
-        if (!current) throw new StoreNotFoundError();
-        const thread = current.comments ?? [];
-        if (
-          data.authorRole === "client" &&
-          thread.filter((c) => c.authorRole === "client").length >= MAX_COMMENTS_PER_FEEDBACK
-        ) {
-          throw new StoreLimitError(`A thread holds at most ${MAX_COMMENTS_PER_FEEDBACK} client comments`);
-        }
-
-        const comment = buildCommentRecord(data, { id: backend.generateId(), feedbackId });
-        const updated: FeedbackRecord = { ...current, comments: [...thread, comment] };
-        await backend.persist(feedbacks.map((f) => (f === current ? updated : f)));
-        return comment;
-      }),
+    async addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> {
+      return (await addCommentIfAbsent(feedbackId, data)).comment;
+    },
 
     deleteComment: (feedbackId: string, commentId: string): Promise<void> =>
       mutate(async (feedbacks) => {
