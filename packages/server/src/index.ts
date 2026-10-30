@@ -20,6 +20,7 @@ export type {
   SitepingLifecycleHooks,
   SitepingLogger,
   SitepingPrincipal,
+  SitepingProjectContext,
   SitepingRequestContext,
 } from "./options.js";
 export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput, ValidationIssue } from "./validation.js";

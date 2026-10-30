@@ -50,6 +50,7 @@ export type {
   CommentCreateInput,
   CommentDeletePayload,
   CommentPayload,
+  CommentPermissions,
   CommentRecord,
   CommentResponse,
   ConsoleDiagnosticEntry,

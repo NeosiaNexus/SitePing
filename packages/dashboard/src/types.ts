@@ -1,5 +1,6 @@
 import type {
   CommentCreateInput,
+  CommentPermissions,
   CommentRecord,
   FeedbackPermissions,
   FeedbackQuery,
@@ -22,7 +23,17 @@ import type { InboxTheme } from "./theme.js";
  * requester may do with it when the source says — the endpoint source
  * passes on the server's `permissions`. Without them, nothing is refused.
  */
-export type InboxRecord = FeedbackRecord & { permissions?: FeedbackPermissions | undefined };
+export type InboxRecord = Omit<FeedbackRecord, "comments"> & {
+  comments?: InboxComment[] | undefined;
+  permissions?: FeedbackPermissions | undefined;
+};
+
+/**
+ * A reply as the inbox holds it: the stored comment, plus what the requester
+ * may do with it when the source says — the endpoint source passes on the
+ * server's `permissions`. Without them, the record's decide.
+ */
+export type InboxComment = CommentRecord & { permissions?: CommentPermissions | undefined };
 
 /** What `InboxSource.list` resolves: a page of records and what the source supports. */
 export interface InboxPage {
@@ -63,7 +74,7 @@ export interface InboxSource {
    * Optional — post a reply on a feedback's thread and resolve the stored
    * comment. A source without it has read-only threads.
    */
-  addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord>;
+  addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<InboxComment>;
   /** Optional — delete a reply from a feedback's thread. `projectName` comes second, as in every method here. */
   removeComment?(feedbackId: string, projectName: string, commentId: string): Promise<void>;
 }
@@ -269,6 +280,13 @@ export interface InboxState {
    */
   permissionsOf(record: InboxRecord): FeedbackPermissions;
   /**
+   * What the user may do with one reply of a record here: delete it when
+   * `canDeleteComment` allows and the reply's `permissions` grant it — or,
+   * without them, the record's `canDeleteComment`. A server that lets
+   * authors delete only their own replies grants it reply by reply.
+   */
+  commentPermissionsOf(record: InboxRecord, comment: InboxComment): CommentPermissions;
+  /**
    * Post a reply as `author`. Not optimistic: the thread shows it once the
    * source has stored it. Rejects after `onError`. Pass the `clientId` of a
    * failed attempt to resend it — the server answers with the stored reply
@@ -279,8 +297,9 @@ export interface InboxState {
   addComment(id: string, body: string, clientId?: string): Promise<void>;
   /**
    * Delete a reply once the source confirms it. Rejects after `onError`.
-   * Does nothing for a record the inbox does not hold, or whose
-   * `permissionsOf` refuses it.
+   * Does nothing for a record the inbox does not hold, or when
+   * `commentPermissionsOf` refuses the reply — `permissionsOf`, for a reply
+   * the record does not hold.
    */
   deleteComment(id: string, commentId: string): Promise<void>;
   /** Last status change eligible for undo, or `null`. */

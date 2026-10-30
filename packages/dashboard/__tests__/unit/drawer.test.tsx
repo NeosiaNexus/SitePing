@@ -30,6 +30,7 @@ function renderDrawer(recordOverrides = {}, permissions: Partial<FeedbackPermiss
         canDeleteComment: false,
         ...permissions,
       }}
+      commentPermissionsOf={() => ({ canDelete: permissions.canDeleteComment ?? false })}
       onAddComment={onAddComment}
       onDeleteComment={vi.fn(async () => {})}
     />,

@@ -1365,6 +1365,17 @@ export interface FeedbackPermissions {
   canDeleteComment: boolean;
 }
 
+/**
+ * What a requester may do with one comment of a thread, as the server's
+ * access policy decides — finer than the feedback's `canDeleteComment`, which
+ * covers the whole thread: a policy that lets authors delete their own
+ * replies only grants it comment by comment.
+ */
+export interface CommentPermissions {
+  /** Delete it. */
+  canDelete: boolean;
+}
+
 /** What a requester may do with a whole project, sent with each list. */
 export interface FeedbackListPermissions {
   /** Delete every feedback of the project at once. */
@@ -1382,7 +1393,16 @@ export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
  * serialized and `clientId` omitted, like on `FeedbackResponse`. Its
  * `authorEmail` is redacted on the same terms as the feedback's.
  */
-export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+export type CommentResponse = Prettify<
+  Serialized<Omit<CommentRecord, "clientId">> & {
+    /**
+     * What the requester may do with this comment — always sent by
+     * `@siteping/server`. Absent from servers that predate it, and in store
+     * mode: the feedback's `canDeleteComment` decides then.
+     */
+    permissions?: CommentPermissions | undefined;
+  }
+>;
 
 /** What the store behind an endpoint supports — advertised on every list response. */
 export interface SitepingCapabilities {

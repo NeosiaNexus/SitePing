@@ -68,6 +68,7 @@ export type {
   SitepingLifecycleHooks,
   SitepingLogger,
   SitepingPrincipal,
+  SitepingProjectContext,
   SitepingRequestContext,
   SlackWebhookPayload,
   WebhookConfig,

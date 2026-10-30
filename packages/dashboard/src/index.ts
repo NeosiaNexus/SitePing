@@ -1,6 +1,7 @@
 // Re-export commonly needed core types so consumers don't have to depend on @siteping/core directly.
 export type {
   CommentCreateInput,
+  CommentPermissions,
   CommentRecord,
   FeedbackPermissions,
   FeedbackRecord,
@@ -16,6 +17,7 @@ export { createEndpointSource, createStoreSource } from "./source.js";
 export type { InboxTheme, ResolvedTheme } from "./theme.js";
 export type {
   EndpointSourceOptions,
+  InboxComment,
   InboxCustomSourceOptions,
   InboxEndpointOptions,
   InboxPage,

@@ -411,6 +411,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
                 void deleteFeedback(id);
               }}
               permissions={state.permissionsOf(state.opened)}
+              commentPermissionsOf={state.commentPermissionsOf}
               // Failures show in the thread itself, next to the kept draft.
               onAddComment={state.addComment}
               onDeleteComment={state.deleteComment}

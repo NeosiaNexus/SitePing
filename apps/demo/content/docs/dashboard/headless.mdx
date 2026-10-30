@@ -47,7 +47,7 @@ Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`
 
 **Discussion thread** — `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)`, `deleteComment(id, commentId)`; see [below](#discussion-threads).
 
-**Permissions** — `permissionsOf(record)`; see [below](#permissions).
+**Permissions** — `permissionsOf(record)`, `commentPermissionsOf(record, comment)`; see [below](#permissions).
 
 ## `view` — skip the flag algebra
 
@@ -126,7 +126,9 @@ The reply goes out as `author` with the `team` role, which the server keeps only
 const { canChangeStatus, canDelete } = inbox.permissionsOf(item);
 ```
 
-`changeStatus`, `undo`, `deleteFeedback`, `addComment` and `deleteComment` do nothing on a record that refuses them, so a stray call never flashes an optimistic change the server would roll back, nor sends a request it would refuse. The inbox only hides: the server decides what it accepts.
+`commentPermissionsOf(record, comment)` does the same for one reply — `{ canDelete }`: what `canDeleteComment` allows, minus what the reply's `permissions` refuse, or the record's `canDeleteComment` for a reply without them. A server that lets authors delete only their own replies grants it reply by reply.
+
+`changeStatus`, `undo`, `deleteFeedback`, `addComment` and `deleteComment` do nothing on a record — or a reply — that refuses them, so a stray call never flashes an optimistic change the server would roll back, nor sends a request it would refuse. The inbox only hides: the server decides what it accepts.
 
 ## Pagination
 

@@ -44,7 +44,7 @@ export function createCommentOperation<Principal>({
       // browser: the role a request claims is kept only when the access
       // policy vouches for the caller.
       const role: CommentAuthorRole =
-        authorRole === "team" && (await pipeline.canCommentAsTeam(scope)) ? "team" : "client";
+        authorRole === "team" && (await pipeline.canCommentAsTeam(scope, projectName)) ? "team" : "client";
       const stored = await store.addComment(feedbackId, { ...comment, authorRole: role });
 
       // A clientId is unique across every thread, so a replay that resolves to
@@ -52,7 +52,7 @@ export function createCommentOperation<Principal>({
       if (stored.feedbackId !== feedbackId) {
         return pipeline.error(scope, 409, ERROR_MESSAGES.clientIdUsedByAnotherFeedback);
       }
-      return pipeline.json(scope, pipeline.presentCreatedComment(scope, stored), { status: 201 });
+      return pipeline.json(scope, await pipeline.presentCreatedComment(scope, stored, projectName), { status: 201 });
     } catch (error) {
       if (isStoreNotFound(error)) return pipeline.error(scope, 404, ERROR_MESSAGES.feedbackNotFound);
       if (isStoreLimit(error)) return pipeline.error(scope, 409, ERROR_MESSAGES.tooManyComments);

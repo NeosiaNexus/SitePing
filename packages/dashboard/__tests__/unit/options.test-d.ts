@@ -5,7 +5,7 @@
 
 import type { CommentCreateInput, CommentRecord, FeedbackPage, FeedbackRecord, SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
-import type { FeedbackPermissions, InboxRecord, SitepingCapabilities } from "../../src/index.js";
+import type { FeedbackPermissions, InboxComment, InboxRecord, SitepingCapabilities } from "../../src/index.js";
 import type { InboxSource, InboxState, SitepingInboxProps, UseSitepingInboxOptions } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
 
@@ -57,8 +57,11 @@ describe("InboxSource", () => {
     };
     expectTypeOf(legacy).toExtend<InboxSource>();
     expectTypeOf<NonNullable<InboxSource["addComment"]>>().toEqualTypeOf<
-      (feedbackId: string, projectName: string, input: CommentCreateInput) => Promise<CommentRecord>
+      (feedbackId: string, projectName: string, input: CommentCreateInput) => Promise<InboxComment>
     >();
+    // A source resolving a plain stored comment, without permissions, still fits.
+    const storeLike = { ...legacy, addComment: async () => ({}) as CommentRecord };
+    expectTypeOf(storeLike).toExtend<InboxSource>();
   });
 
   it("names the capabilities list() may return through the package itself", () => {

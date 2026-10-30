@@ -21,6 +21,7 @@ import type {
   COMMENT_AUTHOR_ROLES,
   CommentAuthorRole,
   CommentCreateInput,
+  CommentPermissions,
   CommentRecord,
   CommentResponse,
   FeedbackCreateInput,
@@ -117,7 +118,7 @@ describe("wire types derived from record types", () => {
 
   it("serializes the thread and strips each comment's clientId too", () => {
     expectTypeOf<FeedbackResponse["comments"]>().toEqualTypeOf<CommentResponse[] | undefined>();
-    expectTypeOf<keyof CommentResponse>().toEqualTypeOf<Exclude<keyof CommentRecord, "clientId">>();
+    expectTypeOf<keyof CommentResponse>().toEqualTypeOf<Exclude<keyof CommentRecord, "clientId"> | "permissions">();
     expectTypeOf<CommentResponse["createdAt"]>().toEqualTypeOf<string>();
     expectTypeOf<CommentResponse["authorRole"]>().toEqualTypeOf<CommentAuthorRole>();
   });
@@ -138,6 +139,10 @@ describe("wire types derived from record types", () => {
     expectTypeOf<FeedbackResponseList["permissions"]>().toEqualTypeOf<FeedbackListPermissions | undefined>();
     expectTypeOf<FeedbackListPermissions>().toEqualTypeOf<{ canDeleteAll: boolean }>();
     expectTypeOf<FeedbackRecord>().not.toHaveProperty("permissions");
+    // Per comment (#393): a per-author rule grants deletion reply by reply.
+    expectTypeOf<CommentResponse["permissions"]>().toEqualTypeOf<CommentPermissions | undefined>();
+    expectTypeOf<CommentPermissions>().toEqualTypeOf<{ canDelete: boolean }>();
+    expectTypeOf<CommentRecord>().not.toHaveProperty("permissions");
   });
 });
 
