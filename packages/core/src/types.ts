@@ -240,7 +240,9 @@ export interface SitepingBaseConfig {
    * When true (default), the widget filters initial markers and panel results
    * by `feedback.url === scope.url`, so annotations created on one page never
    * leak to other pages — even if their CSS selector accidentally matches.
-   * Set to `false` to revert to the legacy project-wide behavior.
+   * Set to `false` for a project-wide view: the panel lists every feedback of
+   * the project, and a marker shows wherever its anchor resolves — for
+   * feedback on what every page shares, such as a header or a footer.
    */
   scopeAnnotationsByUrl?: boolean | undefined;
   /**
@@ -412,12 +414,13 @@ export interface SitepingBaseConfig {
    *
    * The widget always emits a `SitepingError` (or a subclass:
    * `SitepingNetworkError`, `SitepingValidationError`, `SitepingAuthError`)
-   * for HTTP-mode failures — host apps can `instanceof` to drive retry
-   * logic, or read `error.code` (`"NETWORK" | "VALIDATION" | "AUTH" |
-   * "SERVER"`) and `error.retryable` — and an `AUTH` error's `status`
-   * (`401` for missing or dead credentials, `403` for a refusal). The type
-   * is widened to `Error` so direct-store callers can still surface raw
-   * errors without breaking the contract.
+   * for a failed call — match it with `isSitepingError(error)` (not
+   * `instanceof`: the classes aren't exported), then read `error.code`
+   * (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`),
+   * `error.retryable` and an `AUTH` error's `status` (`401` for missing or
+   * dead credentials, `403` for a refusal). The type is widened to `Error`
+   * because a store in `store` mode may throw its own errors, which reach
+   * here unchanged.
    *
    * Also receives whatever a `panelActions` callback throws or rejects with
    * (non-`Error` values are wrapped). Those host failures are not API
@@ -1393,6 +1396,16 @@ export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
  */
 export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
 
+/**
+ * Version of the HTTP protocol `@siteping/server` speaks, sent as `protocol`
+ * on every list response. It rises with each addition a client may rely on —
+ * a route, a field, a status — so a client checks `protocol >= N` before
+ * using what protocol N added, instead of probing for fields. A server that
+ * predates it sends none: read that as 0. The OpenAPI document shipped as
+ * `@siteping/server/openapi.json` describes this version.
+ */
+export const SITEPING_PROTOCOL_VERSION = 1;
+
 /** What the store behind an endpoint supports — advertised on every list response. */
 export interface SitepingCapabilities {
   /** Whether comments can be posted: the store implements `addComment`. */
@@ -1409,6 +1422,8 @@ export interface SitepingCapabilities {
 export interface FeedbackResponseList {
   feedbacks: FeedbackResponse[];
   total: number;
+  /** The server's {@link SITEPING_PROTOCOL_VERSION} — absent from servers that predate it: read that as 0. */
+  protocol?: number | undefined;
   /** Always sent by `@siteping/server` — absent from servers that predate it. */
   capabilities?: SitepingCapabilities | undefined;
   /** Always sent by `@siteping/server` — absent from servers that predate it. */

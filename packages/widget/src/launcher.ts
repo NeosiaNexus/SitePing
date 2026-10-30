@@ -6,6 +6,7 @@ import {
   isValidEmail,
   type PageScope,
   type SitepingConfig,
+  type SitepingIdentity,
   type SitepingInstance,
   type SitepingPublicEventListener,
   type SitepingPublicEvents,
@@ -20,7 +21,7 @@ import { Fab } from "./fab.js";
 import { createFocusTracker } from "./focus-tracker.js";
 import { installHostIsolationGuard, isolateFromHost, registerEscapeLayer } from "./host-isolation.js";
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
-import { getIdentity, type Identity, saveIdentity } from "./identity.js";
+import { getIdentity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
 import { ownFeedback } from "./own-feedback.js";
 import type { Panel as PanelType } from "./panel.js";
@@ -402,7 +403,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
    * stays the source of truth on every render. `overPopup`: the feedback
    * popup is on screen (see `promptIdentity`).
    */
-  async function resolveIdentity(overPopup = false): Promise<Identity | null> {
+  async function resolveIdentity(overPopup = false): Promise<SitepingIdentity | null> {
     const known = config.identity ?? getIdentity();
     if (known) return known;
     const entered = await promptIdentity(shadow, t, overPopup);
@@ -871,7 +872,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
  * on phones (`styles/mobile.ts`), lifted above the on-screen keyboard.
  * Returns null if the user cancels.
  */
-function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean): Promise<Identity | null> {
+function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean): Promise<SitepingIdentity | null> {
   return new Promise((resolve) => {
     // Save the currently focused element to restore on close
     const previouslyFocused = (shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null;
@@ -936,7 +937,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
     // The phone sheet sits at the bottom edge — keep it above the keyboard.
     const stopKeyboardTracking = trackKeyboardInset((inset) => modal.style.setProperty("--sp-kb", `${inset}px`));
 
-    const closeModal = (result: Identity | null) => {
+    const closeModal = (result: SitepingIdentity | null) => {
       backdrop.removeEventListener("keydown", onKeydown);
       unregisterEscapeLayer();
       stopKeyboardTracking();

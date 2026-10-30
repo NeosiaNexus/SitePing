@@ -7,6 +7,7 @@
 Runtime exports (ESM and CJS):
 
 - `initSiteping: function`
+- `isSitepingError: function`
 - `loadLocale: function`
 - `registerLocale: function`
 
@@ -73,8 +74,6 @@ export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
 
 export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 
-export type Identity = SitepingIdentity;
-
 export interface RectData {
     hPct: number;
     wPct: number;
@@ -82,7 +81,11 @@ export interface RectData {
     yPct: number;
 }
 
+export type SitepingClientError = SitepingAuthError | SitepingError<"SERVER" | "TIMEOUT"> | SitepingNetworkError | SitepingValidationError;
+
 export type SitepingConfig = SitepingHttpConfig | SitepingStoreConfig;
+
+export type SitepingErrorCode = "AUTH" | "NETWORK" | "SERVER" | "TIMEOUT" | "VALIDATION";
 
 export type SitepingHeadersOption = (() => Promise<Record<string, string>> | Record<string, string>) | Record<string, string>;
 
@@ -91,6 +94,11 @@ export interface SitepingHttpConfig extends SitepingBaseConfig {
     endpoint: string;
     headers?: SitepingHeadersOption | undefined;
     store?: never;
+}
+
+export interface SitepingIdentity {
+    email: string;
+    name: string;
 }
 
 export interface SitepingInstance {
@@ -168,8 +176,6 @@ export interface SitepingStoreConfig extends SitepingBaseConfig {
 }
 
 export type SitepingTheme = "auto" | "dark" | "light";
-
-export type TFunction = (key: TranslationKey) => string;
 
 export type TranslationKey = keyof Translations;
 
@@ -308,6 +314,8 @@ export interface Translations {
 }
 
 export function initSiteping(config: SitepingConfig): SitepingInstance;
+
+export function isSitepingError(error: unknown): error is SitepingClientError;
 
 export const loadLocale: (locale: string) => Promise<Partial<Translations> | null>;
 
@@ -562,6 +570,11 @@ type Serialized<T> = {
     [K in keyof T]: T[K] extends Date ? string : T[K] extends Date | null ? null | string : T[K] extends (infer U)[] ? Serialized<U>[] : T[K];
 };
 
+class SitepingAuthError extends SitepingError<"AUTH"> {
+    constructor(message: string, status: 401 | 403);
+    readonly status: 401 | 403;
+}
+
 interface SitepingBaseConfig {
     accentColor?: string | undefined;
     captureDiagnostics?: DiagnosticsCaptureOptions | boolean | undefined;
@@ -596,9 +609,14 @@ interface SitepingDeepLinkOptions {
     param?: string | undefined;
 }
 
-interface SitepingIdentity {
-    email: string;
-    name: string;
+class SitepingError<TCode extends SitepingErrorCode = SitepingErrorCode> extends Error {
+    constructor(message: string, code: TCode, retryable: boolean);
+    readonly code: TCode;
+    readonly retryable: boolean;
+}
+
+class SitepingNetworkError extends SitepingError<"NETWORK"> {
+    constructor(message: string);
 }
 
 interface SitepingPanelActionBase {
@@ -615,6 +633,11 @@ type SitepingPublicEventListener<K extends keyof SitepingPublicEvents> = (...arg
 type SitepingSkipReason = "mobile" | "production" | "ssr";
 
 type SitepingUnsubscribe = () => void;
+
+class SitepingValidationError extends SitepingError<"VALIDATION"> {
+    constructor(message: string, status?: number);
+    readonly status: number | undefined;
+}
 ```
 
 ## @siteping/widget/react

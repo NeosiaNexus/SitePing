@@ -14,7 +14,14 @@ import type {
   SitepingHeadersOption,
   SitepingTheme,
 } from "../../src/index.js";
-import type { InboxSource, InboxState, SitepingInboxProps, UseSitepingInboxOptions } from "../../src/types.js";
+import type {
+  InboxSource,
+  InboxState,
+  InboxStatusFilter,
+  InboxTypeFilter,
+  SitepingInboxProps,
+  UseSitepingInboxOptions,
+} from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
 
 declare const store: SitepingStore;
@@ -86,6 +93,13 @@ describe("InboxSource", () => {
 describe("InboxState", () => {
   it("exposes the derived view discriminant", () => {
     expectTypeOf<InboxState["view"]>().toEqualTypeOf<"loading" | "error" | "empty" | "ready">();
+  });
+
+  it("names the filter setters apart from InboxSource.setStatus, which persists a change", () => {
+    expectTypeOf<InboxState["setStatusFilter"]>().toEqualTypeOf<(s: InboxStatusFilter) => void>();
+    expectTypeOf<InboxState["setTypeFilter"]>().toEqualTypeOf<(t: InboxTypeFilter) => void>();
+    expectTypeOf<InboxState>().not.toHaveProperty("setStatus");
+    expectTypeOf<InboxState>().not.toHaveProperty("setType");
   });
 
   it("exposes the thread actions", () => {

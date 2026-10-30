@@ -81,7 +81,12 @@ export interface EndpointSourceOptions {
    * here takes precedence over `apiKey`.
    */
   headers?: SitepingHeadersOption | undefined;
-  /** Test seam — defaults to `globalThis.fetch`. */
+  /**
+   * The `fetch` the source sends every request with — `globalThis.fetch` by
+   * default. Wrap it to log or trace requests, to set a request option such
+   * as `credentials: "include"` for cookie auth across origins, or to route
+   * requests to a test double.
+   */
   fetchFn?: typeof fetch | undefined;
 }
 
@@ -190,10 +195,12 @@ export interface InboxState {
   setProject(p: string): void;
   /** Active status tab. */
   status: InboxStatusFilter;
-  setStatus(s: InboxStatusFilter): void;
+  /** Switch the status tab — a filter, unlike `InboxSource.setStatus`, which changes a feedback's status. */
+  setStatusFilter(s: InboxStatusFilter): void;
   /** Active type filter. */
   type: InboxTypeFilter;
-  setType(t: InboxTypeFilter): void;
+  /** Switch the type filter. */
+  setTypeFilter(t: InboxTypeFilter): void;
   /** Raw search input — updates synchronously; the refetch is debounced 250ms. */
   search: string;
   setSearch(s: string): void;
