@@ -2,6 +2,7 @@
   "pages": [
     "index",
     "quickstart",
+    "frameworks",
     "widget",
     "dashboard",
     "server",

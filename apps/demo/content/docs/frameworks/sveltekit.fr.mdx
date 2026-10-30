@@ -1,0 +1,76 @@
+---
+title: SvelteKit
+description: Un endpoint SitePing en route SvelteKit et le widget monté dans onMount — écrit pour SvelteKit 3, avec les différences de SvelteKit 2.
+---
+
+```bash
+npm i @siteping/widget @siteping/server @siteping/adapter-memory
+```
+
+## 1. L'endpoint
+
+Une route `+server.ts` exporte une fonction par méthode ; chacune appelle celle du handler.
+
+```ts
+// src/routes/api/siteping/+server.ts
+import { SITEPING_API_KEY } from "$app/env/private";
+import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
+import type { RequestHandler } from "./$types";
+
+const store = new MemoryStore();
+
+// Construit à la première requête, pas à l'import : `vite build` importe ce
+// module pour l'analyser, et le handler refuse de démarrer en production sans clé.
+let handler: SitepingHandler | undefined;
+const siteping = () => (handler ??= createSitepingHandler({ store, apiKey: SITEPING_API_KEY }));
+
+export const GET: RequestHandler = ({ request }) => siteping().GET(request);
+export const POST: RequestHandler = ({ request }) => siteping().POST(request);
+export const PATCH: RequestHandler = ({ request }) => siteping().PATCH(request);
+export const DELETE: RequestHandler = ({ request }) => siteping().DELETE(request);
+export const OPTIONS: RequestHandler = ({ request }) => siteping().OPTIONS(request);
+```
+
+SvelteKit 3 n'expose que les variables d'environnement que vous déclarez, lues au démarrage de l'application :
+
+```ts
+// src/env.ts
+import { defineEnvVars } from "@sveltejs/kit/env";
+
+export const variables = defineEnvVars({
+  // Facultative en développement ; le handler refuse de démarrer en production sans elle.
+  SITEPING_API_KEY: { schema: (value) => value },
+});
+```
+
+Sur SvelteKit 2, passez `src/env.ts` et lisez la clé avec `import { env } from "$env/dynamic/private"`, puis `apiKey: env.SITEPING_API_KEY`. Sur SvelteKit 3, ce module se charge encore mais ne voit que les variables déclarées : la clé vaudrait `undefined`.
+
+## 2. Le widget
+
+`onMount` ne s'exécute que dans le navigateur, jamais pendant le rendu serveur. Le monter dans le layout racine garde un seul widget pour tout le site, au fil des navigations côté client.
+
+```svelte
+<!-- src/routes/+layout.svelte -->
+<script lang="ts">
+  import { initSiteping } from "@siteping/widget";
+  import { onMount } from "svelte";
+
+  let { children } = $props();
+
+  onMount(() => {
+    const siteping = initSiteping({ endpoint: "/api/siteping", projectName: "mon-projet" });
+    return () => siteping.destroy();
+  });
+</script>
+
+{@render children()}
+```
+
+Lancez `npm run dev` et regardez en bas à droite. Dessinez un rectangle, tapez un commentaire, envoyez : le feedback passe par votre route jusqu'au store.
+
+## Pour aller plus loin
+
+- Un store qui survit aux redémarrages : [Choisir un store](/fr/docs/frameworks#choisir-un-store).
+- Avant la mise en ligne, définissez `SITEPING_API_KEY` et lisez ce qu'elle verrouille — [trois règles communes à toutes les piles](/fr/docs/frameworks#trois-règles-communes-à-toutes-les-piles).
+- L'inbox de tri est un composant React : dans une app Svelte, montez-la sur une page d'administration séparée en React, ou pointez-la sur le même endpoint depuis une autre app — voir [le dashboard](/fr/docs/dashboard).

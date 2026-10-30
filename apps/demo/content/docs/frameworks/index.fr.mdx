@@ -1,0 +1,62 @@
+---
+title: Frameworks
+description: SitePing dans SvelteKit, Nuxt, Astro, une SPA Vite ou du HTML simple — le widget dans le navigateur, un handler sur votre serveur, un store derrière.
+---
+
+Chaque pile a les deux mêmes pièces : le [widget](/fr/docs/widget), qui tourne dans le navigateur, et le [handler](/fr/docs/server) de `@siteping/server`, qui sert une URL au-dessus d'un [store](/fr/docs/adapters). Choisissez votre pile :
+
+| Pile | Page |
+|---|---|
+| Next.js | [Démarrage rapide](/fr/docs/quickstart) |
+| SvelteKit | [SvelteKit](/fr/docs/frameworks/sveltekit) |
+| Vue avec Nuxt | [Nuxt](/fr/docs/frameworks/nuxt) |
+| Astro | [Astro](/fr/docs/frameworks/astro) |
+| Vue, React ou vanilla sur Vite, sans framework serveur | [SPA Vite](/fr/docs/frameworks/vite) |
+| WordPress, Webflow, HTML simple — sans bundler | [Balise script](/fr/docs/widget/script-tag) |
+| Hono, Express, Bun, Deno, un Worker Cloudflare | [Serveur › Le montage](/fr/docs/server#le-montage) |
+
+```bash
+npm i @siteping/widget @siteping/server @siteping/adapter-memory
+```
+
+Chaque page démarre sur `@siteping/adapter-memory`, qui ne demande aucune base de données : les feedbacks vivent jusqu'au redémarrage du serveur. Passez à un vrai store quand vous êtes prêt — voir [Choisir un store](#choisir-un-store).
+
+## Trois règles communes à toutes les piles
+
+- **Le widget ne tourne que dans le navigateur.** Il a besoin du DOM : montez-le là où votre framework n'exécute du code que côté client — `onMount` en Svelte, un plugin `.client` dans Nuxt, un `<script>` dans Astro. Importer `@siteping/widget` côté serveur ne pose pas de problème ; y appeler `initSiteping`, si.
+- **Une URL, cinq méthodes.** `createSitepingHandler` renvoie `GET`, `POST`, `PATCH`, `DELETE` et `OPTIONS` ; routez les cinq d'une même URL vers lui. Le widget et le dashboard parlent à cette URL.
+- **Construisez le handler à la première requête.** En production, le handler refuse de démarrer sans `apiKey` (ou sans politique [`access`](/fr/docs/server#accès-personnalisé) personnalisée). Un build de production importe souvent vos routes pour les analyser, là où le secret d'exécution n'est pas défini : créez le handler paresseusement, comme sur chacune de ces pages, pour qu'une clé manquante fasse échouer une requête avec une erreur claire plutôt que le build.
+
+Avec une clé, seuls les envois du widget s'en passent : lister la demande aussi, si bien qu'un relecteur sans clé peut envoyer un feedback mais ne voit aucun pin. Pour lui montrer pins et fils, ajoutez `publicEndpoints: ["GET", "POST", "OPTIONS"]` — quiconque connaît l'URL et un nom de projet peut alors lire les feedbacks, emails des auteurs masqués. Voir [le modèle de sécurité](/fr/docs/server#le-modèle-de-sécurité-franchement).
+
+Par défaut, le widget ne s'affiche que dans les builds de développement. Sur un site de recette compilé en mode production, passez `forceShow: true` — voir [quand il s'affiche](/fr/docs/widget#quand-le-widget-saffiche--et-quand-il-ne-saffiche-pas).
+
+## Choisir un store
+
+Le store en mémoire sert à essayer. Pour des feedbacks qui survivent à un redémarrage, donnez au handler un store sur votre base de données — le reste de votre code ne change pas.
+
+**PostgreSQL avec Drizzle** — Neon, Supabase, Vercel Postgres ou n'importe quel serveur, avec [`@siteping/adapter-drizzle/pg`](/fr/docs/adapters/drizzle) :
+
+```ts
+// Neon en HTTP — remplacez l'import de `drizzle` par n'importe quel autre driver PostgreSQL
+import { neon } from "@neondatabase/serverless";
+import { createPgSitepingStore } from "@siteping/adapter-drizzle/pg";
+import { drizzle } from "drizzle-orm/neon-http";
+
+export const store = createPgSitepingStore(drizzle(neon(process.env.DATABASE_URL!)));
+```
+
+**Turso / libSQL avec Drizzle** — une base Turso, un réplica embarqué ou un fichier local :
+
+```ts
+import { createLibSQLSitepingStore } from "@siteping/adapter-drizzle/libsql";
+import { drizzle } from "drizzle-orm/libsql";
+
+export const store = createLibSQLSitepingStore(
+  drizzle({ connection: { url: process.env.TURSO_DATABASE_URL!, authToken: process.env.TURSO_AUTH_TOKEN } }),
+);
+```
+
+Les deux demandent d'abord les tables SitePing dans votre schéma Drizzle et une migration — [l'étape 1 de l'adaptateur Drizzle](/fr/docs/adapters/drizzle#1-ajouter-les-tables-à-votre-schéma) montre les trois lignes à exporter.
+
+**Prisma** — [`@siteping/adapter-prisma`](/fr/docs/adapters/prisma), avec une CLI qui ajoute les modèles à votre schéma.
