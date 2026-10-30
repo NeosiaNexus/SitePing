@@ -96,7 +96,7 @@ updates:
   # silently rot — pinning is only safe when something bumps the pins.
   #
   # Digest refreshes only. The tags themselves are deliberate and coupled to
-  # things this file cannot see: `node:20-alpine` matches the oldest Node major
+  # things this file cannot see: `node:22-alpine` matches the oldest Node major
   # the packages support (and the version the publish jobs run), and the bun tag
   # must stay in lockstep with `packageManager` and the `oven-sh/setup-bun` pin
   # in the workflows. Left alone, Dependabot proposed node 20 -> 26 and bumped

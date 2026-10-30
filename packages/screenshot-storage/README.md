@@ -14,7 +14,7 @@ Screenshot storage for the [SitePing](https://github.com/NeosiaNexus/SitePing) s
 npm install @siteping/screenshot-storage
 ```
 
-Node ≥ 20, or any runtime with the Fetch and Web Crypto APIs (the `/filesystem` entry needs Node). `drizzle-orm` is an optional peer, only for the `/drizzle-pg` and `/drizzle-libsql` entries.
+Node ≥ 22, or any runtime with the Fetch and Web Crypto APIs (the `/filesystem` entry needs Node). `drizzle-orm` is an optional peer, only for the `/drizzle-pg` and `/drizzle-libsql` entries.
 
 ## Quick start
 
