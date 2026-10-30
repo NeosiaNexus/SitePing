@@ -132,8 +132,9 @@ vi.mock(new URL("../../src/screenshot.js", import.meta.url).pathname, () => ({
 
 // Mock anchor helpers to avoid @medv/finder dependency in jsdom
 vi.mock(new URL("../../src/dom/anchor.js", import.meta.url).pathname, () => ({
-  // No shadow roots here: the hit test is the document's own
-  deepElementFromPoint: vi.fn((x: number, y: number) => document.elementFromPoint(x, y)),
+  // No shadow roots here: the hit test is the document's own. jsdom has no
+  // elementFromPoint: the suites that need a hit stub it, the others get none.
+  deepElementFromPoint: vi.fn((x: number, y: number) => document.elementFromPoint?.(x, y) ?? null),
   findAnchorElement: vi.fn().mockReturnValue(document.body),
   generateAnchor: vi.fn().mockReturnValue({
     cssSelector: "body",
