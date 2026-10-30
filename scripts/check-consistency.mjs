@@ -26,7 +26,9 @@
 //   9. a workspace's `engines.node` differs from core's, or something that
 //      follows that floor did not move with it (adapter scaffold, oldest CI
 //      node-compat lane, publish jobs' Node, demo runtime image, docs and
-//      README "Node N+" claims).
+//      README "Node N+" claims);
+//  10. a published package's peer range admits versions without an upper
+//      bound (`>=18`, `*`) — majors CI never ran.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -354,6 +356,28 @@ if (!floorMajor) {
         const line = content.slice(0, m.index).split("\n").length;
         errors.push(`${file}:${line} says "${m[0]}" but the floor is Node ${floorMajor}`);
       }
+    }
+  }
+}
+
+// --- 10. Peer ranges stop at the last major CI exercises ----------------------
+
+// A peer range is a promise that every version it admits works. Without an
+// upper bound (`>=18`, `*`) it covers majors nobody has run, and widening one
+// later is a minor while narrowing it is a major (the versioning policy):
+// each `||` alternative must be capped — `^x`, `~x`, `x.y.z`, `x.x`, or a
+// range with `<`. Raise the cap when CI runs the next major.
+const UNBOUNDED_ALTERNATIVE = /^(?:\*|x|latest|>=?\s*[\d.x*]+(?:-[\w.]+)?)$/i;
+for (const pkgPath of Object.keys(manifest)) {
+  const pkg = JSON.parse(read(`${pkgPath}/package.json`));
+  for (const [name, spec] of Object.entries(pkg.peerDependencies ?? {})) {
+    if (spec.startsWith("workspace:")) continue;
+    const unbounded = spec
+      .split("||")
+      .map((alternative) => alternative.trim())
+      .filter((alt) => UNBOUNDED_ALTERNATIVE.test(alt));
+    if (unbounded.length > 0) {
+      errors.push(`${pkgPath} peerDependencies "${name}": "${spec}" has no upper bound (${unbounded.join(", ")})`);
     }
   }
 }

@@ -9,7 +9,7 @@ Les quatre adapters fournis couvrent la plupart des installations, mais les stor
 npm i -D @siteping/adapter-kit vitest
 ```
 
-`vitest` est une **peer dependency optionnelle**, nécessaire uniquement à l'entrée `@siteping/adapter-kit/testing`. Si vous ne lancez pas la suite de conformité, laissez-la de côté. Le kit lui-même n'a aucune dépendance runtime (`@siteping/core` est intégré dans son `dist`) : une dépendance de développement suffit si vous bundlez votre package ; si vous publiez du code non bundlé, déplacez-la dans `dependencies`.
+`vitest` est une **peer dependency optionnelle** (3, 4 ou 5), nécessaire uniquement à l'entrée `@siteping/adapter-kit/testing`. Si vous ne lancez pas la suite de conformité, laissez-la de côté. Le kit lui-même n'a aucune dépendance runtime (`@siteping/core` est intégré dans son `dist`) : une dépendance de développement suffit si vous bundlez votre package ; si vous publiez du code non bundlé, déplacez-la dans `dependencies`.
 
 > Pourquoi un package séparé : `@siteping/core` est un package interne — il exporte du TypeScript brut et n'est jamais publié sur npm. Le kit est la façon supportée de dépendre de ces types et helpers depuis l'extérieur de ce dépôt.
 
