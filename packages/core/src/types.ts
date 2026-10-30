@@ -479,7 +479,13 @@ export type SitepingConfig = SitepingHttpConfig | SitepingStoreConfig;
 
 /** Instance returned by initSiteping() with lifecycle methods. */
 export interface SitepingInstance {
-  /** Remove the widget from the DOM and clean up all listeners. */
+  /**
+   * Release this handle and detach the listeners added through its `on()`.
+   * Every `initSiteping()` call returns its own handle over the one widget,
+   * which leaves the DOM, all its listeners cleaned up, once the last handle
+   * is destroyed. A repeat call is a no-op, and the handle's other methods do
+   * nothing afterwards.
+   */
   destroy: () => void;
   /** Open the panel programmatically */
   open: () => void;

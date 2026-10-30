@@ -30,8 +30,11 @@ import { buildThemeColors } from "./styles/theme.js";
 import { Tooltip } from "./tooltip.js";
 import { trackKeyboardInset } from "./viewport.js";
 
-/** Singleton guard — prevents duplicate widgets from overlapping */
-let instance: SitepingInstance | null = null;
+/**
+ * Singleton guard — prevents duplicate widgets from overlapping. Set while a
+ * widget is live: hands a duplicate `launch()` a new handle over it.
+ */
+let acquire: (() => SitepingInstance) | null = null;
 
 interface NormalisedDiagnostics {
   console: boolean;
@@ -152,9 +155,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
     : () => {};
 
   // Guard: prevent duplicate initSiteping() calls
-  if (instance) {
+  if (acquire) {
     log("initSiteping() called more than once — returning existing instance");
-    return instance;
+    return acquire();
   }
 
   // Guard: only show in development (forceShow bypasses). Uses readNodeEnv()
@@ -249,7 +252,13 @@ export function launch(config: SitepingConfig): SitepingInstance {
 
   const colors = buildThemeColors(config.accentColor, config.theme);
   const bus = new EventBus<WidgetEvents>();
-  const publicBus = new EventBus<SitepingPublicEvents>();
+  // One public bus per handle (see `handle()` below): destroying a handle
+  // drops the listeners subscribed through it, and the same function
+  // subscribed through two handles stays two independent subscriptions.
+  const publicBuses = new Set<EventBus<SitepingPublicEvents>>();
+  const publish = <K extends keyof SitepingPublicEvents>(event: K, ...args: SitepingPublicEvents[K]): void => {
+    for (const publicBus of publicBuses) publicBus.emit(event, ...args);
+  };
 
   // Client-side mode (store) vs HTTP mode (endpoint).
   // The earlier guard guarantees one of `store` / `endpoint` is set; we
@@ -288,14 +297,14 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // without bridging it here is a compile error, so `instance.on` can never
   // silently miss an event.
   const publicBridges: { [K in keyof SitepingPublicEvents]: () => void } = {
-    "feedback:sent": () => bus.on("feedback:sent", (fb) => publicBus.emit("feedback:sent", fb)),
-    "feedback:deleted": () => bus.on("feedback:deleted", (id) => publicBus.emit("feedback:deleted", id)),
-    "comment:added": () => bus.on("comment:added", (comment) => publicBus.emit("comment:added", comment)),
-    "feedback:error": () => bus.on("feedback:error", (err) => publicBus.emit("feedback:error", err)),
-    "panel:open": () => bus.on("open", () => publicBus.emit("panel:open")),
-    "panel:close": () => bus.on("close", () => publicBus.emit("panel:close")),
-    "annotation:start": () => bus.on("annotation:start", () => publicBus.emit("annotation:start")),
-    "annotation:end": () => bus.on("annotation:end", () => publicBus.emit("annotation:end")),
+    "feedback:sent": () => bus.on("feedback:sent", (fb) => publish("feedback:sent", fb)),
+    "feedback:deleted": () => bus.on("feedback:deleted", (id) => publish("feedback:deleted", id)),
+    "comment:added": () => bus.on("comment:added", (comment) => publish("comment:added", comment)),
+    "feedback:error": () => bus.on("feedback:error", (err) => publish("feedback:error", err)),
+    "panel:open": () => bus.on("open", () => publish("panel:open")),
+    "panel:close": () => bus.on("close", () => publish("panel:close")),
+    "annotation:start": () => bus.on("annotation:start", () => publish("annotation:start")),
+    "annotation:end": () => bus.on("annotation:end", () => publish("annotation:end")),
   };
   for (const wire of Object.values(publicBridges)) wire();
 
@@ -739,12 +748,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
     };
   }
 
-  const self: SitepingInstance = {
+  const self: Omit<SitepingInstance, "on" | "off"> = {
+    // Runs once, when the last live handle is destroyed (see `handle()`).
     destroy: () => {
-      // Idempotent: hosts can hold stale handles (two `useSiteping` consumers
-      // share the singleton), and a repeat call must not tear anything down
-      // again — least of all a newer widget's singleton slot below.
-      if (destroyed) return;
       log("Destroying widget");
       if (onContextMenu) {
         document.removeEventListener("contextmenu", onContextMenu);
@@ -765,13 +771,12 @@ export function launch(config: SitepingConfig): SitepingInstance {
       consoleBuffer?.dispose();
       networkBuffer?.dispose();
       bus.removeAll();
-      publicBus.removeAll();
       liveRegion.remove();
       host.remove();
       // Last: the teardown above moves focus out of the widget (popup focus
       // restore), which a host modal's focus trap must not see either.
       removeHostIsolationGuard();
-      if (instance === self) instance = null;
+      acquire = null;
     },
     open: () => {
       // Emit synchronously so consumers wired through `onOpen` / `panel:open`
@@ -799,15 +804,49 @@ export function launch(config: SitepingConfig): SitepingInstance {
     refresh: () => {
       void doRefresh().catch(() => {});
     },
-    on: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) =>
-      publicBus.on(event, listener),
-    off: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) => {
-      publicBus.off(event, listener);
-    },
   };
 
-  instance = self;
-  return self;
+  // Reference counting (#366): every launch() returns its own handle over the
+  // one widget (two `useSiteping` consumers, a layout and a page), and the
+  // widget tears down when the last handle is destroyed, so unmounting one
+  // component can't remove a widget another one still uses. A destroyed
+  // handle goes inert and drops its listeners; destroying it again is a
+  // no-op, never a second release, so a stale handle can't reach a newer
+  // widget either.
+  let refs = 0;
+  const handle = (): SitepingInstance => {
+    const publicBus = new EventBus<SitepingPublicEvents>();
+    let live = true;
+    refs++;
+    publicBuses.add(publicBus);
+    return {
+      destroy: () => {
+        if (!live) return;
+        live = false;
+        publicBuses.delete(publicBus);
+        if (--refs === 0) self.destroy();
+      },
+      open: () => {
+        if (live) self.open();
+      },
+      close: () => {
+        if (live) self.close();
+      },
+      refresh: () => {
+        if (live) self.refresh();
+      },
+      focusFeedback: (feedbackId: string) => live && self.focusFeedback(feedbackId),
+      // Once released, the handle's bus no longer receives events.
+      on: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) =>
+        publicBus.on(event, listener),
+      off: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) => {
+        publicBus.off(event, listener);
+      },
+    };
+  };
+
+  acquire = handle;
+  return handle();
 }
 
 /**
