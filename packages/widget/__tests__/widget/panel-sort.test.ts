@@ -130,6 +130,7 @@ describe("PanelSortControls", () => {
     document.body.appendChild(controls.element);
 
     const sortButton = controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!;
+    expect(sortButton.getAttribute("aria-label")).toBe("Sort: Newest first");
     sortButton.click();
 
     expect(sortButton.getAttribute("aria-expanded")).toBe("true");
@@ -139,6 +140,8 @@ describe("PanelSortControls", () => {
 
     expect(controls.sortMode).toBe("oldest");
     expect(sortButton.textContent).toContain("Oldest first");
+    // WCAG 2.5.3: the name holds the mode the button shows.
+    expect(sortButton.getAttribute("aria-label")).toBe("Sort: Oldest first");
     expect(sortButton.getAttribute("aria-expanded")).toBe("false");
     expect(onChange).toHaveBeenCalledTimes(1);
   });

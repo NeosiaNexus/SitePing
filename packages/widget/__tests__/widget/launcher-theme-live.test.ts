@@ -4,6 +4,7 @@ import { MemoryStore } from "@siteping/adapter-memory";
 import type { SitepingInstance } from "@siteping/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initSiteping } from "../../src/index.js";
+import { buildThemeColors } from "../../src/styles/theme.js";
 
 // The real launcher, in store mode so nothing touches the network, under a
 // `prefers-color-scheme` the test flips like an OS would.
@@ -75,6 +76,29 @@ describe("theme: auto follows the OS live", () => {
     osSwitchesTo(false);
     expect(shadowCss()).toContain("color-scheme: light");
     expect(tooltipBackground()).toBe(lightTooltip);
+  });
+
+  it("re-derives the accent text color with the rest of the palette", () => {
+    // Amber reads differently on a light and a dark tint, so the two derived
+    // text colors differ: inline styles read the variable and repaint with it.
+    const accent = "#f59e0b";
+    instance = initSiteping({
+      projectName: "theme-live",
+      store: new MemoryStore(),
+      forceShow: true,
+      theme: "auto",
+      accentColor: accent,
+    });
+    const accentText = () => /--sp-accent-text:\s*(#[0-9a-f]{6})/i.exec(shadowCss())?.[1];
+    const light = buildThemeColors(accent, "light").accentText;
+    const dark = buildThemeColors(accent, "dark").accentText;
+    expect(light).not.toBe(dark);
+
+    expect(accentText()).toBe(light);
+    osSwitchesTo(true);
+    expect(accentText()).toBe(dark);
+    osSwitchesTo(false);
+    expect(accentText()).toBe(light);
   });
 
   it("stops following once the widget is destroyed", () => {

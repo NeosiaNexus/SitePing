@@ -47,7 +47,7 @@ export const EXPORT_CSS = /* css */ `
 
   .sp-export-btn:hover {
     border-color: var(--sp-accent);
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
     background: var(--sp-accent-light);
   }
 
@@ -103,7 +103,7 @@ export const EXPORT_CSS = /* css */ `
   .sp-export-option:hover,
   .sp-export-option:focus-visible {
     background: var(--sp-accent-light);
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
   }
 
   .sp-export-option-icon {

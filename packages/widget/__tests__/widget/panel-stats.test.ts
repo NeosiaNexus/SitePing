@@ -73,6 +73,7 @@ describe("PanelStats", () => {
     const stats = new PanelStats(createT("fr"));
     document.body.appendChild(stats.element);
 
+    expect(stats.element.getAttribute("aria-label")).toBe(STATS_I18N_FR["stats.aria"]);
     const labels = stats.element.querySelectorAll<HTMLElement>(".sp-stats-label");
     const labelTexts = Array.from(labels).map((el) => el.textContent);
     expect(labelTexts).toEqual([
