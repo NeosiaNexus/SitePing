@@ -14,7 +14,7 @@
 npm install @siteping/adapter-drizzle @siteping/server drizzle-orm
 ```
 
-**Peer dependency:** `drizzle-orm` `>=0.45 <1` · Node ≥ 20.
+**Peer dependency:** `drizzle-orm` `>=0.45 <1` · Node ≥ 22.
 
 ## Quick start
 

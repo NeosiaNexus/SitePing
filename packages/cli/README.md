@@ -4,7 +4,7 @@
 
 # @siteping/cli
 
-Set up and check [SitePing](https://github.com/NeosiaNexus/SitePing) from the command line. Single self-contained binary, zero runtime dependencies, Node ≥ 20.
+Set up and check [SitePing](https://github.com/NeosiaNexus/SitePing) from the command line. Single self-contained binary, zero runtime dependencies, Node ≥ 22.
 
 **[Documentation](https://siteping.dev/docs/cli)**
 
