@@ -923,15 +923,13 @@ export class Panel {
     card.setAttribute("role", "listitem");
     card.setAttribute("tabindex", "0");
     // Same accessible name as the feedback's pin, status included.
-    card.setAttribute(
-      "aria-label",
-      tWithParams(this.t, "marker.aria", {
-        number,
-        type: getTypeLabel(feedback.type, this.t),
-        status: getStatusLabel(feedback.status, this.t),
-        message: feedback.message.slice(0, 80),
-      }),
-    );
+    const label = tWithParams(this.t, "marker.aria", {
+      number,
+      type: getTypeLabel(feedback.type, this.t),
+      status: getStatusLabel(feedback.status, this.t),
+      message: feedback.message.slice(0, 80),
+    });
+    card.setAttribute("aria-label", label);
     card.dataset.feedbackId = feedback.id;
     // Display (sort-order) number — the detail title must match the card's #.
     card.dataset.number = String(number);
@@ -947,7 +945,7 @@ export class Panel {
     const header = el("div", { class: "sp-card-header" });
 
     // Bulk checkbox — inline in the header row, when a bulk action can reach the card
-    if (this.selectable(feedback)) header.appendChild(this.bulk.createCheckbox(feedback.id));
+    if (this.selectable(feedback)) header.appendChild(this.bulk.createCheckbox(feedback.id, label));
 
     const num = el("span", { class: "sp-card-number" });
     setText(num, `#${number}`);

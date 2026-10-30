@@ -102,6 +102,7 @@ export const fr: Translations = {
 
   // Bulk actions toolbar
   "bulk.selectAll": "Tout sélectionner",
+  "bulk.selectFeedback": "Sélectionner {label}",
   "bulk.selected": "{count} sélectionné(s)",
   "bulk.resolve": "Résoudre",
   "bulk.delete": "Supprimer",
