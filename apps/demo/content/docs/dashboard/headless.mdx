@@ -29,7 +29,7 @@ The options are a union over the three source modes: supply **exactly one** of `
 | `pageSize` | `number` | `50` | Clamped to 1–100 |
 | `onStatusChange` | `(feedback, previousStatus) => void` | — | After the server confirms |
 | `onDelete` | `(feedback) => void` | — | After the server confirms |
-| `onError` | `(error) => void` | — | Every failed load or mutation |
+| `onError` | `(error) => void` | — | Every failed load or mutation. The built-in sources throw errors `isSitepingError` matches, typed by `code`; a custom source's own errors arrive as they are |
 | `author` | `{ name, email? }` | — | Who posts replies from this inbox — see [Discussion threads](#discussion-threads). Without it, threads are read-only |
 | `readOnly` | `boolean` | `false` | No status change and no deletion, of feedbacks or of replies — see [Permissions](#permissions) |
 

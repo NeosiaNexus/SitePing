@@ -17,8 +17,10 @@ import type * as Widget from "../../src/index.js";
 import {
   type CommentResponse,
   initSiteping,
+  isSitepingError,
   registerLocale,
   type SitepingConfig,
+  type SitepingErrorCode,
   type SitepingIdentity,
   type SitepingPanelAction,
   type SitepingPanelActionContext,
@@ -174,6 +176,20 @@ describe("custom locales", () => {
 
   it("keeps values as strings", () => {
     expectTypeOf<Translations["panel.title"]>().toEqualTypeOf<string>();
+  });
+});
+
+describe("errors reaching onError", () => {
+  it("are matched with the exported guard, then told apart by code", () => {
+    initSiteping({
+      endpoint: "/api/siteping",
+      projectName: "demo",
+      onError: (error) => {
+        if (!isSitepingError(error)) return;
+        expectTypeOf(error.code).toEqualTypeOf<SitepingErrorCode>();
+        if (error.code === "AUTH") expectTypeOf(error.status).toEqualTypeOf<401 | 403>();
+      },
+    });
   });
 });
 
