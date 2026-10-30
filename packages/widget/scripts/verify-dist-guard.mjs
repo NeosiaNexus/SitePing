@@ -12,7 +12,8 @@
 //      still in a define-replaceable position).
 // It also fails when a bundle still carries a CSS comment (a build without
 // the css-literals plugin), ships a non-ASCII character, or a source map names
-// a source by an absolute path.
+// a source by an absolute path, or when the React entry bundles the widget
+// instead of importing the main entry.
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -37,14 +38,13 @@ const jsFiles = readdirSync(distDir).filter((f) => f.endsWith(".js") || f.endsWi
 const sources = new Map(jsFiles.map((f) => [f, readFileSync(join(distDir, f), "utf8")]));
 
 // The IIFE bundle is self-contained; ESM entries may carry the launcher in a
-// shared chunk — check bundle *groups*, not individual files. The CJS twins
-// are single-file bundles and must carry the literal too.
+// shared chunk — check bundle *groups*, not individual files. The CJS twin
+// must carry the literal too. The React entry imports the main one instead
+// (checked below), so it has no group of its own.
 const groups = {
   "index.global.js (iife)": ["index.global.js"],
   "index.js (+chunks)": jsFiles.filter((f) => f === "index.js" || f.startsWith("chunk-")),
-  "react.js (+chunks)": jsFiles.filter((f) => f === "react.js" || f.startsWith("chunk-")),
   "index.cjs (cjs)": ["index.cjs"],
-  "react.cjs (cjs)": ["react.cjs"],
 };
 
 const errors = [];
@@ -62,6 +62,32 @@ for (const [label, files] of Object.entries(groups)) {
       `${label}: \`${LITERAL}\` not found — ` +
         "the build folded the guard again; check the identity define in tsup.config.ts",
     );
+  }
+}
+
+// `@siteping/widget/react` must import the main entry, in its own format,
+// rather than bundle a copy of the widget: a copy keeps its own module state,
+// so a locale registered through `@siteping/widget` never reaches the hook's
+// widget, and mixing both entries mounts two widgets (#386). The guard's
+// literal stands in for the widget code here, and the directive marks the
+// hook as client-only for React Server Components.
+for (const [file, mainEntry] of [
+  ["react.js", "./index.js"],
+  ["react.cjs", "./index.cjs"],
+]) {
+  const code = sources.get(file);
+  if (code === undefined) {
+    errors.push(`${file}: not found in dist/`);
+    continue;
+  }
+  if (!code.includes(`"${mainEntry}"`) && !code.includes(`'${mainEntry}'`)) {
+    errors.push(`${file}: does not import ${mainEntry} — check \`reactUsesMainEntry\` in tsup.config.ts`);
+  }
+  if (code.includes(LITERAL)) {
+    errors.push(`${file}: bundles a copy of the widget — it must import ${mainEntry} instead`);
+  }
+  if (!code.startsWith('"use client";')) {
+    errors.push(`${file}: does not open with "use client" — check the React build's \`banner\` and \`treeshake\``);
   }
 }
 
@@ -126,5 +152,5 @@ if (errors.length > 0) {
 }
 console.log(
   `[verify-dist-guard] OK — ${LITERAL} literal intact and consumer-replaceable in all bundles, ` +
-    "CSS literals minified, ASCII-only, source map paths relative",
+    "CSS literals minified, ASCII-only, source map paths relative, React entry on the main one",
 );
