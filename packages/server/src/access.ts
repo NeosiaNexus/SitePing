@@ -1,3 +1,4 @@
+import { SitepingConfigError } from "@siteping/core";
 import { ERROR_MESSAGES } from "./constants.js";
 import type {
   SitepingAccessControl,
@@ -73,8 +74,9 @@ function isProductionEnvironment(): boolean {
  * `requireAuthForDestructive`, `redactUnauthenticatedEmails`). It never
  * resolves a principal.
  *
- * @throws Error in production without `apiKey` while destructive endpoints
- * still require it — the factory refuses an unauthenticated destructive surface.
+ * @throws SitepingConfigError (`CONFIG_API_KEY_REQUIRED`) in production without
+ * `apiKey` while destructive endpoints still require it — the factory refuses
+ * an unauthenticated destructive surface.
  */
 export function createApiKeyGate({
   apiKey,
@@ -87,7 +89,8 @@ export function createApiKeyGate({
 >): AccessGate<null> {
   // Without this guard, anyone could `DELETE { deleteAll: true }` against the API.
   if (!apiKey && requireAuthForDestructive && isProductionEnvironment()) {
-    throw new Error(
+    throw new SitepingConfigError(
+      "CONFIG_API_KEY_REQUIRED",
       "[siteping] createSitepingHandler: apiKey is required in production. " +
         "Set `apiKey` to enable destructive endpoints, pass `access` to plug in your own authentication, " +
         "or pass `requireAuthForDestructive: false` if SitePing sits behind your own auth middleware.",

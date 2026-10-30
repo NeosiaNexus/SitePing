@@ -3,9 +3,13 @@ export type {
   CommentPayload,
   FeedbackCreateInput,
   FeedbackRecord,
+  SitepingConfigErrorCode,
   SitepingStore,
 } from "@siteping/core";
 export { SITEPING_PROTOCOL_VERSION } from "@siteping/core";
+// The guard, not the class: `createSitepingHandler` throws it for options it
+// cannot run with, and adapter-prisma's copy of the class is another one.
+export { isSitepingConfigError } from "@siteping/core";
 export { createSitepingHandler } from "./handler.js";
 export type {
   SitepingAccessControl,
