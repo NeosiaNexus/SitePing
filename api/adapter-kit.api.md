@@ -485,6 +485,7 @@ Types:
 export interface StoreConformanceOptions {
     caseInsensitiveSearch?: boolean | undefined;
     duplicateBehavior?: "return" | "throw" | undefined;
+    failWrites?: ((store: SitepingStore) => () => void) | undefined;
 }
 
 export function testSitepingStore(factory: () => Promise<SitepingStore> | SitepingStore, options?: StoreConformanceOptions): void;
