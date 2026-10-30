@@ -352,6 +352,7 @@ export interface Translations {
     "type.label": string;
     "type.other": string;
     "type.question": string;
+    "bulk.selectFeedback": string;
     "comments.full": string;
     "comments.title": string;
     "comments.team": string;
