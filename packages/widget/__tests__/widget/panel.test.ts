@@ -4841,6 +4841,58 @@ describe("Panel", () => {
       expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1);
     });
 
+    it("keeps a reply when a reload read before it was stored answers after it (#420)", async () => {
+      rebuild(async () => identity);
+      const posting = deferredComment();
+      apiClient.addComment.mockReturnValue(posting.promise);
+      await openDetail(makeFeedback({ id: "fb-1" }), true);
+      await sendReply("Here it is");
+      await vi.waitFor(() => expect(apiClient.addComment).toHaveBeenCalled());
+
+      // The list reloads meanwhile, and the server reads it before storing the reply.
+      let answerList: (page: unknown) => void = () => {};
+      apiClient.getFeedbacks.mockReturnValue(
+        new Promise((resolve) => {
+          answerList = resolve;
+        }),
+      );
+      const reloading = panel.refresh();
+      // The reply's POST answers first…
+      const added = vi.fn();
+      bus.on("comment:added", added);
+      posting.resolve(reply);
+      await vi.waitFor(() => expect(added).toHaveBeenCalled());
+      // …then the stale list, without the reply.
+      answerList({
+        feedbacks: [makeFeedback({ id: "fb-1", comments: [] })],
+        total: 1,
+        capabilities: { comments: true },
+      });
+      await reloading;
+      reopen();
+
+      expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1);
+    });
+
+    it("takes a list requested after the reply whole, as the server has it (#420)", async () => {
+      rebuild(async () => identity);
+      apiClient.addComment.mockResolvedValue(reply);
+      await openDetail(makeFeedback({ id: "fb-1" }), true);
+      await sendReply("Here it is");
+      await vi.waitFor(() => expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(1));
+
+      // Read after the reply was stored: its absence is real (removed from the dashboard).
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1", comments: [] })],
+        total: 1,
+        capabilities: { comments: true },
+      });
+      await panel.refresh();
+      reopen();
+
+      expect(shadow.querySelectorAll(".sp-comment")).toHaveLength(0);
+    });
+
     it("keeps the draft, and a reply in flight, across a panel action's refresh()", async () => {
       let refresh: () => Promise<void> = async () => {};
       rebuild(
