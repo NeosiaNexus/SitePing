@@ -73,7 +73,7 @@ Pour un client qui relit pendant que votre équipe trie. En plus, le widget masq
 
 | Option | Type | Défaut | Ce que ça fait |
 |---|---|---|---|
-| `scopeAnnotationsByUrl` | `boolean` | `true` | N'affiche que les marqueurs créés sur la page courante. Filtré côté serveur **et** côté client, donc les annotations ne peuvent pas fuiter d'une page à l'autre |
+| `scopeAnnotationsByUrl` | `boolean` | `true` | N'affiche que les marqueurs créés sur la page courante. Filtré côté serveur **et** côté client, donc les annotations ne peuvent pas fuiter d'une page à l'autre. `false` donne une vue de tout le projet : le panneau liste tous les feedbacks, et un marqueur s'affiche partout où son ancre se résout — pour les retours sur ce que toutes les pages partagent, comme un en-tête |
 | `getPageScope` | `() => { url, urlPattern }` | pathname | Redéfinit ce que « la page courante » veut dire — renvoyez une `url` stable (et éventuellement un gabarit comme `/produits/:id` en `urlPattern`) pour que les routes dynamiques partagent leurs feedbacks |
 | `watchNavigation` | `boolean` | `true` | Recharge les feedbacks lors d'une navigation SPA (patch de l'History API + `popstate`/`hashchange`). Données uniquement — ne fait jamais défiler ni ne redonne le focus. Mettez `false` et appelez `refresh()` vous-même pour vous en passer |
 
