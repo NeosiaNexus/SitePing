@@ -358,11 +358,14 @@ Releases are **fully automated** via [Release Please](https://github.com/googlea
 | `fix(scope):` | Patch | Patch | `fix(widget): prevent double submit` |
 | `feat(scope):` | Minor | Patch | `feat(panel): add dark mode` |
 | `feat(scope)!:` | Major | Minor | `feat(api)!: redesign payload format` |
-| `docs:` / `test:` / `chore:` | — (included in next release) | — | `docs(widget): clarify config` |
+| `perf:` / `refactor:` / `test:` / `docs:` / `chore:` | Patch | Patch | `docs(widget): clarify config` |
+| `build:` / `ci:` | — (no release) | — (no release) | `ci: pin actionlint` |
 
 > **Note:** The commit scope (`widget`, `cli`) is cosmetic. Release-please routes commits to packages based on which **files** the commit touches, not the scope name.
 
-> **Pre-1.0 behavior** (all current packages): `feat` bumps **patch** instead of minor, breaking changes (`!`) bump **minor** instead of major. `docs` / `test` / `chore` commits don't trigger releases on their own — they're included in the next release triggered by `feat` or `fix`.
+> **Pre-1.0 behavior** (all current packages): `feat` bumps **patch** instead of minor, breaking changes (`!`) bump **minor** instead of major.
+
+> **Every type listed in `changelog-sections`** (`release-please-config.json`: feat, fix, perf, refactor, test, docs, chore) releases the packages whose files it touches — a `docs:` edit to a package README publishes a patch. `build:` and `ci:` are the types that never release. Dependabot's `chore(deps)` and `chore(deps-dev)` bumps therefore release a patch too, even for a dev dependency that ships nothing.
 
 **What you don't need to do:**
 - Edit `package.json` version — Release Please does it
