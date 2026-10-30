@@ -44,6 +44,7 @@ export {
   buildFeedbackRecord,
   createCollectionStore,
 } from "./store-helpers.js";
+export { REPLACEMENT_CHARACTER, toStorableText, toStorableValue, UNSTORABLE_CODE_UNITS } from "./text.js";
 export type { AssertEqual, IfEquals, Prettify, Serialized } from "./type-utils.js";
 export { hasOwn, isRecord } from "./type-utils.js";
 export type {

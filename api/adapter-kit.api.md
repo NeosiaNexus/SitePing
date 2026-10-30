@@ -35,6 +35,8 @@ Runtime exports (ESM and CJS):
 - `isStoreValueTooLong: function`
 - `isUnreachableOffset: function`
 - `toFeedbackUpdate: function`
+- `toStorableText: function`
+- `toStorableValue: function`
 
 Types:
 
@@ -453,6 +455,10 @@ export function isStoreValueTooLong(error: unknown): error is CodedError<"STORE_
 export function isUnreachableOffset(skip: number): boolean;
 
 export function toFeedbackUpdate(status: FeedbackStatus, closedAt?: Date): FeedbackUpdateInput;
+
+export function toStorableText(text: string): string;
+
+export function toStorableValue<Value>(value: Value): Value;
 ```
 
 Referenced, not exported:

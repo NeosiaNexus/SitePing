@@ -210,7 +210,7 @@ Two implementation strategies:
   comment; `buildFeedbackRecord` leaves `comments` out, so a store with
   threads adds `comments: []` to the record it returns).
 
-Verify with the shared conformance suite (~67 tests — the scaffold pre-wires
+Verify with the shared conformance suite (~70 tests — the scaffold pre-wires
 this file):
 
 ```ts
