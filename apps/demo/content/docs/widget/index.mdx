@@ -26,7 +26,7 @@ const siteping = initSiteping({
 
 1. **Server-side rendering** — no `window`? The widget skips with `onSkip("ssr")`. Never bypassed.
 2. **Already initialized** — a second `initSiteping()` call returns a new handle over the *existing* widget (one widget per page) and ignores its config. The widget stays until every handle has been destroyed.
-3. **Production** — when `process.env.NODE_ENV === "production"`, the widget skips with `onSkip("production")`. This is the "clients see it during review, visitors never do" default. Bypass with `forceShow: true` for staging/preview environments. Note: only `process.env.NODE_ENV` is read — no `import.meta.env`.
+3. **Production** — when `process.env.NODE_ENV === "production"`, the widget skips with `onSkip("production")`. This is the "clients see it during review, visitors never do" default. Bypass with `forceShow: true` for staging/preview environments. Note: only `process.env.NODE_ENV` is read — no `import.meta.env`. Without a bundler to provide it — the [`<script>` bundle](/docs/widget/script-tag), or a build that defines none — the page's host stands in: the widget shows on `localhost`, `*.localhost`, `127.0.0.1`, `[::1]` and pages opened from disk, and skips the same way everywhere else.
 4. **Minimum width (opt-in)** — below `minViewportWidth` it skips with `onSkip("mobile")`. The default, `0`, renders at every width: phones get the [compact layout](#on-phones-and-tablets). Also bypassed by `forceShow`.
 5. **Config validation** — no `endpoint`/`store`, or no `projectName`? The widget logs a `console.error` and no-ops. This one does **not** call `onSkip` — check the console, not the callback.
 
