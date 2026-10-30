@@ -11,8 +11,10 @@ import {
   createScreenshotServeHandler,
   createScreenshotStorage,
   InvalidScreenshotError,
+  isInvalidScreenshotError,
   isObjectStoreRequestError,
   isScreenshotUploadRejected,
+  isScreenshotUploadRejectedError,
   ObjectStoreRequestError,
   type ScreenshotObjectStore,
   ScreenshotUploadRejectedError,
@@ -685,7 +687,7 @@ describe("backend requests — error bodies", () => {
 
     const failure = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => error);
 
-    expect(isScreenshotUploadRejected(failure)).toBe(true);
+    expect(isScreenshotUploadRejectedError(failure)).toBe(true);
     expect((failure as ScreenshotUploadRejectedError).cause).toMatchObject({
       status: 301,
       cause: expect.stringContaining("PermanentRedirect"),
@@ -707,7 +709,7 @@ describe("backend requests — error bodies", () => {
       .upload(JPEG_DATA_URL, UPLOAD_CONTEXT)
       .catch((error: unknown) => error);
 
-    expect(isScreenshotUploadRejected(failure)).toBe(true);
+    expect(isScreenshotUploadRejectedError(failure)).toBe(true);
     expect((failure as ScreenshotUploadRejectedError).cause).toMatchObject({
       status: 403,
       cause: "10000: Authentication error",
@@ -948,7 +950,7 @@ describe("backend requests — retries", () => {
     const failure = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => error);
 
     expect(failure).toMatchObject({ status: 503, cause: "SlowDown: Please reduce your request rate." });
-    expect(isScreenshotUploadRejected(failure)).toBe(false);
+    expect(isScreenshotUploadRejectedError(failure)).toBe(false);
     expect(methods).toEqual(["PUT", "PUT", "PUT", "DELETE"]);
     expect(fake.objects.size).toBe(0);
   });
@@ -958,7 +960,7 @@ describe("backend requests — retries", () => {
 
     const failure = await storage.upload(JPEG_DATA_URL, UPLOAD_CONTEXT).catch((error: unknown) => error);
 
-    expect(isScreenshotUploadRejected(failure)).toBe(false);
+    expect(isScreenshotUploadRejectedError(failure)).toBe(false);
     expect(failure).toMatchObject({ status: 403 });
     expect(methods).toEqual(["PUT", "PUT", "DELETE"]);
   });
@@ -1432,15 +1434,43 @@ class ObjectStoreRequestErrorFromAnotherBundle extends Error {
   readonly code = "OBJECT_STORE_REQUEST_FAILED";
   override name = "ObjectStoreRequestError";
 }
+class InvalidScreenshotErrorFromAnotherBundle extends Error {
+  readonly code = "INVALID_SCREENSHOT";
+  override name = "InvalidScreenshotError";
+}
 
 describe("error identity across bundles", () => {
   it("recognizes upload rejections by their stable code, not their class", () => {
+    expect(isScreenshotUploadRejectedError(new ScreenshotUploadRejectedError("refused"))).toBe(true);
+    expect(isScreenshotUploadRejectedError(new ScreenshotUploadRejectedErrorFromAnotherBundle("refused"))).toBe(true);
+    expect(isScreenshotUploadRejectedError(new ObjectStoreRequestError("S3", "PUT", "/k", 503))).toBe(false);
+    expect(isScreenshotUploadRejectedError(new Error("refused"))).toBe(false);
+    expect(isScreenshotUploadRejectedError(null)).toBe(false);
+    expect(isScreenshotUploadRejectedError("SCREENSHOT_UPLOAD_REJECTED")).toBe(false);
+  });
+
+  it("keeps the guard's former name, answering like the renamed one", () => {
+    for (const error of [
+      new ScreenshotUploadRejectedError("refused"),
+      new ScreenshotUploadRejectedErrorFromAnotherBundle("refused"),
+      new ObjectStoreRequestError("S3", "PUT", "/k", 503),
+      null,
+    ]) {
+      expect(isScreenshotUploadRejected(error)).toBe(isScreenshotUploadRejectedError(error));
+    }
     expect(isScreenshotUploadRejected(new ScreenshotUploadRejectedError("refused"))).toBe(true);
-    expect(isScreenshotUploadRejected(new ScreenshotUploadRejectedErrorFromAnotherBundle("refused"))).toBe(true);
-    expect(isScreenshotUploadRejected(new ObjectStoreRequestError("S3", "PUT", "/k", 503))).toBe(false);
-    expect(isScreenshotUploadRejected(new Error("refused"))).toBe(false);
-    expect(isScreenshotUploadRejected(null)).toBe(false);
-    expect(isScreenshotUploadRejected("SCREENSHOT_UPLOAD_REJECTED")).toBe(false);
+  });
+
+  it("recognizes refused data URLs by their stable code, not their class", async () => {
+    const refusal = await createScreenshotStorage(createMemoryObjectStore({ publicBaseUrl: PUBLIC_BASE_URL }))
+      .upload("data:image/png;base64,", UPLOAD_CONTEXT)
+      .catch((error: unknown) => error);
+    expect(refusal).toMatchObject({ code: "INVALID_SCREENSHOT" });
+    expect(isInvalidScreenshotError(refusal)).toBe(true);
+    expect(isInvalidScreenshotError(new InvalidScreenshotErrorFromAnotherBundle("empty image"))).toBe(true);
+    expect(isInvalidScreenshotError(new ScreenshotUploadRejectedError("refused"))).toBe(false);
+    expect(isInvalidScreenshotError(new Error("[siteping] screenshot rejected: empty image"))).toBe(false);
+    expect(isInvalidScreenshotError(null)).toBe(false);
   });
 
   it("recognizes failed backend requests by their stable code, not their class", () => {

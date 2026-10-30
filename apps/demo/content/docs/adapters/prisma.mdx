@@ -57,7 +57,7 @@ A missing key then fails the first request, with the same message, instead of th
 
 The types enforce the split: no source at all, `prisma` next to `store`, or `screenshotStorage` / `caseInsensitiveSearch` next to a custom `store` is a compile error, not an option silently ignored.
 
-Every [`@siteping/server` option](/docs/server#options) works too — `apiKey`, `allowedOrigins`, `webhooks`, `access`, hooks… The one addition: when a SitePing table is missing, the `500` tells you to run `npx prisma db push` (a `describeError` you pass takes precedence). Their types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) are re-exported here, so a strict package manager such as pnpm needs no direct `@siteping/server` dependency to type a policy on its own.
+Every [`@siteping/server` option](/docs/server#options) works too — `apiKey`, `allowedOrigins`, `webhooks`, `access`, hooks… A `logger` with a `warn` method (`console`, winston…) also receives the store's warnings — a failed upload or cleanup, inline screenshots — which otherwise go to `console.warn`; a `PrismaStore` you build yourself takes `{ logger }` directly. The one addition: when a SitePing table is missing, the `500` tells you to run `npx prisma db push` (a `describeError` you pass takes precedence). Their types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) are re-exported here, so a strict package manager such as pnpm needs no direct `@siteping/server` dependency to type a policy on its own.
 
 ## Database schema
 
@@ -184,15 +184,15 @@ createSitepingHandler({
 });
 ```
 
-Give every upload a URL no other upload gets: a fresh random key, never one derived from `feedbackId` — here it is the client's `clientId`, which every retry resends — nor from the image's content.
+Give every upload a URL no other upload gets: a fresh random key, never one derived from `feedbackId` alone nor from the image's content. `feedbackId` is the id the feedback is stored under: the store inserts the feedback first, then uploads, then attaches the URL.
 
-If an upload fails, the feedback is still saved (with `screenshotUrl: null`) and a warning is logged — a broken bucket never loses a client's comment.
+If an upload fails, the feedback is still saved (with `screenshotUrl: null`) and a warning goes to the logger — a broken bucket never loses a client's comment.
 
 Return an `https:` URL: the widget's detail view only renders `https:` images, plus plain `http:` on this machine (`localhost`, `*.localhost`, `127.0.0.1`, `[::1]`) so a local MinIO or localstack works in development.
 
 Add an optional `delete(url)` and the adapter calls it when a feedback is deleted — single `DELETE` and `deleteAll` alike — so nothing is left behind in your bucket. It is best-effort: a failing `delete` is logged and never fails the deletion (an orphaned object beats a row that refuses to go away). Inline `data:` URLs are never passed to it. Deletes run at most 32 at a time, so a project delete freeing thousands of objects neither floods your storage nor runs out of sockets on a serverless function. The delete waits for them: with thousands of screenshots and a slow or unreachable bucket, it can outlast a serverless function's time limit, and the objects it has not removed yet stay in the bucket.
 
-It is also called when a create is rejected because its `clientId` is already stored (a retry racing the first attempt), to drop the screenshot that attempt uploaded — unless the stored feedback points at that same URL. That happens with a key derived from `feedbackId`: the replay rewrote the stored feedback's own object, so it is kept — and replaced its image, which a random key avoids. A screenshot whose insert failed for any other reason stays in your bucket, since a retry on another instance may be about to reference it.
+A create rejected because its `clientId` is already stored — a retry racing the first attempt — uploads nothing, since the insert comes first; neither does an insert that fails for another reason. `delete` is also called if attaching an uploaded screenshot fails: the feedback is kept without it, as after a failed upload, and the object it was uploaded for goes.
 
 ## Using a custom store
 

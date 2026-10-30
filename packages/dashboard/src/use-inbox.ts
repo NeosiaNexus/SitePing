@@ -1,4 +1,5 @@
 import {
+  type CommentPermissions,
   FEEDBACK_STATUSES,
   type FeedbackPermissions,
   type FeedbackQuery,
@@ -13,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createEndpointSource, createStoreSource } from "./source.js";
 import type {
+  InboxComment,
   InboxRecord,
   InboxSource,
   InboxState,
@@ -139,8 +141,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   // -------------------------------------------------------------------------
 
   const [project, setProjectState] = useState(firstProject);
-  const [status, setStatusFilter] = useState<InboxStatusFilter>("open");
-  const [type, setTypeFilter] = useState<InboxTypeFilter>("all");
+  const [status, setStatusState] = useState<InboxStatusFilter>("open");
+  const [type, setTypeState] = useState<InboxTypeFilter>("all");
   const [search, setSearchState] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [items, setItems] = useState<FeedbackRecord[]>([]);
@@ -166,6 +168,14 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       canDeleteComment: canDeleteComment && permissions?.canDeleteComment !== false,
     }),
     [readOnly, canComment, canDeleteComment],
+  );
+  const commentPermissionsOf = useCallback(
+    (record: InboxRecord, { permissions }: InboxComment): CommentPermissions => ({
+      // The server's answer for this reply already counts the thread's.
+      canDelete:
+        canDeleteComment && (permissions ? permissions.canDelete : record.permissions?.canDeleteComment !== false),
+    }),
+    [canDeleteComment],
   );
 
   // Mirrors for stable mutation callbacks (avoid stale closures without dep churn).
@@ -948,7 +958,10 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const deleteComment = useCallback(
     async (id: string, commentId: string): Promise<void> => {
       const record = heldRecord(id);
-      if (!srcRef.current.removeComment || !record || !permissionsOf(record).canDeleteComment) return;
+      const comment = record?.comments?.find((c) => c.id === commentId);
+      const allowed =
+        record && (comment ? commentPermissionsOf(record, comment).canDelete : permissionsOf(record).canDeleteComment);
+      if (!srcRef.current.removeComment || !allowed) return;
       const drop = () => updateRecord(id, (f) => ({ ...f, comments: f.comments?.filter((c) => c.id !== commentId) }));
       try {
         await srcRef.current.removeComment(id, projectRef.current, commentId);
@@ -962,7 +975,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
         throw err;
       }
     },
-    [heldRecord, permissionsOf, updateRecord],
+    [heldRecord, permissionsOf, commentPermissionsOf, updateRecord],
   );
 
   // -------------------------------------------------------------------------
@@ -982,8 +995,8 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     [commitPendingUndo, commitOpenedCache],
   );
 
-  const setStatus = useCallback((s: InboxStatusFilter) => setStatusFilter(s), []);
-  const setType = useCallback((t: InboxTypeFilter) => setTypeFilter(t), []);
+  const setStatusFilter = useCallback((s: InboxStatusFilter) => setStatusState(s), []);
+  const setTypeFilter = useCallback((t: InboxTypeFilter) => setTypeState(t), []);
   const setSearch = useCallback((s: string) => setSearchState(s), []);
 
   const hasMore = !exhausted && total !== null && items.length < total;
@@ -999,9 +1012,9 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     projects,
     setProject,
     status,
-    setStatus,
+    setStatusFilter,
     type,
-    setType,
+    setTypeFilter,
     search,
     setSearch,
     items,
@@ -1027,6 +1040,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     canComment,
     canDeleteComment,
     permissionsOf,
+    commentPermissionsOf,
     addComment,
     deleteComment,
     pendingUndo,

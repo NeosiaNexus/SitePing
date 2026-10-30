@@ -14,6 +14,8 @@ import {
   isClosedStatus,
   type OPEN_FEEDBACK_STATUSES,
   type OpenFeedbackStatus,
+  type SitepingLogger,
+  type SitepingWarnLogger,
   toFeedbackUpdate,
 } from "../src/index.js";
 import type {
@@ -21,6 +23,7 @@ import type {
   COMMENT_AUTHOR_ROLES,
   CommentAuthorRole,
   CommentCreateInput,
+  CommentPermissions,
   CommentRecord,
   CommentResponse,
   FeedbackCreateInput,
@@ -117,7 +120,7 @@ describe("wire types derived from record types", () => {
 
   it("serializes the thread and strips each comment's clientId too", () => {
     expectTypeOf<FeedbackResponse["comments"]>().toEqualTypeOf<CommentResponse[] | undefined>();
-    expectTypeOf<keyof CommentResponse>().toEqualTypeOf<Exclude<keyof CommentRecord, "clientId">>();
+    expectTypeOf<keyof CommentResponse>().toEqualTypeOf<Exclude<keyof CommentRecord, "clientId"> | "permissions">();
     expectTypeOf<CommentResponse["createdAt"]>().toEqualTypeOf<string>();
     expectTypeOf<CommentResponse["authorRole"]>().toEqualTypeOf<CommentAuthorRole>();
   });
@@ -138,6 +141,25 @@ describe("wire types derived from record types", () => {
     expectTypeOf<FeedbackResponseList["permissions"]>().toEqualTypeOf<FeedbackListPermissions | undefined>();
     expectTypeOf<FeedbackListPermissions>().toEqualTypeOf<{ canDeleteAll: boolean }>();
     expectTypeOf<FeedbackRecord>().not.toHaveProperty("permissions");
+    // Per comment (#393): a per-author rule grants deletion reply by reply.
+    expectTypeOf<CommentResponse["permissions"]>().toEqualTypeOf<CommentPermissions | undefined>();
+    expectTypeOf<CommentPermissions>().toEqualTypeOf<{ canDelete: boolean }>();
+    expectTypeOf<CommentRecord>().not.toHaveProperty("permissions");
+  });
+});
+
+describe("the shared logger", () => {
+  it("takes console as it is, and the error-only loggers the handler always took", () => {
+    expectTypeOf(console).toExtend<SitepingLogger>();
+    expectTypeOf(console).toExtend<SitepingWarnLogger>();
+    expectTypeOf<{ error: (message: string, context: Record<string, unknown>) => void }>().toExtend<SitepingLogger>();
+  });
+
+  it("requires warn where the stores report through it", () => {
+    expectTypeOf<SitepingWarnLogger>().toEqualTypeOf<{
+      warn: (message: string, context: Record<string, unknown>) => void | Promise<void>;
+    }>();
+    expectTypeOf<{ error: () => void }>().not.toExtend<SitepingWarnLogger>();
   });
 });
 
