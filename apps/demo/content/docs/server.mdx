@@ -120,7 +120,7 @@ Rate limiting is not handled here: apply it in your framework or reverse proxy, 
 | `beforeComment` | `(input, context) => input` | — | The same for a [thread](/docs/comments) reply |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transform each record before it is sent |
 | `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
-| `logger` | `{ error(message, context) }` | `console.error` | Where unexpected failures go, with the request's method and path — and for a failed hook, the feedback or deletion it concerns. Webhook failures go to their own [`onError`](#webhooks) instead. A logger that throws or rejects falls back to `console.error` |
+| `logger` | `{ error(message, context) }` | `console.error` | Where unexpected failures go, with the request's method and path — and for a failed hook, the feedback or deletion it concerns. Webhook failures go to their own [`onError`](#webhooks) instead. A logger that throws or rejects falls back to `console.error`. It is a `SitepingLogger`: the same object, with a `warn` method too (`console`, winston…), serves the stores and screenshot storages, which report degraded cases through `warn` |
 | `describeError` | `(error) => string \| undefined` | — | The message of a `500` instead of `"Internal server error"`, e.g. a "run your migrations" hint. Never return the error's own details |
 
 `logger.error(message, context)` takes console's and winston's order. [pino](https://getpino.io) takes the context first, and serializes an error only under `err`: passed as is, it type-checks, then logs the message without its context. Adapt it:

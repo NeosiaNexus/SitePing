@@ -3,6 +3,7 @@ export type {
   CommentPayload,
   FeedbackCreateInput,
   FeedbackRecord,
+  SitepingLogger,
   SitepingStore,
 } from "@siteping/core";
 export { createSitepingHandler } from "./handler.js";
@@ -18,7 +19,6 @@ export type {
   SitepingHandlerOptions,
   SitepingHttpMethod,
   SitepingLifecycleHooks,
-  SitepingLogger,
   SitepingPrincipal,
   SitepingRequestContext,
 } from "./options.js";

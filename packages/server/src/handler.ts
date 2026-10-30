@@ -1,4 +1,4 @@
-import { hasOwn } from "@siteping/core";
+import { hasOwn, type SitepingLogger } from "@siteping/core";
 import { type AccessGate, createAccessGate, createApiKeyGate } from "./access.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./constants.js";
 import { preflightResponse } from "./cors.js";
@@ -15,13 +15,12 @@ import type {
   SitepingHandlerBaseOptions,
   SitepingHandlerOptions,
   SitepingHttpMethod,
-  SitepingLogger,
   SitepingPrincipal,
 } from "./options.js";
 import { createPipeline, type Pipeline, type Scope } from "./pipeline.js";
 import { checkWebhookTimeouts, type WebhookConfig } from "./webhooks.js";
 
-const consoleLogger: SitepingLogger = {
+const consoleLogger: Pick<SitepingLogger, "error"> = {
   error(message, context) {
     console.error(message, context);
   },
@@ -31,7 +30,7 @@ const consoleLogger: SitepingLogger = {
  * `logger`, made safe to call anywhere: a throw, or a rejection of what it
  * returns — unhandled, fatal in Node by default — falls back to `console.error`.
  */
-function safeLogger(logger: SitepingLogger): SitepingLogger {
+function safeLogger(logger: Pick<SitepingLogger, "error">): Pick<SitepingLogger, "error"> {
   return {
     error(message, context) {
       try {
