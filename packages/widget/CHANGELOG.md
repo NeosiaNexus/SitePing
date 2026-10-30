@@ -1,5 +1,78 @@
 # Changelog
 
+## [0.12.0](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.11.1...widget-v0.12.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core,adapter-kit:** make a repeated clientId throw StoreDuplicateError in every store ([#517](https://github.com/NeosiaNexus/SitePing/issues/517))
+* **adapter-kit:** require verifyProjectOwnership on every store ([#507](https://github.com/NeosiaNexus/SitePing/issues/507))
+* **widget:** keep the <script> bundle off public pages, and run under a strict CSP ([#497](https://github.com/NeosiaNexus/SitePing/issues/497))
+* **widget,dashboard:** align the widget and the dashboard before 1.0 ([#476](https://github.com/NeosiaNexus/SitePing/issues/476))
+* **widget,dashboard:** settle the API leftovers before 1.0 ([#474](https://github.com/NeosiaNexus/SitePing/issues/474))
+* **server,widget,dashboard:** freeze the error contract on structural guards ([#473](https://github.com/NeosiaNexus/SitePing/issues/473))
+* **widget:** show all four statuses on pins, tooltip and stats ([#462](https://github.com/NeosiaNexus/SitePing/issues/462))
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460))
+* **widget:** keep a shared widget until its last handle is destroyed ([#449](https://github.com/NeosiaNexus/SitePing/issues/449))
+
+### Features
+
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460)) ([c9799ae](https://github.com/NeosiaNexus/SitePing/commit/c9799aecad15434b84a8df4ee78d3735017daf9d))
+* **server,dashboard:** scope email access by project and permissions by comment ([#494](https://github.com/NeosiaNexus/SitePing/issues/494)) ([5261ea1](https://github.com/NeosiaNexus/SitePing/commit/5261ea1df5a0da70e650de95ad51f54f69235534))
+* **widget:** open the deep-linked feedback's detail view, where its thread is ([#484](https://github.com/NeosiaNexus/SitePing/issues/484)) ([0ce69cf](https://github.com/NeosiaNexus/SitePing/commit/0ce69cf399d2ec5717eb78e56ccba781ee1f65df))
+
+
+### Bug Fixes
+
+* **adapter-kit:** require verifyProjectOwnership on every store ([#507](https://github.com/NeosiaNexus/SitePing/issues/507)) ([4c1ecda](https://github.com/NeosiaNexus/SitePing/commit/4c1ecda4a97b020f0a056345b59d21cbbcd6feeb))
+* **core,adapter-kit:** make a repeated clientId throw StoreDuplicateError in every store ([#517](https://github.com/NeosiaNexus/SitePing/issues/517)) ([060d935](https://github.com/NeosiaNexus/SitePing/commit/060d935500b484a123746cfa5888c562fc437ddb))
+* **dashboard:** render a screenshot only from a safe URL, like the widget ([#488](https://github.com/NeosiaNexus/SitePing/issues/488)) ([c3acfd0](https://github.com/NeosiaNexus/SitePing/commit/c3acfd0a4ba8dc9d12efea8272d6892114bcc781))
+* **i18n:** merge registerLocale overrides over built-in dictionaries ([#446](https://github.com/NeosiaNexus/SitePing/issues/446)) ([0b2ef1c](https://github.com/NeosiaNexus/SitePing/commit/0b2ef1c2c41920e4af289a8d2bce66e6595d8466))
+* **server,widget,dashboard:** freeze the error contract on structural guards ([#473](https://github.com/NeosiaNexus/SitePing/issues/473)) ([fc1013c](https://github.com/NeosiaNexus/SitePing/commit/fc1013c9b3e3f4ea1655451ca386657ccc34831b))
+* **widget,dashboard,adapter-kit:** cap peer ranges at the majors CI runs ([#496](https://github.com/NeosiaNexus/SitePing/issues/496)) ([7c1afab](https://github.com/NeosiaNexus/SitePing/commit/7c1afab5360bb5bc353935b63d14e405067a09f4))
+* **widget,dashboard,server:** export the types their public signatures use ([#477](https://github.com/NeosiaNexus/SitePing/issues/477)) ([f87ff7d](https://github.com/NeosiaNexus/SitePing/commit/f87ff7dec9c1a34679959db8d0cf426b4da87482))
+* **widget,dashboard:** align the widget and the dashboard before 1.0 ([#476](https://github.com/NeosiaNexus/SitePing/issues/476)) ([c0ce341](https://github.com/NeosiaNexus/SitePing/commit/c0ce3418947c8d920abba9fe48043038c7cb80e5))
+* **widget,dashboard:** bring two text colors up to WCAG AA contrast ([#498](https://github.com/NeosiaNexus/SitePing/issues/498)) ([5795088](https://github.com/NeosiaNexus/SitePing/commit/57950888061cb90196f15241896aec92eda7bd5c))
+* **widget,dashboard:** settle the API leftovers before 1.0 ([#474](https://github.com/NeosiaNexus/SitePing/issues/474)) ([de96fe8](https://github.com/NeosiaNexus/SitePing/commit/de96fe85480a3a13451e83effb34bfd01c8f6c1a))
+* **widget,dashboard:** treat 408 and 429 as transient, honoring Retry-After ([#448](https://github.com/NeosiaNexus/SitePing/issues/448)) ([b540097](https://github.com/NeosiaNexus/SitePing/commit/b540097df4b63a730cc81e42033c56abb2e4e105))
+* **widget:** close only the action's own detail view when Resolve or Delete lands ([#489](https://github.com/NeosiaNexus/SitePing/issues/489)) ([aeb0f84](https://github.com/NeosiaNexus/SitePing/commit/aeb0f843b103354b40208e6446a2bed01027cc3a))
+* **widget:** comment on a click or a thin stroke, and make the category optional ([#523](https://github.com/NeosiaNexus/SitePing/issues/523)) ([54c01bc](https://github.com/NeosiaNexus/SitePing/commit/54c01bc54b2a4dc1fcb6d3a982e1fd8b9149d084))
+* **widget:** explain in the console why a refused list leaves pins empty ([#461](https://github.com/NeosiaNexus/SitePing/issues/461)) ([27361e2](https://github.com/NeosiaNexus/SitePing/commit/27361e2ff54739ae30e3f499d42f8ec9f63a2822))
+* **widget:** freeze the toolbar Cancel while a send is in flight ([#487](https://github.com/NeosiaNexus/SitePing/issues/487)) ([29897a4](https://github.com/NeosiaNexus/SitePing/commit/29897a420d9e1a057a35eb6c5919582c039ad549))
+* **widget:** give Delete all 60 s and never resend it after a timeout ([#490](https://github.com/NeosiaNexus/SitePing/issues/490)) ([ef1acbb](https://github.com/NeosiaNexus/SitePing/commit/ef1acbb4b053cc228e3e99139e4308b48e204884))
+* **widget:** keep a cached pin's confidence and count only pins on the page ([#493](https://github.com/NeosiaNexus/SitePing/issues/493)) ([9670401](https://github.com/NeosiaNexus/SitePing/commit/9670401090dde186628003ea4ff1021a254a4221))
+* **widget:** keep a reply that a reload read before it was stored ([#491](https://github.com/NeosiaNexus/SitePing/issues/491)) ([b61e800](https://github.com/NeosiaNexus/SitePing/commit/b61e800bebbdc07e3097aa8d500a78ef196d2919))
+* **widget:** keep a shared widget until its last handle is destroyed ([#449](https://github.com/NeosiaNexus/SitePing/issues/449)) ([3db4960](https://github.com/NeosiaNexus/SitePing/commit/3db496005177ca74e82287af53d056548eec9708))
+* **widget:** keep an over-long element id out of the xpath ([#486](https://github.com/NeosiaNexus/SitePing/issues/486)) ([2a0ce4a](https://github.com/NeosiaNexus/SitePing/commit/2a0ce4ad9feacde7fadb64fb6c01cf6f43e85ac6))
+* **widget:** keep masked text out of an annotation's text context ([#447](https://github.com/NeosiaNexus/SitePing/issues/447)) ([7920ff1](https://github.com/NeosiaNexus/SitePing/commit/7920ff1eae1fe9a2985a23762d5f1dc60e6cec9c))
+* **widget:** keep Tab in the widget over capture-phase host focus traps ([#501](https://github.com/NeosiaNexus/SitePing/issues/501)) ([e3852bb](https://github.com/NeosiaNexus/SitePing/commit/e3852bbec98575904ef5f2e46c02e515277b1a4b))
+* **widget:** keep the &lt;script&gt; bundle off public pages, and run under a strict CSP ([#497](https://github.com/NeosiaNexus/SitePing/issues/497)) ([145b696](https://github.com/NeosiaNexus/SitePing/commit/145b696700e262da5b8094c2a888c0d970d83a00))
+* **widget:** make the React entry share the main entry's runtime ([#450](https://github.com/NeosiaNexus/SitePing/issues/450)) ([e205494](https://github.com/NeosiaNexus/SitePing/commit/e205494084d571decbff97fa893241b5e2c4a00d))
+* **widget:** name bulk-select checkboxes after their feedback, localized ([#500](https://github.com/NeosiaNexus/SitePing/issues/500)) ([d1b23e7](https://github.com/NeosiaNexus/SitePing/commit/d1b23e7a05dfef4713bf6c15d21fe3e071f343ce))
+* **widget:** pass axe in both themes with no exclusions, enforced in e2e ([#508](https://github.com/NeosiaNexus/SitePing/issues/508)) ([d0f145e](https://github.com/NeosiaNexus/SitePing/commit/d0f145e97359a09a34dbfb2911666ab82ea821ef))
+* **widget:** play the marker animations, outside the Shadow DOM too ([#505](https://github.com/NeosiaNexus/SitePing/issues/505)) ([5a34179](https://github.com/NeosiaNexus/SitePing/commit/5a34179e82ad1aa064f4a81ffd8a0bac89be7955))
+* **widget:** say when a feedback of this page has no pin on it ([#504](https://github.com/NeosiaNexus/SitePing/issues/504)) ([520f902](https://github.com/NeosiaNexus/SitePing/commit/520f9027a379f9d7ff87e5483dc8bc99220b7736))
+* **widget:** show all four statuses on pins, tooltip and stats ([#462](https://github.com/NeosiaNexus/SitePing/issues/462)) ([470238d](https://github.com/NeosiaNexus/SitePing/commit/470238d85899eadb9db7f0fe32f9223a808ba750))
+* **widget:** show the send outcome on screen, and close the popup once a feedback is queued ([#522](https://github.com/NeosiaNexus/SitePing/issues/522)) ([2de0e9f](https://github.com/NeosiaNexus/SitePing/commit/2de0e9f365f96be9856847e0ad0ed088bf692a0f))
+* **widget:** start the CSV export with a UTF-8 byte-order mark ([#485](https://github.com/NeosiaNexus/SitePing/issues/485)) ([d71b07d](https://github.com/NeosiaNexus/SitePing/commit/d71b07d17a414f1025f7446a8590866f2bebebc7))
+* **widget:** take closed layers out of the tab order ([#499](https://github.com/NeosiaNexus/SitePing/issues/499)) ([fb9e1b0](https://github.com/NeosiaNexus/SitePing/commit/fb9e1b0eea87373865e6d3ebd0786070b0a5c9c7))
+
+
+### Tests
+
+* **widget:** tell the deep-linked detail view by its message, not its number ([#527](https://github.com/NeosiaNexus/SitePing/issues/527)) ([812a8ba](https://github.com/NeosiaNexus/SitePing/commit/812a8ba7c431b93105a930cf2d0d524d02507dee))
+
+
+### Documentation
+
+* make every public claim match the code and the measurements ([#478](https://github.com/NeosiaNexus/SitePing/issues/478)) ([47c0dff](https://github.com/NeosiaNexus/SitePing/commit/47c0dff766d64ce11ef87c053d6e457296cb9012))
+* position SitePing as the open-source, self-hosted Marker.io alternative ([#520](https://github.com/NeosiaNexus/SitePing/issues/520)) ([258ede6](https://github.com/NeosiaNexus/SitePing/commit/258ede6db1baba1ff77247afd215dad4fc82364b))
+
+
+### Miscellaneous
+
+* **deps-dev:** bump the size-limit group with 2 updates ([#468](https://github.com/NeosiaNexus/SitePing/issues/468)) ([d414ec7](https://github.com/NeosiaNexus/SitePing/commit/d414ec7ac80810c86d22d1600fc7ba786124a811))
+
 ## [0.11.1](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.11.0...widget-v0.11.1) (2026-10-18)
 
 
