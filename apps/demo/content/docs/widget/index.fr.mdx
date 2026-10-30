@@ -58,7 +58,7 @@ const siteping = initSiteping({ ... });
 
 siteping.open();                  // ouvrir le panneau de feedback
 siteping.close();                 // le fermer
-siteping.refresh();               // recharger les feedbacks de la page courante (ne lève jamais)
+await siteping.refresh();         // recharger les feedbacks de la page ; résout une fois affichés, ne rejette jamais
 siteping.focusFeedback(id);       // faire défiler jusqu'à un marqueur et le mettre en évidence ; false si inconnu
 const off = siteping.on("feedback:sent", (feedback) => { ... });
 siteping.destroy();               // libère ce handle ; le dernier démonte tout et restaure les globals patchés

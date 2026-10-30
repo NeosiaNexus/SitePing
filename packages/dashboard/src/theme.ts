@@ -1,5 +1,4 @@
-/** Theme requested by the host — `auto` follows the system preference live. */
-export type InboxTheme = "light" | "dark" | "auto";
+import type { SitepingTheme } from "@siteping/core";
 
 /** Concrete theme applied to the root element's `data-theme` attribute. */
 export type ResolvedTheme = "light" | "dark";
@@ -46,7 +45,7 @@ function prefersDark(): boolean {
  * mount time. `auto` reads the system preference once — pair it with
  * {@link watchSystemTheme} to follow later preference changes live.
  */
-export function resolveInitialTheme(theme: InboxTheme): ResolvedTheme {
+export function resolveInitialTheme(theme: SitepingTheme): ResolvedTheme {
   if (theme === "dark") return "dark";
   if (theme === "auto") return prefersDark() ? "dark" : "light";
   return "light";

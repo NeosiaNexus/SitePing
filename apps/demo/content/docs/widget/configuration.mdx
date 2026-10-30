@@ -47,7 +47,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
 | Option | Type | Default | What it does |
 |---|---|---|---|
 | `accentColor` | `string` | `"#0066ff"` | **Hex only** (`#RGB`, `#RRGGBB`, `#RRGGBBAA`). Named colors, `rgb()`, `hsl()` etc. log a warning and fall back to the default |
-| `theme` | `"light"` \| `"dark"` \| `"auto"` | `"light"` | `auto` reads the system preference **once at init** — an OS theme change mid-session doesn't re-theme the widget |
+| `theme` | `"light"` \| `"dark"` \| `"auto"` | `"light"` | `auto` follows the system preference **live**, as the dashboard does: an OS theme change mid-session re-themes the widget (an open comment form keeps its look until it closes) |
 | `locale` | `string` | `"en"` | Any BCP-47 tag; see [Languages](/docs/widget/i18n) |
 
 ## Features

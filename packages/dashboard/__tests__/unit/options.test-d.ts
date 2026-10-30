@@ -5,7 +5,15 @@
 
 import type { CommentCreateInput, CommentRecord, FeedbackPage, FeedbackRecord, SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
-import type { FeedbackPermissions, InboxRecord, SitepingCapabilities } from "../../src/index.js";
+import type * as Dashboard from "../../src/index.js";
+import type {
+  EndpointSourceOptions,
+  FeedbackPermissions,
+  InboxRecord,
+  SitepingCapabilities,
+  SitepingHeadersOption,
+  SitepingTheme,
+} from "../../src/index.js";
 import type {
   InboxSource,
   InboxState,
@@ -114,8 +122,21 @@ describe("SitepingInboxProps", () => {
   it("combines source modes with presentation props", () => {
     expectTypeOf({ projects: "p", store, theme: "dark" as const }).toExtend<SitepingInboxProps>();
 
-    // @ts-expect-error — "sepia" is not an InboxTheme
+    // @ts-expect-error — "sepia" is not a SitepingTheme
     const badTheme: SitepingInboxProps = { projects: "p", store, theme: "sepia" };
     void badTheme;
+  });
+});
+
+describe("types shared with the widget", () => {
+  it("names the theme and the headers option as the widget does", () => {
+    expectTypeOf<NonNullable<SitepingInboxProps["theme"]>>().toEqualTypeOf<SitepingTheme>();
+    expectTypeOf<EndpointSourceOptions["headers"]>().toEqualTypeOf<SitepingHeadersOption | undefined>();
+  });
+
+  it("no longer exports InboxTheme", () => {
+    // @ts-expect-error — removed before 1.0: use SitepingTheme
+    type RemovedInboxTheme = Dashboard.InboxTheme;
+    expectTypeOf<[RemovedInboxTheme]>().toBeArray();
   });
 });
