@@ -4,8 +4,9 @@
 
 **Client feedback, pinned to the page.**
 
-A lightweight feedback widget that lets your clients annotate websites during development.
-Draw rectangles, leave comments, track bugs — directly on the live site.
+The open-source, self-hosted alternative to Marker.io. Your clients draw on the page (or tap an element, on a phone),
+comment and reply in a thread, right on your dev or staging site; your team triages in an inbox. Everything stays in your
+own database.
 
 ![Demo](./demo.gif)
 
@@ -51,6 +52,11 @@ What sets SitePing apart is how annotations are kept: each one is anchored to th
 - **DOM-anchored persistence** — annotations tie to elements, not pixels; they survive layout changes
 - **Instant right-click comments** — opt-in, and it never hijacks keyboard or modifier-key context menus
 - **Screenshots + diagnostics** — opt-in JPEG of the annotated area (with privacy masking) and console/network capture
+- **Discussion threads** — reviewers reply in the widget, your team answers from the inbox, on the endpoint you already mounted
+- **GitHub & GitLab issues** — [`@siteping/integration-issues`](https://siteping.dev/docs/issue-trackers) opens one issue per feedback and closes or reopens it with the feedback
+- **Phones & tablets** — clients tap an element to comment; on a phone, the form and the panel become bottom sheets
+- **Reviewer mode** — `readOnly`, and the server's permissions, hide what a visitor may not do
+- **Webhooks** — Slack, Discord or generic JSON when feedback lands, and opt-in when it changes status, is deleted or gets a reply
 - **Panel actions** — your own buttons and links in the feedback detail view: create a ticket, hand a feedback to an agent, open it in your tracker
 - **Triage inbox** — `<SitepingInbox />` (`@siteping/dashboard`): Linear-style, keyboard-first, light/dark, 9 locales
 - **Reliability built in** — failed sends retry with backoff, then wait in a localStorage queue for the next page load
@@ -64,6 +70,7 @@ What sets SitePing apart is how annotations are kept: each one is anchored to th
 npm i @siteping/widget @siteping/adapter-prisma
 npx @siteping/cli init   # adds the Prisma models + generates the API route
 npx prisma db push
+npx prisma generate      # Prisma 7 no longer runs it from db push
 ```
 
 ```tsx
