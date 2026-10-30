@@ -440,7 +440,7 @@ describe("useSitepingInbox — a save landing while page 1 loads", () => {
     expect(result.current.total).toBe(2);
   });
 
-  it("leaves a page that already holds the save as it is", async () => {
+  it("leaves a page that already holds the save as it is, newer thread included", async () => {
     const { records, source, result, page } = await mountWithHeldPage();
     const patch = deferred<FeedbackRecord>();
     source.setStatus.mockImplementationOnce(() => patch.promise);
@@ -459,13 +459,24 @@ describe("useSitepingInbox — a save landing while page 1 loads", () => {
       patch.resolve(saved);
       await changing;
     });
-    // Read after the PATCH applied: r1 is already in it, and in its total.
+    // Read after the PATCH applied — and after a reply someone posted since.
+    const reply = {
+      id: "c-1",
+      feedbackId: "r1",
+      body: "Thanks, fixed",
+      authorName: "Studio",
+      authorEmail: "",
+      authorRole: "team" as const,
+      clientId: "",
+      createdAt: now,
+    };
     await act(async () => {
-      page.resolve({ feedbacks: [saved, records[4]!], total: 2 });
+      page.resolve({ feedbacks: [{ ...saved, comments: [reply] }, records[4]!], total: 2 });
     });
 
     expect(ids(result.current.items)).toEqual(["r1", "r5"]);
     expect(result.current.total).toBe(2);
+    expect(result.current.items[0]?.comments?.map((c) => c.body)).toEqual(["Thanks, fixed"]);
   });
 
   it("drops a deleted row that a reload read before the delete applied", async () => {
