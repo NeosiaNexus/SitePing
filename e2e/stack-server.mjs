@@ -103,6 +103,8 @@ function widgetPage(params) {
     forceShow: true,
     // Skips the identity modal — the submission path is what's under test.
     identity: { name: "E2E Tester", email: "e2e@example.com" },
+    // Accessibility checks run in both themes (a11y.spec.ts).
+    ...(params.get("theme") === "dark" ? { theme: "dark" } : {}),
     ...(diag ? { captureDiagnostics: { maxConsoleEntries: diag, maxNetworkEntries: diag } } : {}),
   };
   return `<!DOCTYPE html>

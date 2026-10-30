@@ -271,7 +271,7 @@ export const SHORTCUTS_CSS = /* css */ `
 
   .sp-shortcuts-hint:hover {
     background: var(--sp-accent-light);
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
     border-color: var(--sp-accent);
   }
 

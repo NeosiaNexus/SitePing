@@ -102,6 +102,7 @@ export const ja: Translations = {
   "badge.count": "未解決のフィードバック {count} 件",
 
   // Bulk actions toolbar
+  "bulk.aria": "一括操作",
   "bulk.selectAll": "すべて選択",
   "bulk.selectFeedback": "{label}を選択",
   "bulk.selected": "{count} 件選択中",
@@ -119,6 +120,7 @@ export const ja: Translations = {
   "group.feedbacks": "フィードバック {count} 件",
 
   // Stats bar
+  "stats.aria": "フィードバックの統計",
   "stats.open": "未対応",
   "stats.closed": "クローズ済み",
   "stats.bugs": "不具合",
@@ -126,6 +128,7 @@ export const ja: Translations = {
 
   // Detail view
   "detail.back": "戻る",
+  "detail.aria": "フィードバックの詳細",
   "detail.title": "フィードバック #{number}",
   "detail.status": "ステータス",
   "detail.message": "メッセージ",

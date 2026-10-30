@@ -49,12 +49,12 @@ export const BULK_CSS = /* css */ `
   }
 
   .sp-bulk-checkbox:hover {
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
     transform: scale(1.1);
   }
 
   .sp-bulk-checkbox--checked {
-    color: var(--sp-accent);
+    color: var(--sp-accent-text);
     opacity: 1 !important;
     filter: drop-shadow(0 0 4px var(--sp-accent-glow));
   }
@@ -363,7 +363,7 @@ export class BulkActions {
     // ----- Build floating bar -----
     this.barElement = el("div", { class: "sp-bulk-bar" });
     this.barElement.setAttribute("role", "toolbar");
-    this.barElement.setAttribute("aria-label", "Bulk actions");
+    this.barElement.setAttribute("aria-label", t("bulk.aria"));
     // Closed until something is selected (see `updateBar`).
     setInert(this.barElement, true);
 

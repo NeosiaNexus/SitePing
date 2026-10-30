@@ -102,6 +102,7 @@ export interface Translations {
   "badge.count": string;
 
   // Bulk actions toolbar
+  "bulk.aria": string;
   "bulk.selectAll": string;
   /** A card's selection checkbox; `{label}` is the card's accessible name. */
   "bulk.selectFeedback": string;
@@ -120,6 +121,7 @@ export interface Translations {
   "group.feedbacks": string;
 
   // Stats bar
+  "stats.aria": string;
   "stats.open": string;
   "stats.closed": string;
   "stats.bugs": string;
@@ -127,6 +129,7 @@ export interface Translations {
 
   // Detail view
   "detail.back": string;
+  "detail.aria": string;
   "detail.title": string;
   "detail.status": string;
   "detail.message": string;

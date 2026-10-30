@@ -196,7 +196,7 @@ export class Fab {
    * `refreshLabels()` so the two can never drift.
    */
   private applyLabels(): void {
-    this.fab.setAttribute("aria-label", this.t("fab.aria"));
+    this.applyFabLabel();
 
     const buttons = this.radialContainer.querySelectorAll<HTMLButtonElement>(".sp-radial-item");
     for (const btn of buttons) {
@@ -211,11 +211,23 @@ export class Fab {
     }
   }
 
+  /**
+   * The FAB's accessible name, with the badge's count when it shows one: the
+   * count is text inside the button, and a name must contain the text a
+   * speech user reads on screen (WCAG 2.5.3).
+   */
+  private applyFabLabel(): void {
+    const name = this.t("fab.aria");
+    const count = this.badgeEl?.textContent;
+    this.fab.setAttribute("aria-label", count ? `${name}, ${tWithParams(this.t, "fab.badge", { count })}` : name);
+  }
+
   /** Update the badge count. Pass 0 to hide. */
   updateBadge(count: number): void {
     if (count <= 0) {
       this.badgeEl?.remove();
       this.badgeEl = null;
+      this.applyFabLabel();
       return;
     }
 
@@ -230,6 +242,7 @@ export class Fab {
     const displayText = count > 99 ? "99+" : String(count);
     setText(this.badgeEl, displayText);
     this.badgeEl.setAttribute("aria-label", tWithParams(this.t, "fab.badge", { count }));
+    this.applyFabLabel();
   }
 
   private toggle(): void {

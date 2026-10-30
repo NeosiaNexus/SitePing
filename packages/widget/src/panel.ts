@@ -30,6 +30,7 @@ import { ExportButton } from "./export-utils.js";
 import { addSurfaceKeydownListener, registerEscapeLayer } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import {
+  ICON_ARCHIVE,
   ICON_BUG,
   ICON_CHANGE,
   ICON_CHECK,
@@ -58,6 +59,14 @@ import { isCoarsePointer, isCompactViewport } from "./viewport.js";
 
 /** Non-terminal statuses — complement of `CLOSED_FEEDBACK_STATUSES`; backs the panel's "Open" tab bucket. */
 const OPEN_FEEDBACK_STATUSES: readonly FeedbackStatus[] = FEEDBACK_STATUSES.filter((s) => !isClosedStatus(s));
+
+/** An ARIA list for cards (each card is its `listitem`), named `label`. */
+function cardList(className: string, label: string): HTMLElement {
+  const list = el("div", { class: className });
+  list.setAttribute("role", "list");
+  list.setAttribute("aria-label", label);
+  return list;
+}
 
 /**
  * Side panel (400px) with feedback history, filters, search, stats,
@@ -248,9 +257,10 @@ export class Panel {
     filters.appendChild(this.sortControls.element);
 
     // --- List ---
+    // The scroll container. The ARIA list is the cards' own wrapper, rendered
+    // with them: a list may own list items only, and the select-all bar, the
+    // page-group headers and "Load more" sit beside the cards in here.
     this.listContainer = el("div", { class: "sp-list" });
-    this.listContainer.setAttribute("role", "list");
-    this.listContainer.setAttribute("aria-label", this.t("panel.feedbackList"));
 
     // --- Bulk Actions ---
     this.bulk = new BulkActions(
@@ -894,7 +904,7 @@ export class Panel {
         const groupHeader = createPageGroupHeader(pagePath, groupFeedbacks.length);
         this.listContainer.appendChild(groupHeader);
 
-        const groupContent = el("div", { class: "sp-group-content" });
+        const groupContent = cardList("sp-group-content", pagePath);
         for (const feedback of groupFeedbacks) {
           const card = this.createCard(feedback, globalIndex + 1);
           card.style.setProperty("--sp-card-i", String(globalIndex));
@@ -905,11 +915,13 @@ export class Panel {
       }
     } else {
       // Flat list rendering
+      const list = cardList("sp-cards", this.t("panel.feedbackList"));
       sorted.forEach((feedback, index) => {
         const card = this.createCard(feedback, index + 1);
         card.style.setProperty("--sp-card-i", String(index));
-        this.listContainer.appendChild(card);
+        list.appendChild(card);
       });
+      this.listContainer.appendChild(list);
     }
 
     // "Load more" button when there are remaining feedbacks
@@ -1262,7 +1274,7 @@ export class Panel {
         value: "all",
         label: this.t("panel.filterAll"),
         icon: ICON_LAYERS,
-        color: "var(--sp-accent)",
+        color: "var(--sp-accent-text)",
         bg: "var(--sp-accent-light)",
       },
       {
@@ -1342,8 +1354,10 @@ export class Panel {
     setText(prefix, this.t("type.label"));
     const value = el("span", { class: "sp-filter-dropdown-btn__value" });
     setText(value, active.label);
-    labelWrap.appendChild(prefix);
-    labelWrap.appendChild(value);
+    // The space renders nothing in the flex row (its `gap` spaces the two) but
+    // keeps the text "Type All", which the accessible name must contain: run
+    // together, "TypeAll" is not in "Type: All" (WCAG 2.5.3).
+    labelWrap.append(prefix, " ", value);
     this.typeDropdownBtn.appendChild(labelWrap);
 
     const chevron = el("span", { class: "sp-filter-dropdown-btn__chevron" });
@@ -1421,7 +1435,7 @@ export class Panel {
           value: "all",
           label: this.t("panel.statusAll"),
           icon: ICON_LAYERS,
-          color: "var(--sp-accent)",
+          color: "var(--sp-accent-text)",
           bg: "var(--sp-accent-light)",
         },
         {
@@ -1435,7 +1449,7 @@ export class Panel {
           // Filters the closed bucket (resolved + wont_fix): labelled "Closed".
           value: "resolved",
           label: this.t("panel.statusClosed"),
-          icon: ICON_CHECK,
+          icon: ICON_ARCHIVE,
           color: "var(--sp-status-resolved)",
           bg: "var(--sp-status-resolved-bg)",
         },

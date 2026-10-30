@@ -230,6 +230,7 @@ export interface Translations {
     "annotator.instruction": string;
     "annotator.touchInstruction": string;
     "badge.count": string;
+    "bulk.aria": string;
     "bulk.delete": string;
     "bulk.deselect": string;
     "bulk.resolve": string;
@@ -238,6 +239,7 @@ export interface Translations {
     "comments.error": string;
     "comments.placeholder": string;
     "detail.annotation": string;
+    "detail.aria": string;
     "detail.author": string;
     "detail.back": string;
     "detail.browser": string;
@@ -342,6 +344,7 @@ export interface Translations {
     "sort.newest": string;
     "sort.oldest": string;
     "sort.openFirst": string;
+    "stats.aria": string;
     "stats.bugs": string;
     "stats.closed": string;
     "stats.open": string;
