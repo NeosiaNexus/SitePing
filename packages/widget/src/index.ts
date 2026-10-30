@@ -5,6 +5,7 @@ export type {
   AnchorData,
   AnnotationPayload,
   AnnotationResponse,
+  CommentPermissions,
   CommentResponse,
   FeedbackPayload,
   FeedbackPermissions,

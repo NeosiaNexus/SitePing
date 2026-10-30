@@ -26,6 +26,10 @@ export interface CommentCreateInput {
     clientId: string;
 }
 
+export interface CommentPermissions {
+    canDelete: boolean;
+}
+
 export interface CommentRecord {
     authorEmail: string;
     authorName: string;
@@ -92,6 +96,10 @@ export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
 
 export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 
+export type InboxComment = CommentRecord & {
+    permissions?: CommentPermissions | undefined;
+};
+
 export interface InboxCustomSourceOptions extends InboxSharedOptions {
     apiKey?: never;
     endpoint?: never;
@@ -114,7 +122,8 @@ export interface InboxPage {
     total: number;
 }
 
-export type InboxRecord = FeedbackRecord & {
+export type InboxRecord = Omit<FeedbackRecord, "comments"> & {
+    comments?: InboxComment[] | undefined;
     permissions?: FeedbackPermissions | undefined;
 };
 
@@ -132,7 +141,7 @@ export interface InboxSharedOptions {
 }
 
 export interface InboxSource {
-    addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<CommentRecord>;
+    addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<InboxComment>;
     list(query: FeedbackQuery): Promise<InboxPage>;
     remove(id: string, projectName: string): Promise<void>;
     removeComment?(feedbackId: string, projectName: string, commentId: string): Promise<void>;
@@ -145,6 +154,7 @@ export interface InboxState {
     canDeleteComment: boolean;
     changeStatus(id: string, status: FeedbackStatus): Promise<void>;
     closeFeedback(): void;
+    commentPermissionsOf(record: InboxRecord, comment: InboxComment): CommentPermissions;
     counts: Partial<Record<"all" | FeedbackStatus, number>>;
     deleteComment(id: string, commentId: string): Promise<void>;
     deleteFeedback(id: string): Promise<void>;
