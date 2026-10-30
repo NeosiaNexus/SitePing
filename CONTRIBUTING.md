@@ -302,6 +302,29 @@ a regression test. `packages/core/__tests__/filters.property.test.ts` is the
 worked example: it caught a pagination bug that only surfaced for a
 non-positive page number, which no hand-written case had thought to try.
 
+### Bundle budgets
+
+The widget and the dashboard ship to every visitor, so CI fails a PR that
+outgrows a budget: `bun run size` in `packages/widget` and
+`packages/dashboard`, after a build. Each budget covers what a browser
+downloads for one load step, gzipped — an entry with every chunk it imports
+statically (the first load), or what a dynamic import adds on top of it (the
+widget panel, the locale dictionaries). `scripts/size-limit.mjs` derives the
+file lists from the built imports, so a new shared chunk counts where it
+loads.
+
+Each limit is the measured size plus 1 kB, rounded up to the next 0.5 kB. When
+a change needs more:
+
+1. Look for the bytes first: a smaller implementation, code moved behind a
+   dynamic import, a dependency dropped.
+2. Otherwise raise the limit in the same PR, to the new measured size plus
+   1 kB rounded up to the next 0.5 kB, and state in the PR description the
+   growth (before and after, from the CI step summary) and what it buys.
+
+A limit goes down the same way when a change saves a kilobyte or more, so the
+headroom stays around 1 kB and every kilobyte is a decision.
+
 ## Supply-chain posture
 
 The repo is scored by [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/NeosiaNexus/SitePing)
