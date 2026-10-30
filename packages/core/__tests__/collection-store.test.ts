@@ -5,6 +5,7 @@ import {
   createCollectionStore,
   type FeedbackCreateInput,
   type FeedbackRecord,
+  isStoreDuplicate,
   StoreNotFoundError,
   StorePersistenceError,
 } from "../src/index.js";
@@ -329,12 +330,16 @@ describe.each([
     expect(state.rows.map((f) => f.id).sort()).toEqual(records.map((r) => r.id).sort());
   });
 
-  it("concurrent creates with the same clientId dedup to a single record", async () => {
+  it("concurrent creates with the same clientId store one record, and the second throws a duplicate error", async () => {
     const { store, state } = arrayBackend(async);
 
-    const [first, second] = await Promise.all([store.createFeedback(input("a")), store.createFeedback(input("a"))]);
+    const [first, second] = await Promise.allSettled([
+      store.createFeedback(input("a")),
+      store.createFeedback(input("a")),
+    ]);
 
-    expect(second.id).toBe(first.id);
+    expect(first).toEqual({ status: "fulfilled", value: expect.objectContaining({ id: state.rows[0]?.id }) });
+    expect(second.status === "rejected" && isStoreDuplicate(second.reason)).toBe(true);
     expect(state.rows).toHaveLength(1);
   });
 

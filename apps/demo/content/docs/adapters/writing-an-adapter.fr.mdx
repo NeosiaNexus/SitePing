@@ -101,7 +101,7 @@ Les handlers et le dashboard déduisent leur comportement de ces erreurs : levez
 | Situation | Ce qu'il faut faire |
 |---|---|
 | `updateFeedback` / `deleteFeedback` sur un id inconnu | Levez `StoreNotFoundError` — le handler HTTP le traduit en 404 |
-| `createFeedback` avec un `clientId` déjà utilisé | Renvoyez l'enregistrement existant (idempotent) ou levez `StoreDuplicateError`. Les deux sont valides, les handlers gèrent l'un comme l'autre |
+| `createFeedback` avec un `clientId` déjà utilisé | Levez `StoreDuplicateError` et gardez l'enregistrement stocké — ne le renvoyez jamais, pour que l'appelant sache toujours si cet appel a inséré. Un index unique sur `clientId` vous le donne sans effort |
 | `addComment` sur un feedback inconnu, `deleteComment` d'un commentaire absent du fil de ce feedback | Levez `StoreNotFoundError` — un 404 |
 | `addComment` d'un commentaire `client` sur un fil qui en contient déjà 100 | Levez `StoreLimitError` — un 409 |
 | Une valeur plus longue que ce que tient votre base, bien que la validation HTTP l'accepte | Levez `StoreValueTooLongError` — un 422, que les clients ne rejouent pas |
@@ -138,7 +138,7 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 
 ## Effets de création exactement une fois
 
-`createFeedbackIfAbsent(data)` est l'autre méthode optionnelle : un `createFeedback` qui indique aussi si cet appel a inséré l'enregistrement — `{ feedback, created }`. Les handlers de requêtes la préfèrent à `createFeedback` et ne notifient les webhooks que pour `created: true` : deux requêtes qui se disputent le même `clientId` — le widget qui relance une requête expirée, arrivée sur une autre instance du serveur — ne notifient qu'une fois. Implémentez-la si votre `createFeedback` renvoie l'enregistrement existant sur un doublon (`duplicateBehavior: "return"`) ; un store qui lève `StoreDuplicateError` donne déjà ce signal aux handlers et peut s'en passer. La vérification du doublon et l'insertion doivent être atomiques : parmi des appels concurrents avec le même `clientId`, un seul renvoie `created: true`, et tous renvoient cet enregistrement. `createCollectionStore` le garantit au sein d'une instance de store en mettant ses écritures en file ; un stockage partagé par plusieurs processus (ou onglets) nécessite sa propre primitive atomique — contrainte d'unicité, transaction, compare-and-set.
+`createFeedbackIfAbsent(data)` est l'autre méthode optionnelle : un `createFeedback` qui indique aussi si cet appel a inséré l'enregistrement — `{ feedback, created }`. Les handlers de requêtes la préfèrent à `createFeedback` et ne notifient les webhooks que pour `created: true` : deux requêtes qui se disputent le même `clientId` — le widget qui relance une requête expirée, arrivée sur une autre instance du serveur — ne notifient qu'une fois. Sans elle, les handlers se rabattent sur `createFeedback` et rattrapent son `StoreDuplicateError` par une recherche : elle est donc optionnelle, et épargne une insertion refusée à chaque rejeu. La vérification du doublon et l'insertion doivent être atomiques : parmi des appels concurrents avec le même `clientId`, un seul renvoie `created: true`, et tous renvoient cet enregistrement. `createCollectionStore` le garantit au sein d'une instance de store en mettant ses écritures en file ; un stockage partagé par plusieurs processus (ou onglets) nécessite sa propre primitive atomique — contrainte d'unicité, transaction, compare-and-set.
 
 ## Fils de discussion
 
@@ -166,17 +166,15 @@ testSitepingStore(() => new MyStore());
 
 En plus des appels un par un, elle lance ensemble des mises à jour, des suppressions et des créations dans un `Promise.all` — comme le font les actions en masse du widget — et vérifie que chaque écriture a abouti.
 
-La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Trois options couvrent ce qui varie légitimement d'un backend à l'autre :
+La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Deux options couvrent ce qui varie légitimement d'un backend à l'autre :
 
 | Option | Défaut | À régler quand |
 |---|---|---|
-| `duplicateBehavior` | `"return"` | Votre `createFeedback` lève `StoreDuplicateError` sur un `clientId` répété au lieu de renvoyer l'existant — passez `"throw"`. Un store qui le renvoie mais lève quand il perd une course d'insertion concurrente reste sur `"return"` |
 | `caseInsensitiveSearch` | `true` | Votre collation rend `search` sensible à la casse — passez `false` et la suite ne teste que la correspondance à casse identique |
 | `failWrites` | — | Votre backend peut accepter une écriture puis la perdre (quota, stockage révoqué) — passez une fonction qui lui fait refuser toute écriture jusqu'à l'appel de la fonction qu'elle renvoie. Sans elle, les cas d'échec de persistance sont signalés comme sautés |
 
 ```ts
 testSitepingStore(() => new PostgresStore(db), {
-  duplicateBehavior: "throw",
   caseInsensitiveSearch: false,
 });
 ```

@@ -1,9 +1,9 @@
 /**
- * The conformance suite must pass every duplicate-`clientId` pattern the
- * `SitepingStore` contract allows, not only the engine's. This store returns
- * the existing record on a sequential repeat but, like a find-then-insert
- * over a unique index, throws `StoreDuplicateError` when it loses a
- * concurrent insert race — the case the HTTP handler recovers through
+ * The conformance suite must pass a store built the way a third-party SQL
+ * adapter usually is, not only the engine: a find-then-insert over a unique
+ * index, without `createFeedbackIfAbsent`. A repeated `clientId` throws
+ * `StoreDuplicateError` whether the lookup finds it or the insert loses a
+ * concurrent race — the case the HTTP handler recovers through
  * `findByClientId`.
  */
 
@@ -13,7 +13,8 @@ import { testSitepingStore } from "../src/testing.js";
 function createUniqueIndexStore(): SitepingStore {
   let feedbacks: FeedbackRecord[] = [];
   let counter = 1;
-  const base = createCollectionStore({
+  // The engine's own idempotent path stays out: this store is the plain kind.
+  const { createFeedbackIfAbsent: _engineOnly, ...engine } = createCollectionStore({
     load: () => feedbacks,
     persist: (next) => {
       feedbacks = next;
@@ -24,14 +25,14 @@ function createUniqueIndexStore(): SitepingStore {
   const inserting = new Set<string>();
 
   return {
-    ...base,
+    ...engine,
     async createFeedback(data) {
-      const existing = await base.findByClientId(data.clientId);
-      if (existing) return existing;
-      if (inserting.has(data.clientId)) throw new StoreDuplicateError();
+      if (inserting.has(data.clientId) || (await engine.findByClientId(data.clientId))) {
+        throw new StoreDuplicateError();
+      }
       inserting.add(data.clientId);
       try {
-        return await base.createFeedback(data);
+        return await engine.createFeedback(data);
       } finally {
         inserting.delete(data.clientId);
       }

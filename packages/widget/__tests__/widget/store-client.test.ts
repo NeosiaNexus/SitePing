@@ -186,8 +186,8 @@ describe("StoreClient", () => {
   });
 
   // -----------------------------------------------------------------------
-  // sendFeedback — duplicate clientId: the contract lets createFeedback throw
-  // StoreDuplicateError instead of returning the existing record.
+  // sendFeedback — duplicate clientId: the contract has createFeedback throw
+  // StoreDuplicateError rather than return the existing record.
   // -----------------------------------------------------------------------
 
   describe("sendFeedback — duplicate clientId", () => {
@@ -215,6 +215,20 @@ describe("StoreClient", () => {
 
       expect(resent).toMatchObject({ id: "fb-1", message: "Broken layout" });
       expect(rows.size).toBe(1);
+    });
+
+    it("resolves a resend of a stored clientId with that record over a real store", async () => {
+      // MemoryStore follows the contract: its createFeedback throws on the
+      // repeated clientId, and the client answers with the stored record.
+      const memory = new MemoryStore();
+      const real = new StoreClient(memory, samplePayload.projectName);
+      const first = await real.sendFeedback(samplePayload);
+
+      await expect(real.sendFeedback({ ...samplePayload, message: "Edited" })).resolves.toMatchObject({
+        id: first.id,
+        message: samplePayload.message,
+      });
+      expect((await memory.getFeedbacks({ projectName: samplePayload.projectName })).total).toBe(1);
     });
 
     it("recognises the duplicate from a store bundled with its own copy of core", async () => {

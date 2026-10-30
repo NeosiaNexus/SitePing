@@ -11,7 +11,6 @@ import { fakePrisma } from "./fake-prisma.js";
 
 describe("PrismaStore", () => {
   testSitepingStore(() => new PrismaStore(fakePrisma()), {
-    duplicateBehavior: "throw",
     // No `_activeProvider` on the double → `contains` without `mode`, i.e.
     // case-sensitive like Postgres `LIKE`.
     caseInsensitiveSearch: false,

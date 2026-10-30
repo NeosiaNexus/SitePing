@@ -61,14 +61,13 @@ export function createFeedbackOperation<Principal>({
   /**
    * Creates in flight, keyed by clientId. The widget aborts an attempt after
    * 10 s and resends the same payload, so a retry can reach the server while
-   * the first attempt is still being processed. With a store that returns the
-   * existing record on a duplicate clientId without implementing
+   * the first attempt is still being processed. Without
    * `createFeedbackIfAbsent`, both requests would pass the replay check and
-   * both "create" — notifying the webhooks twice. A request whose clientId is
-   * in flight shares that outcome instead, and never runs a second insert or
-   * upload. Scoped to this handler instance: across processes, the store
-   * decides — `createFeedbackIfAbsent`, or its unique constraint (the
-   * duplicate path below).
+   * race to insert: the store throws `StoreDuplicateError` for the loser, but
+   * only after it ran its own upload. A request whose clientId is in flight
+   * shares that outcome instead, and never runs a second insert or upload.
+   * Scoped to this handler instance: across processes, the store decides —
+   * `createFeedbackIfAbsent`, or the duplicate error (the path below).
    */
   const inflightCreates = new Map<string, Promise<CreateOutcome>>();
 
@@ -81,10 +80,9 @@ export function createFeedbackOperation<Principal>({
       return { feedback, inserted: created };
     }
 
-    // Otherwise, replay detection up front: stores that return the existing
-    // record on a duplicate clientId are indistinguishable from a fresh
-    // insert afterwards, and a replayed submission must not notify the
-    // webhooks a second time.
+    // Otherwise, replay detection up front, so a replayed submission costs a
+    // lookup rather than a refused insert; a replay that lands in between
+    // surfaces as `StoreDuplicateError`, recovered below.
     const replayed = await store.findByClientId(input.clientId);
     if (replayed) return { feedback: replayed, inserted: false };
 
@@ -125,8 +123,8 @@ export function createFeedbackOperation<Principal>({
       outcome = await pending;
     } catch (error) {
       if (isStoreValueTooLong(error)) return pipeline.refuseTooLong(scope, error);
-      // Unique-constraint race: the same clientId landed between the replay
-      // check above and the insert. The presenter still owns the record.
+      // Duplicate clientId: the same clientId landed between the replay check
+      // above and the insert. The presenter still owns the record.
       // A failing lookup falls through to the JSON 500 — this catch must not
       // throw, or the request loses its response and CORS headers.
       let existing: FeedbackRecord | null = null;
