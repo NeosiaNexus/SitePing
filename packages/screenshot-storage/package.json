@@ -128,7 +128,7 @@
   },
   "devDependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
-    "@electric-sql/pglite": "^0.5.10",
+    "@electric-sql/pglite": "^0.5.11",
     "@libsql/client": "^0.18.0",
     "@siteping/core": "workspace:*",
     "@smithy/signature-v4": "^5.7.4",
