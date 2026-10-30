@@ -1,5 +1,5 @@
 export { settleWithConcurrencyLimit } from "./concurrency.js";
-export { buildDeepLink, parseHttpUrl } from "./deep-link.js";
+export { buildDeepLink, isSafeImageUrl, parseHttpUrl } from "./deep-link.js";
 export { EMAIL_PATTERN, isValidEmail } from "./email.js";
 export type { SitepingClientError, SitepingConfigErrorCode, SitepingErrorCode } from "./errors.js";
 export {
