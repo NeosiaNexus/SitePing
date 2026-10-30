@@ -47,6 +47,101 @@ const MODAL_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+/**
+ * The script-tag install (/embed): the IIFE through a classic <script>, then
+ * an external init script. Nothing inline, no `process` shim unless ?test=1.
+ */
+const EMBED_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Siteping E2E script embed</title></head>
+<body>
+  <main id="target-element">
+    <h1>Script embed</h1>
+    <p>A page that loads the widget through a classic script tag, without a bundler.</p>
+    <p>No inline script or style: under ?csp=1 it runs with no 'unsafe-inline'.</p>
+  </main>
+  <script src="/widget.global.js"></script>
+  <script src="/embed-init.js"></script>
+</body>
+</html>`;
+
+// No 'unsafe-inline' anywhere: what a locked-down site sends (?csp=1).
+const EMBED_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'report-sample'; img-src 'self'; connect-src 'self'";
+
+const EMBED_INIT_JS = `// Records CSP violations, then mounts the widget as the docs show.
+window.__cspViolations = [];
+addEventListener("securitypolicyviolation", (event) => {
+  window.__cspViolations.push(event.violatedDirective + " " + event.blockedURI + " " + (event.sample || ""));
+});
+const params = new URLSearchParams(location.search);
+// ?test=1: the NODE_ENV the other pages report, for an open shadow root to query.
+if (params.get("test") === "1") globalThis.process = { env: { NODE_ENV: "test" } };
+window.__skip = null;
+window.__siteping = SitePing.initSiteping({
+  endpoint: "/api/siteping",
+  projectName: params.get("project") || "e2e-embed",
+  forceShow: params.get("forceShow") === "1",
+  onSkip: (reason) => {
+    window.__skip = reason;
+  },
+});
+`;
+
+// Host page with a modal trapped the way the focus-trap library traps one
+// (also the core of Headless UI's and many design systems' traps): listeners
+// on `document` in the capture phase. A Tab from outside the dialog goes to
+// its first (Shift+Tab: last) tabbable element, and focus that lands outside
+// on `focusin` goes back in; an outside `mousedown` is prevented, so a click
+// there never moves focus. Same ?closedShadow=1 switch as MODAL_HTML.
+const FOCUS_TRAP_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Siteping E2E focus-trap modal</title></head>
+<body style="margin:0;font-family:system-ui">
+  <p id="page-content" style="padding:40px">Page behind the modal.</p>
+  <div id="trap-dialog" role="dialog" aria-modal="true" aria-label="Host dialog"
+       style="position:fixed;top:120px;left:120px;width:420px;padding:24px;background:#fff;border:1px solid #ccc">
+    <input id="trap-first" aria-label="Host field">
+    <button id="trap-last" type="button">Host action</button>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    globalThis.process = { env: { NODE_ENV: params.get("closedShadow") === "1" ? "production" : "test" } };
+    const dialog = document.getElementById("trap-dialog");
+    const first = document.getElementById("trap-first");
+    const last = document.getElementById("trap-last");
+    const outside = (event) => !dialog.contains(event.target);
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Tab") return;
+      if (outside(event)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (!event.shiftKey && event.target === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && event.target === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    }, true);
+    document.addEventListener("focusin", (event) => {
+      if (outside(event)) first.focus();
+    }, true);
+    for (const type of ["mousedown", "touchstart"]) {
+      document.addEventListener(type, (event) => {
+        if (outside(event)) event.preventDefault();
+      }, { capture: true, passive: false });
+    }
+    first.focus();
+  </script>
+  <script type="module">
+    import { initSiteping } from "/widget.js";
+    const projectName = new URLSearchParams(location.search).get("project") || "e2e-test";
+    window.__siteping = initSiteping({ endpoint: "/api/siteping", projectName, forceShow: true });
+  </script>
+</body>
+</html>`;
+
 /** In-memory feedback store */
 let feedbacks = [];
 let idCounter = 1;
@@ -229,6 +324,13 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // Host page with a focus-trap style modal (see FOCUS_TRAP_HTML)
+  if (url.pathname === "/focus-trap") {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(FOCUS_TRAP_HTML);
+    return;
+  }
+
   // Serve widget JS
   if (url.pathname === "/widget.js") {
     res.writeHead(200, { "Content-Type": "application/javascript" });
@@ -240,6 +342,22 @@ const server = createServer((req, res) => {
   if (url.pathname === "/widget.global.js") {
     res.writeHead(200, { "Content-Type": "application/javascript" });
     res.end(widgetIifeJs);
+    return;
+  }
+
+  // A site without a bundler, as the script-tag docs install it — no inline
+  // script or style, so ?csp=1 can serve it under a strict policy. The page
+  // reads its parameters itself (embed-init.js) — script-tag.spec.ts.
+  if (url.pathname === "/embed") {
+    const headers = { "Content-Type": "text/html" };
+    if (url.searchParams.get("csp") === "1") headers["Content-Security-Policy"] = EMBED_CSP;
+    res.writeHead(200, headers);
+    res.end(EMBED_HTML);
+    return;
+  }
+  if (url.pathname === "/embed-init.js") {
+    res.writeHead(200, { "Content-Type": "application/javascript" });
+    res.end(EMBED_INIT_JS);
     return;
   }
 

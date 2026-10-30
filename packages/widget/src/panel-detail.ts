@@ -13,10 +13,11 @@ import {
   type FeedbackResponse,
   type FeedbackStatus,
   isClosedStatus,
+  isSafeImageUrl,
   type SitepingPanelActionFeedback,
   type SitepingPanelButtonAction,
 } from "@siteping/core";
-import { el, parseSvg, setText } from "./dom-utils.js";
+import { el, hasFocusWithin, parseSvg, setInert, setText } from "./dom-utils.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import { ICON_USER } from "./icons.js";
 import { type PanelActionItem, safeHref, snapshotFeedback } from "./panel-actions.js";
@@ -960,46 +961,6 @@ function extractPathname(url: string): string {
   }
 }
 
-/**
- * Whitelist URL schemes that are safe to use as `<img src>`. Defends against
- * a buggy or compromised `ScreenshotStorage` (or DB) writing a `javascript:`,
- * `data:text/html`, or `data:image/svg+xml` URL — the latter can host
- * external `<image href>` references that exfiltrate IP/UA/Referer when the
- * panel renders. Browsers refuse to execute scripts via `<img>`, but the
- * fetch itself still happens for arbitrary URLs.
- */
-function isSafeImageUrl(url: string): boolean {
-  // data:image/(jpeg|png|webp) is what the widget produces; SVG is excluded
-  // because it can contain external references and is rarely a useful
-  // screenshot format.
-  if (/^data:image\/(jpeg|png|webp);/i.test(url)) return true;
-  // Remote URLs over https are accepted (S3, R2, etc.). Other http: URLs are
-  // rejected because the panel typically runs over https and mixed-content
-  // is blocked anyway — surfacing the issue here is clearer than a silent
-  // network error.
-  if (/^https:\/\//i.test(url)) return true;
-  return isLoopbackHttp(url);
-}
-
-/**
- * Plain-http URL on this machine — a dev stack's local object storage (MinIO
- * on `localhost:9000`, localstack) behind a `ScreenshotStorage`. Nothing
- * leaves the machine, so there is no IP/UA/Referer leak to defend against.
- * Parsed rather than pattern-matched, so `localhost.evil.com` or
- * `localhost@evil.com` never pass for loopback.
- */
-function isLoopbackHttp(url: string): boolean {
-  try {
-    const { protocol, hostname } = new URL(url);
-    return (
-      protocol === "http:" &&
-      (hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "[::1]")
-    );
-  } catch {
-    return false;
-  }
-}
-
 /** Truncate a string to a max length with ellipsis. */
 function truncate(str: string, max: number): string {
   if (str.length <= max) return str;
@@ -1064,6 +1025,8 @@ export class DetailView {
   readonly element: HTMLElement;
 
   private _isVisible = false;
+  /** The element focused when the view opened — `hide` gives focus back to it. */
+  private opener: HTMLElement | null = null;
   private currentFeedback: FeedbackResponse | null = null;
   private readonly content: HTMLElement;
   private readonly t: TFunction;
@@ -1093,6 +1056,8 @@ export class DetailView {
     this.element.setAttribute("role", "dialog");
     this.element.setAttribute("aria-label", "Feedback detail");
     this.element.setAttribute("aria-hidden", "true");
+    // Slid off-screen while closed, but still rendered: out of the tab order.
+    setInert(this.element, true);
 
     // Header (built once, title/badge updated on show())
     const header = el("div", { class: "sp-detail-header" });
@@ -1223,8 +1188,14 @@ export class DetailView {
     }
 
     // ---- Show with animation ----
+    // Remember what opened the view (a card), for `hide` to hand focus back.
+    if (!this._isVisible) {
+      const active = (this.element.getRootNode() as Document | ShadowRoot).activeElement;
+      this.opener = active instanceof HTMLElement ? active : null;
+    }
     this._isVisible = true;
     this.element.setAttribute("aria-hidden", "false");
+    setInert(this.element, false);
 
     // Force reflow before adding visible class to trigger CSS transition
     void this.element.offsetHeight;
@@ -1240,8 +1211,24 @@ export class DetailView {
   hide(): void {
     if (!this._isVisible) return;
     this._isVisible = false;
+    // Focus inside the view would drop to the page once it goes inert: back
+    // to the card that opened it, or to that feedback's card if a reload
+    // replaced it (a resolve, a delete keeps none).
+    const refocus = hasFocusWithin(this.element);
+    const id = this.currentFeedback?.id;
     this.element.classList.remove("sp-detail--visible");
     this.element.setAttribute("aria-hidden", "true");
+    setInert(this.element, true);
+    if (refocus) {
+      const card =
+        this.opener?.isConnected === true
+          ? this.opener
+          : id
+            ? this.element.parentElement?.querySelector<HTMLElement>(`.sp-card[data-feedback-id="${CSS.escape(id)}"]`)
+            : null;
+      card?.focus();
+    }
+    this.opener = null;
     this.currentFeedback = null;
     this.resolveBtn = null;
     this.deleteBtn = null;

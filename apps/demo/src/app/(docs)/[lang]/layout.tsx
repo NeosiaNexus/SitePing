@@ -1,8 +1,8 @@
-import { RootProvider } from "fumadocs-ui/provider/next";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 import { provider } from "@/lib/docs/ui";
+import { DocsProvider } from "./docs-provider";
 import "./docs.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -30,7 +30,7 @@ export default async function DocsRootLayout({
   return (
     <html lang={lang} className={inter.variable} suppressHydrationWarning>
       <body>
-        <RootProvider i18n={provider(lang)}>{children}</RootProvider>
+        <DocsProvider i18n={provider(lang)}>{children}</DocsProvider>
       </body>
     </html>
   );

@@ -7,7 +7,7 @@ description: The questions everyone asks, answered from how the code actually be
 
 In order of likelihood:
 
-1. **You're in a production build.** The widget skips when `NODE_ENV` is `production` (only `process.env.NODE_ENV` is read). Pass `forceShow: true` on staging, or check with `onSkip`.
+1. **You're in a production build.** The widget skips when `NODE_ENV` is `production` (only `process.env.NODE_ENV` is read). Without a bundler, as with the [`<script>` bundle](/docs/widget/script-tag), every host but `localhost` counts as production. Pass `forceShow: true` on staging, or check with `onSkip`.
 2. **Invalid config** — a missing `endpoint`/`store` or `projectName` logs a `console.error` and mounts nothing. This case does *not* fire `onSkip`, so open the console.
 3. **It's already mounted.** A second `initSiteping()` returns a handle over the existing widget instead of a second button, and its config is ignored.
 4. **The viewport is narrower than your `minViewportWidth`.** Only when you set one — by default the widget renders at every width, phones included (before 0.11 the default was 768 px). `onSkip("mobile")` tells you.
@@ -18,7 +18,9 @@ No. The first time they send feedback, the widget asks for a name and email (kep
 
 ## Is it really free? What do I host?
 
-MIT license, no paid tier, no phoning home. You host one API endpoint (any framework that speaks Web `Request`/`Response`) and your own database via Prisma or Drizzle. Feedback data never touches anyone else's servers.
+MIT license, no paid tier, no phoning home. You host one API endpoint (any framework that speaks Web `Request`/`Response`) and your own database via Prisma or Drizzle. Feedback is stored in that database, and leaves it only through what you turn on: [webhooks](/docs/server#webhooks) to Slack, Discord or your own endpoints, [issue-tracker sync](/docs/issue-trackers) to GitHub or GitLab, a [screenshot storage](/docs/adapters/screenshot-storage) on a bucket you choose.
+
+Reviewers' names and emails are personal data. Complying with the GDPR — a lawful basis, a retention period, telling reviewers what you collect — is up to you as the site operator: a library can't be compliant on its own, but it keeps the data where you put it.
 
 ## Will an update break my integration?
 
@@ -26,7 +28,7 @@ Not within a major. From 1.0, every 1.x release keeps your code compiling, your 
 
 ## Which frameworks work?
 
-- **Widget:** any site — it's a plain script (ESM, CJS, or a `<script>` global). A React hook (`@siteping/widget/react`) is included.
+- **Widget:** any site — it's a plain script (ESM, CJS, or a [`<script>` global](/docs/widget/script-tag)). A React hook (`@siteping/widget/react`) is included.
 - **Server:** the adapter returns standard `Request` → `Response` handlers — Next.js, Remix, SvelteKit, Hono, … The CLI's route generator targets Next.js App Router specifically; other frameworks mount the handlers manually.
 - **Dashboard:** React 18 or 19.
 
@@ -45,6 +47,10 @@ The widget retries (3 attempts with backoff), then queues the payload in localSt
 ## An annotated element was deleted. Where's the annotation?
 
 The marker hides on that page (nothing to anchor to) rather than pointing at the wrong element — but the feedback itself, with its message and screenshot, stays in the panel and dashboard. See [how anchoring works](/docs/widget/anchoring).
+
+## What doesn't SitePing handle?
+
+Content inside iframes, parts of the page the screenshot engine can't redraw, closed shadow roots, and a few gaps on touch devices. [Known limitations](/docs/known-limitations) lists them, with what a strict Content Security Policy needs and the browsers supported.
 
 ## My language isn't built in.
 
