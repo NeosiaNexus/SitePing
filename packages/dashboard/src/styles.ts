@@ -535,10 +535,11 @@ export const INBOX_CSS = `
 .spd-btn-ghost { color: var(--spd-text-2); }
 .spd-btn-ghost:hover { color: var(--spd-text); background: var(--spd-raised); }
 .spd-btn-primary { color: #ffffff; background: var(--spd-accent); }
-.spd-btn-primary:hover { background: color-mix(in srgb, var(--spd-accent) 88%, #ffffff); }
+/* Hovers darken: the white label keeps at least its resting contrast, whatever --spd-accent a host sets. */
+.spd-btn-primary:hover { background: color-mix(in srgb, var(--spd-accent) 88%, #000000); }
 .spd-btn-primary svg { width: 13px; height: 13px; }
 .spd-btn-danger { color: #ffffff; background: var(--spd-danger-strong); }
-.spd-btn-danger:hover { background: color-mix(in srgb, var(--spd-danger-strong) 85%, #ffffff); }
+.spd-btn-danger:hover { background: color-mix(in srgb, var(--spd-danger-strong) 85%, #000000); }
 .spd-btn-danger-ghost { color: var(--spd-danger); }
 .spd-btn-danger-ghost:hover { background: color-mix(in srgb, var(--spd-danger) 12%, transparent); }
 
