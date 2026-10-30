@@ -2,6 +2,7 @@ import { hasOwn, SitepingConfigError } from "@siteping/core";
 import { type AccessGate, createAccessGate, createApiKeyGate } from "./access.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./constants.js";
 import { preflightResponse } from "./cors.js";
+import { createNotifier } from "./notify.js";
 import { createCommentOperation } from "./operations/create-comment.js";
 import { createFeedbackOperation } from "./operations/create-feedback.js";
 import { deleteCommentOperation } from "./operations/delete-comment.js";
@@ -19,7 +20,7 @@ import type {
   SitepingPrincipal,
 } from "./options.js";
 import { createPipeline, type Pipeline, type Scope } from "./pipeline.js";
-import { checkWebhookTimeouts, type WebhookConfig } from "./webhooks.js";
+import { checkWebhookConfigs, subscribesTo, type WebhookConfig } from "./webhooks.js";
 
 const consoleLogger: SitepingLogger = {
   error(message, context) {
@@ -155,7 +156,20 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
       ? (webhooks as ReadonlyArray<WebhookConfig>)
       : [webhooks as WebhookConfig]
     : [];
-  checkWebhookTimeouts(webhookList);
+  checkWebhookConfigs(webhookList);
+  // A reply is notified once per insert, which only a store reporting its
+  // inserts can tell from a retried post. Fail closed rather than notify every
+  // retry (or none, silently).
+  if (
+    !store.addCommentIfAbsent &&
+    (hooks.onCommentCreated || webhookList.some((config) => subscribesTo(config, "comment.created")))
+  ) {
+    throw new Error(
+      "[siteping] createSitepingHandler: `comment.created` webhooks and the `onCommentCreated` hook need a store " +
+        "implementing `addCommentIfAbsent`, which tells a new reply from a retried one.",
+    );
+  }
+  const notify = createNotifier(webhookList, waitUntil, pipeline);
 
   return {
     OPTIONS: (request: Request): Response => preflightResponse(request, allowedOrigins),
@@ -163,19 +177,24 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
       pipeline,
       "POST",
       "feedbackId",
-      createCommentOperation({ store, pipeline, beforeComment }),
+      createCommentOperation({
+        store,
+        pipeline,
+        notify,
+        beforeComment,
+        onCommentCreated: hooks.onCommentCreated?.bind(hooks),
+      }),
       createFeedbackOperation({
         store,
         pipeline,
-        webhooks: webhookList,
-        waitUntil,
+        notify,
         beforeCreate,
         // Bound so hooks written as class methods keep their `this`.
         onCreated: hooks.onCreated?.bind(hooks),
       }),
     ),
     GET: listFeedbacksOperation({ store, pipeline }),
-    PATCH: updateFeedbackOperation({ store, pipeline, onUpdated: hooks.onUpdated?.bind(hooks) }),
+    PATCH: updateFeedbackOperation({ store, pipeline, notify, onUpdated: hooks.onUpdated?.bind(hooks) }),
     DELETE: routeByBody(
       pipeline,
       "DELETE",
@@ -184,6 +203,7 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>(
       deleteFeedbackOperation({
         store,
         pipeline,
+        notify,
         onDeleting: hooks.onDeleting?.bind(hooks),
         onDeleted: hooks.onDeleted?.bind(hooks),
       }),

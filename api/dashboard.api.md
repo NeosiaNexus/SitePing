@@ -223,6 +223,7 @@ export type SitepingInboxProps = UseSitepingInboxOptions & SitepingInboxPresenta
 
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -333,6 +334,11 @@ const CONSOLE_DIAGNOSTIC_LEVELS: readonly [
 type ClosedFeedbackStatus = (typeof CLOSED_FEEDBACK_STATUSES)[number];
 
 type CommentAuthorRole = (typeof COMMENT_AUTHOR_ROLES)[number];
+
+interface CommentCreateOutcome {
+    comment: CommentRecord;
+    created: boolean;
+}
 
 interface ConsoleDiagnosticEntry {
     level: ConsoleDiagnosticLevel;

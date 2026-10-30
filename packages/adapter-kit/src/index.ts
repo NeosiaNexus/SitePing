@@ -41,6 +41,7 @@ export type {
   CollectionStoreBackend,
   CommentAuthorRole,
   CommentCreateInput,
+  CommentCreateOutcome,
   CommentRecord,
   CommentResponse,
   ConsoleDiagnosticEntry,

@@ -1071,6 +1071,20 @@ export interface FeedbackCreateOutcome {
   created: boolean;
 }
 
+/**
+ * Outcome of `SitepingStore.addCommentIfAbsent` — the comment plus whether
+ * this very call inserted it.
+ */
+export interface CommentCreateOutcome {
+  comment: CommentRecord;
+  /**
+   * `true` when this call inserted the comment, `false` when a comment with
+   * the same `clientId` already existed and is returned instead (a replay, or
+   * a concurrent request that won the race).
+   */
+  created: boolean;
+}
+
 /** Paginated result returned by `SitepingStore.getFeedbacks`. */
 export interface FeedbackPage {
   feedbacks: FeedbackRecord[];
@@ -1158,6 +1172,19 @@ export interface SitepingStore {
    * HTTP handlers serve empty threads and answer comment writes with 501.
    */
   addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+  /**
+   * Optional, alongside `addComment` — `addComment` that reports whether this
+   * call inserted the comment (`created: true`) or found one with the same
+   * `clientId` (`created: false`). Same errors as `addComment`, and the dedup
+   * check and the insert must be atomic like `createFeedbackIfAbsent`'s: of N
+   * concurrent calls with the same `clientId`, exactly one may report
+   * `created: true`, and all must return that same comment.
+   *
+   * HTTP handlers need it to fire the `comment.created` webhook and the
+   * `onCommentCreated` hook exactly once per reply — a retried post returns
+   * the stored comment, which `addComment` alone cannot tell from a new one.
+   */
+  addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
   /**
    * Optional — delete comment `commentId` from the thread of `feedbackId`.
    * Scoped to that thread, which the caller was authorized for: throws
