@@ -2,7 +2,9 @@ import { defineConfig } from "tsup";
 import { sitepingLibrary } from "../../tsup.preset.js";
 
 // One entry per provider so importing ./github never pulls the others.
-// @siteping/server is a peer: only its types are imported.
+// No @siteping/server import, not even a type (check:consistency enforces
+// it): the hooks are typed structurally, so the package installs next to
+// any server version.
 export default defineConfig(
   sitepingLibrary({
     platform: "neutral",
@@ -11,6 +13,5 @@ export default defineConfig(
       github: "src/providers/github.ts",
       gitlab: "src/providers/gitlab.ts",
     },
-    external: [/^@siteping\/server(\/|$)/],
   }),
 );

@@ -526,10 +526,11 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # After the server, like adapter-prisma: the @siteping/server version its
-  # peer range pins must reach npm first.
+  # Depends on no other @siteping package (it mirrors the server's hook types
+  # instead, see scripts/check-consistency.mjs rule 7), so nothing to pin and
+  # no publish to wait for.
   publish-integration-issues:
-    needs: [release-please, build, publish-server]
+    needs: [release-please, build]
     if: |
       !failure() && !cancelled() &&
       (needs.release-please.outputs.integration-issues-release_created == 'true' ||
@@ -560,20 +561,6 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
-
-      # The @siteping/server peer is `workspace:^`, which npm cannot resolve:
-      # pin a range from the server release this commit carries up to its next
-      # major. Not `^`: on 0.x it refuses the next minor, which is every
-      # breaking server release, and nothing releases this package along with
-      # the server, so npm would refuse the pair (ERESOLVE) until this package
-      # happened to change. Only the server's hook types are used, and a server
-      # change that breaks them breaks this package's type check in CI, so it
-      # ships with its fix.
-      - name: Pin the @siteping/server peer dependency
-        run: |
-          range=$(node -p 'const v = require("../server/package.json").version; ">=" + v + " <" + (parseInt(v, 10) + 1) + ".0.0"')
-          npm pkg set "peerDependencies.@siteping/server=$range"
-        working-directory: packages/integration-issues
 
       - name: Publish @siteping/integration-issues
         run: npm publish --access public --provenance

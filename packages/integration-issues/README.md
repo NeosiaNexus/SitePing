@@ -14,7 +14,7 @@ One GitHub or GitLab issue per [SitePing](https://github.com/NeosiaNexus/SitePin
 npm install @siteping/integration-issues
 ```
 
-Node ≥ 20, or any runtime with the Fetch API. `@siteping/server` is a peer dependency.
+Node ≥ 20, or any runtime with the Fetch API. It plugs into `@siteping/server` (or `@siteping/adapter-prisma`) without depending on it, so it installs next to any server version.
 
 ## Quick start
 
