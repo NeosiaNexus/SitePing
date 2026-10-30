@@ -67,6 +67,9 @@ export function isScreenshotUploadRejectedError(error: unknown): error is Screen
 /**
  * @deprecated Renamed {@link isScreenshotUploadRejectedError}, after its class
  * like every other error guard of this package; removed in the next major.
+ *
+ * @param error - Any thrown value.
  */
-export const isScreenshotUploadRejected: (error: unknown) => error is ScreenshotUploadRejectedError =
-  isScreenshotUploadRejectedError;
+export function isScreenshotUploadRejected(error: unknown): error is ScreenshotUploadRejectedError {
+  return isScreenshotUploadRejectedError(error);
+}

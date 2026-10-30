@@ -115,7 +115,7 @@ initSiteping({
 });
 ```
 
-The guard reads the error's fields rather than its class: the classes are not exported, as each package bundles its own copy and `instanceof` would fail across them (their types are — `SitepingError`, `SitepingAuthError`, `SitepingClientError`, `SitepingErrorCode`…). Anything else reaching `onError`, an error your `store` throws or one from a [panel action](/docs/widget/panel-actions#errors), fails it. When the user cancels the identity prompt, no error fires: that's a cancellation, not a failure.
+The guard reads the error's fields rather than its class: the classes are not exported, as each package bundles its own copy and `instanceof` would fail across them. The types are: `SitepingClientError`, the union the guard narrows to, and `SitepingErrorCode`. Anything else reaching `onError`, an error your `store` throws or one from a [panel action](/docs/widget/panel-actions#errors), fails it. When the user cancels the identity prompt, no error fires: that's a cancellation, not a failure.
 
 ## Statuses, from the widget's side
 

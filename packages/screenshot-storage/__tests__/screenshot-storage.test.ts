@@ -1449,8 +1449,16 @@ describe("error identity across bundles", () => {
     expect(isScreenshotUploadRejectedError("SCREENSHOT_UPLOAD_REJECTED")).toBe(false);
   });
 
-  it("keeps the guard's former name as an alias of the renamed one", () => {
-    expect(isScreenshotUploadRejected).toBe(isScreenshotUploadRejectedError);
+  it("keeps the guard's former name, answering like the renamed one", () => {
+    for (const error of [
+      new ScreenshotUploadRejectedError("refused"),
+      new ScreenshotUploadRejectedErrorFromAnotherBundle("refused"),
+      new ObjectStoreRequestError("S3", "PUT", "/k", 503),
+      null,
+    ]) {
+      expect(isScreenshotUploadRejected(error)).toBe(isScreenshotUploadRejectedError(error));
+    }
+    expect(isScreenshotUploadRejected(new ScreenshotUploadRejectedError("refused"))).toBe(true);
   });
 
   it("recognizes refused data URLs by their stable code, not their class", async () => {

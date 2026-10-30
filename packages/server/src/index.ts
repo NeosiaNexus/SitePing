@@ -3,7 +3,6 @@ export type {
   CommentPayload,
   FeedbackCreateInput,
   FeedbackRecord,
-  SitepingConfigError,
   SitepingConfigErrorCode,
   SitepingStore,
 } from "@siteping/core";

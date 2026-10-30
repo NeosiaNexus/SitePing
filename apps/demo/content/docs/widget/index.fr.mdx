@@ -115,7 +115,7 @@ initSiteping({
 });
 ```
 
-La garde lit les champs de l'erreur plutôt que sa classe : les classes ne sont pas exportées, car chaque package embarque sa propre copie et `instanceof` échouerait de l'une à l'autre (leurs types le sont — `SitepingError`, `SitepingAuthError`, `SitepingClientError`, `SitepingErrorCode`…). Tout le reste qui atteint `onError`, une erreur levée par votre `store` ou par une [action du panneau](/fr/docs/widget/panel-actions#erreurs), échoue la garde. Quand l'utilisateur annule la demande d'identité, aucune erreur n'est émise : c'est une annulation, pas un échec.
+La garde lit les champs de l'erreur plutôt que sa classe : les classes ne sont pas exportées, car chaque package embarque sa propre copie et `instanceof` échouerait de l'une à l'autre. Les types le sont : `SitepingClientError`, l'union vers laquelle la garde rétrécit, et `SitepingErrorCode`. Tout le reste qui atteint `onError`, une erreur levée par votre `store` ou par une [action du panneau](/fr/docs/widget/panel-actions#erreurs), échoue la garde. Quand l'utilisateur annule la demande d'identité, aucune erreur n'est émise : c'est une annulation, pas un échec.
 
 ## Les statuts, côté widget
 

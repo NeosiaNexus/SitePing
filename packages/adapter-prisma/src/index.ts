@@ -66,7 +66,6 @@ export type {
   SitepingAccessControl,
   SitepingAction,
   SitepingAuthorizationContext,
-  SitepingConfigError,
   SitepingConfigErrorCode,
   SitepingDeletionTarget,
   SitepingHandler,

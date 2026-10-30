@@ -6,14 +6,10 @@ export type {
   FeedbackRecord,
   FeedbackStatus,
   FeedbackType,
-  SitepingAuthError,
   SitepingCapabilities,
   SitepingClientError,
-  SitepingError,
   SitepingErrorCode,
-  SitepingNetworkError,
   SitepingStore,
-  SitepingValidationError,
 } from "@siteping/core";
 export { FEEDBACK_STATUSES, FEEDBACK_TYPES, isClosedStatus, isSitepingError } from "@siteping/core";
 export { SitepingInbox } from "./components/inbox.js";
