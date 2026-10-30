@@ -259,7 +259,8 @@ function toStoreError(error: unknown): unknown {
   if (error instanceof StoreNotFoundError || error instanceof StoreDuplicateError) return error;
   if (isStoreNotFound(error)) return new StoreNotFoundError(undefined, { cause: error });
   if (isStoreDuplicate(error)) return new StoreDuplicateError(undefined, { cause: error });
-  // P2000: longer than its column — a plain `String` is `VARCHAR(191)` on MySQL.
+  // P2000: longer than its column — on a MySQL schema `sync` has not widened
+  // yet, a plain `String` is still Prisma's `VARCHAR(191)`.
   if (hasOwn(error, "code") && error.code === "P2000") return new StoreValueTooLongError(undefined, { cause: error });
   return error;
 }

@@ -36,7 +36,7 @@ Every [`@siteping/server` option](/docs/server#options) works too — `apiKey`, 
 
 ## Database schema
 
-This is the exact schema the adapter needs — it's what `npx @siteping/cli sync` generates. Prefer the CLI; if you write it by hand, don't drop columns: the adapter writes `urlPattern`, `screenshotUrl`, and `anchorKey` on every insert, so a partial schema fails on the first submission.
+This is the exact schema the adapter needs — it's what `npx @siteping/cli sync` generates for PostgreSQL. Prefer the CLI; if you write it by hand, don't drop columns: the adapter writes `urlPattern`, `screenshotUrl`, and `anchorKey` on every insert, so a partial schema fails on the first submission.
 
 ```prisma
 model SitepingFeedback {
@@ -111,7 +111,9 @@ model SitepingComment {
 
 > `@db.Text` targets PostgreSQL and MySQL. SQLite and CockroachDB reject it, and plain `String` is already unbounded there — `sync` reads your datasource `provider` and leaves `@db.Text` out on those databases. Writing the schema by hand? Drop those attributes yourself.
 
-> On MySQL, a plain `String` is a `VARCHAR(191)`, shorter than what the server accepts for `projectName`, `url`, `urlPattern`, `userAgent`, names, emails and `clientId`, and for an annotation's `fingerprint` and `anchorKey`. A value that does not fit — the user agent of Instagram's or Facebook's in-app browser, over 200 characters, a full page URL from `getPageScope` — makes the `POST` answer `422`, which the widget does not retry, and the handler logs `[siteping] A value is too long for the store`.
+> On MySQL, where a plain `String` is a `VARCHAR(191)`, `sync` sizes each column for the longest value the server accepts. `projectName` and `clientId` stay plain: the server caps them at 191 characters. The longer text columns — `url`, `urlPattern`, `userAgent`, names, emails, an annotation's `fingerprint` and `anchorKey` — get `@db.Text`, `screenshotUrl` gets `@db.MediumText` so an inline screenshot fits, and the `(projectName, url)` index takes the first 191 characters of the URL: `@@index([projectName, url(length: 191)])`.
+
+> **Upgrading on MySQL.** A schema synced by an earlier `@siteping/cli` keeps `VARCHAR(191)` columns. A value that does not fit — the user agent of Instagram's or Facebook's in-app browser, a full page URL from `getPageScope` — makes the `POST` answer `422`, which the widget does not retry, and the handler logs `[siteping] A value is too long for the store`. `npx @siteping/cli status` lists those columns; run `npx @siteping/cli sync`, then `npx prisma migrate dev` (or `db push`). The migration widens the columns and rebuilds the URL index; existing rows keep their values.
 
 ## Discussion threads
 

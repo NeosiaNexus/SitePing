@@ -36,7 +36,7 @@ Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent
 
 ## Schéma de base de données
 
-Voici le schéma exact dont l'adapter a besoin — c'est ce que génère `npx @siteping/cli sync`. Préférez le CLI ; si vous l'écrivez à la main, ne retirez pas de colonnes : l'adapter écrit `urlPattern`, `screenshotUrl` et `anchorKey` à chaque insertion, donc un schéma partiel échoue dès le premier envoi.
+Voici le schéma exact dont l'adapter a besoin — c'est ce que génère `npx @siteping/cli sync` pour PostgreSQL. Préférez le CLI ; si vous l'écrivez à la main, ne retirez pas de colonnes : l'adapter écrit `urlPattern`, `screenshotUrl` et `anchorKey` à chaque insertion, donc un schéma partiel échoue dès le premier envoi.
 
 ```prisma
 model SitepingFeedback {
@@ -111,7 +111,9 @@ model SitepingComment {
 
 > `@db.Text` cible PostgreSQL et MySQL. SQLite et CockroachDB le refusent, et un `String` simple y est déjà sans limite — `sync` lit le `provider` de votre datasource et y omet `@db.Text`. Vous écrivez le schéma à la main ? Retirez ces attributs vous-même.
 
-> Sur MySQL, un `String` simple est un `VARCHAR(191)`, plus court que ce qu'accepte le serveur pour `projectName`, `url`, `urlPattern`, `userAgent`, les noms, les e-mails et `clientId`, ainsi que pour le `fingerprint` et l'`anchorKey` d'une annotation. Une valeur qui n'y tient pas — le user agent du navigateur intégré d'Instagram ou de Facebook, qui dépasse 200 caractères, une URL de page complète venue de `getPageScope` — fait répondre au `POST` un `422`, que le widget ne rejoue pas, et le handler journalise `[siteping] A value is too long for the store`.
+> Sur MySQL, où un `String` simple est un `VARCHAR(191)`, `sync` dimensionne chaque colonne pour la plus longue valeur qu'accepte le serveur. `projectName` et `clientId` restent simples : le serveur les plafonne à 191 caractères. Les colonnes de texte plus longues — `url`, `urlPattern`, `userAgent`, les noms, les e-mails, le `fingerprint` et l'`anchorKey` d'une annotation — reçoivent `@db.Text`, `screenshotUrl` reçoit `@db.MediumText` pour qu'une capture inline y tienne, et l'index `(projectName, url)` prend les 191 premiers caractères de l'URL : `@@index([projectName, url(length: 191)])`.
+
+> **Mise à jour sur MySQL.** Un schéma synchronisé par un `@siteping/cli` antérieur garde des colonnes `VARCHAR(191)`. Une valeur qui n'y tient pas — le user agent du navigateur intégré d'Instagram ou de Facebook, une URL de page complète venue de `getPageScope` — fait répondre au `POST` un `422`, que le widget ne rejoue pas, et le handler journalise `[siteping] A value is too long for the store`. `npx @siteping/cli status` signale ces colonnes ; lancez `npx @siteping/cli sync`, puis `npx prisma migrate dev` (ou `db push`). La migration élargit les colonnes et reconstruit l'index sur l'URL ; les lignes existantes gardent leurs valeurs.
 
 ## Fils de discussion
 
