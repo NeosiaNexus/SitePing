@@ -900,6 +900,11 @@ describe("ApiClient", () => {
   // -----------------------------------------------------------------------
 
   describe("deleteAllFeedbacks", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
     it("sends DELETE with projectName and deleteAll flag", async () => {
       vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ deleted: { count: 5 } })));
 
@@ -913,6 +918,63 @@ describe("ApiClient", () => {
       vi.mocked(fetch).mockResolvedValue(new Response("Bad Request", { status: 400 }));
 
       await expect(client.deleteAllFeedbacks("my-project")).rejects.toThrow("Failed to delete all feedbacks: 400");
+    });
+
+    // A project delete can run long on the server (#413).
+    it("waits past the 10 s window of other requests for a slow answer", async () => {
+      vi.useFakeTimers();
+      const fetchMock = vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((resolve, reject) => {
+            const timer = setTimeout(() => resolve(new Response("", { status: 200 })), 15_000);
+            init?.signal?.addEventListener("abort", () => {
+              clearTimeout(timer);
+              reject(new DOMException("aborted", "AbortError"));
+            });
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const promise = client.deleteAllFeedbacks("my-project");
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      await expect(promise).resolves.toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
+    it("sends a delete that never answers once, never again, and reports a network error", async () => {
+      vi.useFakeTimers();
+      const fetchMock = vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const promise = client.deleteAllFeedbacks("my-project").catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(59_000);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(await promise).toBeInstanceOf(SitepingNetworkError);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
+    it("still retries a network failure that got no answer at all", async () => {
+      vi.useFakeTimers();
+      const fetchMock = vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+        .mockResolvedValue(new Response("", { status: 200 }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const promise = client.deleteAllFeedbacks("my-project");
+      await vi.advanceTimersByTimeAsync(1_500);
+
+      await expect(promise).resolves.toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 

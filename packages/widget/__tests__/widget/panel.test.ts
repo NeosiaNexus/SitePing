@@ -1005,6 +1005,33 @@ describe("Panel", () => {
       });
     });
 
+    it("reloads the list after a failed delete all, which the server may have carried out (#413)", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1" }), makeFeedback({ id: "fb-2" })],
+        total: 2,
+      });
+      apiClient.deleteAllFeedbacks.mockRejectedValue(new Error("Failed to delete all feedbacks: aborted"));
+      const errorListener = vi.fn();
+      bus.on("feedback:error", errorListener);
+
+      await panel.open();
+      // The server deleted everything although the widget gave up waiting.
+      apiClient.getFeedbacks.mockClear();
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+
+      shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!.click();
+      await vi.waitFor(() => {
+        expect(shadow.querySelector(".sp-btn-danger")).not.toBeNull();
+      });
+      shadow.querySelector<HTMLButtonElement>(".sp-btn-danger")!.click();
+
+      await vi.waitFor(() => {
+        expect(errorListener).toHaveBeenCalledOnce();
+        expect(apiClient.getFeedbacks).toHaveBeenCalled();
+        expect(shadow.querySelector('[data-feedback-id="fb-1"]')).toBeNull();
+      });
+    });
+
     it("cancelling delete all does not call API", async () => {
       const fb = makeFeedback({ id: "fb-1" });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
