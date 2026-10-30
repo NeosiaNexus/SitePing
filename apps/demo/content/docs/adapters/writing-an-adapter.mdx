@@ -53,7 +53,7 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 | `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
 | `generateId()` | A unique id, used for feedback, annotation and comment records |
 
-`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional — with `createFeedbackIfAbsent` guaranteed too, and `addComment`, `addCommentIfAbsent` and `deleteComment` once you pass `comments: true` — so you can delegate to them without a null check.
+`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` with `createFeedbackIfAbsent` guaranteed, and `addComment`, `addCommentIfAbsent` and `deleteComment` once you pass `comments: true` — so you can delegate to them without a null check.
 
 **A failed `persist` leaves your snapshot untouched.** The engine never mutates the array `load()` returned — every write builds a new array and hands it to `persist`. So if `load()` serves a cached array and the write throws, no phantom record stays visible, and the widget's retry of the same `clientId` is written for real instead of being deduplicated against something that never reached storage.
 
@@ -125,7 +125,7 @@ Text can hold characters a database refuses: PostgreSQL rejects NUL in `text` an
 
 ## Project ownership
 
-`verifyProjectOwnership(id, projectName)` is optional. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
+`verifyProjectOwnership(id, projectName)` is required. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
 
 ```ts
 async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
@@ -196,7 +196,7 @@ testSitepingStore(() => new KvStore(), {
 });
 ```
 
-`verifyProjectOwnership`, `createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` and `deleteComment` are covered too: stores that don't implement them skip the assertions, so adding any of them later is checked automatically with no test changes. The comment cases include a comment racing status changes on the same store.
+`createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` and `deleteComment` are covered too: stores that don't implement them skip the assertions, so adding any of them later is checked automatically with no test changes. The comment cases include a comment racing status changes on the same store.
 
 ## Using your adapter
 

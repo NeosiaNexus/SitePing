@@ -53,7 +53,7 @@ C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la 
 | `persist(feedbacks)` | Réécrit l'instantané complet. Levez `StorePersistenceError` quand l'écriture est perdue (quota, stockage désactivé) — ne l'avalez jamais |
 | `generateId()` | Un identifiant unique, utilisé pour les feedbacks, les annotations et les commentaires |
 
-`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` dont `verifyProjectOwnership` est garanti au lieu d'être optionnel — avec `createFeedbackIfAbsent` garanti lui aussi, et `addComment`, `addCommentIfAbsent` et `deleteComment` dès que vous passez `comments: true` — vous pouvez donc leur déléguer sans vérification préalable.
+`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` avec `createFeedbackIfAbsent` garanti, et `addComment`, `addCommentIfAbsent` et `deleteComment` dès que vous passez `comments: true` — vous pouvez donc leur déléguer sans vérification préalable.
 
 **Un `persist` qui échoue laisse votre instantané intact.** Le moteur ne modifie jamais le tableau renvoyé par `load()` — chaque écriture construit un nouveau tableau et le passe à `persist`. Donc si `load()` sert un tableau en cache et que l'écriture lève, aucun enregistrement fantôme ne reste visible, et le réessai du widget avec le même `clientId` est écrit pour de bon au lieu d'être dédupliqué contre quelque chose qui n'a jamais atteint le stockage.
 
@@ -125,7 +125,7 @@ Le texte peut contenir des caractères qu'une base refuse : PostgreSQL rejette N
 
 ## Appartenance au projet
 
-`verifyProjectOwnership(id, projectName)` est optionnelle. Les handlers HTTP l'appellent avant `PATCH` et `DELETE` et répondent 404 quand elle renvoie `false` — c'est ce qui empêche un projet de modifier les feedbacks d'un autre avec un id deviné. Le typage est structurel ici, donc les adapters tiers bénéficient de la vérification sans rien câbler :
+`verifyProjectOwnership(id, projectName)` est obligatoire. Les handlers HTTP l'appellent avant `PATCH` et `DELETE` et répondent 404 quand elle renvoie `false` — c'est ce qui empêche un projet de modifier les feedbacks d'un autre avec un id deviné. Le typage est structurel ici, donc les adapters tiers bénéficient de la vérification sans rien câbler :
 
 ```ts
 async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
@@ -196,7 +196,7 @@ testSitepingStore(() => new KvStore(), {
 });
 ```
 
-`verifyProjectOwnership`, `createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` et `deleteComment` sont couvertes elles aussi : les stores qui ne les implémentent pas sautent les assertions, donc ajouter l'une d'elles plus tard est vérifié automatiquement, sans toucher aux tests. Les cas de commentaires comprennent un commentaire posté en même temps que des changements de statut sur le même store.
+`createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` et `deleteComment` sont couvertes elles aussi : les stores qui ne les implémentent pas sautent les assertions, donc ajouter l'une d'elles plus tard est vérifié automatiquement, sans toucher aux tests. Les cas de commentaires comprennent un commentaire posté en même temps que des changements de statut sur le même store.
 
 ## Utiliser votre adapter
 

@@ -12,10 +12,13 @@ function creationError(create: () => unknown): unknown {
   throw new Error("createSitepingHandler did not throw");
 }
 
-/** A store without the optional `verifyProjectOwnership`. */
+/**
+ * A JavaScript caller's store without `verifyProjectOwnership`: the type now
+ * requires it, so only an untyped store reaches the runtime check.
+ */
 function storeWithoutOwnershipCheck(): SitepingStore {
   const backing = new MemoryStore();
-  return {
+  const store: Omit<SitepingStore, "verifyProjectOwnership"> = {
     createFeedback: (data) => backing.createFeedback(data),
     getFeedbacks: (query) => backing.getFeedbacks(query),
     findByClientId: (clientId) => backing.findByClientId(clientId),
@@ -23,6 +26,7 @@ function storeWithoutOwnershipCheck(): SitepingStore {
     deleteFeedback: (id) => backing.deleteFeedback(id),
     deleteAllFeedbacks: (projectName) => backing.deleteAllFeedbacks(projectName),
   };
+  return store as SitepingStore;
 }
 
 describe("createSitepingHandler — configuration errors carry a stable code", () => {

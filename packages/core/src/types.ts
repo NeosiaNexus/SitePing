@@ -1128,14 +1128,11 @@ export interface SitepingStore {
   /** Bulk delete all feedbacks for a project. No-op (not error) if none exist. Throws `StorePersistenceError` when the write cannot be persisted. */
   deleteAllFeedbacks(projectName: string): Promise<void>;
   /**
-   * Optional — return `true` when the record with `id` belongs to
-   * `projectName`, `false` otherwise (including when it does not exist).
-   *
-   * HTTP handlers use this to reject cross-project PATCH/DELETE requests.
-   * Implement it whenever your store serves multiple projects; when absent,
-   * handlers skip the ownership check and rely on `id` alone.
+   * Return `true` when the record with `id` belongs to `projectName`, `false`
+   * otherwise (including when it does not exist). HTTP handlers use it to
+   * reject cross-project PATCH/DELETE requests, which address records by id.
    */
-  verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
+  verifyProjectOwnership(id: string, projectName: string): Promise<boolean>;
   /**
    * Optional — `createFeedback` that reports whether this call inserted the
    * record (`created: true`) or found an existing one with the same
