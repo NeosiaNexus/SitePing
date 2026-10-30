@@ -132,7 +132,7 @@ Both factories take the same options:
 |---|---|---|---|
 | `tables` | `SitepingPgTables` / `SitepingSqliteTables` | default-named tables | The tables from your schema — required when you [renamed them](#custom-table-names) |
 | `screenshotStorage` | `ScreenshotStorage` | — | Upload screenshots elsewhere and store only the URL — see [screenshots](#screenshots) |
-| `logger` | `{ warn(message, context) }` | none — events are dropped | Degraded-but-non-fatal events: a failed upload (the feedback is saved without its screenshot), a failed cleanup, inline screenshots. The store never picks a logging backend itself — pass your application's logger, or `console` |
+| `logger` | `{ warn(message, context) }` | none — events are dropped | Degraded-but-non-fatal events: a failed upload (the feedback is saved without its screenshot), a failed cleanup, inline screenshots. The store never picks a logging backend itself — pass your application's logger, or `console`, the same one the server's `logger` takes. One that throws or rejects never fails the store |
 | `now` | `() => Date` | the system clock | Clock for `createdAt` of new feedbacks and comments, and `updatedAt` on status updates — inject one for tests or a controlled time source |
 
 ## Screenshots
@@ -145,7 +145,7 @@ Both factories take the same options:
 - `mimeType` is the media type the data URL declares — `image/jpeg`, `image/png` or `image/webp`, lowercased. Anything else (an SVG, which is script-capable when served inline, or no type at all) is reported as `image/jpeg`, the widget's capture format. Use it as the object's `Content-Type`.
 - If `upload` throws, the feedback is still saved with `screenshotUrl: null`, and the failure goes to the `logger`.
 
-**The returned URL must be unique to the upload.** Key objects by a fresh random value — never by a content hash, a fixed name or `feedbackId` alone. `feedbackId` happens to be unique per attempt with this store, but a `ScreenshotStorage` does not know which store calls it: passed to [Prisma](/docs/adapters/prisma), where `feedbackId` is the client's `clientId`, an object keyed by it is rewritten by every retry. The store treats each URL as owned by the one feedback that stores it and may pass it to `delete` without coordinating with concurrent creates; a URL shared by several feedbacks can lose an object another feedback still points at.
+**The returned URL must be unique to the upload.** Key objects by a fresh random value — never by a content hash, a fixed name or `feedbackId` alone. `feedbackId` is the stored feedback's id with every bundled store, but a `ScreenshotStorage` does not know which store calls it, and a store of your own may pass anything. The store treats each URL as owned by the one feedback that stores it and may pass it to `delete` without coordinating with concurrent creates; a URL shared by several feedbacks can lose an object another feedback still points at.
 
 **Ready-made storage.** [`@siteping/screenshot-storage`](/docs/adapters/screenshot-storage) provides a `screenshotStorage` for S3-compatible buckets, Cloudflare Images or your disk, with random keys and deletes scoped to its own objects. Its `/drizzle-pg` and `/drizzle-libsql` entries can also keep screenshots in a table of this same database, for small or self-contained deployments; in production, object storage is the better choice.
 
@@ -155,7 +155,7 @@ Both factories take the same options:
 
 ## Concurrency guarantees
 
-- **Duplicate submissions are atomic.** The store implements `createFeedbackIfAbsent`: the unique `client_id` index plus `ON CONFLICT DO NOTHING` arbitrate concurrent submissions of the same feedback, across store instances and processes. Exactly one caller gets `created: true`, so the handler notifies your webhooks once, whichever server instance each request reached.
+- **Duplicate submissions are atomic.** The store implements `createFeedbackIfAbsent`: the unique `client_id` index plus `ON CONFLICT DO NOTHING` arbitrate concurrent submissions of the same feedback, across store instances and processes. Exactly one caller gets `created: true`, so the handler notifies your webhooks once, whichever server instance each request reached. Replies get the same through `addCommentIfAbsent`, for the `comment.created` webhook and `onCommentCreated`.
 - **Annotations land with their feedback, or not at all.** On PostgreSQL the feedback and its annotations are inserted by one statement (a data-modifying CTE). On libSQL, multi-statement writes go through `db.batch`, which runs as one transaction and never holds the write lock across an `await` — your application can keep writing to the same database concurrently.
 - **Comments land whole, or not at all.** A comment is inserted by one `INSERT … SELECT` that writes only when its feedback exists and, for a `client` comment, its thread holds fewer than 100 of them, with `ON CONFLICT DO NOTHING` on `client_id`: a replayed post returns the stored comment, across store instances and processes. Posts racing for the last free slot may overshoot the cap.
 - **Ordering is stable.** Lists come back newest first. `createdAt` is the clock value at insert time, and rows created in the same millisecond — by one store instance, several processes, or your own code inserting through the exported tables — are ordered by an insertion ordinal the database itself assigns on every insert: the internal `creation_sequence` identity on PostgreSQL, SQLite's implicit `rowid` on libSQL. A later insert always lists first, and offset pages never overlap or skip rows. A thread reads oldest first, and comments posted within one millisecond keep their posting order through their `position`.
@@ -203,7 +203,7 @@ Run the backfill in JavaScript, not with SQL `lower()`: the database's `lower()`
 - `updateFeedback` reads the (immutable) annotations and the thread before updating the row, so no database call runs after the update commits: a failed read leaves the row untouched, and an applied update is never reported as failed because of a read that followed it.
 - `updateFeedback` and `deleteFeedback` on an unknown id throw `StoreNotFoundError`, and so do `addComment` on an unknown feedback — including one deleted while the comment is being inserted — and `deleteComment` of a comment that is not on that feedback's thread. `addComment` on a full thread throws `StoreLimitError`.
 
-Both entries re-export `StorePersistenceError`, `isStorePersistence`, `StoreNotFoundError`, `StoreDuplicateError` and `StoreLimitError`, so you can catch them without another import.
+Both entries re-export the store errors and their guards — `StorePersistenceError`, `StoreNotFoundError`, `StoreDuplicateError`, `StoreLimitError`, `StoreValueTooLongError`, and `isStorePersistence`, `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong` — so you can catch them without another import.
 
 ## Limitations
 

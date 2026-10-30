@@ -12,3 +12,5 @@ coverage/
 .claude/worktrees/
 coverage-report/
 .source/
+# Prisma client the SQLite conformance run generates, removed once it ends
+packages/adapter-prisma/__tests__/.generated/

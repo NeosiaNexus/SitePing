@@ -40,11 +40,8 @@ export class Tooltip {
         max-width: 280px;
         padding: 12px 14px;
         border-radius: 14px;
-        background: ${this.colors.glassBgHeavy};
         backdrop-filter: blur(24px);
         -webkit-backdrop-filter: blur(24px);
-        border: 1px solid ${this.colors.glassBorder};
-        box-shadow: 0 8px 32px ${this.colors.shadow}, 0 2px 8px ${this.colors.shadow};
         font-family: "Inter", system-ui, -apple-system, sans-serif;
         pointer-events: auto;
         opacity: 0;
@@ -64,18 +61,29 @@ export class Tooltip {
         position: absolute;
         width: 12px;
         height: 12px;
-        background: ${this.colors.glassBgHeavy};
-        border: 1px solid ${this.colors.glassBorder};
         transform: rotate(45deg);
         pointer-events: none;
       `,
     });
     this.root.appendChild(this.arrow);
+    this.restyle();
 
     this.root.addEventListener("mouseenter", () => this.cancelHide());
     this.root.addEventListener("mouseleave", () => this.scheduleHide());
     isolateFromHost(this.root);
     document.body.appendChild(this.root);
+  }
+
+  /**
+   * Paint the surface from the palette — at construction, and again when an
+   * `auto` theme follows the OS. The arrow is repainted on every placement.
+   */
+  restyle(): void {
+    const { glassBgHeavy, glassBorder, shadow } = this.colors;
+    const { style } = this.root;
+    style.background = glassBgHeavy;
+    style.border = `1px solid ${glassBorder}`;
+    style.boxShadow = `0 8px 32px ${shadow}, 0 2px 8px ${shadow}`;
   }
 
   show(feedback: FeedbackResponse, anchorRect: DOMRect): void {

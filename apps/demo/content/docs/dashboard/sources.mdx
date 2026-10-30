@@ -11,7 +11,7 @@ The inbox reads and writes through a small abstraction with three ways to supply
 <SitepingInbox projects="my-project" endpoint="/api/siteping" apiKey={KEY} />
 ```
 
-Talks to your [SitePing endpoint](/docs/server): `GET` for lists, `PATCH` for statuses, `DELETE` for removals, always with `cache: "no-store"`. Errors arrive typed by `code` (`AUTH` for 401/403 and `VALIDATION` for other 4xx, each with the HTTP `status`, `SERVER` for 5xx, and for 408 and 429 with `retryable: true`, `NETWORK` for fetch failures). There are deliberately **no retries** — a triage UI should tell you immediately.
+Talks to your [SitePing endpoint](/docs/server): `GET` for lists, `PATCH` for statuses, `DELETE` for removals, always with `cache: "no-store"`. Errors arrive typed by `code` (`AUTH` for 401/403 and `VALIDATION` for other 4xx, each with the HTTP `status`, `SERVER` for 5xx, 408 and 429, all with `retryable: true`, `NETWORK` for fetch failures); match them with `isSitepingError`, exported by the package. There are deliberately **no retries** — a triage UI should tell you immediately.
 
 Behind your app's login, leave `apiKey` out: mounted on the endpoint's origin, the inbox sends your session cookie with every request, for a server [`access`](/docs/server#custom-access) policy to read — see the [Better Auth recipe](/docs/server#recipe-better-auth). From another origin, send a token with `headers`. The `apiKey` authorizes every write, so it never belongs in a client bundle (`NEXT_PUBLIC_*`, `VITE_*`): keep it for code that runs out of the visitor's reach.
 
@@ -69,7 +69,17 @@ const source: InboxSource = {
 
 A record may carry `permissions` — `{ canChangeStatus, canDelete, canComment, canDeleteComment }`, what the requester may do with it — from `list()` and from `setStatus()`. The inbox then hides what they refuse (see [Permissions](/docs/dashboard/headless#permissions)); a record without them refuses nothing. When `setStatus()` resolves a record without them, it keeps the ones `list()` gave. The endpoint source passes on the server's.
 
-The two building blocks behind the built-in modes are exported too — `createEndpointSource({ endpoint, apiKey, headers })` and `createStoreSource(store)` — so you can wrap, compose, or decorate them (e.g. add logging around the HTTP client) instead of starting from scratch.
+The two building blocks behind the built-in modes are exported too — `createEndpointSource({ endpoint, apiKey, headers, fetchFn })` and `createStoreSource(store)` — so you can wrap, compose, or decorate them instead of starting from scratch. `fetchFn` replaces the `fetch` every request goes through (`globalThis.fetch` by default): wrap it to log or trace requests, or to set a request option the source doesn't expose, then pass the result as `source`:
+
+```tsx
+const source = createEndpointSource({
+  endpoint: "https://api.example.com/siteping",
+  // Send the session cookie to another origin (its CORS must allow credentials)
+  fetchFn: (input, init) => fetch(input, { ...init, credentials: "include" }),
+});
+
+<SitepingInbox projects="my-project" source={source} />;
+```
 
 ## Types without extra dependencies
 
@@ -84,4 +94,4 @@ The two building blocks behind the built-in modes are exported too — `createEn
 | Hook result | `InboxState`, `InboxStatusFilter`, `InboxTypeFilter` |
 | Sources | `InboxSource`, `EndpointSourceOptions` (the argument of `createEndpointSource`) |
 | Component props | `SitepingInboxProps`, or `SitepingInboxPresentationProps` for the presentation half alone |
-| Theming | `InboxTheme` (`"light"` \| `"dark"` \| `"auto"`) and `ResolvedTheme` (`"light"` \| `"dark"` — what `auto` resolves to) |
+| Theming | `SitepingTheme` (`"light"` \| `"dark"` \| `"auto"`, the widget's type too) and `ResolvedTheme` (`"light"` \| `"dark"` — what `auto` resolves to) |
