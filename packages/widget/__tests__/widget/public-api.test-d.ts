@@ -27,6 +27,7 @@ import {
   type SitepingPanelActionFeedback,
   type SitepingPanelButtonAction,
   type SitepingPanelLinkAction,
+  type SitepingTheme,
   type Translations,
 } from "../../src/index.js";
 
@@ -204,5 +205,15 @@ describe("identity", () => {
     // @ts-expect-error — internal: no public signature takes a translate function
     type RemovedTFunction = Widget.TFunction;
     expectTypeOf<[RemovedIdentity, RemovedTFunction]>().toBeArray();
+  });
+});
+
+describe("shared with the dashboard", () => {
+  it("exports the theme type the dashboard exports", () => {
+    expectTypeOf<NonNullable<SitepingConfig["theme"]>>().toEqualTypeOf<SitepingTheme>();
+  });
+
+  it("returns a promise from refresh(), like the dashboard's", () => {
+    expectTypeOf<ReturnType<SitepingInstance["refresh"]>>().toEqualTypeOf<Promise<void>>();
   });
 });

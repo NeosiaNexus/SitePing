@@ -28,6 +28,7 @@ export type {
   SitepingPublicEvents,
   SitepingStore,
   SitepingStoreConfig,
+  SitepingTheme,
 } from "@siteping/core";
 // The guard and the union it narrows to, not the classes: an error matched
 // by `instanceof` against one package's copy of a class fails against

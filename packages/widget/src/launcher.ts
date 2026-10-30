@@ -27,7 +27,7 @@ import { ownFeedback } from "./own-feedback.js";
 import type { Panel as PanelType } from "./panel.js";
 import { StoreClient } from "./store-client.js";
 import { buildStyles } from "./styles/base.js";
-import { buildThemeColors } from "./styles/theme.js";
+import { buildThemeColors, watchColorScheme } from "./styles/theme.js";
 import { Tooltip } from "./tooltip.js";
 import { trackKeyboardInset } from "./viewport.js";
 
@@ -76,7 +76,7 @@ function skippedInstance(): SitepingInstance {
     destroy: noop,
     open: noop,
     close: noop,
-    refresh: noop,
+    refresh: () => Promise.resolve(),
     focusFeedback: () => false,
     on: () => noop,
     off: noop,
@@ -327,17 +327,21 @@ export function launch(config: SitepingConfig): SitepingInstance {
   const shadowMode = readNodeEnv() === "test" ? ("open" as const) : ("closed" as const);
   const shadow = host.attachShadow({ mode: shadowMode });
 
-  // Inject styles into Shadow DOM — adoptedStyleSheets with fallback for Safari < 16.4
-  const supportsAdoptedStyleSheets = "adoptedStyleSheets" in ShadowRoot.prototype;
-  if (supportsAdoptedStyleSheets) {
+  // Inject styles into Shadow DOM — adoptedStyleSheets with fallback for Safari < 16.4.
+  // `paint()` writes them from `colors`, again whenever an `auto` theme flips.
+  let paint: () => void;
+  if ("adoptedStyleSheets" in ShadowRoot.prototype) {
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync(buildStyles(colors));
     shadow.adoptedStyleSheets = [sheet];
+    paint = () => sheet.replaceSync(buildStyles(colors));
   } else {
     const style = document.createElement("style");
-    style.textContent = buildStyles(colors);
     shadow.appendChild(style);
+    paint = () => {
+      style.textContent = buildStyles(colors);
+    };
   }
+  paint();
 
   isolateFromHost(host, shadow);
   const removeHostIsolationGuard = installHostIsolationGuard();
@@ -690,6 +694,21 @@ export function launch(config: SitepingConfig): SitepingInstance {
     });
   };
 
+  // `auto` follows the OS color scheme live, as the dashboard's does: the
+  // palette is re-derived in place (every component holds this one object),
+  // then the shadow styles, the tooltip and the comment popup are repainted,
+  // and a refresh re-renders pins and the open panel from it.
+  const stopFollowingScheme =
+    config.theme === "auto"
+      ? watchColorScheme(() => {
+          Object.assign(colors, buildThemeColors(config.accentColor, "auto"));
+          paint();
+          tooltip.restyle();
+          annotator.restyle();
+          void doRefresh().catch(() => {});
+        })
+      : undefined;
+
   // SPA route-change watcher. The widget is normally mounted once (singleton)
   // inside a persistent layout — e.g. a Next.js App Router `layout.tsx`, which
   // does NOT remount on client-side navigation. Without this, init runs once and
@@ -759,6 +778,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       destroyed = true;
       pendingOpen = false;
       teardownNavigation?.();
+      stopFollowingScheme?.();
       focusTracker.destroy();
       unsubAnnotation();
       unsubToggle();
@@ -802,9 +822,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       return markers.focusFeedback(feedbackId);
     },
     // Public API must never reject onto the host — swallow the promise.
-    refresh: () => {
-      void doRefresh().catch(() => {});
-    },
+    refresh: () => doRefresh().catch(() => {}),
   };
 
   // Reference counting (#366): every launch() returns its own handle over the
@@ -833,9 +851,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       close: () => {
         if (live) self.close();
       },
-      refresh: () => {
-        if (live) self.refresh();
-      },
+      refresh: () => (live ? self.refresh() : Promise.resolve()),
       focusFeedback: (feedbackId: string) => live && self.focusFeedback(feedbackId),
       // Once released, the handle's bus no longer receives events.
       on: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) =>

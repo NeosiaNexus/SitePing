@@ -105,7 +105,7 @@ export interface SitepingInstance {
     off: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) => void;
     on: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) => SitepingUnsubscribe;
     open: () => void;
-    refresh: () => void;
+    refresh: () => Promise<void>;
 }
 
 export type SitepingLocale = (string & {}) | BuiltinLocale;
@@ -171,6 +171,8 @@ export interface SitepingStoreConfig extends SitepingBaseConfig {
     headers?: never;
     store: SitepingStore;
 }
+
+export type SitepingTheme = "auto" | "dark" | "light";
 
 export type TFunction = (key: TranslationKey) => string;
 
@@ -633,8 +635,6 @@ type SitepingPosition = "bottom-left" | "bottom-right";
 type SitepingPublicEventListener<K extends keyof SitepingPublicEvents> = (...args: SitepingPublicEvents[K]) => void;
 
 type SitepingSkipReason = "mobile" | "production" | "ssr";
-
-type SitepingTheme = "auto" | "dark" | "light";
 
 type SitepingUnsubscribe = () => void;
 

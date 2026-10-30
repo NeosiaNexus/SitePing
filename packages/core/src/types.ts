@@ -7,7 +7,10 @@ import { type AssertEqual, type DeepReadonly, hasOwn, type Prettify, type Serial
 /** FAB anchor — bottom-corner placement supported by the widget. */
 export type SitepingPosition = "bottom-right" | "bottom-left";
 
-/** Visual theme — `auto` resolves to `light` or `dark` via system preference. */
+/**
+ * Visual theme of the widget and the dashboard — `auto` follows the system
+ * preference, live: an OS switch mid-session re-themes the UI.
+ */
 export type SitepingTheme = "light" | "dark" | "auto";
 
 /** Built-in UI locales shipped with the widget. */
@@ -217,7 +220,7 @@ export interface SitepingBaseConfig {
   minViewportWidth?: number | undefined;
   /** Enable debug logging of lifecycle events — defaults to false */
   debug?: boolean | undefined;
-  /** Color theme — defaults to 'light' */
+  /** Color theme — defaults to `light`; `auto` follows the system preference live. */
   theme?: SitepingTheme | undefined;
   /** UI locale — defaults to 'en'. Built-in: en, fr, de, es, it, pt (Brazilian), ru, ja, ko. Any other string falls back to English. */
   locale?: SitepingLocale | undefined;
@@ -362,6 +365,8 @@ export interface SitepingBaseConfig {
    * Pre-fill author identity from the host application — typically the
    * currently signed-in user. When set, the widget uses these values
    * directly and never shows the identity modal, even on first feedback.
+   * It names the reviewer who sends feedback — the dashboard's `author` is
+   * the team member who replies, a different person.
    *
    * Use case: SSO-integrated apps where the end user is already
    * authenticated by the host. Avoids the awkward "enter your name and
@@ -504,8 +509,12 @@ export interface SitepingInstance {
   open: () => void;
   /** Close the panel */
   close: () => void;
-  /** Reload feedbacks from server */
-  refresh: () => void;
+  /**
+   * Reload feedbacks from the server. Resolves once the pins (and the open
+   * panel) show the reloaded list; never rejects — like the dashboard's
+   * `refresh()`, a failed reload leaves the current view in place.
+   */
+  refresh: () => Promise<void>;
   /**
    * Scroll the matching annotation into view, pin its highlight, and
    * pulse its marker. Returns `true` when a visible feedback matched the
