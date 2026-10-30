@@ -1,0 +1,65 @@
+---
+title: Nuxt
+description: Un endpoint SitePing en route serveur Nitro et le widget dans un plugin client uniquement — Nuxt 3 et 4.
+---
+
+```bash
+npm i @siteping/widget @siteping/server @siteping/adapter-memory
+```
+
+## 1. L'endpoint
+
+Une route Nitro reçoit toutes les méthodes de son URL. Passez au handler une `Request` web et renvoyez sa `Response` ; répondez `405` aux méthodes que SitePing ne sert pas, comme `HEAD`.
+
+```ts
+// server/api/siteping.ts
+import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
+
+const store = new MemoryStore();
+const METHODS = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"] as const;
+let handler: SitepingHandler | undefined;
+
+export default defineEventHandler((event) => {
+  // Construit à la première requête, depuis la config d'exécution (NUXT_SITEPING_API_KEY).
+  handler ??= createSitepingHandler({ store, apiKey: useRuntimeConfig(event).sitepingApiKey || undefined });
+  const method = METHODS.find((name) => name === event.method);
+  if (!method) {
+    setResponseHeader(event, "Allow", METHODS.join(", "));
+    throw createError({ statusCode: 405 });
+  }
+  return handler[method](toWebRequest(event));
+});
+```
+
+Déclarez la clé dans la config d'exécution. Elle reste côté serveur, et Nuxt la remplit depuis `NUXT_SITEPING_API_KEY` au démarrage du serveur :
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  runtimeConfig: {
+    sitepingApiKey: "",
+  },
+});
+```
+
+## 2. Le widget
+
+Un plugin dont le nom finit par `.client` ne s'exécute que dans le navigateur. Un seul plugin monte un seul widget pour toute l'app, et il suit seul la navigation côté client.
+
+```ts
+// app/plugins/siteping.client.ts — plugins/siteping.client.ts sur Nuxt 3
+import { initSiteping } from "@siteping/widget";
+
+export default defineNuxtPlugin(() => {
+  initSiteping({ endpoint: "/api/siteping", projectName: "mon-projet" });
+});
+```
+
+Lancez `npm run dev` et regardez en bas à droite. Dessinez un rectangle, tapez un commentaire, envoyez : le feedback passe par votre route jusqu'au store.
+
+## Pour aller plus loin
+
+- Un store qui survit aux redémarrages : [Choisir un store](/fr/docs/frameworks#choisir-un-store).
+- Avant la mise en ligne, définissez `NUXT_SITEPING_API_KEY` et lisez ce qu'elle verrouille — [trois règles communes à toutes les piles](/fr/docs/frameworks#trois-règles-communes-à-toutes-les-piles).
+- Vue seul sur Vite, sans Nuxt : [SPA Vite](/fr/docs/frameworks/vite).
