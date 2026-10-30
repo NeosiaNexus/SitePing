@@ -9,7 +9,7 @@ Les quatre adapters fournis couvrent la plupart des installations, mais les stor
 npm i -D @siteping/adapter-kit vitest
 ```
 
-`vitest` est une **peer dependency optionnelle**, nécessaire uniquement à l'entrée `@siteping/adapter-kit/testing`. Si vous ne lancez pas la suite de conformité, laissez-la de côté. Le kit lui-même n'a aucune dépendance runtime (`@siteping/core` est intégré dans son `dist`) : une dépendance de développement suffit si vous bundlez votre package ; si vous publiez du code non bundlé, déplacez-la dans `dependencies`.
+`vitest` est une **peer dependency optionnelle** (3, 4 ou 5), nécessaire uniquement à l'entrée `@siteping/adapter-kit/testing`. Si vous ne lancez pas la suite de conformité, laissez-la de côté. Le kit lui-même n'a aucune dépendance runtime (`@siteping/core` est intégré dans son `dist`) : une dépendance de développement suffit si vous bundlez votre package ; si vous publiez du code non bundlé, déplacez-la dans `dependencies`.
 
 > Pourquoi un package séparé : `@siteping/core` est un package interne — il exporte du TypeScript brut et n'est jamais publié sur npm. Le kit est la façon supportée de dépendre de ces types et helpers depuis l'extérieur de ce dépôt.
 
@@ -43,7 +43,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les 67 tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
+C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
 
 **Les trois primitives :**
 
@@ -53,13 +53,13 @@ C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la 
 | `persist(feedbacks)` | Réécrit l'instantané complet. Levez `StorePersistenceError` quand l'écriture est perdue (quota, stockage désactivé) — ne l'avalez jamais |
 | `generateId()` | Un identifiant unique, utilisé pour les feedbacks, les annotations et les commentaires |
 
-`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` avec `createFeedbackIfAbsent` garanti, et `addComment` et `deleteComment` dès que vous passez `comments: true` — vous pouvez donc leur déléguer sans vérification préalable.
+`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` avec `createFeedbackIfAbsent` garanti, et `addComment`, `addCommentIfAbsent` et `deleteComment` dès que vous passez `comments: true` — vous pouvez donc leur déléguer sans vérification préalable.
 
 **Un `persist` qui échoue laisse votre instantané intact.** Le moteur ne modifie jamais le tableau renvoyé par `load()` — chaque écriture construit un nouveau tableau et le passe à `persist`. Donc si `load()` sert un tableau en cache et que l'écriture lève, aucun enregistrement fantôme ne reste visible, et le réessai du widget avec le même `clientId` est écrit pour de bon au lieu d'être dédupliqué contre quelque chose qui n'a jamais atteint le stockage.
 
 **Sous pression de quota, les captures sautent en premier.** Quand `persist` lève pendant `createFeedback` et que l'enregistrement porte une capture d'écran en ligne, le moteur vide `screenshotUrl` — de loin le champ le plus lourd — et réessaie une fois, pour que le commentaire écrit survive à un espace de stockage plein. Si cette seconde écriture échoue aussi, l'erreur remonte : renvoyer l'enregistrement annoncerait une réussite qui n'a jamais eu lieu.
 
-**Les mutations s'exécutent une par une.** Chaque écriture charge l'instantané complet, le modifie et le réécrit : deux écritures qui se chevauchent partiraient du même instantané, et la dernière annulerait l'autre en silence — exactement ce que déclencheraient la résolution et la suppression en masse du widget (un `Promise.all` sur la sélection). Le moteur met en file `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback`, `deleteAllFeedbacks`, `addComment` et `deleteComment`, pour que chacune parte du résultat de la précédente — un commentaire posté pendant qu'un feedback est résolu garde les deux changements ; une mutation qui échoue est rejetée avec sa propre erreur et ne bloque jamais celles qui suivent. `load` et `persist` doivent en revanche toujours aboutir : un appel qui ne se résout jamais bloque toutes les écritures suivantes sur ce store, donnez donc un délai d'expiration aux primitives qui passent par le réseau. Les lectures ne passent pas par la file. La file vit dans l'instance du store, dans un seul processus JavaScript : deux instances sur le même stockage — deux onglets, plusieurs processus serveur partageant un KV ou un fichier — ne sont pas coordonnées. Si votre backend est partagé de cette façon, il lui faut sa propre primitive atomique (une transaction, un compare-and-set).
+**Les mutations s'exécutent une par une.** Chaque écriture charge l'instantané complet, le modifie et le réécrit : deux écritures qui se chevauchent partiraient du même instantané, et la dernière annulerait l'autre en silence — exactement ce que déclencheraient la résolution et la suppression en masse du widget (un `Promise.all` sur la sélection). Le moteur met en file `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback`, `deleteAllFeedbacks`, `addComment`, `addCommentIfAbsent` et `deleteComment`, pour que chacune parte du résultat de la précédente — un commentaire posté pendant qu'un feedback est résolu garde les deux changements ; une mutation qui échoue est rejetée avec sa propre erreur et ne bloque jamais celles qui suivent. `load` et `persist` doivent en revanche toujours aboutir : un appel qui ne se résout jamais bloque toutes les écritures suivantes sur ce store, donnez donc un délai d'expiration aux primitives qui passent par le réseau. Les lectures ne passent pas par la file. La file vit dans l'instance du store, dans un seul processus JavaScript : deux instances sur le même stockage — deux onglets, plusieurs processus serveur partageant un KV ou un fichier — ne sont pas coordonnées. Si votre backend est partagé de cette façon, il lui faut sa propre primitive atomique (une transaction, un compare-and-set).
 
 ## Backends à requêtes
 
@@ -108,7 +108,7 @@ Les handlers et le dashboard déduisent leur comportement de ces erreurs : levez
 | Une mutation acceptée mais non persistée | Levez `StorePersistenceError` au lieu d'annoncer une réussite fantôme |
 | Résultat vide sur `getFeedbacks` / `findByClientId` | Ne levez pas — renvoyez un tableau vide ou `null` |
 
-Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma.
+Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma. Chaque package de store — ce kit, `adapter-prisma`, `adapter-memory`, `adapter-localstorage` et les deux entrées d'`adapter-drizzle` — réexporte les mêmes cinq classes et les mêmes cinq gardes.
 
 ### Les sémantiques de requête à respecter
 
@@ -120,6 +120,8 @@ Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`
 - `page` commence à 1, `limit` vaut 50 par défaut et est plafonné à 100.
 
 Vous gardez un instantané en mémoire ? `applyFeedbackFilters(records, query)` est exporté précisément pour ça et implémente tout ce qui précède. Vous interrogez une base ? `clampPagination(query)` renvoie le `{ page, limit, skip }` normalisé — le même plafonnement que le pipeline en mémoire et `PrismaStore`, à passer tel quel à votre `LIMIT`/`OFFSET`. Testez d'abord `isUnreachableOffset(skip)` : un `page` énorme venu d'un appel direct donne un offset au-delà de `Number.MAX_SAFE_INTEGER` (ou `Infinity`) que les bases SQL rejettent, et la suite attend `{ feedbacks: [], total }` — répondez avec votre seule requête de comptage.
+
+Le texte peut contenir des caractères qu'une base refuse : PostgreSQL rejette NUL dans `text` et `jsonb`, et un surrogate isolé (ce par quoi finit une chaîne coupée au milieu d'un emoji) dans `jsonb`. La suite accepte ce texte gardé tel quel, ou avec U+FFFD à la place de chacune de ces unités, pourvu qu'un enregistrement se relise tel que l'écriture l'a renvoyé et qu'une recherche contenant les mêmes caractères le retrouve. Sur un backend qui les refuse, passez tout ce que vous écrivez par `toStorableValue`, et chaque id, clientId, nom de projet et requête que vous cherchez par `toStorableText` — tous deux exportés par le kit, et ce que font `PrismaStore` et le store Drizzle.
 
 ## Appartenance au projet
 
@@ -144,14 +146,15 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 
 - Renvoyez le fil sur chaque enregistrement, dans `comments`, du plus ancien au plus récent — un tableau vide quand il n'y en a pas, à commencer par l'enregistrement que renvoie `createFeedback`. `buildFeedbackRecord` omet `comments` pour que son enregistrement corresponde toujours à votre ligne de feedback : ajoutez `comments: []` vous-même.
 - `addComment` est idempotente sur `data.clientId` : quand un commentaire avec ce `clientId` existe, sur n'importe quel fil, renvoyez-le tel quel. Le handler refuse un envoi rejoué qui vise un autre feedback.
+- `addCommentIfAbsent(feedbackId, data)`, optionnelle à côté d'elles, est `addComment` qui indique si cet appel a inséré le commentaire — `{ comment, created }` —, avec la même atomicité que [`createFeedbackIfAbsent`](#effets-de-création-exactement-une-fois) : parmi des appels concurrents avec un même `clientId`, un seul renvoie `created: true`. Le handler écrit par elle quand elle existe, et en a besoin pour déclencher le [webhook](/fr/docs/server#événements) `comment.created` et le hook `onCommentCreated` une fois par réponse : sans elle, il refuse de démarrer avec l'un ou l'autre.
 - `deleteComment` se limite au fil qu'elle désigne, celui pour lequel l'appelant a été autorisé : un commentaire d'un autre fil est « introuvable ».
 - Un fil contient au plus `MAX_COMMENTS_PER_FEEDBACK` (100) commentaires `client` — les `team` ne comptent pas et ne sont jamais refusés —, un commentaire ne touche pas à l'`updatedAt` du feedback, et supprimer un feedback supprime son fil.
 
-`buildCommentRecord(data, { id, feedbackId })` construit l'enregistrement, et `createCollectionStore` implémente les deux méthodes quand vous passez `comments: true`. Passez-le dès que `load` rend le `createdAt` de chaque commentaire sous forme de `Date` — un backend JSON le ranime comme les dates de l'enregistrement. Les fils sont désactivés par défaut : un adapter snapshot écrit avant eux garde sa surface, et son format de stockage, quand le kit se met à jour.
+`buildCommentRecord(data, { id, feedbackId })` construit l'enregistrement, et `createCollectionStore` implémente les trois méthodes quand vous passez `comments: true`. Passez-le dès que `load` rend le `createdAt` de chaque commentaire sous forme de `Date` — un backend JSON le ranime comme les dates de l'enregistrement. Les fils sont désactivés par défaut : un adapter snapshot écrit avant eux garde sa surface, et son format de stockage, quand le kit se met à jour.
 
 ## La preuve : la suite de conformité
 
-La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — 67 tests :
+La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — environ 70 tests :
 
 ```ts
 // __tests__/my-store.test.ts
@@ -163,12 +166,13 @@ testSitepingStore(() => new MyStore());
 
 En plus des appels un par un, elle lance ensemble des mises à jour, des suppressions et des créations dans un `Promise.all` — comme le font les actions en masse du widget — et vérifie que chaque écriture a abouti.
 
-La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Deux réglages couvrent les variations de contrat légitimement propres au backend :
+La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Trois options couvrent ce qui varie légitimement d'un backend à l'autre :
 
 | Option | Défaut | À régler quand |
 |---|---|---|
 | `duplicateBehavior` | `"return"` | Votre `createFeedback` lève `StoreDuplicateError` sur un `clientId` répété au lieu de renvoyer l'existant — passez `"throw"`. Un store qui le renvoie mais lève quand il perd une course d'insertion concurrente reste sur `"return"` |
 | `caseInsensitiveSearch` | `true` | Votre collation rend `search` sensible à la casse — passez `false` et la suite ne teste que la correspondance à casse identique |
+| `failWrites` | — | Votre backend peut accepter une écriture puis la perdre (quota, stockage révoqué) — passez une fonction qui lui fait refuser toute écriture jusqu'à l'appel de la fonction qu'elle renvoie. Sans elle, les cas d'échec de persistance sont signalés comme sautés |
 
 ```ts
 testSitepingStore(() => new PostgresStore(db), {
@@ -177,7 +181,22 @@ testSitepingStore(() => new PostgresStore(db), {
 });
 ```
 
-`createFeedbackIfAbsent`, `addComment` et `deleteComment` sont couvertes elles aussi : les stores qui ne les implémentent pas sautent les assertions, donc ajouter l'une d'elles plus tard est vérifié automatiquement, sans toucher aux tests. Les cas de commentaires comprennent un commentaire posté en même temps que des changements de statut sur le même store.
+Avec `failWrites`, chaque mutation doit être rejetée avec `StorePersistenceError` tant que les écritures échouent, et laisser ce que renvoient les lectures tel quel — pas d'enregistrement fantôme, pas de mise à jour perdue :
+
+```ts
+let writesFail = false; // lu par le `persist` de votre backend
+
+testSitepingStore(() => new KvStore(), {
+  failWrites: () => {
+    writesFail = true;
+    return () => {
+      writesFail = false;
+    };
+  },
+});
+```
+
+`createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` et `deleteComment` sont couvertes elles aussi : les stores qui ne les implémentent pas sautent les assertions, donc ajouter l'une d'elles plus tard est vérifié automatiquement, sans toucher aux tests. Les cas de commentaires comprennent un commentaire posté en même temps que des changements de statut sur le même store.
 
 ## Utiliser votre adapter
 

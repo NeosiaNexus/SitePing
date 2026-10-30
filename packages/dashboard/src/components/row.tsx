@@ -1,6 +1,6 @@
 import type { FeedbackRecord } from "@siteping/core";
 import type { ReactElement } from "react";
-import { formatAbsolute, formatRelativeTime, pathFromUrl, toDateTimeAttr } from "../format.js";
+import { formatAbsolute, formatRelativeTime, pathFromUrl, safeScreenshotUrl, toDateTimeAttr } from "../format.js";
 import { getStatusLabel, getTypeLabel } from "../i18n/index.js";
 import { STATUS_ICONS, useInboxUi } from "./context.js";
 import { CameraIcon } from "./icons.js";
@@ -65,7 +65,7 @@ export function Row({ record, domId, focused, selected, leaving, onSelect, refCa
       <span className="spd-row-author" title={record.authorName}>
         {record.authorName}
       </span>
-      {record.screenshotUrl ? (
+      {safeScreenshotUrl(record) ? (
         <span className="spd-row-camera" role="img" aria-label={t("drawer.screenshotAlt")}>
           <CameraIcon />
         </span>

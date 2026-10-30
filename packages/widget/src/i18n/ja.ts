@@ -17,6 +17,7 @@ export const ja: Translations = {
   "panel.retry": "再試行",
   "panel.empty": "フィードバックはまだありません",
   "panel.showMore": "もっと見る",
+  "panel.notOnPage": "このページでは表示されていません",
   "panel.showLess": "折りたたむ",
   "panel.resolve": "解決",
   "panel.reopen": "再オープン",
@@ -102,6 +103,7 @@ export const ja: Translations = {
 
   // Bulk actions toolbar
   "bulk.selectAll": "すべて選択",
+  "bulk.selectFeedback": "{label}を選択",
   "bulk.selected": "{count} 件選択中",
   "bulk.resolve": "解決",
   "bulk.delete": "削除",

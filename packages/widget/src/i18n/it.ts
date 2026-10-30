@@ -19,6 +19,7 @@ export const it: Translations = {
   "panel.retry": "Riprova",
   "panel.empty": "Nessun feedback ancora",
   "panel.showMore": "Mostra di più",
+  "panel.notOnPage": "Non visibile in questa pagina",
   "panel.showLess": "Mostra meno",
   "panel.resolve": "Risolvi",
   "panel.reopen": "Riapri",
@@ -104,6 +105,7 @@ export const it: Translations = {
 
   // Bulk actions toolbar
   "bulk.selectAll": "Seleziona tutto",
+  "bulk.selectFeedback": "Seleziona {label}",
   "bulk.selected": "{count} selezionati",
   "bulk.resolve": "Risolvi",
   "bulk.delete": "Elimina",

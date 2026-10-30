@@ -73,6 +73,16 @@ import { MarkerManager } from "../../src/markers.js";
 // ---------------------------------------------------------------------------
 
 const colors = buildThemeColors();
+
+/** jsdom has no Web Animations API: a spy stands in for `animate`, removed after each test. */
+function stubAnimate() {
+  const animate = vi.fn<HTMLElement["animate"]>();
+  HTMLElement.prototype.animate = animate;
+  return animate;
+}
+afterEach(() => {
+  delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
+});
 const t = createT("fr");
 
 function createMockTooltip(): Tooltip {
@@ -368,6 +378,26 @@ describe("MarkerManager", () => {
       expect(marker.style.borderStyle).toBe("solid");
     });
 
+    it("keeps the low-confidence look across reposition ticks served from the cache (#304)", () => {
+      vi.useFakeTimers();
+      try {
+        mockState.confidence = 0.5;
+        mockState.element = null;
+        markers.render([makeFeedback()]);
+        const marker = document.querySelector<HTMLElement>("[data-feedback-id]")!;
+
+        // Tick 1 resolves and fills the anchor cache; ticks 2 and 3 are cache hits.
+        for (const event of ["resize", "scroll", "scroll"]) {
+          window.dispatchEvent(new Event(event));
+          vi.advanceTimersByTime(400);
+          expect(marker.style.borderStyle).toBe("dashed");
+          expect(marker.title).toBe("Position approximative (confiance : 50%)");
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("does not apply dashed border for resolved feedback even if low confidence", () => {
       mockState.confidence = 0.3;
       mockState.element = null;
@@ -397,11 +427,17 @@ describe("MarkerManager", () => {
 
   describe("addFeedback", () => {
     it("adds a single marker with animation", () => {
+      const animate = stubAnimate();
       markers.addFeedback(makeFeedback({ id: "fb-new" }), 1);
 
       const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-new"]')!;
       expect(marker).not.toBeNull();
-      expect(marker.style.animation).toContain("sp-marker-in");
+      // Through the Web Animations API: the page DOM has none of the shadow
+      // stylesheet's @keyframes, so a CSS animation name would never play.
+      expect(marker.style.animation).toBe("");
+      expect(animate).toHaveBeenCalledOnce();
+      expect(animate.mock.instances[0]).toBe(marker);
+      expect(animate.mock.calls[0]?.[0]).toContainEqual({ scale: 0, opacity: 0 });
     });
 
     it("increments marker count", () => {
@@ -420,11 +456,29 @@ describe("MarkerManager", () => {
   describe("highlight", () => {
     it("applies pulse animation on the marker for the given feedback id", () => {
       markers.render([makeFeedback({ id: "fb-1" })]);
+      const animate = stubAnimate();
 
       markers.highlight("fb-1");
 
       const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
-      expect(marker.style.animation).toContain("sp-pulse-ring");
+      expect(animate).toHaveBeenCalledOnce();
+      expect(animate.mock.instances[0]).toBe(marker);
+      // The glow is the theme's color: the page DOM has no --sp-accent-glow.
+      expect(animate.mock.calls[0]?.[0]).toContainEqual({ boxShadow: `0 0 0 0 ${colors.accentGlow}` });
+      expect(animate.mock.calls[0]?.[1]).toMatchObject({ duration: 700 });
+    });
+
+    it("skips the animations under prefers-reduced-motion", () => {
+      const animate = stubAnimate();
+      mockMediaQueries(["(prefers-reduced-motion: reduce)"]);
+      try {
+        markers.render([makeFeedback({ id: "fb-1" })]);
+        markers.highlight("fb-1");
+        markers.addFeedback(makeFeedback({ id: "fb-2" }), 2);
+        expect(animate).not.toHaveBeenCalled();
+      } finally {
+        Reflect.deleteProperty(window, "matchMedia");
+      }
     });
   });
 
@@ -454,6 +508,7 @@ describe("MarkerManager", () => {
       markers.render([makeFeedback({ id: "fb-1" })]);
       const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
       marker.scrollIntoView = vi.fn();
+      const animate = stubAnimate();
 
       markers.focusFeedback("fb-1");
 
@@ -462,7 +517,7 @@ describe("MarkerManager", () => {
       const container = document.getElementById("siteping-markers")!;
       const highlights = container.querySelectorAll<HTMLElement>(":scope > div:not([data-feedback-id])");
       expect(highlights.length).toBeGreaterThan(0);
-      expect(marker.style.animation).toContain("sp-pulse-ring");
+      expect(animate.mock.instances).toContain(marker);
     });
   });
 
@@ -494,8 +549,9 @@ describe("MarkerManager", () => {
 
       expect(markers.revealPin("fb-orphan")).toBe(false);
       expect(scrollIntoView).not.toHaveBeenCalled();
-      // The public focusFeedback contract is unchanged: the entry exists
-      expect(markers.focusFeedback("fb-orphan")).toBe(true);
+      // The public contract: `true` only when a visible feedback matched (#304).
+      expect(markers.focusFeedback("fb-orphan")).toBe(false);
+      expect(scrollIntoView).not.toHaveBeenCalled();
     });
 
     it("returns false while the markers are hidden with the eye toggle", () => {
@@ -512,6 +568,44 @@ describe("MarkerManager", () => {
     it("returns false for an unknown id", () => {
       markers.render([makeFeedback({ id: "fb-1" })]);
       expect(markers.revealPin("nope")).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // isLost — the panel's "Not visible on this page" (#304)
+  // -------------------------------------------------------------------------
+
+  describe("isLost", () => {
+    it("is true only for a rendered feedback with no pin placed", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      expect(markers.isLost("fb-1")).toBe(false);
+      expect(markers.isLost("unknown")).toBe(false);
+
+      mockState.returnNull = true;
+      markers.render([makeFeedback({ id: "fb-orphan" })]);
+      expect(markers.isLost("fb-orphan")).toBe(true);
+    });
+
+    it("ignores the eye toggle, which hides pins the page still holds", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      bus.emit("annotations:toggle", false);
+      expect(markers.isLost("fb-1")).toBe(false);
+    });
+
+    it("announces markers:placed on render and when a pin is lost on reposition", () => {
+      vi.useFakeTimers();
+      const placed = vi.fn();
+      bus.on("markers:placed", placed);
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      expect(placed).toHaveBeenCalledTimes(1);
+
+      mockState.element?.remove();
+      mockState.returnNull = true;
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      expect(markers.isLost("fb-1")).toBe(true);
+      expect(placed).toHaveBeenCalledTimes(2);
+      vi.useRealTimers();
     });
   });
 
@@ -710,6 +804,47 @@ describe("MarkerManager", () => {
       } finally {
         localMarkers.destroy();
         liveRegion.remove();
+      }
+    });
+
+    it("counts only the feedback with a marker on the page in the announcement (#304)", () => {
+      const liveRegion = document.createElement("div");
+      liveRegion.setAttribute("role", "status");
+      document.body.appendChild(liveRegion);
+      const localMarkers = new MarkerManager(colors, tooltip, bus, t, liveRegion);
+
+      try {
+        // The second feedback's anchor isn't on this page.
+        mockState.nullSchedule = [false, true];
+        localMarkers.render([makeFeedback({ id: "fb-a" }), makeFeedback({ id: "fb-orphan" })]);
+        expect(liveRegion.textContent).toContain("1");
+        expect(liveRegion.textContent).not.toContain("2");
+      } finally {
+        localMarkers.destroy();
+        liveRegion.remove();
+      }
+    });
+
+    it("shows an annotation unresolved at render once its anchor renders (#304)", () => {
+      vi.useFakeTimers();
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = vi.fn(); // jsdom lacks it
+      try {
+        mockState.nullSchedule = [true];
+        markers.render([makeFeedback({ id: "fb-late" })]);
+        const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-late"]')!;
+        expect(marker.style.display).toBe("none");
+        expect(markers.focusFeedback("fb-late")).toBe(false);
+
+        // The host renders the anchor; the next layout tick resolves it.
+        window.dispatchEvent(new Event("resize"));
+        vi.advanceTimersByTime(400);
+
+        expect(marker.style.display).toBe("flex");
+        expect(markers.focusFeedback("fb-late")).toBe(true);
+      } finally {
+        Element.prototype.scrollIntoView = original;
+        vi.useRealTimers();
       }
     });
 
@@ -1570,33 +1705,19 @@ describe("MarkerManager", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Highlight — animationend resets style
+  // Highlight — unknown ids
   // -------------------------------------------------------------------------
 
-  describe("highlight animationend", () => {
-    it("clears the animation style after animationend fires", () => {
-      markers.render([makeFeedback({ id: "fb-anim" })]);
-
-      markers.highlight("fb-anim");
-
-      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-anim"]')!;
-      expect(markerEl.style.animation).toContain("sp-pulse-ring");
-
-      // Dispatch animationend → handler resets animation to ""
-      markerEl.dispatchEvent(new Event("animationend"));
-
-      expect(markerEl.style.animation).toBe("");
-    });
-
+  describe("highlight unknown ids", () => {
     it("ignores feedback ids that are not in the entries list", () => {
       markers.render([makeFeedback({ id: "fb-real" })]);
+      const animate = stubAnimate();
 
       // No-op on unknown id
       expect(() => markers.highlight("fb-unknown")).not.toThrow();
 
       // The known marker is unaffected
-      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-real"]')!;
-      expect(markerEl.style.animation).toBe("");
+      expect(animate).not.toHaveBeenCalled();
     });
   });
 

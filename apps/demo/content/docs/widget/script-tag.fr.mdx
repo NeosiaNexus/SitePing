@@ -1,0 +1,98 @@
+---
+title: Balise script
+description: Installer le widget sans bundler — WordPress, Webflow, Shopify ou HTML simple — depuis un CDN, avec SRI, un accès de relecture et une CSP stricte.
+---
+
+Un site sans étape de build charge le bundle script du widget : un seul fichier, qui définit un global `SitePing`. Il parle à un [endpoint](/fr/docs/server) SitePing, donc un backend tourne toujours quelque part — seule la page se passe de bundler.
+
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/@siteping/widget@X.Y.Z/dist/index.global.js"
+  integrity="sha384-…"
+  crossorigin="anonymous"
+></script>
+<script src="/siteping-init.js"></script>
+```
+
+```js
+// siteping-init.js
+SitePing.initSiteping({
+  endpoint: "https://api.example.com/api/siteping",
+  projectName: "mon-projet",
+  forceShow: location.hostname === "staging.example.com",
+});
+```
+
+Remplacez `X.Y.Z` par la version que vous installez (`npm view @siteping/widget version`). unpkg sert le même fichier à `https://unpkg.com/@siteping/widget@X.Y.Z/dist/index.global.js`. Gardez l'initialisation dans un fichier à vous plutôt que dans un `<script>` inline : une [Content Security Policy](#content-security-policy) n'a alors besoin d'aucune exception pour elle.
+
+## Épingler la version, vérifier les octets
+
+Épinglez une version exacte et écrivez le chemin du fichier en entier : c'est l'URL que le [Subresource Integrity](https://developer.mozilla.org/fr/docs/Web/Security/Subresource_Integrity) peut verrouiller. Le hash couvre les octets exacts du fichier, il change donc à chaque version — générez-le pour la version épinglée, et à nouveau à chaque mise à jour :
+
+```bash
+curl -s https://cdn.jsdelivr.net/npm/@siteping/widget@X.Y.Z/dist/index.global.js \
+  | openssl dgst -sha384 -binary | openssl base64 -A
+```
+
+La sortie va dans `integrity="sha384-…"`, à côté de `crossorigin="anonymous"`. Une plage comme `@1` suit les nouvelles versions, qu'un hash épinglé rejetterait alors. N'utilisez le SRI que sur le chemin `/dist/index.global.js` : derrière d'autres URLs (`+esm`, `.min.js`), jsDelivr sert des fichiers qu'il construit lui-même.
+
+## Quand il s'affiche
+
+Un bundler indique au widget s'il tourne en production via `process.env.NODE_ENV`. Une balise script n'a pas de bundler, c'est donc l'hôte de la page qui en tient lieu :
+
+- sur une page locale — `localhost`, tout `*.localhost`, `127.0.0.1`, `[::1]`, ou un fichier ouvert depuis le disque — le widget s'affiche ;
+- partout ailleurs il reste masqué et appelle `onSkip("production")`, exactement comme dans un build de production.
+
+Passez `forceShow: true` là où les relecteurs doivent le voir. Un nom d'hôte de staging est le filtre le plus simple (ci-dessus). Pour un lien de relecture sur le site en ligne, retenez un paramètre d'URL pour l'onglet :
+
+```js
+// siteping-init.js — https://site-client.com/?review ouvre le widget pour cet onglet
+const reviewing = (() => {
+  try {
+    if (new URLSearchParams(location.search).has("review")) sessionStorage.setItem("siteping-review", "1");
+    return sessionStorage.getItem("siteping-review") === "1";
+  } catch {
+    return false; // stockage bloqué : pas de mode relecture
+  }
+})();
+
+SitePing.initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "mon-projet", forceShow: reviewing });
+```
+
+Ce filtre décide qui **voit** le widget, pas qui peut publier : quiconque ouvre le lien peut envoyer un feedback, les envois étant publics par conception. Pour décider personne par personne, donnez au serveur une [politique `access`](/fr/docs/server#accès-personnalisé). N'appelez pas le paramètre `siteping` — les [liens profonds](/fr/docs/widget/configuration#fonctionnalités) du widget le lisent.
+
+L'URL `/+esm` de jsDelivr est un autre build : jsDelivr le rebundle et remplace `process.env.NODE_ENV` par `"production"`, donc le widget qu'il sert a besoin de `forceShow` partout, `localhost` compris.
+
+## Le global `SitePing`
+
+| Membre | Ce qu'il fait |
+|---|---|
+| `SitePing.initSiteping(config)` | Monte le widget et renvoie son instance — la même fonction, les mêmes [options](/fr/docs/widget/configuration) et la même [instance](/fr/docs/widget#linstance) que le `initSiteping` du package |
+| `SitePing.registerLocale(code, translations)` | Ajoute ou reformule des traductions — voir [Langues](/fr/docs/widget/i18n#locales-personnalisées) |
+| `SitePing.loadLocale(code)` | Charge un dictionnaire intégré à l'avance — il est déjà dans le fichier ici, cela ne fait donc que le résoudre |
+
+Le bundle embarque tout le widget — le panneau, le moteur de capture et les neuf dictionnaires intégrés — dans un seul fichier d'environ 140 kB gzippé. Une installation bundlée charge environ 59 kB au départ, et le reste à la première utilisation.
+
+Aucun store n'est livré en global : le bundle script parle donc toujours à un endpoint.
+
+## Un backend sur une autre origine
+
+Une balise script tourne en général sur un site que l'endpoint ne sert pas. Côté serveur :
+
+- **Listez le site dans `allowedOrigins`** — des origines exactes, sans joker. Sans elles, le handler n'envoie aucun en-tête CORS, et le navigateur bloque chaque appel.
+- **Décidez de ce que les relecteurs peuvent lire.** Avec une `apiKey`, un widget sans la clé peut envoyer mais pas lister : il n'affiche ni pins ni fils (la console du navigateur dit pourquoi). Ajoutez `"GET"` à `publicEndpoints` pour le permettre : quiconque connaît l'endpoint et le nom du projet peut alors lire les feedbacks, emails des auteurs masqués. Voir [le modèle de sécurité](/fr/docs/server#le-modèle-de-sécurité-franchement).
+- **Ne mettez jamais l'`apiKey` dans la page.** Elle autorise les changements de statut et les suppressions.
+
+## Content Security Policy
+
+Le widget fonctionne sous une politique stricte — sans `'unsafe-inline'` ni `'unsafe-eval'`. En plus de ce que votre site autorise déjà, il a besoin de :
+
+| Directive | Autoriser | Pour |
+|---|---|---|
+| `script-src` | le CDN (`https://cdn.jsdelivr.net`), ou `'self'` si vous hébergez le fichier | le bundle ; votre fichier d'initialisation est couvert par `'self'` |
+| `connect-src` | l'origine de l'endpoint | chaque appel d'API |
+| `img-src` | `data:` | les captures stockées inline (le défaut sans [stockage de captures](/fr/docs/adapters/screenshot-storage)) affichées dans le panneau ; avec un stockage, son origine publique à la place |
+
+Les styles n'ont besoin de rien : le widget style son Shadow DOM par une feuille de style construite et ses autres éléments par le CSSOM, que `style-src` ne restreint pas.
+
+Avec `enableScreenshot`, le moteur de capture rend une copie de la page. Safari dessine cette copie vide sauf si `style-src` autorise `'unsafe-inline'` ; Chrome et Firefox capturent sans. Sans `data:` dans `img-src`, la vérification de démarrage du moteur journalise une violation, sans conséquence.

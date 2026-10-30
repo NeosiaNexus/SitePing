@@ -133,4 +133,25 @@ describe("optional settings", () => {
       maxListedPages,
     });
   });
+
+  it("accept undefined for every optional setting, callbacks and fetch included", () => {
+    const featureOff = process.env.TRACKER_SYNC === "off";
+    const customFetch: typeof fetch | undefined = featureOff ? undefined : fetch;
+    createIssueTrackerHooks({
+      tracker,
+      labels: featureOff ? undefined : ["feedback"],
+      redact: featureOff ? undefined : (text) => text,
+      deepLinkParam: undefined,
+      includeAuthorEmail: undefined,
+      formatIssue: undefined,
+      onIssueCreated: undefined,
+      syncStatus: featureOff ? undefined : true,
+      deletedCommentText: undefined,
+    });
+    createGitHubTracker({ repository: "acme/site", token: "token", fetch: customFetch });
+    createGitLabTracker({ project: "acme/site", token: "token", fetch: customFetch });
+    expectTypeOf<Parameters<IssueTracker["findSitepingIssues"]>[1]>().toEqualTypeOf<
+      { maxPages?: number | undefined } | undefined
+    >();
+  });
 });

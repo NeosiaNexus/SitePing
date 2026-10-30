@@ -298,6 +298,31 @@ describe("ExportButton", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:siteping-export");
   });
 
+  it("starts the CSV with a UTF-8 byte-order mark so Excel decodes accents, and the JSON without one", async () => {
+    const button = new ExportButton(
+      buildThemeColors(),
+      () => [makeFeedback({ message: "Le bouton « Envoyer » est décalé" })],
+      createT("en"),
+    );
+    document.body.appendChild(button.element);
+    const trigger = button.element.querySelector<HTMLButtonElement>(".sp-export-btn")!;
+    const bytesOf = async (call: number): Promise<number[]> => {
+      const blob = vi.mocked(URL.createObjectURL).mock.calls[call]![0] as Blob;
+      // `Blob.text()` decodes as UTF-8 and drops a leading BOM: read the bytes.
+      return [...new Uint8Array(await blob.arrayBuffer())];
+    };
+
+    trigger.click();
+    button.element.querySelectorAll<HTMLButtonElement>(".sp-export-option")[0]!.click();
+    trigger.click();
+    button.element.querySelectorAll<HTMLButtonElement>(".sp-export-option")[1]!.click();
+
+    const csv = await bytesOf(0);
+    expect(csv.slice(0, 3)).toEqual([0xef, 0xbb, 0xbf]);
+    expect(new TextDecoder().decode(new Uint8Array(csv))).toContain("Le bouton « Envoyer » est décalé");
+    expect((await bytesOf(1))[0]).toBe("[".charCodeAt(0));
+  });
+
   it("does not download when there are no feedbacks", () => {
     const button = new ExportButton(buildThemeColors(), () => [], createT("en"));
     document.body.appendChild(button.element);

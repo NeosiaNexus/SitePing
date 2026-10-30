@@ -35,6 +35,8 @@ Runtime exports (ESM and CJS):
 - `isStoreValueTooLong: function`
 - `isUnreachableOffset: function`
 - `toFeedbackUpdate: function`
+- `toStorableText: function`
+- `toStorableValue: function`
 
 Types:
 
@@ -149,6 +151,11 @@ export interface CommentCreateInput {
     clientId: string;
 }
 
+export interface CommentCreateOutcome {
+    comment: CommentRecord;
+    created: boolean;
+}
+
 export interface CommentRecord {
     authorEmail: string;
     authorName: string;
@@ -160,7 +167,9 @@ export interface CommentRecord {
     id: string;
 }
 
-export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">> & {
+    permissions?: CommentPermissions | undefined;
+}>;
 
 export interface ConsoleDiagnosticEntry {
     level: ConsoleDiagnosticLevel;
@@ -214,6 +223,10 @@ export interface FeedbackCreateOutcome {
     feedback: FeedbackRecord;
 }
 
+export interface FeedbackListPermissions {
+    canDeleteAll: boolean;
+}
+
 export interface FeedbackPage {
     feedbacks: FeedbackRecord[];
     total: number;
@@ -234,6 +247,13 @@ export interface FeedbackPayload {
     urlPattern?: null | string | undefined;
     userAgent: string;
     viewport: string;
+}
+
+export interface FeedbackPermissions {
+    canChangeStatus: boolean;
+    canComment: boolean;
+    canDelete: boolean;
+    canDeleteComment: boolean;
 }
 
 export interface FeedbackQuery {
@@ -280,6 +300,7 @@ export interface FeedbackResponseList {
     capabilities?: SitepingCapabilities | undefined;
     feedbacks: FeedbackResponse[];
     permissions?: FeedbackListPermissions | undefined;
+    protocol?: number | undefined;
     total: number;
 }
 
@@ -353,8 +374,14 @@ export type Serialized<T> = {
     [K in keyof T]: T[K] extends Date ? string : T[K] extends Date | null ? null | string : T[K] extends (infer U)[] ? Serialized<U>[] : T[K];
 };
 
+export interface SitepingCapabilities {
+    comments: boolean;
+    deleteComments?: boolean | undefined;
+}
+
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -415,7 +442,7 @@ export function clampPagination(query: Pick<FeedbackQuery, "limit" | "page">): P
 
 export function createCollectionStore(backend: CollectionStoreBackend & {
     comments: true;
-}): CollectionStore & Required<Pick<SitepingStore, "addComment" | "createFeedbackIfAbsent" | "deleteComment">>;
+}): CollectionStore & Required<Pick<SitepingStore, "addComment" | "addCommentIfAbsent" | "createFeedbackIfAbsent" | "deleteComment">>;
 
 export function createCollectionStore(backend: CollectionStoreBackend): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent">>;
 
@@ -436,6 +463,10 @@ export function isStoreValueTooLong(error: unknown): error is CodedError<"STORE_
 export function isUnreachableOffset(skip: number): boolean;
 
 export function toFeedbackUpdate(status: FeedbackStatus, closedAt?: Date): FeedbackUpdateInput;
+
+export function toStorableText(text: string): string;
+
+export function toStorableValue<Value>(value: Value): Value;
 ```
 
 Referenced, not exported:
@@ -445,25 +476,13 @@ type CodedError<C extends string = string> = {
     code: C;
 };
 
-interface FeedbackListPermissions {
-    canDeleteAll: boolean;
-}
-
-interface FeedbackPermissions {
-    canChangeStatus: boolean;
-    canComment: boolean;
+interface CommentPermissions {
     canDelete: boolean;
-    canDeleteComment: boolean;
 }
 
 type Prettify<T> = {
     [K in keyof T]: T[K];
 } & {};
-
-interface SitepingCapabilities {
-    comments: boolean;
-    deleteComments?: boolean | undefined;
-}
 ```
 
 ## @siteping/adapter-kit/testing
@@ -478,6 +497,7 @@ Types:
 export interface StoreConformanceOptions {
     caseInsensitiveSearch?: boolean | undefined;
     duplicateBehavior?: "return" | "throw" | undefined;
+    failWrites?: ((store: SitepingStore) => () => void) | undefined;
 }
 
 export function testSitepingStore(factory: () => Promise<SitepingStore> | SitepingStore, options?: StoreConformanceOptions): void;

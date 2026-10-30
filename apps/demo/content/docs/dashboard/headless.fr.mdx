@@ -29,9 +29,10 @@ Les options forment une union sur les trois modes de source : fournissez **exact
 | `pageSize` | `number` | `50` | Borné entre 1 et 100 |
 | `onStatusChange` | `(feedback, previousStatus) => void` | — | Après confirmation du serveur |
 | `onDelete` | `(feedback) => void` | — | Après confirmation du serveur |
-| `onError` | `(error) => void` | — | Chaque chargement ou mutation en échec |
+| `onError` | `(error) => void` | — | Chaque chargement ou mutation en échec. Les sources intégrées lèvent des erreurs que `isSitepingError` reconnaît, typées par `code` ; celles d'une source personnalisée arrivent telles quelles |
 | `author` | `{ name, email? }` | — | Qui poste les réponses depuis cette inbox — voir [Fils de discussion](#fils-de-discussion). Sans lui, les fils sont en lecture seule |
 | `readOnly` | `boolean` | `false` | Aucun changement de statut ni aucune suppression, de feedback comme de réponse — voir [Permissions](#permissions) |
+| `siteUrl` | `string` ou `Record<projectName, string>` | l'adresse de l'inbox | Base des URL de feedback relatives (le widget enregistre des chemins), quand l'inbox tourne sur une autre origine que le site — voir [Des pages sur une autre origine](/fr/docs/dashboard#des-pages-sur-une-autre-origine). Dans votre propre interface, construisez les liens avec `recordPageUrl(record, { siteUrl, deepLinkParam })`, qui renvoie `null` pour une URL qu'il n'est pas sûr de lier |
 
 Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOptions`, `InboxCustomSourceOptions`, le socle commun `InboxSharedOptions` et l'union `UseSitepingInboxOptions` — pour qu'un composant d'enrobage n'accepte que le mode qu'il gère. En JavaScript pur, le comportement d'avant demeure : aucune source du tout lève toujours au rendu.
 
@@ -39,7 +40,7 @@ Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOpt
 
 **Données** — `items` (toutes les pages chargées), `total` (`null` jusqu'à l'arrivée de la première page), `counts` (totaux par statut, au mieux), `loading`, `loadingMore`, `error`, `hasMore`, `loadMore()`, `refresh()`.
 
-**Filtres** — `project`/`setProject`, `status`/`setStatus` (démarre sur `"open"`), `type`/`setType`, `search`/`setSearch`. La recherche met l'état à jour instantanément et temporise le rechargement de 250 ms ; les requêtes sont nettoyées et plafonnées à 200 caractères.
+**Filtres** — `project`/`setProject`, `status`/`setStatusFilter` (démarre sur `"open"`), `type`/`setTypeFilter`, `search`/`setSearch`. La recherche met l'état à jour instantanément et temporise le rechargement de 250 ms ; les requêtes sont nettoyées et plafonnées à 200 caractères.
 
 **Focus et tiroir** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (le feedback ouvert — il reste disponible même si un filtre retire sa ligne), `openFeedback(id)`, `closeFeedback()`.
 
@@ -47,7 +48,7 @@ Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOpt
 
 **Fil de discussion** — `canComment`, `canDeleteComment`, `addComment(id, body, clientId?)`, `deleteComment(id, commentId)` ; voir [plus bas](#fils-de-discussion).
 
-**Permissions** — `permissionsOf(record)` ; voir [plus bas](#permissions).
+**Permissions** — `permissionsOf(record)`, `commentPermissionsOf(record, comment)` ; voir [plus bas](#permissions).
 
 ## `view` — l'algèbre des drapeaux en moins
 
@@ -127,7 +128,9 @@ La réponse part au nom d'`author` avec le rôle `team`, que le serveur ne garde
 const { canChangeStatus, canDelete } = inbox.permissionsOf(item);
 ```
 
-`changeStatus`, `undo`, `deleteFeedback`, `addComment` et `deleteComment` ne font rien sur un enregistrement qui les refuse : un appel égaré n'affiche jamais un changement optimiste que le serveur annulerait, ni n'envoie une requête qu'il refuserait. L'inbox ne fait que masquer : c'est le serveur qui décide de ce qu'il accepte.
+`commentPermissionsOf(record, comment)` fait de même pour une réponse — `{ canDelete }` : ce que `canDeleteComment` permet, moins ce que les `permissions` de la réponse refusent, ou le `canDeleteComment` de l'enregistrement pour une réponse qui n'en porte pas. Un serveur qui ne laisse les auteurs supprimer que leurs propres réponses l'accorde réponse par réponse.
+
+`changeStatus`, `undo`, `deleteFeedback`, `addComment` et `deleteComment` ne font rien sur un enregistrement — ou une réponse — qui les refuse : un appel égaré n'affiche jamais un changement optimiste que le serveur annulerait, ni n'envoie une requête qu'il refuserait. L'inbox ne fait que masquer : c'est le serveur qui décide de ce qu'il accepte.
 
 ## Pagination
 
