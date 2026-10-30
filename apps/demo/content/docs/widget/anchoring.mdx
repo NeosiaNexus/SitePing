@@ -1,17 +1,48 @@
 ---
 title: How anchoring works
-description: Why annotations survive deploys — selectors, fallbacks, and honest limits.
+description: Why annotations survive deploys — what the widget records, how it finds the element again, and honest limits.
 ---
 
-When a client draws a rectangle, SitePing doesn't store screen coordinates — those break on the first layout change. It anchors the annotation to the **DOM element** under it, with layered fallbacks:
+When a client draws a rectangle, SitePing doesn't store screen coordinates — those break on the first layout change. It anchors the annotation to the **DOM element** under it, records several independent ways to recognize that element, and on every later visit scores the elements of the page against all of them.
 
-1. **A minimal CSS selector** for the element, computed at capture time.
-2. **An XPath** to the same element, as the first fallback.
-3. **Text context** — a snippet of the element's text plus what surrounds it — as the last resort when both selectors go stale.
+## What is recorded
 
-The rectangle itself is stored **as percentages of the anchor element's bounding box**, not of the viewport. If the element moves, grows, or reflows, the annotation moves with it.
+**The element.** Starting from the element under the rectangle's center, the widget takes the closest ancestor with a [`data-feedback-anchor`](#semantic-anchors-data-feedback-anchor) attribute that contains the whole rectangle. Without one, it takes the smallest ancestor that contains the rectangle, and `<body>` as a last resort. Both walks climb out of open shadow roots.
 
-Alongside the anchor, each annotation records the capture context (viewport size, scroll position, device pixel ratio) so positions can be interpreted faithfully later.
+**The signals.** For that element, the annotation stores:
+
+- **A CSS selector**, as short as it can be while staying unique. It prefers `data-testid`, `data-id`, `role` and `aria-label`, and skips CSS-in-JS hashed classes and framework-generated ids (Radix's `radix-…`, React's `:r1:`).
+- **An XPath** to the same element.
+- **Its text**: the first 120 characters, plus up to 32 characters of text on each side and the text of its immediate neighbours.
+- **A structural fingerprint**: how many child elements it has, its position among same-tag siblings, and a hash of stable attributes (`role`, `aria-label`, `type`, `name`, `href`, `src`, `data-testid`, `data-id`).
+- **Its tag, its `id`** (up to 191 characters; a longer one is dropped), and the `data-feedback-anchor` key of the closest ancestor that has one.
+
+Text masked with `data-siteping-ignore="true"` is never recorded, neither from the element nor from its neighbours ([privacy masking](/docs/widget/screenshots#privacy-masking)).
+
+**The rectangle** is stored **as percentages of the element's bounding box**, not of the viewport. If the element moves, grows, or reflows, the annotation moves with it. Each annotation also records the capture context (viewport size, scroll position, device pixel ratio) so positions can be interpreted faithfully later.
+
+## How a later visit finds the element
+
+Resolution is a ranking, not a cascade where the first selector that matches wins:
+
+1. **Candidates** come from every strategy at once: the `data-feedback-anchor` key, the `id`, the CSS selector and the XPath, up to 16 matches each.
+2. **Each candidate is verified** against every signal the annotation stored — its text, its fingerprint, the text around it, its neighbours. A signal that wasn't stored doesn't count for or against.
+3. **The best one wins**, ranked by *strategy prior × verification × visibility*. The prior is 1.0 for the key and the `id`, 0.95 for the CSS selector, 0.9 for the XPath. Visibility ranks a hidden element — the mobile twin of a responsive layout, a collapsed section — far below a visible one without ruling it out: when only hidden candidates exist, the best of them still resolves. When two candidates score within 0.05 and one contains the other, the inner one wins.
+4. **A scan** runs only when no selector candidate can beat what it could reach: it sweeps elements with the recorded tag and scores the closest ones, with a prior of 0.85. Scans are budgeted per pass, so many drifted anchors on one page never freeze it; whatever a pass leaves out, the next one resolves.
+
+The winner's score becomes the marker's **confidence**: a fully verified match keeps its strategy's prior, a weakly verified one less. Below 70 %, an open or in-progress marker is drawn **dashed and faded**, and its tooltip says "Approximate position (confidence: N%)" — the feedback is probably about that spot, but check. When nothing verifies, the annotation is orphaned and its marker hidden (see [below](#what-this-survives--and-what-it-doesnt)).
+
+## Semantic anchors: `data-feedback-anchor`
+
+The most durable anchor is one you name. Put the attribute on the root of a page section:
+
+```html
+<section data-feedback-anchor="pricing-plans">…</section>
+```
+
+- **Capture** checks it first: an annotation drawn inside that section anchors to it, as long as the section contains the whole rectangle, and the rectangle is stored relative to the section rather than to `<main>` or `<body>`, so it stays put across viewport widths.
+- **Resolution** looks the key up first, with the top prior (1.0, like an `id`). The tag isn't checked, so you can change the wrapper element — a `<section>` that becomes a `<div>` — and keep the key.
+- **Keep keys short, stable and unique on the page.** Duplicate keys only add candidates for the scoring to choose from. The server accepts up to **200 characters**: a longer key makes it refuse the whole submission with a `400`.
 
 ## What this survives — and what it doesn't
 
@@ -19,7 +50,7 @@ Alongside the anchor, each annotation records the capture context (viewport size
 
 **Degrades:** deleting the element (nothing to anchor to), heavy rewrites that change tag, text, and position at once, and content inside **closed** shadow roots, which stays out of reach by design ([below](#web-components-and-shadow-dom)).
 
-When an anchor can't be resolved on a later visit, its marker stays hidden rather than shown somewhere wrong — a missing marker is confusing, a lying one is worse. Markers re-check on scroll, resize, and page DOM changes, so an element that renders late (lazy-loaded or client-side content) gets its marker on a later check. Each annotation of a feedback has its own marker, so one missing anchor never hides the others. The feedback itself (message, screenshot, metadata) is never lost; it's always visible in the panel and the dashboard.
+When no element verifies on a later visit, the marker stays hidden rather than shown somewhere wrong — a missing marker is confusing, a lying one is worse. A match the widget is unsure of is shown, dashed, as [approximate](#how-a-later-visit-finds-the-element). Markers re-check on scroll, resize, and page DOM changes, so an element that renders late (lazy-loaded or client-side content) gets its marker on a later check. Each annotation of a feedback has its own marker, so one missing anchor never hides the others. The feedback itself (message, screenshot, metadata) is never lost; it's always visible in the panel and the dashboard.
 
 ## Web components and Shadow DOM
 
@@ -34,7 +65,7 @@ That's also the notation Puppeteer accepts for piercing shadow roots, so the sel
 On a later visit, resolution follows that host chain back down: it looks for the element only inside the shadow roots the recorded hosts lead to, never by walking the whole page — and pages without web components pay nothing extra. Two consequences:
 
 - The hosts must still match. Renaming or removing a host element orphans the annotation (the marker hides; the feedback stays in the panel and the dashboard).
-- The XPath fallback doesn't apply inside a shadow tree (XPath can't enter one); the text and structure checks still do.
+- The XPath doesn't apply inside a shadow tree (XPath can't enter one); the anchor key, the CSS selector, and the text and structure checks still do.
 
 **Closed** shadow roots are opaque by design — the page itself can't look inside them — so an annotation drawn over one anchors to its host element: the whole component.
 
@@ -45,6 +76,7 @@ Two timing caveats:
 
 ## Helping the anchors help you
 
+- Put a [`data-feedback-anchor`](#semantic-anchors-data-feedback-anchor) on the root of each page section: it is the anchor that survives redesigns best.
 - Stable `id` attributes on key containers make the CSS selector short and durable.
 - Give web-component hosts a stable `id` too: each one starts a segment of every selector inside it.
 - Avoid annotating ephemeral UI (toasts, skeletons) — the element is gone on the next visit by design.

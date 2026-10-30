@@ -1,17 +1,48 @@
 ---
 title: Comment fonctionne l'ancrage
-description: Pourquoi les annotations survivent aux déploiements — sélecteurs, replis et limites assumées.
+description: Pourquoi les annotations survivent aux déploiements — ce que le widget enregistre, comment il retrouve l'élément, et les limites assumées.
 ---
 
-Quand un client dessine un rectangle, SitePing ne stocke pas des coordonnées à l'écran — celles-ci cassent au premier changement de mise en page. Il ancre l'annotation à l'**élément du DOM** situé dessous, avec des replis en couches :
+Quand un client dessine un rectangle, SitePing ne stocke pas des coordonnées à l'écran — celles-ci cassent au premier changement de mise en page. Il ancre l'annotation à l'**élément du DOM** situé dessous, enregistre plusieurs façons indépendantes de reconnaître cet élément, et à chaque visite suivante évalue les éléments de la page au regard de toutes.
 
-1. **Un sélecteur CSS minimal** pour l'élément, calculé au moment de la capture.
-2. **Un XPath** vers le même élément, comme premier repli.
-3. **Le contexte textuel** — un extrait du texte de l'élément et de ce qui l'entoure — en dernier recours, quand les deux sélecteurs sont périmés.
+## Ce qui est enregistré
 
-Le rectangle lui-même est stocké **en pourcentages de la boîte englobante de l'élément d'ancrage**, pas de la fenêtre. Si l'élément se déplace, grandit ou se réagence, l'annotation le suit.
+**L'élément.** En partant de l'élément situé au centre du rectangle, le widget prend l'ancêtre le plus proche portant un attribut [`data-feedback-anchor`](#ancres-sémantiques--data-feedback-anchor) qui contient tout le rectangle. À défaut, il prend le plus petit ancêtre qui contient le rectangle, et `<body>` en dernier recours. Les deux remontées sortent des shadow roots ouverts.
 
-À côté de l'ancre, chaque annotation enregistre le contexte de capture (taille de la fenêtre, position de défilement, ratio de pixels) pour que les positions puissent être interprétées fidèlement plus tard.
+**Les signaux.** Pour cet élément, l'annotation stocke :
+
+- **Un sélecteur CSS**, aussi court que possible tout en restant unique. Il privilégie `data-testid`, `data-id`, `role` et `aria-label`, et ignore les classes hachées des solutions CSS-in-JS et les id générés par les frameworks (`radix-…` de Radix, `:r1:` de React).
+- **Un XPath** vers le même élément.
+- **Son texte** : les 120 premiers caractères, jusqu'à 32 caractères de texte de chaque côté, et le texte de ses voisins immédiats.
+- **Une empreinte structurelle** : son nombre d'éléments enfants, sa position parmi les frères de même balise, et un hachage de ses attributs stables (`role`, `aria-label`, `type`, `name`, `href`, `src`, `data-testid`, `data-id`).
+- **Sa balise, son `id`** (jusqu'à 191 caractères ; au-delà, il est ignoré) et la clé `data-feedback-anchor` de l'ancêtre le plus proche qui en porte une.
+
+Le texte masqué par `data-siteping-ignore="true"` n'est jamais enregistré, ni celui de l'élément ni celui de ses voisins ([masquage des données sensibles](/fr/docs/widget/screenshots#masquer-les-données-sensibles)).
+
+**Le rectangle** est stocké **en pourcentages de la boîte englobante de l'élément**, pas de la fenêtre. Si l'élément se déplace, grandit ou se réagence, l'annotation le suit. Chaque annotation enregistre aussi le contexte de capture (taille de la fenêtre, position de défilement, ratio de pixels) pour que les positions puissent être interprétées fidèlement plus tard.
+
+## Comment une visite suivante retrouve l'élément
+
+La résolution est un classement, pas une cascade où le premier sélecteur qui correspond l'emporte :
+
+1. **Les candidats** viennent de toutes les stratégies à la fois : la clé `data-feedback-anchor`, l'`id`, le sélecteur CSS et le XPath, jusqu'à 16 correspondances chacun.
+2. **Chaque candidat est vérifié** au regard de tous les signaux enregistrés — son texte, son empreinte, le texte qui l'entoure, ses voisins. Un signal qui n'a pas été enregistré ne compte ni pour ni contre.
+3. **Le meilleur l'emporte**, classé selon *a priori de la stratégie × vérification × visibilité*. L'a priori vaut 1,0 pour la clé et l'`id`, 0,95 pour le sélecteur CSS, 0,9 pour le XPath. La visibilité classe un élément masqué — le jumeau mobile d'une mise en page responsive, une section repliée — loin derrière un élément visible, sans l'écarter : quand il n'existe que des candidats masqués, le meilleur d'entre eux est tout de même retenu. Quand deux candidats sont à moins de 0,05 l'un de l'autre et que l'un contient l'autre, c'est l'élément intérieur qui l'emporte.
+4. **Un balayage** n'a lieu que si aucun candidat issu d'un sélecteur ne peut battre ce qu'il atteindrait : il parcourt les éléments de la balise enregistrée et évalue les plus proches, avec un a priori de 0,85. Les balayages sont limités par passe : une page aux nombreuses ancres dérivées ne se fige jamais, et ce qu'une passe laisse de côté, la suivante le résout.
+
+Le score du gagnant devient la **confiance** du marqueur : une correspondance pleinement vérifiée garde l'a priori de sa stratégie, une correspondance faiblement vérifiée moins. Sous 70 %, le marqueur d'un feedback ouvert ou en cours est dessiné **en pointillés et estompé**, et son infobulle indique « Position approximative (confiance : N %) » — le feedback porte probablement sur cet endroit, mais vérifiez. Quand rien ne se vérifie, l'annotation est orpheline et son marqueur masqué ([voir plus bas](#ce-que-ça-encaisse--et-ce-que-ça-nencaisse-pas)).
+
+## Ancres sémantiques : `data-feedback-anchor`
+
+L'ancre la plus durable est celle que vous nommez. Placez l'attribut à la racine d'une section de page :
+
+```html
+<section data-feedback-anchor="formules-tarifaires">…</section>
+```
+
+- **La capture** le regarde en premier : une annotation dessinée dans cette section s'y ancre, à condition que la section contienne tout le rectangle, et le rectangle est stocké par rapport à la section plutôt qu'à `<main>` ou `<body>` : il reste en place d'une largeur de fenêtre à l'autre.
+- **La résolution** cherche la clé en premier, avec l'a priori le plus élevé (1,0, comme un `id`). La balise n'est pas vérifiée : vous pouvez changer l'élément conteneur — une `<section>` qui devient une `<div>` — et garder la clé.
+- **Gardez des clés courtes, stables et uniques sur la page.** Des clés en double ne font qu'ajouter des candidats au classement. Le serveur accepte jusqu'à **200 caractères** : une clé plus longue lui fait refuser tout l'envoi avec un `400`.
 
 ## Ce que ça encaisse — et ce que ça n'encaisse pas
 
@@ -19,7 +50,7 @@ Le rectangle lui-même est stocké **en pourcentages de la boîte englobante de 
 
 **Se dégrade :** la suppression de l'élément (plus rien à quoi s'ancrer), les réécritures lourdes qui changent d'un coup la balise, le texte et la position, et le contenu des shadow roots **fermés**, hors d'atteinte par conception ([voir plus bas](#web-components-et-shadow-dom)).
 
-Quand une ancre ne peut pas être résolue lors d'une visite ultérieure, son marqueur reste masqué plutôt qu'affiché au mauvais endroit — un marqueur manquant est déroutant, un marqueur qui ment est pire. Les marqueurs se revérifient au défilement, au redimensionnement et aux changements du DOM de la page : un élément rendu tardivement (contenu chargé à la demande ou rendu côté client) obtient son marqueur lors d'une vérification suivante. Chaque annotation d'un feedback a son propre marqueur, si bien qu'une ancre manquante ne masque jamais les autres. Le feedback lui-même (message, capture, métadonnées) n'est jamais perdu : il reste visible dans le panneau et dans le dashboard.
+Quand aucun élément ne se vérifie lors d'une visite ultérieure, le marqueur reste masqué plutôt qu'affiché au mauvais endroit — un marqueur manquant est déroutant, un marqueur qui ment est pire. Une correspondance dont le widget n'est pas sûr s'affiche, en pointillés, comme [approximative](#comment-une-visite-suivante-retrouve-lélément). Les marqueurs se revérifient au défilement, au redimensionnement et aux changements du DOM de la page : un élément rendu tardivement (contenu chargé à la demande ou rendu côté client) obtient son marqueur lors d'une vérification suivante. Chaque annotation d'un feedback a son propre marqueur, si bien qu'une ancre manquante ne masque jamais les autres. Le feedback lui-même (message, capture, métadonnées) n'est jamais perdu : il reste visible dans le panneau et dans le dashboard.
 
 ## Web components et Shadow DOM
 
@@ -34,7 +65,7 @@ C'est aussi la notation qu'accepte Puppeteer pour traverser les shadow roots : l
 Lors d'une visite ultérieure, la résolution redescend cette chaîne d'hôtes : elle ne cherche l'élément que dans les shadow roots auxquels mènent les hôtes enregistrés, jamais en parcourant toute la page — et les pages sans web components ne paient rien de plus. Deux conséquences :
 
 - Les hôtes doivent toujours correspondre. Renommer ou supprimer un élément hôte rend l'annotation orpheline (le marqueur est masqué ; le feedback reste dans le panneau et dans le dashboard).
-- Le repli XPath ne s'applique pas dans un shadow tree (XPath ne peut pas y entrer) ; les vérifications de texte et de structure, si.
+- Le XPath ne s'applique pas dans un shadow tree (XPath ne peut pas y entrer) ; la clé d'ancrage, le sélecteur CSS et les vérifications de texte et de structure, si.
 
 Les shadow roots **fermés** sont opaques par conception — la page elle-même ne peut pas regarder à l'intérieur — donc une annotation dessinée dessus s'ancre à son élément hôte : le composant entier.
 
@@ -45,6 +76,7 @@ Deux réserves de timing :
 
 ## Aider les ancres à vous aider
 
+- Placez un [`data-feedback-anchor`](#ancres-sémantiques--data-feedback-anchor) à la racine de chaque section de page : c'est l'ancre qui survit le mieux aux refontes.
 - Des attributs `id` stables sur les conteneurs importants rendent le sélecteur CSS court et durable.
 - Donnez aussi un `id` stable aux hôtes de web components : chacun ouvre un segment de tous les sélecteurs à l'intérieur.
 - Évitez d'annoter des éléments d'interface éphémères (toasts, squelettes de chargement) — par construction, l'élément aura disparu à la visite suivante.

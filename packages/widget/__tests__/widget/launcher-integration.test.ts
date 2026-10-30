@@ -612,6 +612,47 @@ describe("launcher — annotation:complete integration", () => {
 
       instance.destroy();
     });
+
+    it("opens the matched feedback's detail view, where its thread is (#381)", async () => {
+      // The launcher imports the panel lazily — the same module instance.
+      const { Panel } = await import("../../src/panel.js");
+      const open = vi.spyOn(Panel.prototype, "open").mockResolvedValue();
+      const show = vi.spyOn(Panel.prototype, "showFeedback").mockImplementation(() => {});
+      mockGetFeedbacks.mockResolvedValueOnce({ feedbacks: [makeFeedbackResponse({ id: "fb-deep-5" })], total: 1 });
+      mockMarkersFocusFeedback.mockReturnValueOnce(true);
+      window.history.replaceState(null, "", "/?siteping=fb-deep-5");
+
+      const instance = launch(defaultConfig({ deepLink: true }));
+
+      try {
+        await vi.waitFor(() => expect(show).toHaveBeenCalledWith("fb-deep-5"));
+        expect(open).toHaveBeenCalledOnce();
+        expect(open.mock.invocationCallOrder[0]).toBeLessThan(show.mock.invocationCallOrder[0] ?? 0);
+      } finally {
+        instance.destroy();
+        open.mockRestore();
+        show.mockRestore();
+      }
+    });
+
+    it("leaves the panel closed when the deep link matches no visible feedback", async () => {
+      const { Panel } = await import("../../src/panel.js");
+      const open = vi.spyOn(Panel.prototype, "open").mockResolvedValue();
+      mockGetFeedbacks.mockResolvedValueOnce({ feedbacks: [makeFeedbackResponse({ id: "fb-deep-6" })], total: 1 });
+      mockMarkersFocusFeedback.mockReturnValueOnce(false);
+      window.history.replaceState(null, "", "/?siteping=elsewhere");
+
+      const instance = launch(defaultConfig({ deepLink: true }));
+
+      try {
+        await vi.waitFor(() => expect(mockMarkersFocusFeedback).toHaveBeenCalledWith("elsewhere"));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(open).not.toHaveBeenCalled();
+      } finally {
+        instance.destroy();
+        open.mockRestore();
+      }
+    });
   });
 
   // -------------------------------------------------------------------------

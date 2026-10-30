@@ -103,6 +103,8 @@ export interface Translations {
 
   // Bulk actions toolbar
   "bulk.selectAll": string;
+  /** A card's selection checkbox; `{label}` is the card's accessible name. */
+  "bulk.selectFeedback": string;
   "bulk.selected": string;
   "bulk.resolve": string;
   "bulk.delete": string;

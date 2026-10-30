@@ -1,7 +1,7 @@
 import { type FeedbackStatus, intlLocale } from "@siteping/core";
 import type { CSSProperties, ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useInsertionEffect, useMemo, useRef, useState } from "react";
-import { buildDeepLink } from "../format.js";
+import { recordPageUrl } from "../format.js";
 import { createT, getStatusLabel, loadLocale, tWithParams } from "../i18n/index.js";
 import { ensureStyles } from "../inject-styles.js";
 import { normalizeAccent, resolveInitialTheme, watchSystemTheme } from "../theme.js";
@@ -46,6 +46,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
     className,
     deepLinkParam = "siteping",
     emptyState,
+    siteUrl,
   } = props;
 
   // ----- i18n: English renders immediately; other locales upgrade when their chunk lands
@@ -280,7 +281,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           if (state.openedId === actionId) {
             // Drawer already open for this feedback → jump to it on the page.
             const record = state.items.find((item) => item.id === actionId) ?? state.opened;
-            const link = record ? buildDeepLink(record, deepLinkParam) : null;
+            const link = record ? recordPageUrl(record, { siteUrl, deepLinkParam }) : null;
             if (link) window.open(link, "_blank", "noopener");
           } else {
             state.openFeedback(actionId);
@@ -314,26 +315,26 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           setShortcutsOpen((open) => !open);
           break;
         case "1":
-          state.setStatus("all");
+          state.setStatusFilter("all");
           break;
         case "2":
-          state.setStatus("open");
+          state.setStatusFilter("open");
           break;
         case "3":
-          state.setStatus("in_progress");
+          state.setStatusFilter("in_progress");
           break;
         case "4":
-          state.setStatus("resolved");
+          state.setStatusFilter("resolved");
           break;
         case "5":
-          state.setStatus("wont_fix");
+          state.setStatusFilter("wont_fix");
           break;
         default:
           return;
       }
       event.preventDefault();
     },
-    [state, shortcutsOpen, toggleStatus, undo, deepLinkParam, wide, focusList],
+    [state, shortcutsOpen, toggleStatus, undo, deepLinkParam, siteUrl, wide, focusList],
   );
 
   // ----- render
@@ -403,6 +404,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
               record={state.opened}
               overlay={!wide}
               deepLinkParam={deepLinkParam}
+              siteUrl={siteUrl}
               onClose={state.closeFeedback}
               onChangeStatus={(id, status) => {
                 void changeStatus(id, status);
@@ -411,6 +413,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
                 void deleteFeedback(id);
               }}
               permissions={state.permissionsOf(state.opened)}
+              commentPermissionsOf={state.commentPermissionsOf}
               // Failures show in the thread itself, next to the kept draft.
               onAddComment={state.addComment}
               onDeleteComment={state.deleteComment}

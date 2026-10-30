@@ -1,7 +1,7 @@
 import type { AnnotationRecord, FeedbackRecord, ScreenshotRegion } from "@siteping/core";
 import type { CSSProperties, ReactElement } from "react";
 import { useRef, useState } from "react";
-import { pathFromUrl } from "../format.js";
+import { pathFromUrl, safeScreenshotUrl } from "../format.js";
 import { useInboxUi } from "./context.js";
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
@@ -123,6 +123,7 @@ export function EvidenceCard({ record }: EvidenceCardProps): ReactElement {
   const region = record.screenshotRegion;
   const primary = record.annotations[0];
   const extras = record.annotations.slice(1);
+  const screenshotUrl = safeScreenshotUrl(record);
 
   const captionParts: string[] = [pathFromUrl(record.url), record.viewport];
   if (primary) captionParts.push(`@${primary.devicePixelRatio}x`);
@@ -132,7 +133,7 @@ export function EvidenceCard({ record }: EvidenceCardProps): ReactElement {
 
   return (
     <div className="spd-evidence">
-      {record.screenshotUrl ? (
+      {screenshotUrl ? (
         <>
           <div className={`spd-evidence-stage${zoomed ? " spd-evidence-zoomed" : ""}`}>
             <button
@@ -152,8 +153,10 @@ export function EvidenceCard({ record }: EvidenceCardProps): ReactElement {
             >
               <img
                 className="spd-evidence-img"
-                src={record.screenshotUrl}
+                src={screenshotUrl}
                 alt={t("drawer.screenshotAlt")}
+                // Like the widget's panel: the storage host never learns which page views which feedback.
+                referrerPolicy="no-referrer"
                 onLoad={(event) => {
                   const img = event.currentTarget;
                   if (img.naturalWidth > 0 && img.naturalHeight > 0) {

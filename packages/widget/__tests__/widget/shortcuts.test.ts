@@ -285,6 +285,21 @@ describe("KeyboardShortcuts", () => {
       removeSpy.mockRestore();
     });
 
+    it("keeps the help overlay inert while hidden, and hands focus back on close (#394)", () => {
+      shadow.append(shortcuts.helpOverlay, shortcuts.hintButton);
+      shortcuts.enable(shadow);
+      expect(shortcuts.helpOverlay.hasAttribute("inert")).toBe(true);
+
+      shortcuts.hintButton.focus();
+      shortcuts.toggleHelp();
+      expect(shortcuts.helpOverlay.hasAttribute("inert")).toBe(false);
+      expect(shadow.activeElement).toBe(shortcuts.helpOverlay.querySelector(".sp-shortcuts-close"));
+
+      shortcuts.toggleHelp();
+      expect(shortcuts.helpOverlay.hasAttribute("inert")).toBe(true);
+      expect(shadow.activeElement).toBe(shortcuts.hintButton);
+    });
+
     it("disable() hides the help overlay if it was visible", () => {
       shortcuts.enable(shadow);
       shortcuts.toggleHelp();

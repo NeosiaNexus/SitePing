@@ -103,6 +103,7 @@ export const ja: Translations = {
 
   // Bulk actions toolbar
   "bulk.selectAll": "すべて選択",
+  "bulk.selectFeedback": "{label}を選択",
   "bulk.selected": "{count} 件選択中",
   "bulk.resolve": "解決",
   "bulk.delete": "削除",
