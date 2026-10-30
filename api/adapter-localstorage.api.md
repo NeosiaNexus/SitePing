@@ -11,7 +11,12 @@ Runtime exports (ESM and CJS):
 - `StoreLimitError: function`
 - `StoreNotFoundError: function`
 - `StorePersistenceError: function`
+- `StoreValueTooLongError: function`
+- `isStoreDuplicate: function`
+- `isStoreLimit: function`
+- `isStoreNotFound: function`
 - `isStorePersistence: function`
+- `isStoreValueTooLong: function`
 
 Types:
 
@@ -19,6 +24,7 @@ Types:
 export class LocalStorageStore implements SitepingStore {
     constructor(options?: LocalStorageStoreOptions);
     addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     private backUp;
     clear(): void;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
@@ -44,6 +50,7 @@ export interface LocalStorageStoreOptions {
 
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -75,7 +82,20 @@ export class StorePersistenceError extends Error {
     readonly code: "STORE_PERSISTENCE";
 }
 
+export class StoreValueTooLongError extends Error {
+    constructor(message?: string, options?: ErrorOptions);
+    readonly code: "STORE_VALUE_TOO_LONG";
+}
+
+export function isStoreDuplicate(error: unknown): error is CodedError<"P2002" | "STORE_DUPLICATE"> | StoreDuplicateError;
+
+export function isStoreLimit(error: unknown): error is CodedError<"STORE_LIMIT"> | StoreLimitError;
+
+export function isStoreNotFound(error: unknown): error is CodedError<"P2025" | "STORE_NOT_FOUND"> | StoreNotFoundError;
+
 export function isStorePersistence(error: unknown): error is CodedError<"STORE_PERSISTENCE"> | StorePersistenceError;
+
+export function isStoreValueTooLong(error: unknown): error is CodedError<"STORE_VALUE_TOO_LONG"> | StoreValueTooLongError;
 ```
 
 Referenced, not exported:
@@ -159,6 +179,11 @@ interface CommentCreateInput {
     authorRole: CommentAuthorRole;
     body: string;
     clientId: string;
+}
+
+interface CommentCreateOutcome {
+    comment: CommentRecord;
+    created: boolean;
 }
 
 interface CommentRecord {
