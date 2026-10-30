@@ -4,7 +4,6 @@ import {
   clampPagination,
   type FeedbackCreateInput,
   type FeedbackPage,
-  type FeedbackPayload,
   type FeedbackQuery,
   type FeedbackRecord,
   type FeedbackStatus,
@@ -37,6 +36,7 @@ export type {
   CommentCreateInput,
   CommentPayload,
   FeedbackCreateInput,
+  FeedbackPayload,
   FeedbackRecord,
   ScreenshotStorage,
   SitepingStore,
@@ -50,18 +50,14 @@ export {
   StorePersistenceError,
   StoreValueTooLongError,
 } from "@siteping/core";
-export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "@siteping/server";
-
-/**
- * @deprecated The create wire shape is core's `FeedbackPayload` — import
- * that instead. This alias is kept for one release cycle.
- */
-export type FeedbackCreateSchemaInput = FeedbackPayload;
-// The server's option types, so a strict linker (pnpm, Bun's isolated
+// The server's option and request types, so a strict linker (pnpm, Bun's isolated
 // installs) never needs @siteping/server as a direct dependency to type them.
 export type {
   DiscordWebhookPayload,
+  FeedbackDeleteInput,
+  FeedbackPatchInput,
   GenericWebhookPayload,
+  GetQueryInput,
   SitepingAccessControl,
   SitepingAction,
   SitepingAuthorizationContext,
@@ -663,36 +659,54 @@ export class PrismaStore implements SitepingStore {
 // Handler — @siteping/server behind the Prisma store
 // ---------------------------------------------------------------------------
 
-/** How the handler reaches its data: a Prisma client, or any store. */
-interface PrismaHandlerStoreOptions {
-  /** Prisma client — used when `store` is not provided. Wrapped in a `PrismaStore` internally. */
-  prisma?: SitepingPrismaClient;
-  /** Abstract store — when provided, takes precedence over `prisma`. */
-  store?: SitepingStore;
+/** The handler's data from your Prisma client, through a built-in `PrismaStore`. */
+export interface PrismaHandlerPrismaSource {
+  /** Prisma client, wrapped in a `PrismaStore` internally. */
+  prisma: SitepingPrismaClient;
   /**
-   * Optional storage backend for screenshots. Used only with `prisma`
-   * (ignored when a custom `store` is passed — that store is responsible
-   * for its own screenshot strategy). Without a storage, the data URL is
+   * Optional storage backend for screenshots. Without one, the data URL is
    * persisted inline on `Feedback.screenshotUrl` with a one-time warn.
    */
   screenshotStorage?: ScreenshotStorage;
   /**
    * Override case-insensitive search behaviour for the built-in `PrismaStore`.
-   *
-   * Only applied when `prisma` is provided (not when a custom `store` is
-   * passed). See `PrismaStoreOptions.caseInsensitiveSearch` for details on
+   * See `PrismaStoreOptions.caseInsensitiveSearch` for details on
    * auto-detection and per-provider semantics.
    */
   caseInsensitiveSearch?: boolean;
+  /** Pass either `prisma` or `store`, never both. */
+  store?: never;
 }
 
+/** The handler's data from any store — which owns its screenshot strategy and search semantics. */
+export interface PrismaHandlerStoreSource {
+  /** Abstract store, used as is. */
+  store: SitepingStore;
+  /** Pass either `prisma` or `store`, never both. */
+  prisma?: never;
+  /** `prisma` only: a custom store handles its own screenshots. */
+  screenshotStorage?: never;
+  /** `prisma` only: a custom store owns its search semantics. */
+  caseInsensitiveSearch?: never;
+}
+
+/**
+ * How the handler reaches its data: a Prisma client XOR any store. Options
+ * of the built-in `PrismaStore` exist on the `prisma` side only, so a store
+ * passed with them — or with no source at all — is a type error rather than
+ * options silently ignored.
+ */
+export type PrismaHandlerSource = PrismaHandlerPrismaSource | PrismaHandlerStoreSource;
+
 /** Options of `createSitepingHandler` under the `apiKey` policy — every `@siteping/server` option. */
-export interface HandlerOptions extends Omit<SitepingApiKeyHandlerOptions, "store">, PrismaHandlerStoreOptions {}
+export type HandlerOptions = Omit<SitepingApiKeyHandlerOptions, "store"> & PrismaHandlerSource;
 
 /** Options of `createSitepingHandler` under a custom `access` policy (see `@siteping/server`). */
-export interface PrismaAccessHandlerOptions<Principal extends SitepingPrincipal>
-  extends Omit<SitepingAccessHandlerOptions<Principal>, "store">,
-    PrismaHandlerStoreOptions {}
+export type PrismaAccessHandlerOptions<Principal extends SitepingPrincipal> = Omit<
+  SitepingAccessHandlerOptions<Principal>,
+  "store"
+> &
+  PrismaHandlerSource;
 
 /**
  * Setup hint for Prisma's "table does not exist" error (P2021) — any SitePing
@@ -709,8 +723,8 @@ function describePrismaError(error: unknown): string | undefined {
  * Create request handlers for the Siteping API endpoint — `@siteping/server`'s
  * `createSitepingHandler` over a Prisma-backed store, with every server option.
  *
- * Accepts either a `store` (abstract) or a `prisma` client (backwards compatible).
- * When `prisma` is provided without `store`, it is wrapped in a `PrismaStore`.
+ * Takes either a `prisma` client, wrapped in a `PrismaStore`, or any `store` —
+ * never both, and never neither (see `PrismaHandlerSource`).
  *
  * **Rate limiting** is not handled by this library. Apply rate limiting at the
  * framework or reverse-proxy level (e.g. Next.js middleware, Nginx, Cloudflare).
@@ -750,6 +764,9 @@ export function createSitepingHandler<Principal extends SitepingPrincipal>({
   describeError,
   ...serverOptions
 }: HandlerOptions | PrismaAccessHandlerOptions<Principal>): SitepingHandler {
+  // The types rule out a missing source; a JavaScript caller still gets a
+  // clear error rather than a store that fails on the first request. One
+  // passing both keeps the historical precedence: `store` wins.
   if (!providedStore && !prisma) {
     throw new Error("[siteping] createSitepingHandler requires either `store` or `prisma`.");
   }

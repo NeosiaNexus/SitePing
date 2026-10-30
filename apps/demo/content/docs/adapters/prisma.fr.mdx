@@ -27,10 +27,12 @@ C'est le handler de [`@siteping/server`](/fr/docs/server) avec un store Prisma i
 
 | Option | Type | Défaut | Ce que ça fait |
 |---|---|---|---|
-| `prisma` | `SitepingPrismaClient` | — | Votre client Prisma. Obligatoire sauf si vous passez `store` |
-| `store` | `SitepingStore` | — | Utiliser n'importe quel store au lieu de Prisma (prioritaire) |
-| `screenshotStorage` | `ScreenshotStorage` | — | Envoyer les captures quelque part de réel au lieu de les inliner en URL `data:`. Ignoré quand vous passez un `store` personnalisé |
-| `caseInsensitiveSearch` | `boolean` | détecté automatiquement | Détecté depuis le provider Prisma (actif pour PostgreSQL, MongoDB, CockroachDB). Ne s'applique que si `prisma` est fourni |
+| `prisma` | `SitepingPrismaClient` | — | Votre client Prisma. Passez-le, ou `store`, jamais les deux |
+| `store` | `SitepingStore` | — | Utiliser n'importe quel store au lieu de Prisma |
+| `screenshotStorage` | `ScreenshotStorage` | — | Envoyer les captures quelque part de réel au lieu de les inliner en URL `data:`. Avec `prisma` uniquement |
+| `caseInsensitiveSearch` | `boolean` | détecté automatiquement | Détecté depuis le provider Prisma (actif pour PostgreSQL, MongoDB, CockroachDB). Avec `prisma` uniquement |
+
+Les types imposent cette séparation : aucune source, `prisma` à côté de `store`, ou `screenshotStorage` / `caseInsensitiveSearch` à côté d'un `store` personnalisé est une erreur de compilation, pas une option ignorée en silence.
 
 Toutes les [options de `@siteping/server`](/fr/docs/server#options) fonctionnent aussi — `apiKey`, `allowedOrigins`, `webhooks`, `access`, les hooks… Un seul ajout : quand une table SitePing manque, la `500` vous indique de lancer `npx prisma db push` (un `describeError` que vous passez a la priorité). Leurs types (`SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`…) sont réexportés ici : un gestionnaire de paquets strict comme pnpm n'a pas besoin de `@siteping/server` en dépendance directe pour typer une politique à part.
 
@@ -171,4 +173,4 @@ Il est aussi appelé quand une création est refusée parce que son `clientId` e
 
 Pas sur Prisma ? Montez votre store directement avec [`@siteping/server`](/fr/docs/server) — même handler, rien de Prisma à installer. `createSitepingHandler({ store })` fonctionne toujours ici aussi : `@prisma/client` est une dépendance peer optionnelle, installée seulement si vous passez `prisma`.
 
-`screenshotStorage` et `caseInsensitiveSearch` ne s'appliquent qu'au chemin Prisma intégré ; avec un store personnalisé, gérez les captures à l'intérieur de votre store.
+`screenshotStorage` et `caseInsensitiveSearch` appartiennent au chemin Prisma intégré, et les types les refusent à côté d'un store personnalisé : gérez les captures à l'intérieur de votre store.
