@@ -446,30 +446,88 @@ describe("launch", () => {
       expect(() => instance.destroy()).not.toThrow();
     });
 
-    it("a stale destroy() of an earlier instance does not release the current singleton", () => {
+    it("a stale destroy() of an earlier widget's handle does not release the current one", () => {
       const w1 = launch(defaultConfig());
       w1.destroy();
       const w2 = launch(defaultConfig());
       w1.destroy(); // stale handle — must be a no-op
-      const w3 = launch(defaultConfig());
 
-      expect(w3).toBe(w2);
       expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
       w2.destroy();
+      expect(document.querySelector("siteping-widget")).toBeNull();
     });
 
-    it("keeps a remounted widget alive when another consumer destroys its stale handle (useSiteping x2)", () => {
-      // Two components share the singleton; A unmounts (destroys it), A
-      // remounts (new widget), then B unmounts and destroys its old handle.
-      const shared = launch(defaultConfig());
-      const sameForB = launch(defaultConfig());
-      shared.destroy();
-      const remounted = launch(defaultConfig());
-      sameForB.destroy();
-
+    it("keeps the widget while another handle is live, and tears it down with the last one (#366)", () => {
+      // Two `useSiteping` consumers (a layout and a page) share one widget.
+      const a = launch(defaultConfig());
+      const b = launch(defaultConfig());
+      expect(b).not.toBe(a);
       expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
-      expect(launch(defaultConfig())).toBe(remounted);
+
+      a.destroy();
+      expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
+
+      // A remount takes a new handle over the same widget.
+      const remounted = launch(defaultConfig());
+      b.destroy();
+      expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
+
       remounted.destroy();
+      expect(document.querySelector("siteping-widget")).toBeNull();
+    });
+
+    it("releases one reference per handle, however many times its destroy() runs", () => {
+      const a = launch(defaultConfig());
+      const b = launch(defaultConfig());
+
+      a.destroy();
+      a.destroy(); // must not release b's reference too
+      expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
+
+      b.destroy();
+      expect(document.querySelector("siteping-widget")).toBeNull();
+    });
+
+    it("detaches a destroyed handle's listeners and leaves the other handles' in place", () => {
+      const a = launch(defaultConfig());
+      const b = launch(defaultConfig());
+      const shared = vi.fn();
+      const onlyA = vi.fn();
+      const onlyB = vi.fn();
+      // The same function through both handles: two independent subscriptions.
+      a.on("feedback:deleted", shared);
+      b.on("feedback:deleted", shared);
+      a.on("feedback:deleted", onlyA);
+      b.on("feedback:deleted", onlyB);
+
+      a.destroy();
+      annotatorCapture.bus!.emit("feedback:deleted", "fb-1");
+
+      expect(onlyA).not.toHaveBeenCalled();
+      expect(onlyB).toHaveBeenCalledOnce();
+      expect(shared).toHaveBeenCalledOnce();
+      b.destroy();
+    });
+
+    it("makes a destroyed handle inert while the widget lives on", () => {
+      const a = launch(defaultConfig());
+      const b = launch(defaultConfig());
+      const onOpen = vi.fn();
+      b.on("panel:open", onOpen);
+      a.destroy();
+
+      const late = vi.fn();
+      const dispose = a.on("feedback:deleted", late);
+      annotatorCapture.bus!.emit("feedback:deleted", "fb-1");
+      a.open();
+      a.close();
+      a.refresh();
+
+      expect(late).not.toHaveBeenCalled();
+      expect(onOpen).not.toHaveBeenCalled();
+      expect(a.focusFeedback("fb-1")).toBe(false);
+      expect(dispose).not.toThrow();
+      b.destroy();
     });
   });
 
@@ -723,7 +781,7 @@ describe("launch", () => {
       try {
         const first = launch(defaultConfig({ debug: true }));
         const second = launch(defaultConfig({ debug: true }));
-        expect(first).toBe(second);
+        expect(document.querySelectorAll("siteping-widget")).toHaveLength(1);
 
         // The second call should have triggered a debug log about "called more than once"
         const dupCalls = debugSpy.mock.calls.filter(
@@ -732,6 +790,7 @@ describe("launch", () => {
         expect(dupCalls.length).toBeGreaterThan(0);
 
         first.destroy();
+        second.destroy();
       } finally {
         debugSpy.mockRestore();
       }
