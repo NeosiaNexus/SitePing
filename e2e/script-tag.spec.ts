@@ -23,7 +23,12 @@ test("the <script> bundle mounts, opens the panel and sends a feedback with a sc
     const global = (window as unknown as { SitePing: Record<string, unknown> }).SitePing;
     return Object.fromEntries(Object.entries(global).map(([name, value]) => [name, typeof value]));
   });
-  expect(api).toEqual({ initSiteping: "function", loadLocale: "function", registerLocale: "function" });
+  expect(api).toEqual({
+    initSiteping: "function",
+    isSitepingError: "function",
+    loadLocale: "function",
+    registerLocale: "function",
+  });
   expect(await fab.evaluate((element) => getComputedStyle(element).width)).toBe("52px");
 
   await fab.click();

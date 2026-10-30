@@ -108,7 +108,7 @@ Les handlers et le dashboard déduisent leur comportement de ces erreurs : levez
 | Une mutation acceptée mais non persistée | Levez `StorePersistenceError` au lieu d'annoncer une réussite fantôme |
 | Résultat vide sur `getFeedbacks` / `findByClientId` | Ne levez pas — renvoyez un tableau vide ou `null` |
 
-Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma.
+Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Utilisez-les plutôt qu'`instanceof` quand vous rattrapez une erreur au-delà d'une frontière de package — chaque package embarque sa propre copie des classes, donc `instanceof` peut échouer sur une erreur levée par un autre. Ces gardes reconnaissent aussi les codes `P2025` et `P2002` de Prisma. Chaque package de store — ce kit, `adapter-prisma`, `adapter-memory`, `adapter-localstorage` et les deux entrées d'`adapter-drizzle` — réexporte les mêmes cinq classes et les mêmes cinq gardes.
 
 ### Les sémantiques de requête à respecter
 
@@ -120,6 +120,8 @@ Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`
 - `page` commence à 1, `limit` vaut 50 par défaut et est plafonné à 100.
 
 Vous gardez un instantané en mémoire ? `applyFeedbackFilters(records, query)` est exporté précisément pour ça et implémente tout ce qui précède. Vous interrogez une base ? `clampPagination(query)` renvoie le `{ page, limit, skip }` normalisé — le même plafonnement que le pipeline en mémoire et `PrismaStore`, à passer tel quel à votre `LIMIT`/`OFFSET`. Testez d'abord `isUnreachableOffset(skip)` : un `page` énorme venu d'un appel direct donne un offset au-delà de `Number.MAX_SAFE_INTEGER` (ou `Infinity`) que les bases SQL rejettent, et la suite attend `{ feedbacks: [], total }` — répondez avec votre seule requête de comptage.
+
+Le texte peut contenir des caractères qu'une base refuse : PostgreSQL rejette NUL dans `text` et `jsonb`, et un surrogate isolé (ce par quoi finit une chaîne coupée au milieu d'un emoji) dans `jsonb`. La suite accepte ce texte gardé tel quel, ou avec U+FFFD à la place de chacune de ces unités, pourvu qu'un enregistrement se relise tel que l'écriture l'a renvoyé et qu'une recherche contenant les mêmes caractères le retrouve. Sur un backend qui les refuse, passez tout ce que vous écrivez par `toStorableValue`, et chaque id, clientId, nom de projet et requête que vous cherchez par `toStorableText` — tous deux exportés par le kit, et ce que font `PrismaStore` et le store Drizzle.
 
 ## Appartenance au projet
 
