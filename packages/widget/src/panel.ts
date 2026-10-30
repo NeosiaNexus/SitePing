@@ -1069,6 +1069,9 @@ export class Panel {
       await this.loadFeedbacks();
     } catch (error) {
       this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
+      // A timeout says nothing of the server's side, which may have deleted
+      // some or all of it (#413): reload, so the list shows what is left.
+      await this.loadFeedbacks().catch(() => {});
     } finally {
       this.deleteAllBtn.disabled = false;
     }
