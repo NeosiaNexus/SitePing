@@ -269,7 +269,7 @@ export class Panel {
             const newResolved = !isClosedStatus(fb.status);
             await this.client.resolveFeedback(fb.id, newResolved);
             await this.loadFeedbacks();
-            this.detail.hide();
+            this.hideDetailOf(fb.id);
           } catch (error) {
             // Surface the failure to the host (config.onError) like the list
             // and bulk paths do, then rethrow so DetailView restores its
@@ -283,7 +283,7 @@ export class Panel {
             await this.client.deleteFeedback(fb.id);
             this.bus.emit("feedback:deleted", fb.id);
             await this.loadFeedbacks();
-            this.detail.hide();
+            this.hideDetailOf(fb.id);
           } catch (error) {
             this.bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
             throw error;
@@ -1576,6 +1576,15 @@ export class Panel {
    */
   private reportActionError(error: unknown): void {
     this.bus.emit("panel:action-error", error instanceof Error ? error : new Error(String(error)));
+  }
+
+  /**
+   * Close the detail view after a built-in Resolve/Delete of `feedbackId`
+   * succeeds — unless the user has opened another feedback meanwhile, which
+   * stays on screen (#399), as `refreshDetail` leaves it for host actions.
+   */
+  private hideDetailOf(feedbackId: string): void {
+    if (this.detail.feedbackId === feedbackId) this.detail.hide();
   }
 
   /**
