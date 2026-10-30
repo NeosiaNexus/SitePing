@@ -61,7 +61,7 @@ export interface IssueTracker {
    * `maxPages`, list no more pages than that: the hooks look at the newest
    * issues first.
    */
-  findSitepingIssues(marker: string, options?: { maxPages?: number }): Promise<IssueListing>;
+  findSitepingIssues(marker: string, options?: { maxPages?: number | undefined }): Promise<IssueListing>;
   /**
    * Optional fast path to one feedback's issue: what a server-side search
    * for `feedbackId` returns, and whether it found more than that. Search

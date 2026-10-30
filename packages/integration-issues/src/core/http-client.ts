@@ -76,8 +76,8 @@ export interface JsonHttpClientOptions {
   tracker: string;
   baseUrl: string;
   headers: Record<string, string>;
-  fetch?: typeof fetch;
-  timeoutMs?: number;
+  fetch?: typeof fetch | undefined;
+  timeoutMs?: number | undefined;
 }
 
 export interface JsonRequest {
