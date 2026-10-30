@@ -1,4 +1,4 @@
-import type { CommentRecord, FeedbackRecord } from "@siteping/core";
+import { type CommentRecord, type FeedbackRecord, UNSTORABLE_CODE_UNITS } from "@siteping/core";
 import type { SitepingPrismaClient } from "../src/index.js";
 
 /**
@@ -9,8 +9,8 @@ import type { SitepingPrismaClient } from "../src/index.js";
  * (case-sensitive, like Postgres `LIKE`), `{ in }` and `{ not }` filters,
  * `orderBy` (one clause or a list), `skip`/`take`, `select`, the comment
  * relation (read only when `include`d, deleted with its feedback like
- * `onDelete: Cascade`), and Prisma's rejection of a `skip` outside a signed
- * 64-bit integer. Ids are zero-padded so they sort in creation order, like
+ * `onDelete: Cascade`), Prisma's rejection of a `skip` outside a signed
+ * 64-bit integer, and PostgreSQL's refusal of text it cannot store. Ids are zero-padded so they sort in creation order, like
  * the roughly time-ordered cuids the schema defaults to. Lets the published
  * conformance suite run against `PrismaStore` without a database.
  */
@@ -57,6 +57,28 @@ function prismaError(code: string): Error & { code: string } {
   return Object.assign(new Error(`Prisma ${code}`), { code });
 }
 
+/** Not global, so `test` keeps no `lastIndex` between calls. */
+const UNSTORABLE = new RegExp(UNSTORABLE_CODE_UNITS.source);
+
+/**
+ * PostgreSQL refuses NUL in `text` and `jsonb`, and an unpaired surrogate in
+ * `jsonb` (its driver turns one in `text` into U+FFFD). The double refuses
+ * both in every value and key of a query — the strictest reading — so a
+ * store that forwards such text fails here as it would there.
+ */
+function refuseUnstorableText(value: unknown): void {
+  if (typeof value === "string") {
+    if (UNSTORABLE.test(value)) throw new Error('invalid byte sequence for encoding "UTF8": 0x00');
+  } else if (Array.isArray(value)) {
+    for (const item of value) refuseUnstorableText(item);
+  } else if (typeof value === "object" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
+    for (const [key, item] of Object.entries(value)) {
+      refuseUnstorableText(key);
+      refuseUnstorableText(item);
+    }
+  }
+}
+
 function matches(row: object, where: Where): boolean {
   return Object.entries(where).every(([key, cond]) => {
     const value = (row as unknown as Record<string, unknown>)[key];
@@ -94,6 +116,7 @@ export class FakeCommentDelegate {
   }: {
     data: Omit<CommentRecord, "id" | "feedbackId" | "createdAt"> & { feedback: { connect: { id: string } } };
   }): Promise<CommentRecord> {
+    refuseUnstorableText({ feedback, ...data });
     const feedbackId = feedback.connect.id;
     if (!this.feedbackExists(feedbackId)) throw prismaError("P2025");
     if (this.rows.some((r) => r.clientId === data.clientId)) throw prismaError("P2002");
@@ -108,6 +131,7 @@ export class FakeCommentDelegate {
   }
 
   async findMany({ where, orderBy }: { where: Where; orderBy?: OrderBy | OrderBy[] }): Promise<CommentRecord[]> {
+    refuseUnstorableText(where);
     const found = this.rows.filter((r) => matches(r, where));
     if (!orderBy) return structuredClone(found.reverse());
     const clauses = Array.isArray(orderBy) ? orderBy : [orderBy];
@@ -115,6 +139,7 @@ export class FakeCommentDelegate {
   }
 
   async findUnique({ where }: { where: { clientId: string } }): Promise<CommentRecord | null> {
+    refuseUnstorableText(where);
     const row = this.rows.find((r) => r.clientId === where.clientId);
     return row ? structuredClone(row) : null;
   }
@@ -128,12 +153,14 @@ export class FakeCommentDelegate {
   }
 
   async deleteMany({ where }: { where: Where }): Promise<{ count: number }> {
+    refuseUnstorableText(where);
     const before = this.rows.length;
     this.rows = this.rows.filter((r) => !matches(r, where));
     return { count: before - this.rows.length };
   }
 
   async count({ where }: { where: Where }): Promise<number> {
+    refuseUnstorableText(where);
     return this.rows.filter((r) => matches(r, where)).length;
   }
 }
@@ -165,6 +192,7 @@ export class FakeFeedbackDelegate {
   }
 
   async create({ data, include }: CreateArgs & { include?: Include }): Promise<FeedbackRecord> {
+    refuseUnstorableText(data);
     if (this.rows.some((r) => r.clientId === data.clientId)) throw prismaError("P2002");
     const now = new Date();
     const id = `fb-${String(++this.seq).padStart(6, "0")}`;
@@ -200,6 +228,7 @@ export class FakeFeedbackDelegate {
     if (skip < 0 || !Number.isInteger(skip) || skip >= PRISMA_SKIP_EXCLUSIVE_MAX) {
       throw new Error(`PrismaClientValidationError: Invalid value for argument \`skip\`: ${skip}`);
     }
+    refuseUnstorableText(where);
     let result = this.rows.map((r, index) => ({ r, index })).filter(({ r }) => matches(r, where));
     if (orderBy) {
       const clauses = Array.isArray(orderBy) ? orderBy : [orderBy];
@@ -220,6 +249,7 @@ export class FakeFeedbackDelegate {
     include?: Include;
     select?: Record<string, boolean>;
   }): Promise<unknown> {
+    refuseUnstorableText(where);
     const row = this.rows.find((r) => (where.id !== undefined ? r.id === where.id : r.clientId === where.clientId));
     if (!row) return null;
     return select ? pick(row, select) : this.read(row, include);
@@ -234,6 +264,7 @@ export class FakeFeedbackDelegate {
     data: Partial<FeedbackRecord>;
     include?: Include;
   }): Promise<FeedbackRecord> {
+    refuseUnstorableText({ where, data });
     const row = this.rows.find((r) => r.id === where.id);
     if (!row) throw prismaError("P2025");
     Object.assign(row, data, { updatedAt: new Date() });
@@ -241,6 +272,7 @@ export class FakeFeedbackDelegate {
   }
 
   async delete({ where }: { where: { id: string } }): Promise<FeedbackRecord> {
+    refuseUnstorableText(where);
     const index = this.rows.findIndex((r) => r.id === where.id);
     if (index === -1) throw prismaError("P2025");
     const [row] = this.rows.splice(index, 1);
@@ -249,6 +281,7 @@ export class FakeFeedbackDelegate {
   }
 
   async deleteMany({ where }: { where: Where }): Promise<{ count: number }> {
+    refuseUnstorableText(where);
     const doomed = this.rows.filter((r) => matches(r, where));
     this.rows = this.rows.filter((r) => !matches(r, where));
     await this.cascade(doomed.map((r) => r.id));
@@ -256,6 +289,7 @@ export class FakeFeedbackDelegate {
   }
 
   async count({ where }: { where: Where }): Promise<number> {
+    refuseUnstorableText(where);
     return this.rows.filter((r) => matches(r, where)).length;
   }
 }

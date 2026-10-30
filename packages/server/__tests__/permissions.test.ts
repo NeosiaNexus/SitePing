@@ -1,5 +1,5 @@
 import { MemoryStore } from "@siteping/adapter-memory";
-import type { FeedbackPermissions, FeedbackResponse, FeedbackResponseList } from "@siteping/core";
+import type { CommentResponse, FeedbackPermissions, FeedbackResponse, FeedbackResponseList } from "@siteping/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   createSitepingHandler,
@@ -296,5 +296,138 @@ describe("permissions — access policy", () => {
     expect(page.feedbacks.map((f) => f.permissions)).toEqual([NONE, NONE]);
     expect(page.permissions).toEqual({ canDeleteAll: false });
     expect(logger.error).toHaveBeenCalledOnce();
+  });
+});
+
+describe("permissions — comments (#393)", () => {
+  interface Author {
+    name: string;
+    isAdmin: boolean;
+  }
+  const ALICE: Author = { name: "alice", isAdmin: false };
+  const BOB: Author = { name: "bob", isAdmin: false };
+  const ADMIN: Author = { name: "admin", isAdmin: true };
+  const AUTHORS = new Map([ALICE, BOB, ADMIN].map((author) => [author.name, author]));
+  const as = (author: Author) => ({ "x-session": author.name });
+
+  /** A per-author rule, as the docs show it: the thread-wide answer is `false`, each comment its author's. */
+  function perAuthor(
+    commentAuthors: Map<string, string>,
+    asked: Array<SitepingAuthorizationContext<Author>> = [],
+  ): SitepingAccessControl<Author> {
+    return {
+      authenticate: (req) => AUTHORS.get(req.headers.get("x-session") ?? "") ?? ALICE,
+      authorize: (context) => {
+        if (context.dryRun) asked.push(context);
+        if (context.action !== "deleteComment" || context.principal.isAdmin) return true;
+        if (!context.commentId) return false;
+        return commentAuthors.get(context.commentId) === context.principal.name;
+      },
+    };
+  }
+
+  async function reply(handler: SitepingHandler, feedbackId: string, author: Author, clientId: string) {
+    const response = await handler.POST(
+      request(
+        "POST",
+        {
+          projectName: PROJECT,
+          feedbackId,
+          body: `from ${author.name}`,
+          authorName: author.name,
+          authorEmail: "",
+          clientId,
+        },
+        as(author),
+      ),
+    );
+    expect(response.status).toBe(201);
+    return (await response.json()) as CommentResponse;
+  }
+
+  it("asks about each comment by id when the policy refuses the whole thread", async () => {
+    const commentAuthors = new Map<string, string>();
+    const asked: Array<SitepingAuthorizationContext<Author>> = [];
+    const handler = createSitepingHandler({ store: new MemoryStore(), access: perAuthor(commentAuthors, asked) });
+    const feedback = await create(handler, as(ALICE));
+    const alices = await reply(handler, feedback.id, ALICE, "c-alice");
+    commentAuthors.set(alices.id, ALICE.name);
+    const bobs = await reply(handler, feedback.id, BOB, "c-bob");
+    commentAuthors.set(bobs.id, BOB.name);
+    asked.length = 0;
+
+    const page = await list(handler, as(ALICE));
+
+    const [listed] = page.feedbacks;
+    expect(listed?.permissions?.canDeleteComment).toBe(false);
+    expect(listed?.comments?.map((c) => [c.id, c.permissions])).toEqual([
+      [alices.id, { canDelete: true }],
+      [bobs.id, { canDelete: false }],
+    ]);
+    const perComment = asked.filter((context) => context.action === "deleteComment" && context.commentId);
+    expect(
+      perComment.map(({ commentId, feedbackId, projectName }) => ({ commentId, feedbackId, projectName })),
+    ).toEqual(
+      expect.arrayContaining([
+        { commentId: alices.id, feedbackId: feedback.id, projectName: PROJECT },
+        { commentId: bobs.id, feedbackId: feedback.id, projectName: PROJECT },
+      ]),
+    );
+    expect(perComment).toHaveLength(2);
+  });
+
+  it("answers a posted comment with its own permission", async () => {
+    const commentAuthors = new Map<string, string>();
+    const handler = createSitepingHandler({ store: new MemoryStore(), access: perAuthor(commentAuthors) });
+    const feedback = await create(handler, as(ALICE));
+    // The rule only knows a comment once it is stored: the first answer
+    // refuses, the replay (same clientId, same record) allows.
+    const fresh = await reply(handler, feedback.id, BOB, "c-first");
+    commentAuthors.set(fresh.id, BOB.name);
+
+    const replayed = await reply(handler, feedback.id, BOB, "c-first");
+
+    expect(fresh.permissions).toEqual({ canDelete: false });
+    expect(replayed.id).toBe(fresh.id);
+    expect(replayed.permissions).toEqual({ canDelete: true });
+  });
+
+  it("asks no comment by id when the thread-wide answer allows", async () => {
+    const asked: Array<SitepingAuthorizationContext<Author>> = [];
+    const handler = createSitepingHandler({ store: new MemoryStore(), access: perAuthor(new Map(), asked) });
+    const feedback = await create(handler, as(ADMIN));
+    await reply(handler, feedback.id, ALICE, "c-1");
+    await reply(handler, feedback.id, BOB, "c-2");
+    asked.length = 0;
+
+    const page = await list(handler, as(ADMIN));
+
+    expect(page.feedbacks[0]?.comments?.map((c) => c.permissions)).toEqual([{ canDelete: true }, { canDelete: true }]);
+    expect(asked.some((context) => context.commentId !== undefined)).toBe(false);
+  });
+
+  it("follows the thread under the apiKey policy: the key holder deletes, a visitor does not", async () => {
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      apiKey: API_KEY,
+      publicEndpoints: ["GET", "POST"],
+    });
+    const feedback = await create(handler, BEARER);
+    const posted = await handler.POST(
+      request("POST", {
+        projectName: PROJECT,
+        feedbackId: feedback.id,
+        body: "visitor reply",
+        authorName: "v",
+        authorEmail: "",
+        clientId: "c-visitor",
+      }),
+    );
+    expect(posted.status).toBe(201);
+
+    expect((await list(handler)).feedbacks[0]?.comments?.map((c) => c.permissions)).toEqual([{ canDelete: false }]);
+    expect((await list(handler, BEARER)).feedbacks[0]?.comments?.map((c) => c.permissions)).toEqual([
+      { canDelete: true },
+    ]);
   });
 });
