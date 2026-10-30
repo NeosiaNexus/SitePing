@@ -8,7 +8,7 @@ import { assertInertContentTypes } from "./active-content.js";
 import { assertMaxBytes, assertParsableContentTypes, decodeImageDataUrl, normalizeContentTypes } from "./data-url.js";
 import { assertKeyableContentTypes, assertKeyPrefix, generateKey, isGeneratedKey } from "./generated-key.js";
 import { safeWarn } from "./logger.js";
-import { isScreenshotUploadRejected, type ScreenshotObjectStore } from "./object-store.js";
+import { isScreenshotUploadRejectedError, type ScreenshotObjectStore } from "./object-store.js";
 import {
   createUncertainUploadReclaimer,
   type ScreenshotStorageLogger,
@@ -126,7 +126,7 @@ export function createScreenshotStorage(
       } catch (error) {
         // The upload may still land after we gave up — reclaim it so no
         // object outlives the feedback that never referenced it.
-        if (!isScreenshotUploadRejected(error)) await reclaimUncertainUpload(key);
+        if (!isScreenshotUploadRejectedError(error)) await reclaimUncertainUpload(key);
         throw error;
       }
       return { url };

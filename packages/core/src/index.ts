@@ -1,8 +1,16 @@
 export { settleWithConcurrencyLimit } from "./concurrency.js";
-export { buildDeepLink, parseHttpUrl } from "./deep-link.js";
+export { buildDeepLink, isSafeImageUrl, parseHttpUrl } from "./deep-link.js";
 export { EMAIL_PATTERN, isValidEmail } from "./email.js";
-export type { SitepingErrorCode } from "./errors.js";
-export { SitepingAuthError, SitepingError, SitepingNetworkError, SitepingValidationError } from "./errors.js";
+export type { SitepingClientError, SitepingConfigErrorCode, SitepingErrorCode } from "./errors.js";
+export {
+  isSitepingConfigError,
+  isSitepingError,
+  SitepingAuthError,
+  SitepingConfigError,
+  SitepingError,
+  SitepingNetworkError,
+  SitepingValidationError,
+} from "./errors.js";
 export type { FilterResult, Pagination } from "./filters.js";
 export {
   applyFeedbackFilters,
@@ -14,6 +22,8 @@ export {
 } from "./filters.js";
 export type { I18n, LocaleLoaders, TranslateFunction } from "./i18n.js";
 export { canonicalizeLocale, createI18n, interpolate, intlLocale, tWithParams } from "./i18n.js";
+export type { SitepingLogger, SitepingWarnLogger } from "./logger.js";
+export { warnSafely } from "./logger.js";
 export type {
   FieldDef,
   IndexDef,
@@ -36,6 +46,7 @@ export {
   buildFeedbackRecord,
   createCollectionStore,
 } from "./store-helpers.js";
+export { REPLACEMENT_CHARACTER, toStorableText, toStorableValue, UNSTORABLE_CODE_UNITS } from "./text.js";
 export type { AssertEqual, IfEquals, Prettify, Serialized } from "./type-utils.js";
 export { hasOwn, isRecord } from "./type-utils.js";
 export type {
@@ -48,8 +59,10 @@ export type {
   ClosedFeedbackStatus,
   CommentAuthorRole,
   CommentCreateInput,
+  CommentCreateOutcome,
   CommentDeletePayload,
   CommentPayload,
+  CommentPermissions,
   CommentRecord,
   CommentResponse,
   ConsoleDiagnosticEntry,
@@ -119,6 +132,7 @@ export {
   MAX_COMMENTS_PER_FEEDBACK,
   OPEN_FEEDBACK_STATUSES,
   PROJECT_NAME_MAX_LENGTH,
+  SITEPING_PROTOCOL_VERSION,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,

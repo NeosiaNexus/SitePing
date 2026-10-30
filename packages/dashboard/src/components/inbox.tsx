@@ -314,19 +314,19 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           setShortcutsOpen((open) => !open);
           break;
         case "1":
-          state.setStatus("all");
+          state.setStatusFilter("all");
           break;
         case "2":
-          state.setStatus("open");
+          state.setStatusFilter("open");
           break;
         case "3":
-          state.setStatus("in_progress");
+          state.setStatusFilter("in_progress");
           break;
         case "4":
-          state.setStatus("resolved");
+          state.setStatusFilter("resolved");
           break;
         case "5":
-          state.setStatus("wont_fix");
+          state.setStatusFilter("wont_fix");
           break;
         default:
           return;
@@ -411,6 +411,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
                 void deleteFeedback(id);
               }}
               permissions={state.permissionsOf(state.opened)}
+              commentPermissionsOf={state.commentPermissionsOf}
               // Failures show in the thread itself, next to the kept draft.
               onAddComment={state.addComment}
               onDeleteComment={state.deleteComment}

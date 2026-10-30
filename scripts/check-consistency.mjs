@@ -10,7 +10,8 @@
 //      BUILTIN_LOCALES;
 //   3. a non-private packages/* package is missing from the release-please
 //      config/manifest, or a manifest package is missing its release.yml
-//      wiring (output + publish job);
+//      wiring (output + publish job) or its line in the root CHANGELOG.md
+//      index;
 //   4. a published package's build script forgot the fix-dts chain its
 //      declarations need (cli is exempt: it ships no .d.ts);
 //   5. the root esbuild override drifted from the widget's esbuild spec;
@@ -25,7 +26,12 @@
 //   9. a workspace's `engines.node` differs from core's, or something that
 //      follows that floor did not move with it (adapter scaffold, oldest CI
 //      node-compat lane, publish jobs' Node, demo runtime image, docs and
-//      README "Node N+" claims).
+//      README "Node N+" claims);
+//  10. a published package's peer range admits versions without an upper
+//      bound (`>=18`, `*`) — majors CI never ran.
+//  11. a widget `keydown` listener that handles Tab is added with a plain
+//      addEventListener instead of addSurfaceKeydownListener, so a host
+//      modal's capture-phase focus trap would take the Tab first.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -141,6 +147,7 @@ for (const file of [
 const manifest = JSON.parse(read(".release-please-manifest.json"));
 const releaseConfig = JSON.parse(read("release-please-config.json"));
 const releaseYml = read(".github/workflows/release.yml");
+const changelogIndex = read("CHANGELOG.md");
 
 for (const dir of readdirSync(join(root, "packages"))) {
   const pkgJsonPath = join(root, "packages", dir, "package.json");
@@ -165,6 +172,9 @@ for (const pkgPath of Object.keys(manifest)) {
   }
   if (!releaseYml.includes(`${pkgPath}/dist/`)) {
     errors.push(`${pkgPath}/dist/ is missing from the release.yml build artifact paths`);
+  }
+  if (!changelogIndex.includes(`(./${pkgPath}/CHANGELOG.md)`)) {
+    errors.push(`${pkgPath} is missing from the root CHANGELOG.md index`);
   }
 }
 
@@ -348,6 +358,79 @@ if (!floorMajor) {
       if (major !== floorMajor) {
         const line = content.slice(0, m.index).split("\n").length;
         errors.push(`${file}:${line} says "${m[0]}" but the floor is Node ${floorMajor}`);
+      }
+    }
+  }
+}
+
+// --- 10. Peer ranges stop at the last major CI exercises ----------------------
+
+// A peer range is a promise that every version it admits works. Without an
+// upper bound (`>=18`, `*`) it covers majors nobody has run, and widening one
+// later is a minor while narrowing it is a major (the versioning policy):
+// each `||` alternative must be capped — `^x`, `~x`, `x.y.z`, `x.x`, or a
+// range with `<`. Raise the cap when CI runs the next major.
+const UNBOUNDED_ALTERNATIVE = /^(?:\*|x|latest|>=?\s*[\d.x*]+(?:-[\w.]+)?)$/i;
+for (const pkgPath of Object.keys(manifest)) {
+  const pkg = JSON.parse(read(`${pkgPath}/package.json`));
+  for (const [name, spec] of Object.entries(pkg.peerDependencies ?? {})) {
+    if (spec.startsWith("workspace:")) continue;
+    const unbounded = spec
+      .split("||")
+      .map((alternative) => alternative.trim())
+      .filter((alt) => UNBOUNDED_ALTERNATIVE.test(alt));
+    if (unbounded.length > 0) {
+      errors.push(`${pkgPath} peerDependencies "${name}": "${spec}" has no upper bound (${unbounded.join(", ")})`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+// --- 11. Widget Tab traps go through addSurfaceKeydownListener -------------
+// A `keydown` listener that handles Tab must be added with
+// `addSurfaceKeydownListener` (host-isolation.ts): the guard then runs it
+// ahead of a host modal's capture-phase focus trap. A plain
+// `addEventListener("keydown", …)` runs after that trap, which moves the
+// Tab's focus back into the host dialog (#387).
+{
+  /** The text from `open` (an opening bracket's index) to its matching closing bracket. */
+  const balanced = (src, open) => {
+    const pairs = { "(": ")", "{": "}" };
+    const closer = pairs[src[open]];
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === src[open]) depth++;
+      else if (src[i] === closer && --depth === 0) return src.slice(open, i + 1);
+    }
+    return src.slice(open);
+  };
+  /** `text` matched literally inside a RegExp. */
+  const literal = (text) => text.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  /** The body of a listener referenced by name: its assignment's function, one call deep. */
+  const namedBody = (src, name) => {
+    const at = src.search(new RegExp(`(?:const |let )?${literal(name)}\\s*=\\s*`));
+    if (at < 0) return "";
+    const brace = src.indexOf("{", at);
+    const lineEnd = src.indexOf(";", at);
+    if (brace >= 0 && (lineEnd < 0 || brace < lineEnd)) return balanced(src, brace);
+    // An arrow that only calls a method (`(e) => this.handleKeydown(e)`): read that method.
+    const method = /this\.([\w$]+)\(/.exec(src.slice(at, lineEnd))?.[1];
+    const definition = method ? src.search(new RegExp(`\\n\\s*(?:private |public |protected )?${method}\\(`)) : -1;
+    return definition < 0 ? "" : balanced(src, src.indexOf("{", definition));
+  };
+  for (const file of walk("packages/widget/src", ".ts")) {
+    if (file.endsWith("/host-isolation.ts")) continue;
+    const src = read(file);
+    for (const m of src.matchAll(/\.addEventListener\(\s*["']keydown["']\s*,\s*/g)) {
+      const start = m.index + m[0].length;
+      const name = /^(?:this\.)?[\w$]+(?=\s*(?:as\b|[,)]))/.exec(src.slice(start))?.[0];
+      const body = name ? namedBody(src, name) : balanced(src, src.indexOf("(", m.index));
+      if (/["']Tab["']/.test(body)) {
+        const line = src.slice(0, m.index).split("\n").length;
+        errors.push(
+          `${file}:${line} adds a keydown listener that handles Tab with addEventListener — use addSurfaceKeydownListener (host-isolation.ts), or a host modal's capture-phase focus trap takes the Tab first`,
+        );
       }
     }
   }

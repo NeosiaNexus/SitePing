@@ -1,5 +1,5 @@
 import type { SitepingConfig } from "@siteping/core";
-import { parseSvg, setText } from "./dom-utils.js";
+import { parseSvg, setInert, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { registerEscapeLayer } from "./host-isolation.js";
 import { type TFunction, type Translations, tWithParams } from "./i18n/index.js";
@@ -79,6 +79,8 @@ export class Fab {
     this.radialContainer = document.createElement("div");
     this.radialContainer.className = `sp-radial sp-radial--${position}`;
     this.radialContainer.setAttribute("role", "menu");
+    // The items fade out while closed, but stay rendered: out of the tab order.
+    setInert(this.radialContainer, true);
 
     for (let i = 0; i < this.items.length; i++) {
       const item = this.items[i];
@@ -239,6 +241,7 @@ export class Fab {
     this.setFabIcon(ICON_CLOSE);
     this.fab.setAttribute("aria-expanded", "true");
     this.scrim.classList.add("sp-scrim--open");
+    setInert(this.radialContainer, false);
 
     const gap = isCoarsePointer() ? ITEM_GAP_TOUCH : ITEM_GAP;
     const buttons = this.radialContainer.querySelectorAll<HTMLButtonElement>(".sp-radial-item");
@@ -261,6 +264,7 @@ export class Fab {
     this.setFabIcon(ICON_SITEPING);
     this.fab.setAttribute("aria-expanded", "false");
     this.scrim.classList.remove("sp-scrim--open");
+    setInert(this.radialContainer, true);
 
     const buttons = this.radialContainer.querySelectorAll<HTMLButtonElement>(".sp-radial-item");
     buttons.forEach((btn) => {

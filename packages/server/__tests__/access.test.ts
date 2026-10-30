@@ -307,6 +307,65 @@ describe("createSitepingHandler — access", () => {
     expect(listed[0]?.authorEmail).toBe("");
   });
 
+  it("asks canReadAuthorEmail and canCommentAsTeam about the request's project, once per request (#390)", async () => {
+    const OTHER = "other-project";
+    // An administrator of PROJECT only — the per-project role of the OIDC recipe.
+    const canReadAuthorEmail = vi.fn(
+      (principal: Reviewer, { projectName }: { projectName: string }) => principal.isAdmin && projectName === PROJECT,
+    );
+    const canCommentAsTeam = vi.fn(
+      (principal: Reviewer, { projectName }: { projectName: string }) => principal.isAdmin && projectName === PROJECT,
+    );
+    const handler = createSitepingHandler({
+      store: new MemoryStore(),
+      access: sessionAccess({ canReadAuthorEmail, canCommentAsTeam }),
+    });
+    const mine = await createFeedback(handler);
+    const second = await handler.POST(jsonRequest("POST", { ...validPayloadNoAnnotations, clientId: "second" }, ADMIN));
+    const foreignPost = await handler.POST(
+      jsonRequest("POST", { ...validPayloadNoAnnotations, projectName: OTHER, clientId: "foreign" }, ADMIN),
+    );
+    expect([second.status, foreignPost.status]).toEqual([201, 201]);
+    const theirs = (await foreignPost.json()) as FeedbackRecord;
+    const emails = async (projectName: string) =>
+      (
+        (await (await handler.GET(listRequest(ADMIN, projectName))).json()) as { feedbacks: FeedbackRecord[] }
+      ).feedbacks.map((f) => f.authorEmail);
+    const reply = async (feedbackId: string, projectName: string, clientId: string) =>
+      (
+        (await (
+          await handler.POST(
+            jsonRequest(
+              "POST",
+              {
+                projectName,
+                feedbackId,
+                body: "On it",
+                authorName: "Ann",
+                authorEmail: "",
+                authorRole: "team",
+                clientId,
+              },
+              ADMIN,
+            ),
+          )
+        ).json()) as { authorRole: string }
+      ).authorRole;
+
+    canReadAuthorEmail.mockClear();
+    const own = await emails(PROJECT);
+    const callsForOneList = canReadAuthorEmail.mock.calls.length;
+    const foreign = await emails(OTHER);
+
+    expect(own).toEqual([validPayloadNoAnnotations.authorEmail, validPayloadNoAnnotations.authorEmail]);
+    expect(foreign).toEqual([""]);
+    expect(callsForOneList).toBe(1);
+    expect(canReadAuthorEmail).toHaveBeenLastCalledWith(ADMIN, { projectName: OTHER, request: expect.any(Request) });
+    expect(await reply(mine.id, PROJECT, "team-own")).toBe("team");
+    expect(await reply(theirs.id, OTHER, "team-foreign")).toBe("client");
+    expect(canCommentAsTeam).toHaveBeenLastCalledWith(ADMIN, { projectName: OTHER, request: expect.any(Request) });
+  });
+
   it("refuses the team role when a custom canCommentAsTeam answers anything but true", async () => {
     const access = {
       authenticate: () => ({ id: "u" }),
@@ -480,9 +539,10 @@ describe("createSitepingHandler — access callback failures", () => {
     }
   });
 
-  it("answers the 500 without the email when canReadAuthorEmail throws", async () => {
+  it("answers the 500 without the email, and stores nothing, when canReadAuthorEmail throws", async () => {
+    const store = new MemoryStore();
     const handler = createSitepingHandler({
-      store: new MemoryStore(),
+      store,
       access: sessionAccess({
         canReadAuthorEmail: () => {
           throw sessionStoreError;
@@ -497,6 +557,8 @@ describe("createSitepingHandler — access callback failures", () => {
     expect(response.status).toBe(500);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(ALLOWED_ORIGIN);
     expect(await response.text()).not.toContain(validPayloadNoAnnotations.authorEmail);
+    // Asked with the project, before the write: a failure leaves no half-done create.
+    expect((await store.getFeedbacks({ projectName: PROJECT })).total).toBe(0);
   });
 
   it("answers a logged 500 and stores nothing when authorize throws on a create", async () => {
