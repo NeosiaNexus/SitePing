@@ -552,6 +552,34 @@ describe("resolveAnchor — fallback order", () => {
   });
 });
 
+describe("smart scan scoring — masked text in the candidate", () => {
+  // Capture leaves `data-siteping-ignore` text out of the snippet; anchors
+  // stored before that still carry it.
+  function maskedParagraph(): HTMLParagraphElement {
+    const p = document.createElement("p");
+    p.innerHTML = 'Pay <span data-siteping-ignore="true">FR76 3000 6000 0112 3456</span> today';
+    document.body.appendChild(p);
+    return p;
+  }
+  const scanOnly = { cssSelector: "__invalid__", xpath: "/nonexistent", elementTag: "P" };
+
+  it("matches a snippet captured without the masked text", () => {
+    const p = maskedParagraph();
+    const result = resolveAnchor(makeAnchor({ ...scanOnly, textSnippet: "Pay  today" }));
+
+    expect(result?.element).toBe(p);
+    expect(result?.confidence).toBe(0.85);
+  });
+
+  it("still matches a snippet stored before masked text was left out", () => {
+    const p = maskedParagraph();
+    const result = resolveAnchor(makeAnchor({ ...scanOnly, textSnippet: "Pay FR76 3000 6000 0112 3456 today" }));
+
+    expect(result?.element).toBe(p);
+    expect(result?.confidence).toBe(0.85);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // resolveAnchor — orphaned annotation (all levels fail)
 // ---------------------------------------------------------------------------

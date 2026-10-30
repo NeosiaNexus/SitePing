@@ -1,7 +1,7 @@
 import { finder } from "@medv/finder";
 import { ANCHOR_ELEMENT_ID_MAX, ANCHOR_ELEMENT_TAG_MAX, type AnchorData, type RectData } from "@siteping/core";
 import { generateFingerprint } from "./fingerprint.js";
-import { adjacentText, neighborText } from "./text-context.js";
+import { adjacentText, boundedText, neighborText } from "./text-context.js";
 import { generateXPath } from "./xpath.js";
 
 /** HTML attribute hosts use to mark stable semantic anchors. */
@@ -78,8 +78,11 @@ export function generateAnchor(element: Element): AnchorData {
 
   const xpath = generateXPath(element);
 
-  const rawText = element.textContent?.trim() ?? "";
-  const textSnippet = rawText.slice(0, 120);
+  // The snippet is stored with the feedback (and shown in the dashboard and
+  // issue bodies), so masked descendants stay out of it, like they do of the
+  // sibling context. Reading past the 120 kept chars leaves room for the
+  // leading whitespace that trimming discards.
+  const textSnippet = boundedText(element, 256, true).trim().slice(0, 120);
 
   const textPrefix = adjacentText(element, "before");
   const textSuffix = adjacentText(element, "after");

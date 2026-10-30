@@ -219,6 +219,26 @@ describe("generateAnchor", () => {
       // textContent is trimmed before slicing
       expect(anchor.textSnippet).toBe("Hello world");
     });
+
+    it("does not spend the 120-character budget on leading indentation", () => {
+      const element = document.createElement("div");
+      element.innerHTML = `${" ".repeat(100)}<p>${"A".repeat(200)}</p>`;
+      document.body.appendChild(element);
+
+      expect(generateAnchor(element).textSnippet).toBe("A".repeat(120));
+    });
+
+    it("leaves out text under a masked descendant, at any depth", () => {
+      const element = document.createElement("div");
+      element.innerHTML =
+        'Card ending <span data-siteping-ignore="true">4242</span> expires' +
+        '<p>Holder <em><b data-siteping-ignore="true"><i>Jane Doe</i></b></em> verified</p>';
+      document.body.appendChild(element);
+
+      const { textSnippet } = generateAnchor(element);
+      expect(textSnippet).toBe("Card ending  expiresHolder  verified");
+      expect(textSnippet).not.toMatch(/4242|Jane/);
+    });
   });
 
   // -------------------------------------------------------------------------
