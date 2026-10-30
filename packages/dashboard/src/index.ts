@@ -21,6 +21,7 @@ export type {
 } from "@siteping/core";
 export { FEEDBACK_STATUSES, FEEDBACK_TYPES, isClosedStatus, isSitepingError } from "@siteping/core";
 export { SitepingInbox } from "./components/inbox.js";
+export { type RecordPageUrlOptions, recordPageUrl } from "./format.js";
 export type { TranslationKey, Translations } from "./i18n/index.js";
 export { registerLocale } from "./i18n/index.js";
 export { createEndpointSource, createStoreSource } from "./source.js";
@@ -33,6 +34,7 @@ export type {
   InboxPage,
   InboxRecord,
   InboxSharedOptions,
+  InboxSiteUrl,
   InboxSource,
   InboxState,
   InboxStatusFilter,

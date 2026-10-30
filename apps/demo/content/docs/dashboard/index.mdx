@@ -38,6 +38,18 @@ It works with React 18 and 19, ships ESM and CJS, and has zero dependencies besi
 | `emptyState` | `ReactNode` | — | Custom node for the "no feedback in this project yet" state only — the inbox-zero and no-filter-match states keep their defaults |
 | `className` | `string` | — | Appended to the root element's classes |
 
+### Pages on another origin
+
+The widget stores each feedback's page as a pathname (`/pricing`), so "Open on page" and the drawer's page link resolve it against **the inbox's own location** by default — right when the inbox runs on the site's origin. When it runs elsewhere (an admin app, another subdomain), pass `siteUrl`, one of the [`useSitepingInbox` options](/docs/dashboard/headless#options): the site's origin, or one per project name for an inbox over several sites. A project without an entry keeps the default, an absolute record URL is kept as stored, and a `siteUrl` that is not an absolute http(s) URL is ignored with a console warning.
+
+```tsx
+<SitepingInbox
+  projects={["client", "shop"]}
+  endpoint="/api/siteping"
+  siteUrl={{ client: "https://client.example.com", shop: "https://shop.example.com" }}
+/>
+```
+
 ## Keyboard
 
 Focus the list once, then:
