@@ -802,24 +802,87 @@ describe("launch", () => {
   // -------------------------------------------------------------------------
 
   describe("production guard with process undefined", () => {
-    it("does not skip when process is undefined (browser context)", () => {
+    // A `<script>` embed has no `process` and no bundler to inline NODE_ENV:
+    // the page's host stands in for it (#313). vitest's jsdom URL is
+    // localhost; `jsdom.reconfigure` moves the page to a public host.
+    const dom = (globalThis as unknown as { jsdom: { reconfigure(options: { url: string }): void } }).jsdom;
+
+    function withoutProcess(run: () => void): void {
       const origProcess = (globalThis as unknown as { process?: unknown }).process;
-      // Simulate browser environment with no process global
       delete (globalThis as unknown as { process?: unknown }).process;
-
       try {
-        const instance = launch({ endpoint: "/api", projectName: "test" });
-
-        // Without process.env, the production guard's typeof check returns "undefined"
-        // and the guard short-circuits — widget should mount
-        const widget = document.querySelector("siteping-widget");
-        expect(widget).not.toBeNull();
-
-        instance.destroy();
+        run();
       } finally {
         if (origProcess) {
           (globalThis as unknown as { process: unknown }).process = origProcess;
         }
+      }
+    }
+
+    function onHost(url: string, run: () => void): void {
+      const original = location.href;
+      dom.reconfigure({ url });
+      try {
+        run();
+      } finally {
+        dom.reconfigure({ url: original });
+      }
+    }
+
+    it("mounts on a local page when process is undefined (browser context)", () => {
+      withoutProcess(() => {
+        const instance = launch({ endpoint: "/api", projectName: "test" });
+        expect(document.querySelector("siteping-widget")).not.toBeNull();
+        instance.destroy();
+      });
+    });
+
+    it.each(["http://127.0.0.1:5173/", "http://app.localhost/", "http://[::1]:8080/"])(
+      "treats %s as a local page",
+      (url) => {
+        onHost(url, () =>
+          withoutProcess(() => {
+            const instance = launch({ endpoint: "/api", projectName: "test" });
+            expect(document.querySelector("siteping-widget")).not.toBeNull();
+            instance.destroy();
+          }),
+        );
+      },
+    );
+
+    it("stays hidden on a public host, like a production build", () => {
+      onHost("https://client-site.example/", () =>
+        withoutProcess(() => {
+          const onSkip = vi.fn();
+          const instance = launch({ endpoint: "/api", projectName: "test", onSkip });
+          expect(document.querySelector("siteping-widget")).toBeNull();
+          expect(onSkip).toHaveBeenCalledWith("production");
+          instance.destroy();
+        }),
+      );
+    });
+
+    it("mounts on a public host with forceShow", () => {
+      onHost("https://staging.client-site.example/", () =>
+        withoutProcess(() => {
+          const instance = launch({ endpoint: "/api", projectName: "test", forceShow: true });
+          expect(document.querySelector("siteping-widget")).not.toBeNull();
+          instance.destroy();
+        }),
+      );
+    });
+
+    it("lets a NODE_ENV signal win over the host", () => {
+      const original = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+      try {
+        onHost("https://client-site.example/", () => {
+          const instance = launch({ endpoint: "/api", projectName: "test" });
+          expect(document.querySelector("siteping-widget")).not.toBeNull();
+          instance.destroy();
+        });
+      } finally {
+        process.env.NODE_ENV = original;
       }
     });
   });

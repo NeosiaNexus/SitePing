@@ -96,7 +96,8 @@ function skippedInstance(): SitepingInstance {
  *   inlining — do not reintroduce them.
  * - No `typeof process` gate: it would return before a consumer-inlined
  *   constant is reached. Plain browsers without `process` (script-tag usage)
- *   land in the catch instead. Runtime environments with a real `process`
+ *   land in the catch instead, and `isLocalPage()` decides. Runtime
+ *   environments with a real `process`
  *   (Node/SSR, E2E's `globalThis.process = { env: { NODE_ENV: 'test' } }`)
  *   read it live.
  *
@@ -110,6 +111,17 @@ function readNodeEnv(): string | undefined {
     // No `process` global (plain browser) or restricted access — no signal
     return undefined;
   }
+}
+
+/**
+ * Whether the page runs on the developer's own machine: what "development"
+ * means when there is no NODE_ENV signal — a `<script>` embed, or a bundler
+ * that defines none (#313). Localhost and its subdomains, the loopback
+ * addresses, and a page opened from a file (empty hostname).
+ */
+function isLocalPage(): boolean {
+  const host = location.hostname;
+  return host === "" || host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "[::1]";
 }
 
 interface NormalisedDeepLink {
@@ -163,10 +175,15 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // Guard: only show in development (forceShow bypasses). Uses readNodeEnv()
   // instead of the literal `process.env.NODE_ENV` — avoids both bundler
   // constant-folding (#104) and "Critical dependency" import.meta warnings
-  // in Next.js webpack builds.
-  if (!config.forceShow && readNodeEnv() === "production") {
+  // in Next.js webpack builds. Without any NODE_ENV signal, the page's host
+  // decides: a `<script>` embed on a public site stays hidden, like a
+  // production build, instead of showing to every visitor (#313).
+  const nodeEnv = readNodeEnv();
+  if (!config.forceShow && (nodeEnv === "production" || (nodeEnv === undefined && !isLocalPage()))) {
     const reason = "production";
-    console.info("[siteping] Widget not loaded: production mode detected. Use forceShow: true to override.");
+    console.info(
+      "[siteping] Widget not loaded: production build, or a public page without NODE_ENV. Use forceShow: true to override.",
+    );
     config.onSkip?.(reason);
     return skippedInstance();
   }
