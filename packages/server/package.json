@@ -14,13 +14,15 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
-    }
+    },
+    "./openapi.json": "./openapi.json"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "openapi.json"
   ],
   "scripts": {
     "build": "tsup && node ../../scripts/fix-dts.mjs dist",

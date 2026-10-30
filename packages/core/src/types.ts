@@ -1384,6 +1384,16 @@ export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
  */
 export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
 
+/**
+ * Version of the HTTP protocol `@siteping/server` speaks, sent as `protocol`
+ * on every list response. It rises with each addition a client may rely on —
+ * a route, a field, a status — so a client checks `protocol >= N` before
+ * using what protocol N added, instead of probing for fields. A server that
+ * predates it sends none: read that as 0. The OpenAPI document shipped as
+ * `@siteping/server/openapi.json` describes this version.
+ */
+export const SITEPING_PROTOCOL_VERSION = 1;
+
 /** What the store behind an endpoint supports — advertised on every list response. */
 export interface SitepingCapabilities {
   /** Whether comments can be posted: the store implements `addComment`. */
@@ -1400,6 +1410,8 @@ export interface SitepingCapabilities {
 export interface FeedbackResponseList {
   feedbacks: FeedbackResponse[];
   total: number;
+  /** The server's {@link SITEPING_PROTOCOL_VERSION} — absent from servers that predate it: read that as 0. */
+  protocol?: number | undefined;
   /** Always sent by `@siteping/server` — absent from servers that predate it. */
   capabilities?: SitepingCapabilities | undefined;
   /** Always sent by `@siteping/server` — absent from servers that predate it. */
