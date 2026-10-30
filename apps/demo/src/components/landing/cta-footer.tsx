@@ -13,14 +13,12 @@ export function CtaFooter() {
         <p className="mt-4 text-lg text-gray-400">Get started in minutes. Free forever.</p>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <a
-            href="https://github.com/NeosiaNexus/SitePing#getting-started"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/docs/quickstart"
             className="rounded-lg bg-white px-6 py-3 text-base font-medium text-accent transition-colors hover:bg-gray-100"
           >
             Get Started
-          </a>
+          </Link>
           <Link
             href="/demo"
             className="rounded-lg border border-gray-600 px-6 py-3 text-base font-medium text-gray-300 transition-colors hover:border-gray-400 hover:text-white"
