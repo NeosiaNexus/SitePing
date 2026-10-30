@@ -271,7 +271,7 @@ jobs:
       - name: Version skew (published packages vs main)
         run: bun run skew
 
-  # peerDependencies promise `react >=18`, but the suite's devDeps pin React
+  # peerDependencies promise React 18 and 19, but the suite's devDeps pin React
   # 19 — the oldest supported major was otherwise never exercised (same
   # failure class as the Node 20 CLI bug, #221). Overrides pin the WHOLE tree
   # to React 18 so RTL, react-dom internals and the components agree on one
