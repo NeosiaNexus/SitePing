@@ -1,0 +1,111 @@
+---
+title: Versionnage
+description: Ce que promet la 1.x — l'API publique couverte par semver, ce que chaque type de release peut changer, et ce qui reste hors de la promesse.
+---
+
+SitePing suit le [versionnage sémantique](https://semver.org/lang/fr/). À partir de la 1.0.0, une release au sein d'une version majeure ne casse jamais ce que cette page déclare couvert : du code écrit pour la 1.0 compile et se comporte de la même façon sur toute la 1.x, un feedback enregistré par un widget 1.0 continue de se résoudre, et un widget 1.x continue de parler à un serveur 1.x.
+
+Ces packages passent en 1.0 ensemble : `@siteping/widget`, `@siteping/dashboard`, `@siteping/server`, `@siteping/adapter-prisma`, `@siteping/adapter-memory`, `@siteping/adapter-localstorage`, `@siteping/adapter-kit` et `@siteping/cli`. Trois restent en 0.x pour l'instant — voir [Les packages encore en 0.x](#les-packages-encore-en-0x).
+
+## Ce que chaque release peut changer
+
+| Release | Peut changer |
+|---|---|
+| **Patch** (1.0.x) | Les corrections de bugs, y compris d'un comportement qui contredisait cette documentation. La formulation des traductions intégrées. Les correctifs de sécurité, même quand l'ancien comportement était la faille. Les refactorisations internes, la taille du bundle, les dépendances. |
+| **Mineure** (1.x.0) | Les ajouts : exports, options, membres optionnels d'interface, événements, clés de traduction, locales intégrées, champs de requête et de réponse, tables et colonnes. Les dépréciations. Le relèvement du minimum TypeScript ou navigateurs, dans les délais indiqués plus bas. |
+| **Majeure** (x.0.0) | Supprimer, renommer ou restreindre quoi que ce soit de couvert ; un nouveau membre obligatoire sur une interface que vous implémentez ; abandonner une version de Node.js ou une version majeure d'une peer dependency. |
+
+Chaque changement cassant est marqué `!` dans son commit, listé sous « BREAKING CHANGES » dans le changelog, et décrit dans le guide de migration de sa version majeure.
+
+## L'API publique
+
+Tout ce qu'un package 1.0 expose par sa map `exports` est couvert, sauf ce qui est marqué [expérimental](#les-api-expérimentales). Les chemins à l'intérieur de `dist/` ne sont pas des points d'entrée : la map `exports` bloque les imports profonds, et les noms de fichiers et de chunks changent d'une release à l'autre.
+
+| Package | Points d'entrée couverts |
+|---|---|
+| `@siteping/widget` | `.` — `initSiteping`, `registerLocale`, `loadLocale` et les types exportés · `./react` — `useSiteping` · la globale `SitePing` du bundle `<script>`, avec les mêmes membres |
+| `@siteping/dashboard` | `.` — `SitepingInbox`, `useSitepingInbox`, `createEndpointSource`, `createStoreSource`, `registerLocale`, `FEEDBACK_STATUSES`, `FEEDBACK_TYPES`, `isClosedStatus` et les types exportés |
+| `@siteping/server` | `.` — `createSitepingHandler`, `dispatchWebhook(s)` et les types d'options, de hooks et de politiques |
+| `@siteping/adapter-prisma` | `.` — `PrismaStore`, `createSitepingHandler` et les types qu'il réexporte |
+| `@siteping/adapter-memory` / `adapter-localstorage` | `.` — `MemoryStore` / `LocalStorageStore` |
+| `@siteping/adapter-kit` | `.` — le contrat de store et ses types, `createCollectionStore`, les constructeurs d'enregistrements, les helpers de filtre et de pagination, les erreurs de store et leurs gardes · `./testing` — `testSitepingStore` |
+| `@siteping/cli` | Les commandes `init`, `sync`, `status` et `doctor`, leurs options et leurs [codes de sortie](/fr/docs/cli#codes-de-sortie) |
+
+Les fichiers que génère `init` — la route d'API, les modèles Prisma — vous appartiennent une fois écrits : une CLI ultérieure peut les générer autrement. Ce que le schéma doit contenir est couvert dans [Le schéma de base de données](#le-schéma-de-base-de-données).
+
+### Les types que vous recevez, ceux que vous implémentez
+
+Les types que la bibliothèque vous fournit — enregistrements, réponses, instance du widget — peuvent gagner des champs et des méthodes dans une mineure. Votre code lit ce qu'il connaît et ignore le reste.
+
+Les interfaces que vous implémentez — `SitepingStore`, `InboxSource`, `ScreenshotStorage`, `SitepingAccessControl`, `SitepingLifecycleHooks`, `SitepingLogger`, une action de panneau, une fabrique `headers` — ne gagnent que des membres **optionnels** dans une mineure : une implémentation écrite pour la 1.0 continue de compiler. Il en va de même pour les enregistrements qu'un store renvoie : un nouveau champ sur `FeedbackRecord`, `AnnotationRecord` ou `CommentRecord` reste optionnel en 1.x.
+
+La [suite de conformité](/fr/docs/adapters/writing-an-adapter#la-preuve--la-suite-de-conformité) suit la même règle. Une mineure n'y ajoute un cas que pour un comportement que le contrat exigeait déjà — un store qui y échoue n'était déjà pas conforme, et la correction est de son côté — ou pour un nouveau membre optionnel, ignoré quand un store ne l'implémente pas.
+
+### Les événements et les callbacks
+
+Les événements de `instance.on` — `feedback:sent`, `feedback:deleted`, `comment:added`, `feedback:error`, `panel:open`, `panel:close`, `annotation:start`, `annotation:end` — et les callbacks de la config (`onSkip`, `onOpen`, `onClose`, `onFeedbackSent`, `onCommentAdded`, `onError`, `onAnnotationStart`, `onAnnotationEnd`) gardent leur nom et le type de leur payload. Une mineure peut ajouter des événements, et des champs à un payload.
+
+### Les erreurs
+
+Testez les codes, jamais les messages. Une erreur transmise à `onError`, à l'événement `feedback:error` ou au dashboard porte un `code` — `NETWORK`, `VALIDATION`, `AUTH`, `SERVER` ou `TIMEOUT` — et, quand le serveur a répondu, son `status` HTTP. Les erreurs de store (`StoreNotFoundError`, `StoreDuplicateError`, `StorePersistenceError`, `StoreLimitError`, `StoreValueTooLongError`), leurs gardes (`isStoreNotFound` et les autres) et leurs valeurs de `code` sont couvertes aussi. Les **messages** d'erreur ne le sont pas : ils sont écrits pour des humains et peuvent être reformulés dans n'importe quelle release.
+
+### Les traductions
+
+Les clés du type `Translations` de chaque package sont couvertes : renommer ou supprimer une clé est une majeure, en ajouter une est une mineure, et reformuler un texte intégré est un patch. Un dictionnaire que vous typez avec le `Translations` complet cesse de compiler quand une mineure ajoute une clé — c'est le rôle du type complet ; un dictionnaire partiel passé à [`registerLocale`](/fr/docs/widget/i18n#locales-personnalisées), jamais. Retirer une locale intégrée est une majeure.
+
+## Le protocole HTTP
+
+Le protocole entre le widget, le dashboard et le serveur est couvert tel que la [référence HTTP](/fr/docs/server#référence-http) le décrit : un seul endpoint ; ses méthodes ; le routage de `POST` et `DELETE` par clé du corps (`feedbackId`, `commentId`, `deleteAll`) ; les paramètres de requête ; les champs des requêtes ; les codes de statut ; et les clés JSON des réponses et des erreurs (`{ error }`, `{ errors: [{ field, message }] }`). Les types de réponse dérivent des types d'enregistrement, donc le format sur le réseau et les types TypeScript évoluent ensemble. Une spécification lisible par machine est suivie dans [#314](https://github.com/NeosiaNexus/SitePing/issues/314).
+
+Une mineure peut ajouter des champs de requête optionnels, des paramètres de requête et des champs de réponse ; un client ignore les champs qu'il ne connaît pas. Tout widget ou dashboard 1.x fonctionne avec tout serveur 1.x : une fonctionnalité qui demande le concours du serveur est détectée dans la réponse de liste (aujourd'hui ses `capabilities`) et reste masquée face à un serveur qui ne l'a pas.
+
+Les **webhooks** suivent les mêmes règles : le corps `generic` (`GenericWebhookPayload`) et les en-têtes que vous configurez sont couverts. Les messages Slack et Discord relèvent de la présentation — leur formulation et leur mise en page peuvent changer dans n'importe quelle release.
+
+## Le schéma de base de données
+
+Les modèles qu'écrit la CLI (`SITEPING_MODELS`, rendus par `npx @siteping/cli sync` — voir le [schéma Prisma](/fr/docs/adapters/prisma#schéma-de-base-de-données)) n'évoluent que par ajout au sein de la 1.x. Une mineure peut ajouter une table, ajouter une colonne nullable ou dotée d'une valeur par défaut, ou élargir une colonne ; `sync` fusionne le changement, votre outil de migration l'applique, et le changelog accompagne le tout d'une note de migration. Supprimer, renommer ou restreindre une table ou une colonne attend une majeure.
+
+## Les contrats DOM et CSS
+
+**Widget.** Les attributs que vous posez sur vos pages — `data-siteping-ignore="true"` ([masquage](/fr/docs/widget/screenshots#masquer-les-données-sensibles)) et `data-feedback-anchor` ([ancres sémantiques](/fr/docs/widget/anchoring#aider-les-ancres-à-vous-aider)) — gardent leur sens. De même pour l'élément hôte `<siteping-widget>` et l'attribut `data-action-id` des contrôles d'[actions de panneau](/fr/docs/widget/panel-actions). Les ancres enregistrées avec un feedback, y compris le séparateur ` >>> ` des [sélecteurs dans les shadow roots](/fr/docs/widget/anchoring#web-components-et-shadow-dom), continuent de se résoudre dans tous les widgets 1.x ultérieurs. Tout ce qui se trouve dans le Shadow root fermé du widget — son balisage, ses classes, ses styles — est interne : son apparence se règle par ses options uniquement.
+
+**Dashboard.** Les [variables `--spd-*`](/fr/docs/dashboard/theming#surcharger-les-variables-depuis-le-css) documentées et l'élément `.spd-root` avec ses attributs `data-theme` et `data-density` sont couverts. Les autres classes `spd-` et le balisage de l'inbox ne le sont pas : surchargez les styles par les variables, pas par des sélecteurs internes.
+
+## Les environnements pris en charge
+
+| | Pris en charge en 1.x | Relever le minimum |
+|---|---|---|
+| **Node.js** | Les versions listées par le champ `engines.node` de chaque package, testées en CI | Une majeure |
+| **TypeScript** | 5.0 et ultérieur — y compris avec `strict` et `exactOptionalPropertyTypes`, et `moduleResolution` à `bundler`, `node16` ou `nodenext`, depuis ESM comme depuis CommonJS | Une mineure, vers une version sortie depuis au moins deux ans |
+| **Navigateurs** | Chrome et Edge 111+, Firefox 113+, Safari 16.4+ (iOS et iPadOS compris) | Une mineure, vers des versions sorties depuis au moins 30 mois |
+| **Peer dependencies** | `react` ≥ 18 (`/react` du widget, dashboard) · `@prisma/client` 5, 6 ou 7 (adapter-prisma, optionnel) · `vitest` ≥ 3 (`@siteping/adapter-kit/testing`, optionnel) | Élargir une plage est une mineure, abandonner une version majeure d'une peer est une majeure |
+
+Le minimum navigateurs découle de ce qui est livré : les styles du dashboard utilisent `color-mix()` et les container queries, et le bundle `<script>` du widget embarque sa bibliothèque de capture, dont les blocs `static` de classe demandent Safari 16.4. Installé depuis npm, le widget laisse cette bibliothèque à votre bundler, qui décide s'il la compile pour des cibles plus anciennes.
+
+## Les API expérimentales
+
+Une déclaration marquée `@experimental` dans sa TSDoc — et signalée comme expérimentale dans cette documentation — est hors de la promesse : elle peut changer ou disparaître dans une mineure, jusqu'à ce qu'une release la promeuve et le dise dans son changelog. Une fonctionnalité qui se stabilise encore sort ainsi plutôt que d'être figée trop tôt.
+
+## Les dépréciations
+
+Une API couverte est dépréciée dans une mineure : `@deprecated` dans sa TSDoc nomme son remplaçant, et, là où elle est atteignable à l'exécution — une option, une méthode —, un avertissement unique dans la console le signale dans les builds de développement, jamais en production. Elle continue de fonctionner jusqu'à la fin de la version majeure et disparaît dans la suivante, listée dans le guide de migration de celle-ci.
+
+## Ce qui n'est pas couvert
+
+- `@siteping/core`, le package interne intégré aux autres, et tout ce qui n'est atteignable que par un import profond dans `dist/`.
+- Les noms de fichiers de `dist/`, le découpage en chunks et la taille exacte du bundle — la taille est budgétée en CI, pas versionnée.
+- Le balisage et les styles internes du widget, la durée des animations, et le design visuel des deux interfaces.
+- Les messages d'erreur, les messages de la console et la formulation des notifications Slack et Discord.
+- Le code généré par `init`, une fois écrit dans votre projet.
+- Tout ce qui est marqué `@experimental`.
+
+## Les packages encore en 0.x
+
+`@siteping/adapter-drizzle` et `@siteping/screenshot-storage` attendent drizzle-orm 1.0 : leurs types publics embarquent des génériques de drizzle-orm 0.x ([#380](https://github.com/NeosiaNexus/SitePing/issues/380)). `@siteping/integration-issues` attend que son interface `IssueTracker` se stabilise ([#415](https://github.com/NeosiaNexus/SitePing/issues/415)). Jusqu'à leur 1.0, un changement cassant sort dans une mineure (0.x.0) et tout le reste dans un patch.
+
+## Comment c'est garanti
+
+- **Snapshots d'API.** La CI compare la surface de types et les exports à l'exécution de chaque point d'entrée 1.0, une fois construits, avec des snapshots versionnés dans le dépôt (`bun run api:check`) : un changement de l'API publique est un diff relu, jamais un effet de bord.
+- **Tests de types.** Des fichiers `*.test-d.ts` verrouillent les contrats qui ne doivent ni s'assouplir ni se restreindre — unions de config, interface de store, maps d'événements.
+- **La suite de conformité** tourne sur chaque store fourni.
+- **Les changelogs** sont générés depuis les commits, et un commit cassant ne peut pas passer inaperçu : son `!` le range sous « BREAKING CHANGES ».

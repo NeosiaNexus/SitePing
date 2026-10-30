@@ -114,13 +114,13 @@ La limitation de débit n'est pas gérée ici : appliquez-la dans votre framewor
 | `access` | `SitepingAccessControl` | — | Votre propre authentification à la place des quatre options ci-dessus — voir [accès personnalisé](#accès-personnalisé) |
 | `allowedOrigins` | `string[]` | — | Liste blanche CORS en correspondance exacte. **Aucun joker** — `["*"]` ne correspond à rien ; non défini signifie aucun en-tête CORS du tout. Les origines listées peuvent envoyer `Content-Type`, `Authorization` et tout en-tête personnalisé demandé par leur préflight (par exemple via l'option `headers` du widget) |
 | `maxBodyBytes` | `number` | 4 Mio | Taille maximale d'un corps de requête, en octets — deux fois le plus gros envoi que la validation accepte. Au-delà, la réponse est un `413`, avant toute lecture du JSON |
-| `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Déclenchés à chaque nouveau feedback — voir [webhooks](#webhooks) |
+| `webhooks` | `WebhookConfig \| WebhookConfig[]` | — | Déclenchés à chaque nouveau feedback, et aux [événements](#événements) que chacun choisit — voir [webhooks](#webhooks) |
 | `waitUntil` | `(promise) => void` | — | Garde les envois de webhooks en vie après la réponse sur les runtimes serverless et edge — voir [webhooks](#webhooks) |
 | `beforeCreate` | `(input, context) => input` | — | Réécrire un envoi avant son enregistrement — voir [points d'extension](#points-dextension) |
 | `beforeComment` | `(input, context) => input` | — | La même chose pour une réponse d'un [fil](/fr/docs/comments) |
 | `presentFeedback` | `(feedback, context) => feedback` | — | Transformer chaque enregistrement avant son envoi |
-| `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted` |
-| `logger` | `{ error(message, context) }` | `console.error` | Où vont les échecs inattendus, avec la méthode et le chemin de la requête — et pour un hook en échec, le feedback ou la suppression qu'il concerne. Les échecs de webhook vont plutôt à leur propre [`onError`](#webhooks). Un logger qui lève ou rejette se rabat sur `console.error` |
+| `hooks` | `SitepingLifecycleHooks` | — | `onCreated`, `onUpdated`, `onDeleting`, `onDeleted`, `onCommentCreated` |
+| `logger` | `{ error(message, context) }` | `console.error` | Où vont les échecs inattendus, avec la méthode et le chemin de la requête — et pour un hook en échec, le feedback ou la suppression qu'il concerne. Les échecs de webhook vont plutôt à leur propre [`onError`](#webhooks). Un logger qui lève ou rejette se rabat sur `console.error`. C'est un `SitepingLogger` : le même objet, doté aussi d'une méthode `warn` (`console`, winston…), sert les stores et les stockages de captures, qui signalent les cas dégradés via `warn` |
 | `describeError` | `(error) => string \| undefined` | — | Le message d'une `500` au lieu de `"Internal server error"`, par exemple une indication « lancez vos migrations ». Ne renvoyez jamais les détails de l'erreur elle-même |
 
 `logger.error(message, context)` suit l'ordre de console et de winston. [pino](https://getpino.io) prend le contexte en premier, et ne sérialise une erreur que sous `err` : passé tel quel, il passe la vérification de types, puis journalise le message sans son contexte. Adaptez-le :
@@ -136,11 +136,23 @@ createSitepingHandler({
 });
 ```
 
+### Erreurs de configuration
+
+`createSitepingHandler` vérifie ses options à sa création, jamais à chaque requête : un problème lève une `SitepingConfigError` dont le message dit comment le corriger. Reconnaissez-la avec `isSitepingConfigError`, exporté par `@siteping/server` et `@siteping/adapter-prisma`, et branchez sur son `code` stable :
+
+| `code` | Levée quand |
+|---|---|
+| `CONFIG_STORE_MISSING` | Pas de `store` — avec adapter-prisma, ni `store` ni `prisma` |
+| `CONFIG_MAX_BODY_BYTES_INVALID` | `maxBodyBytes` n'est pas un entier positif |
+| `CONFIG_OWNERSHIP_CHECK_MISSING` | `access.authorize` sur un store sans `verifyProjectOwnership` |
+| `CONFIG_WEBHOOK_TIMEOUT_INVALID` | Un `timeoutMs` de webhook qu'aucun minuteur ne tient (le message ne nomme le webhook que par son origine) |
+| `CONFIG_API_KEY_REQUIRED` | `NODE_ENV=production` sans `apiKey`, `access` ni `requireAuthForDestructive: false` |
+
 ## Le modèle de sécurité, franchement
 
 - **Les lectures sont publiques par défaut.** Sans `apiKey`, quiconque connaît l'URL peut lister les feedbacks (avec les e-mails masqués — voir plus bas).
 - **Avec un `apiKey`, elles ne le sont plus.** `publicEndpoints` vaut alors `["POST", "OPTIONS"]` par défaut : un visiteur sans la clé peut envoyer, mais `GET` répond `401`, donc le widget n'affiche aucun pin et un panneau vide (il dit pourquoi dans la console du navigateur, une fois). Pour des relecteurs sans clé, définissez `publicEndpoints: ["GET", "POST", "OPTIONS"]` : quiconque connaît l'URL et un nom de projet peut alors lire ses feedbacks et ses fils, e-mails masqués. Gardez le défaut pour un widget qui ne fait qu'envoyer, ou authentifiez les relecteurs avec [`access`](#accès-personnalisé).
-- **Les appels destructifs, non.** PATCH et DELETE répondent `401` sauf si vous définissez un `apiKey` ou vous en désengagez explicitement avec `requireAuthForDestructive: false`. En production, la factory lève au démarrage plutôt que de tourner sans clé, sauf si vous vous en êtes désengagé. Cette vérification lit `process.env.NODE_ENV` : elle ne tourne que là où `process` existe ; ailleurs, le `401` s'applique toujours.
+- **Les appels destructifs, non.** PATCH et DELETE répondent `401` sauf si vous définissez un `apiKey` ou vous en désengagez explicitement avec `requireAuthForDestructive: false`. En production, la factory lève au démarrage plutôt que de tourner sans clé, sauf si vous vous en êtes désengagé ([`CONFIG_API_KEY_REQUIRED`](#erreurs-de-configuration)). Cette vérification lit `process.env.NODE_ENV` : elle ne tourne que là où `process` existe ; ailleurs, le `401` s'applique toujours.
 - `OPTIONS` est toujours public — les préflights doivent fonctionner.
 - **Les vérifications inter-projets passent par le store.** PATCH et DELETE vérifient que l'enregistrement appartient au `projectName` qu'ils indiquent via la méthode optionnelle `verifyProjectOwnership` du store — tous les stores fournis et tout ce qui repose sur `createCollectionStore` l'implémentent. Un store écrit à la main qui l'omet saute la vérification : quiconque connaît l'`id` d'un feedback peut alors le modifier quel que soit le `projectName`, donc implémentez la méthode (voir [écrire un adapter](/fr/docs/adapters/writing-an-adapter#appartenance-au-projet)) ou placez l'endpoint derrière un `apiKey`.
 
@@ -149,7 +161,7 @@ createSitepingHandler({
 - `clientId` est retiré de **toutes** les réponses, sur les feedbacks comme sur leurs commentaires.
 - `authorEmail` est vidé sauf si la requête porte un en-tête `Authorization: Bearer` valide — sur les feedbacks comme sur les commentaires de leurs [fils](/fr/docs/comments). Seule exception : un `POST` réussi renvoie l'e-mail à son auteur.
 
-Avec [`access`](#accès-personnalisé), c'est `canReadAuthorEmail` qui décide, pour toutes les réponses — `POST` compris.
+Avec [`access`](#accès-personnalisé), c'est `canReadAuthorEmail` qui décide, pour toutes les réponses — `POST` compris — et pour le projet que vise la requête.
 
 ### Ce que chaque appelant peut faire
 
@@ -158,6 +170,8 @@ Chaque feedback d'une réponse — la liste, la réponse au `PATCH`, la réponse
 ```json
 { "permissions": { "canChangeStatus": false, "canDelete": false, "canComment": true, "canDeleteComment": false } }
 ```
+
+Chaque commentaire d'un fil — et la réponse à une réplique postée — porte ses propres `{ "permissions": { "canDelete": true } }` : `canDeleteComment` vaut pour tout le fil, alors qu'une politique qui ne laisse les auteurs supprimer que leurs propres réponses l'accorde réponse par réponse.
 
 Elles disent ce que cet appelant aurait le droit de faire : le [widget](/fr/docs/widget/configuration#mode-relecteur) et le [dashboard](/fr/docs/dashboard#lecture-seule-et-permissions) masquent le reste, au lieu de proposer un bouton qui répond `401` ou `403`. Le serveur vérifie quand même chaque requête.
 
@@ -188,11 +202,11 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 
 - **`authenticate`** tourne sur toutes les méthodes sauf `OPTIONS`, et résout **qui** appelle — un objet, une chaîne ou un nombre, jamais un booléen. Toute valeur falsy (`null`, `undefined`, `""`, `0`) répond `401`. Une vérification `true`/`false` est une erreur de type, et un `false` en JavaScript pur répond `401` lui aussi. Son type de retour type `principal` partout ailleurs.
 - **`authorize`** reçoit l'`action` (`create`, `list`, `update`, `delete`, `deleteAll`, et `createComment` / `deleteComment` pour les [fils](/fr/docs/comments)), le `projectName` et, pour `update`, `delete` et les actions de commentaire, le `feedbackId` — plus le `commentId` pour `deleteComment`. Par défaut, il laisse passer tout appelant authentifié. PATCH et DELETE désignent les enregistrements par id : la factory refuse donc de démarrer avec un `authorize` devant un store sans `verifyProjectOwnership` — tous les stores fournis l'implémentent.
-- **`authorize` remplit aussi les [`permissions`](#ce-que-chaque-appelant-peut-faire)**, interrogé avec `dryRun: true` : `update`, `delete`, `createComment` et `deleteComment` pour chaque feedback d'une réponse, et `deleteAll` une fois par liste. Rien n'est fait à ce moment-là — sautez votre journal d'audit sur ces essais à blanc. Un `deleteComment` à blanc ne porte pas de `commentId`, sa réponse valant pour tout le fil : une règle par auteur y répond `false` (`if (!commentId) return false`). Gardez-le rapide : une page de 50 feedbacks demande 201 essais à blanc, 8 à la fois — ils partagent la `request` de la réponse, donc une politique qui interroge une base peut mettre ses lectures en cache par requête, dans une `WeakMap` indexée sur elle.
+- **`authorize` remplit aussi les [`permissions`](#ce-que-chaque-appelant-peut-faire)**, interrogé avec `dryRun: true` : `update`, `delete`, `createComment` et `deleteComment` pour chaque feedback d'une réponse, et `deleteAll` une fois par liste. Rien n'est fait à ce moment-là — sautez votre journal d'audit sur ces essais à blanc. Le `deleteComment` à blanc du feedback ne porte pas de `commentId`, sa réponse valant pour tout le fil : une règle par auteur y répond `false` (`if (!commentId) return false`). Chaque commentaire d'un fil ainsi refusé est alors interrogé avec son `commentId`, pour ses propres `permissions` — là où la règle par auteur répond. Gardez-le rapide : une page de 50 feedbacks demande 201 essais à blanc, plus un par commentaire d'un fil refusé en bloc, 8 à la fois — ils partagent la `request` de la réponse, donc une politique qui interroge une base peut mettre ses lectures en cache par requête, dans une `WeakMap` indexée sur elle.
 - **Un essai à blanc porte sur une action, pas sur une méthode.** Sa `request` est celle de la réponse — un `GET` pour une liste, le `POST` ou le `PATCH` auquel répond une écriture — et `authenticate` n'est pas rappelé pour lui. Décidez d'après `action`, jamais d'après `request.method` ; et si `authenticate` n'admet les visiteurs que sur certaines méthodes, faites-leur refuser les autres actions par `authorize`, sinon ils se voient proposer des contrôles qui répondent `401`.
-- **`canReadAuthorEmail`** ne révèle les e-mails des relecteurs que sur `true` : sans lui, chaque réponse les masque, et toute autre réponse aussi — `undefined` compris, que renvoie un principal dépourvu du drapeau que vous lisez. Une politique qui sert le widget public résout aussi un principal pour les visiteurs anonymes : être authentifié ne dit donc rien de qui peut les lire.
-- **`canCommentAsTeam`** décide si un commentaire qui demande le rôle `team` le garde ; tout autre est marqué `client`. Par défaut, il reprend la réponse de `canReadAuthorEmail` : une politique qui ne définit aucun des deux ne l'accorde jamais — voir [le rôle équipe](/fr/docs/comments#le-rôle-équipe). Une fois défini, seul `true` accorde le rôle.
-- Un callback qui lève répond une `500` journalisée — sauf `authorize` lors d'un essai à blanc : la permission est refusée, l'échec journalisé, et la réponse part.
+- **`canReadAuthorEmail`** ne révèle les e-mails des relecteurs que sur `true` : sans lui, chaque réponse les masque, et toute autre réponse aussi — `undefined` compris, que renvoie un principal dépourvu du drapeau que vous lisez. Une politique qui sert le widget public résout aussi un principal pour les visiteurs anonymes : être authentifié ne dit donc rien de qui peut les lire. Son second argument, `{ projectName, request }`, nomme le projet que vise la requête : un rôle par projet peut donc borner aussi les e-mails ; il est interrogé une fois par requête.
+- **`canCommentAsTeam`** décide si un commentaire qui demande le rôle `team` le garde ; tout autre est marqué `client`. Il reçoit le même `{ projectName, request }`, pour le projet du fil. Par défaut, il reprend la réponse de `canReadAuthorEmail` pour ce projet : une politique qui ne définit aucun des deux ne l'accorde jamais — voir [le rôle équipe](/fr/docs/comments#le-rôle-équipe). Une fois défini, seul `true` accorde le rôle.
+- Un callback qui lève répond une `500` journalisée, avant toute écriture — sauf `authorize` lors d'un essai à blanc : la permission est refusée, l'échec journalisé, et la réponse part.
 
 `access` remplace `apiKey`, `publicEndpoints`, `requireAuthForDestructive` et `redactUnauthenticatedEmails` : passer les deux est une erreur de type. Depuis une page d'une autre origine, envoyez l'identifiant par l'option `headers` du widget — le widget n'envoie pas de cookies en cross-origin.
 
@@ -309,7 +323,7 @@ initSiteping({ endpoint: "https://api.example.com/api/siteping", projectName: "a
 - **Des algorithmes épinglés, en HTTPS.** `algorithms` liste ceux avec lesquels votre fournisseur signe : un jeton non signé ou `HS256` est refusé avant même la recherche d'une clé. Gardez l'issuer et le jeu de clés en `https://` : qui peut altérer le jeu de clés peut fabriquer des jetons d'administrateur.
 - **L'auteur vient du jeton.** `beforeCreate` reprend son nom, et son e-mail seulement quand `email_verified` vaut true ; sinon, les valeurs du widget restent. `beforeComment` fait de même pour les réponses : personne de connecté ne répond sous le nom d'un autre relecteur. Les jetons d'accès ne portent pas toujours ces claims : passez [`identity`](/fr/docs/widget/configuration) pour épargner la modale d'identité du widget aux utilisateurs connectés.
 - **Les e-mails restent aux administrateurs.** Comme `canReadAuthorEmail` est défini, il décide aussi [du rôle équipe](/fr/docs/comments#le-rôle-équipe) : les réponses des administrateurs sont marquées `team`, celles de tous les autres `client`.
-- **Un rôle, tous les projets.** Ce `authorize` ne lit jamais `projectName` : `siteping-admin` trie tous les projets que sert l'endpoint, et n'importe qui — visiteur ou membre — liste chacun d'eux, captures d'écran et diagnostics compris. Pour séparer plusieurs clients, donnez à chaque projet son propre rôle, comme `siteping-admin:acme` : gardez les rôles de l'appelant dans le principal, et faites tester à `authorize` `` roles.includes(`siteping-admin:${projectName}`) `` là où il teste `isAdmin`. `canReadAuthorEmail` ne reçoit pas le projet : réservez-le donc à un rôle qui les couvre tous. Pour réserver aussi les lectures aux utilisateurs connectés, renvoyez `null` au lieu de `VISITOR` quand aucun bearer n'arrive — chaque requête exige alors un jeton, envois compris — et n'autorisez `list` que sur les projets de l'appelant.
+- **Un rôle, tous les projets.** Ce `authorize` ne lit jamais `projectName` : `siteping-admin` trie tous les projets que sert l'endpoint, et n'importe qui — visiteur ou membre — liste chacun d'eux, captures d'écran et diagnostics compris. Pour séparer plusieurs clients, donnez à chaque projet son propre rôle, comme `siteping-admin:acme` : gardez les rôles de l'appelant dans le principal, et faites tester à `authorize` `` roles.includes(`siteping-admin:${projectName}`) `` là où il teste `isAdmin`. Faites de même dans `canReadAuthorEmail`, dont le second argument nomme le projet : `` (principal, { projectName }) => principal.roles.includes(`siteping-admin:${projectName}`) ``. Pour réserver aussi les lectures aux utilisateurs connectés, renvoyez `null` au lieu de `VISITOR` quand aucun bearer n'arrive — chaque requête exige alors un jeton, envois compris — et n'autorisez `list` que sur les projets de l'appelant.
 
 Les rôles dépendent du fournisseur : `rolesOf` est à vous d'écrire.
 
@@ -446,11 +460,11 @@ La session épargne aussi aux utilisateurs connectés la modale d'identité du w
 ```tsx
 // app/feedback.tsx — monté dans votre layout racine
 "use client";
-import type { Identity } from "@siteping/widget";
+import type { SitepingIdentity } from "@siteping/widget";
 import { useSiteping } from "@siteping/widget/react";
 import { authClient } from "@/lib/auth-client"; // createAuthClient() de "better-auth/react"
 
-function Widget({ identity }: { identity: Identity | undefined }) {
+function Widget({ identity }: { identity: SitepingIdentity | undefined }) {
   useSiteping({ endpoint: "/api/siteping", projectName: "acme", identity });
   return null;
 }
@@ -552,7 +566,7 @@ createSitepingHandler({
 
 - **`beforeCreate`** tourne sur l'envoi validé, avant `authorize` — qui voit le projet qu'il renvoie. **`beforeComment`** fait de même pour une [réponse](/fr/docs/comments), `projectName` et `feedbackId` compris — il tourne donc aussi avant que le feedback soit cherché, et peut tourner pour un feedback qui s'avère ne pas exister. L'`authorRole` qu'il renvoie reste une prétention, `team` n'étant gardé que pour un appelant [dont votre politique répond](/fr/docs/comments#le-rôle-équipe). Sans lui, une réponse garde le nom et l'e-mail envoyés par son client.
 - **`presentFeedback`** tourne sur chaque enregistrement juste avant son envoi ; le retrait de `clientId` et le masquage de l'e-mail s'appliquent encore après lui.
-- **`onCreated`**, **`onUpdated`** et **`onDeleted`** sont attendus avant la réponse, pour que les runtimes serverless ne les coupent pas. Une exception est journalisée et ne fait jamais échouer la requête : l'écriture a déjà eu lieu. `onCreated` tourne une fois par feedback enregistré, jamais pour un `clientId` rejoué.
+- **`onCreated`**, **`onUpdated`**, **`onDeleted`** et **`onCommentCreated`** sont attendus avant la réponse, pour que les runtimes serverless ne les coupent pas. Une exception est journalisée et ne fait jamais échouer la requête : l'écriture a déjà eu lieu. `onCreated` tourne une fois par feedback enregistré et `onCommentCreated` une fois par [réponse](/fr/docs/comments) enregistrée — le commentaire avec le `projectName` de son feedback —, jamais pour un `clientId` rejoué. `onCommentCreated` demande un store qui implémente `addCommentIfAbsent`, seul à distinguer une nouvelle réponse d'un renvoi : tous les stores fournis le font, et le handler refuse de démarrer sans lui.
 - **`onDeleting`** tourne avant la suppression, avec `{ kind: "single", id, projectName }` ou `{ kind: "project", projectName }`. Une exception garde l'enregistrement et répond `502`.
 
 Ces callbacks reçoivent `{ request, principal }` comme contexte ; `principal` vaut `null` sous la politique `apiKey`. Les hooks écrits comme méthodes de classe gardent leur `this`.
@@ -566,7 +580,7 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 | Méthode | Rôle | Succès |
 |---|---|---|
 | `POST` | Créer un feedback (envois du widget) — ou [un commentaire](/fr/docs/comments#poster-un-commentaire), quand le corps porte un `feedbackId` | `201` + l'enregistrement. Un `clientId` rejoué renvoie l'enregistrement existant au lieu d'échouer (et ne notifie jamais deux fois les webhooks ni `onCreated`) ; un `clientId` déjà utilisé par **un autre** projet est refusé avec `409` |
-| `GET` | Lister les feedbacks, chacun avec son fil et ses [`permissions`](#ce-que-chaque-appelant-peut-faire) | `200` + `{ feedbacks, total, capabilities, permissions }`, avec `Cache-Control: private, max-age=5` (`no-store` avec `access`) |
+| `GET` | Lister les feedbacks, chacun avec son fil et ses [`permissions`](#ce-que-chaque-appelant-peut-faire) | `200` + `{ feedbacks, total, protocol, capabilities, permissions }`, avec `Cache-Control: private, max-age=5` (`no-store` avec `access`) |
 | `PATCH` | Changer un statut | `200` + l'enregistrement mis à jour |
 | `DELETE` | Supprimer un ou tous — ou [un commentaire](/fr/docs/comments#supprimer-un-commentaire), quand le corps porte un `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | Préflight CORS | `204` |
@@ -579,13 +593,31 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 
 **Erreurs :** JSON invalide → `400 { error }` ; échec de validation → `400 { errors: [{ field, message }] }`, les 20 premiers problèmes ; corps au-delà de `maxBodyBytes` → `413` ; identifiants absents ou faux → `401` ; refus d'`authorize` ou d'un contrôle CSRF → `403` ; corps non JSON avec `access` → `415` ; id inconnu → `404` ; `clientId` appartenant à un autre projet, `clientId` de commentaire déjà utilisé sur un autre feedback, ou commentaire `client` sur un fil plein → `409 { error }` ; valeur plus longue que ce que tient le store (une colonne MySQL que `sync` n'a pas encore [élargie](/fr/docs/adapters/prisma#schéma-de-base-de-données)) → `422 { error }` ; écriture de commentaire sur un store sans commentaires → `501 { error }` ; `onDeleting` a levé → `502` ; tout le reste → `500 { error: "Internal server error" }`, ou le message que renvoie `describeError`.
 
+### Le protocole
+
+Le protocole est livré avec `@siteping/server` sous forme de document OpenAPI 3.1, généré à partir des schémas que le handler valide et vérifié contre les types qu'il envoie — un générateur de client, un serveur de mock ou un explorateur d'API peut le lire :
+
+```ts
+import spec from "@siteping/server/openapi.json" with { type: "json" };
+```
+
+Chaque réponse de liste porte `protocol`, la version du protocole que parle le serveur (`SITEPING_PROTOCOL_VERSION`, exporté par `@siteping/server` : `1`). Elle augmente à chaque ajout sur lequel un client peut s'appuyer : un client vérifie `protocol >= N` avant d'utiliser ce que la version N a ajouté, au lieu de sonder les champs. Les serveurs qui la précèdent n'en envoient pas : lisez-le comme `0`.
+
+Ce que la 1.x garde stable :
+
+- **Un endpoint, aiguillé par la méthode et le corps.** Un corps de `POST` avec un `feedbackId` poste un commentaire, tout autre crée un feedback ; un corps de `DELETE` avec un `commentId` supprime un commentaire, tout autre supprime du feedback. La charge utile d'une ressource ne porte jamais la clé de l'autre.
+- **`DELETE` porte un corps JSON.** `fetch` l'envoie et chaque runtime visé par le handler le lit, mais HTTP ne donne pas de sens défini à un tel corps, et certains proxys le suppriment — la requête répond alors `400`. Placez l'endpoint derrière un proxy qui le transmet.
+- **Trois `409`, aucun ne vaut un réessai :** un feedback dont le `clientId` est déjà utilisé par un autre projet ; un commentaire dont le `clientId` est déjà utilisé sur un autre feedback ; un commentaire `client` sur un fil qui en compte déjà 100.
+- **Les codes de statut et les formes JSON font contrat, pas les chaînes `error`.** Elles sont en anglais et informatives, et une version mineure peut en reformuler une : basez-vous sur le statut.
+- **Le widget et le dashboard 1.x demandent un serveur 1.x** — `@siteping/server` ou `@siteping/adapter-prisma`, protocole 1. Au sein de la 1.x, ils n'utilisent ce qu'une version ultérieure du protocole ajoute qu'après avoir lu `protocol` : un widget plus récent continue de fonctionner face à un serveur 1.x plus ancien.
+
 ### Les limites de validation à connaître
 
 Le corps entier ≤ `maxBodyBytes` (4 Mio) · `message` ≤ 5000 caractères · `annotations` ≤ 50 par feedback · `body` d'un commentaire ≤ 5000 caractères, 100 commentaires `client` par fil (les réponses `team` ne sont pas plafonnées) · `screenshotDataUrl` ≤ 1,5 Mo, JPEG/PNG/WebP uniquement · `diagnostics` ≤ 50 entrées console + 20 réseau · `projectName` ≤ 191 caractères · `clientId` ≤ 191 caractères et doit correspondre à `[a-zA-Z0-9_-]+` · `authorEmail` suit le même motif Unicode que la fenêtre d'identité du widget (`françois@exemple.fr` passe), donc une adresse acceptée par la fenêtre n'est jamais refusée ici.
 
 ## Webhooks
 
-Soyez notifié à chaque nouveau feedback :
+Soyez notifié à chaque nouveau feedback — et, pour les webhooks qui [s'y abonnent](#événements), aux changements de statut, aux suppressions et aux réponses :
 
 ```ts
 createSitepingHandler({
@@ -597,7 +629,7 @@ createSitepingHandler({
 });
 ```
 
-`type` vaut `"slack"`, `"discord"` ou `"generic"` (le défaut — il poste l'enregistrement en JSON avec l'e-mail de l'auteur non masqué : traitez donc les cibles de webhook générique comme de confiance ; le `clientId` est retiré comme partout ailleurs, de ses commentaires aussi, et `GenericWebhookPayload` type le corps tel que le récepteur le lit, dates en chaînes ISO). Chaque appel a un timeout de 5 secondes par défaut — réglez `timeoutMs` par webhook, un entier positif jusqu'à 2 147 483 647, le plus long délai que tient un minuteur ; la factory lève sur toute autre valeur. Les échecs ne bloquent jamais l'envoi, et un `onError(err, feedbackId)` optionnel permet de les journaliser — un `onError` asynchrone est attendu, et son propre échec est signalé à `console.warn`. Un `clientId` rejoué ne les redéclenche jamais, et deux envois simultanés du même `clientId` (le widget qui relance une requête expirée) ne notifient qu'une fois lorsqu'ils atteignent le même processus serveur. Entre plusieurs instances, seul le store peut les départager : le `@unique` de Prisma sur `clientId` le fait, tout comme l'index unique du [store Drizzle](/fr/docs/adapters/drizzle). Les stores memory et localStorage, comme tout store construit sur `createCollectionStore`, ne dédoublonnent qu'au sein d'une même instance de store, et un store personnalisé qui renvoie l'enregistrement existant sur un doublon peut notifier deux fois s'il n'implémente pas `createFeedbackIfAbsent` de façon atomique — voir [Écrire un adapter](/fr/docs/adapters/writing-an-adapter#effets-de-création-exactement-une-fois).
+`type` vaut `"slack"`, `"discord"` ou `"generic"` (le défaut — il poste l'enregistrement en JSON avec l'e-mail de l'auteur non masqué : traitez donc les cibles de webhook générique comme de confiance ; le `clientId` est retiré comme partout ailleurs, de ses commentaires aussi, et `GenericWebhookPayload` type le corps tel que le récepteur le lit, dates en chaînes ISO). Chaque appel a un timeout de 5 secondes par défaut — réglez `timeoutMs` par webhook, un entier positif jusqu'à 2 147 483 647, le plus long délai que tient un minuteur ; la factory lève sur toute autre valeur. Les échecs ne bloquent jamais l'envoi, et un `onError(err, feedbackId, { event, projectName })` optionnel permet de les journaliser — `feedbackId` vaut `""` pour la suppression de tout un projet ; un `onError` asynchrone est attendu, et son propre échec est signalé à `console.warn`. Un `clientId` rejoué ne les redéclenche jamais, et deux envois simultanés du même `clientId` (le widget qui relance une requête expirée) ne notifient qu'une fois lorsqu'ils atteignent le même processus serveur. Entre plusieurs instances, seul le store peut les départager : le `@unique` de Prisma sur `clientId` le fait, tout comme l'index unique du [store Drizzle](/fr/docs/adapters/drizzle). Les stores memory et localStorage, comme tout store construit sur `createCollectionStore`, ne dédoublonnent qu'au sein d'une même instance de store, et un store personnalisé qui renvoie l'enregistrement existant sur un doublon peut notifier deux fois s'il n'implémente pas `createFeedbackIfAbsent` de façon atomique — voir [Écrire un adapter](/fr/docs/adapters/writing-an-adapter#effets-de-création-exactement-une-fois).
 
 Les envois ne sont pas attendus : le widget reçoit sa réponse d'abord. Un runtime serverless ou edge peut geler ou annuler ce travail une fois la réponse partie : confiez-le-lui avec `waitUntil` :
 
@@ -610,3 +642,29 @@ createSitepingHandler({ store, webhooks, waitUntil: after });
 Le `waitUntil` de `@vercel/functions` ou de `cloudflare:workers` fonctionne de la même façon — passez une fonction autonome, pas une méthode détachée de son objet.
 
 Le texte des feedbacks est saisi par des visiteurs anonymes, les charges utiles de chat sont donc durcies : le texte Slack est échappé (un commentaire contenant `<!channel>` s'affiche tel quel, jamais comme une notification) et les messages Discord partent avec l'analyse des mentions désactivée (`allowed_mentions: { parse: [] }`) et leur markdown échappé (un lien masqué `[Réinitialisez votre mot de passe](https://…)` s'affiche tel quel, jamais comme un lien déguisé) — un formulaire public ne peut servir ni à notifier tout votre serveur, ni à l'hameçonner. Les valeurs trop longues sont tronquées aux limites de taille de Slack et de Discord (échappement compris), pour qu'une URL de page de 2000 caractères ne fasse jamais rejeter toute la notification.
+
+### Événements
+
+Chaque envoi nomme ce qui s'est passé dans son en-tête `X-Siteping-Event`. Un webhook ne reçoit que `feedback.created` sauf si son `events` en décide autrement : un webhook configuré avant l'arrivée des événements reçoit exactement les envois qu'il a toujours reçus.
+
+```ts
+createSitepingHandler({
+  store,
+  webhooks: [
+    { url: process.env.SLACK_WEBHOOK_URL!, type: "slack" }, // feedback.created seulement
+    {
+      url: "https://mon-api.dev/hooks/siteping",
+      events: ["feedback.created", "feedback.status_changed", "feedback.deleted", "comment.created"],
+    },
+  ],
+});
+```
+
+| Événement | Part après | Corps générique |
+|---|---|---|
+| `feedback.created` | L'enregistrement d'un feedback — jamais pour un `clientId` rejoué | L'enregistrement (`GenericWebhookPayload`) |
+| `feedback.status_changed` | Un `PATCH` qui fixe un statut — même celui qu'avait déjà le feedback : le store ne garde pas l'ancien statut pour comparer | L'enregistrement tel que stocké après l'écriture, même forme |
+| `feedback.deleted` | La suppression d'un feedback, ou de tous ceux d'un projet (`deleteAll`) — qui part même pour un projet vide, les stores ne renvoyant aucun compte | `{ kind: "single", id, projectName }` ou `{ kind: "project", projectName }`, tel que `onDeleting` le reçoit |
+| `comment.created` | L'enregistrement d'une [réponse](/fr/docs/comments) — jamais pour un `clientId` rejoué ou en concurrence | Le commentaire, sans son `clientId`, plus le `projectName` de son feedback (`GenericWebhookCommentPayload`) |
+
+Slack et Discord reçoivent un message propre à chaque événement (« Feedback resolved: bug from Alice », « New client reply from Bob »), échappé comme celui d'un feedback. Un envoi ne part qu'une fois son écriture réussie : jamais pour une requête refusée par la validation, l'authentification ou le contrôle de propriété, ni pour un id inconnu. `GenericWebhookEventMap` type chaque corps générique par événement, et `WEBHOOK_EVENTS` liste les événements, pour vérifier l'en-tête. `events` doit être une liste non vide d'événements connus — la factory lève sinon —, et `comment.created` demande un store qui implémente `addCommentIfAbsent`, comme `onCommentCreated`.

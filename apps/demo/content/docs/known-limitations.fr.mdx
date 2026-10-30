@@ -1,0 +1,60 @@
+---
+title: Limites connues
+description: Ce que SitePing ne fait pas, ou seulement en partie — iframes, captures, CSP, shadow roots, pages très changeantes, navigateurs — et comment s'en accommoder.
+---
+
+SitePing annote la page qui le charge, retrouve les éléments en évaluant ce qu'il a enregistré sur eux, et dessine ses captures avec un moteur de rendu JavaScript. Chacun de ces choix a ses limites. Cette page les recense pour que vous les anticipiez, plutôt que de les découvrir pendant une recette client.
+
+## Iframes
+
+Le widget s'exécute dans le document qui le charge. Une `<iframe>` — une carte intégrée, un lecteur vidéo, un formulaire de paiement, ou votre propre app intégrée dans une page — est un autre document :
+
+- Une annotation dessinée sur une frame s'ancre à l'élément `<iframe>` dans son ensemble. Le rectangle reste là où le client l'a dessiné, par rapport à la frame, mais rien de son contenu n'est enregistré.
+- Le contenu d'une frame d'une autre origine ne peut pas apparaître dans une capture : le navigateur ne laisse pas la page le lire.
+- Les commentaires au clic droit et l'annotation au clavier s'arrêtent à la frame : les événements qui s'y produisent n'atteignent jamais la page.
+
+Pour relire ce qu'affiche une frame, chargez aussi le widget dans la page encadrée.
+
+## Captures d'écran
+
+Avec [`enableScreenshot`](/fr/docs/widget/screenshots), l'image est reconstruite à partir du DOM et des styles calculés par [html2canvas-pro](https://github.com/yorickshan/html2canvas-pro), pas prise à l'écran. Ce qu'il ne sait pas redessiner manque ou est approximé :
+
+- **Les images d'une autre origine** ne sont dessinées que si leur serveur envoie des en-têtes CORS (`Access-Control-Allow-Origin`) ; sinon elles sont absentes de l'image. Les images de même origine et les images `data:` sont dessinées.
+- **Les iframes d'une autre origine** ressortent vides ([voir plus haut](#iframes)).
+- **Certaines propriétés CSS** qu'html2canvas-pro [liste comme non prises en charge ou limitées](https://yorickshan.github.io/html2canvas-pro/features.html) : les transformations 3D (`perspective`, `preserve-3d`), `background-attachment: fixed`, une partie du masquage (`mask-mode: luminance`, `mask-composite`), les chaînes `backdrop-filter` qu'il ne sait pas exprimer, `::first-line`, `::first-letter` et `::selection`.
+
+Une capture qui échoue complètement ne bloque jamais le feedback : il part sans image. Les éléments marqués `data-siteping-ignore="true"` sont exclus volontairement ([masquage des données sensibles](/fr/docs/widget/screenshots#masquer-les-données-sensibles)).
+
+## Content Security Policy
+
+Sous une politique stricte, le widget a besoin de :
+
+- **`script-src`** : l'emplacement de ses fichiers — l'entrée ESM et les chunks qu'elle charge à la demande (le panneau, une locale, le moteur de capture), en général `'self'`. Le build `<script>` tient en un seul fichier.
+- **`connect-src`** : l'origine de votre endpoint, quand ce n'est pas celle de la page.
+- **`img-src`** : `data:` pour les captures stockées inline, et l'origine de votre [stockage des captures](/fr/docs/adapters/screenshot-storage) si vous en utilisez un.
+- **`style-src`** : rien au-delà de `'self'`. Le widget stylise son shadow root avec une feuille de style construite et pose ses styles inline via la propriété `style` du DOM ; une politique sans `'unsafe-inline'` ne bloque ni l'un ni l'autre. Deux choses en ont besoin, ou d'un nonce : dans un navigateur sans feuilles de style construites dans les shadow roots (Safari avant 16.4), le widget se rabat sur un élément `<style>` et s'affiche donc sans style ; et le point clignotant de la barre de dessin reste immobile.
+
+Le dashboard injecte un élément `<style>` : sa page a donc besoin de `'unsafe-inline'` ou d'un nonce dans `style-src` — voir [Personnalisation](/fr/docs/dashboard/theming).
+
+## Shadow roots fermés
+
+Le contenu d'un shadow root ouvert est ancré comme n'importe quel autre élément. Un shadow root fermé ne peut pas être lu par la page elle-même : une annotation dessinée dessus s'ancre à son élément hôte, le composant entier. Voir [Web components et Shadow DOM](/fr/docs/widget/anchoring#web-components-et-shadow-dom).
+
+## Pages très changeantes
+
+Une annotation retrouve son élément en [évaluant chaque élément auquel correspondent ses signaux](/fr/docs/widget/anchoring). Cela survit aux retouches de texte, aux changements de mise en page et à la plupart des refactorisations, mais pas à tout :
+
+- **Un élément supprimé** ne laisse rien à quoi s'ancrer : le marqueur est masqué, le feedback reste dans le panneau et dans le dashboard.
+- **Une réécriture qui change d'un coup la balise, le texte et la position** peut ne laisser aucun candidat reconnaissable, ou un candidat faible, affiché en pointillés comme approximatif.
+- **Un contenu rendu tardivement** (chargé à la demande, rendu côté client, un web component défini plus tard) obtient son marqueur lors d'une vérification suivante, ou au prochain chargement des feedbacks.
+- **Les éléments d'interface éphémères** — toasts, squelettes de chargement, menus ouverts — ont disparu à la visite suivante, par construction. La capture, prise à l'envoi, les montre quand même.
+
+Un attribut `data-feedback-anchor` à la racine de chaque section est l'ancre qui survit le mieux aux refontes ([Comment fonctionne l'ancrage](/fr/docs/widget/anchoring)).
+
+## Écrans tactiles
+
+Le widget s'affiche sur téléphones et tablettes, avec une mise en page dédiée, mais l'annotation au toucher a encore des manques : un simple appui sans glisser est ignoré, un appui long sur iOS et iPadOS n'ouvre pas la fenêtre de saisie, et la catégorie doit être choisie. Ils sont suivis dans [#305](https://github.com/NeosiaNexus/SitePing/issues/305).
+
+## Navigateurs pris en charge
+
+SitePing cible **Chrome et Edge 111, Firefox 113 et Safari 16.4** et versions ultérieures, un plancher fixé à deux endroits : les styles du dashboard utilisent `color-mix()` et les container queries, et le build `<script>` du widget contient des blocs statiques de classe venus de son moteur de capture. Les navigateurs plus anciens peuvent en faire tourner une partie, mais ne sont pas pris en charge.

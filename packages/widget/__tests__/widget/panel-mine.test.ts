@@ -65,6 +65,7 @@ describe("Panel — 'Mine' filter", () => {
     render: ReturnType<typeof vi.fn>;
     highlight: ReturnType<typeof vi.fn>;
     destroy: ReturnType<typeof vi.fn>;
+    isLost: ReturnType<typeof vi.fn>;
   };
 
   const toggle = () => shadow.querySelector<HTMLButtonElement>(".sp-mine-toggle")!;
@@ -83,7 +84,7 @@ describe("Panel — 'Mine' filter", () => {
       deleteFeedback: vi.fn(),
       deleteAllFeedbacks: vi.fn(),
     };
-    markers = { render: vi.fn(), highlight: vi.fn(), destroy: vi.fn() };
+    markers = { render: vi.fn(), highlight: vi.fn(), destroy: vi.fn(), isLost: vi.fn(() => false) };
     panel = new Panel(
       shadow,
       buildThemeColors(),

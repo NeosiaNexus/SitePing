@@ -49,7 +49,7 @@ describe.each(stores)("Panel bulk actions over StoreClient + %s", (_label, makeS
     deleted = [];
     bus.on("feedback:error", (error) => errors.push(error));
     bus.on("feedback:deleted", (id) => deleted.push(id));
-    const markers = { render: vi.fn(), highlight: vi.fn(), pinHighlight: vi.fn() };
+    const markers = { render: vi.fn(), highlight: vi.fn(), pinHighlight: vi.fn(), isLost: vi.fn(() => false) };
     panel = new Panel(
       shadow,
       buildThemeColors(),

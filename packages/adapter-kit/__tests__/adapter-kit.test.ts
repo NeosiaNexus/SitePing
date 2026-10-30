@@ -5,8 +5,11 @@
  * `@siteping/core`.
  */
 
-import { createCollectionStore, type FeedbackRecord, type SitepingStore } from "../src/index.js";
+import { createCollectionStore, type FeedbackRecord, type SitepingStore, StorePersistenceError } from "../src/index.js";
 import { testSitepingStore } from "../src/testing.js";
+
+/** Set while the conformance suite simulates a backend that refuses writes. */
+let writesFail = false;
 
 /** The simplest possible third-party adapter: a snapshot store over a plain array. */
 function createArrayStore(): SitepingStore {
@@ -15,6 +18,7 @@ function createArrayStore(): SitepingStore {
   return createCollectionStore({
     load: () => feedbacks,
     persist: (next) => {
+      if (writesFail) throw new StorePersistenceError();
       feedbacks = next;
     },
     generateId: () => `kit-${counter++}`,
@@ -22,4 +26,11 @@ function createArrayStore(): SitepingStore {
   });
 }
 
-testSitepingStore(() => createArrayStore());
+testSitepingStore(() => createArrayStore(), {
+  failWrites: () => {
+    writesFail = true;
+    return () => {
+      writesFail = false;
+    };
+  },
+});

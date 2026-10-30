@@ -341,3 +341,41 @@ test.describe("Widget over a host modal with its production closed shadow root",
     await expect(page.locator("#host-dialog")).toHaveCount(0);
   });
 });
+
+test.describe("Widget over a focus-trap modal (#387)", () => {
+  // A host trap listening on `document` in the capture phase runs before any
+  // widget listener: without the guard, its Tab handler would send focus from
+  // the widget back into the host dialog (see FOCUS_TRAP_HTML in server.mjs).
+  test.beforeEach(async ({ page, browserName }, testInfo) => {
+    const project = `e2e-trap-${browserName}-${testInfo.parallelIndex}`;
+    await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
+    await page.goto(`http://localhost:3999/focus-trap?project=${project}`);
+    await expect(page.locator("#trap-dialog")).toBeVisible();
+    await expect(page.locator(".sp-fab")).toBeAttached();
+  });
+
+  test("Tab and Shift+Tab in the feedback panel stay in the panel", async ({ page }) => {
+    await page.locator(".sp-fab").click();
+    await page.locator('[data-item-id="chat"]').click();
+    const panel = page.locator(".sp-panel.sp-panel--open");
+    const panelSearch = panel.locator(".sp-search");
+    // Opening the panel moves focus to its search field on the next frame.
+    await expect(panelSearch).toBeFocused();
+    const focusInPanel = () =>
+      panel.evaluate((element) => element.contains((element.getRootNode() as ShadowRoot).activeElement));
+
+    for (const key of ["Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"]) {
+      await page.keyboard.press(key);
+      expect(await focusInPanel()).toBe(true);
+    }
+    await expect(page.locator("#trap-first")).not.toBeFocused();
+  });
+
+  test("the host trap still cycles Tab inside its own dialog", async ({ page }) => {
+    await page.locator("#trap-last").focus();
+
+    await page.keyboard.press("Tab");
+
+    await expect(page.locator("#trap-first")).toBeFocused();
+  });
+});
