@@ -43,7 +43,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 67 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
+That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
 
 **The three primitives:**
 
@@ -121,6 +121,8 @@ Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreL
 
 Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above. Querying a database? `clampPagination(query)` returns the normalized `{ page, limit, skip }` — the same clamp the in-memory pipeline and `PrismaStore` use, so pass its `limit` and `skip` straight to your `LIMIT`/`OFFSET`. Check `isUnreachableOffset(skip)` first: a huge `page` from a direct caller yields an offset past `Number.MAX_SAFE_INTEGER` (or `Infinity`) that SQL backends reject, and the suite expects `{ feedbacks: [], total }` for it — answer with your count query alone.
 
+Text can hold characters a database refuses: PostgreSQL rejects NUL in `text` and `jsonb`, and an unpaired surrogate (what a string cut inside an emoji ends with) in `jsonb`. The suite accepts such text kept as sent, or with U+FFFD in place of each such code unit, as long as a record reads back as the write returned it and a lookup holding the same characters finds it. On a backend that refuses them, pass everything you write through `toStorableValue` and every id, clientId, project name and query you look up through `toStorableText` — both exported by the kit, and what `PrismaStore` and the Drizzle store do.
+
 ## Project ownership
 
 `verifyProjectOwnership(id, projectName)` is optional. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
@@ -151,7 +153,7 @@ Implement it whenever your store serves more than one project. When it's absent,
 
 ## Prove it: the conformance suite
 
-The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 67 tests:
+The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — about 70 tests:
 
 ```ts
 // __tests__/my-store.test.ts
