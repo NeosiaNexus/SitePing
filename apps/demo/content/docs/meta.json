@@ -9,6 +9,7 @@
     "issue-trackers",
     "adapters",
     "cli",
+    "versioning",
     "faq"
   ]
 }

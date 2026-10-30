@@ -20,6 +20,10 @@ No. The first time they send feedback, the widget asks for a name and email (kep
 
 MIT license, no paid tier, no phoning home. You host one API endpoint (any framework that speaks Web `Request`/`Response`) and your own database via Prisma or Drizzle. Feedback data never touches anyone else's servers.
 
+## Will an update break my integration?
+
+Not within a major. From 1.0, every 1.x release keeps your code compiling, your stored feedback resolving, and your widget, dashboard and server working together. [Versioning](/docs/versioning) lists exactly what is covered, and what isn't.
+
 ## Which frameworks work?
 
 - **Widget:** any site — it's a plain script (ESM, CJS, or a `<script>` global). A React hook (`@siteping/widget/react`) is included.

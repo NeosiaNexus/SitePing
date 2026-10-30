@@ -20,6 +20,10 @@ Non. La première fois qu'ils envoient un feedback, le widget demande un nom et 
 
 Licence MIT, aucune offre payante, aucune télémétrie. Vous hébergez un endpoint d'API (n'importe quel framework qui parle `Request`/`Response` du Web) et votre propre base de données via Prisma ou Drizzle. Les données de feedback ne touchent jamais les serveurs de qui que ce soit d'autre.
 
+## Une mise à jour peut-elle casser mon intégration ?
+
+Pas au sein d'une version majeure. À partir de la 1.0, chaque release 1.x garde votre code compilable, vos feedbacks enregistrés résolubles, et votre widget, votre dashboard et votre serveur compatibles entre eux. [Versionnage](/fr/docs/versioning) détaille ce qui est couvert, et ce qui ne l'est pas.
+
 ## Quels frameworks fonctionnent ?
 
 - **Widget :** n'importe quel site — c'est un simple script (ESM, CJS ou un `<script>` global). Un hook React (`@siteping/widget/react`) est inclus.
