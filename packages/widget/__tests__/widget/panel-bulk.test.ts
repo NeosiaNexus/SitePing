@@ -22,7 +22,7 @@ function createBulkActions(locale = "en") {
     const card = document.createElement("article");
     card.className = "sp-card";
     card.dataset.feedbackId = id;
-    card.appendChild(bulk.createCheckbox(id));
+    card.appendChild(bulk.createCheckbox(id, `Feedback ${id}`));
     list.appendChild(card);
   }
   bulk.setListContainer(list);
@@ -34,6 +34,52 @@ function createBulkActions(locale = "en") {
 describe("BulkActions", () => {
   beforeEach(() => {
     document.body.replaceChildren();
+  });
+
+  it("keeps the bar inert until something is selected (#394)", () => {
+    const { bulk, list } = createBulkActions();
+    expect(bulk.barElement.hasAttribute("inert")).toBe(true);
+    list.querySelector<HTMLElement>('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!.click();
+    expect(bulk.barElement.hasAttribute("inert")).toBe(false);
+    bulk.deselectAll();
+    expect(bulk.barElement.hasAttribute("inert")).toBe(true);
+  });
+
+  it("operates the select-all checkbox from the keyboard", () => {
+    const { bulk, list } = createBulkActions();
+    const selectAll = bulk.createSelectAllBar(["fb-1", "fb-2", "fb-3"], "Select all");
+    list.prepend(selectAll);
+    const checkbox = selectAll.querySelector<HTMLElement>(".sp-bulk-checkbox")!;
+    expect(checkbox.getAttribute("role")).toBe("checkbox");
+    expect(checkbox.getAttribute("tabindex")).toBe("0");
+    expect(checkbox.getAttribute("aria-label")).toBe("Select all");
+
+    checkbox.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    expect(bulk.selectedIds.sort()).toEqual(["fb-1", "fb-2", "fb-3"]);
+    checkbox.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(bulk.selectedIds).toEqual([]);
+  });
+
+  it("hands focus to the select-all checkbox when the bar closes under it", () => {
+    const { bulk, list } = createBulkActions();
+    const selectAll = bulk.createSelectAllBar(["fb-1", "fb-2", "fb-3"], "Select all");
+    list.prepend(selectAll);
+    list.querySelector<HTMLElement>('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!.click();
+    const deselect = bulk.barElement.querySelector<HTMLButtonElement>(".sp-bulk-btn-deselect")!;
+    deselect.focus();
+
+    deselect.click();
+    expect(document.activeElement).toBe(selectAll.querySelector(".sp-bulk-checkbox"));
+  });
+
+  it.each([
+    ["en", "Select Feedback fb-1"],
+    ["fr", "Sélectionner Feedback fb-1"],
+    ["ja", "Feedback fb-1を選択"],
+  ])("names a card checkbox after the card's label in %s (#395)", (locale, expected) => {
+    const { list } = createBulkActions(locale);
+    const checkbox = list.querySelector('[data-feedback-id="fb-1"] .sp-bulk-checkbox')!;
+    expect(checkbox.getAttribute("aria-label")).toBe(expected);
   });
 
   it("toggles an individual card selection and floating bar state", () => {
@@ -125,7 +171,7 @@ describe("BulkActions", () => {
     const list = document.createElement("div");
     const card = document.createElement("article");
     card.dataset.feedbackId = "fb-1";
-    card.appendChild(bulk.createCheckbox("fb-1"));
+    card.appendChild(bulk.createCheckbox("fb-1", "Feedback 1"));
     list.appendChild(card);
     bulk.setListContainer(list);
     document.body.append(list, bulk.barElement);
@@ -147,7 +193,7 @@ describe("BulkActions", () => {
     const list = document.createElement("div");
     const card = document.createElement("article");
     card.dataset.feedbackId = "fb-1";
-    const checkbox = bulk.createCheckbox("fb-1");
+    const checkbox = bulk.createCheckbox("fb-1", "Feedback 1");
     card.appendChild(checkbox);
     list.appendChild(card);
     bulk.setListContainer(list);
@@ -167,7 +213,7 @@ describe("BulkActions", () => {
     const onResolve = vi.fn().mockRejectedValue(new Error("boom"));
     const onDelete = vi.fn().mockResolvedValue(undefined);
     const bulk = new BulkActions(buildThemeColors(), { onResolve, onDelete }, createT("en"));
-    const checkbox = bulk.createCheckbox("fb-1");
+    const checkbox = bulk.createCheckbox("fb-1", "Feedback 1");
     document.body.append(checkbox, bulk.barElement);
     bulk.selectAll(["fb-1"]);
 
@@ -220,7 +266,7 @@ describe("BulkActions", () => {
     const list = document.createElement("div");
     const card = document.createElement("article");
     card.dataset.feedbackId = "fb-1";
-    card.appendChild(bulk.createCheckbox("fb-1"));
+    card.appendChild(bulk.createCheckbox("fb-1", "Feedback 1"));
     list.appendChild(card);
     bulk.setListContainer(list);
     document.body.append(list, bulk.barElement);
@@ -281,7 +327,7 @@ describe("BulkActions", () => {
     bulk.setListContainer(list);
     document.body.append(list, bulk.barElement);
     // Register a checkbox without appending it to a card with data-feedback-id
-    const checkbox = bulk.createCheckbox("fb-orphan");
+    const checkbox = bulk.createCheckbox("fb-orphan", "Feedback orphan");
     document.body.appendChild(checkbox);
 
     checkbox.click();

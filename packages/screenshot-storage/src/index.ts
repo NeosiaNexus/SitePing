@@ -14,10 +14,11 @@
  * URL are served through `createScreenshotServeHandler`.
  */
 export type { ScreenshotStorage } from "@siteping/core";
-export { InvalidScreenshotError } from "./core/data-url.js";
+export { InvalidScreenshotError, isInvalidScreenshotError } from "./core/data-url.js";
 export { isObjectStoreRequestError, ObjectStoreRequestError } from "./core/http.js";
 export {
   isScreenshotUploadRejected,
+  isScreenshotUploadRejectedError,
   type ScreenshotObject,
   type ScreenshotObjectStore,
   ScreenshotUploadRejectedError,

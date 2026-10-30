@@ -5,11 +5,16 @@ import { createSitepingPgTables, type SitepingPgTables } from "./tables.js";
 
 export type { FeedbackRecord, ScreenshotStorage, SitepingStore } from "@siteping/core";
 export {
+  isStoreDuplicate,
+  isStoreLimit,
+  isStoreNotFound,
   isStorePersistence,
+  isStoreValueTooLong,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,
   StorePersistenceError,
+  StoreValueTooLongError,
 } from "@siteping/core";
 export { DEFAULT_SITEPING_TABLE_NAMES, type SitepingTableNames } from "../constants/table-names.js";
 export type { DrizzleStore, DrizzleStoreLogger, DrizzleStoreOptions } from "../shared/store.js";

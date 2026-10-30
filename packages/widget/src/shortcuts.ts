@@ -9,7 +9,7 @@
  * input/textarea elements. Uses a Map<string, handler> for O(1) lookup.
  */
 
-import { el, parseSvg, setText } from "./dom-utils.js";
+import { el, hasFocusWithin, parseSvg, setInert, setText } from "./dom-utils.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import type { ThemeColors } from "./styles/theme.js";
 
@@ -344,6 +344,8 @@ export class KeyboardShortcuts {
   private shadowRoot: ShadowRoot | HTMLElement | null = null;
   private enabled = false;
   private helpVisible = false;
+  /** The element focused when the help opened — `hideHelp` gives focus back to it. */
+  private opener: HTMLElement | null = null;
   private destroyed = false;
 
   constructor(
@@ -466,7 +468,10 @@ export class KeyboardShortcuts {
   // -------------------------------------------------------------------------
 
   private showHelp(): void {
+    const active = (this.helpOverlay.getRootNode() as Document | ShadowRoot).activeElement;
+    this.opener = active instanceof HTMLElement ? active : null;
     this.helpVisible = true;
+    setInert(this.helpOverlay, false);
     this.helpOverlay.classList.add("sp-shortcuts-overlay--visible");
 
     // Focus the close button for accessibility
@@ -476,7 +481,13 @@ export class KeyboardShortcuts {
 
   private hideHelp(): void {
     this.helpVisible = false;
+    // Back to where the overlay was opened from (the "?" hint, a card)
+    // rather than to the page, once its close button goes inert.
+    const refocus = hasFocusWithin(this.helpOverlay);
+    setInert(this.helpOverlay, true);
     this.helpOverlay.classList.remove("sp-shortcuts-overlay--visible");
+    if (refocus && this.opener?.isConnected) this.opener.focus();
+    this.opener = null;
   }
 
   // -------------------------------------------------------------------------
@@ -488,6 +499,8 @@ export class KeyboardShortcuts {
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
     overlay.setAttribute("aria-label", this.t("shortcuts.title"));
+    // Faded out while closed, but still rendered: out of the tab order.
+    setInert(overlay, true);
 
     // Click backdrop to close
     overlay.addEventListener("click", (e) => {
