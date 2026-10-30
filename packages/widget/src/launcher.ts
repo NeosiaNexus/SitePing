@@ -836,8 +836,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
         if (live) self.refresh();
       },
       focusFeedback: (feedbackId: string) => live && self.focusFeedback(feedbackId),
+      // Once released, the handle's bus no longer receives events.
       on: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) =>
-        live ? publicBus.on(event, listener) : () => {},
+        publicBus.on(event, listener),
       off: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) => {
         publicBus.off(event, listener);
       },
