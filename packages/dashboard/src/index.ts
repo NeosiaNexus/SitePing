@@ -9,13 +9,15 @@ export type {
   SitepingCapabilities,
   SitepingClientError,
   SitepingErrorCode,
+  SitepingHeadersOption,
   SitepingStore,
+  SitepingTheme,
 } from "@siteping/core";
 export { FEEDBACK_STATUSES, FEEDBACK_TYPES, isClosedStatus, isSitepingError } from "@siteping/core";
 export { SitepingInbox } from "./components/inbox.js";
 export { registerLocale } from "./i18n/index.js";
 export { createEndpointSource, createStoreSource } from "./source.js";
-export type { InboxTheme, ResolvedTheme } from "./theme.js";
+export type { ResolvedTheme } from "./theme.js";
 export type {
   EndpointSourceOptions,
   InboxCustomSourceOptions,

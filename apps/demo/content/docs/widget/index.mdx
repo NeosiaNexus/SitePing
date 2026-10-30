@@ -58,7 +58,7 @@ const siteping = initSiteping({ ... });
 
 siteping.open();                  // open the feedback panel
 siteping.close();                 // close it
-siteping.refresh();               // re-fetch feedbacks for the current page (never throws)
+await siteping.refresh();         // re-fetch feedbacks for the current page; resolves when shown, never rejects
 siteping.focusFeedback(id);       // scroll to + highlight a marker; false if unknown
 const off = siteping.on("feedback:sent", (feedback) => { ... });
 siteping.destroy();               // release this handle; the last one tears down and restores all patched globals
