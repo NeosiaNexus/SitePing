@@ -9,7 +9,7 @@ Par ordre de probabilité :
 
 1. **Vous êtes dans un build de production.** Le widget passe son tour quand `NODE_ENV` vaut `production` (seul `process.env.NODE_ENV` est lu). Passez `forceShow: true` en staging, ou vérifiez avec `onSkip`.
 2. **Config invalide** — un `endpoint`/`store` ou un `projectName` manquant affiche un `console.error` et ne monte rien. Ce cas ne déclenche *pas* `onSkip`, donc ouvrez la console.
-3. **Il est déjà monté.** Un second `initSiteping()` renvoie l'instance existante au lieu d'un deuxième bouton.
+3. **Il est déjà monté.** Un second `initSiteping()` renvoie un handle sur le widget existant au lieu d'un deuxième bouton, et sa config est ignorée.
 4. **La fenêtre est plus étroite que votre `minViewportWidth`.** Seulement si vous en avez défini un — par défaut le widget s'affiche à toutes les largeurs, téléphones compris (avant la 0.11, le défaut était 768 px). `onSkip("mobile")` vous le dit.
 
 ## Mes clients ont-ils besoin d'un compte ?
@@ -44,4 +44,4 @@ Le marqueur est masqué sur cette page (plus rien à quoi s'ancrer) plutôt que 
 
 ## Ma langue n'est pas intégrée.
 
-Le dashboard accepte des locales à l'exécution via `registerLocale`. Les locales du widget sont compilées dedans — en ajouter une est la contribution la plus accessible du projet : voir [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md).
+Enregistrez-la à l'exécution : le widget et le dashboard exportent chacun `registerLocale`, qui accepte un dictionnaire complet ou partiel — voir [Langues](/fr/docs/widget/i18n#locales-personnalisées). L'intégrer comme locale native pour tout le monde est la contribution la plus accessible du projet : voir [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md).

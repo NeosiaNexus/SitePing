@@ -22,7 +22,7 @@ Monté sur l'origine de l'endpoint, l'inbox envoie votre cookie de session avec 
 
 > **N'envoyez jamais l'`apiKey` au navigateur.** Elle autorise chaque changement de statut et chaque suppression : une variable `NEXT_PUBLIC_*` ou `VITE_*`, que le build inline dans le bundle client, la donne à quiconque ouvre la page. Ne passez `apiKey` que là où le code n'atteint jamais le visiteur : un outil interne sur un réseau privé, ou un script exécuté côté serveur.
 
-Compatible React 18 et 19, livré en ESM et CJS, sans aucune dépendance en dehors de React. Donnez-lui un conteneur avec une hauteur — l'inbox remplit son parent (minimum 480 px).
+Compatible React 18 et 19, livré en ESM et CJS, sans aucune dépendance en dehors de React. Le package porte sa propre directive `"use client"` : un Server Component peut donc rendre `<SitepingInbox />` directement, tant que chaque prop est sérialisable (`endpoint`, pas `store` ni `source`). Donnez-lui un conteneur avec une hauteur — l'inbox remplit son parent (minimum 480 px).
 
 ## Props
 
@@ -93,4 +93,4 @@ registerLocale("nl", { "status.open": "Open", "status.resolved": "Opgelost" });
 // plus tard : <SitepingInbox locale="nl" ... />
 ```
 
-**Les dictionnaires partiels sont acceptés** — toute clé omise retombe d'elle-même sur l'anglais, donc corriger un seul libellé n'oblige pas à maintenir tout le catalogue. Deux règles que l'implémentation impose : enregistrez sous le **code de langue de base** (`"nl"`, pas `"nl-BE"` — les recherches se normalisent vers la base), et appelez `registerLocale` **avant le montage de l'inbox**. Le `registerLocale` du widget fonctionne de la même façon sur [son propre jeu de clés](/fr/docs/widget/i18n).
+**Les dictionnaires partiels sont acceptés** — sous un code intégré, les clés passées remplacent uniquement ces libellés et le reste du dictionnaire intégré est conservé (`registerLocale("fr", { "status.open": "À traiter" })` garde tous les autres libellés français) ; sous un nouveau code, toute clé omise retombe d'elle-même sur l'anglais. Dans les deux cas, corriger un seul libellé n'oblige pas à maintenir tout le catalogue, et les appels pour un même code s'additionnent. Deux règles que l'implémentation impose : enregistrez sous le **code de langue de base** (`"nl"`, pas `"nl-BE"` — les recherches se normalisent vers la base), et appelez `registerLocale` **avant le montage de l'inbox**. Le `registerLocale` du widget fonctionne de la même façon sur [son propre jeu de clés](/fr/docs/widget/i18n).

@@ -22,7 +22,7 @@ initSiteping({
 
 ## Custom locales
 
-`registerLocale(code, translations)` adds a language the widget doesn't ship, and `loadLocale(code)` fetches a built-in dictionary ahead of time. Both are runtime exports of `@siteping/widget`:
+`registerLocale(code, translations)` adds a language the widget doesn't ship, or rewords strings of one it does, and `loadLocale(code)` fetches a built-in dictionary ahead of time. Both are runtime exports of `@siteping/widget`:
 
 ```ts
 import { initSiteping, registerLocale, type Translations } from "@siteping/widget";
@@ -31,7 +31,15 @@ registerLocale("nl", { "panel.title": "Feedbacks", "fab.annotate": "Nieuwe annot
 initSiteping({ endpoint: "/api/siteping", projectName: "my-project", locale: "nl" });
 ```
 
-**Partial dictionaries are fine.** Missing keys fall back to English key by key, so overriding a single string never means copying the whole catalog — pass the `Translations` type only if you want the full set checked. Two rules the implementation enforces: register under the **base language code** (`"nl"`, not `"nl-BE"` — lookups normalize to the base), and call `registerLocale` **before** `initSiteping`.
+**Partial dictionaries are fine.** Under a built-in code, the keys you pass override only those strings and the rest of the built-in dictionary stays; under a new code, missing keys fall back to English key by key. Either way, overriding a single string never means copying the whole catalog — pass the `Translations` type only if you want the full set checked:
+
+```ts
+// The French UI everywhere, with your own wording for one label
+registerLocale("fr", { "fab.annotate": "Commenter" });
+initSiteping({ endpoint: "/api/siteping", projectName: "my-project", locale: "fr" });
+```
+
+Calls for the same code add up rather than replace each other. Two rules the implementation enforces: register under the **base language code** (`"nl"`, not `"nl-BE"` — lookups normalize to the base), and call `registerLocale` **before** `initSiteping`.
 
 `await loadLocale("fr")` before init if you want a built-in locale on screen from the first paint instead of a brief English flash.
 

@@ -64,3 +64,108 @@ describe("createI18n — locale normalisation", () => {
     expect(custom.createT("fr-CA")("hello")).toBe("Bonjour");
   });
 });
+
+describe("createI18n — registerLocale overrides (#303)", () => {
+  type Catalog = { greet: string; submit: string; cancel: string };
+  const en: Catalog = { greet: "Hello", submit: "Send", cancel: "Cancel" };
+  const fr: Catalog = { greet: "Bonjour", submit: "Envoyer", cancel: "Annuler" };
+
+  // A fresh registry per test; `release` settles the French chunk on demand.
+  function setup() {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const loader = vi.fn(async () => {
+      await gate;
+      return fr;
+    });
+    const i18n = createI18n<Catalog>(en, { fr: loader } as unknown as LocaleLoaders<Catalog>);
+    return { i18n, loader, release };
+  }
+
+  function expectFrenchWithOverride(t: (key: keyof Catalog) => string) {
+    expect(t("greet")).toBe("Salut");
+    expect(t("submit")).toBe("Envoyer");
+    expect(t("cancel")).toBe("Annuler");
+  }
+
+  it("keeps the built-in dictionary under an override registered before loadLocale", async () => {
+    const { i18n, loader, release } = setup();
+    i18n.registerLocale("fr", { greet: "Salut" });
+    release();
+    expect(await i18n.loadLocale("fr")).toEqual({ ...fr, greet: "Salut" });
+    expect(loader).toHaveBeenCalledOnce();
+    expectFrenchWithOverride(i18n.createT("fr"));
+  });
+
+  it("keeps the built-in dictionary under an override registered after loadLocale", async () => {
+    const { i18n, release } = setup();
+    release();
+    await i18n.loadLocale("fr");
+    i18n.registerLocale("fr", { greet: "Salut" });
+    expectFrenchWithOverride(i18n.createT("fr"));
+  });
+
+  it("keeps an override registered while the built-in chunk is in flight", async () => {
+    const { i18n, release } = setup();
+    const t = i18n.createT("fr");
+    const loading = i18n.loadLocale("fr");
+    i18n.registerLocale("fr", { greet: "Salut" });
+    expect(t("greet")).toBe("Salut");
+    expect(t("submit")).toBe("Send"); // English until the chunk lands
+    release();
+    await loading;
+    expectFrenchWithOverride(t);
+  });
+
+  it("overrides a single English string", async () => {
+    const { i18n, loader } = setup();
+    i18n.registerLocale("en", { submit: "Post" });
+    const t = i18n.createT("en");
+    expect(t("submit")).toBe("Post");
+    expect(t("greet")).toBe("Hello");
+    expect(await i18n.loadLocale("en")).toEqual({ ...en, submit: "Post" });
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it("falls back to English for the keys a custom locale leaves out", async () => {
+    const { i18n, loader } = setup();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    i18n.registerLocale("nl", { greet: "Hallo" });
+    const t = i18n.createT("nl-BE");
+    expect(t("greet")).toBe("Hallo");
+    expect(t("submit")).toBe("Send");
+    expect(await i18n.loadLocale("nl")).toEqual({ greet: "Hallo" });
+    expect(await i18n.loadLocale("xx")).toBeNull();
+    expect(loader).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("accumulates repeated registerLocale calls for the same code", async () => {
+    const { i18n, release } = setup();
+    i18n.registerLocale("fr", { greet: "Coucou" });
+    i18n.registerLocale("fr_FR", { submit: "Valider" });
+    i18n.registerLocale("fr", { greet: "Salut" });
+    release();
+    await i18n.loadLocale("fr");
+    const t = i18n.createT("fr");
+    expect(t("greet")).toBe("Salut");
+    expect(t("submit")).toBe("Valider");
+    expect(t("cancel")).toBe("Annuler");
+  });
+
+  it("treats an inherited key like `constructor` as an unknown code until registered", async () => {
+    const { i18n, loader } = setup();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await i18n.loadLocale("constructor")).toBeNull();
+    expect(i18n.createT("constructor")("greet")).toBe("Hello");
+    expect(warn).toHaveBeenCalledOnce();
+
+    i18n.registerLocale("constructor", { greet: "Yo" });
+    expect(Object.hasOwn(Object, "greet")).toBe(false); // the global Object is untouched
+    expect(i18n.createT("constructor")("greet")).toBe("Yo");
+    expect(await i18n.loadLocale("constructor")).toEqual({ greet: "Yo" });
+    expect(loader).not.toHaveBeenCalled();
+  });
+});
