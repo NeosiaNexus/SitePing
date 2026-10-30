@@ -97,7 +97,7 @@ export function Feedback() {
 
 The hook returns `null` until it mounts, then the instance. Changing `endpoint` or another structural option requires a remount; changing a callback does not — **every** callback the config accepts (`onFeedbackSent`, `onCommentAdded`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) is read at call time, so a handler that closes over fresh state fires with that state — and so are the [panel actions](/docs/widget/panel-actions#react) callbacks. They also go quiet after unmount, so a late response can't call into a torn-down tree.
 
-Several components can call the hook, a layout and a page for instance. They share one widget, which stays mounted until the last of them unmounts. The widget keeps the options of the component that created it, and that component's callbacks go quiet once it unmounts, so give every caller the same options or call the hook from a single component that stays mounted.
+Several components can call the hook, a layout and a page for instance. They share one widget, which stays mounted until the last of them unmounts. The widget keeps the options of the component that created it (in React, the deepest one, since child effects run first), and the callbacks in those options go quiet once that component unmounts. The simplest setup calls the hook once, from a component that stays mounted such as the root layout. A component that needs events of its own can subscribe through the `on()` of the instance its hook returns: each handle keeps its own listeners, dropped when that component unmounts.
 
 ## Handling errors
 

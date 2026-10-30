@@ -73,9 +73,11 @@ function freshPanelActions(ref: { readonly current: SitepingConfig }): SitepingC
  * Several components can call it (a layout and a page): they share one
  * widget, which stays mounted until the last of them unmounts. Like a second
  * `initSiteping()`, a later call doesn't reconfigure it: the widget keeps the
- * options of the component that created it, whose callbacks go silent once
- * that component unmounts. Give every caller the same options, or call the
- * hook from one component that stays mounted.
+ * options of the component that created it (the deepest one — child effects
+ * run first), whose callbacks go silent once that component unmounts. Call
+ * the hook once from a component that stays mounted (the root layout); a
+ * component that needs events of its own subscribes through the returned
+ * instance's `on()`, whose listeners each handle drops on unmount.
  *
  * Safe to call from a Server Component file as long as the component itself
  * is marked `"use client"` — the hook bails out cleanly on the server because

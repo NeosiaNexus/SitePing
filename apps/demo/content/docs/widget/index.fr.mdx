@@ -97,7 +97,7 @@ export function Feedback() {
 
 Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint` ou une autre option structurelle demande un remontage ; changer un callback, non — **tous** les callbacks acceptés par la config (`onFeedbackSent`, `onCommentAdded`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) sont lus au moment de l'appel, donc un handler qui capture un état frais se déclenche avec cet état — tout comme les callbacks des [actions du panneau](/fr/docs/widget/panel-actions#react). Ils se taisent également après le démontage : une réponse tardive ne peut pas rappeler dans un arbre déjà démonté.
 
-Plusieurs composants peuvent appeler le hook, un layout et une page par exemple. Ils partagent un seul widget, qui reste monté jusqu'au démontage du dernier d'entre eux. Le widget garde les options du composant qui l'a créé, dont les callbacks se taisent une fois ce composant démonté : donnez les mêmes options à chaque appel, ou appelez le hook depuis un seul composant qui reste monté.
+Plusieurs composants peuvent appeler le hook, un layout et une page par exemple. Ils partagent un seul widget, qui reste monté jusqu'au démontage du dernier d'entre eux. Le widget garde les options du composant qui l'a créé (en React, le plus profond, puisque les effets des enfants s'exécutent d'abord), et les callbacks de ces options se taisent une fois ce composant démonté. Le plus simple est d'appeler le hook une seule fois, depuis un composant qui reste monté comme le layout racine. Un composant qui a besoin de ses propres événements peut s'abonner via le `on()` de l'instance que renvoie son hook : chaque handle garde ses propres écouteurs, retirés au démontage de ce composant.
 
 ## Gérer les erreurs
 
