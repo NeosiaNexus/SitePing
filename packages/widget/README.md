@@ -5,7 +5,7 @@
 
 # @siteping/widget
 
-**Client feedback, pinned to the pixel.**
+**Client feedback, pinned to the page.**
 
 A lightweight feedback widget that lets your clients annotate websites during development. Draw rectangles (or right-click), leave comments, track bugs — directly on the live site, anchored to the exact DOM element.
 
@@ -44,12 +44,12 @@ No server? Pass `store: new LocalStorageStore()` (from `@siteping/adapter-locals
 
 ## Highlights
 
-- **DOM-anchored annotations** — CSS selector + XPath + text fallbacks; they survive deploys and layout changes
+- **DOM-anchored annotations** — each one records several signals for its element (CSS selector, XPath, text, structure, an optional `data-feedback-anchor` key); on reload every match is scored and the best one wins, so annotations survive deploys and layout changes
 - **Dev-only by default** — hides in production builds (`NODE_ENV`); `forceShow: true` for staging. Renders at every width, with a phone layout (`minViewportWidth` keeps it off small screens)
 - **Opt-in extras** — screenshots of the annotated area (with `data-siteping-ignore="true"` privacy masking), console/network diagnostics, instant right-click comments that never hijack keyboard or modifier-key menus
 - **Panel actions** — your own buttons and links in the feedback detail view: create a ticket, hand a feedback to an agent, open it in your tracker
-- **Reliable** — retry with backoff plus a localStorage queue; a flaky network never loses a comment
-- **Isolated & light** — closed Shadow DOM, ~34 KB gzip (ESM); panel, screenshot engine, and non-English locales load on demand
+- **Reliable** — failed sends retry with backoff, then wait in a localStorage queue for the next page load
+- **Isolated & light** — closed Shadow DOM, ~59 kB gzip on first load (ESM: the entry and the chunk it imports); the panel (~10 kB), screenshot engine, and non-English locales load on demand
 - **9 built-in locales** — en, fr, de, es, it, pt, ru, ja, ko (BCP-47 tags like `fr-CA` resolve automatically)
 
 ## Documentation

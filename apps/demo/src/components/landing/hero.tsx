@@ -27,7 +27,7 @@ export function Hero() {
         <h1 data-gsap="hero-title" className="text-5xl font-bold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
           Client feedback,
           <br />
-          <span className="text-accent-light">pinned to the pixel.</span>
+          <span className="text-accent-light">pinned to the page.</span>
         </h1>
 
         {/* Subheadline */}
@@ -77,7 +77,7 @@ export function Hero() {
 
       {/* Price anchoring */}
       <p className="mt-10 text-center text-sm text-gray-500">
-        Replaces Marker.io ($39/mo) &middot; BugHerd ($42/mo) &middot; Userback ($79/mo)
+        Instead of Marker.io ($39/mo) &middot; BugHerd ($42/mo) &middot; Userback ($39/mo), billed yearly
       </p>
 
       {/* Technical credibility badges */}
@@ -88,11 +88,11 @@ export function Hero() {
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 bg-gray-900/50 px-3 py-1 text-xs text-gray-400">
           <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-          1,800+ tests
+          4,400+ tests
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 bg-gray-900/50 px-3 py-1 text-xs text-gray-400">
           <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
-          ~49 kB gz, panel lazy
+          ~59 kB gz first load, panel lazy
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-800 bg-gray-900/50 px-3 py-1 text-xs text-gray-400">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />

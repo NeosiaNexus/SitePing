@@ -12,7 +12,7 @@ const faqs: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What happens when the page layout changes?",
-    a: "Annotations use multi-selector anchoring — CSS selectors, XPath, text snippets, and structural fingerprints. If one selector breaks, the system falls back to the next. Positions are stored as percentages relative to the anchor element, so they adapt to responsive layouts.",
+    a: "Each annotation records several signals for the element it was drawn on — a CSS selector, an XPath, its text and the text around it, a structural fingerprint, and an optional data-feedback-anchor key you set. On reload, every element any of them matches is scored against all the signals, and the best match wins; a match it is unsure of is drawn as approximate. The rectangle is stored as percentages of that element, so it follows responsive layouts.",
   },
   {
     q: "Is there a dashboard to view feedback?",
@@ -33,11 +33,11 @@ const faqs: { q: string; a: ReactNode }[] = [
   },
   {
     q: "How big is the widget bundle?",
-    a: "About 49 kB gzipped on the wire; the feedback panel, screenshot capture, and non-English locales load on demand on top of that. The widget loads asynchronously and never blocks your page rendering.",
+    a: "About 59 kB gzipped on first load — the ESM entry and the chunk it imports, everything the browser fetches before the widget runs. The feedback panel (about 10 kB), screenshot capture, and non-English locales load on demand on top of that. CI fails any change that outgrows these budgets.",
   },
   {
-    q: "Is it GDPR compliant?",
-    a: "Fully. Since SitePing is self-hosted, all data stays on your infrastructure. No data is ever sent to third-party servers. You control storage, retention, and deletion.",
+    q: "What about the GDPR?",
+    a: "SitePing stores feedback in your own database, and sends it nowhere else unless you turn that on: webhooks (Slack, Discord, your endpoints), GitHub or GitLab issue sync, a screenshot bucket you choose. Compliance itself — a lawful basis, retention, telling reviewers what you collect — is up to you as the site operator; a library cannot be GDPR-compliant on its own.",
   },
   {
     q: "Can I customize the widget appearance?",
@@ -45,7 +45,7 @@ const faqs: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Is it accessible?",
-    a: "Yes — the widget and the inbox are audited against WCAG 2.1 AA. The full flow works from the keyboard, including drawing an annotation: Tab to the element, press Enter. Actions are announced to screen readers.",
+    a: "The widget and the inbox are designed for WCAG 2.1 AA. The full flow works from the keyboard, including drawing an annotation: Tab to the element, press Enter. Actions are announced to screen readers.",
   },
   {
     q: "How is reviewers' data handled?",
@@ -53,7 +53,7 @@ const faqs: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Do I need to create an account?",
-    a: "No. SitePing is an npm package you install and configure. No account, no API key, no signup. It runs entirely on your infrastructure.",
+    a: "No. SitePing is an npm package you install and configure. No SitePing account, no vendor key, no signup. It runs on your infrastructure.",
   },
 ];
 

@@ -2,7 +2,7 @@
 
 <h1>SitePing</h1>
 
-**Client feedback, pinned to the pixel.**
+**Client feedback, pinned to the page.**
 
 A lightweight feedback widget that lets your clients annotate websites during development.
 Draw rectangles, leave comments, track bugs — directly on the live site.
@@ -20,7 +20,7 @@ Draw rectangles, leave comments, track bugs — directly on the live site.
 [![coverage](https://img.shields.io/codecov/c/github/NeosiaNexus/SitePing?style=flat&colorA=000000&colorB=000000)](https://app.codecov.io/gh/NeosiaNexus/SitePing)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/NeosiaNexus/SitePing?label=scorecard&style=flat&colorA=000000&colorB=000000)](https://scorecard.dev/viewer/?uri=github.com/NeosiaNexus/SitePing)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
-[![Bundle Size](https://img.shields.io/badge/widget-~34%20KB%20gzip%20(ESM)-blue)](./packages/widget/.size-limit.json)
+[![Bundle Size](https://img.shields.io/badge/widget-~59%20kB%20gzip%20first%20load-blue)](./packages/widget/.size-limit.mjs)
 
 [**Documentation**](https://siteping.dev/docs) &middot; [Quickstart](https://siteping.dev/docs/quickstart) &middot; [Live Demo](https://siteping.dev/demo) &middot; [Contributing](./CONTRIBUTING.md)
 
@@ -34,14 +34,16 @@ Draw rectangles, leave comments, track bugs — directly on the live site.
 
 Stop chasing client feedback across Slack threads, email chains, and Notion docs. SitePing gives your clients a **contextual** way to leave feedback — anchored to the exact element they're looking at.
 
-| | SitePing | Marker.io | BugHerd |
-|---|---|---|---|
-| **Self-hosted** | Yes — your DB, your data | No (SaaS) | No (SaaS) |
-| **npm package** | `npm install` and go | npm + script tag | Script tag only |
-| **Framework-native** | First-class Next.js support | Framework-agnostic | Framework-agnostic |
-| **Pricing** | Free & open source | From $39/mo | From $42/mo |
-| **DOM-anchored annotations** | Multi-selector (CSS + XPath + text) | Screenshot-based | Pin-based |
-| **Annotations survive layout changes** | Yes (percentage-relative rects) | No (pixel coordinates) | Partially |
+| | SitePing | Marker.io | BugHerd | Userback |
+|---|---|---|---|---|
+| **Runs on your infrastructure** | Yes — your server, your database | No (hosted service) | No (hosted service) | No (hosted service) |
+| **Open source** | Yes, MIT — widget, server and inbox | Browser SDK only ([MIT](https://www.npmjs.com/package/@marker.io/browser)); the service is closed | No | Browser SDK only ([MIT](https://www.npmjs.com/package/@userback/widget)); the service is closed |
+| **Entry price** | Free | $39/mo billed yearly ($59 monthly), 3 members | $42/mo billed yearly ($50 monthly), 5 members | Free plan (2 seats); Team $39/mo billed yearly ($49 monthly) |
+| **Hosted for you** | No — you run one endpoint and a database | Yes | Yes | Yes |
+
+<sub>Competitor plans and prices from [marker.io/pricing](https://marker.io/pricing), [bugherd.com/pricing](https://bugherd.com/pricing) and [userback.io/pricing](https://userback.io/pricing/), checked on 2026-10-30. Vercel Comments is left out on purpose: it is free on every Vercel plan, but every reviewer needs a Vercel account and inviting reviewers outside your team takes a Pro or Enterprise plan ([vercel.com/docs/comments](https://vercel.com/docs/comments)).</sub>
+
+What sets SitePing apart is how annotations are kept: each one is anchored to the DOM element it was drawn on, with several signals to find that element again after a deploy, and its rectangle is stored relative to that element — see [how anchoring works](https://siteping.dev/docs/widget/anchoring).
 
 ## Features
 
@@ -51,10 +53,10 @@ Stop chasing client feedback across Slack threads, email chains, and Notion docs
 - **Screenshots + diagnostics** — opt-in JPEG of the annotated area (with privacy masking) and console/network capture
 - **Panel actions** — your own buttons and links in the feedback detail view: create a ticket, hand a feedback to an agent, open it in your tracker
 - **Triage inbox** — `<SitepingInbox />` (`@siteping/dashboard`): Linear-style, keyboard-first, light/dark, 9 locales
-- **Reliability built in** — retry with backoff plus a localStorage queue; a flaky network never loses a comment
+- **Reliability built in** — failed sends retry with backoff, then wait in a localStorage queue for the next page load
 - **Shadow DOM isolation** — widget CSS never leaks into your site, and your site CSS never breaks the widget
 - **Dev-only by default** — auto-hides in production builds unless `forceShow: true`
-- **Lightweight** — ~34 KB gzipped (ESM); the panel, screenshot engine, and non-English locales load on demand
+- **Lightweight** — ~59 kB gzipped on first load (ESM: the entry and the chunk it imports); the panel (~10 kB), screenshot engine, and non-English locales load on demand
 
 ## Quickstart
 

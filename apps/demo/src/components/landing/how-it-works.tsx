@@ -169,7 +169,7 @@ export function HowItWorks() {
                 </div>
 
                 <p className="mt-4 leading-relaxed text-gray-400">
-                  No login. No account. Just a floating button and pixel-perfect annotations.
+                  No login. No account. Just a floating button and annotations that stay on their element.
                 </p>
               </div>
             </div>
