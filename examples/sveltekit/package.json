@@ -1,0 +1,26 @@
+{
+  "name": "siteping-example-sveltekit",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@siteping/adapter-memory": "^0.5.4",
+    "@siteping/server": "^0.1.1",
+    "@siteping/widget": "^0.11.1"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-auto": "^8.0.0",
+    "@sveltejs/kit": "^3.1.1",
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "svelte": "^5.57.1",
+    "svelte-check": "^4.6.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.0"
+  }
+}
