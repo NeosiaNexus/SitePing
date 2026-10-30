@@ -3,15 +3,17 @@
  * executed): every @siteping/server option, the `apiKey` policy XOR `access`.
  */
 
-import type { SitepingStore } from "@siteping/core";
+import type { FeedbackPayload as CoreFeedbackPayload, SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
 import {
   type CommentPayload,
   createSitepingHandler,
   type FeedbackCreateInput,
+  type FeedbackPayload,
   type FeedbackRecord,
   type HandlerOptions,
   type PrismaAccessHandlerOptions,
+  type PrismaHandlerStoreSource,
   type SitepingAccessControl,
   type SitepingAuthorizationContext,
   type SitepingDeletionTarget,
@@ -40,6 +42,33 @@ describe("createSitepingHandler options", () => {
       webhooks: { url: "https://hooks.example.com" },
     } as const).toExtend<HandlerOptions>();
     expectTypeOf({ store }).toExtend<HandlerOptions>();
+  });
+
+  it("takes a Prisma client XOR a store, never neither", () => {
+    createSitepingHandler({ prisma, apiKey: "k" });
+    createSitepingHandler({ store, apiKey: "k" });
+
+    // @ts-expect-error — no data source: compiled, then threw at startup
+    createSitepingHandler({ apiKey: "k" });
+    // @ts-expect-error — no data source under a custom policy either
+    createSitepingHandler({ access: { authenticate: sessionUser } });
+    // @ts-expect-error — `prisma` and `store` are mutually exclusive
+    createSitepingHandler({ prisma, store });
+  });
+
+  it("refuses the built-in PrismaStore's options next to a custom store", () => {
+    const screenshotStorage = { upload: async () => ({ url: "https://cdn.example.com/s.jpg" }) };
+    // @ts-expect-error — a custom store handles its own screenshots
+    createSitepingHandler({ store, screenshotStorage });
+    // @ts-expect-error — a custom store owns its search semantics
+    createSitepingHandler({ store, caseInsensitiveSearch: true });
+    // @ts-expect-error — same under a custom access policy
+    createSitepingHandler({ store, caseInsensitiveSearch: true, access: { authenticate: sessionUser } });
+    expectTypeOf<PrismaHandlerStoreSource["screenshotStorage"]>().toEqualTypeOf<undefined>();
+  });
+
+  it("re-exports the create wire shape that replaced FeedbackCreateSchemaInput", () => {
+    expectTypeOf<FeedbackPayload>().toEqualTypeOf<CoreFeedbackPayload>();
   });
 
   it("takes a custom access policy, never alongside apiKey", () => {
