@@ -2,6 +2,7 @@ import {
   buildCommentRecord,
   buildFeedbackRecord,
   type CommentCreateInput,
+  type CommentCreateOutcome,
   type CommentRecord,
   clampPagination,
   type FeedbackCreateInput,
@@ -24,6 +25,8 @@ import {
   StorePersistenceError,
   screenshotMimeType,
   settleWithConcurrencyLimit,
+  toStorableText,
+  toStorableValue,
   warnSafely,
 } from "@siteping/core";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../constants/deletes.js";
@@ -42,15 +45,19 @@ import type {
   FeedbackRow,
   SitepingSqlGateway,
 } from "./gateway.js";
-import { toStorableText, toStorableValue } from "./text.js";
 
 /**
  * The store returned by the dialect factories — the full contract, including
  * the ownership check, the atomic `createFeedbackIfAbsent` and discussion
- * threads.
+ * threads with the atomic `addCommentIfAbsent`.
  */
 export type DrizzleStore = SitepingStore &
-  Required<Pick<SitepingStore, "verifyProjectOwnership" | "createFeedbackIfAbsent" | "addComment" | "deleteComment">>;
+  Required<
+    Pick<
+      SitepingStore,
+      "verifyProjectOwnership" | "createFeedbackIfAbsent" | "addComment" | "addCommentIfAbsent" | "deleteComment"
+    >
+  >;
 
 /**
  * Where the store reports degraded-but-non-fatal situations (failed
@@ -377,7 +384,16 @@ export class DrizzleSitepingStore implements DrizzleStore {
    * @throws `StoreLimitError` when a `client` comment meets a thread already holding `MAX_COMMENTS_PER_FEEDBACK` of them.
    * @throws `StorePersistenceError` when a database call fails.
    */
-  async addComment(submittedFeedbackId: string, submitted: CommentCreateInput): Promise<CommentRecord> {
+  async addComment(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord> {
+    return (await this.addCommentIfAbsent(feedbackId, data)).comment;
+  }
+
+  /**
+   * {@link addComment}, reporting whether this call inserted the comment: the
+   * single statement inserts at most one row per `clientId`, so of racing
+   * posts exactly one reports `created: true`.
+   */
+  async addCommentIfAbsent(submittedFeedbackId: string, submitted: CommentCreateInput): Promise<CommentCreateOutcome> {
     const feedbackId = toStorableText(submittedFeedbackId);
     const data = toStorableValue(submitted);
     const comment = buildCommentRecord(data, { id: crypto.randomUUID(), feedbackId, now: this.now() });
@@ -402,13 +418,13 @@ export class DrizzleSitepingStore implements DrizzleStore {
       if (feedbackGone) throw new StoreNotFoundError();
       throw error;
     }
-    if (inserted) return comment;
+    if (inserted) return { comment, created: true };
 
     // Nothing written: a replay of the clientId, a missing feedback, or a full thread.
     const replayed = await persistMutation("addComment", identifiers, () =>
       this.gateway.findCommentByClientId(data.clientId),
     );
-    if (replayed) return replayed;
+    if (replayed) return { comment: replayed, created: false };
     const projectName = await persistMutation("addComment", identifiers, () =>
       this.gateway.findProjectName(feedbackId),
     );

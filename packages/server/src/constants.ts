@@ -24,8 +24,9 @@ export const MAX_VALIDATION_ISSUES = 20;
 export const DRY_RUN_CONCURRENCY = 8;
 
 /**
- * `error` strings of the HTTP API. Part of the wire contract: the widget, the
- * dashboard and existing `@siteping/adapter-prisma` consumers match on some.
+ * `error` strings of the HTTP API. Informational, not part of the protocol
+ * contract: clients branch on the status code (the widget and the dashboard
+ * match no string). Kept stable where possible, but a minor may reword one.
  */
 export const ERROR_MESSAGES = {
   invalidJson: "Invalid JSON",

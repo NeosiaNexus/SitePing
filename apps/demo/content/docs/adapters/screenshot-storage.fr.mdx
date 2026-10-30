@@ -242,4 +242,4 @@ export const objectStore: ScreenshotObjectStore = {
 };
 ```
 
-`put` doit lever `ScreenshotUploadRejectedError` quand le backend a refusé l'envoi pour de bon, pour qu'il ne soit pas récupéré. Reconnaissez les erreurs avec `isScreenshotUploadRejected(error)` et `isObjectStoreRequestError(error)` plutôt qu'avec `instanceof` : en CommonJS, chaque point d'entrée embarque sa propre copie des classes d'erreur. `InvalidScreenshotError` signale une URL `data:` refusée par la validation.
+`put` doit lever `ScreenshotUploadRejectedError` quand le backend a refusé l'envoi pour de bon, pour qu'il ne soit pas récupéré. Reconnaissez les erreurs avec `isScreenshotUploadRejectedError(error)`, `isObjectStoreRequestError(error)` et `isInvalidScreenshotError(error)` plutôt qu'avec `instanceof` : en CommonJS, chaque point d'entrée embarque sa propre copie des classes d'erreur. `InvalidScreenshotError` (code `INVALID_SCREENSHOT`) signale une URL `data:` refusée par la validation. `isScreenshotUploadRejected`, l'ancien nom de la garde, fonctionne encore jusqu'à la prochaine majeure.

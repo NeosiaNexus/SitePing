@@ -12,6 +12,7 @@ import {
   type SitepingAction,
   type SitepingHandler,
   type SitepingHandlerOptions,
+  type SitepingProjectContext,
 } from "../src/index.js";
 
 declare const store: SitepingStore;
@@ -116,6 +117,24 @@ describe("the principal", () => {
         onCreated: (_feedback, { principal }) => {
           expectTypeOf(principal).toEqualTypeOf<Reviewer>();
         },
+      },
+    });
+  });
+
+  // #390: the email and team-role callbacks get the project, as `authorize`
+  // does — and the one-parameter callbacks above keep compiling.
+  it("reaches canReadAuthorEmail and canCommentAsTeam with the project", () => {
+    createSitepingHandler({
+      store,
+      access: {
+        authenticate: sessionUser,
+        canReadAuthorEmail: (principal, context) => {
+          expectTypeOf(context).toEqualTypeOf<SitepingProjectContext>();
+          expectTypeOf(context.projectName).toEqualTypeOf<string>();
+          expectTypeOf(context.request).toEqualTypeOf<Request>();
+          return principal.isAdmin && context.projectName === "acme";
+        },
+        canCommentAsTeam: (principal, { projectName }) => principal.isAdmin && projectName === "acme",
       },
     });
   });

@@ -12,11 +12,17 @@ Runtime exports (ESM and CJS):
 - `StoreNotFoundError: function`
 - `StorePersistenceError: function`
 - `StoreValueTooLongError: function`
+- `WEBHOOK_EVENTS: object`
 - `createSitepingHandler: function`
 - `dispatchWebhook: function`
 - `dispatchWebhooks: function`
 - `flattenAnnotation: function`
+- `isSitepingConfigError: function`
+- `isStoreDuplicate: function`
+- `isStoreLimit: function`
+- `isStoreNotFound: function`
 - `isStorePersistence: function`
+- `isStoreValueTooLong: function`
 
 Types:
 
@@ -27,6 +33,11 @@ export interface CommentCreateInput {
     authorRole: CommentAuthorRole;
     body: string;
     clientId: string;
+}
+
+export interface CommentCreateOutcome {
+    comment: CommentRecord;
+    created: boolean;
 }
 
 export interface CommentPayload extends CommentCreateInput {
@@ -98,6 +109,12 @@ export interface FeedbackRecord {
     viewport: string;
 }
 
+export { GenericWebhookCommentPayload } from "@siteping/server";
+
+export { GenericWebhookDeletionPayload } from "@siteping/server";
+
+export { GenericWebhookEventMap } from "@siteping/server";
+
 export { GenericWebhookPayload } from "@siteping/server";
 
 export { GetQueryInput } from "@siteping/server";
@@ -135,6 +152,7 @@ export interface PrismaModelDelegate {
 export class PrismaStore implements SitepingStore {
     constructor(prisma: SitepingPrismaClient, options?: PrismaStoreOptions);
     readonly addComment?: (feedbackId: string, data: CommentCreateInput) => Promise<CommentRecord>;
+    readonly addCommentIfAbsent?: (feedbackId: string, data: CommentCreateInput) => Promise<CommentCreateOutcome>;
     private caseInsensitiveSearch;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -181,6 +199,10 @@ export { SitepingAction } from "@siteping/server";
 
 export { SitepingAuthorizationContext } from "@siteping/server";
 
+export { SitepingConfigErrorCode } from "@siteping/server";
+
+export { SitepingCreatedComment } from "@siteping/server";
+
 export { SitepingDeletionTarget } from "@siteping/server";
 
 export { SitepingHandler } from "@siteping/server";
@@ -200,10 +222,13 @@ export interface SitepingPrismaClient {
     sitepingFeedback: PrismaModelDelegate;
 }
 
+export { SitepingProjectContext } from "@siteping/server";
+
 export { SitepingRequestContext } from "@siteping/server";
 
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -244,7 +269,13 @@ export class StoreValueTooLongError extends Error {
     readonly code: "STORE_VALUE_TOO_LONG";
 }
 
+export { WEBHOOK_EVENTS } from "@siteping/server";
+
 export { WebhookConfig } from "@siteping/server";
+
+export { WebhookDeliveryInfo } from "@siteping/server";
+
+export { WebhookEvent } from "@siteping/server";
 
 export { WebhookPayloadMap } from "@siteping/server";
 
@@ -262,7 +293,17 @@ export { dispatchWebhooks } from "@siteping/server";
 
 export function flattenAnnotation(ann: AnnotationPayload): AnnotationCreateInput;
 
+export { isSitepingConfigError } from "@siteping/server";
+
+export function isStoreDuplicate(error: unknown): error is CodedError<"P2002" | "STORE_DUPLICATE"> | StoreDuplicateError;
+
+export function isStoreLimit(error: unknown): error is CodedError<"STORE_LIMIT"> | StoreLimitError;
+
+export function isStoreNotFound(error: unknown): error is CodedError<"P2025" | "STORE_NOT_FOUND"> | StoreNotFoundError;
+
 export function isStorePersistence(error: unknown): error is CodedError<"STORE_PERSISTENCE"> | StorePersistenceError;
+
+export function isStoreValueTooLong(error: unknown): error is CodedError<"STORE_VALUE_TOO_LONG"> | StoreValueTooLongError;
 ```
 
 Referenced, not exported:

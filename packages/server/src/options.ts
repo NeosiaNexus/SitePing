@@ -1,5 +1,6 @@
 import type {
   CommentPayload,
+  CommentRecord,
   FeedbackCreateInput,
   FeedbackRecord,
   SitepingLogger,
@@ -20,6 +21,17 @@ export interface SitepingRequestContext<Principal> {
   principal: Principal;
 }
 
+/**
+ * The project a response is about, and the request it answers — what
+ * `canReadAuthorEmail` and `canCommentAsTeam` decide for, beside the
+ * principal.
+ */
+export interface SitepingProjectContext {
+  request: Request;
+  /** Project of the records the response carries, or of the thread a comment joins. */
+  projectName: string;
+}
+
 /** What `SitepingAccessControl.authorize` decides about. */
 export interface SitepingAuthorizationContext<Principal> extends SitepingRequestContext<Principal> {
   action: SitepingAction;
@@ -28,8 +40,9 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
   /** Target record of `update` and `delete`; the feedback whose thread `createComment` and `deleteComment` target. */
   feedbackId?: string;
   /**
-   * Target comment of `deleteComment` — absent on a `dryRun`, whose answer
-   * covers the feedback's whole thread.
+   * Target comment of `deleteComment`. A `dryRun` asks first without one,
+   * for the feedback's whole thread; when that answer is `false`, it asks
+   * again for each comment of the thread, with its id.
    */
   commentId?: string;
   /**
@@ -59,34 +72,39 @@ export type SitepingPrincipal = object | string | number;
  *   check is what binds the authorized `projectName` to the record. It is
  *   also asked, with `dryRun: true`, to fill in the `permissions` of every
  *   feedback a response carries — `update`, `delete`, `createComment` and
- *   `deleteComment` (without a `commentId`) per feedback, plus `deleteAll`
- *   once per list — so clients hide what it would refuse. A dry run that
- *   throws refuses that permission (logged) rather than failing the
- *   response. Keep it fast: a page of 50 feedbacks takes 201 dry runs, 8
- *   at a time, sharing the one `request` — cache lookups per request. That
- *   request is the response's whatever the action, and `authenticate` is
- *   not asked again: a principal it admits on some methods only needs
- *   `authorize` to refuse it the other actions.
+ *   `deleteComment` (without a `commentId`, for the whole thread) per
+ *   feedback, plus `deleteAll` once per list — so clients hide what it
+ *   would refuse. When the thread-wide `deleteComment` answer is `false`,
+ *   each comment is asked about with its `commentId`, for its own
+ *   `permissions`. A dry run that throws refuses that permission (logged)
+ *   rather than failing the response. Keep it fast: a page of 50 feedbacks
+ *   takes 201 dry runs, plus one per comment of a thread it refuses
+ *   wholesale, 8 at a time, sharing the one `request` — cache lookups per
+ *   request. That request is the response's whatever the action, and
+ *   `authenticate` is not asked again: a principal it admits on some
+ *   methods only needs `authorize` to refuse it the other actions.
  * - `canReadAuthorEmail` decides whether responses include `authorEmail`
  *   (reviewer PII), on feedbacks and their comments — the list, the PATCH
- *   answer and the POST answer alike. Only `true` includes it: without the
- *   callback, every response blanks it. A policy that serves anonymous
- *   visitors resolves a principal for them too, so being authenticated says
- *   nothing about who may read reviewers' emails.
+ *   answer and the POST answer alike. It is asked once per request, for the
+ *   project the request targets (`context.projectName`). Only `true`
+ *   includes it: without the callback, every response blanks it. A policy
+ *   that serves anonymous visitors resolves a principal for them too, so
+ *   being authenticated says nothing about who may read reviewers' emails.
  * - `canCommentAsTeam` decides whether a comment that asks for the `team`
- *   role keeps it; otherwise it is stamped `client`. Defaults to the
- *   principal's `canReadAuthorEmail` answer (whoever may read reviewer
- *   emails is on the project side), so a policy that sets neither never
- *   lets a caller speak as the team. Once set, anything but `true`
- *   (`undefined` from plain JavaScript included) refuses.
+ *   role keeps it, in the project of its thread; otherwise it is stamped
+ *   `client`. Defaults to the principal's `canReadAuthorEmail` answer for
+ *   that project (whoever may read reviewer emails is on the project side),
+ *   so a policy that sets neither never lets a caller speak as the team.
+ *   Once set, anything but `true` (`undefined` from plain JavaScript
+ *   included) refuses.
  *
- * A throw from any of them answers a logged 500.
+ * A throw from any of them answers a logged 500, before anything is written.
  */
 export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
   authenticate(request: Request): Principal | null | undefined | Promise<Principal | null | undefined>;
   authorize?(context: SitepingAuthorizationContext<Principal>): boolean | Promise<boolean>;
-  canReadAuthorEmail?(principal: Principal): boolean | Promise<boolean>;
-  canCommentAsTeam?(principal: Principal): boolean | Promise<boolean>;
+  canReadAuthorEmail?(principal: Principal, context: SitepingProjectContext): boolean | Promise<boolean>;
+  canCommentAsTeam?(principal: Principal, context: SitepingProjectContext): boolean | Promise<boolean>;
 }
 
 /**
@@ -98,14 +116,28 @@ export type SitepingDeletionTarget =
   | { kind: "project"; projectName: string };
 
 /**
+ * A stored reply, as `onCommentCreated` and the `comment.created` webhook
+ * receive it: the comment record plus the project of its feedback — the one
+ * the request named, checked against the feedback when the store implements
+ * `verifyProjectOwnership`.
+ */
+export interface SitepingCreatedComment extends CommentRecord {
+  projectName: string;
+}
+
+/**
  * Side effects around persistence — issue trackers, chat notifications,
  * search indexes, audit logs. Hooks receive the stored record, `clientId` and
  * `authorEmail` included.
  *
- * `onCreated`, `onUpdated` and `onDeleted` are awaited before the response
- * (so serverless runtimes do not freeze them mid-flight); a throw is logged
- * and never fails the request — the write already happened. `onCreated`
- * runs once per inserted feedback, never for a replayed `clientId`.
+ * `onCreated`, `onUpdated`, `onDeleted` and `onCommentCreated` are awaited
+ * before the response (so serverless runtimes do not freeze them
+ * mid-flight); a throw is logged and never fails the request — the write
+ * already happened. `onCreated` runs once per inserted feedback and
+ * `onCommentCreated` once per inserted reply, never for a replayed
+ * `clientId`; `onCommentCreated` needs a store implementing
+ * `addCommentIfAbsent`, which tells the two apart (the handler refuses to
+ * start without it).
  * `onDeleting` runs before the delete: throw to abort it (the record is kept
  * and the request answers 502), e.g. when a resource tied to the feedback
  * could not be cleaned up and the delete must be retried.
@@ -115,6 +147,7 @@ export interface SitepingLifecycleHooks<Principal> {
   onUpdated?(feedback: FeedbackRecord, context: SitepingRequestContext<Principal>): void | Promise<void>;
   onDeleting?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): void | Promise<void>;
   onDeleted?(target: SitepingDeletionTarget, context: SitepingRequestContext<Principal>): void | Promise<void>;
+  onCommentCreated?(comment: SitepingCreatedComment, context: SitepingRequestContext<Principal>): void | Promise<void>;
 }
 
 /** Options shared by both access policies. */
@@ -136,13 +169,18 @@ export interface SitepingHandlerBaseOptions<Principal> {
    */
   maxBodyBytes?: number | undefined;
   /**
-   * Outgoing webhooks fired after a feedback is successfully persisted.
+   * Outgoing webhooks fired after a write succeeds — by default when a
+   * feedback is stored; each config's `events` opts into status changes,
+   * deletions and replies (see `WebhookEvent`).
    *
-   * Pass a single config or an array — every entry receives a POST with a
-   * type-specific payload (Slack, Discord, or generic JSON). Dispatch is
+   * Pass a single config or an array — every entry subscribed to an event
+   * receives a POST with a type-specific payload (Slack, Discord, or generic
+   * JSON) and an `X-Siteping-Event` header naming it. Dispatch is
    * fire-and-forget: the HTTP response is returned to the widget before
    * webhook delivery completes, so a slow receiver never blocks the client.
-   * Provide `onError` on each config to observe failures.
+   * Provide `onError` on each config to observe failures. A `comment.created`
+   * subscription needs a store implementing `addCommentIfAbsent` (the
+   * handler refuses to start without it).
    */
   webhooks?: WebhookConfig | ReadonlyArray<WebhookConfig>;
   /**
@@ -150,7 +188,7 @@ export interface SitepingHandlerBaseOptions<Principal> {
    * or cancel them once the response is sent (serverless functions, edge
    * workers): Next.js `after`, `waitUntil` from `@vercel/functions` or from
    * `cloudflare:workers` — a standalone function, not an unbound method.
-   * Called once per notified feedback with a promise that never rejects; a
+   * Called once per notified event with a promise that never rejects; a
    * throw is logged and the delivery still runs.
    */
   waitUntil?: ((promise: Promise<unknown>) => void) | undefined;

@@ -1,5 +1,6 @@
 import { isStoreNotFound, type SitepingStore } from "@siteping/core";
 import { ERROR_MESSAGES } from "../constants.js";
+import type { Notify } from "../notify.js";
 import type { SitepingDeletionTarget, SitepingLifecycleHooks } from "../options.js";
 import type { Pipeline, Scope } from "../pipeline.js";
 import { feedbackDeleteSchema } from "../validation.js";
@@ -7,6 +8,7 @@ import { feedbackDeleteSchema } from "../validation.js";
 interface DeleteFeedbackDependencies<Principal> {
   store: SitepingStore;
   pipeline: Pipeline<Principal>;
+  notify: Notify<Principal>;
   onDeleting: SitepingLifecycleHooks<Principal>["onDeleting"];
   onDeleted: SitepingLifecycleHooks<Principal>["onDeleted"];
 }
@@ -15,6 +17,7 @@ interface DeleteFeedbackDependencies<Principal> {
 export function deleteFeedbackOperation<Principal>({
   store,
   pipeline,
+  notify,
   onDeleting,
   onDeleted,
 }: DeleteFeedbackDependencies<Principal>) {
@@ -55,6 +58,7 @@ export function deleteFeedbackOperation<Principal>({
 
       if (target.kind === "project") await store.deleteAllFeedbacks(target.projectName);
       else await store.deleteFeedback(target.id);
+      notify(scope, { event: "feedback.deleted", target });
       if (onDeleted) await pipeline.runHook(scope, "onDeleted", { target }, () => onDeleted(target, scope.context));
       return pipeline.json(scope, { deleted: true });
     } catch (error) {
