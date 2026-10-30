@@ -98,6 +98,7 @@ export const it: Translations = {
   // Accessibility — screen reader announcements
   "feedback.sent.confirmation": "Feedback inviato con successo",
   "feedback.error.message": "Invio del feedback non riuscito",
+  "feedback.queued": "Salvato su questo dispositivo. Verrà inviato alla prossima visita.",
   "feedback.deleted.confirmation": "Feedback eliminato",
 
   // Badge

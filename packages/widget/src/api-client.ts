@@ -199,7 +199,7 @@ interface RetryEntry {
  * surfaced to the host through `onError` and never queued — a queued
  * rejection used to be replayed, and rejected, on every page load.
  */
-function isTransientFailure(error: unknown): boolean {
+function isTransientFailure(error: unknown): error is SitepingError {
   return error instanceof SitepingNetworkError || (error instanceof SitepingError && error.code === "SERVER");
 }
 
@@ -256,9 +256,21 @@ function readQueue(): RetryEntry[] {
   return Array.isArray(parsed) ? parsed.filter(isRetryEntry) : [];
 }
 
-function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
-  // Fire-and-forget — we don't want to block the caller on the lock
-  void withRetryLock(() => {
+/**
+ * Whether a failed send was saved for a replay on a later page load: `true`
+ * queued, `false` worth queueing but the write failed, absent when the failure
+ * is final (a 4xx) or did not come from `sendFeedback`. The widget tells the
+ * visitor which one happened.
+ */
+const queueOutcomes = new WeakMap<object, boolean>();
+
+export function queueOutcome(error: unknown): boolean | undefined {
+  return typeof error === "object" && error !== null ? queueOutcomes.get(error) : undefined;
+}
+
+/** Resolves whether the entry was persisted. */
+function queueForRetry(endpoint: string, payload: FeedbackPayload): Promise<boolean> {
+  return withRetryLock(() => {
     try {
       // A resend from the same popup reuses its clientId: replace the earlier
       // attempt so the replay carries the latest edit (the server's clientId
@@ -271,7 +283,7 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
       }
 
       queue.push({ endpoint, payload });
-      if (tryWriteQueue(queue)) return;
+      if (tryWriteQueue(queue)) return true;
 
       // Quota exceeded: screenshots (base64 JPEG data URLs) dominate each
       // entry, and up to MAX_QUEUE_SIZE entries share the origin's ~5 MB
@@ -291,7 +303,7 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
           console.warn(
             `[siteping] retry queue exceeded the localStorage quota — dropped the screenshot of ${stripped} of ${queue.length} queued feedback(s)`,
           );
-          return;
+          return true;
         }
       }
       while (kept.length > 1) {
@@ -302,7 +314,7 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
           console.warn(
             `[siteping] retry queue exceeded the localStorage quota — dropped the ${dropped} oldest of ${queue.length} queued feedback(s)${lost > 0 ? `, and the screenshot of ${lost} of the rest` : ""}`,
           );
-          return;
+          return true;
         }
       }
       // Every write failed, so the queue already stored is left as it was.
@@ -310,7 +322,8 @@ function queueForRetry(endpoint: string, payload: FeedbackPayload): void {
     } catch {
       // localStorage unavailable — the new entry is dropped
     }
-  });
+    return false;
+  }).catch(() => false);
 }
 
 /**
@@ -535,7 +548,7 @@ export class ApiClient implements WidgetClient {
       // Queue the wire shape (region stripped when absent) so a later
       // flushRetryQueue replays exactly what a fresh POST would send — but
       // only when a replay can succeed (see `isTransientFailure`).
-      if (isTransientFailure(error)) queueForRetry(this.endpoint, body);
+      if (isTransientFailure(error)) queueOutcomes.set(error, await queueForRetry(this.endpoint, body));
       throw error;
     }
   }

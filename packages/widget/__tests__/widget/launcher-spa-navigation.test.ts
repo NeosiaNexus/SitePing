@@ -24,6 +24,7 @@ vi.mock(new URL("../../src/api-client.js", import.meta.url).pathname, () => ({
     };
   }),
   flushRetryQueue: vi.fn().mockResolvedValue(undefined),
+  queueOutcome: vi.fn(),
 }));
 
 vi.mock(new URL("../../src/annotator.js", import.meta.url).pathname, () => ({

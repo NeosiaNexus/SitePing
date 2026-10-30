@@ -12,7 +12,7 @@ import {
   type SitepingPublicEvents,
 } from "@siteping/core";
 import { Annotator } from "./annotator.js";
-import { ApiClient, flushRetryQueue, type WidgetClient } from "./api-client.js";
+import { ApiClient, flushRetryQueue, queueOutcome, type WidgetClient } from "./api-client.js";
 import { DEFAULT_MIN_VIEWPORT_WIDTH, PAGE_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { ConsoleBuffer } from "./diagnostics/console-buffer.js";
 import { NetworkBuffer } from "./diagnostics/network-buffer.js";
@@ -389,6 +389,28 @@ export function launch(config: SitepingConfig): SitepingInstance {
   isolateFromHost(liveRegion);
   document.body.appendChild(liveRegion);
 
+  // A submission's outcome, visible too (#308): the live region announces it
+  // and this toast shows it, `aria-hidden` so it is read once. A tap hides it.
+  const toast = document.createElement("div");
+  toast.className = "sp-toast";
+  toast.setAttribute("aria-hidden", "true");
+  toast.hidden = true;
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  const hideToast = () => {
+    clearTimeout(toastTimer);
+    toast.hidden = true;
+  };
+  toast.addEventListener("click", hideToast);
+  shadow.appendChild(toast);
+  const notify = (text: string, failed: boolean) => {
+    liveRegion.textContent = text;
+    toast.textContent = text;
+    toast.classList.toggle("sp-toast--error", failed);
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, failed ? 8000 : 4000);
+  };
+
   // Components outside Shadow DOM
   const tooltip = new Tooltip(colors, locale);
   const markers = new MarkerManager(colors, tooltip, bus, t, liveRegion);
@@ -619,14 +641,20 @@ export function launch(config: SitepingConfig): SitepingInstance {
         if (!scopeAnnotationsByUrl || response.url === scope.url) {
           markers.addFeedback(response, markers.count + 1);
         }
-        liveRegion.textContent = t("feedback.sent.confirmation");
+        notify(t("feedback.sent.confirmation"), false);
         // Only refresh the panel if it has been loaded — `refresh()` is a
         // no-op when the panel is closed, so skipping the dynamic import here
         // avoids loading 14 KB of code that would otherwise do nothing.
         if (panelInstance) await panelInstance.refresh();
       } catch (error) {
+        // Saved for the next page load: the popup closes as on success (the
+        // queued event first, so the annotator settles before the error),
+        // and the host still hears about the failure. Otherwise — refused,
+        // or not even saved — the form stays for a retry.
+        const queued = queueOutcome(error);
+        if (queued) bus.emit("feedback:queued");
         bus.emit("feedback:error", error instanceof Error ? error : new Error(String(error)));
-        liveRegion.textContent = t("feedback.error.message");
+        notify(t(queued ? "feedback.queued" : "feedback.error.message"), !queued);
       }
     } finally {
       submitting = false;
@@ -825,6 +853,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       consoleBuffer?.dispose();
       networkBuffer?.dispose();
       bus.removeAll();
+      clearTimeout(toastTimer);
       liveRegion.remove();
       host.remove();
       // Last: the teardown above moves focus out of the widget (popup focus
