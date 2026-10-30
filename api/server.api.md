@@ -6,6 +6,7 @@
 
 Runtime exports (ESM and CJS):
 
+- `SITEPING_PROTOCOL_VERSION: number`
 - `createSitepingHandler: function`
 - `dispatchWebhook: function`
 - `dispatchWebhooks: function`
@@ -109,6 +110,8 @@ export interface GetQueryInput {
     url?: string | undefined;
     urlPattern?: string | undefined;
 }
+
+export const SITEPING_PROTOCOL_VERSION = 1;
 
 export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
     authenticate(request: Request): Principal | Promise<Principal | null | undefined> | null | undefined;

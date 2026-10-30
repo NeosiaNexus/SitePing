@@ -578,7 +578,7 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 | Méthode | Rôle | Succès |
 |---|---|---|
 | `POST` | Créer un feedback (envois du widget) — ou [un commentaire](/fr/docs/comments#poster-un-commentaire), quand le corps porte un `feedbackId` | `201` + l'enregistrement. Un `clientId` rejoué renvoie l'enregistrement existant au lieu d'échouer (et ne notifie jamais deux fois les webhooks ni `onCreated`) ; un `clientId` déjà utilisé par **un autre** projet est refusé avec `409` |
-| `GET` | Lister les feedbacks, chacun avec son fil et ses [`permissions`](#ce-que-chaque-appelant-peut-faire) | `200` + `{ feedbacks, total, capabilities, permissions }`, avec `Cache-Control: private, max-age=5` (`no-store` avec `access`) |
+| `GET` | Lister les feedbacks, chacun avec son fil et ses [`permissions`](#ce-que-chaque-appelant-peut-faire) | `200` + `{ feedbacks, total, protocol, capabilities, permissions }`, avec `Cache-Control: private, max-age=5` (`no-store` avec `access`) |
 | `PATCH` | Changer un statut | `200` + l'enregistrement mis à jour |
 | `DELETE` | Supprimer un ou tous — ou [un commentaire](/fr/docs/comments#supprimer-un-commentaire), quand le corps porte un `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | Préflight CORS | `204` |
@@ -590,6 +590,24 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 **Corps du DELETE :** `{ id, projectName }` pour un enregistrement, ou `{ projectName, deleteAll: true }` pour tout le projet.
 
 **Erreurs :** JSON invalide → `400 { error }` ; échec de validation → `400 { errors: [{ field, message }] }`, les 20 premiers problèmes ; corps au-delà de `maxBodyBytes` → `413` ; identifiants absents ou faux → `401` ; refus d'`authorize` ou d'un contrôle CSRF → `403` ; corps non JSON avec `access` → `415` ; id inconnu → `404` ; `clientId` appartenant à un autre projet, `clientId` de commentaire déjà utilisé sur un autre feedback, ou commentaire `client` sur un fil plein → `409 { error }` ; valeur plus longue que ce que tient le store (une colonne MySQL que `sync` n'a pas encore [élargie](/fr/docs/adapters/prisma#schéma-de-base-de-données)) → `422 { error }` ; écriture de commentaire sur un store sans commentaires → `501 { error }` ; `onDeleting` a levé → `502` ; tout le reste → `500 { error: "Internal server error" }`, ou le message que renvoie `describeError`.
+
+### Le protocole
+
+Le protocole est livré avec `@siteping/server` sous forme de document OpenAPI 3.1, généré à partir des schémas que le handler valide et vérifié contre les types qu'il envoie — un générateur de client, un serveur de mock ou un explorateur d'API peut le lire :
+
+```ts
+import spec from "@siteping/server/openapi.json" with { type: "json" };
+```
+
+Chaque réponse de liste porte `protocol`, la version du protocole que parle le serveur (`SITEPING_PROTOCOL_VERSION`, exporté par `@siteping/server` : `1`). Elle augmente à chaque ajout sur lequel un client peut s'appuyer : un client vérifie `protocol >= N` avant d'utiliser ce que la version N a ajouté, au lieu de sonder les champs. Les serveurs qui la précèdent n'en envoient pas : lisez-le comme `0`.
+
+Ce que la 1.x garde stable :
+
+- **Un endpoint, aiguillé par la méthode et le corps.** Un corps de `POST` avec un `feedbackId` poste un commentaire, tout autre crée un feedback ; un corps de `DELETE` avec un `commentId` supprime un commentaire, tout autre supprime du feedback. La charge utile d'une ressource ne porte jamais la clé de l'autre.
+- **`DELETE` porte un corps JSON.** `fetch` l'envoie et chaque runtime visé par le handler le lit, mais HTTP ne donne pas de sens défini à un tel corps, et certains proxys le suppriment — la requête répond alors `400`. Placez l'endpoint derrière un proxy qui le transmet.
+- **Trois `409`, aucun ne vaut un réessai :** un feedback dont le `clientId` est déjà utilisé par un autre projet ; un commentaire dont le `clientId` est déjà utilisé sur un autre feedback ; un commentaire `client` sur un fil qui en compte déjà 100.
+- **Les codes de statut et les formes JSON font contrat, pas les chaînes `error`.** Elles sont en anglais et informatives, et une version mineure peut en reformuler une : basez-vous sur le statut.
+- **Le widget et le dashboard 1.x demandent un serveur 1.x** — `@siteping/server` ou `@siteping/adapter-prisma`, protocole 1. Au sein de la 1.x, ils n'utilisent ce qu'une version ultérieure du protocole ajoute qu'après avoir lu `protocol` : un widget plus récent continue de fonctionner face à un serveur 1.x plus ancien.
 
 ### Les limites de validation à connaître
 
