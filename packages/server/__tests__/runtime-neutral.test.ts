@@ -107,6 +107,9 @@ function arrayStore(): Server.SitepingStore {
     },
     async deleteFeedback() {},
     async deleteAllFeedbacks() {},
+    async verifyProjectOwnership(id, projectName) {
+      return records.some((record) => record.id === id && record.projectName === projectName);
+    },
   };
 }
 

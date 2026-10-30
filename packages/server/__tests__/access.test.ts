@@ -385,9 +385,9 @@ describe("createSitepingHandler — access", () => {
 });
 
 /**
- * A conformant store that leaves out the optional `verifyProjectOwnership`,
- * as a minimal third-party adapter may — every required method delegates to
- * a real `MemoryStore`.
+ * A plain-JavaScript store that leaves out `verifyProjectOwnership` — the
+ * type requires it, so only an untyped adapter can — every other method
+ * delegating to a real `MemoryStore`.
  */
 function storeWithoutOwnershipCheck(backing = new MemoryStore()): SitepingStore {
   return {
@@ -397,7 +397,7 @@ function storeWithoutOwnershipCheck(backing = new MemoryStore()): SitepingStore 
     updateFeedback: (id, data) => backing.updateFeedback(id, data),
     deleteFeedback: (id) => backing.deleteFeedback(id),
     deleteAllFeedbacks: (projectName) => backing.deleteAllFeedbacks(projectName),
-  };
+  } as Omit<SitepingStore, "verifyProjectOwnership"> as SitepingStore;
 }
 
 /** Policy scoping each principal to one project: the admin to `test-project`, the guest to `guest-project`. */

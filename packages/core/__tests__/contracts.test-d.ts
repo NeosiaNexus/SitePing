@@ -193,9 +193,12 @@ describe("SitepingStore contract", () => {
     expectTypeOf<Omit<CollectionStore, "createFeedbackIfAbsent">>().toExtend<CollectionStore>();
   });
 
-  it("keeps verifyProjectOwnership optional for minimal adapters", () => {
+  it("requires verifyProjectOwnership: PATCH and DELETE address records by id", () => {
     expectTypeOf<SitepingStore["verifyProjectOwnership"]>().toEqualTypeOf<
-      ((id: string, projectName: string) => Promise<boolean>) | undefined
+      (id: string, projectName: string) => Promise<boolean>
     >();
+    // @ts-expect-error — a store without the ownership check no longer fits the contract
+    const minimal: SitepingStore = {} as Omit<SitepingStore, "verifyProjectOwnership">;
+    void minimal;
   });
 });

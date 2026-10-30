@@ -93,6 +93,7 @@ const neverStore = {
   updateFeedback: vi.fn(),
   deleteFeedback: vi.fn(),
   deleteAllFeedbacks: vi.fn(),
+  verifyProjectOwnership: vi.fn(),
 } satisfies SitepingStore;
 
 describe("a send that never settles", () => {
