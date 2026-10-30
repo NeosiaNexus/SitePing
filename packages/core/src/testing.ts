@@ -16,7 +16,13 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CommentCreateInput, DiagnosticsSnapshot, FeedbackCreateInput, SitepingStore } from "./types.js";
-import { isStoreDuplicate, isStoreLimit, isStoreNotFound, MAX_COMMENTS_PER_FEEDBACK } from "./types.js";
+import {
+  isStoreDuplicate,
+  isStoreLimit,
+  isStoreNotFound,
+  isStorePersistence,
+  MAX_COMMENTS_PER_FEEDBACK,
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Test fixture
@@ -116,6 +122,17 @@ export interface StoreConformanceOptions {
    * substring matching.
    */
   caseInsensitiveSearch?: boolean | undefined;
+  /**
+   * Make the backend of `store` refuse every write until the returned
+   * function is called — a spy throwing from `localStorage.setItem`, a flag
+   * your `persist` reads. It enables the persistence-failure cases: each
+   * mutation must then reject with `StorePersistenceError` (matched via
+   * `isStorePersistence`) and leave what reads return as it was. Without it
+   * those cases are reported as skipped, never as passed. Meant for backends
+   * that can accept a write and lose it (quota, revoked storage); a store
+   * whose writes cannot fail, like an in-memory one, leaves it out.
+   */
+  failWrites?: ((store: SitepingStore) => () => void) | undefined;
 }
 
 /**
@@ -130,6 +147,7 @@ export function testSitepingStore(
 ): void {
   const duplicateBehavior = options?.duplicateBehavior ?? "return";
   const caseInsensitiveSearch = options?.caseInsensitiveSearch ?? true;
+  const failWrites = options?.failWrites;
 
   describe("SitepingStore conformance", () => {
     let store: SitepingStore;
@@ -747,6 +765,74 @@ export function testSitepingStore(
       it("is a no-op when project has no feedbacks", async () => {
         await expect(store.deleteAllFeedbacks("nonexistent")).resolves.toBeUndefined();
       });
+    });
+
+    // ------------------------------------------------------------------
+    // Persistence failures — a write the backend refuses must reject with
+    // `StorePersistenceError` and change nothing a read returns. Skipped,
+    // not passed, for a store run without the `failWrites` option.
+    // ------------------------------------------------------------------
+
+    describe("persistence failures", () => {
+      /** Run `act` while the backend refuses writes, restoring it whatever happens. */
+      async function whileWritesFail(act: () => Promise<unknown>): Promise<void> {
+        const restore = (failWrites as NonNullable<typeof failWrites>)(store);
+        try {
+          await expect(act()).rejects.toSatisfy(isStorePersistence);
+        } finally {
+          restore();
+        }
+      }
+
+      it.skipIf(!failWrites)("a create the backend refuses rejects and stores nothing", async () => {
+        await whileWritesFail(() => store.createFeedback(createInput({ clientId: "lost-create" })));
+
+        expect(await store.findByClientId("lost-create")).toBeNull();
+        expect((await store.getFeedbacks({ projectName: "test-project" })).total).toBe(0);
+      });
+
+      it.skipIf(!failWrites)("an update the backend refuses rejects and keeps the previous status", async () => {
+        const fb = await store.createFeedback(createInput({ clientId: "lost-update" }));
+
+        await whileWritesFail(() => store.updateFeedback(fb.id, { status: "resolved", resolvedAt: new Date() }));
+
+        const kept = await store.findByClientId("lost-update");
+        expect(kept?.status).toBe("open");
+        expect(kept?.resolvedAt).toBeNull();
+      });
+
+      it.skipIf(!failWrites)("a delete the backend refuses rejects and keeps the record", async () => {
+        const fb = await store.createFeedback(createInput({ clientId: "lost-delete" }));
+
+        await whileWritesFail(() => store.deleteFeedback(fb.id));
+
+        expect((await store.findByClientId("lost-delete"))?.id).toBe(fb.id);
+      });
+
+      it.skipIf(!failWrites)("a project delete the backend refuses rejects and keeps every record", async () => {
+        await store.createFeedback(createInput({ projectName: "lost-wipe" }));
+        await store.createFeedback(createInput({ projectName: "lost-wipe" }));
+
+        await whileWritesFail(() => store.deleteAllFeedbacks("lost-wipe"));
+
+        expect((await store.getFeedbacks({ projectName: "lost-wipe" })).total).toBe(2);
+      });
+
+      it.skipIf(!failWrites)(
+        "a comment post or delete the backend refuses rejects and keeps the thread (when implemented)",
+        async () => {
+          if (!store.addComment || !store.deleteComment) return;
+          const addComment = store.addComment.bind(store);
+          const deleteComment = store.deleteComment.bind(store);
+          const fb = await store.createFeedback(createInput({ clientId: "lost-thread" }));
+          const kept = await addComment(fb.id, commentInput());
+
+          await whileWritesFail(() => addComment(fb.id, commentInput()));
+          await whileWritesFail(() => deleteComment(fb.id, kept.id));
+
+          expect((await store.findByClientId("lost-thread"))?.comments).toEqual([kept]);
+        },
+      );
     });
 
     // ------------------------------------------------------------------

@@ -43,7 +43,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les 67 tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
+C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la suite de tests du kit lance elle-même les tests de conformité. Remplacez les trois fonctions par votre stockage et c'est terminé : [`MemoryStore`](/fr/docs/adapters/memory) et [`LocalStorageStore`](/fr/docs/adapters/localstorage) sont ce même moteur avec d'autres primitives.
 
 **Les trois primitives :**
 
@@ -151,7 +151,7 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 
 ## La preuve : la suite de conformité
 
-La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — 67 tests :
+La même suite que celle des adapters officiels. Pointez-la vers une factory qui renvoie un store neuf et vide, et elle exerce tout le contrat — environ 70 tests :
 
 ```ts
 // __tests__/my-store.test.ts
@@ -163,17 +163,33 @@ testSitepingStore(() => new MyStore());
 
 En plus des appels un par un, elle lance ensemble des mises à jour, des suppressions et des créations dans un `Promise.all` — comme le font les actions en masse du widget — et vérifie que chaque écriture a abouti.
 
-La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Deux réglages couvrent les variations de contrat légitimement propres au backend :
+La factory est appelée avant chaque test et peut être asynchrone — c'est là que vous ouvrez une transaction ou créez un schéma frais. Trois options couvrent ce qui varie légitimement d'un backend à l'autre :
 
 | Option | Défaut | À régler quand |
 |---|---|---|
 | `duplicateBehavior` | `"return"` | Votre `createFeedback` lève `StoreDuplicateError` sur un `clientId` répété au lieu de renvoyer l'existant — passez `"throw"`. Un store qui le renvoie mais lève quand il perd une course d'insertion concurrente reste sur `"return"` |
 | `caseInsensitiveSearch` | `true` | Votre collation rend `search` sensible à la casse — passez `false` et la suite ne teste que la correspondance à casse identique |
+| `failWrites` | — | Votre backend peut accepter une écriture puis la perdre (quota, stockage révoqué) — passez une fonction qui lui fait refuser toute écriture jusqu'à l'appel de la fonction qu'elle renvoie. Sans elle, les cas d'échec de persistance sont signalés comme sautés |
 
 ```ts
 testSitepingStore(() => new PostgresStore(db), {
   duplicateBehavior: "throw",
   caseInsensitiveSearch: false,
+});
+```
+
+Avec `failWrites`, chaque mutation doit être rejetée avec `StorePersistenceError` tant que les écritures échouent, et laisser ce que renvoient les lectures tel quel — pas d'enregistrement fantôme, pas de mise à jour perdue :
+
+```ts
+let writesFail = false; // lu par le `persist` de votre backend
+
+testSitepingStore(() => new KvStore(), {
+  failWrites: () => {
+    writesFail = true;
+    return () => {
+      writesFail = false;
+    };
+  },
 });
 ```
 
