@@ -25,7 +25,7 @@ const siteping = initSiteping({
 `initSiteping` exécute une série de garde-fous, dans cet ordre. Quand l'un d'eux s'active, vous récupérez une instance no-op (toutes les méthodes existent, rien ne s'affiche) :
 
 1. **Rendu côté serveur** — pas de `window` ? Le widget passe son tour avec `onSkip("ssr")`. Jamais contournable.
-2. **Déjà initialisé** — un second appel à `initSiteping()` renvoie l'instance *existante* (un seul widget par page). `destroy()` remet le compteur à zéro.
+2. **Déjà initialisé** — un second appel à `initSiteping()` renvoie un nouveau handle sur le widget *existant* (un seul widget par page) et ignore sa config. Le widget reste en place tant que tous les handles n'ont pas été détruits.
 3. **Production** — quand `process.env.NODE_ENV === "production"`, le widget passe son tour avec `onSkip("production")`. C'est le comportement « les clients le voient pendant la relecture, les visiteurs jamais ». Contournez-le avec `forceShow: true` pour les environnements de staging ou de preview. À noter : seul `process.env.NODE_ENV` est lu — pas `import.meta.env`.
 4. **Largeur minimale (optionnelle)** — en dessous de `minViewportWidth`, il passe son tour avec `onSkip("mobile")`. La valeur par défaut, `0`, l'affiche à toutes les largeurs : les téléphones ont droit à la [mise en page compacte](#sur-téléphone-et-tablette). Également contourné par `forceShow`.
 5. **Validation de la config** — pas d'`endpoint`/`store`, ou pas de `projectName` ? Le widget affiche un `console.error` et ne fait rien. Ce cas-là n'appelle **pas** `onSkip` — regardez la console, pas le callback.
@@ -61,8 +61,10 @@ siteping.close();                 // le fermer
 siteping.refresh();               // recharger les feedbacks de la page courante (ne lève jamais)
 siteping.focusFeedback(id);       // faire défiler jusqu'à un marqueur et le mettre en évidence ; false si inconnu
 const off = siteping.on("feedback:sent", (feedback) => { ... });
-siteping.destroy();               // démontage complet, restaure tous les globals patchés
+siteping.destroy();               // libère ce handle ; le dernier démonte tout et restaure les globals patchés
 ```
+
+`destroy()` détache aussi les écouteurs ajoutés via le `on()` de ce handle, qui ne fait plus rien ensuite. Un second appel est sans effet.
 
 `on()` renvoie une fonction de désabonnement. Huit événements publics sont disponibles :
 
@@ -94,6 +96,8 @@ export function Feedback() {
 ```
 
 Le hook renvoie `null` jusqu'à son montage, puis l'instance. Changer `endpoint` ou une autre option structurelle demande un remontage ; changer un callback, non — **tous** les callbacks acceptés par la config (`onFeedbackSent`, `onCommentAdded`, `onError`, `onOpen`, `onClose`, `onAnnotationStart`, `onAnnotationEnd`, `onSkip`) sont lus au moment de l'appel, donc un handler qui capture un état frais se déclenche avec cet état — tout comme les callbacks des [actions du panneau](/fr/docs/widget/panel-actions#react). Ils se taisent également après le démontage : une réponse tardive ne peut pas rappeler dans un arbre déjà démonté.
+
+Plusieurs composants peuvent appeler le hook, un layout et une page par exemple. Ils partagent un seul widget, qui reste monté jusqu'au démontage du dernier d'entre eux. Le widget garde les options du composant qui l'a créé, dont les callbacks se taisent une fois ce composant démonté : donnez les mêmes options à chaque appel, ou appelez le hook depuis un seul composant qui reste monté.
 
 ## Gérer les erreurs
 

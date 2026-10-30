@@ -70,6 +70,13 @@ function freshPanelActions(ref: { readonly current: SitepingConfig }): SitepingC
 /**
  * Initialise the SitePing widget for the lifetime of the calling component.
  *
+ * Several components can call it (a layout and a page): they share one
+ * widget, which stays mounted until the last of them unmounts. Like a second
+ * `initSiteping()`, a later call doesn't reconfigure it: the widget keeps the
+ * options of the component that created it, whose callbacks go silent once
+ * that component unmounts. Give every caller the same options, or call the
+ * hook from one component that stays mounted.
+ *
  * Safe to call from a Server Component file as long as the component itself
  * is marked `"use client"` — the hook bails out cleanly on the server because
  * `useEffect` never runs there.
@@ -114,7 +121,7 @@ export function useSiteping(config: SitepingConfig): SitepingInstance | null {
     // the first run fires between the two `init` calls, so we set the flag
     // false in cleanup and skip late state updates. The widget itself has
     // its own singleton guard, so even if we managed to call init() twice
-    // in a row we'd get the same instance back.
+    // in a row we'd get a second handle over the same widget back.
     let mounted = true;
 
     // The widget wires config callbacks once at init, so passing the host's
