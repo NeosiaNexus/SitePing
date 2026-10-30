@@ -113,7 +113,7 @@ export class PanelStats {
     this.t = t;
     // Container
     this.element = el("div", { class: "sp-stats-bar" });
-    this.element.setAttribute("aria-label", "Feedback statistics");
+    this.element.setAttribute("aria-label", t("stats.aria"));
     this.element.hidden = true;
 
     // --- Stats row ---

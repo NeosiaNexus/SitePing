@@ -196,10 +196,45 @@ describe("Panel", () => {
       expect(input!.getAttribute("aria-label")).toBe(t("panel.searchAria"));
     });
 
-    it("creates a list container with role=list", () => {
-      const list = shadow.querySelector<HTMLElement>('[role="list"]');
-      expect(list).not.toBeNull();
-      expect(list!.getAttribute("aria-label")).toBe(t("panel.feedbackList"));
+    // WCAG 2.5.3 (axe label-content-name-mismatch): run together, the prefix
+    // and the value read "TypeAll", which is not in the name "Type: All".
+    it("keeps the type filter's visible text inside its accessible name", () => {
+      const trigger = shadow.querySelector<HTMLButtonElement>(".sp-filter-dropdown-btn")!;
+      const words = (text: string) => text.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+      const visible = words(trigger.textContent!);
+      expect(visible).toBe(`${t("type.label")} ${t("panel.filterAll")}`);
+      expect(words(trigger.getAttribute("aria-label")!)).toContain(visible);
+    });
+
+    // A list may own list items only (axe `aria-required-children`): the
+    // select-all bar, page-group headers and "Load more" stay outside the lists.
+    it("renders the cards, and only the cards, inside named ARIA lists, flat and grouped", async () => {
+      const ownsOnlyItems = () => {
+        const lists = [...shadow.querySelectorAll<HTMLElement>('[role="list"]')];
+        expect(lists.length).toBeGreaterThan(0);
+        for (const list of lists) {
+          expect(list.getAttribute("aria-label")).toBeTruthy();
+          for (const child of list.children) expect(child.getAttribute("role")).toBe("listitem");
+        }
+        expect(shadow.querySelector('.sp-bulk-select-all [role="checkbox"]')!.closest('[role="list"]')).toBeNull();
+        return lists;
+      };
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [
+          makeFeedback({ id: "a", url: "https://x.test/page1" }),
+          makeFeedback({ id: "b", url: "https://x.test/page2" }),
+        ],
+        total: 3,
+      });
+      await panel.open();
+
+      const [flat] = ownsOnlyItems();
+      expect(flat!.getAttribute("aria-label")).toBe(t("panel.feedbackList"));
+      expect(shadow.querySelector(".sp-btn-load-more")!.closest('[role="list"]')).toBeNull();
+
+      shadow.querySelector<HTMLButtonElement>(".sp-group-toggle")!.click();
+      await vi.waitFor(() => expect(shadow.querySelectorAll(".sp-group-header").length).toBe(2));
+      expect(ownsOnlyItems().map((list) => list.getAttribute("aria-label"))).toHaveLength(2);
     });
 
     it("creates type dropdown with 'all' selected by default and status segmented with 3 segments", () => {
@@ -931,7 +966,7 @@ describe("Panel", () => {
       await panel.open();
 
       const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
 
       // Dispatch keydown on the card (bubbles to listContainer)
       const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
@@ -950,7 +985,7 @@ describe("Panel", () => {
       await panel.open();
 
       const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
 
       const event = new KeyboardEvent("keydown", { key: " ", bubbles: true });
       Object.defineProperty(event, "target", { value: card });
@@ -969,7 +1004,7 @@ describe("Panel", () => {
 
       const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
       const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-resolve")!;
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
 
       // target is the button, not the card itself
       const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
@@ -993,7 +1028,7 @@ describe("Panel", () => {
       await panel.open();
 
       const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-42"]')!;
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
 
       const event = new MouseEvent("mouseover", { bubbles: true });
       Object.defineProperty(event, "target", { value: card });
@@ -1008,7 +1043,7 @@ describe("Panel", () => {
 
       await panel.open();
 
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       // relatedTarget is outside the listContainer (e.g. the panel itself)
       const panelRoot = shadow.querySelector<HTMLElement>(".sp-panel")!;
       const event = new MouseEvent("mouseout", { bubbles: true, relatedTarget: panelRoot });
@@ -2943,7 +2978,7 @@ describe("Panel", () => {
 
       // Second click via dispatchEvent (bypasses disabled-button suppression in jsdom)
       // pendingMutations.has(feedback.id) is now TRUE → early return at line 287
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       const event = new MouseEvent("click", { bubbles: true });
       Object.defineProperty(event, "target", { value: resolveBtn });
       listContainer.dispatchEvent(event);
@@ -2973,7 +3008,7 @@ describe("Panel", () => {
       deleteBtn.click();
 
       // Second click via dispatchEvent (bypasses disabled-button suppression)
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       const event = new MouseEvent("click", { bubbles: true });
       Object.defineProperty(event, "target", { value: deleteBtn });
       listContainer.dispatchEvent(event);
@@ -2994,7 +3029,7 @@ describe("Panel", () => {
       const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
       const bulkCheckbox = card.querySelector<HTMLElement>(".sp-bulk-checkbox")!;
 
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       const event = new MouseEvent("click", { bubbles: true });
       Object.defineProperty(event, "target", { value: bulkCheckbox });
       listContainer.dispatchEvent(event);
@@ -3010,7 +3045,7 @@ describe("Panel", () => {
       await panel.open();
       markers.highlight.mockClear();
 
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       // Empty state element has no .sp-card
       const empty = shadow.querySelector<HTMLElement>(".sp-empty-text")!;
       const event = new MouseEvent("mouseover", { bubbles: true });
@@ -3029,7 +3064,7 @@ describe("Panel", () => {
 
       markers.highlight.mockClear();
 
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       const card2 = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-2"]')!;
 
       const event = new MouseEvent("mouseout", { bubbles: true, relatedTarget: card2 });
@@ -3046,7 +3081,7 @@ describe("Panel", () => {
       await panel.open();
 
       const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
 
       const event = new KeyboardEvent("keydown", { key: "a", bubbles: true });
       Object.defineProperty(event, "target", { value: card });
@@ -3580,7 +3615,7 @@ describe("Panel", () => {
       await panel.open();
 
       // Inject a stray action element OUTSIDE any card under listContainer
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       const strayAction = document.createElement("button");
       strayAction.dataset.action = "expand";
       listContainer.appendChild(strayAction);
@@ -3630,7 +3665,7 @@ describe("Panel", () => {
       const card = shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
       card.dataset.feedbackId = "unknown";
 
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
       Object.defineProperty(event, "target", { value: card });
       listContainer.dispatchEvent(event);
@@ -3644,7 +3679,7 @@ describe("Panel", () => {
       await panel.open();
 
       // Inject a fake card without data-feedback-id
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       const fakeCard = document.createElement("div");
       fakeCard.className = "sp-card";
       listContainer.appendChild(fakeCard);
@@ -3704,7 +3739,7 @@ describe("Panel", () => {
       // returns null inside loadMoreFeedbacks — covers line 519 + 531.
 
       // Re-attach to dispatch a click event that runs the handler:
-      const listContainer = shadow.querySelector<HTMLElement>('[role="list"]')!;
+      const listContainer = shadow.querySelector<HTMLElement>(".sp-list")!;
       listContainer.appendChild(loadMoreBtn);
       // Now query inside loadMoreFeedbacks SHOULD still find it... so this is tricky.
       // Instead, remove it WITHIN the click and rely on the handler

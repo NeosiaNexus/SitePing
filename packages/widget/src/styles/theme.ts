@@ -5,6 +5,8 @@ export interface ThemeColors {
   accentDark: string;
   accentGlow: string;
   accentGradient: string;
+  /** Accent for text: reads at 4.5:1 on the accent's own tinted background (`accentLight`). */
+  accentText: string;
   bg: string;
   bgHover: string;
   text: string;
@@ -67,12 +69,45 @@ function normalizeHex(raw: string): string {
   return DEFAULT_ACCENT;
 }
 
-/** Darken a hex color by a percentage (0-1) */
-function darkenHex(hex: string, amount: number): string {
-  const r = Math.max(0, Math.round(parseInt(hex.slice(1, 3), 16) * (1 - amount)));
-  const g = Math.max(0, Math.round(parseInt(hex.slice(3, 5), 16) * (1 - amount)));
-  const b = Math.max(0, Math.round(parseInt(hex.slice(5, 7), 16) * (1 - amount)));
-  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+/** `hex` mixed toward `toward` by `amount` (0-1), both 6-digit hex. */
+function mixHex(hex: string, toward: string, amount: number): string {
+  let out = "#";
+  for (let i = 1; i < 7; i += 2) {
+    const from = parseInt(hex.slice(i, i + 2), 16);
+    const channel = Math.round(from + (parseInt(toward.slice(i, i + 2), 16) - from) * amount);
+    out += channel.toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+/** WCAG 2.1 relative luminance of a 6-digit hex color. */
+function luminance(hex: string): number {
+  let sum = 0;
+  for (const [i, weight] of [
+    [1, 0.2126],
+    [3, 0.7152],
+    [5, 0.0722],
+  ] as const) {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    sum += weight * (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  }
+  return sum;
+}
+
+/**
+ * `hex` moved toward `toward` (black or white) in 10% steps until it reads at
+ * 4.5:1 on `bg` — AA for small text. The accent is the host's to pick, so
+ * text drawn in it is derived from it rather than trusted.
+ */
+function readableOn(hex: string, bg: string, toward: string): string {
+  const background = luminance(bg);
+  let color = hex;
+  for (let step = 1; step <= 10; step++) {
+    const text = luminance(color);
+    if ((Math.max(text, background) + 0.05) / (Math.min(text, background) + 0.05) >= 4.5) break;
+    color = mixHex(hex, toward, step / 10);
+  }
+  return color;
 }
 
 const DARK_QUERY = "(prefers-color-scheme: dark)";
@@ -100,7 +135,7 @@ export function resolveTheme(theme?: "light" | "dark" | "auto"): "light" | "dark
 
 export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light" | "dark" | "auto"): ThemeColors {
   const hex = normalizeHex(accent);
-  const dark = darkenHex(hex, 0.15);
+  const dark = mixHex(hex, "#000000", 0.15);
   const resolved = resolveTheme(theme);
 
   if (resolved === "dark") {
@@ -110,6 +145,8 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
       accentDark: dark,
       accentGlow: hex + "44",
       accentGradient: `linear-gradient(135deg, ${hex}, ${dark})`,
+      // Lightened until it reads on accentLight over bgHover, the lighter of the two grounds.
+      accentText: readableOn(hex, mixHex("#1e293b", hex, 0x22 / 255), "#ffffff"),
       bg: "#0f172a",
       bgHover: "#1e293b",
       text: "#f1f5f9",
@@ -118,9 +155,10 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
       textTertiary: "#8695aa",
       border: "#334155",
       shadow: "rgba(0, 0, 0, 0.3)",
-      // Glass tokens — dark frosted glass
-      glassBg: "rgba(15, 23, 42, 0.78)",
-      glassBgHeavy: "rgba(15, 23, 42, 0.88)",
+      // Glass tokens — dark frosted glass. Opaque enough that a white page
+      // behind it, the worst case, leaves tertiary text at 5:1 (0.78 left 2.9:1).
+      glassBg: "rgba(15, 23, 42, 0.94)",
+      glassBgHeavy: "rgba(15, 23, 42, 0.96)",
       glassBorder: "rgba(51, 65, 85, 0.5)",
       glassBorderSubtle: "rgba(51, 65, 85, 0.3)",
       // Type colors stay vibrant on dark
@@ -136,11 +174,12 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
       // Status colors — vivid green / cool gray on dark
       statusOpen: "#4ade80",
       statusOpenBg: "rgba(74, 222, 128, 0.15)",
-      statusResolved: "#94a3b8",
+      // Slate lifted from #94a3b8, which read 4.4:1 on its tint over bgHover.
+      statusResolved: "#a3b0c2",
       statusResolvedBg: "rgba(148, 163, 184, 0.15)",
       statusInProgress: "#fbbf24",
       statusInProgressBg: "rgba(245, 158, 11, 0.15)",
-      statusWontFix: "#94a3b8",
+      statusWontFix: "#a3b0c2",
       statusWontFixBg: "rgba(148, 163, 184, 0.15)",
     };
   }
@@ -151,6 +190,8 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
     accentDark: dark,
     accentGlow: hex + "33", // 20% opacity
     accentGradient: `linear-gradient(135deg, ${hex}, ${dark})`,
+    // Darkened until it reads on accentLight over bgHover, the darker of the two grounds.
+    accentText: readableOn(hex, mixHex("#f8f9fb", hex, 0x14 / 255), "#000000"),
     bg: "#ffffff",
     bgHover: "#f8f9fb",
     text: "#0f172a",
@@ -163,24 +204,26 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
     glassBgHeavy: "rgba(255, 255, 255, 0.85)",
     glassBorder: "rgba(255, 255, 255, 0.35)",
     glassBorderSubtle: "rgba(255, 255, 255, 0.18)",
-    // Vibrant type colors
-    typeQuestion: "#3b82f6",
+    // Type colors, dark enough to read as badge text on their pastel (4.5:1+);
+    // blue-500, red-500 and slate-500 read 3.4–4.5:1 there.
+    typeQuestion: "#2563eb",
     typeChange: "#b45309",
-    typeBug: "#ef4444",
-    typeOther: "#64748b",
+    typeBug: "#d01f1f",
+    typeOther: "#5b6778",
     // Pastel backgrounds
     typeQuestionBg: "#eff6ff",
     typeChangeBg: "#fffbeb",
     typeBugBg: "#fef2f2",
     typeOtherBg: "#f8fafc",
-    // Status colors — saturated green / cool gray on light
-    statusOpen: "#16a34a",
+    // Status colors, same rule: green-700, amber-700 and a deeper slate (green-600
+    // and amber-600 read 3.1:1 on their pastel).
+    statusOpen: "#15803d",
     statusOpenBg: "#f0fdf4",
-    statusResolved: "#64748b",
+    statusResolved: "#5b6778",
     statusResolvedBg: "#f1f5f9",
-    statusInProgress: "#d97706",
+    statusInProgress: "#b45309",
     statusInProgressBg: "#fffbeb",
-    statusWontFix: "#64748b",
+    statusWontFix: "#5b6778",
     statusWontFixBg: "#f1f5f9",
   };
 }
@@ -244,6 +287,7 @@ export function cssVariables(colors: ThemeColors): string {
     --sp-accent-dark: ${colors.accentDark};
     --sp-accent-glow: ${colors.accentGlow};
     --sp-accent-gradient: ${colors.accentGradient};
+    --sp-accent-text: ${colors.accentText};
     --sp-bg: ${colors.bg};
     --sp-bg-hover: ${colors.bgHover};
     --sp-text: ${colors.text};

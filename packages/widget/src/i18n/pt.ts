@@ -103,6 +103,7 @@ export const pt: Translations = {
   "badge.count": "{count} feedbacks não resolvidos",
 
   // Bulk actions toolbar
+  "bulk.aria": "Ações em massa",
   "bulk.selectAll": "Selecionar tudo",
   "bulk.selectFeedback": "Selecionar {label}",
   "bulk.selected": "{count} selecionados",
@@ -120,6 +121,7 @@ export const pt: Translations = {
   "group.feedbacks": "{count} feedbacks",
 
   // Stats bar
+  "stats.aria": "Estatísticas de feedbacks",
   "stats.open": "Abertos",
   "stats.closed": "Fechados",
   "stats.bugs": "Bugs",
@@ -127,6 +129,7 @@ export const pt: Translations = {
 
   // Detail view
   "detail.back": "Voltar",
+  "detail.aria": "Detalhes do feedback",
   "detail.title": "Feedback #{number}",
   "detail.status": "Status",
   "detail.message": "Mensagem",

@@ -258,7 +258,7 @@ export class Popup {
     this.cancelBtn.addEventListener("mouseenter", () => {
       if (this.submittingState) return;
       this.cancelBtn.style.borderColor = this.colors.accent;
-      this.cancelBtn.style.color = this.colors.accent;
+      this.cancelBtn.style.color = this.colors.accentText;
     });
     this.cancelBtn.addEventListener("mouseleave", () => {
       if (this.submittingState) return;
