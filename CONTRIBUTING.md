@@ -35,11 +35,24 @@ bun run check:consistency  # locale counts/lists + demo pickers, package registr
                            # fileURLToPath in tooling, no @prisma/client import in adapter-prisma, workspace dependencies
                            # pinned before publish, one Node floor (engines, CI, publish jobs, demo image, docs)
 bun run knip               # dead files / exports / dependencies
+bun run skew               # published packages vs this change, both ways (needs a build and npm, see below)
 bun run new:locale <code>  # scaffold a new built-in locale (see Adding a Locale)
 bun run new:adapter <name> # scaffold a new first-party adapter (see Creating a New Adapter)
 ```
 
 Run `bun run verify` before submitting a PR — it is exactly what CI enforces.
+
+CI also runs `bun run skew`, left out of `verify` because it needs the npm
+registry. It checks what is already on npm against your change: the latest
+published adapters against `main`'s `@siteping/server` (a strict type-check of
+a consumer and of the adapters' own declarations, plus a create-and-list round
+trip), and the widget and dashboard clients against the oldest supported
+server (`MINIMUM_SERVER` in `scripts/version-skew.mjs`: the latest release
+until 1.0). A failure names the published package and the step that broke.
+Keep the old shape — deprecate instead of removing, add optional members,
+feature-detect in the clients. A deliberate break is a `!` commit that lists
+the published version it breaks in the script's `KNOWN_BREAKS`, until the
+fixed release reaches npm.
 
 > **WSL note:** if a local `vitest` run hangs or balloons in memory, use the
 > real binary (`./node_modules/.bin/vitest run`) rather than `bunx vitest`
@@ -197,7 +210,7 @@ Two implementation strategies:
   comment; `buildFeedbackRecord` leaves `comments` out, so a store with
   threads adds `comments: []` to the record it returns).
 
-Verify with the shared conformance suite (~67 tests — the scaffold pre-wires
+Verify with the shared conformance suite (~70 tests — the scaffold pre-wires
 this file):
 
 ```ts

@@ -26,7 +26,7 @@ const siteping = initSiteping({
 
 1. **Rendu côté serveur** — pas de `window` ? Le widget passe son tour avec `onSkip("ssr")`. Jamais contournable.
 2. **Déjà initialisé** — un second appel à `initSiteping()` renvoie un nouveau handle sur le widget *existant* (un seul widget par page) et ignore sa config. Le widget reste en place tant que tous les handles n'ont pas été détruits.
-3. **Production** — quand `process.env.NODE_ENV === "production"`, le widget passe son tour avec `onSkip("production")`. C'est le comportement « les clients le voient pendant la relecture, les visiteurs jamais ». Contournez-le avec `forceShow: true` pour les environnements de staging ou de preview. À noter : seul `process.env.NODE_ENV` est lu — pas `import.meta.env`.
+3. **Production** — quand `process.env.NODE_ENV === "production"`, le widget passe son tour avec `onSkip("production")`. C'est le comportement « les clients le voient pendant la relecture, les visiteurs jamais ». Contournez-le avec `forceShow: true` pour les environnements de staging ou de preview. À noter : seul `process.env.NODE_ENV` est lu — pas `import.meta.env`. Sans bundler pour le fournir — le [bundle `<script>`](/fr/docs/widget/script-tag), ou un build qui n'en définit pas —, l'hôte de la page en tient lieu : le widget s'affiche sur `localhost`, `*.localhost`, `127.0.0.1`, `[::1]` et les pages ouvertes depuis le disque, et passe son tour de la même façon partout ailleurs.
 4. **Largeur minimale (optionnelle)** — en dessous de `minViewportWidth`, il passe son tour avec `onSkip("mobile")`. La valeur par défaut, `0`, l'affiche à toutes les largeurs : les téléphones ont droit à la [mise en page compacte](#sur-téléphone-et-tablette). Également contourné par `forceShow`.
 5. **Validation de la config** — pas d'`endpoint`/`store`, ou pas de `projectName` ? Le widget affiche un `console.error` et ne fait rien. Ce cas-là n'appelle **pas** `onSkip` — regardez la console, pas le callback.
 
@@ -58,7 +58,7 @@ const siteping = initSiteping({ ... });
 
 siteping.open();                  // ouvrir le panneau de feedback
 siteping.close();                 // le fermer
-siteping.refresh();               // recharger les feedbacks de la page courante (ne lève jamais)
+await siteping.refresh();         // recharger les feedbacks de la page ; résout une fois affichés, ne rejette jamais
 siteping.focusFeedback(id);       // faire défiler jusqu'à un marqueur et le mettre en évidence ; false si inconnu
 const off = siteping.on("feedback:sent", (feedback) => { ... });
 siteping.destroy();               // libère ce handle ; le dernier démonte tout et restaure les globals patchés
@@ -101,20 +101,21 @@ Plusieurs composants peuvent appeler le hook, un layout et une page par exemple.
 
 ## Gérer les erreurs
 
-`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable` (booléen). Une erreur `AUTH` porte aussi le `status` HTTP : `401` quand les identifiants manquent ou sont morts, `403` quand ils fonctionnent et que la politique du serveur refuse la requête :
+`onError` reçoit des erreurs avec deux champs utiles — `code` (`"NETWORK" | "VALIDATION" | "AUTH" | "SERVER" | "TIMEOUT"`, ce dernier uniquement en mode `store`) et `retryable`, vrai quand la même requête peut réussir plus tard sans changement (une panne réseau, un `5xx`, un `408` ou un `429`, un délai dépassé). Une erreur `AUTH` porte aussi le `status` HTTP : `401` quand les identifiants manquent ou sont morts, `403` quand ils fonctionnent et que la politique du serveur refuse la requête. Reconnaissez-les avec `isSitepingError`, qui type `code` et `status` pour vous :
 
 ```ts
+import { initSiteping, isSitepingError } from "@siteping/widget";
+
 initSiteping({
   endpoint: "/api/siteping",
   projectName: "mon-projet",
   onError: (error) => {
-    const code = (error as { code?: string }).code;
-    if (code === "AUTH") console.warn("vérifiez votre apiKey");
+    if (isSitepingError(error) && error.code === "AUTH") console.warn(`vérifiez votre apiKey (${error.status})`);
   },
 });
 ```
 
-Branchez sur `error.code`, pas sur `instanceof` — les classes d'erreur elles-mêmes ne sont pas exportées par le package. Quand l'utilisateur annule la demande d'identité, aucune erreur n'est émise : c'est une annulation, pas un échec.
+La garde lit les champs de l'erreur plutôt que sa classe : les classes ne sont pas exportées, car chaque package embarque sa propre copie et `instanceof` échouerait de l'une à l'autre. Les types le sont : `SitepingClientError`, l'union vers laquelle la garde rétrécit, et `SitepingErrorCode`. Tout le reste qui atteint `onError`, une erreur levée par votre `store` ou par une [action du panneau](/fr/docs/widget/panel-actions#erreurs), échoue la garde. Quand l'utilisateur annule la demande d'identité, aucune erreur n'est émise : c'est une annulation, pas un échec.
 
 ## Les statuts, côté widget
 

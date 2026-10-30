@@ -1063,6 +1063,53 @@ describe("Panel", () => {
       // Should not throw
       expect(() => panel.scrollToFeedback("nonexistent")).not.toThrow();
     });
+
+    it("keeps the list in view: scrolling to a card does not open its detail view on a wide screen", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.scrollIntoView = vi.fn();
+
+      panel.scrollToFeedback("fb-1");
+
+      expect(shadow.querySelector(".sp-detail")?.classList.contains("sp-detail--visible")).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // showFeedback — what a deep link asks for (#381)
+  // -------------------------------------------------------------------------
+
+  describe("showFeedback", () => {
+    it("opens the feedback's detail view, where its thread is", async () => {
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [makeFeedback({ id: "fb-1" }), makeFeedback({ id: "fb-2", message: "Second one" })],
+        total: 2,
+      });
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-2"]')!.scrollIntoView = vi.fn();
+
+      panel.showFeedback("fb-2");
+
+      expect(shadow.querySelector(".sp-detail")?.classList.contains("sp-detail--visible")).toBe(true);
+      expect(shadow.querySelector(".sp-detail-title")?.textContent).toBe(t("detail.title").replace("{number}", "2"));
+    });
+
+    it("waits for a list still loading, then opens the detail view", async () => {
+      // jsdom has no scrollIntoView, and the card to stub isn't rendered yet.
+      const scroll = vi.fn();
+      Element.prototype.scrollIntoView = scroll;
+      let answer: (value: { feedbacks: ReturnType<typeof makeFeedback>[]; total: number }) => void = () => {};
+      apiClient.getFeedbacks.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+      const opened = panel.open();
+
+      panel.showFeedback("fb-1");
+      answer({ feedbacks: [makeFeedback({ id: "fb-1" })], total: 1 });
+      await opened;
+
+      expect(scroll).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+      expect(shadow.querySelector(".sp-detail")?.classList.contains("sp-detail--visible")).toBe(true);
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
   });
 
   // -------------------------------------------------------------------------

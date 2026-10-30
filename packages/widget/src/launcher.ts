@@ -6,6 +6,7 @@ import {
   isValidEmail,
   type PageScope,
   type SitepingConfig,
+  type SitepingIdentity,
   type SitepingInstance,
   type SitepingPublicEventListener,
   type SitepingPublicEvents,
@@ -20,13 +21,13 @@ import { Fab } from "./fab.js";
 import { createFocusTracker } from "./focus-tracker.js";
 import { installHostIsolationGuard, isolateFromHost, registerEscapeLayer } from "./host-isolation.js";
 import { createT, loadLocale, type TFunction } from "./i18n/index.js";
-import { getIdentity, type Identity, saveIdentity } from "./identity.js";
+import { getIdentity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
 import { ownFeedback } from "./own-feedback.js";
 import type { Panel as PanelType } from "./panel.js";
 import { StoreClient } from "./store-client.js";
 import { buildStyles } from "./styles/base.js";
-import { buildThemeColors } from "./styles/theme.js";
+import { buildThemeColors, watchColorScheme } from "./styles/theme.js";
 import { Tooltip } from "./tooltip.js";
 import { trackKeyboardInset } from "./viewport.js";
 
@@ -75,7 +76,7 @@ function skippedInstance(): SitepingInstance {
     destroy: noop,
     open: noop,
     close: noop,
-    refresh: noop,
+    refresh: () => Promise.resolve(),
     focusFeedback: () => false,
     on: () => noop,
     off: noop,
@@ -96,7 +97,8 @@ function skippedInstance(): SitepingInstance {
  *   inlining — do not reintroduce them.
  * - No `typeof process` gate: it would return before a consumer-inlined
  *   constant is reached. Plain browsers without `process` (script-tag usage)
- *   land in the catch instead. Runtime environments with a real `process`
+ *   land in the catch instead, and `isLocalPage()` decides. Runtime
+ *   environments with a real `process`
  *   (Node/SSR, E2E's `globalThis.process = { env: { NODE_ENV: 'test' } }`)
  *   read it live.
  *
@@ -110,6 +112,17 @@ function readNodeEnv(): string | undefined {
     // No `process` global (plain browser) or restricted access — no signal
     return undefined;
   }
+}
+
+/**
+ * Whether the page runs on the developer's own machine: what "development"
+ * means when there is no NODE_ENV signal — a `<script>` embed, or a bundler
+ * that defines none (#313). Localhost and its subdomains, the loopback
+ * addresses, and a page opened from a file (empty hostname).
+ */
+function isLocalPage(): boolean {
+  const host = location.hostname;
+  return host === "" || host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "[::1]";
 }
 
 interface NormalisedDeepLink {
@@ -163,10 +176,15 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // Guard: only show in development (forceShow bypasses). Uses readNodeEnv()
   // instead of the literal `process.env.NODE_ENV` — avoids both bundler
   // constant-folding (#104) and "Critical dependency" import.meta warnings
-  // in Next.js webpack builds.
-  if (!config.forceShow && readNodeEnv() === "production") {
+  // in Next.js webpack builds. Without any NODE_ENV signal, the page's host
+  // decides: a `<script>` embed on a public site stays hidden, like a
+  // production build, instead of showing to every visitor (#313).
+  const nodeEnv = readNodeEnv();
+  if (!config.forceShow && (nodeEnv === "production" || (nodeEnv === undefined && !isLocalPage()))) {
     const reason = "production";
-    console.info("[siteping] Widget not loaded: production mode detected. Use forceShow: true to override.");
+    console.info(
+      "[siteping] Widget not loaded: production build, or a public page without NODE_ENV. Use forceShow: true to override.",
+    );
     config.onSkip?.(reason);
     return skippedInstance();
   }
@@ -326,17 +344,21 @@ export function launch(config: SitepingConfig): SitepingInstance {
   const shadowMode = readNodeEnv() === "test" ? ("open" as const) : ("closed" as const);
   const shadow = host.attachShadow({ mode: shadowMode });
 
-  // Inject styles into Shadow DOM — adoptedStyleSheets with fallback for Safari < 16.4
-  const supportsAdoptedStyleSheets = "adoptedStyleSheets" in ShadowRoot.prototype;
-  if (supportsAdoptedStyleSheets) {
+  // Inject styles into Shadow DOM — adoptedStyleSheets with fallback for Safari < 16.4.
+  // `paint()` writes them from `colors`, again whenever an `auto` theme flips.
+  let paint: () => void;
+  if ("adoptedStyleSheets" in ShadowRoot.prototype) {
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync(buildStyles(colors));
     shadow.adoptedStyleSheets = [sheet];
+    paint = () => sheet.replaceSync(buildStyles(colors));
   } else {
     const style = document.createElement("style");
-    style.textContent = buildStyles(colors);
     shadow.appendChild(style);
+    paint = () => {
+      style.textContent = buildStyles(colors);
+    };
   }
+  paint();
 
   isolateFromHost(host, shadow);
   const removeHostIsolationGuard = installHostIsolationGuard();
@@ -398,7 +420,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
    * stays the source of truth on every render. `overPopup`: the feedback
    * popup is on screen (see `promptIdentity`).
    */
-  async function resolveIdentity(overPopup = false): Promise<Identity | null> {
+  async function resolveIdentity(overPopup = false): Promise<SitepingIdentity | null> {
     const known = config.identity ?? getIdentity();
     if (known) return known;
     const entered = await promptIdentity(shadow, t, overPopup);
@@ -638,6 +660,17 @@ export function launch(config: SitepingConfig): SitepingInstance {
             log(
               `deepLink ?${deepLinkOpts.param}=${focusId} ${matched ? "focused" : "did not match a visible feedback"}`,
             );
+            // A link to a feedback — "Open on page", a reply notification —
+            // opens its detail view too, where its thread is (#381).
+            if (matched) {
+              loadPanel()
+                .then(async (panel) => {
+                  if (!panel || destroyed) return;
+                  await panel.open();
+                  panel.showFeedback(focusId);
+                })
+                .catch((err) => log("deepLink could not open the feedback:", err));
+            }
           }
         } catch (e) {
           log("deepLink parsing failed:", e);
@@ -688,6 +721,21 @@ export function launch(config: SitepingConfig): SitepingInstance {
       markers.render(visible);
     });
   };
+
+  // `auto` follows the OS color scheme live, as the dashboard's does: the
+  // palette is re-derived in place (every component holds this one object),
+  // then the shadow styles, the tooltip and the comment popup are repainted,
+  // and a refresh re-renders pins and the open panel from it.
+  const stopFollowingScheme =
+    config.theme === "auto"
+      ? watchColorScheme(() => {
+          Object.assign(colors, buildThemeColors(config.accentColor, "auto"));
+          paint();
+          tooltip.restyle();
+          annotator.restyle();
+          void doRefresh().catch(() => {});
+        })
+      : undefined;
 
   // SPA route-change watcher. The widget is normally mounted once (singleton)
   // inside a persistent layout — e.g. a Next.js App Router `layout.tsx`, which
@@ -758,6 +806,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       destroyed = true;
       pendingOpen = false;
       teardownNavigation?.();
+      stopFollowingScheme?.();
       focusTracker.destroy();
       unsubAnnotation();
       unsubToggle();
@@ -801,9 +850,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       return markers.focusFeedback(feedbackId);
     },
     // Public API must never reject onto the host — swallow the promise.
-    refresh: () => {
-      void doRefresh().catch(() => {});
-    },
+    refresh: () => doRefresh().catch(() => {}),
   };
 
   // Reference counting (#366): every launch() returns its own handle over the
@@ -832,9 +879,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
       close: () => {
         if (live) self.close();
       },
-      refresh: () => {
-        if (live) self.refresh();
-      },
+      refresh: () => (live ? self.refresh() : Promise.resolve()),
       focusFeedback: (feedbackId: string) => live && self.focusFeedback(feedbackId),
       // Once released, the handle's bus no longer receives events.
       on: <K extends keyof SitepingPublicEvents>(event: K, listener: SitepingPublicEventListener<K>) =>
@@ -855,7 +900,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
  * on phones (`styles/mobile.ts`), lifted above the on-screen keyboard.
  * Returns null if the user cancels.
  */
-function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean): Promise<Identity | null> {
+function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean): Promise<SitepingIdentity | null> {
   return new Promise((resolve) => {
     // Save the currently focused element to restore on close
     const previouslyFocused = (shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null;
@@ -920,7 +965,7 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
     // The phone sheet sits at the bottom edge — keep it above the keyboard.
     const stopKeyboardTracking = trackKeyboardInset((inset) => modal.style.setProperty("--sp-kb", `${inset}px`));
 
-    const closeModal = (result: Identity | null) => {
+    const closeModal = (result: SitepingIdentity | null) => {
       backdrop.removeEventListener("keydown", onKeydown);
       unregisterEscapeLayer();
       stopKeyboardTracking();

@@ -19,6 +19,11 @@ export function isCoarsePointer(): boolean {
   return matches("(pointer: coarse)");
 }
 
+/** Read live, not cached, so an OS setting change applies to the next animation. */
+export function prefersReducedMotion(): boolean {
+  return matches("(prefers-reduced-motion: reduce)");
+}
+
 /**
  * Report how much of the layout viewport the on-screen keyboard covers.
  *

@@ -10,7 +10,7 @@ import { Popup } from "./popup.js";
 import { NO_VIEWPORT_INSETS, type ViewportInsets } from "./popup-placement.js";
 import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screenshot.js";
 import type { ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport } from "./viewport.js";
+import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
 
 /** Below this size (px) a drawn rect is an accidental click — or, on touch, a tap. */
 const MIN_RECT_SIZE = 10;
@@ -94,6 +94,8 @@ export class Annotator {
    */
   private instantMode = false;
   private popup: Popup;
+  /** The palette changed mid-session: rebuild the popup once the session ends. */
+  private stalePopup = false;
   private savedOverflow = "";
   private preActiveFocusElement: Element | null = null;
   /**
@@ -146,6 +148,19 @@ export class Annotator {
    */
   refreshLabels(): void {
     this.popup.refreshLabels();
+  }
+
+  /**
+   * Rebuild the long-lived popup from the palette, after an `auto` theme
+   * followed the OS. Mid-session it waits for the session to end, so a form
+   * never changes under the visitor; the toolbar and overlay are rebuilt on
+   * every activation anyway.
+   */
+  restyle(): void {
+    this.stalePopup = this.isActive || this.popup.isOpen;
+    if (this.stalePopup) return;
+    this.popup.destroy();
+    this.popup = new Popup(this.colors, this.t);
   }
 
   /**
@@ -246,17 +261,20 @@ export class Annotator {
           width:8px;height:8px;border-radius:50%;flex-shrink:0;
           background:${this.colors.accent};
           box-shadow:0 0 8px ${this.colors.accentGlow};
-          animation:pulse 1.5s ease-in-out infinite;
         `,
       });
 
-      // Add pulse animation inline (respects prefers-reduced-motion)
-      const style = document.createElement("style");
-      style.textContent = [
-        "@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}",
-        "@media(prefers-reduced-motion:reduce){@keyframes pulse{from,to{opacity:1}}}",
-      ].join("");
-      this.toolbar.appendChild(style);
+      // Pulse through the Web Animations API rather than a <style> element:
+      // no global `@keyframes` name to collide with the host's, and nothing a
+      // strict CSP (`style-src` without 'unsafe-inline') blocks. The guard is
+      // for jsdom in tests, where `animate` may be undefined.
+      if (!prefersReducedMotion() && typeof dot.animate === "function") {
+        dot.animate([{ opacity: 1 }, { opacity: 0.4 }, { opacity: 1 }], {
+          duration: 1500,
+          easing: "ease-in-out",
+          iterations: Infinity,
+        });
+      }
 
       const instructionEl = el("span", { style: "font-weight:500;letter-spacing:-0.01em;min-width:0;" });
       setText(instructionEl, touch ? this.t("annotator.touchInstruction") : instruction);
@@ -391,6 +409,7 @@ export class Annotator {
     }
 
     this.bus.emit("annotation:end");
+    if (this.stalePopup) this.restyle();
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {

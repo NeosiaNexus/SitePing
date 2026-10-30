@@ -1,7 +1,23 @@
-import type { FeedbackListPermissions, SitepingCapabilities, SitepingStore } from "@siteping/core";
+import {
+  type FeedbackListPermissions,
+  SITEPING_PROTOCOL_VERSION,
+  type SitepingCapabilities,
+  type SitepingStore,
+} from "@siteping/core";
 import { LIST_QUERY_KEYS } from "../constants.js";
-import type { Pipeline } from "../pipeline.js";
+import type { Pipeline, WireFeedback } from "../pipeline.js";
 import { getQuerySchema } from "../validation.js";
+
+/** A list response as it goes on the wire. */
+export interface WireFeedbackList {
+  feedbacks: WireFeedback[];
+  total: number;
+  /** `SITEPING_PROTOCOL_VERSION`: what a client may rely on from this server. */
+  protocol: number;
+  /** Every capability, `deleteComments` included. */
+  capabilities: { [K in keyof SitepingCapabilities]-?: Exclude<SitepingCapabilities[K], undefined> };
+  permissions: FeedbackListPermissions;
+}
 
 interface ListFeedbacksDependencies<Principal> {
   store: SitepingStore;
@@ -46,14 +62,16 @@ export function listFeedbacksOperation<Principal>({ store, pipeline }: ListFeedb
         {
           ...page,
           feedbacks,
+          // Lets clients rely on what a protocol version added instead of probing for fields.
+          protocol: SITEPING_PROTOCOL_VERSION,
           // Lets clients hide their comment composer, and delete buttons, up front instead of meeting a 501.
           capabilities: {
             comments: store.addComment !== undefined,
             deleteComments: store.deleteComment !== undefined,
-          } satisfies SitepingCapabilities,
+          },
           // And the actions this requester would be refused.
-          permissions: { canDeleteAll } satisfies FeedbackListPermissions,
-        },
+          permissions: { canDeleteAll },
+        } satisfies WireFeedbackList,
         { headers: { "Cache-Control": pipeline.listCacheControl } },
       );
     } catch (error) {

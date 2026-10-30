@@ -15,8 +15,15 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { toStorableText } from "./text.js";
 import type { CommentCreateInput, DiagnosticsSnapshot, FeedbackCreateInput, SitepingStore } from "./types.js";
-import { isStoreDuplicate, isStoreLimit, isStoreNotFound, MAX_COMMENTS_PER_FEEDBACK } from "./types.js";
+import {
+  isStoreDuplicate,
+  isStoreLimit,
+  isStoreNotFound,
+  isStorePersistence,
+  MAX_COMMENTS_PER_FEEDBACK,
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Test fixture
@@ -116,6 +123,17 @@ export interface StoreConformanceOptions {
    * substring matching.
    */
   caseInsensitiveSearch?: boolean | undefined;
+  /**
+   * Make the backend of `store` refuse every write until the returned
+   * function is called — a spy throwing from `localStorage.setItem`, a flag
+   * your `persist` reads. It enables the persistence-failure cases: each
+   * mutation must then reject with `StorePersistenceError` (matched via
+   * `isStorePersistence`) and leave what reads return as it was. Without it
+   * those cases are reported as skipped, never as passed. Meant for backends
+   * that can accept a write and lose it (quota, revoked storage); a store
+   * whose writes cannot fail, like an in-memory one, leaves it out.
+   */
+  failWrites?: ((store: SitepingStore) => () => void) | undefined;
 }
 
 /**
@@ -130,6 +148,7 @@ export function testSitepingStore(
 ): void {
   const duplicateBehavior = options?.duplicateBehavior ?? "return";
   const caseInsensitiveSearch = options?.caseInsensitiveSearch ?? true;
+  const failWrites = options?.failWrites;
 
   describe("SitepingStore conformance", () => {
     let store: SitepingStore;
@@ -575,6 +594,91 @@ export function testSitepingStore(
     });
 
     // ------------------------------------------------------------------
+    // Text a database may refuse — PostgreSQL rejects NUL in `text` and
+    // `jsonb`, and an unpaired surrogate in `jsonb`; a string cut inside an
+    // emoji ends with one. A store keeps such text as sent, or puts U+FFFD
+    // in place of each such code unit (`toStorableText`): either way a
+    // record reads back as the write returned it, and a lookup holding the
+    // same characters finds it.
+    // ------------------------------------------------------------------
+
+    describe("text holding NUL or an unpaired surrogate", () => {
+      /** `actual` is `sent`, or `sent` with U+FFFD for each code unit a database may refuse. */
+      function expectSentOrReplaced(actual: string | null | undefined, sent: string): void {
+        expect([sent, toStorableText(sent)]).toContain(actual);
+      }
+
+      it("is stored in a feedback, its annotation and diagnostics, and found by clientId and search", async () => {
+        const clientId = "odd-\u0000-\uDC00";
+        const message = "Total shows a\u0000b \uD83D";
+        const diagnostics: DiagnosticsSnapshot = {
+          console: [{ level: "error", timestamp: "2026-01-01T00:00:00.000Z", message: "cut \uD83D" }],
+          network: [
+            {
+              url: "https://api.example.com/\u0000",
+              method: "GET",
+              status: 0,
+              durationMs: 1,
+              timestamp: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        };
+        const created = await store.createFeedback(
+          createInput({
+            clientId,
+            message,
+            annotations: [{ ...MINIMAL_ANNOTATION, textSnippet: "Pay\u0000", neighborText: "\uDE00 next" }],
+            diagnostics,
+          }),
+        );
+
+        expectSentOrReplaced(created.clientId, clientId);
+        expectSentOrReplaced(created.message, message);
+        expectSentOrReplaced(created.annotations[0]?.textSnippet, "Pay\u0000");
+        expectSentOrReplaced(created.annotations[0]?.neighborText, "\uDE00 next");
+        expectSentOrReplaced(created.diagnostics?.console[0]?.message, "cut \uD83D");
+        expectSentOrReplaced(created.diagnostics?.network[0]?.url, "https://api.example.com/\u0000");
+
+        const found = await store.findByClientId(clientId);
+        expect(found?.id).toBe(created.id);
+        expect(found?.clientId).toBe(created.clientId);
+        expect(found?.message).toBe(created.message);
+        expect(found?.annotations).toEqual(created.annotations);
+        expect(found?.diagnostics).toEqual(created.diagnostics);
+        for (const search of ["a\u0000b", "\uD83D"]) {
+          const { feedbacks } = await store.getFeedbacks({ projectName: "test-project", search });
+          expect(feedbacks.map((f) => f.id)).toEqual([created.id]);
+        }
+      });
+
+      it("is found in a project name by every project-scoped call", async () => {
+        const projectName = "site-\u0000\uD83D";
+        const created = await store.createFeedback(createInput({ projectName }));
+        expectSentOrReplaced(created.projectName, projectName);
+
+        const { feedbacks, total } = await store.getFeedbacks({ projectName });
+        expect(total).toBe(1);
+        expect(feedbacks[0]?.id).toBe(created.id);
+        if (store.verifyProjectOwnership) {
+          await expect(store.verifyProjectOwnership(created.id, projectName)).resolves.toBe(true);
+        }
+        await store.deleteAllFeedbacks(projectName);
+        expect((await store.getFeedbacks({ projectName })).total).toBe(0);
+      });
+
+      it("is stored in a comment and read back with the thread (when implemented)", async () => {
+        if (!store.addComment) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "odd-thread" }));
+        const body = "Seen \uD83D\u0000";
+        const comment = await store.addComment(fb.id, commentInput({ body, clientId: "odd-comment-\u0000" }));
+
+        expectSentOrReplaced(comment.body, body);
+        expect((await store.findByClientId("odd-thread"))?.comments).toEqual([comment]);
+      });
+    });
+
+    // ------------------------------------------------------------------
     // updateFeedback
     // ------------------------------------------------------------------
 
@@ -750,6 +854,74 @@ export function testSitepingStore(
     });
 
     // ------------------------------------------------------------------
+    // Persistence failures — a write the backend refuses must reject with
+    // `StorePersistenceError` and change nothing a read returns. Skipped,
+    // not passed, for a store run without the `failWrites` option.
+    // ------------------------------------------------------------------
+
+    describe("persistence failures", () => {
+      /** Run `act` while the backend refuses writes, restoring it whatever happens. */
+      async function whileWritesFail(act: () => Promise<unknown>): Promise<void> {
+        const restore = (failWrites as NonNullable<typeof failWrites>)(store);
+        try {
+          await expect(act()).rejects.toSatisfy(isStorePersistence);
+        } finally {
+          restore();
+        }
+      }
+
+      it.skipIf(!failWrites)("a create the backend refuses rejects and stores nothing", async () => {
+        await whileWritesFail(() => store.createFeedback(createInput({ clientId: "lost-create" })));
+
+        expect(await store.findByClientId("lost-create")).toBeNull();
+        expect((await store.getFeedbacks({ projectName: "test-project" })).total).toBe(0);
+      });
+
+      it.skipIf(!failWrites)("an update the backend refuses rejects and keeps the previous status", async () => {
+        const fb = await store.createFeedback(createInput({ clientId: "lost-update" }));
+
+        await whileWritesFail(() => store.updateFeedback(fb.id, { status: "resolved", resolvedAt: new Date() }));
+
+        const kept = await store.findByClientId("lost-update");
+        expect(kept?.status).toBe("open");
+        expect(kept?.resolvedAt).toBeNull();
+      });
+
+      it.skipIf(!failWrites)("a delete the backend refuses rejects and keeps the record", async () => {
+        const fb = await store.createFeedback(createInput({ clientId: "lost-delete" }));
+
+        await whileWritesFail(() => store.deleteFeedback(fb.id));
+
+        expect((await store.findByClientId("lost-delete"))?.id).toBe(fb.id);
+      });
+
+      it.skipIf(!failWrites)("a project delete the backend refuses rejects and keeps every record", async () => {
+        await store.createFeedback(createInput({ projectName: "lost-wipe" }));
+        await store.createFeedback(createInput({ projectName: "lost-wipe" }));
+
+        await whileWritesFail(() => store.deleteAllFeedbacks("lost-wipe"));
+
+        expect((await store.getFeedbacks({ projectName: "lost-wipe" })).total).toBe(2);
+      });
+
+      it.skipIf(!failWrites)(
+        "a comment post or delete the backend refuses rejects and keeps the thread (when implemented)",
+        async () => {
+          if (!store.addComment || !store.deleteComment) return;
+          const addComment = store.addComment.bind(store);
+          const deleteComment = store.deleteComment.bind(store);
+          const fb = await store.createFeedback(createInput({ clientId: "lost-thread" }));
+          const kept = await addComment(fb.id, commentInput());
+
+          await whileWritesFail(() => addComment(fb.id, commentInput()));
+          await whileWritesFail(() => deleteComment(fb.id, kept.id));
+
+          expect((await store.findByClientId("lost-thread"))?.comments).toEqual([kept]);
+        },
+      );
+    });
+
+    // ------------------------------------------------------------------
     // verifyProjectOwnership (optional contract member)
     // ------------------------------------------------------------------
 
@@ -896,6 +1068,45 @@ export function testSitepingStore(
 
         for (const result of results) expect(result.id).toBe(results[0]?.id);
         for (const thread of await threadsOf("raced-post")) expect(thread?.map((c) => c.id)).toEqual([results[0]?.id]);
+      });
+
+      it("reports an insert, then the existing comment for the same clientId (when implemented)", async () => {
+        if (!store.addCommentIfAbsent) return;
+
+        const fb = await store.createFeedback(createInput({ clientId: "reported-post" }));
+        const input = commentInput({ clientId: "reported-comment" });
+        const first = await store.addCommentIfAbsent(fb.id, input);
+        const second = await store.addCommentIfAbsent(fb.id, input);
+        const viaAddComment = await store.addComment?.(fb.id, input);
+
+        expect(first).toEqual({
+          comment: expect.objectContaining({ feedbackId: fb.id, clientId: input.clientId }),
+          created: true,
+        });
+        expect(second).toEqual({ comment: first.comment, created: false });
+        expect(viaAddComment).toEqual(first.comment);
+        for (const thread of await threadsOf("reported-post")) expect(thread).toEqual([first.comment]);
+      });
+
+      it("reports exactly one insert when concurrent posts race on the same clientId (when implemented)", async () => {
+        if (!store.addCommentIfAbsent) return;
+        const addCommentIfAbsent = store.addCommentIfAbsent.bind(store);
+
+        const fb = await store.createFeedback(createInput({ clientId: "reported-race" }));
+        const input = commentInput({ clientId: "raced-comment" });
+        const outcomes = await Promise.all(Array.from({ length: 4 }, () => addCommentIfAbsent(fb.id, input)));
+
+        const inserted = outcomes.filter((outcome) => outcome.created);
+        expect(inserted).toHaveLength(1);
+        for (const outcome of outcomes) expect(outcome.comment.id).toBe(inserted[0]?.comment.id);
+        for (const thread of await threadsOf("reported-race"))
+          expect(thread?.map((c) => c.id)).toEqual([inserted[0]?.comment.id]);
+      });
+
+      it("throws addComment's errors from addCommentIfAbsent too (when implemented)", async () => {
+        if (!store.addCommentIfAbsent) return;
+
+        await expect(store.addCommentIfAbsent("unknown-id", commentInput())).rejects.toSatisfy(isStoreNotFound);
       });
 
       it("throws StoreNotFoundError when commenting on an unknown feedback (when implemented)", async () => {

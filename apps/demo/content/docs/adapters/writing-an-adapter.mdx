@@ -9,7 +9,7 @@ The four bundled adapters cover most setups, but SitePing stores are pluggable: 
 npm i -D @siteping/adapter-kit vitest
 ```
 
-`vitest` is an **optional peer dependency**, needed only by the `@siteping/adapter-kit/testing` entry. If you don't run the conformance suite, skip it. The kit itself has no runtime dependencies (`@siteping/core` is bundled into its `dist`), so a dev dependency works when you bundle your own package; if you publish unbundled output, move it to `dependencies`.
+`vitest` is an **optional peer dependency** (3, 4 or 5), needed only by the `@siteping/adapter-kit/testing` entry. If you don't run the conformance suite, skip it. The kit itself has no runtime dependencies (`@siteping/core` is bundled into its `dist`), so a dev dependency works when you bundle your own package; if you publish unbundled output, move it to `dependencies`.
 
 > Why a separate package: `@siteping/core` is an internal package — it exports raw TypeScript and is never published to npm. The kit is the supported way to depend on those types and helpers from outside this repo.
 
@@ -43,7 +43,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 67 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
+That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
 
 **The three primitives:**
 
@@ -53,13 +53,13 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 | `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
 | `generateId()` | A unique id, used for feedback, annotation and comment records |
 
-`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional — with `createFeedbackIfAbsent` guaranteed too, and `addComment` and `deleteComment` once you pass `comments: true` — so you can delegate to them without a null check.
+`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional — with `createFeedbackIfAbsent` guaranteed too, and `addComment`, `addCommentIfAbsent` and `deleteComment` once you pass `comments: true` — so you can delegate to them without a null check.
 
 **A failed `persist` leaves your snapshot untouched.** The engine never mutates the array `load()` returned — every write builds a new array and hands it to `persist`. So if `load()` serves a cached array and the write throws, no phantom record stays visible, and the widget's retry of the same `clientId` is written for real instead of being deduplicated against something that never reached storage.
 
 **Quota pressure drops screenshots first.** When `persist` throws during `createFeedback` and the record carries an inline screenshot, the engine clears `screenshotUrl` — by far the heaviest field — and retries once, so the written comment survives a full storage bucket. If that second write also fails, the error propagates: returning the record would claim a success that never happened.
 
-**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback`, `deleteAllFeedbacks`, `addComment` and `deleteComment` so each starts from the previous one's result — a comment posted while a feedback is resolved keeps both changes; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
+**Mutations run one at a time.** Every write loads the whole snapshot, changes it and persists it back, so two writes that overlapped would start from the same snapshot and the last one would silently undo the other — exactly what the widget's bulk resolve and bulk delete (a `Promise.all` over the selection) would trigger. The engine queues `createFeedback`, `createFeedbackIfAbsent`, `updateFeedback`, `deleteFeedback`, `deleteAllFeedbacks`, `addComment`, `addCommentIfAbsent` and `deleteComment` so each starts from the previous one's result — a comment posted while a feedback is resolved keeps both changes; a mutation that fails rejects with its own error and never blocks the ones behind it. `load` and `persist` must always settle, though: a call that never resolves stalls every later write on that store, so give network-backed primitives a timeout. Reads aren't queued. The queue lives in the store instance, in one JavaScript process: two instances over the same storage — two browser tabs, several server processes sharing a KV or a file — are not coordinated. If your backend is shared that way, it needs its own atomic primitive (a transaction, a compare-and-set).
 
 ## Query backends
 
@@ -108,7 +108,7 @@ Handlers and the dashboard read behavior off these errors, so throw the kit's cl
 | A mutation accepted but not persisted | Throw `StorePersistenceError` instead of reporting a phantom success |
 | Empty results on `getFeedbacks` / `findByClientId` | Don't throw — return an empty array or `null` |
 
-Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Use them instead of `instanceof` when you catch across package boundaries — every package bundles its own copy of the classes, so `instanceof` can fail on an error thrown by another one. The guards also recognize Prisma's `P2025` and `P2002` codes.
+Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Use them instead of `instanceof` when you catch across package boundaries — every package bundles its own copy of the classes, so `instanceof` can fail on an error thrown by another one. The guards also recognize Prisma's `P2025` and `P2002` codes. Every store package — this kit, `adapter-prisma`, `adapter-memory`, `adapter-localstorage` and both `adapter-drizzle` entries — re-exports the same five classes and five guards.
 
 ### Query semantics to match
 
@@ -120,6 +120,8 @@ Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreL
 - `page` is 1-based, `limit` defaults to 50 and is capped at 100.
 
 Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above. Querying a database? `clampPagination(query)` returns the normalized `{ page, limit, skip }` — the same clamp the in-memory pipeline and `PrismaStore` use, so pass its `limit` and `skip` straight to your `LIMIT`/`OFFSET`. Check `isUnreachableOffset(skip)` first: a huge `page` from a direct caller yields an offset past `Number.MAX_SAFE_INTEGER` (or `Infinity`) that SQL backends reject, and the suite expects `{ feedbacks: [], total }` for it — answer with your count query alone.
+
+Text can hold characters a database refuses: PostgreSQL rejects NUL in `text` and `jsonb`, and an unpaired surrogate (what a string cut inside an emoji ends with) in `jsonb`. The suite accepts such text kept as sent, or with U+FFFD in place of each such code unit, as long as a record reads back as the write returned it and a lookup holding the same characters finds it. On a backend that refuses them, pass everything you write through `toStorableValue` and every id, clientId, project name and query you look up through `toStorableText` — both exported by the kit, and what `PrismaStore` and the Drizzle store do.
 
 ## Project ownership
 
@@ -144,14 +146,15 @@ Implement it whenever your store serves more than one project. When it's absent,
 
 - Return the thread on every record, as `comments`, oldest first — an empty array when there is none, starting with the record `createFeedback` returns. `buildFeedbackRecord` leaves `comments` out so its record still maps to your feedback row: add `comments: []` yourself.
 - `addComment` is idempotent on `data.clientId`: when a comment with that `clientId` exists, on any thread, return it unchanged. The handler refuses a replay aimed at another feedback.
+- `addCommentIfAbsent(feedbackId, data)`, optional beside them, is `addComment` reporting whether this call inserted the comment — `{ comment, created }` — with the same atomicity as [`createFeedbackIfAbsent`](#exactly-once-creation-effects): of concurrent calls with one `clientId`, exactly one reports `created: true`. The handler writes through it when present, and needs it to fire the `comment.created` [webhook](/docs/server#events) and the `onCommentCreated` hook once per reply: without it, it refuses to start with either.
 - `deleteComment` is scoped to the thread it names, which the caller was authorized for: a comment of another thread is "not found".
 - A thread holds at most `MAX_COMMENTS_PER_FEEDBACK` (100) `client` comments — `team` ones neither count nor are refused —, a comment leaves the feedback's `updatedAt` alone, and deleting a feedback deletes its thread.
 
-`buildCommentRecord(data, { id, feedbackId })` builds the record, and `createCollectionStore` implements both methods when you pass `comments: true`. Pass it once `load` hands back each comment's `createdAt` as a `Date` — a JSON backend revives it like the record's own dates. Threads are off by default, so a snapshot adapter written before them keeps its surface, and its storage format, when the kit updates.
+`buildCommentRecord(data, { id, feedbackId })` builds the record, and `createCollectionStore` implements all three methods when you pass `comments: true`. Pass it once `load` hands back each comment's `createdAt` as a `Date` — a JSON backend revives it like the record's own dates. Threads are off by default, so a snapshot adapter written before them keeps its surface, and its storage format, when the kit updates.
 
 ## Prove it: the conformance suite
 
-The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 67 tests:
+The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — about 70 tests:
 
 ```ts
 // __tests__/my-store.test.ts
@@ -163,12 +166,13 @@ testSitepingStore(() => new MyStore());
 
 Besides one call at a time, it fires updates, deletes and creates together in a `Promise.all` — the way the widget's bulk actions do — and checks that every write landed.
 
-The factory runs before each test and may be async, which is where you spin up a transaction or a fresh schema. Two knobs cover contract variations that are legitimately backend-specific:
+The factory runs before each test and may be async, which is where you spin up a transaction or a fresh schema. Three options cover what legitimately varies between backends:
 
 | Option | Default | Set it when |
 |---|---|---|
 | `duplicateBehavior` | `"return"` | Your `createFeedback` throws `StoreDuplicateError` on a repeated `clientId` instead of returning the existing record — pass `"throw"`. A store that returns it but throws when it loses a concurrent insert race stays on `"return"` |
 | `caseInsensitiveSearch` | `true` | Your collation makes `search` case-sensitive — pass `false` and the suite only asserts same-case substring matching |
+| `failWrites` | — | Your backend can accept a write and lose it (quota, revoked storage) — pass a function that makes it refuse every write until the function it returns is called. Without it, the persistence-failure cases are reported as skipped |
 
 ```ts
 testSitepingStore(() => new PostgresStore(db), {
@@ -177,7 +181,22 @@ testSitepingStore(() => new PostgresStore(db), {
 });
 ```
 
-`verifyProjectOwnership`, `createFeedbackIfAbsent`, `addComment` and `deleteComment` are covered too: stores that don't implement them skip the assertions, so adding any of them later is checked automatically with no test changes. The comment cases include a comment racing status changes on the same store.
+With `failWrites`, each mutation must reject with `StorePersistenceError` while writes fail, and leave what reads return as it was — no phantom record, no lost update:
+
+```ts
+let writesFail = false; // read by your backend's `persist`
+
+testSitepingStore(() => new KvStore(), {
+  failWrites: () => {
+    writesFail = true;
+    return () => {
+      writesFail = false;
+    };
+  },
+});
+```
+
+`verifyProjectOwnership`, `createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` and `deleteComment` are covered too: stores that don't implement them skip the assertions, so adding any of them later is checked automatically with no test changes. The comment cases include a comment racing status changes on the same store.
 
 ## Using your adapter
 
