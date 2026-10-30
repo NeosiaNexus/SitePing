@@ -119,6 +119,7 @@ export {
   MAX_COMMENTS_PER_FEEDBACK,
   OPEN_FEEDBACK_STATUSES,
   PROJECT_NAME_MAX_LENGTH,
+  SITEPING_PROTOCOL_VERSION,
   StoreDuplicateError,
   StoreLimitError,
   StoreNotFoundError,

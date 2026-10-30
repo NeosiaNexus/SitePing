@@ -280,6 +280,7 @@ export interface FeedbackResponseList {
     capabilities?: SitepingCapabilities | undefined;
     feedbacks: FeedbackResponse[];
     permissions?: FeedbackListPermissions | undefined;
+    protocol?: number | undefined;
     total: number;
 }
 

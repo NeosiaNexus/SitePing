@@ -150,7 +150,12 @@ describe("@siteping/server outside Node", () => {
     expect(() => server.createSitepingHandler({ store: arrayStore() })).not.toThrow();
   });
 
-  it("exports only the handler and webhook dispatch as values: schemas and payload builders stay internal", () => {
-    expect(Object.keys(server).sort()).toEqual(["createSitepingHandler", "dispatchWebhook", "dispatchWebhooks"]);
+  it("exports only the handler, webhook dispatch and the protocol version as values: schemas and payload builders stay internal", () => {
+    expect(Object.keys(server).sort()).toEqual([
+      "SITEPING_PROTOCOL_VERSION",
+      "createSitepingHandler",
+      "dispatchWebhook",
+      "dispatchWebhooks",
+    ]);
   });
 });
