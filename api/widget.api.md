@@ -38,7 +38,21 @@ export interface AnnotationPayload {
 
 export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
 
+export type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
+
 export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+
+export interface DiagnosticsCaptureOptions {
+    console?: boolean | undefined;
+    maxConsoleEntries?: number | undefined;
+    maxNetworkEntries?: number | undefined;
+    network?: boolean | undefined;
+}
+
+export interface DiagnosticsSnapshot {
+    console: ConsoleDiagnosticEntry[];
+    network: NetworkDiagnosticEntry[];
+}
 
 export interface FeedbackPayload {
     annotations: AnnotationPayload[];
@@ -75,6 +89,11 @@ export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 
 export type Identity = SitepingIdentity;
 
+export interface PageScope {
+    url: string;
+    urlPattern: null | string;
+}
+
 export interface RectData {
     hPct: number;
     wPct: number;
@@ -82,7 +101,18 @@ export interface RectData {
     yPct: number;
 }
 
+export interface ScreenshotRegion {
+    hPct: number;
+    wPct: number;
+    xPct: number;
+    yPct: number;
+}
+
 export type SitepingConfig = SitepingHttpConfig | SitepingStoreConfig;
+
+export interface SitepingDeepLinkOptions {
+    param?: string | undefined;
+}
 
 export type SitepingHeadersOption = (() => Promise<Record<string, string>> | Record<string, string>) | Record<string, string>;
 
@@ -124,6 +154,10 @@ export interface SitepingPanelLinkAction extends SitepingPanelActionBase {
     onAction?: never;
 }
 
+export type SitepingPosition = "bottom-left" | "bottom-right";
+
+export type SitepingPublicEventListener<K extends keyof SitepingPublicEvents> = (...args: SitepingPublicEvents[K]) => void;
+
 export interface SitepingPublicEvents {
     "feedback:deleted": [
         FeedbackResponse["id"]
@@ -147,6 +181,8 @@ export interface SitepingPublicEvents {
     ];
 }
 
+export type SitepingSkipReason = "mobile" | "production" | "ssr";
+
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
@@ -166,6 +202,8 @@ export interface SitepingStoreConfig extends SitepingBaseConfig {
     headers?: never;
     store: SitepingStore;
 }
+
+export type SitepingUnsubscribe = () => void;
 
 export type TFunction = (key: TranslationKey) => string;
 
@@ -374,8 +412,6 @@ const BUILTIN_LOCALES: readonly [
     "ko"
 ];
 
-type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
-
 const CLOSED_FEEDBACK_STATUSES: readonly [
     "resolved",
     "wont_fix"
@@ -427,18 +463,6 @@ type ConsoleDiagnosticLevel = (typeof CONSOLE_DIAGNOSTIC_LEVELS)[number];
 type DeepReadonly<T> = T extends readonly (infer U)[] ? readonly DeepReadonly<U>[] : T extends object ? {
     readonly [K in keyof T]: DeepReadonly<T[K]>;
 } : T;
-
-interface DiagnosticsCaptureOptions {
-    console?: boolean | undefined;
-    maxConsoleEntries?: number | undefined;
-    maxNetworkEntries?: number | undefined;
-    network?: boolean | undefined;
-}
-
-interface DiagnosticsSnapshot {
-    console: ConsoleDiagnosticEntry[];
-    network: NetworkDiagnosticEntry[];
-}
 
 const FEEDBACK_STATUSES: readonly [
     "open",
@@ -540,21 +564,9 @@ const OPEN_FEEDBACK_STATUSES: readonly [
 
 type OpenFeedbackStatus = (typeof OPEN_FEEDBACK_STATUSES)[number];
 
-interface PageScope {
-    url: string;
-    urlPattern: null | string;
-}
-
 type Prettify<T> = {
     [K in keyof T]: T[K];
 } & {};
-
-interface ScreenshotRegion {
-    hPct: number;
-    wPct: number;
-    xPct: number;
-    yPct: number;
-}
 
 type Serialized<T> = {
     [K in keyof T]: T[K] extends Date ? string : T[K] extends Date | null ? null | string : T[K] extends (infer U)[] ? Serialized<U>[] : T[K];
@@ -579,7 +591,7 @@ interface SitepingBaseConfig {
     onError?: ((error: Error) => void) | undefined;
     onFeedbackSent?: ((feedback: FeedbackResponse) => void) | undefined;
     onOpen?: (() => void) | undefined;
-    onSkip?: (reason: SitepingSkipReason) => void;
+    onSkip?: ((reason: SitepingSkipReason) => void) | undefined;
     panelActions?: readonly SitepingPanelAction[] | undefined;
     position?: SitepingPosition | undefined;
     projectName: string;
@@ -588,10 +600,6 @@ interface SitepingBaseConfig {
     showAnnotationsToggle?: boolean | undefined;
     theme?: SitepingTheme | undefined;
     watchNavigation?: boolean | undefined;
-}
-
-interface SitepingDeepLinkOptions {
-    param?: string | undefined;
 }
 
 interface SitepingIdentity {
@@ -606,15 +614,7 @@ interface SitepingPanelActionBase {
     visible?: ((feedback: SitepingPanelActionFeedback) => boolean) | undefined;
 }
 
-type SitepingPosition = "bottom-left" | "bottom-right";
-
-type SitepingPublicEventListener<K extends keyof SitepingPublicEvents> = (...args: SitepingPublicEvents[K]) => void;
-
-type SitepingSkipReason = "mobile" | "production" | "ssr";
-
 type SitepingTheme = "auto" | "dark" | "light";
-
-type SitepingUnsubscribe = () => void;
 ```
 
 ## @siteping/widget/react

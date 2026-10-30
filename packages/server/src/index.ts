@@ -1,8 +1,19 @@
 export type {
   CommentCreateInput,
   CommentPayload,
+  CommentRecord,
+  CommentResponse,
+  DiagnosticsSnapshot,
   FeedbackCreateInput,
+  FeedbackListPermissions,
+  FeedbackPermissions,
   FeedbackRecord,
+  FeedbackResponse,
+  FeedbackResponseList,
+  FeedbackStatus,
+  FeedbackType,
+  ScreenshotRegion,
+  SitepingCapabilities,
   SitepingStore,
 } from "@siteping/core";
 export { createSitepingHandler } from "./handler.js";

@@ -309,7 +309,7 @@ export interface SitepingBaseConfig {
    */
   captureDiagnostics?: boolean | DiagnosticsCaptureOptions | undefined;
   /** Called when the widget is skipped (production mode, viewport under `minViewportWidth`, SSR — no DOM) */
-  onSkip?: (reason: SitepingSkipReason) => void;
+  onSkip?: ((reason: SitepingSkipReason) => void) | undefined;
   /**
    * Auto-focus a specific annotation when its ID appears in the URL query
    * string. Lets hosts deeplink directly into a feedback from external

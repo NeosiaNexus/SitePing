@@ -26,6 +26,24 @@ export interface CommentPayload extends CommentCreateInput {
     projectName: string;
 }
 
+export interface CommentRecord {
+    authorEmail: string;
+    authorName: string;
+    authorRole: CommentAuthorRole;
+    body: string;
+    clientId: string;
+    createdAt: Date;
+    feedbackId: string;
+    id: string;
+}
+
+export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+
+export interface DiagnosticsSnapshot {
+    console: ConsoleDiagnosticEntry[];
+    network: NetworkDiagnosticEntry[];
+}
+
 export interface DiscordWebhookPayload {
     allowed_mentions: {
         parse: ReadonlyArray<"everyone" | "roles" | "users">;
@@ -64,10 +82,21 @@ export interface FeedbackCreateInput {
 
 export type FeedbackDeleteInput = FeedbackDeleteAll | FeedbackDeleteSingle;
 
+export interface FeedbackListPermissions {
+    canDeleteAll: boolean;
+}
+
 export interface FeedbackPatchInput {
     id: string;
     projectName: string;
     status: FeedbackStatus;
+}
+
+export interface FeedbackPermissions {
+    canChangeStatus: boolean;
+    canComment: boolean;
+    canDelete: boolean;
+    canDeleteComment: boolean;
 }
 
 export interface FeedbackRecord {
@@ -93,6 +122,22 @@ export interface FeedbackRecord {
     viewport: string;
 }
 
+export type FeedbackResponse = Prettify<Serialized<Omit<FeedbackRecord, "clientId" | "comments">> & {
+    comments?: CommentResponse[] | undefined;
+    permissions?: FeedbackPermissions | undefined;
+}>;
+
+export interface FeedbackResponseList {
+    capabilities?: SitepingCapabilities | undefined;
+    feedbacks: FeedbackResponse[];
+    permissions?: FeedbackListPermissions | undefined;
+    total: number;
+}
+
+export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
+
+export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
+
 export type GenericWebhookPayload = Prettify<Serialized<Omit<FeedbackRecord, "clientId" | "comments">> & {
     comments?: CommentResponse[] | undefined;
 }>;
@@ -107,6 +152,13 @@ export interface GetQueryInput {
     type?: FeedbackType | undefined;
     url?: string | undefined;
     urlPattern?: string | undefined;
+}
+
+export interface ScreenshotRegion {
+    hPct: number;
+    wPct: number;
+    xPct: number;
+    yPct: number;
 }
 
 export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
@@ -140,6 +192,11 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
     dryRun?: boolean;
     feedbackId?: string;
     projectName: string;
+}
+
+export interface SitepingCapabilities {
+    comments: boolean;
+    deleteComments?: boolean | undefined;
 }
 
 export type SitepingDeletionTarget = {
@@ -316,19 +373,6 @@ type ClosedFeedbackStatus = (typeof CLOSED_FEEDBACK_STATUSES)[number];
 
 type CommentAuthorRole = (typeof COMMENT_AUTHOR_ROLES)[number];
 
-interface CommentRecord {
-    authorEmail: string;
-    authorName: string;
-    authorRole: CommentAuthorRole;
-    body: string;
-    clientId: string;
-    createdAt: Date;
-    feedbackId: string;
-    id: string;
-}
-
-type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
-
 interface ConsoleDiagnosticEntry {
     level: ConsoleDiagnosticLevel;
     message: string;
@@ -336,11 +380,6 @@ interface ConsoleDiagnosticEntry {
 }
 
 type ConsoleDiagnosticLevel = (typeof CONSOLE_DIAGNOSTIC_LEVELS)[number];
-
-interface DiagnosticsSnapshot {
-    console: ConsoleDiagnosticEntry[];
-    network: NetworkDiagnosticEntry[];
-}
 
 const FEEDBACK_STATUSES: readonly [
     "open",
@@ -388,10 +427,6 @@ interface FeedbackQuery {
     urlPattern?: string | undefined;
 }
 
-type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
-
-type FeedbackType = (typeof FEEDBACK_TYPES)[number];
-
 type FeedbackUpdateInput = {
     resolvedAt: Date;
     status: ClosedFeedbackStatus;
@@ -418,13 +453,6 @@ type OpenFeedbackStatus = (typeof OPEN_FEEDBACK_STATUSES)[number];
 type Prettify<T> = {
     [K in keyof T]: T[K];
 } & {};
-
-interface ScreenshotRegion {
-    hPct: number;
-    wPct: number;
-    xPct: number;
-    yPct: number;
-}
 
 type Serialized<T> = {
     [K in keyof T]: T[K] extends Date ? string : T[K] extends Date | null ? null | string : T[K] extends (infer U)[] ? Serialized<U>[] : T[K];

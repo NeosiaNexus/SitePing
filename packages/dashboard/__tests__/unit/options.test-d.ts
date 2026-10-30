@@ -5,7 +5,17 @@
 
 import type { CommentCreateInput, CommentRecord, FeedbackPage, FeedbackRecord, SitepingStore } from "@siteping/core";
 import { describe, expectTypeOf, it } from "vitest";
-import type { FeedbackPermissions, InboxRecord, SitepingCapabilities } from "../../src/index.js";
+import type {
+  DiagnosticsSnapshot,
+  FeedbackPermissions,
+  FeedbackQuery,
+  InboxRecord,
+  registerLocale,
+  ScreenshotRegion,
+  SitepingCapabilities,
+  SitepingLocale,
+  Translations,
+} from "../../src/index.js";
 import type { InboxSource, InboxState, SitepingInboxProps, UseSitepingInboxOptions } from "../../src/types.js";
 import { useSitepingInbox } from "../../src/use-inbox.js";
 
@@ -103,5 +113,15 @@ describe("SitepingInboxProps", () => {
     // @ts-expect-error — "sepia" is not an InboxTheme
     const badTheme: SitepingInboxProps = { projects: "p", store, theme: "sepia" };
     void badTheme;
+  });
+});
+
+describe("types used in public signatures are exported", () => {
+  it("names what a custom source, a locale override and a record reader handle", () => {
+    expectTypeOf<Parameters<InboxSource["list"]>[0]>().toEqualTypeOf<FeedbackQuery>();
+    expectTypeOf<Parameters<typeof registerLocale>[1]>().toEqualTypeOf<Partial<Translations>>();
+    expectTypeOf<SitepingInboxProps["locale"]>().toEqualTypeOf<SitepingLocale | undefined>();
+    expectTypeOf<FeedbackRecord["diagnostics"]>().toEqualTypeOf<DiagnosticsSnapshot | null>();
+    expectTypeOf<FeedbackRecord["screenshotRegion"]>().toEqualTypeOf<ScreenshotRegion | null>();
   });
 });
