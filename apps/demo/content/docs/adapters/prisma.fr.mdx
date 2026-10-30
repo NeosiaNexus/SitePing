@@ -23,6 +23,29 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({ pri
 
 C'est le handler de [`@siteping/server`](/fr/docs/server) avec un store Prisma intégré : même surface HTTP, même modèle de sécurité et mêmes [recettes de montage](/fr/docs/server#le-montage) pour Hono, Express et les autres frameworks.
 
+`next build` importe chaque route, et en production la factory lève une erreur sans `apiKey`. Si votre hébergeur n'injecte les secrets qu'à l'exécution (Coolify, certaines configurations Docker), construisez plutôt le handler à la première requête — c'est la route que génère `npx @siteping/cli init` :
+
+```ts
+// app/api/siteping/route.ts
+import { createSitepingHandler, type SitepingHandler } from "@siteping/adapter-prisma";
+import { prisma } from "@/lib/prisma";
+
+let handler: SitepingHandler | undefined;
+
+function getHandler(): SitepingHandler {
+  handler ??= createSitepingHandler({ prisma, apiKey: process.env.SITEPING_API_KEY });
+  return handler;
+}
+
+export const GET: SitepingHandler["GET"] = (request) => getHandler().GET(request);
+export const POST: SitepingHandler["POST"] = (request) => getHandler().POST(request);
+export const PATCH: SitepingHandler["PATCH"] = (request) => getHandler().PATCH(request);
+export const DELETE: SitepingHandler["DELETE"] = (request) => getHandler().DELETE(request);
+export const OPTIONS: SitepingHandler["OPTIONS"] = (request) => getHandler().OPTIONS(request);
+```
+
+Une clé manquante fait alors échouer la première requête, avec le même message, plutôt que le build.
+
 ## Options
 
 | Option | Type | Défaut | Ce que ça fait |
