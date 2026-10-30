@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ANCHOR_ELEMENT_ID_MAX } from "@siteping/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateXPath } from "../../src/dom/xpath";
 
@@ -173,6 +174,58 @@ describe("generateXPath", () => {
 
     // Only one preceding <span> sibling (zero), so position = 1
     expect(generateXPath(target)).toBe("/html/body/div[1]/span[1]");
+  });
+
+  // The server caps `xpath` at 2000 characters (#400).
+  describe("an id longer than ANCHOR_ELEMENT_ID_MAX", () => {
+    const longId = "x".repeat(2500);
+
+    function matches(xpath: string): Node[] {
+      const result = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      return Array.from({ length: result.snapshotLength }, (_, i) => result.snapshotItem(i)!);
+    }
+
+    it("is passed over on the element itself: the positional path still finds it", () => {
+      const wrapper = document.createElement("div");
+      const target = document.createElement("span");
+      target.id = longId;
+      wrapper.appendChild(target);
+      document.body.appendChild(wrapper);
+
+      const xpath = generateXPath(target);
+      expect(xpath).toBe("/html/body/div[1]/span[1]");
+      expect(matches(xpath)).toEqual([target]);
+    });
+
+    it("is passed over on an ancestor, which becomes a positional step", () => {
+      const section = document.createElement("section");
+      section.id = longId;
+      const p = document.createElement("p");
+      section.appendChild(p);
+      document.body.appendChild(section);
+
+      expect(generateXPath(p)).toBe("/html/body/section[1]/p[1]");
+    });
+
+    it("is passed over inside a shadow tree too", () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const shadow = host.attachShadow({ mode: "open" });
+      shadow.innerHTML = `<p id="${longId}">a</p>`;
+
+      expect(generateXPath(shadow.querySelector("p")!)).toBe("./p[1]");
+    });
+
+    it("is kept at the cap, where even a quote in every character stays under the server's limit", () => {
+      const target = document.createElement("span");
+      target.id = "'".repeat(ANCHOR_ELEMENT_ID_MAX);
+      document.body.appendChild(target);
+
+      const xpath = generateXPath(target);
+      expect(xpath).toContain("@id=concat(");
+      expect(xpath.length).toBeLessThanOrEqual(2000);
+      expect(matches(xpath)).toEqual([target]);
+    });
   });
 
   describe("inside an open shadow root (#177)", () => {
