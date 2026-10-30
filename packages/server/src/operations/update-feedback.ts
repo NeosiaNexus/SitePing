@@ -1,5 +1,6 @@
 import { isStoreNotFound, type SitepingStore, toFeedbackUpdate } from "@siteping/core";
 import { ERROR_MESSAGES } from "../constants.js";
+import type { Notify } from "../notify.js";
 import type { SitepingLifecycleHooks } from "../options.js";
 import type { Pipeline } from "../pipeline.js";
 import { feedbackPatchSchema } from "../validation.js";
@@ -7,6 +8,7 @@ import { feedbackPatchSchema } from "../validation.js";
 interface UpdateFeedbackDependencies<Principal> {
   store: SitepingStore;
   pipeline: Pipeline<Principal>;
+  notify: Notify<Principal>;
   onUpdated: SitepingLifecycleHooks<Principal>["onUpdated"];
 }
 
@@ -14,6 +16,7 @@ interface UpdateFeedbackDependencies<Principal> {
 export function updateFeedbackOperation<Principal>({
   store,
   pipeline,
+  notify,
   onUpdated,
 }: UpdateFeedbackDependencies<Principal>) {
   return async (request: Request): Promise<Response> => {
@@ -42,6 +45,9 @@ export function updateFeedbackOperation<Principal>({
       // a terminal status (resolved / wont_fix), cleared otherwise. The
       // derivation lives here at the edge; stores persist what they're given.
       const feedback = await store.updateFeedback(id, toFeedbackUpdate(status));
+      // Every successful PATCH, the status it already had included: the store
+      // keeps no previous status to compare with.
+      notify(scope, { event: "feedback.status_changed", feedback });
       if (onUpdated) {
         const subject = { feedbackId: feedback.id, projectName: feedback.projectName };
         await pipeline.runHook(scope, "onUpdated", subject, () => onUpdated(feedback, scope.context));

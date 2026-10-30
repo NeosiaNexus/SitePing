@@ -20,9 +20,35 @@ describe("PrismaStore — comment capability", () => {
     const beforeThreads = new PrismaStore(fakePrisma({ comments: false }));
 
     expect(current.addComment).toBeTypeOf("function");
+    expect(current.addCommentIfAbsent).toBeTypeOf("function");
     expect(current.deleteComment).toBeTypeOf("function");
     expect(beforeThreads.addComment).toBeUndefined();
+    expect(beforeThreads.addCommentIfAbsent).toBeUndefined();
     expect(beforeThreads.deleteComment).toBeUndefined();
+  });
+
+  it("never derives addCommentIfAbsent beside a subclass's own addComment, which it would bypass", () => {
+    class LegacyThreadedStore extends PrismaStore {}
+    const addComment = vi.fn();
+    Object.assign(LegacyThreadedStore.prototype, { addComment });
+
+    const store = new LegacyThreadedStore(fakePrisma());
+
+    expect(store.addComment).toBe(addComment);
+    expect(store.addCommentIfAbsent).toBeUndefined();
+  });
+
+  it("builds addComment on a subclass's own addCommentIfAbsent", async () => {
+    class ReportingStore extends PrismaStore {}
+    const comment = { id: "c1", feedbackId: "f1" };
+    const addCommentIfAbsent = vi.fn().mockResolvedValue({ comment, created: true });
+    Object.assign(ReportingStore.prototype, { addCommentIfAbsent });
+
+    const store = new ReportingStore(fakePrisma());
+    const input = { body: "b", authorName: "a", authorEmail: "", authorRole: "team" as const, clientId: "k" };
+
+    await expect(store.addComment?.("f1", input)).resolves.toBe(comment);
+    expect(addCommentIfAbsent).toHaveBeenCalledWith("f1", input);
   });
 
   it("keeps the comment methods a subclass defines, with the delegate or without", async () => {
