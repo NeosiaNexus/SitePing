@@ -524,7 +524,8 @@ export function Features() {
             </div>
             <h3 className="mt-4 text-lg font-semibold text-white">Keyboard-first accessibility</h3>
             <p className="mt-2 text-sm leading-relaxed text-gray-400">
-              Designed for WCAG 2.1 AA, and checked with axe on every change, in light and dark. Clients can annotate without a mouse — Tab to the element, press Enter.
+              Designed for WCAG 2.1 AA, and checked with axe on every change, in light and dark. Clients can annotate
+              without a mouse — Tab to the element, press Enter.
             </p>
             <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/5 px-3 py-1 text-xs font-medium text-accent-light">
               axe-checked in CI
