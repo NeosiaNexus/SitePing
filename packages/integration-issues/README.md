@@ -14,7 +14,7 @@ One GitHub or GitLab issue per [SitePing](https://github.com/NeosiaNexus/SitePin
 npm install @siteping/integration-issues
 ```
 
-Node ≥ 20, or any runtime with the Fetch API. `@siteping/server` is a peer dependency.
+Node ≥ 22, or any runtime with the Fetch API. `@siteping/server` is a peer dependency.
 
 ## Quick start
 

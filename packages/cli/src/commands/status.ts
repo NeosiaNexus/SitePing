@@ -1,5 +1,3 @@
-// Must run before prisma-ast: chevrotain needs Object.groupBy (Node 21+).
-import "../utils/object-group-by-polyfill.js";
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import * as p from "@clack/prompts";

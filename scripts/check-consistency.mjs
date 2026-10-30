@@ -20,7 +20,11 @@
 //      an optional peer dependency;
 //   8. a published package depends on another through `workspace:` without
 //      the release.yml step that pins the range before `npm publish`, or
-//      its publish job does not wait for the dependency's.
+//      its publish job does not wait for the dependency's;
+//   9. a workspace's `engines.node` differs from core's, or something that
+//      follows that floor did not move with it (adapter scaffold, oldest CI
+//      node-compat lane, publish jobs' Node, demo runtime image, docs and
+//      README "Node N+" claims).
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -286,6 +290,57 @@ for (const pkgPath of Object.keys(manifest)) {
       const dependencyJob = pkgPathByName.has(name) && publishJobOf(pkgPathByName.get(name));
       if (dependencyJob && !needsOf(publishJobOf(pkgPath)).includes(dependencyJob.name)) {
         errors.push(`${pkgPath}'s publish job does not wait for ${dependencyJob.name} (${name}) in release.yml`);
+      }
+    }
+  }
+}
+
+// --- 9. One Node.js floor ----------------------------------------------------
+
+// The packages' `engines.node` is the oldest Node SitePing supports. Raising
+// it (Node 20 → 22, #421) touches places package.json can't see: the scaffold
+// new adapters copy, the oldest lane CI tests, the Node the publish jobs run,
+// the demo's runtime image, and every "Node N+" a reader trusts.
+const nodeFloor = JSON.parse(read("packages/core/package.json")).engines?.node;
+const floorMajor = /^>=(\d+)$/.exec(nodeFloor ?? "")?.[1];
+if (!floorMajor) {
+  errors.push(`packages/core engines.node must read ">=<major>" (found ${JSON.stringify(nodeFloor)})`);
+} else {
+  for (const dir of workspaceDirs) {
+    if (!existsSync(join(root, dir, "package.json"))) continue;
+    const floor = JSON.parse(read(`${dir}/package.json`)).engines?.node;
+    if (floor !== nodeFloor) {
+      errors.push(`${dir} declares engines.node ${JSON.stringify(floor)} but packages/core declares "${nodeFloor}"`);
+    }
+  }
+  if (!read("scripts/new-adapter.mjs").includes(`engines: { node: "${nodeFloor}" }`)) {
+    errors.push(`scripts/new-adapter.mjs does not scaffold engines.node "${nodeFloor}"`);
+  }
+  const oldestLane = /^ +node-version: \[(\d+)/m.exec(read(".github/workflows/ci.yml"))?.[1];
+  if (oldestLane !== floorMajor) {
+    errors.push(`ci.yml's node-compat matrix starts at Node ${oldestLane} but the floor is Node ${floorMajor}`);
+  }
+  for (const m of releaseYml.matchAll(/node-version: (\S+)/g)) {
+    if (m[1] !== floorMajor) errors.push(`release.yml publishes on Node ${m[1]} but the floor is Node ${floorMajor}`);
+  }
+  const runnerImage = /^FROM node:(\d+)-/m.exec(read("apps/demo/Dockerfile"))?.[1];
+  if (runnerImage !== floorMajor) {
+    errors.push(`apps/demo/Dockerfile runs on node:${runnerImage} but the floor is Node ${floorMajor}`);
+  }
+  // "Node 22+", "Node ≥ 22", "Node 22 or newer", "Node 22 ou plus récent".
+  const NODE_CLAIM = /\bNode(?:\.js)? (?:≥ ?(\d+)|(\d+)(?:\+| or newer| ou plus récent))/g;
+  const claimFiles = [
+    "README.md",
+    ...readdirSync(join(root, "packages")).map((d) => `packages/${d}/README.md`),
+    ...walk("apps/demo/content/docs", ".mdx"),
+  ].filter((file) => existsSync(join(root, file)));
+  for (const file of claimFiles) {
+    const content = read(file);
+    for (const m of content.matchAll(NODE_CLAIM)) {
+      const major = m[1] ?? m[2];
+      if (major !== floorMajor) {
+        const line = content.slice(0, m.index).split("\n").length;
+        errors.push(`${file}:${line} says "${m[0]}" but the floor is Node ${floorMajor}`);
       }
     }
   }

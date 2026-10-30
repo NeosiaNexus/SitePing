@@ -5,7 +5,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 ## Prerequisites
 
 - [Bun](https://bun.sh/) **1.3.x** — the exact version is pinned in `packageManager` (root `package.json`) and used by CI. Bun 1.4 is known to break the demo build locally (symlinked `.bun` installs rejected by Turbopack — workaround: `bun install --linker=hoisted`); stick to the pinned line.
-- Node.js ^22.22.2 or >= 24.15 for development — the test and size tooling (vitest 5, jsdom 30, size-limit 14) requires it. The published packages still declare `engines.node >= 20`: CI runs the full suite on Node 22 and 24, and the node-environment tests (core, adapters, CLI — what consumers run) on Node 20
+- Node.js ^22.22.2 or >= 24.15 for development — the test and size tooling (vitest 5, jsdom 30, size-limit 14) requires it. The published packages declare `engines.node >= 22`, and CI runs the full suite on Node 22 and 24
 - For Playwright E2E tests: `bunx playwright install` — the config runs **three engines** (Chromium, Firefox, WebKit)
 
 ## Setup
@@ -31,7 +31,7 @@ bun run verify             # build + check + lint + test:run — the full pre-PR
 bun run pkg-checks         # publint + attw on every published package (same script CI runs)
 bun run check:consistency  # locale counts/lists + demo pickers, package registration, fix-dts chains, esbuild override,
                            # fileURLToPath in tooling, no @prisma/client import in adapter-prisma, workspace dependencies
-                           # pinned before publish
+                           # pinned before publish, one Node floor (engines, CI, publish jobs, demo image, docs)
 bun run knip               # dead files / exports / dependencies
 bun run new:locale <code>  # scaffold a new built-in locale (see Adding a Locale)
 bun run new:adapter <name> # scaffold a new first-party adapter (see Creating a New Adapter)
@@ -128,7 +128,7 @@ is the smallest). The pieces that matter:
 1. **`package.json`** — copy from a real adapter, not from memory. The
    critical parts the old hand-written template used to miss: the dual
    `import`/`require` exports map with per-condition `types`, `sideEffects: false`,
-   `publishConfig.access: public`, `engines.node >= 20`, and the build script
+   `publishConfig.access: public`, `engines.node >= 22`, and the build script
    **must** chain fix-dts: `"build": "tsup && node ../../scripts/fix-dts.mjs dist"`
    (`bun run check:consistency` fails if it's missing). `@siteping/core` is a
    `devDependency`, never a `dependency` — it is bundled at build time and not

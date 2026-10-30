@@ -9,7 +9,7 @@ Sans `screenshotStorage`, les stores Prisma et Drizzle gardent chaque [capture](
 npm i @siteping/screenshot-storage
 ```
 
-Il tourne sur Node 20+, Bun, Deno et les runtimes edge : le client S3 signe ses requêtes avec Web Crypto, sans SDK AWS ni dépendance à l'exécution. Seul le backend système de fichiers a besoin de Node. Ses déclarations de types utilisent `Uint8Array<ArrayBuffer>` : leur vérification demande TypeScript 5.7 ou plus (ou `skipLibCheck`).
+Il tourne sur Node 22+, Bun, Deno et les runtimes edge : le client S3 signe ses requêtes avec Web Crypto, sans SDK AWS ni dépendance à l'exécution. Seul le backend système de fichiers a besoin de Node. Ses déclarations de types utilisent `Uint8Array<ArrayBuffer>` : leur vérification demande TypeScript 5.7 ou plus (ou `skipLibCheck`).
 
 ## Choisir un backend
 
