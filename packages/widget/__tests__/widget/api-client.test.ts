@@ -652,6 +652,114 @@ describe("ApiClient", () => {
     vi.useRealTimers();
   });
 
+  // -------------------------------------------------------------------------
+  // Transient refusals (#365) — a 408 or a 429 comes from a proxy timeout or
+  // a rate limiter in front of the endpoint, not from a verdict on the
+  // payload: it retries like a 5xx, after the response's Retry-After, and a
+  // send still refused after the retries is queued.
+  // -------------------------------------------------------------------------
+
+  describe("transient refusals (408, 429) and Retry-After", () => {
+    const refused = (status: number, retryAfter?: string) =>
+      new Response("Slow down", { status, headers: retryAfter === undefined ? {} : { "Retry-After": retryAfter } });
+    const created = () => new Response(JSON.stringify({ id: "1" }), { status: 201 });
+
+    /** Send under fake timers (clock at `now`); `refusal` answers first, then a 201. */
+    function sendAfter(refusal: Response, now?: Date): Promise<unknown> {
+      vi.useFakeTimers(now ? { now } : {});
+      vi.mocked(fetch).mockResolvedValueOnce(refusal).mockResolvedValueOnce(created());
+      return client.sendFeedback(basePayload);
+    }
+
+    /** The retry fires exactly `ms` after the refusal: not one millisecond before. */
+    async function expectRetryAt(ms: number): Promise<void> {
+      await vi.advanceTimersByTimeAsync(ms - 1);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    it.each([408, 429, 503])("retries a %i after its Retry-After seconds instead of the backoff", async (status) => {
+      const sent = sendAfter(refused(status, "5"));
+      await expectRetryAt(5000);
+      await expect(sent).resolves.toEqual({ id: "1" });
+    });
+
+    it("retries after a Retry-After HTTP date", async () => {
+      const sent = sendAfter(refused(429, "Fri, 30 Oct 2026 12:00:03 GMT"), new Date("2026-10-30T12:00:00Z"));
+      await expectRetryAt(3000);
+      await expect(sent).resolves.toEqual({ id: "1" });
+    });
+
+    it("retries at once on a Retry-After date already past", async () => {
+      const sent = sendAfter(refused(429, "Fri, 30 Oct 2026 11:59:00 GMT"), new Date("2026-10-30T12:00:00Z"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      await expect(sent).resolves.toEqual({ id: "1" });
+    });
+
+    it.each([
+      ["absent", undefined],
+      ["unreadable", "soon"],
+    ])("falls back to the backoff when Retry-After is %s", async (_name, retryAfter) => {
+      vi.spyOn(Math, "random").mockReturnValue(0.5); // no jitter: the first backoff is exactly 1 s
+      const sent = sendAfter(refused(429, retryAfter));
+      await expectRetryAt(1000);
+      await expect(sent).resolves.toEqual({ id: "1" });
+    });
+
+    it("waits out a Retry-After of up to 10 s", async () => {
+      const sent = sendAfter(refused(429, "10"));
+      await expectRetryAt(10_000);
+      await expect(sent).resolves.toEqual({ id: "1" });
+    });
+
+    it("gives up at once on a longer Retry-After and queues the send for the next page load", async () => {
+      const store = stubLocalStorage();
+      vi.mocked(fetch).mockResolvedValue(refused(429, "11"));
+
+      const error = await client.sendFeedback(basePayload).catch((e: SitepingError) => e);
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(error).toMatchObject({ code: "SERVER", retryable: true });
+      expect(readQueue(store)).toHaveLength(1);
+    });
+
+    it.each([408, 429])("queues a send still refused with %i after the retries", async (status) => {
+      const store = stubLocalStorage();
+      vi.useFakeTimers();
+      vi.mocked(fetch).mockImplementation(() => Promise.resolve(refused(status)));
+
+      const promise = client.sendFeedback(basePayload).catch((e: SitepingError) => e);
+      await drainRetryBackoff();
+      const error = await promise;
+
+      expect(fetch).toHaveBeenCalledTimes(4);
+      expect(error).not.toBeInstanceOf(SitepingValidationError);
+      expect(error).toMatchObject({
+        code: "SERVER",
+        retryable: true,
+        message: `Failed to send feedback: ${status} Slow down`,
+      });
+      expect(readQueue(store)).toHaveLength(1);
+    });
+
+    it("ignores a Retry-After on a verdict: a 400 is final and never queued", async () => {
+      const store = stubLocalStorage();
+      vi.mocked(fetch).mockResolvedValue(refused(400, "1"));
+
+      await expect(client.sendFeedback(basePayload)).rejects.toBeInstanceOf(SitepingValidationError);
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(store.has("siteping_retry_queue")).toBe(false);
+    });
+  });
+
   it("sends GET with query params", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 })));
 
@@ -1101,6 +1209,41 @@ describe("flushRetryQueue", () => {
     );
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("dropped 1 queued feedback"));
     warnSpy.mockRestore();
+  });
+
+  it("keeps entries refused with 408 or 429 for the next flush, like a 5xx", async () => {
+    const base = {
+      projectName: "test",
+      type: "bug" as const,
+      message: "replay",
+      url: "https://example.com",
+      viewport: "1x1",
+      userAgent: "t",
+      authorName: "A",
+      authorEmail: "a@b.com",
+      annotations: [],
+    };
+    const timedOut = { ...base, clientId: "timed-out-1" };
+    const throttled = { ...base, clientId: "throttled-1" };
+    vi.mocked(localStorage.getItem).mockReturnValue(
+      JSON.stringify([
+        { endpoint, payload: timedOut },
+        { endpoint, payload: throttled },
+      ]),
+    );
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response("", { status: 408 }))
+      .mockResolvedValueOnce(new Response("", { status: 429, headers: { "Retry-After": "30" } }));
+
+    await flushRetryQueue(endpoint);
+
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      "siteping_retry_queue",
+      JSON.stringify([
+        { endpoint, payload: timedOut },
+        { endpoint, payload: throttled },
+      ]),
+    );
   });
 
   it("drops a malformed queued entry individually and still replays the valid ones", async () => {
