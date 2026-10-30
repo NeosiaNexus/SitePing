@@ -1,0 +1,60 @@
+---
+title: Known limitations
+description: What SitePing can't do, or does only partly — iframes, screenshots, CSP, shadow roots, fast-changing pages, browsers — and how to work around it.
+---
+
+SitePing annotates the page that loads it, re-finds elements by scoring what it recorded about them, and draws its screenshots with a JavaScript renderer. Each of those has edges. This page lists them so you can plan around them, not discover them in a client review.
+
+## Iframes
+
+The widget runs in the document that loads it. An `<iframe>` — an embedded map, video player, payment form, or your own app embedded in a page — is another document:
+
+- An annotation drawn over a frame anchors to the `<iframe>` element as a whole. The rectangle stays where the client drew it, relative to the frame, but nothing inside the frame is recorded.
+- The content of a cross-origin frame can't appear in a screenshot: the browser doesn't let the page read it.
+- Right-click comments and keyboard annotation stop at the frame: events inside it never reach the page.
+
+To review what a frame shows, load the widget inside the framed page too.
+
+## Screenshots
+
+With [`enableScreenshot`](/docs/widget/screenshots), the image is rebuilt from the DOM and the computed styles by [html2canvas-pro](https://github.com/yorickshan/html2canvas-pro), not taken from the screen. What it can't redraw is missing or approximated:
+
+- **Images from another origin** are drawn only when their server sends CORS headers (`Access-Control-Allow-Origin`); otherwise they are left out of the image. Same-origin and `data:` images are drawn.
+- **Cross-origin iframes** come out empty (see [above](#iframes)).
+- **Some CSS** that html2canvas-pro [lists as unsupported or limited](https://yorickshan.github.io/html2canvas-pro/features.html): 3D transforms (`perspective`, `preserve-3d`), `background-attachment: fixed`, parts of masking (`mask-mode: luminance`, `mask-composite`), `backdrop-filter` chains it can't express, `::first-line`, `::first-letter` and `::selection`.
+
+A capture that fails altogether never blocks the feedback: it is sent without an image. Elements marked `data-siteping-ignore="true"` are left out on purpose ([privacy masking](/docs/widget/screenshots#privacy-masking)).
+
+## Content Security Policy
+
+Under a strict policy, the widget needs:
+
+- **`script-src`**: wherever its files are served from — the ESM entry and the chunks it loads on demand (the panel, a locale, the screenshot engine), usually `'self'`. The `<script>` build is a single file.
+- **`connect-src`**: your endpoint's origin, when it isn't the page's.
+- **`img-src`**: `data:` for screenshots stored inline, and the origin of your [screenshot storage](/docs/adapters/screenshot-storage) when you use one.
+- **`style-src`**: nothing beyond `'self'`. The widget styles its shadow root with a constructed stylesheet and sets inline styles through the DOM's `style` property; a policy without `'unsafe-inline'` blocks neither. Two things do need it, or a nonce: in a browser without constructed stylesheets in shadow roots (Safari before 16.4), the widget falls back to a `<style>` element, so it renders unstyled; and the pulsing dot of the drawing toolbar stays still.
+
+The dashboard injects a `<style>` element, so its page needs `'unsafe-inline'` or a nonce in `style-src` — see [Theming](/docs/dashboard/theming).
+
+## Closed shadow roots
+
+Content inside an open shadow root is anchored like any other element. A closed shadow root can't be read by the page itself, so an annotation drawn over one anchors to its host element: the whole component. See [Web components and Shadow DOM](/docs/widget/anchoring#web-components-and-shadow-dom).
+
+## Pages that change a lot
+
+An annotation finds its element again by [scoring every element its signals match](/docs/widget/anchoring). That survives copy edits, layout changes and most refactors, but not everything:
+
+- **A deleted element** leaves nothing to anchor to: the marker hides, the feedback stays in the panel and the dashboard.
+- **A rewrite that changes the tag, the text and the position at once** can leave no recognizable candidate, or a weak one, shown dashed as approximate.
+- **Content that renders late** (lazy-loaded, client-side, a web component defined later) gets its marker on a later check, or the next time feedback loads.
+- **Ephemeral UI** — toasts, skeletons, open menus — is gone on the next visit by design. The screenshot, taken when the client sends, still shows it.
+
+A `data-feedback-anchor` attribute on each section root is the anchor that survives redesigns best ([How anchoring works](/docs/widget/anchoring)).
+
+## Touch devices
+
+The widget renders on phones and tablets, with a layout of its own, but touch annotation still has gaps: a tap without a drag is discarded, a long press on iOS and iPadOS doesn't open the composer, and the category must be chosen. They are tracked in [#305](https://github.com/NeosiaNexus/SitePing/issues/305).
+
+## Browser support
+
+SitePing targets **Chrome and Edge 111, Firefox 113 and Safari 16.4** and later, which drive the floor in two places: the dashboard's styles use `color-mix()` and container queries, and the widget's `<script>` build carries class static blocks from its screenshot engine. Older browsers may run parts of it, but aren't supported.
