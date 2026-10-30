@@ -75,6 +75,8 @@ const annotationResponse = z.object({
   createdAt: dateTime,
 });
 
+const commentPermissions = z.object({ canDelete: z.boolean() });
+
 const commentResponse = z.object({
   id: z.string(),
   feedbackId: z.string(),
@@ -83,6 +85,7 @@ const commentResponse = z.object({
   authorEmail: z.string(),
   authorRole: z.enum(COMMENT_AUTHOR_ROLES),
   createdAt: dateTime,
+  permissions: commentPermissions,
 });
 
 const diagnosticsResponse = z.object({
@@ -212,6 +215,7 @@ function componentSchemas(): Record<string, JsonSchema> {
     Feedback: feedbackResponse,
     Annotation: annotationResponse,
     Comment: commentResponse,
+    CommentPermissions: commentPermissions,
     ScreenshotRegion: screenshotRegionSchema,
     Diagnostics: diagnosticsResponse,
     FeedbackPermissions: feedbackPermissions,

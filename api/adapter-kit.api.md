@@ -167,7 +167,9 @@ export interface CommentRecord {
     id: string;
 }
 
-export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">> & {
+    permissions?: CommentPermissions | undefined;
+}>;
 
 export interface ConsoleDiagnosticEntry {
     level: ConsoleDiagnosticLevel;
@@ -473,6 +475,10 @@ Referenced, not exported:
 type CodedError<C extends string = string> = {
     code: C;
 };
+
+interface CommentPermissions {
+    canDelete: boolean;
+}
 
 type Prettify<T> = {
     [K in keyof T]: T[K];

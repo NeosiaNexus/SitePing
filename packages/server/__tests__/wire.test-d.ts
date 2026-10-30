@@ -71,8 +71,11 @@ test("each webhook event names its generic body, and the event list covers them 
   expectTypeOf<(typeof WEBHOOK_EVENTS)[number]>().toEqualTypeOf<WebhookEvent>();
   expectTypeOf<GenericWebhookEventMap["feedback.status_changed"]>().toEqualTypeOf<GenericWebhookPayload>();
   expectTypeOf<GenericWebhookDeletionPayload>().toEqualTypeOf<SitepingDeletionTarget>();
-  // The reply as clients read it, plus its project.
-  expectTypeOf<GenericWebhookCommentPayload>().toEqualTypeOf<Prettify<CommentResponse & { projectName: string }>>();
+  // The reply as clients read it, plus its project — without permissions: a
+  // webhook has no requester to answer for.
+  expectTypeOf<GenericWebhookCommentPayload>().toEqualTypeOf<
+    Prettify<Omit<CommentResponse, "permissions"> & { projectName: string }>
+  >();
 });
 
 test("a webhook subscribes to known events only, and onCommentCreated gets the reply with its project", () => {

@@ -423,7 +423,7 @@ describe("useSitepingInbox — a save landing while page 1 loads", () => {
     });
 
     source.list.mockImplementationOnce(() => page.promise);
-    act(() => result.current.setStatus("resolved"));
+    act(() => result.current.setStatusFilter("resolved"));
     await waitFor(() => expect(source.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: "resolved" })));
 
     // The PATCH answers first, then the page the server read before applying it.
@@ -450,7 +450,7 @@ describe("useSitepingInbox — a save landing while page 1 loads", () => {
     });
 
     source.list.mockImplementationOnce(() => page.promise);
-    act(() => result.current.setStatus("resolved"));
+    act(() => result.current.setStatusFilter("resolved"));
     await waitFor(() => expect(source.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: "resolved" })));
 
     const now = new Date();
