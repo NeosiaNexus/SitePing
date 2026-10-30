@@ -18,7 +18,7 @@ const siteping = initSiteping({
 });
 ```
 
-`initSiteping` is the package's main runtime export, alongside the two i18n helpers (`registerLocale`, `loadLocale`) and the TypeScript types. It weighs about **34 KB gzipped** (ESM), lazy-loads its heavier parts (panel, locales, screenshot engine), and renders inside a closed Shadow DOM so your page styles and the widget's never collide.
+`initSiteping` is the package's main runtime export, alongside the two i18n helpers (`registerLocale`, `loadLocale`) and the TypeScript types. Its first load weighs about **59 kB gzipped** — the ESM entry plus the chunk it imports, everything a browser downloads before the widget runs. The heavier parts load on demand: the panel (about 10 kB more) when it first opens, a non-English dictionary for its locale, the screenshot engine for the first capture. It renders inside a closed Shadow DOM so your page styles and the widget's never collide.
 
 ## When the widget shows — and when it doesn't
 

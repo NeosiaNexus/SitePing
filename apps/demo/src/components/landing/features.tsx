@@ -172,7 +172,7 @@ function DomAnchoredVisual() {
       />
 
       <p className="absolute right-3 bottom-2 text-[9px] text-gray-600 sm:right-4 sm:bottom-3 sm:text-[10px]">
-        CSS + XPath + text fallback
+        CSS + XPath + text, scored together
       </p>
     </div>
   );
@@ -290,7 +290,8 @@ export function Features() {
             </div>
             <h3 className="mt-4 text-xl font-semibold text-white">DOM-Anchored</h3>
             <p className="mt-2 leading-relaxed text-gray-400">
-              Annotations survive layout changes. Multi-selector anchoring with CSS, XPath, and text fallback.
+              Annotations survive layout changes. Each one records a CSS selector, an XPath, text and structure; on
+              reload, every match is scored and the best one wins.
             </p>
             <DomAnchoredVisual />
           </article>
@@ -420,11 +421,10 @@ export function Features() {
             </div>
             <h3 className="mt-4 text-lg font-semibold text-white">Keyboard-first accessibility</h3>
             <p className="mt-2 text-sm leading-relaxed text-gray-400">
-              Audited against WCAG 2.1 AA. Clients can annotate without a mouse — Tab to the element, press Enter. Ready
-              for the European Accessibility Act.
+              Designed for WCAG 2.1 AA. Clients can annotate without a mouse — Tab to the element, press Enter.
             </p>
             <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/5 px-3 py-1 text-xs font-medium text-accent-light">
-              WCAG 2.1 AA
+              Targets WCAG 2.1 AA
             </div>
           </article>
 

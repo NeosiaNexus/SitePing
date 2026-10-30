@@ -37,18 +37,20 @@ function Partial({ label }: { label: string }) {
   );
 }
 
+// Competitor cells come from their pricing pages and the npm registry, checked
+// on PRICES_CHECKED (see the sources line under the table). Keep only what a
+// source shows; drop a row before guessing a cell.
+const PRICES_CHECKED = "2026-10-30";
+
+function Price({ children }: { children: string }) {
+  return <span className="text-sm text-gray-500">{children}</span>;
+}
+
 const rows = [
   {
-    feature: "Self-hosted",
+    feature: "Runs on your infrastructure",
     siteping: <Check />,
     markerio: <Cross />,
-    bugherd: <Cross />,
-    userback: <Cross />,
-  },
-  {
-    feature: "npm package",
-    siteping: <Check />,
-    markerio: <Partial label="SDK only" />,
     bugherd: <Cross />,
     userback: <Cross />,
   },
@@ -59,56 +61,27 @@ const rows = [
         MIT
       </span>
     ),
-    markerio: <Cross />,
+    markerio: <Partial label="Browser SDK only" />,
     bugherd: <Cross />,
-    userback: <Cross />,
+    userback: <Partial label="Browser SDK only" />,
   },
   {
-    feature: "Pricing",
+    feature: "Entry price",
     siteping: (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-bold text-green-400">
         Free
       </span>
     ),
-    markerio: <span className="text-sm text-gray-500">$39/mo</span>,
-    bugherd: <span className="text-sm text-gray-500">$42/mo</span>,
-    userback: <span className="text-sm text-gray-500">$79/mo</span>,
+    markerio: <Price>$39/mo billed yearly</Price>,
+    bugherd: <Price>$42/mo billed yearly</Price>,
+    userback: <Price>Free plan · $39/mo billed yearly</Price>,
   },
   {
-    feature: "DOM-anchored",
-    siteping: <Check />,
-    markerio: <Partial label="Screenshot" />,
-    bugherd: <Partial label="Pin only" />,
-    userback: <Partial label="Screenshot" />,
-  },
-  {
-    feature: "Survives layout changes",
-    siteping: <Check />,
-    markerio: <Cross />,
-    bugherd: <Partial label="Partial" />,
-    userback: <Cross />,
-  },
-  {
-    feature: "Triage inbox",
-    siteping: (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-400">
-        React component
-      </span>
-    ),
-    markerio: <Partial label="SaaS only" />,
-    bugherd: <Partial label="SaaS only" />,
-    userback: <Partial label="SaaS only" />,
-  },
-  {
-    feature: "Customizable",
-    siteping: (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-medium text-green-400">
-        Full control
-      </span>
-    ),
-    markerio: <span className="text-xs text-gray-500">Limited</span>,
-    bugherd: <span className="text-xs text-gray-500">Limited</span>,
-    userback: <span className="text-xs text-gray-500">Limited</span>,
+    feature: "Hosted for you",
+    siteping: <Partial label="You run it" />,
+    markerio: <Check />,
+    bugherd: <Check />,
+    userback: <Check />,
   },
 ] as const;
 
@@ -125,7 +98,7 @@ export function Comparison() {
         <div data-gsap="section-title" className="text-center">
           <div className="mx-auto mb-4 h-px w-8 bg-accent/50" />
           <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">SitePing vs. the alternatives</h2>
-          <p className="mt-4 text-lg text-gray-400">Why pay $39-79/mo for features you can self-host for free?</p>
+          <p className="mt-4 text-lg text-gray-400">Why pay $39–42 a month for feedback you can self-host for free?</p>
         </div>
 
         <div data-gsap="comparison" className="mt-14 overflow-x-auto">
@@ -174,6 +147,28 @@ export function Comparison() {
             </tbody>
           </table>
         </div>
+
+        <p className="mt-6 text-center text-xs leading-relaxed text-gray-500">
+          Entry paid plans as listed on{" "}
+          <a href="https://marker.io/pricing" className="underline underline-offset-2 hover:text-gray-300">
+            marker.io
+          </a>{" "}
+          ($59 billed monthly, 3 members),{" "}
+          <a href="https://bugherd.com/pricing" className="underline underline-offset-2 hover:text-gray-300">
+            bugherd.com
+          </a>{" "}
+          ($50 monthly, 5 members) and{" "}
+          <a href="https://userback.io/pricing/" className="underline underline-offset-2 hover:text-gray-300">
+            userback.io
+          </a>{" "}
+          ($49 monthly; the free plan has 2 seats), checked on {PRICES_CHECKED}. The browser SDKs are MIT on npm; the
+          services behind them are not. Vercel Comments is left out: it is free on every Vercel plan, but every reviewer
+          needs a{" "}
+          <a href="https://vercel.com/docs/comments" className="underline underline-offset-2 hover:text-gray-300">
+            Vercel account
+          </a>
+          .
+        </p>
       </div>
     </section>
   );
