@@ -1,17 +1,31 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-const ROUTE_TEMPLATE = `import { createSitepingHandler } from "@siteping/adapter-prisma";
+const ROUTE_TEMPLATE = `import { createSitepingHandler, type SitepingHandler } from "@siteping/adapter-prisma";
 import { prisma } from "@/lib/prisma";
 
-export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
-  prisma,
-  // Required in production — the handler refuses to start without a key.
-  // Status changes and deletes then need \`Authorization: Bearer <key>\`;
-  // feedback submissions from the widget stay open.
-  apiKey: process.env.SITEPING_API_KEY,
-  // allowedOrigins: ["https://your-site.com"],
-});
+// Built on the first request, not at import: \`next build\` imports every
+// route, and the production key check below would fail a build that runs
+// without the runtime secret.
+let handler: SitepingHandler | undefined;
+
+function getHandler(): SitepingHandler {
+  handler ??= createSitepingHandler({
+    prisma,
+    // Required in production — the handler refuses to start without a key.
+    // Status changes and deletes then need \`Authorization: Bearer <key>\`;
+    // feedback submissions from the widget stay open.
+    apiKey: process.env.SITEPING_API_KEY,
+    // allowedOrigins: ["https://your-site.com"],
+  });
+  return handler;
+}
+
+export const GET: SitepingHandler["GET"] = (request) => getHandler().GET(request);
+export const POST: SitepingHandler["POST"] = (request) => getHandler().POST(request);
+export const PATCH: SitepingHandler["PATCH"] = (request) => getHandler().PATCH(request);
+export const DELETE: SitepingHandler["DELETE"] = (request) => getHandler().DELETE(request);
+export const OPTIONS: SitepingHandler["OPTIONS"] = (request) => getHandler().OPTIONS(request);
 `;
 
 /** Result of a route-generation attempt. */
