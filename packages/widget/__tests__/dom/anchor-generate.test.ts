@@ -239,6 +239,31 @@ describe("generateAnchor", () => {
       expect(textSnippet).toBe("Card ending  expiresHolder  verified");
       expect(textSnippet).not.toMatch(/4242|Jane/);
     });
+
+    it("keeps no text context for an element inside a masked subtree", () => {
+      document.body.innerHTML =
+        '<p>Public intro</p><div data-siteping-ignore="true"><p>IBAN FR76 3000</p><p id="t">Jane Doe</p><p>Paris</p></div>';
+      const masked = document.querySelector<HTMLElement>("[data-siteping-ignore]")!;
+
+      for (const element of [masked, document.getElementById("t")!]) {
+        const anchor = generateAnchor(element);
+        expect(anchor.textSnippet).toBe("");
+        expect(anchor.textPrefix).toBe("");
+        expect(anchor.textSuffix).toBe("");
+        expect(anchor.neighborText).toBe("");
+      }
+    });
+
+    it("keeps no text context for an element of a shadow tree whose host is masked", () => {
+      document.body.innerHTML = '<p>Before</p><x-card data-siteping-ignore="true"></x-card><p>After</p>';
+      const shadow = document.querySelector("x-card")!.attachShadow({ mode: "open" });
+      shadow.innerHTML = "<span>Secret</span><span>Neighbour</span>";
+
+      const anchor = generateAnchor(shadow.querySelector("span")!);
+      expect(anchor.textSnippet).toBe("");
+      expect(anchor.neighborText).toBe("");
+      expect(anchor.cssSelector).not.toBe("");
+    });
   });
 
   // -------------------------------------------------------------------------

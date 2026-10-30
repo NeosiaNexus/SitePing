@@ -78,16 +78,19 @@ export function generateAnchor(element: Element): AnchorData {
 
   const xpath = generateXPath(element);
 
-  // The snippet is stored with the feedback (and shown in the dashboard and
-  // issue bodies), so masked descendants stay out of it, like they do of the
-  // sibling context. Reading past the 120 kept chars leaves room for the
-  // leading whitespace that trimming discards.
-  const textSnippet = boundedText(element, 256, true).trim().slice(0, 120);
+  // Text context is stored with the feedback (and shown in the dashboard and
+  // issue bodies), so masked text stays out of it. Inside a masked subtree —
+  // a rect drawn over the masked element itself — every nearby text is the
+  // host's to hide, the element's and its siblings' alike: none is kept.
+  // Otherwise masked descendants are skipped; reading past the 120 kept chars
+  // leaves room for the leading whitespace that trimming discards.
+  const masked = closestCrossShadow(element, '[data-siteping-ignore="true"]') !== null;
+  const textSnippet = masked ? "" : boundedText(element, 256, true).trim().slice(0, 120);
 
-  const textPrefix = adjacentText(element, "before");
-  const textSuffix = adjacentText(element, "after");
+  const textPrefix = masked ? "" : adjacentText(element, "before");
+  const textSuffix = masked ? "" : adjacentText(element, "after");
   const fingerprint = generateFingerprint(element);
-  const neighbor = neighborText(element);
+  const neighbor = masked ? "" : neighborText(element);
 
   const semanticAncestor = closestCrossShadow(element, `[${ANCHOR_KEY_ATTR}]`);
   const anchorKey = semanticAncestor?.getAttribute(ANCHOR_KEY_ATTR) ?? null;
