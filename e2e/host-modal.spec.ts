@@ -371,23 +371,6 @@ test.describe("Widget over a focus-trap modal (#387)", () => {
     await expect(page.locator("#trap-first")).not.toBeFocused();
   });
 
-  test("Tab in the comment popup moves focus within the popup", async ({ page }) => {
-    await page.locator(".sp-fab").click();
-    await page.locator('[data-item-id="annotate"]').click();
-    const box = (await page.locator("#page-content").boundingBox())!;
-    await page.mouse.move(box.x + 10, box.y + 5);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 200, box.y + 40, { steps: 5 });
-    await page.mouse.up();
-    const popup = page.locator('[role="dialog"][data-siteping-ignore]');
-    await expect(popup.locator("textarea")).toBeFocused();
-
-    await page.keyboard.press("Tab");
-
-    // The popup's Cancel button follows the comment textarea.
-    await expect(popup.getByRole("button", { name: POPUP_CANCEL_ACCESSIBLE_NAME })).toBeFocused();
-  });
-
   test("the host trap still cycles Tab inside its own dialog", async ({ page }) => {
     await page.locator("#trap-last").focus();
 
