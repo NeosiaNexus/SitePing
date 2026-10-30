@@ -122,6 +122,8 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 ```
 
+Avec une clé, le widget peut envoyer mais pas lister ses pins tant que `GET` n'est pas public — voir [le modèle de sécurité](/fr/docs/server#le-modèle-de-sécurité-franchement).
+
 ## Options
 
 Les deux factories acceptent les mêmes options :

@@ -433,6 +433,36 @@ describe("ApiClient", () => {
     expect((err as SitepingAuthError).status).toBe(403);
   });
 
+  // A refused list explains itself (#280): with an apiKey, the server keeps
+  // GET behind the key unless publicEndpoints opens it, and nothing on screen
+  // says why the pins stay empty.
+  it.each([401, 403])("explains a list refused with %i in the console, once per client", async (status) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(fetch).mockImplementation(async () => new Response("Unauthorized", { status }));
+    for (let i = 0; i < 3; i++) {
+      await expect(client.getFeedbacks("test")).rejects.toBeInstanceOf(SitepingAuthError);
+    }
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toMatch(
+      new RegExp(
+        `refused \\(${status}\\): .*publicEndpoints includes "GET".*pins and panel stay empty.*siteping\\.dev/docs/server#the-security-model-honestly`,
+      ),
+    );
+    // Another widget's client explains it again.
+    await expect(new ApiClient(endpoint, "test").getFeedbacks("test")).rejects.toBeInstanceOf(SitepingAuthError);
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it("explains nothing for other list failures, nor for a refused write", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(fetch).mockImplementation(async () => new Response("Bad", { status: 400 }));
+    await expect(client.getFeedbacks("test")).rejects.toBeInstanceOf(SitepingValidationError);
+    vi.mocked(fetch).mockImplementation(async () => new Response("Nope", { status: 401 }));
+    await expect(client.resolveFeedback("fb-1", true)).rejects.toBeInstanceOf(SitepingAuthError);
+    await expect(client.deleteFeedback("fb-1")).rejects.toBeInstanceOf(SitepingAuthError);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it("maps other 4xx to SitepingValidationError (not retryable)", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("Bad", { status: 400 }));
     const err = (await client.getFeedbacks("test").catch((e: SitepingError) => e)) as SitepingError;
