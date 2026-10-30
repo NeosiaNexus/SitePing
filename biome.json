@@ -57,7 +57,8 @@
       "!**/node_modules/",
       "!**/bun.lock",
       "!**/e2e/server.mjs",
-      "!packages/server/openapi.json"
+      "!packages/server/openapi.json",
+      "!examples"
     ]
   },
   "overrides": [

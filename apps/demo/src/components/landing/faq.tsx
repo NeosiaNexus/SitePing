@@ -45,7 +45,7 @@ const faqs: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Is it accessible?",
-    a: "The widget and the inbox are designed for WCAG 2.1 AA. The full flow works from the keyboard, including drawing an annotation: Tab to the element, press Enter. Actions are announced to screen readers.",
+    a: "The widget and the inbox are designed for WCAG 2.1 AA, and every change runs an automated axe check of both, in light and dark themes, with no exclusions. The full flow works from the keyboard, including drawing an annotation: Tab to the element, press Enter. Actions are announced to screen readers.",
   },
   {
     q: "How is reviewers' data handled?",

@@ -12,7 +12,7 @@ import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screensh
 import type { ThemeColors } from "./styles/theme.js";
 import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
 
-/** Below this size (px) a drawn rect is an accidental click — or, on touch, a tap. */
+/** Below this size (px) on either axis, a gesture is a click or a tap: it points at the element under it. */
 const MIN_RECT_SIZE = 10;
 
 /** The part of a viewport rect that is on screen. */
@@ -588,22 +588,7 @@ export class Annotator {
 
   private onTouchEnd = async (e: TouchEvent): Promise<void> => {
     const touch = e.changedTouches[0];
-    if (!touch) return;
-    // A tap, or a slide too thin to frame an area (a finger along a line of
-    // text): comment on the element under the finger instead of dropping the
-    // gesture — a fingertip hides the very corner it is trying to place.
-    if (
-      this.isDrawing &&
-      (Math.abs(touch.clientX - this.startX) < MIN_RECT_SIZE || Math.abs(touch.clientY - this.startY) < MIN_RECT_SIZE)
-    ) {
-      this.isDrawing = false;
-      this.drawingRect?.remove();
-      this.drawingRect = null;
-      const target = this.elementAt(touch.clientX, touch.clientY);
-      if (target) await this.annotateElement(target, true);
-      return;
-    }
-    await this.finishDrawing(touch.clientX, touch.clientY);
+    if (touch) await this.finishDrawing(touch.clientX, touch.clientY);
   };
 
   /**
@@ -637,10 +622,15 @@ export class Annotator {
     const w = Math.abs(clientX - this.startX);
     const h = Math.abs(clientY - this.startY);
 
-    // Ignore tiny rectangles (accidental clicks)
+    // A tap or a click, or a drag too thin to frame an area (along a line of
+    // text): comment on the element under the pointer instead of dropping the
+    // gesture — a fingertip hides the very corner it is trying to place, and
+    // a click on an element is the plainest way to point at it.
     if (w < MIN_RECT_SIZE || h < MIN_RECT_SIZE) {
       this.drawingRect.remove();
       this.drawingRect = null;
+      const target = this.elementAt(clientX, clientY);
+      if (target) await this.annotateElement(target, true);
       return;
     }
 

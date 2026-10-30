@@ -117,6 +117,10 @@ jobs:
             packages/cli/dist/
           retention-days: 1
 
+  # Every publish passes the dist-tag of its version (scripts/npm-dist-tag.mjs):
+  # `next` for a prerelease such as 1.0.0-rc.1, `latest` otherwise, so a
+  # release candidate never becomes what `npm install` resolves to.
+  # verify-publish checks the tags too.
   publish-widget:
     needs: [release-please, build]
     if: |
@@ -151,7 +155,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/widget
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/widget
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -200,7 +204,7 @@ jobs:
         working-directory: packages/adapter-prisma
 
       - name: Publish @siteping/adapter-prisma
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/adapter-prisma
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -239,7 +243,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/cli
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -278,7 +282,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/adapter-memory
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/adapter-memory
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -317,7 +321,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/dashboard
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/dashboard
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -356,7 +360,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/adapter-localstorage
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/adapter-localstorage
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -395,7 +399,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/adapter-kit
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/adapter-kit
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -434,7 +438,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/adapter-drizzle
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/adapter-drizzle
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -481,7 +485,7 @@ jobs:
           if [ "$(npm view "@siteping/server@$version" version 2>/dev/null)" = "$version" ]; then
             echo "@siteping/server@$version is already on npm, skipping"
           else
-            npm publish --access public --provenance
+            npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
           fi
         working-directory: packages/server
         env:
@@ -521,7 +525,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/screenshot-storage
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/screenshot-storage
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -563,7 +567,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Publish @siteping/integration-issues
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$(node ../../scripts/npm-dist-tag.mjs)"
         working-directory: packages/integration-issues
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

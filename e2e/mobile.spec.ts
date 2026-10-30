@@ -1,12 +1,14 @@
 import { expect, type Page, test } from "@playwright/test";
 
 // Phone emulation: a 390×844 touch screen. Playwright has no mobile mode for
-// Firefox, so this file runs on Chromium and WebKit.
+// Firefox, so this file runs on Chromium and WebKit — and on the `iphone`
+// project (WebKit with an iPhone's user agent and touch, playwright.config.ts).
 test.skip(({ browserName }) => browserName === "firefox", "Firefox has no mobile emulation in Playwright");
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-test.beforeEach(async ({ page, browserName }) => {
-  const project = `e2e-mobile-${browserName}`;
+test.beforeEach(async ({ page }, testInfo) => {
+  // Per Playwright project: `webkit` and `iphone` share a browser and run in parallel.
+  const project = `e2e-mobile-${testInfo.project.name}`;
   await page.request.get(`http://localhost:3999/api/reset?projectName=${project}`);
   // noForceShow=1 — a phone must get the widget from the defaults alone.
   await page.goto(`http://localhost:3999?project=${project}&noForceShow=1`);
@@ -70,6 +72,29 @@ test("tap an element → feedback sheet → identity sheet → saved against tha
   expect(data.feedbacks[0].message).toBe("Trop petit sur mobile");
   expect(data.feedbacks[0].annotations[0].elementId).toBe("target-element");
   expect(data.feedbacks[0].annotations[0]).toMatchObject({ xPct: 0, yPct: 0, wPct: 1, hPct: 1 });
+});
+
+test("a feedback sent without a category is filed as other (#305)", async ({ page }) => {
+  await page.locator(".sp-fab").tap();
+  await page.locator('[data-item-id="annotate"]').tap();
+  const target = (await page.locator("#target-element").boundingBox())!;
+  await page.touchscreen.tap(target.x + target.width / 2, target.y + target.height / 2);
+
+  const form = page.locator('[role="dialog"][aria-label="Feedback form"]');
+  await form.locator("textarea").fill("Pas de catégorie");
+  await form.locator("button", { hasText: "Send" }).tap();
+  const identity = page.locator(".sp-identity-modal");
+  await identity.locator('input[type="text"]').fill("Test User");
+  await identity.locator('input[type="email"]').fill("test@example.com");
+  await identity.locator(".sp-btn-primary").tap();
+
+  const project = getProject(page);
+  const list = async () =>
+    (await (await page.request.get(`http://localhost:3999/api/siteping?projectName=${project}`)).json()) as {
+      feedbacks: Array<{ type: string; message: string }>;
+    };
+  await expect.poll(async () => (await list()).feedbacks.length).toBe(1);
+  expect((await list()).feedbacks[0]).toMatchObject({ type: "other", message: "Pas de catégorie" });
 });
 
 test("the filter row stays one row of finger-sized controls, the Mine toggle included", async ({

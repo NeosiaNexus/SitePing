@@ -1,0 +1,11 @@
+<h1>SitePing on SvelteKit</h1>
+
+<p>
+  The button in the bottom-right corner is the SitePing widget. Click it, draw a rectangle around anything on this
+  page, write a comment and send it: the feedback goes to <code>/api/siteping</code> and comes back as a pin.
+</p>
+
+<section data-feedback-anchor="pricing">
+  <h2>Pricing</h2>
+  <p>Starter — 9 € / month. Pro — 29 € / month. Something to point at.</p>
+</section>

@@ -1,0 +1,65 @@
+---
+title: Nuxt
+description: A SitePing endpoint as a Nitro server route and the widget in a client-only plugin — Nuxt 3 and 4.
+---
+
+```bash
+npm i @siteping/widget @siteping/server @siteping/adapter-memory
+```
+
+## 1. The endpoint
+
+A Nitro route receives every method on its URL. Hand the handler a web `Request` and return its `Response`; answer `405` to the methods SitePing does not serve, such as `HEAD`.
+
+```ts
+// server/api/siteping.ts
+import { MemoryStore } from "@siteping/adapter-memory";
+import { createSitepingHandler, type SitepingHandler } from "@siteping/server";
+
+const store = new MemoryStore();
+const METHODS = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"] as const;
+let handler: SitepingHandler | undefined;
+
+export default defineEventHandler((event) => {
+  // Built on the first request, from the runtime config (NUXT_SITEPING_API_KEY).
+  handler ??= createSitepingHandler({ store, apiKey: useRuntimeConfig(event).sitepingApiKey || undefined });
+  const method = METHODS.find((name) => name === event.method);
+  if (!method) {
+    setResponseHeader(event, "Allow", METHODS.join(", "));
+    throw createError({ statusCode: 405 });
+  }
+  return handler[method](toWebRequest(event));
+});
+```
+
+Declare the key in the runtime config. It stays server-only, and Nuxt fills it from `NUXT_SITEPING_API_KEY` when the server starts:
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  runtimeConfig: {
+    sitepingApiKey: "",
+  },
+});
+```
+
+## 2. The widget
+
+A plugin whose name ends in `.client` runs in the browser only. One plugin mounts one widget for the whole app, and it follows client-side navigation by itself.
+
+```ts
+// app/plugins/siteping.client.ts — plugins/siteping.client.ts on Nuxt 3
+import { initSiteping } from "@siteping/widget";
+
+export default defineNuxtPlugin(() => {
+  initSiteping({ endpoint: "/api/siteping", projectName: "my-project" });
+});
+```
+
+Run `npm run dev` and look bottom-right. Draw a rectangle, type a comment, send it: the feedback goes through your route into the store.
+
+## Going further
+
+- A store that survives restarts: [Pick a store](/docs/frameworks#pick-a-store).
+- Before going live, set `NUXT_SITEPING_API_KEY` and read what it locks — [three rules every stack follows](/docs/frameworks#three-rules-every-stack-follows).
+- Plain Vue on Vite, without Nuxt: [Vite SPA](/docs/frameworks/vite).
