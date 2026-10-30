@@ -9,7 +9,8 @@
 - `bun run test:run` — run tests once (includes *.test-d.ts type tests via vitest typecheck)
 - `bun run lint` — biome check (types domain enabled)
 - `bun run lint:fix` — biome auto-fix
-- `bun run verify` — build + check + lint + test:run (the full pre-PR gate)
+- `bun run verify` — build + api:check + check + lint + test:run (the full pre-PR gate)
+- `bun run api:check` / `bun run api:update` — built public API of the 1.0 packages vs the committed `api/*.api.md` snapshots (exports, referenced types, ESM/CJS runtime keys); update after an intended change, `!` for a breaking one
 - `bun run pkg-checks` — publint + attw over published packages (list derived from release-please manifest)
 - `bun run check:consistency` — locale counts and lists, demo locale pickers, package registration, fix-dts chains, esbuild override = widget spec, `fileURLToPath` (never a file URL's `.pathname`) in Node tooling, no `@prisma/client` import in adapter-prisma's src (optional peer) nor `@siteping/server` import in integration-issues' src (structural hook types), every published `workspace:` dependency pinned in release.yml with its publish job waiting for the dependency's, one Node floor = core's `engines.node` across workspaces, adapter scaffold, oldest node-compat lane, publish jobs, demo image and docs "Node N+" claims (runs in CI)
 - `bun run new:locale <code>` / `bun run new:adapter <name>` — scaffolds (see CONTRIBUTING)
