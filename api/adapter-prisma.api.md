@@ -17,7 +17,12 @@ Runtime exports (ESM and CJS):
 - `dispatchWebhook: function`
 - `dispatchWebhooks: function`
 - `flattenAnnotation: function`
+- `isSitepingConfigError: function`
+- `isStoreDuplicate: function`
+- `isStoreLimit: function`
+- `isStoreNotFound: function`
 - `isStorePersistence: function`
+- `isStoreValueTooLong: function`
 
 Types:
 
@@ -192,6 +197,8 @@ export { SitepingAction } from "@siteping/server";
 
 export { SitepingAuthorizationContext } from "@siteping/server";
 
+export { SitepingConfigErrorCode } from "@siteping/server";
+
 export { SitepingCreatedComment } from "@siteping/server";
 
 export { SitepingDeletionTarget } from "@siteping/server";
@@ -280,7 +287,17 @@ export { dispatchWebhooks } from "@siteping/server";
 
 export function flattenAnnotation(ann: AnnotationPayload): AnnotationCreateInput;
 
+export { isSitepingConfigError } from "@siteping/server";
+
+export function isStoreDuplicate(error: unknown): error is CodedError<"P2002" | "STORE_DUPLICATE"> | StoreDuplicateError;
+
+export function isStoreLimit(error: unknown): error is CodedError<"STORE_LIMIT"> | StoreLimitError;
+
+export function isStoreNotFound(error: unknown): error is CodedError<"P2025" | "STORE_NOT_FOUND"> | StoreNotFoundError;
+
 export function isStorePersistence(error: unknown): error is CodedError<"STORE_PERSISTENCE"> | StorePersistenceError;
+
+export function isStoreValueTooLong(error: unknown): error is CodedError<"STORE_VALUE_TOO_LONG"> | StoreValueTooLongError;
 ```
 
 Referenced, not exported:

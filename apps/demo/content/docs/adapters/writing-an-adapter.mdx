@@ -43,7 +43,7 @@ export function createArrayStore(): SitepingStore {
 }
 ```
 
-That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the 67 conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
+That is a real, fully conformant adapter — it's the dogfood example the kit's own test suite runs the conformance tests against. Swap the three functions for your storage and you're done: [`MemoryStore`](/docs/adapters/memory) and [`LocalStorageStore`](/docs/adapters/localstorage) are this same engine with different primitives.
 
 **The three primitives:**
 
@@ -108,7 +108,7 @@ Handlers and the dashboard read behavior off these errors, so throw the kit's cl
 | A mutation accepted but not persisted | Throw `StorePersistenceError` instead of reporting a phantom success |
 | Empty results on `getFeedbacks` / `findByClientId` | Don't throw — return an empty array or `null` |
 
-Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Use them instead of `instanceof` when you catch across package boundaries — every package bundles its own copy of the classes, so `instanceof` can fail on an error thrown by another one. The guards also recognize Prisma's `P2025` and `P2002` codes.
+Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreLimit`, `isStoreValueTooLong`, `isStorePersistence`. Use them instead of `instanceof` when you catch across package boundaries — every package bundles its own copy of the classes, so `instanceof` can fail on an error thrown by another one. The guards also recognize Prisma's `P2025` and `P2002` codes. Every store package — this kit, `adapter-prisma`, `adapter-memory`, `adapter-localstorage` and both `adapter-drizzle` entries — re-exports the same five classes and five guards.
 
 ### Query semantics to match
 
@@ -120,6 +120,8 @@ Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreL
 - `page` is 1-based, `limit` defaults to 50 and is capped at 100.
 
 Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported for exactly this and implements all of the above. Querying a database? `clampPagination(query)` returns the normalized `{ page, limit, skip }` — the same clamp the in-memory pipeline and `PrismaStore` use, so pass its `limit` and `skip` straight to your `LIMIT`/`OFFSET`. Check `isUnreachableOffset(skip)` first: a huge `page` from a direct caller yields an offset past `Number.MAX_SAFE_INTEGER` (or `Infinity`) that SQL backends reject, and the suite expects `{ feedbacks: [], total }` for it — answer with your count query alone.
+
+Text can hold characters a database refuses: PostgreSQL rejects NUL in `text` and `jsonb`, and an unpaired surrogate (what a string cut inside an emoji ends with) in `jsonb`. The suite accepts such text kept as sent, or with U+FFFD in place of each such code unit, as long as a record reads back as the write returned it and a lookup holding the same characters finds it. On a backend that refuses them, pass everything you write through `toStorableValue` and every id, clientId, project name and query you look up through `toStorableText` — both exported by the kit, and what `PrismaStore` and the Drizzle store do.
 
 ## Project ownership
 
@@ -152,7 +154,7 @@ Implement it whenever your store serves more than one project. When it's absent,
 
 ## Prove it: the conformance suite
 
-The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — 67 tests:
+The same suite the first-party adapters run. Point it at a factory that returns a fresh, empty store and it exercises the whole contract — about 70 tests:
 
 ```ts
 // __tests__/my-store.test.ts
@@ -164,17 +166,33 @@ testSitepingStore(() => new MyStore());
 
 Besides one call at a time, it fires updates, deletes and creates together in a `Promise.all` — the way the widget's bulk actions do — and checks that every write landed.
 
-The factory runs before each test and may be async, which is where you spin up a transaction or a fresh schema. Two knobs cover contract variations that are legitimately backend-specific:
+The factory runs before each test and may be async, which is where you spin up a transaction or a fresh schema. Three options cover what legitimately varies between backends:
 
 | Option | Default | Set it when |
 |---|---|---|
 | `duplicateBehavior` | `"return"` | Your `createFeedback` throws `StoreDuplicateError` on a repeated `clientId` instead of returning the existing record — pass `"throw"`. A store that returns it but throws when it loses a concurrent insert race stays on `"return"` |
 | `caseInsensitiveSearch` | `true` | Your collation makes `search` case-sensitive — pass `false` and the suite only asserts same-case substring matching |
+| `failWrites` | — | Your backend can accept a write and lose it (quota, revoked storage) — pass a function that makes it refuse every write until the function it returns is called. Without it, the persistence-failure cases are reported as skipped |
 
 ```ts
 testSitepingStore(() => new PostgresStore(db), {
   duplicateBehavior: "throw",
   caseInsensitiveSearch: false,
+});
+```
+
+With `failWrites`, each mutation must reject with `StorePersistenceError` while writes fail, and leave what reads return as it was — no phantom record, no lost update:
+
+```ts
+let writesFail = false; // read by your backend's `persist`
+
+testSitepingStore(() => new KvStore(), {
+  failWrites: () => {
+    writesFail = true;
+    return () => {
+      writesFail = false;
+    };
+  },
 });
 ```
 

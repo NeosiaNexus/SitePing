@@ -24,6 +24,8 @@ import {
   StorePersistenceError,
   screenshotMimeType,
   settleWithConcurrencyLimit,
+  toStorableText,
+  toStorableValue,
 } from "@siteping/core";
 import { PROJECT_DELETE_CHUNK_SIZE } from "../constants/deletes.js";
 import {
@@ -41,7 +43,6 @@ import type {
   FeedbackRow,
   SitepingSqlGateway,
 } from "./gateway.js";
-import { toStorableText, toStorableValue } from "./text.js";
 
 /**
  * The store returned by the dialect factories — the full contract, including

@@ -151,6 +151,7 @@ vi.mock(new URL("../../src/dom/anchor.js", import.meta.url).pathname, () => ({
 
 import { Annotator } from "../../src/annotator.js";
 import { deepElementFromPoint, generateAnchor } from "../../src/dom/anchor.js";
+import { Popup } from "../../src/popup.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -2001,5 +2002,38 @@ describe("Annotator on touch screens", () => {
       await vi.waitFor(() => expect(screenshotMocks.captureAnnotatedScreenshot).toHaveBeenCalledOnce());
       expect(screenshotMocks.captureAnnotatedScreenshot.mock.calls[0]![0]).toMatchObject({ x: 10, y: 444 });
     });
+  });
+});
+
+describe("Annotator.restyle (an auto theme following the OS)", () => {
+  let annotator: Annotator;
+  let bus: EventBus<WidgetEvents>;
+
+  beforeEach(() => {
+    popupMocks.isOpenState = false;
+    popupMocks.destroyCount = 0;
+    vi.mocked(Popup).mockClear();
+    ({ annotator, bus } = createAnnotator());
+  });
+
+  afterEach(() => {
+    annotator.destroy();
+  });
+
+  it("rebuilds the popup from the palette right away when no session runs", () => {
+    annotator.restyle();
+    expect(popupMocks.destroyCount).toBe(1);
+    expect(Popup).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for the session to end before rebuilding it", () => {
+    bus.emit("annotation:start");
+    annotator.restyle();
+    expect(popupMocks.destroyCount).toBe(0);
+    expect(Popup).toHaveBeenCalledTimes(1);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(popupMocks.destroyCount).toBe(1);
+    expect(Popup).toHaveBeenCalledTimes(2);
   });
 });
