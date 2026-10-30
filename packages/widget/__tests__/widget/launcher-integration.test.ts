@@ -623,13 +623,15 @@ describe("launcher — annotation:complete integration", () => {
 
       const instance = launch(defaultConfig({ deepLink: true }));
 
-      await vi.waitFor(() => expect(show).toHaveBeenCalledWith("fb-deep-5"));
-      expect(open).toHaveBeenCalledOnce();
-      expect(open.mock.invocationCallOrder[0]).toBeLessThan(show.mock.invocationCallOrder[0] ?? 0);
-
-      instance.destroy();
-      open.mockRestore();
-      show.mockRestore();
+      try {
+        await vi.waitFor(() => expect(show).toHaveBeenCalledWith("fb-deep-5"));
+        expect(open).toHaveBeenCalledOnce();
+        expect(open.mock.invocationCallOrder[0]).toBeLessThan(show.mock.invocationCallOrder[0] ?? 0);
+      } finally {
+        instance.destroy();
+        open.mockRestore();
+        show.mockRestore();
+      }
     });
 
     it("leaves the panel closed when the deep link matches no visible feedback", async () => {
@@ -641,12 +643,14 @@ describe("launcher — annotation:complete integration", () => {
 
       const instance = launch(defaultConfig({ deepLink: true }));
 
-      await vi.waitFor(() => expect(mockMarkersFocusFeedback).toHaveBeenCalledWith("elsewhere"));
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(open).not.toHaveBeenCalled();
-
-      instance.destroy();
-      open.mockRestore();
+      try {
+        await vi.waitFor(() => expect(mockMarkersFocusFeedback).toHaveBeenCalledWith("elsewhere"));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(open).not.toHaveBeenCalled();
+      } finally {
+        instance.destroy();
+        open.mockRestore();
+      }
     });
   });
 
