@@ -6,6 +6,7 @@ export type {
   AnnotationPayload,
   AnnotationResponse,
   BuiltinLocale,
+  CommentPermissions,
   CommentResponse,
   DiagnosticsCaptureOptions,
   DiagnosticsSnapshot,

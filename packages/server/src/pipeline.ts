@@ -1,4 +1,4 @@
-import type { CommentRecord, FeedbackPermissions, FeedbackRecord } from "@siteping/core";
+import type { CommentPermissions, CommentRecord, FeedbackPermissions, FeedbackRecord } from "@siteping/core";
 import type { AccessGate, AccessOutcome } from "./access.js";
 import { DRY_RUN_CONCURRENCY, ERROR_MESSAGES } from "./constants.js";
 import { buildCorsHeaders, type CorsHeaders, withCors } from "./cors.js";
@@ -16,8 +16,11 @@ import { formatValidationErrors } from "./validation.js";
 export interface Scope<Principal> {
   context: SitepingRequestContext<Principal>;
   corsHeaders: CorsHeaders;
-  /** Whether responses to this request may include `authorEmail`. */
-  canReadAuthorEmail: boolean;
+  /**
+   * Whether responses about `projectName` may include `authorEmail` — the
+   * policy is asked once per project and request, the answer reused.
+   */
+  canReadAuthorEmail(projectName: string): Promise<boolean>;
 }
 
 /** Either a value to continue with, or the response to send right away. */
@@ -39,8 +42,8 @@ interface PipelineDependencies<Principal> {
   maxBodyBytes: number;
 }
 
-/** A comment as it goes on the wire. */
-export type WireComment = Omit<CommentRecord, "clientId">;
+/** A comment as it goes on the wire — the requester's permissions always present. */
+export type WireComment = Omit<CommentRecord, "clientId"> & { permissions: CommentPermissions };
 
 /** A feedback as it goes on the wire — its thread and the requester's permissions always present. */
 export type WireFeedback = Omit<FeedbackRecord, "clientId" | "comments"> & {
@@ -52,7 +55,7 @@ export type WireFeedback = Omit<FeedbackRecord, "clientId" | "comments"> & {
  * Serialize a comment for the HTTP wire — `clientId` stripped and
  * `authorEmail` blanked on the same terms as a feedback's (see below).
  */
-function toWireComment(comment: CommentRecord, includeEmail: boolean): WireComment {
+function toWireComment(comment: CommentRecord, includeEmail: boolean): Omit<WireComment, "permissions"> {
   const { clientId: _clientId, ...wire } = comment;
   return includeEmail ? wire : { ...wire, authorEmail: "" };
 }
@@ -73,7 +76,7 @@ function toWireFeedback(
   feedback: FeedbackRecord,
   includeEmail: boolean,
   includeCommentEmails: boolean,
-): Omit<WireFeedback, "permissions"> {
+): Omit<WireFeedback, "permissions" | "comments"> & { comments: Omit<WireComment, "permissions">[] } {
   const { clientId: _clientId, comments, ...wire } = feedback;
   return {
     ...wire,
@@ -241,19 +244,46 @@ export function createPipeline<Principal>({
     return { canChangeStatus, canDelete, canComment, canDeleteComment };
   };
 
-  /** Wire shape of a record for this requester (`presentFeedback`, then redaction), with its permissions. */
+  /**
+   * What this requester may do with one comment of a thread. Deleting any
+   * reply of the thread covers this one; otherwise the policy is asked about
+   * this comment by id — how a per-author rule grants it.
+   */
+  const commentPermissions = async (
+    scope: Scope<Principal>,
+    thread: { projectName: string; feedbackId: string },
+    commentId: string,
+    canDeleteThread: boolean,
+  ): Promise<CommentPermissions> => ({
+    canDelete: canDeleteThread || (await may(scope, "DELETE", { action: "deleteComment", ...thread, commentId })),
+  });
+
+  /**
+   * Wire shape of a record for this requester (`presentFeedback`, then
+   * redaction), with its permissions and its comments'. `echoEmail` keeps
+   * the feedback's `authorEmail` whatever the requester may read.
+   */
   const present = async (
     scope: Scope<Principal>,
     feedback: FeedbackRecord,
-    includeEmail = scope.canReadAuthorEmail,
-  ): Promise<WireFeedback> => ({
-    ...toWireFeedback(
+    echoEmail = false,
+  ): Promise<WireFeedback> => {
+    const canReadEmails = await scope.canReadAuthorEmail(feedback.projectName);
+    const wire = toWireFeedback(
       presentFeedback ? presentFeedback(feedback, scope.context) : feedback,
-      includeEmail,
-      scope.canReadAuthorEmail,
-    ),
-    permissions: await permissions(scope, feedback),
-  });
+      echoEmail || canReadEmails,
+      canReadEmails,
+    );
+    const granted = await permissions(scope, feedback);
+    const thread = { projectName: feedback.projectName, feedbackId: feedback.id };
+    const comments = await Promise.all(
+      wire.comments.map(async (comment) => ({
+        ...comment,
+        permissions: await commentPermissions(scope, thread, comment.id, granted.canDeleteComment),
+      })),
+    );
+    return { ...wire, comments, permissions: granted };
+  };
 
   return {
     json,
@@ -292,12 +322,21 @@ export function createPipeline<Principal>({
         };
       }
       if (!outcome.ok) return { ok: false, response: error({ corsHeaders }, outcome.status, outcome.error) };
+      const context = { request, principal: outcome.principal };
+      const emailAccess = new Map<string, Promise<boolean>>();
       return {
         ok: true,
         value: {
-          context: { request, principal: outcome.principal },
+          context,
           corsHeaders,
-          canReadAuthorEmail: outcome.canReadAuthorEmail,
+          canReadAuthorEmail(projectName) {
+            let answer = emailAccess.get(projectName);
+            if (!answer) {
+              answer = gate.canReadAuthorEmail(context, projectName);
+              emailAccess.set(projectName, answer);
+            }
+            return answer;
+          },
         },
       };
     },
@@ -310,14 +349,19 @@ export function createPipeline<Principal>({
       return body.ok ? validate(scope, schema, body.value) : body;
     },
 
-    /** `null` when the policy allows the request, its 403 otherwise. */
+    /**
+     * `null` when the policy allows the request, its 403 otherwise. An
+     * allowed request also settles its email access for the project now,
+     * before anything is written: a throwing `canReadAuthorEmail` answers
+     * the operation's 500 with nothing stored.
+     */
     async authorize(
       scope: Scope<Principal>,
       target: Omit<SitepingAuthorizationContext<Principal>, keyof SitepingRequestContext<Principal>>,
     ): Promise<Response | null> {
-      return (await gate.authorize({ ...scope.context, ...target }))
-        ? null
-        : error(scope, 403, ERROR_MESSAGES.forbidden);
+      if (!(await gate.authorize({ ...scope.context, ...target }))) return error(scope, 403, ERROR_MESSAGES.forbidden);
+      await scope.canReadAuthorEmail(target.projectName);
+      return null;
     },
 
     /**
@@ -326,17 +370,35 @@ export function createPipeline<Principal>({
      * its submitter — who supplied the feedback's, never its thread's.
      */
     presentCreated(scope: Scope<Principal>, feedback: FeedbackRecord) {
-      return present(scope, feedback, gate.echoesAuthorEmailOnCreate || scope.canReadAuthorEmail);
+      return present(scope, feedback, gate.echoesAuthorEmailOnCreate);
     },
 
-    /** Wire shape of a comment answering a POST — the same echo rule as {@link presentCreated}. */
-    presentCreatedComment(scope: Scope<Principal>, comment: CommentRecord): WireComment {
-      return toWireComment(comment, gate.echoesAuthorEmailOnCreate || scope.canReadAuthorEmail);
+    /**
+     * Wire shape of a comment answering a POST, in `projectName`'s thread —
+     * the same echo rule as {@link presentCreated}, with its permissions.
+     */
+    async presentCreatedComment(
+      scope: Scope<Principal>,
+      comment: CommentRecord,
+      projectName: string,
+    ): Promise<WireComment> {
+      const thread = { projectName, feedbackId: comment.feedbackId };
+      const [canReadEmails, canDeleteThread] = await Promise.all([
+        scope.canReadAuthorEmail(projectName),
+        may(scope, "DELETE", { action: "deleteComment", ...thread }),
+      ]);
+      return {
+        ...toWireComment(comment, gate.echoesAuthorEmailOnCreate || canReadEmails),
+        permissions: await commentPermissions(scope, thread, comment.id, canDeleteThread),
+      };
     },
 
-    /** Whether this caller's comment keeps the `team` role it asks for — see `AccessGate.canCommentAsTeam`. */
-    canCommentAsTeam(scope: Scope<Principal>): Promise<boolean> {
-      return gate.canCommentAsTeam(scope.context, scope.canReadAuthorEmail);
+    /**
+     * Whether this caller's comment in `projectName` keeps the `team` role it
+     * asks for — see `AccessGate.canCommentAsTeam`.
+     */
+    async canCommentAsTeam(scope: Scope<Principal>, projectName: string): Promise<boolean> {
+      return gate.canCommentAsTeam(scope.context, projectName, await scope.canReadAuthorEmail(projectName));
     },
 
     /**

@@ -14,6 +14,17 @@ export interface SitepingRequestContext<Principal> {
   principal: Principal;
 }
 
+/**
+ * The project a response is about, and the request it answers — what
+ * `canReadAuthorEmail` and `canCommentAsTeam` decide for, beside the
+ * principal.
+ */
+export interface SitepingProjectContext {
+  request: Request;
+  /** Project of the records the response carries, or of the thread a comment joins. */
+  projectName: string;
+}
+
 /** What `SitepingAccessControl.authorize` decides about. */
 export interface SitepingAuthorizationContext<Principal> extends SitepingRequestContext<Principal> {
   action: SitepingAction;
@@ -22,8 +33,9 @@ export interface SitepingAuthorizationContext<Principal> extends SitepingRequest
   /** Target record of `update` and `delete`; the feedback whose thread `createComment` and `deleteComment` target. */
   feedbackId?: string;
   /**
-   * Target comment of `deleteComment` — absent on a `dryRun`, whose answer
-   * covers the feedback's whole thread.
+   * Target comment of `deleteComment`. A `dryRun` asks first without one,
+   * for the feedback's whole thread; when that answer is `false`, it asks
+   * again for each comment of the thread, with its id.
    */
   commentId?: string;
   /**
@@ -53,34 +65,39 @@ export type SitepingPrincipal = object | string | number;
  *   check is what binds the authorized `projectName` to the record. It is
  *   also asked, with `dryRun: true`, to fill in the `permissions` of every
  *   feedback a response carries — `update`, `delete`, `createComment` and
- *   `deleteComment` (without a `commentId`) per feedback, plus `deleteAll`
- *   once per list — so clients hide what it would refuse. A dry run that
- *   throws refuses that permission (logged) rather than failing the
- *   response. Keep it fast: a page of 50 feedbacks takes 201 dry runs, 8
- *   at a time, sharing the one `request` — cache lookups per request. That
- *   request is the response's whatever the action, and `authenticate` is
- *   not asked again: a principal it admits on some methods only needs
- *   `authorize` to refuse it the other actions.
+ *   `deleteComment` (without a `commentId`, for the whole thread) per
+ *   feedback, plus `deleteAll` once per list — so clients hide what it
+ *   would refuse. When the thread-wide `deleteComment` answer is `false`,
+ *   each comment is asked about with its `commentId`, for its own
+ *   `permissions`. A dry run that throws refuses that permission (logged)
+ *   rather than failing the response. Keep it fast: a page of 50 feedbacks
+ *   takes 201 dry runs, plus one per comment of a thread it refuses
+ *   wholesale, 8 at a time, sharing the one `request` — cache lookups per
+ *   request. That request is the response's whatever the action, and
+ *   `authenticate` is not asked again: a principal it admits on some
+ *   methods only needs `authorize` to refuse it the other actions.
  * - `canReadAuthorEmail` decides whether responses include `authorEmail`
  *   (reviewer PII), on feedbacks and their comments — the list, the PATCH
- *   answer and the POST answer alike. Only `true` includes it: without the
- *   callback, every response blanks it. A policy that serves anonymous
- *   visitors resolves a principal for them too, so being authenticated says
- *   nothing about who may read reviewers' emails.
+ *   answer and the POST answer alike. It is asked once per request, for the
+ *   project the request targets (`context.projectName`). Only `true`
+ *   includes it: without the callback, every response blanks it. A policy
+ *   that serves anonymous visitors resolves a principal for them too, so
+ *   being authenticated says nothing about who may read reviewers' emails.
  * - `canCommentAsTeam` decides whether a comment that asks for the `team`
- *   role keeps it; otherwise it is stamped `client`. Defaults to the
- *   principal's `canReadAuthorEmail` answer (whoever may read reviewer
- *   emails is on the project side), so a policy that sets neither never
- *   lets a caller speak as the team. Once set, anything but `true`
- *   (`undefined` from plain JavaScript included) refuses.
+ *   role keeps it, in the project of its thread; otherwise it is stamped
+ *   `client`. Defaults to the principal's `canReadAuthorEmail` answer for
+ *   that project (whoever may read reviewer emails is on the project side),
+ *   so a policy that sets neither never lets a caller speak as the team.
+ *   Once set, anything but `true` (`undefined` from plain JavaScript
+ *   included) refuses.
  *
- * A throw from any of them answers a logged 500.
+ * A throw from any of them answers a logged 500, before anything is written.
  */
 export interface SitepingAccessControl<Principal extends SitepingPrincipal> {
   authenticate(request: Request): Principal | null | undefined | Promise<Principal | null | undefined>;
   authorize?(context: SitepingAuthorizationContext<Principal>): boolean | Promise<boolean>;
-  canReadAuthorEmail?(principal: Principal): boolean | Promise<boolean>;
-  canCommentAsTeam?(principal: Principal): boolean | Promise<boolean>;
+  canReadAuthorEmail?(principal: Principal, context: SitepingProjectContext): boolean | Promise<boolean>;
+  canCommentAsTeam?(principal: Principal, context: SitepingProjectContext): boolean | Promise<boolean>;
 }
 
 /**

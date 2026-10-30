@@ -41,7 +41,13 @@ export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
 
 export type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
 
-export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">>>;
+export interface CommentPermissions {
+    canDelete: boolean;
+}
+
+export type CommentResponse = Prettify<Serialized<Omit<CommentRecord, "clientId">> & {
+    permissions?: CommentPermissions | undefined;
+}>;
 
 export interface DiagnosticsCaptureOptions {
     console?: boolean | undefined;

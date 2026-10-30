@@ -10,9 +10,7 @@ import type {
 } from "./options.js";
 
 /** Outcome of the access check that opens every request. */
-export type AccessOutcome<Principal> =
-  | { ok: true; principal: Principal; canReadAuthorEmail: boolean }
-  | { ok: false; status: 401; error: string };
+export type AccessOutcome<Principal> = { ok: true; principal: Principal } | { ok: false; status: 401; error: string };
 
 /** The access policy the operations run, normalised from either option set. */
 export interface AccessGate<Principal> {
@@ -34,12 +32,18 @@ export interface AccessGate<Principal> {
    */
   admits(request: Request, method: SitepingHttpMethod): Promise<boolean>;
   authorize(context: SitepingAuthorizationContext<Principal>): Promise<boolean>;
+  /** Whether responses about `projectName` may include `authorEmail` for this caller. */
+  canReadAuthorEmail(context: SitepingRequestContext<Principal>, projectName: string): Promise<boolean>;
   /**
-   * Whether an authenticated caller's comment keeps the `team` role it asks
-   * for. Asked only when a comment does, so a GET never runs the policy's
-   * callback for it.
+   * Whether an authenticated caller's comment in `projectName` keeps the
+   * `team` role it asks for. Asked only when a comment does, so a GET never
+   * runs the policy's callback for it.
    */
-  canCommentAsTeam(context: SitepingRequestContext<Principal>, canReadAuthorEmail: boolean): Promise<boolean>;
+  canCommentAsTeam(
+    context: SitepingRequestContext<Principal>,
+    projectName: string,
+    canReadAuthorEmail: boolean,
+  ): Promise<boolean>;
 }
 
 const textEncoder = new TextEncoder();
@@ -111,16 +115,15 @@ export function createApiKeyGate({
   };
 
   const authenticate: AccessGate<null>["authenticate"] = async (request, method) => {
-    const canReadAuthorEmail = !redactUnauthenticatedEmails || isBearerAuthenticated(request);
     if (!apiKey) {
       // GET/POST/OPTIONS stay open by default so the widget keeps working in dev without config.
       if (requireAuthForDestructive && (method === "DELETE" || method === "PATCH")) {
         return { ok: false, status: 401, error: ERROR_MESSAGES.apiKeyRequiredForDestructive };
       }
-      return { ok: true, principal: null, canReadAuthorEmail };
+      return { ok: true, principal: null };
     }
     if (publicMethods?.has(method) || isBearerAuthenticated(request)) {
-      return { ok: true, principal: null, canReadAuthorEmail };
+      return { ok: true, principal: null };
     }
     return { ok: false, status: 401, error: ERROR_MESSAGES.unauthorized };
   };
@@ -137,6 +140,10 @@ export function createApiKeyGate({
     },
     async authorize() {
       return true;
+    },
+    // One key covers every project, so the project changes nothing here.
+    async canReadAuthorEmail({ request }) {
+      return !redactUnauthenticatedEmails || isBearerAuthenticated(request);
     },
     // The key proves the caller is the project side; a public POST does not.
     async canCommentAsTeam({ request }) {
@@ -160,9 +167,7 @@ export function createAccessGate<Principal extends SitepingPrincipal>(
       if (!principal) {
         return { ok: false, status: 401, error: ERROR_MESSAGES.unauthorized };
       }
-      // Emails are personal data: only a `true` answer reveals them — no
-      // callback, or `undefined` from a principal missing the flag, hides them.
-      return { ok: true, principal, canReadAuthorEmail: (await access.canReadAuthorEmail?.(principal)) === true };
+      return { ok: true, principal };
     },
     // A dry run reuses the response's request, so `authenticate` is never asked
     // about another method: `authorize` decides, by action.
@@ -172,11 +177,18 @@ export function createAccessGate<Principal extends SitepingPrincipal>(
     async authorize(context) {
       return access.authorize ? access.authorize(context) : true;
     },
+    // Emails are personal data: only a `true` answer reveals them — no
+    // callback, or `undefined` from a principal missing the flag, hides them.
+    async canReadAuthorEmail({ request, principal }, projectName) {
+      return (await access.canReadAuthorEmail?.(principal, { request, projectName })) === true;
+    },
     // Speaking as the team is an impersonation privilege: without the host's
     // word for it (its own callback, or the email access it grants), refuse.
-    async canCommentAsTeam({ principal }, canReadAuthorEmail) {
+    async canCommentAsTeam({ request, principal }, projectName, canReadAuthorEmail) {
       // Anything but `true` from a callback refuses, as for emails.
-      return access.canCommentAsTeam ? (await access.canCommentAsTeam(principal)) === true : canReadAuthorEmail;
+      return access.canCommentAsTeam
+        ? (await access.canCommentAsTeam(principal, { request, projectName })) === true
+        : canReadAuthorEmail;
     },
   };
 }
