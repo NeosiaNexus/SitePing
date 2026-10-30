@@ -1854,6 +1854,20 @@ describe("Panel", () => {
       },
     );
 
+    it("names each card checkbox after its feedback, in the panel's locale (#395)", async () => {
+      const fb = makeFeedback({ id: "cmg4opaque", message: "Le logo est flou" });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+
+      const card = shadow.querySelector<HTMLElement>('[data-feedback-id="cmg4opaque"]')!;
+      const label = card.querySelector(".sp-bulk-checkbox")!.getAttribute("aria-label")!;
+      expect(label).toBe(tWithParams(t, "bulk.selectFeedback", { label: card.getAttribute("aria-label")! }));
+      expect(label).toContain("Sélectionner");
+      expect(label).toContain("Le logo est flou");
+      expect(label).not.toContain("cmg4opaque");
+    });
+
     it("selection stays visible on cards after a re-render (group toggle / sort / load more)", async () => {
       const fb1 = makeFeedback({ id: "fb-1" });
       const fb2 = makeFeedback({ id: "fb-2" });
