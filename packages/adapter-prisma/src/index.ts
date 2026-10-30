@@ -1,5 +1,6 @@
 import {
   type CommentCreateInput,
+  type CommentCreateOutcome,
   type CommentRecord,
   clampPagination,
   type FeedbackCreateInput,
@@ -37,6 +38,7 @@ import {
 
 export type {
   CommentCreateInput,
+  CommentCreateOutcome,
   CommentPayload,
   FeedbackCreateInput,
   FeedbackPayload,
@@ -63,12 +65,16 @@ export type {
   DiscordWebhookPayload,
   FeedbackDeleteInput,
   FeedbackPatchInput,
+  GenericWebhookCommentPayload,
+  GenericWebhookDeletionPayload,
+  GenericWebhookEventMap,
   GenericWebhookPayload,
   GetQueryInput,
   SitepingAccessControl,
   SitepingAction,
   SitepingAuthorizationContext,
   SitepingConfigErrorCode,
+  SitepingCreatedComment,
   SitepingDeletionTarget,
   SitepingHandler,
   SitepingHandlerBaseOptions,
@@ -79,10 +85,12 @@ export type {
   SitepingRequestContext,
   SlackWebhookPayload,
   WebhookConfig,
+  WebhookDeliveryInfo,
+  WebhookEvent,
   WebhookPayloadMap,
   WebhookType,
 } from "@siteping/server";
-export { dispatchWebhook, dispatchWebhooks, isSitepingConfigError } from "@siteping/server";
+export { dispatchWebhook, dispatchWebhooks, isSitepingConfigError, WEBHOOK_EVENTS } from "@siteping/server";
 
 // ---------------------------------------------------------------------------
 // Minimal PrismaClient shape expected by this adapter
@@ -311,6 +319,13 @@ export class PrismaStore implements SitepingStore {
    * field: a field would set it on every instance, hiding a subclass's method.
    */
   declare readonly addComment?: (feedbackId: string, data: CommentCreateInput) => Promise<CommentRecord>;
+  /**
+   * {@link addComment} reporting whether this call inserted the comment —
+   * defined under the same condition, unless a subclass overrides
+   * `addComment` alone. The `clientId` unique constraint arbitrates races: a
+   * concurrent insert that loses reports `created: false`.
+   */
+  declare readonly addCommentIfAbsent?: (feedbackId: string, data: CommentCreateInput) => Promise<CommentCreateOutcome>;
   /** Delete one comment from a feedback's thread — defined under the same condition as {@link addComment}. */
   declare readonly deleteComment?: (feedbackId: string, commentId: string) => Promise<void>;
 
@@ -320,7 +335,12 @@ export class PrismaStore implements SitepingStore {
     const comments = prisma.sitepingComment;
     this.include = comments ? INCLUDE_ANNOTATIONS_AND_COMMENTS : INCLUDE_ANNOTATIONS;
     if (comments) {
-      this.addComment ??= (feedbackId, data) => this.insertComment(comments, feedbackId, data);
+      // A subclass that overrides `addComment` alone keeps it as the write
+      // path: an `addCommentIfAbsent` derived beside it would bypass it. One
+      // that overrides `addCommentIfAbsent` gets an `addComment` built on it.
+      if (!this.addComment) this.addCommentIfAbsent ??= (id, data) => this.insertComment(comments, id, data);
+      const addCommentIfAbsent = this.addCommentIfAbsent;
+      if (addCommentIfAbsent) this.addComment ??= async (id, data) => (await addCommentIfAbsent(id, data)).comment;
       this.deleteComment ??= (feedbackId, commentId) => this.removeComment(comments, feedbackId, commentId);
     }
     if (typeof options.caseInsensitiveSearch === "boolean") {
@@ -592,11 +612,11 @@ export class PrismaStore implements SitepingStore {
     comments: PrismaModelDelegate,
     submittedFeedbackId: string,
     submitted: CommentCreateInput,
-  ): Promise<CommentRecord> {
+  ): Promise<CommentCreateOutcome> {
     const feedbackId = toStorableText(submittedFeedbackId);
     const data = toStorableValue(submitted);
     const replayed = await this.findComment(comments, data.clientId);
-    if (replayed) return replayed;
+    if (replayed) return { comment: replayed, created: false };
     if (
       data.authorRole === "client" &&
       (await comments.count({ where: { feedbackId, authorRole: "client" } })) >= MAX_COMMENTS_PER_FEEDBACK
@@ -605,7 +625,7 @@ export class PrismaStore implements SitepingStore {
     }
 
     try {
-      return (await comments.create({
+      const comment = (await comments.create({
         data: {
           feedback: { connect: { id: feedbackId } },
           body: data.body,
@@ -615,9 +635,10 @@ export class PrismaStore implements SitepingStore {
           clientId: data.clientId,
         },
       })) as CommentRecord;
+      return { comment, created: true };
     } catch (error) {
       const winner = isStoreDuplicate(error) ? await this.findComment(comments, data.clientId) : null;
-      if (winner) return winner;
+      if (winner) return { comment: winner, created: false };
       throw toStoreError(error);
     }
   }

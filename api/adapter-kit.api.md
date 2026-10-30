@@ -151,6 +151,11 @@ export interface CommentCreateInput {
     clientId: string;
 }
 
+export interface CommentCreateOutcome {
+    comment: CommentRecord;
+    created: boolean;
+}
+
 export interface CommentRecord {
     authorEmail: string;
     authorName: string;
@@ -374,6 +379,7 @@ export interface SitepingCapabilities {
 
 export interface SitepingStore {
     addComment?(feedbackId: string, data: CommentCreateInput): Promise<CommentRecord>;
+    addCommentIfAbsent?(feedbackId: string, data: CommentCreateInput): Promise<CommentCreateOutcome>;
     createFeedback(data: FeedbackCreateInput): Promise<FeedbackRecord>;
     createFeedbackIfAbsent?(data: FeedbackCreateInput): Promise<FeedbackCreateOutcome>;
     deleteAllFeedbacks(projectName: string): Promise<void>;
@@ -434,7 +440,7 @@ export function clampPagination(query: Pick<FeedbackQuery, "limit" | "page">): P
 
 export function createCollectionStore(backend: CollectionStoreBackend & {
     comments: true;
-}): CollectionStore & Required<Pick<SitepingStore, "addComment" | "createFeedbackIfAbsent" | "deleteComment">>;
+}): CollectionStore & Required<Pick<SitepingStore, "addComment" | "addCommentIfAbsent" | "createFeedbackIfAbsent" | "deleteComment">>;
 
 export function createCollectionStore(backend: CollectionStoreBackend): CollectionStore & Required<Pick<SitepingStore, "createFeedbackIfAbsent">>;
 
