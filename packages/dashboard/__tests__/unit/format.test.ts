@@ -150,12 +150,15 @@ describe("recordPageUrl — siteUrl (#309)", () => {
   });
 
   it("resolves each project against its own entry, and keeps the default for a project without one", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const siteUrl = { client: "https://client.example.com", shop: "https://shop.example.com/" };
     expect(recordPageUrl(record("/a", "client"), { siteUrl })).toBe("https://client.example.com/a");
     expect(recordPageUrl(record("/a", "shop"), { siteUrl })).toBe("https://shop.example.com/a");
     expect(recordPageUrl(record("/a", "other"), { siteUrl })).toBe("http://localhost/a");
-    // An inherited key is not an entry.
+    // An inherited key is not an entry — not an invalid one either.
     expect(recordPageUrl(record("/a", "constructor"), { siteUrl })).toBe("http://localhost/a");
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it("keeps an absolute record URL as stored", () => {
