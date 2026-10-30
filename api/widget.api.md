@@ -353,6 +353,7 @@ export interface Translations {
     "type.other": string;
     "type.question": string;
     "bulk.selectFeedback": string;
+    "panel.notOnPage": string;
     "comments.full": string;
     "comments.title": string;
     "comments.team": string;
