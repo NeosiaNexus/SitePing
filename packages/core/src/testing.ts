@@ -108,15 +108,6 @@ const MINIMAL_ANNOTATION = {
 /** Tuning knobs for backends whose documented contract legitimately varies. */
 export interface StoreConformanceOptions {
   /**
-   * How `createFeedback` reacts to a duplicate `clientId` — both are valid
-   * per the `SitepingStore` contract:
-   * - `"return"` (default): idempotently return the existing record. A
-   *   concurrent create that loses the insert race may still throw
-   *   `StoreDuplicateError`, which the HTTP handler recovers.
-   * - `"throw"`: throw `StoreDuplicateError` (matched via `isStoreDuplicate`).
-   */
-  duplicateBehavior?: "return" | "throw" | undefined;
-  /**
    * Whether `search` matches case-insensitively. Defaults to `true` (the
    * in-memory pipeline's behavior). Set to `false` for SQL backends whose
    * collation is case-sensitive — the suite then only asserts same-case
@@ -146,7 +137,6 @@ export function testSitepingStore(
   factory: () => SitepingStore | Promise<SitepingStore>,
   options?: StoreConformanceOptions,
 ): void {
-  const duplicateBehavior = options?.duplicateBehavior ?? "return";
   const caseInsensitiveSearch = options?.caseInsensitiveSearch ?? true;
   const failWrites = options?.failWrites;
 
@@ -264,26 +254,22 @@ export function testSitepingStore(
         expect(record.diagnostics).toBeNull();
       });
 
-      if (duplicateBehavior === "return") {
-        it("deduplicates by clientId (idempotent)", async () => {
-          const input = createInput({ clientId: "same-id" });
-          const first = await store.createFeedback(input);
-          const second = await store.createFeedback(input);
+      it("throws StoreDuplicateError on a duplicate clientId, and keeps the first record", async () => {
+        const input = createInput({ clientId: "same-id" });
+        const first = await store.createFeedback(input);
+        await expect(store.createFeedback(input)).rejects.toSatisfy(isStoreDuplicate);
 
-          expect(second.id).toBe(first.id);
-          const { total } = await store.getFeedbacks({ projectName: "test-project" });
-          expect(total).toBe(1);
-        });
-      } else {
-        it("throws StoreDuplicateError on duplicate clientId", async () => {
-          const input = createInput({ clientId: "same-id" });
-          await store.createFeedback(input);
-          await expect(store.createFeedback(input)).rejects.toSatisfy(isStoreDuplicate);
-
-          const { total } = await store.getFeedbacks({ projectName: "test-project" });
-          expect(total).toBe(1);
-        });
-      }
+        const { feedbacks, total } = await store.getFeedbacks({ projectName: "test-project" });
+        expect(total).toBe(1);
+        expect(feedbacks[0]?.id).toBe(first.id);
+        // The idempotent path, when the store has it, reports that same record.
+        if (store.createFeedbackIfAbsent) {
+          await expect(store.createFeedbackIfAbsent(input)).resolves.toEqual({
+            feedback: expect.objectContaining({ id: first.id }),
+            created: false,
+          });
+        }
+      });
 
       it("stores newest feedbacks first", async () => {
         const a = await store.createFeedback(createInput({ message: "first" }));
@@ -823,10 +809,9 @@ export function testSitepingStore(
         const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
         expect(feedbacks).toHaveLength(1);
         const returned = results.flatMap((r) => (r.status === "fulfilled" ? [r.value.id] : []));
-        // "return" still lets the caller that loses the insert race throw — the
-        // handler recovers it through findByClientId.
-        if (duplicateBehavior === "throw") expect(returned).toHaveLength(1);
-        else expect(returned.length).toBeGreaterThan(0);
+        // The caller that loses the insert race throws — the handler recovers
+        // it through findByClientId.
+        expect(returned).toHaveLength(1);
         for (const id of returned) expect(id).toBe(feedbacks[0]?.id);
         for (const r of results) if (r.status === "rejected") expect(r.reason).toSatisfy(isStoreDuplicate);
       });

@@ -4,6 +4,7 @@ import {
   buildFeedbackRecord,
   type CommentCreateInput,
   type FeedbackCreateInput,
+  isStoreDuplicate,
   isStoreNotFound,
   isStorePersistence,
   SCREENSHOT_DELETE_CONCURRENCY,
@@ -465,10 +466,9 @@ for (const dialect of dialects) {
       const store = database.createStore({ screenshotStorage: storage, logger });
       const input = feedbackInput({ screenshotDataUrl: SCREENSHOT_DATA_URL });
 
-      const first = await store.createFeedback(input);
-      const replay = await store.createFeedback(input);
+      await store.createFeedback(input);
+      await expect(store.createFeedback(input)).rejects.toSatisfy(isStoreDuplicate);
 
-      expect(replay.id).toBe(first.id);
       expect(uploads).toHaveLength(1);
     });
 
@@ -1762,7 +1762,13 @@ describe("DrizzleStore on a database built with withReplicas", () => {
     const created = await store.createFeedback(feedbackInput());
     const comment = await store.addComment(created.id, commentInput());
     expect(await countPrimaryFeedbacks()).toBe(1);
-    expect(await store.createFeedback(feedbackInput({ clientId: created.clientId }))).toMatchObject({ id: created.id });
+    await expect(store.createFeedback(feedbackInput({ clientId: created.clientId }))).rejects.toSatisfy(
+      isStoreDuplicate,
+    );
+    expect(await store.createFeedbackIfAbsent(feedbackInput({ clientId: created.clientId }))).toMatchObject({
+      feedback: { id: created.id },
+      created: false,
+    });
     expect(await store.findByClientId(created.clientId)).toEqual({ ...created, comments: [comment] });
     expect((await store.getFeedbacks({ projectName: "site" })).total).toBe(1);
     expect(await store.verifyProjectOwnership(created.id, "site")).toBe(true);

@@ -501,11 +501,11 @@ function buildSeeds(): Seed[] {
   ];
 }
 
-/** Idempotent (clientId dedup in MemoryStore) — safe to call on every reset. */
+/** Idempotent (`createFeedbackIfAbsent` skips a seed already stored) — safe to call on every reset. */
 export async function seedDemoStore(store: MemoryStore): Promise<void> {
   for (const seed of buildSeeds()) {
     const screenshot = SEED_SCREENSHOTS[seed.clientId];
-    const record = await store.createFeedback({
+    const { feedback: record, created } = await store.createFeedbackIfAbsent({
       projectName: seed.projectName,
       type: seed.type,
       status: seed.status,
@@ -522,6 +522,7 @@ export async function seedDemoStore(store: MemoryStore): Promise<void> {
       screenshotRegion: screenshot?.region ?? null,
       diagnostics: seed.diagnostics ?? null,
     });
+    if (!created) continue;
 
     // Back-date the live reference so the inbox shows a believable timeline.
     const createdAt = new Date(Date.now() - seed.ageMinutes * 60_000);
