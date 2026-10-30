@@ -15,6 +15,11 @@
       "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
       "project": ["src/**", "__tests__/**"]
     },
+    "packages/adapter-prisma": {
+      "entry": ["src/index.ts", "__tests__/**/*.{test,test-d}.{ts,tsx}"],
+      "project": ["src/**", "__tests__/**"],
+      "ignoreDependencies": ["prisma", "@prisma/client"]
+    },
     "packages/adapter-kit": {
       "entry": ["__tests__/**/*.{test,test-d}.{ts,tsx}"],
       "project": ["src/**", "__tests__/**"]
