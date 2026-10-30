@@ -539,9 +539,11 @@ export class Popup {
     }
   }
 
+  // A category helps triage but gates nothing: Send needs only a message, and
+  // a feedback sent without a category is filed as "other" (#305).
   private updateSubmitState(): void {
     if (this.submittingState) return;
-    const enabled = this.selectedType !== null && this.textarea.value.trim().length > 0;
+    const enabled = this.textarea.value.trim().length > 0;
     this.submitBtn.disabled = !enabled;
     this.submitBtn.style.opacity = enabled ? "1" : "0.35";
     this.submitBtn.style.pointerEvents = enabled ? "auto" : "none";
@@ -549,9 +551,9 @@ export class Popup {
 
   private submit(): void {
     if (this.submittingState) return;
-    if (!this.selectedType || !this.textarea.value.trim()) return;
+    if (!this.textarea.value.trim()) return;
 
-    const result: PopupResult = { type: this.selectedType, message: this.textarea.value.trim() };
+    const result: PopupResult = { type: this.selectedType ?? "other", message: this.textarea.value.trim() };
 
     if (!this.onSubmit) {
       // Legacy fire-and-forget path: resolve immediately and hide.
