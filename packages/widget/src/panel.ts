@@ -299,6 +299,7 @@ export class Panel {
         // Same rule as the page markers: another page's scroll offset and
         // anchor mean nothing here (reachable via the "all pages" scope).
         canGoToAnnotation: (fb) => !this.scopeAnnotationsByUrl || fb.url === this.getScope().url,
+        lostNote: (id) => this.lostNote(id),
         onGoToAnnotation: (fb) => {
           if (fb.annotations.length > 0) {
             const ann = fb.annotations[0];
@@ -448,6 +449,7 @@ export class Panel {
     this.listContainer.addEventListener("mouseout", this.onListMouseout);
 
     // Events
+    this.bus.on("markers:placed", () => this.syncLostNotes());
     this.bus.on("panel:toggle", (open) => {
       open ? this.open() : this.close();
     });
@@ -923,6 +925,25 @@ export class Panel {
     }
   }
 
+  /**
+   * "Not visible on this page", shown while the feedback has no pin here —
+   * its element is gone or hidden (#304). `syncLostNotes` keeps it current
+   * as pins are placed and lost.
+   */
+  private lostNote(feedbackId: string): HTMLElement {
+    const note = el("div", { class: "sp-lost" });
+    note.dataset.lostFor = feedbackId;
+    setText(note, this.t("panel.notOnPage"));
+    note.hidden = !this.markers.isLost(feedbackId);
+    return note;
+  }
+
+  private syncLostNotes(): void {
+    for (const note of this.root.querySelectorAll<HTMLElement>("[data-lost-for]")) {
+      note.hidden = !this.markers.isLost(note.dataset.lostFor ?? "");
+    }
+  }
+
   private createCard(feedback: FeedbackResponse, number: number): HTMLElement {
     // Closed = terminal (resolved, wont_fix): muted card + "Reopen" action.
     const isResolved = isClosedStatus(feedback.status);
@@ -1028,6 +1049,7 @@ export class Panel {
     body.appendChild(header);
     body.appendChild(message);
     body.appendChild(expandBtn);
+    body.appendChild(this.lostNote(feedback.id));
     if (footer.hasChildNodes()) body.appendChild(footer);
 
     card.appendChild(bar);

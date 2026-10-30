@@ -18,6 +18,7 @@ export const es: Translations = {
   "panel.retry": "Reintentar",
   "panel.empty": "Aún no hay comentarios",
   "panel.showMore": "Mostrar más",
+  "panel.notOnPage": "No visible en esta página",
   "panel.showLess": "Mostrar menos",
   "panel.resolve": "Resolver",
   "panel.reopen": "Reabrir",

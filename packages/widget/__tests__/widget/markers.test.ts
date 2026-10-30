@@ -537,6 +537,44 @@ describe("MarkerManager", () => {
   });
 
   // -------------------------------------------------------------------------
+  // isLost — the panel's "Not visible on this page" (#304)
+  // -------------------------------------------------------------------------
+
+  describe("isLost", () => {
+    it("is true only for a rendered feedback with no pin placed", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      expect(markers.isLost("fb-1")).toBe(false);
+      expect(markers.isLost("unknown")).toBe(false);
+
+      mockState.returnNull = true;
+      markers.render([makeFeedback({ id: "fb-orphan" })]);
+      expect(markers.isLost("fb-orphan")).toBe(true);
+    });
+
+    it("ignores the eye toggle, which hides pins the page still holds", () => {
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      bus.emit("annotations:toggle", false);
+      expect(markers.isLost("fb-1")).toBe(false);
+    });
+
+    it("announces markers:placed on render and when a pin is lost on reposition", () => {
+      vi.useFakeTimers();
+      const placed = vi.fn();
+      bus.on("markers:placed", placed);
+      markers.render([makeFeedback({ id: "fb-1" })]);
+      expect(placed).toHaveBeenCalledTimes(1);
+
+      mockState.element?.remove();
+      mockState.returnNull = true;
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      expect(markers.isLost("fb-1")).toBe(true);
+      expect(placed).toHaveBeenCalledTimes(2);
+      vi.useRealTimers();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Annotations toggle via event bus
   // -------------------------------------------------------------------------
 

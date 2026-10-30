@@ -63,6 +63,8 @@ export interface WidgetEvents {
   "feedback:error": [Error];
   /** Emitted whenever the marker set changes — payload is the open (unresolved) count for the current page. */
   "markers:changed": [number];
+  /** Internal-only: a pin was placed or lost on the page — see `MarkerManager.isLost`. */
+  "markers:placed": [];
   "annotation:start": [];
   "annotation:end": [];
   "annotation:complete": [AnnotationComplete];
