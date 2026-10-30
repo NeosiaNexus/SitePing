@@ -32,10 +32,21 @@ const minifyInboxCss: EsbuildPlugin = {
 // `useState`, …, a few hundred call sites) and prints `true` for `!0`. The
 // Terser pass mangles them again (~1 kB gzip off the ESM entry), over every
 // ESM and CJS file so the two formats ship the same code.
+//
+// It also writes the `"use client"` directive on the two entries, so a React
+// Server Component can render `<SitepingInbox />` without a client wrapper
+// (#280). Rollup and Terser both drop directives from the code itself; the
+// locale chunks are plain data and don't need one.
+// `scripts/verify-dist.mjs` asserts the directive after every build.
 async function terserDist(): Promise<void> {
   const files = (await readdir("dist")).filter((file) => /\.c?js$/.test(file));
   await Promise.all(
-    files.map((file) => terserPass(`dist/${file}`, file.endsWith(".cjs") ? { toplevel: true } : { module: true })),
+    files.map((file) =>
+      terserPass(`dist/${file}`, {
+        ...(file.endsWith(".cjs") ? { toplevel: true } : { module: true }),
+        ...(/^index\.c?js$/.test(file) && { preamble: '"use client";' }),
+      }),
+    ),
   );
 }
 
