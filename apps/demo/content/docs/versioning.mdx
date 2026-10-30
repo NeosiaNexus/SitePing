@@ -5,7 +5,7 @@ description: What 1.x promises — the public API semver covers, what each kind 
 
 SitePing follows [semantic versioning](https://semver.org). From 1.0.0, a release inside a major never breaks what this page lists as covered: code written against 1.0 keeps compiling and behaving the same on every 1.x, feedback stored by a 1.0 widget keeps resolving, and a 1.x widget keeps talking to a 1.x server.
 
-These packages go 1.0 together: `@siteping/widget`, `@siteping/dashboard`, `@siteping/server`, `@siteping/adapter-prisma`, `@siteping/adapter-memory`, `@siteping/adapter-localstorage`, `@siteping/adapter-kit` and `@siteping/cli`. Three stay on 0.x for now — see [Packages still on 0.x](#packages-still-on-0x).
+These packages go 1.0 together: `@siteping/widget`, `@siteping/dashboard`, `@siteping/server`, `@siteping/adapter-prisma`, `@siteping/adapter-memory`, `@siteping/adapter-localstorage`, `@siteping/adapter-kit` and `@siteping/cli`. Three stay on 0.x for now — see [Packages still on 0.x](#packages-still-on-0x). Coming from 0.x? [Upgrading to 1.0](/docs/upgrade) lists every breaking change.
 
 ## What each release may change
 
@@ -23,9 +23,9 @@ Everything a 1.0 package exposes through its `exports` map is covered, unless it
 
 | Package | Covered entry points |
 |---|---|
-| `@siteping/widget` | `.` — `initSiteping`, `registerLocale`, `loadLocale` and the exported types · `./react` — `useSiteping` · the `<script>` bundle's `SitePing` global, with the same members |
-| `@siteping/dashboard` | `.` — `SitepingInbox`, `useSitepingInbox`, `createEndpointSource`, `createStoreSource`, `registerLocale`, `FEEDBACK_STATUSES`, `FEEDBACK_TYPES`, `isClosedStatus` and the exported types |
-| `@siteping/server` | `.` — `createSitepingHandler`, `dispatchWebhook(s)` and the option, hook and policy types |
+| `@siteping/widget` | `.` — `initSiteping`, `isSitepingError`, `registerLocale`, `loadLocale` and the exported types · `./react` — `useSiteping` · the `<script>` bundle's [`SitePing` global](/docs/widget/script-tag#the-siteping-global), with the same members |
+| `@siteping/dashboard` | `.` — `SitepingInbox`, `useSitepingInbox`, `createEndpointSource`, `createStoreSource`, `recordPageUrl`, `registerLocale`, `isSitepingError`, `FEEDBACK_STATUSES`, `FEEDBACK_TYPES`, `isClosedStatus` and the exported types |
+| `@siteping/server` | `.` — `createSitepingHandler`, `dispatchWebhook(s)`, `WEBHOOK_EVENTS`, `isSitepingConfigError`, `SITEPING_PROTOCOL_VERSION` and the option, hook and policy types · `./openapi.json` — the protocol, as data |
 | `@siteping/adapter-prisma` | `.` — `PrismaStore`, `createSitepingHandler` and the types it re-exports |
 | `@siteping/adapter-memory` / `adapter-localstorage` | `.` — `MemoryStore` / `LocalStorageStore` |
 | `@siteping/adapter-kit` | `.` — the store contract and its types, `createCollectionStore`, the record builders, the filter and pagination helpers, the store errors and their guards · `./testing` — `testSitepingStore` |
@@ -47,7 +47,7 @@ The events of `instance.on` — `feedback:sent`, `feedback:deleted`, `comment:ad
 
 ### Errors
 
-Branch on codes, never on messages. An error handed to `onError`, to the `feedback:error` event or to the dashboard carries a `code` — `NETWORK`, `VALIDATION`, `AUTH`, `SERVER` or `TIMEOUT` — and, when the server answered, its HTTP `status`. The store errors (`StoreNotFoundError`, `StoreDuplicateError`, `StorePersistenceError`, `StoreLimitError`, `StoreValueTooLongError`), their guards (`isStoreNotFound` and the others) and their `code` values are covered too. Error **messages** are not: they are written for humans and may be reworded in any release.
+Branch on codes, never on messages. An error handed to `onError`, to the `feedback:error` event or to the dashboard carries a `code` — `NETWORK`, `VALIDATION`, `AUTH`, `SERVER` or `TIMEOUT` — a `retryable` flag and, when the server answered, its HTTP `status`. In the widget and the dashboard, the covered surface is the `isSitepingError()` guard, the `SitepingErrorCode` union and the `SitepingClientError` type those fields narrow through; the error classes are not exported, so match by guard and `code`, never with `instanceof`. On the server, a configuration `createSitepingHandler` refuses throws an error with a stable `CONFIG_*` code, matched by `isSitepingConfigError` — the codes are listed under [Configuration errors](/docs/server#configuration-errors). The store errors (`StoreNotFoundError`, `StoreDuplicateError`, `StorePersistenceError`, `StoreLimitError`, `StoreValueTooLongError`), their guards (`isStoreNotFound` and the others) and their `code` values are covered too. Error **messages** are not: they are written for humans and may be reworded in any release.
 
 ### Translations
 
@@ -55,11 +55,11 @@ The keys of each package's `Translations` type are covered: renaming or removing
 
 ## The HTTP protocol
 
-The protocol between the widget, the dashboard and the server is covered as the [HTTP reference](/docs/server#http-reference) describes it: one endpoint; its methods; how `POST` and `DELETE` route by body key (`feedbackId`, `commentId`, `deleteAll`); query parameters; request fields; status codes; and the JSON keys of responses and errors (`{ error }`, `{ errors: [{ field, message }] }`). Response types derive from the record types, so the wire and the TypeScript types move together. A machine-readable specification is tracked in [#314](https://github.com/NeosiaNexus/SitePing/issues/314).
+The protocol between the widget, the dashboard and the server is covered as the [HTTP reference](/docs/server#http-reference) describes it: one endpoint; its methods; how `POST` and `DELETE` route by body key (`feedbackId`, `commentId`, `deleteAll`); query parameters; request fields; status codes; and the JSON keys of responses and errors (`{ error }`, `{ errors: [{ field, message }] }`). Response types derive from the record types, so the wire and the TypeScript types move together. The same protocol ships as data: `@siteping/server/openapi.json`, an OpenAPI 3.1 document generated from the server's own schemas — see [Wire protocol](/docs/server#wire-protocol).
 
-A minor may add optional request fields, query parameters and response fields; a client ignores fields it doesn't know. Any 1.x widget or dashboard works with any 1.x server: a feature that needs server support is detected from the list response (today its `capabilities`) and stays hidden on a server that lacks it.
+A minor may add optional request fields, query parameters and response fields; a client ignores fields it doesn't know. Any 1.x widget or dashboard works with any 1.x server: a feature that needs server support is detected from the list response — its `protocol` version and its `capabilities` — and stays hidden on a server that lacks it.
 
-**Webhooks** follow the same rules: the `generic` body (`GenericWebhookPayload`) and the headers you configure are covered. Slack and Discord messages are presentation — their wording and layout may change in any release.
+**Webhooks** follow the same rules: the [event](/docs/server#events) names, the `X-Siteping-Event` header every delivery carries, the `generic` bodies (`GenericWebhookEventMap`) and the headers you configure are covered. A minor may add events; new ones stay opt-in, so a receiver never gets a body it didn't ask for. Slack and Discord messages are presentation — their wording and layout may change in any release.
 
 ## The database schema
 

@@ -5,7 +5,7 @@ description: Ce que promet la 1.x — l'API publique couverte par semver, ce que
 
 SitePing suit le [versionnage sémantique](https://semver.org/lang/fr/). À partir de la 1.0.0, une release au sein d'une version majeure ne casse jamais ce que cette page déclare couvert : du code écrit pour la 1.0 compile et se comporte de la même façon sur toute la 1.x, un feedback enregistré par un widget 1.0 continue de se résoudre, et un widget 1.x continue de parler à un serveur 1.x.
 
-Ces packages passent en 1.0 ensemble : `@siteping/widget`, `@siteping/dashboard`, `@siteping/server`, `@siteping/adapter-prisma`, `@siteping/adapter-memory`, `@siteping/adapter-localstorage`, `@siteping/adapter-kit` et `@siteping/cli`. Trois restent en 0.x pour l'instant — voir [Les packages encore en 0.x](#les-packages-encore-en-0x).
+Ces packages passent en 1.0 ensemble : `@siteping/widget`, `@siteping/dashboard`, `@siteping/server`, `@siteping/adapter-prisma`, `@siteping/adapter-memory`, `@siteping/adapter-localstorage`, `@siteping/adapter-kit` et `@siteping/cli`. Trois restent en 0.x pour l'instant — voir [Les packages encore en 0.x](#les-packages-encore-en-0x). Vous venez de la 0.x ? [Passer à la 1.0](/fr/docs/upgrade) liste chaque changement cassant.
 
 ## Ce que chaque release peut changer
 
@@ -23,9 +23,9 @@ Tout ce qu'un package 1.0 expose par sa map `exports` est couvert, sauf ce qui e
 
 | Package | Points d'entrée couverts |
 |---|---|
-| `@siteping/widget` | `.` — `initSiteping`, `registerLocale`, `loadLocale` et les types exportés · `./react` — `useSiteping` · la globale `SitePing` du bundle `<script>`, avec les mêmes membres |
-| `@siteping/dashboard` | `.` — `SitepingInbox`, `useSitepingInbox`, `createEndpointSource`, `createStoreSource`, `registerLocale`, `FEEDBACK_STATUSES`, `FEEDBACK_TYPES`, `isClosedStatus` et les types exportés |
-| `@siteping/server` | `.` — `createSitepingHandler`, `dispatchWebhook(s)` et les types d'options, de hooks et de politiques |
+| `@siteping/widget` | `.` — `initSiteping`, `isSitepingError`, `registerLocale`, `loadLocale` et les types exportés · `./react` — `useSiteping` · la [globale `SitePing`](/fr/docs/widget/script-tag#le-global-siteping) du bundle `<script>`, avec les mêmes membres |
+| `@siteping/dashboard` | `.` — `SitepingInbox`, `useSitepingInbox`, `createEndpointSource`, `createStoreSource`, `recordPageUrl`, `registerLocale`, `isSitepingError`, `FEEDBACK_STATUSES`, `FEEDBACK_TYPES`, `isClosedStatus` et les types exportés |
+| `@siteping/server` | `.` — `createSitepingHandler`, `dispatchWebhook(s)`, `WEBHOOK_EVENTS`, `isSitepingConfigError`, `SITEPING_PROTOCOL_VERSION` et les types d'options, de hooks et de politiques · `./openapi.json` — le protocole, sous forme de données |
 | `@siteping/adapter-prisma` | `.` — `PrismaStore`, `createSitepingHandler` et les types qu'il réexporte |
 | `@siteping/adapter-memory` / `adapter-localstorage` | `.` — `MemoryStore` / `LocalStorageStore` |
 | `@siteping/adapter-kit` | `.` — le contrat de store et ses types, `createCollectionStore`, les constructeurs d'enregistrements, les helpers de filtre et de pagination, les erreurs de store et leurs gardes · `./testing` — `testSitepingStore` |
@@ -47,7 +47,7 @@ Les événements de `instance.on` — `feedback:sent`, `feedback:deleted`, `comm
 
 ### Les erreurs
 
-Testez les codes, jamais les messages. Une erreur transmise à `onError`, à l'événement `feedback:error` ou au dashboard porte un `code` — `NETWORK`, `VALIDATION`, `AUTH`, `SERVER` ou `TIMEOUT` — et, quand le serveur a répondu, son `status` HTTP. Les erreurs de store (`StoreNotFoundError`, `StoreDuplicateError`, `StorePersistenceError`, `StoreLimitError`, `StoreValueTooLongError`), leurs gardes (`isStoreNotFound` et les autres) et leurs valeurs de `code` sont couvertes aussi. Les **messages** d'erreur ne le sont pas : ils sont écrits pour des humains et peuvent être reformulés dans n'importe quelle release.
+Testez les codes, jamais les messages. Une erreur transmise à `onError`, à l'événement `feedback:error` ou au dashboard porte un `code` — `NETWORK`, `VALIDATION`, `AUTH`, `SERVER` ou `TIMEOUT` —, un indicateur `retryable` et, quand le serveur a répondu, son `status` HTTP. Dans le widget et le dashboard, la surface couverte est la garde `isSitepingError()`, l'union `SitepingErrorCode` et le type `SitepingClientError` par lequel ces champs se précisent ; les classes d'erreur ne sont pas exportées, donc reconnaissez une erreur par la garde et son `code`, jamais avec `instanceof`. Côté serveur, une configuration que `createSitepingHandler` refuse lève une erreur au `code` `CONFIG_*` stable, reconnue par `isSitepingConfigError` — les codes sont listés dans [Erreurs de configuration](/fr/docs/server#erreurs-de-configuration). Les erreurs de store (`StoreNotFoundError`, `StoreDuplicateError`, `StorePersistenceError`, `StoreLimitError`, `StoreValueTooLongError`), leurs gardes (`isStoreNotFound` et les autres) et leurs valeurs de `code` sont couvertes aussi. Les **messages** d'erreur ne le sont pas : ils sont écrits pour des humains et peuvent être reformulés dans n'importe quelle release.
 
 ### Les traductions
 
@@ -55,11 +55,11 @@ Les clés du type `Translations` de chaque package sont couvertes : renommer ou 
 
 ## Le protocole HTTP
 
-Le protocole entre le widget, le dashboard et le serveur est couvert tel que la [référence HTTP](/fr/docs/server#référence-http) le décrit : un seul endpoint ; ses méthodes ; le routage de `POST` et `DELETE` par clé du corps (`feedbackId`, `commentId`, `deleteAll`) ; les paramètres de requête ; les champs des requêtes ; les codes de statut ; et les clés JSON des réponses et des erreurs (`{ error }`, `{ errors: [{ field, message }] }`). Les types de réponse dérivent des types d'enregistrement, donc le format sur le réseau et les types TypeScript évoluent ensemble. Une spécification lisible par machine est suivie dans [#314](https://github.com/NeosiaNexus/SitePing/issues/314).
+Le protocole entre le widget, le dashboard et le serveur est couvert tel que la [référence HTTP](/fr/docs/server#référence-http) le décrit : un seul endpoint ; ses méthodes ; le routage de `POST` et `DELETE` par clé du corps (`feedbackId`, `commentId`, `deleteAll`) ; les paramètres de requête ; les champs des requêtes ; les codes de statut ; et les clés JSON des réponses et des erreurs (`{ error }`, `{ errors: [{ field, message }] }`). Les types de réponse dérivent des types d'enregistrement, donc le format sur le réseau et les types TypeScript évoluent ensemble. Le même protocole est publié sous forme de données : `@siteping/server/openapi.json`, un document OpenAPI 3.1 généré à partir des schémas du serveur lui-même — voir [Le protocole](/fr/docs/server#le-protocole).
 
-Une mineure peut ajouter des champs de requête optionnels, des paramètres de requête et des champs de réponse ; un client ignore les champs qu'il ne connaît pas. Tout widget ou dashboard 1.x fonctionne avec tout serveur 1.x : une fonctionnalité qui demande le concours du serveur est détectée dans la réponse de liste (aujourd'hui ses `capabilities`) et reste masquée face à un serveur qui ne l'a pas.
+Une mineure peut ajouter des champs de requête optionnels, des paramètres de requête et des champs de réponse ; un client ignore les champs qu'il ne connaît pas. Tout widget ou dashboard 1.x fonctionne avec tout serveur 1.x : une fonctionnalité qui demande le concours du serveur est détectée dans la réponse de liste — sa version `protocol` et ses `capabilities` — et reste masquée face à un serveur qui ne l'a pas.
 
-Les **webhooks** suivent les mêmes règles : le corps `generic` (`GenericWebhookPayload`) et les en-têtes que vous configurez sont couverts. Les messages Slack et Discord relèvent de la présentation — leur formulation et leur mise en page peuvent changer dans n'importe quelle release.
+Les **webhooks** suivent les mêmes règles : les noms d'[événements](/fr/docs/server#événements), l'en-tête `X-Siteping-Event` que porte chaque envoi, les corps `generic` (`GenericWebhookEventMap`) et les en-têtes que vous configurez sont couverts. Une mineure peut ajouter des événements ; les nouveaux restent à activer, si bien qu'un récepteur ne reçoit jamais un corps qu'il n'a pas demandé. Les messages Slack et Discord relèvent de la présentation — leur formulation et leur mise en page peuvent changer dans n'importe quelle release.
 
 ## Le schéma de base de données
 
