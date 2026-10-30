@@ -44,6 +44,10 @@ The widget retries (3 attempts with backoff), then queues the payload in localSt
 
 The marker hides on that page (nothing to anchor to) rather than pointing at the wrong element — but the feedback itself, with its message and screenshot, stays in the panel and dashboard. See [how anchoring works](/docs/widget/anchoring).
 
+## What doesn't SitePing handle?
+
+Content inside iframes, parts of the page the screenshot engine can't redraw, closed shadow roots, and a few gaps on touch devices. [Known limitations](/docs/known-limitations) lists them, with what a strict Content Security Policy needs and the browsers supported.
+
 ## My language isn't built in.
 
 Register it at runtime: the widget and the dashboard each export `registerLocale`, which takes a full or partial dictionary — see [Languages](/docs/widget/i18n#custom-locales). Shipping it as a built-in locale for everyone is the friendliest first contribution to the project: see [CONTRIBUTING](https://github.com/NeosiaNexus/SitePing/blob/main/CONTRIBUTING.md).
