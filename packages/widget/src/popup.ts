@@ -11,7 +11,7 @@ import {
   type ViewportInsets,
 } from "./popup-placement.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport, trackKeyboardInset } from "./viewport.js";
+import { isCoarsePointer, isCompactViewport, prefersReducedMotion, trackKeyboardInset } from "./viewport.js";
 
 // Map each feedback type to its translation key, so `refreshLabels()` can
 // re-localize the existing type buttons without re-rendering the popup.
@@ -28,11 +28,6 @@ const TYPE_LABEL_KEYS: Record<FeedbackType, keyof Translations> = {
  * root has no other transition (an empty inline value removes it).
  */
 const POPUP_TRANSITION = `opacity ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1),transform ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`;
-
-/** Read live, not cached at construction, so an OS setting change applies to the next open or close. */
-function prefersReducedMotion(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 interface PopupResult {
   type: FeedbackType;

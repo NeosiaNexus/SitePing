@@ -73,6 +73,16 @@ import { MarkerManager } from "../../src/markers.js";
 // ---------------------------------------------------------------------------
 
 const colors = buildThemeColors();
+
+/** jsdom has no Web Animations API: a spy stands in for `animate`, removed after each test. */
+function stubAnimate() {
+  const animate = vi.fn<HTMLElement["animate"]>();
+  HTMLElement.prototype.animate = animate;
+  return animate;
+}
+afterEach(() => {
+  delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
+});
 const t = createT("fr");
 
 function createMockTooltip(): Tooltip {
@@ -397,11 +407,17 @@ describe("MarkerManager", () => {
 
   describe("addFeedback", () => {
     it("adds a single marker with animation", () => {
+      const animate = stubAnimate();
       markers.addFeedback(makeFeedback({ id: "fb-new" }), 1);
 
       const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-new"]')!;
       expect(marker).not.toBeNull();
-      expect(marker.style.animation).toContain("sp-marker-in");
+      // Through the Web Animations API: the page DOM has none of the shadow
+      // stylesheet's @keyframes, so a CSS animation name would never play.
+      expect(marker.style.animation).toBe("");
+      expect(animate).toHaveBeenCalledOnce();
+      expect(animate.mock.instances[0]).toBe(marker);
+      expect(animate.mock.calls[0]?.[0]).toContainEqual({ scale: 0, opacity: 0 });
     });
 
     it("increments marker count", () => {
@@ -420,11 +436,29 @@ describe("MarkerManager", () => {
   describe("highlight", () => {
     it("applies pulse animation on the marker for the given feedback id", () => {
       markers.render([makeFeedback({ id: "fb-1" })]);
+      const animate = stubAnimate();
 
       markers.highlight("fb-1");
 
       const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
-      expect(marker.style.animation).toContain("sp-pulse-ring");
+      expect(animate).toHaveBeenCalledOnce();
+      expect(animate.mock.instances[0]).toBe(marker);
+      // The glow is the theme's color: the page DOM has no --sp-accent-glow.
+      expect(animate.mock.calls[0]?.[0]).toContainEqual({ boxShadow: `0 0 0 0 ${colors.accentGlow}` });
+      expect(animate.mock.calls[0]?.[1]).toMatchObject({ duration: 700 });
+    });
+
+    it("skips the animations under prefers-reduced-motion", () => {
+      const animate = stubAnimate();
+      mockMediaQueries(["(prefers-reduced-motion: reduce)"]);
+      try {
+        markers.render([makeFeedback({ id: "fb-1" })]);
+        markers.highlight("fb-1");
+        markers.addFeedback(makeFeedback({ id: "fb-2" }), 2);
+        expect(animate).not.toHaveBeenCalled();
+      } finally {
+        Reflect.deleteProperty(window, "matchMedia");
+      }
     });
   });
 
@@ -454,6 +488,7 @@ describe("MarkerManager", () => {
       markers.render([makeFeedback({ id: "fb-1" })]);
       const marker = document.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!;
       marker.scrollIntoView = vi.fn();
+      const animate = stubAnimate();
 
       markers.focusFeedback("fb-1");
 
@@ -462,7 +497,7 @@ describe("MarkerManager", () => {
       const container = document.getElementById("siteping-markers")!;
       const highlights = container.querySelectorAll<HTMLElement>(":scope > div:not([data-feedback-id])");
       expect(highlights.length).toBeGreaterThan(0);
-      expect(marker.style.animation).toContain("sp-pulse-ring");
+      expect(animate.mock.instances).toContain(marker);
     });
   });
 
@@ -1570,33 +1605,19 @@ describe("MarkerManager", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Highlight — animationend resets style
+  // Highlight — unknown ids
   // -------------------------------------------------------------------------
 
-  describe("highlight animationend", () => {
-    it("clears the animation style after animationend fires", () => {
-      markers.render([makeFeedback({ id: "fb-anim" })]);
-
-      markers.highlight("fb-anim");
-
-      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-anim"]')!;
-      expect(markerEl.style.animation).toContain("sp-pulse-ring");
-
-      // Dispatch animationend → handler resets animation to ""
-      markerEl.dispatchEvent(new Event("animationend"));
-
-      expect(markerEl.style.animation).toBe("");
-    });
-
+  describe("highlight unknown ids", () => {
     it("ignores feedback ids that are not in the entries list", () => {
       markers.render([makeFeedback({ id: "fb-real" })]);
+      const animate = stubAnimate();
 
       // No-op on unknown id
       expect(() => markers.highlight("fb-unknown")).not.toThrow();
 
       // The known marker is unaffected
-      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-real"]')!;
-      expect(markerEl.style.animation).toBe("");
+      expect(animate).not.toHaveBeenCalled();
     });
   });
 
