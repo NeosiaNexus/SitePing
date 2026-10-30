@@ -237,7 +237,9 @@ export interface SitepingBaseConfig {
    * When true (default), the widget filters initial markers and panel results
    * by `feedback.url === scope.url`, so annotations created on one page never
    * leak to other pages — even if their CSS selector accidentally matches.
-   * Set to `false` to revert to the legacy project-wide behavior.
+   * Set to `false` for a project-wide view: the panel lists every feedback of
+   * the project, and a marker shows wherever its anchor resolves — for
+   * feedback on what every page shares, such as a header or a footer.
    */
   scopeAnnotationsByUrl?: boolean | undefined;
   /**

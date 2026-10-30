@@ -17,6 +17,7 @@ export type {
   SitepingErrorCode,
   SitepingHeadersOption,
   SitepingHttpConfig,
+  SitepingIdentity,
   SitepingInstance,
   SitepingLocale,
   SitepingPanelAction,
@@ -33,9 +34,8 @@ export type {
 // another's (and a type-only class export would read as a value in the
 // bundled .d.ts, where `instanceof` would type-check, then throw).
 export { isSitepingError } from "@siteping/core";
-export type { TFunction, TranslationKey, Translations } from "./i18n/index.js";
+export type { TranslationKey, Translations } from "./i18n/index.js";
 export { loadLocale, registerLocale } from "./i18n/index.js";
-export type { Identity } from "./identity.js";
 
 /**
  * Initialize the Siteping feedback widget.
