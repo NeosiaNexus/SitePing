@@ -1596,6 +1596,44 @@ describe("Panel", () => {
       });
     });
 
+    it.each(["resolve", "delete"] as const)(
+      "a %s that settles after another feedback was opened leaves that feedback's view open (#399)",
+      async (action) => {
+        const fb1 = makeFeedback({ id: "fb-1", status: "open", message: "First", annotations: [annotation] });
+        const fb2 = makeFeedback({ id: "fb-2", status: "open", message: "Second", annotations: [annotation] });
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb1, fb2], total: 2 });
+        let settle!: () => void;
+        const deferred = new Promise<undefined>((resolve) => {
+          settle = () => resolve(undefined);
+        });
+        const call = action === "resolve" ? apiClient.resolveFeedback : apiClient.deleteFeedback;
+        call.mockReturnValue(deferred);
+
+        await panel.open();
+        shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+        shadow.querySelector<HTMLButtonElement>(`.sp-detail-btn-${action}`)!.click();
+        await vi.waitFor(() => {
+          expect(call).toHaveBeenCalled();
+        });
+
+        // While the request is in flight, the reviewer goes back and opens fb-2.
+        shadow.querySelector<HTMLButtonElement>(".sp-detail-back")!.click();
+        shadow.querySelector<HTMLElement>('[data-feedback-id="fb-2"]')!.click();
+        expect(shadow.querySelector(".sp-detail-message")?.textContent).toContain("Second");
+
+        const loadsBefore = apiClient.getFeedbacks.mock.calls.length;
+        settle();
+        await vi.waitFor(() => {
+          expect(apiClient.getFeedbacks.mock.calls.length).toBeGreaterThan(loadsBefore);
+        });
+        await new Promise((r) => setTimeout(r, 0));
+
+        const detail = shadow.querySelector<HTMLElement>(".sp-detail")!;
+        expect(detail.classList.contains("sp-detail--visible")).toBe(true);
+        expect(shadow.querySelector(".sp-detail-message")?.textContent).toContain("Second");
+      },
+    );
+
     it("detail onResolve emits feedback:error and keeps the detail view open on failure", async () => {
       const fb = makeFeedback({ id: "fb-1", status: "open", annotations: [annotation] });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
