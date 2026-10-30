@@ -7,12 +7,18 @@ import type { CommentCreateInput, CommentRecord, FeedbackPage, FeedbackRecord, S
 import { describe, expectTypeOf, it } from "vitest";
 import type * as Dashboard from "../../src/index.js";
 import type {
+  DiagnosticsSnapshot,
   EndpointSourceOptions,
   FeedbackPermissions,
+  FeedbackQuery,
   InboxRecord,
+  registerLocale,
+  ScreenshotRegion,
   SitepingCapabilities,
   SitepingHeadersOption,
+  SitepingLocale,
   SitepingTheme,
+  Translations,
 } from "../../src/index.js";
 import type {
   InboxSource,
@@ -138,5 +144,15 @@ describe("types shared with the widget", () => {
     // @ts-expect-error — removed before 1.0: use SitepingTheme
     type RemovedInboxTheme = Dashboard.InboxTheme;
     expectTypeOf<[RemovedInboxTheme]>().toBeArray();
+  });
+});
+
+describe("types used in public signatures are exported", () => {
+  it("names what a custom source, a locale override and a record reader handle", () => {
+    expectTypeOf<Parameters<InboxSource["list"]>[0]>().toEqualTypeOf<FeedbackQuery>();
+    expectTypeOf<Parameters<typeof registerLocale>[1]>().toEqualTypeOf<Partial<Translations>>();
+    expectTypeOf<SitepingInboxProps["locale"]>().toEqualTypeOf<SitepingLocale | undefined>();
+    expectTypeOf<FeedbackRecord["diagnostics"]>().toEqualTypeOf<DiagnosticsSnapshot | null>();
+    expectTypeOf<FeedbackRecord["screenshotRegion"]>().toEqualTypeOf<ScreenshotRegion | null>();
   });
 });

@@ -16,10 +16,14 @@ import type { GetFeedbacksOptions } from "../../src/api-client.js";
 import type * as Widget from "../../src/index.js";
 import {
   type CommentResponse,
+  type DiagnosticsCaptureOptions,
+  type DiagnosticsSnapshot,
   initSiteping,
   isSitepingError,
+  type PageScope,
   registerLocale,
   type SitepingConfig,
+  type SitepingDeepLinkOptions,
   type SitepingErrorCode,
   type SitepingIdentity,
   type SitepingPanelAction,
@@ -27,7 +31,11 @@ import {
   type SitepingPanelActionFeedback,
   type SitepingPanelButtonAction,
   type SitepingPanelLinkAction,
+  type SitepingPosition,
+  type SitepingPublicEventListener,
+  type SitepingSkipReason,
   type SitepingTheme,
+  type SitepingUnsubscribe,
   type Translations,
 } from "../../src/index.js";
 
@@ -215,5 +223,28 @@ describe("shared with the dashboard", () => {
 
   it("returns a promise from refresh(), like the dashboard's", () => {
     expectTypeOf<ReturnType<SitepingInstance["refresh"]>>().toEqualTypeOf<Promise<void>>();
+  });
+});
+
+describe("types used in public signatures are exported", () => {
+  it("names every option's own type", () => {
+    expectTypeOf<NonNullable<SitepingConfig["position"]>>().toEqualTypeOf<SitepingPosition>();
+    expectTypeOf<ReturnType<NonNullable<SitepingConfig["getPageScope"]>>>().toEqualTypeOf<PageScope>();
+    expectTypeOf<Parameters<NonNullable<SitepingConfig["onSkip"]>>>().toEqualTypeOf<[SitepingSkipReason]>();
+    expectTypeOf<SitepingDeepLinkOptions>().toExtend<NonNullable<SitepingConfig["deepLink"]>>();
+    expectTypeOf<DiagnosticsCaptureOptions>().toExtend<NonNullable<SitepingConfig["captureDiagnostics"]>>();
+  });
+
+  it("names the listener and unsubscribe of instance.on, and the diagnostics a feedback carries", () => {
+    expectTypeOf<SitepingPublicEventListener<"panel:open">>().toExtend<
+      Parameters<typeof instance.on<"panel:open">>[1]
+    >();
+    expectTypeOf<ReturnType<SitepingInstance["on"]>>().toEqualTypeOf<SitepingUnsubscribe>();
+    expectTypeOf<NonNullable<FeedbackResponse["diagnostics"]>>().toExtend<object>();
+    expectTypeOf<DiagnosticsSnapshot>().toHaveProperty("console");
+  });
+
+  it("lets an optional callback be passed as undefined under exactOptionalPropertyTypes", () => {
+    expectTypeOf(initSiteping).toBeCallableWith({ projectName: "p", store, onSkip: undefined });
   });
 });
