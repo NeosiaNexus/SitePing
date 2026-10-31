@@ -61,26 +61,54 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       # Each time release-please creates or refreshes the release PR, fix two
-      # things in its body before anyone merges it:
-      # - It renders every issue a commit references, `Refs #N` footers
-      #   included, as `closes #N`, so merging it closed issues still open
-      #   (#356 closed nine): rewrite them to `refs`. An issue a change fixes
-      #   is closed by that change's own PR.
-      # - On merge, release-please parses this body as HTML to find each
-      #   package's release. A commit title holding a tag such as `<script>`
-      #   (#497) opened a raw-text element that swallowed every package after
-      #   it, and only one of eleven was released: escape every `<` but those
-      #   of the `<details>` / `<summary>` blocks release-please writes.
+      # things in its release notes before anyone merges it:
+      # - They render every issue a commit references, `Refs #N` footers
+      #   included, as `closes #N`, so merging the PR closed issues still
+      #   open (#356 closed nine): rewrite them to `refs` in the PR body. An
+      #   issue a change fixes is closed by that change's own PR.
+      # - On merge, release-please parses the notes as HTML to find each
+      #   package's release, decodes them, writes them back and parses them
+      #   again. A tag such as `<script>` in a commit title (#497) opened a
+      #   raw-text element that swallowed every package after it, and only
+      #   one of eleven was released (#467). `&lt;` does not survive that
+      #   round trip, so put a zero-width space after each `<` that would
+      #   open a tag, but those of the `<details>` / `<summary>` blocks
+      #   release-please writes: the notes render the same, in the PR and
+      #   in the GitHub releases. Notes too long for the PR body live in
+      #   release-notes.md on another branch, which release-please reads
+      #   instead: fix that file too.
+      # `env` is evaluated even when `if` skips the step, and the `pr` output
+      # is empty when no PR was touched, as on every release merge:
+      # `fromJSON('')` failed the job, and with it every publish (#467).
       - name: Keep the release PR from closing issues or hiding releases
         if: ${{ steps.release.outputs.prs_created == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
+          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr || '{}').number }}
         run: |
+          untag='s/<(?=[A-Za-z\/!?])(?!\/?(?:details|summary)>)/<\x{200B}/g'
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .body > "$RUNNER_TEMP/body.md"
           sed -E -i 's/, closes (\[#[0-9]+\])/, refs \1/g' "$RUNNER_TEMP/body.md"
-          perl -pi -e 's/<(?!\/?(?:details|summary)>)/&lt;/g' "$RUNNER_TEMP/body.md"
+          perl -CSD -pi -e "$untag" "$RUNNER_TEMP/body.md"
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" -F "body=@$RUNNER_TEMP/body.md" --silent
+
+          # Only release-please's own overflow line, never a link a commit
+          # title put in the notes: the token can write to the branch named.
+          notes_branch=$(sed -nE "s#^This release is too large to preview in the pull request body\. View the full release notes here: https://github\.com/$GITHUB_REPOSITORY/blob/(release-please--[A-Za-z0-9._/-]+--release-notes)/release-notes\.md\$#\1#p" "$RUNNER_TEMP/body.md" | head -n 1)
+          if [ -n "$notes_branch" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/contents/release-notes.md?ref=$notes_branch" > "$RUNNER_TEMP/notes.json"
+            jq -r .content "$RUNNER_TEMP/notes.json" | base64 -d > "$RUNNER_TEMP/notes.md"
+            cp "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/notes.orig.md"
+            perl -CSD -pi -e "$untag" "$RUNNER_TEMP/notes.md"
+            if ! cmp -s "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/notes.orig.md"; then
+              base64 -w 0 "$RUNNER_TEMP/notes.md" > "$RUNNER_TEMP/notes.b64"
+              jq -n --arg branch "$notes_branch" --arg sha "$(jq -r .sha "$RUNNER_TEMP/notes.json")" \
+                --rawfile content "$RUNNER_TEMP/notes.b64" \
+                '{message: "chore: keep tags in the release notes from hiding releases", branch: $branch, sha: $sha, content: $content}' \
+                > "$RUNNER_TEMP/notes-update.json"
+              gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/release-notes.md" --input "$RUNNER_TEMP/notes-update.json" --silent
+            fi
+          fi
 
   build:
     needs: release-please
