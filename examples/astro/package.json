@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@astrojs/node": "^11.1.9",
-    "@siteping/adapter-memory": "^0.5.4",
-    "@siteping/server": "^0.1.1",
-    "@siteping/widget": "^0.11.1",
+    "@siteping/adapter-memory": "^0.6.0",
+    "@siteping/server": "^0.2.0",
+    "@siteping/widget": "^0.12.0",
     "astro": "^7.4.4"
   }
 }
