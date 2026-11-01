@@ -75,7 +75,7 @@
   },
   "dependencies": {
     "@medv/finder": "^4.0.2",
-    "html2canvas-pro": "^2.4.3"
+    "html2canvas-pro": "^2.5.2"
   },
   "devDependencies": {
     "@siteping/adapter-localstorage": "workspace:*",
@@ -86,8 +86,8 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.2",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "size-limit": "^14.3.0"
   },
   "peerDependencies": {
