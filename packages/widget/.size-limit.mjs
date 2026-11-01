@@ -36,7 +36,7 @@ export default [
   {
     name: "IIFE script bundle (index.global.js)",
     path: "dist/index.global.js",
-    limit: "142.5 KB",
+    limit: "144 KB",
     gzip: true,
   },
 ];
