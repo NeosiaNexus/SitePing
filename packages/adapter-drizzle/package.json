@@ -76,7 +76,7 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.10",
+    "@electric-sql/pglite": "^0.5.11",
     "@libsql/client": "^0.18.0",
     "@siteping/core": "workspace:*",
     "@siteping/server": "workspace:*",
