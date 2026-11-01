@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.3.0](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.9...dashboard-v0.3.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **widget,dashboard:** align the widget and the dashboard before 1.0 ([#476](https://github.com/NeosiaNexus/SitePing/issues/476))
+* **dashboard:** rename the inbox filter setters setStatusFilter and setTypeFilter ([#475](https://github.com/NeosiaNexus/SitePing/issues/475))
+* **widget,dashboard:** settle the API leftovers before 1.0 ([#474](https://github.com/NeosiaNexus/SitePing/issues/474))
+* **server,widget,dashboard:** freeze the error contract on structural guards ([#473](https://github.com/NeosiaNexus/SitePing/issues/473))
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460))
+
+### Features
+
+* **dashboard:** resolve relative page links against a siteUrl ([#503](https://github.com/NeosiaNexus/SitePing/issues/503)) ([89e0c16](https://github.com/NeosiaNexus/SitePing/commit/89e0c1696b3626499d6e7e8a8d00ef14f707adf5))
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460)) ([c9799ae](https://github.com/NeosiaNexus/SitePing/commit/c9799aecad15434b84a8df4ee78d3735017daf9d))
+* **server,dashboard:** scope email access by project and permissions by comment ([#494](https://github.com/NeosiaNexus/SitePing/issues/494)) ([5261ea1](https://github.com/NeosiaNexus/SitePing/commit/5261ea1df5a0da70e650de95ad51f54f69235534))
+
+
+### Bug Fixes
+
+* **dashboard:** re-place a save that a loading page 1 was read before ([#492](https://github.com/NeosiaNexus/SitePing/issues/492)) ([d209b6c](https://github.com/NeosiaNexus/SitePing/commit/d209b6c4d25fca7d1735f29ba8efdfe4c676d2e3))
+* **dashboard:** rename the inbox filter setters setStatusFilter and setTypeFilter ([#475](https://github.com/NeosiaNexus/SitePing/issues/475)) ([9c4f1b5](https://github.com/NeosiaNexus/SitePing/commit/9c4f1b5d48673b2fafd2cd3673b4de2d5c61fca6))
+* **dashboard:** render a screenshot only from a safe URL, like the widget ([#488](https://github.com/NeosiaNexus/SitePing/issues/488)) ([c3acfd0](https://github.com/NeosiaNexus/SitePing/commit/c3acfd0a4ba8dc9d12efea8272d6892114bcc781))
+* **dashboard:** ship the "use client" directive on both entries ([#452](https://github.com/NeosiaNexus/SitePing/issues/452)) ([bd9804b](https://github.com/NeosiaNexus/SitePing/commit/bd9804bfac0a3c86fb455df145e978b18324ba91))
+* **i18n:** merge registerLocale overrides over built-in dictionaries ([#446](https://github.com/NeosiaNexus/SitePing/issues/446)) ([0b2ef1c](https://github.com/NeosiaNexus/SitePing/commit/0b2ef1c2c41920e4af289a8d2bce66e6595d8466))
+* **server,widget,dashboard:** freeze the error contract on structural guards ([#473](https://github.com/NeosiaNexus/SitePing/issues/473)) ([fc1013c](https://github.com/NeosiaNexus/SitePing/commit/fc1013c9b3e3f4ea1655451ca386657ccc34831b))
+* **widget,dashboard,adapter-kit:** cap peer ranges at the majors CI runs ([#496](https://github.com/NeosiaNexus/SitePing/issues/496)) ([7c1afab](https://github.com/NeosiaNexus/SitePing/commit/7c1afab5360bb5bc353935b63d14e405067a09f4))
+* **widget,dashboard,server:** export the types their public signatures use ([#477](https://github.com/NeosiaNexus/SitePing/issues/477)) ([f87ff7d](https://github.com/NeosiaNexus/SitePing/commit/f87ff7dec9c1a34679959db8d0cf426b4da87482))
+* **widget,dashboard:** align the widget and the dashboard before 1.0 ([#476](https://github.com/NeosiaNexus/SitePing/issues/476)) ([c0ce341](https://github.com/NeosiaNexus/SitePing/commit/c0ce3418947c8d920abba9fe48043038c7cb80e5))
+* **widget,dashboard:** bring two text colors up to WCAG AA contrast ([#498](https://github.com/NeosiaNexus/SitePing/issues/498)) ([5795088](https://github.com/NeosiaNexus/SitePing/commit/57950888061cb90196f15241896aec92eda7bd5c))
+* **widget,dashboard:** settle the API leftovers before 1.0 ([#474](https://github.com/NeosiaNexus/SitePing/issues/474)) ([de96fe8](https://github.com/NeosiaNexus/SitePing/commit/de96fe85480a3a13451e83effb34bfd01c8f6c1a))
+* **widget,dashboard:** treat 408 and 429 as transient, honoring Retry-After ([#448](https://github.com/NeosiaNexus/SitePing/issues/448)) ([b540097](https://github.com/NeosiaNexus/SitePing/commit/b540097df4b63a730cc81e42033c56abb2e4e105))
+
+
+### Documentation
+
+* **dashboard:** keep the admin apiKey out of the client bundle ([#455](https://github.com/NeosiaNexus/SitePing/issues/455)) ([92a0822](https://github.com/NeosiaNexus/SitePing/commit/92a08222c540717dd6958ac0329d2902f6ab5998))
+
+
+### Miscellaneous
+
+* **deps-dev:** bump the size-limit group with 2 updates ([#468](https://github.com/NeosiaNexus/SitePing/issues/468)) ([d414ec7](https://github.com/NeosiaNexus/SitePing/commit/d414ec7ac80810c86d22d1600fc7ba786124a811))
+
 ## [0.2.9](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.8...dashboard-v0.2.9) (2026-10-18)
 
 

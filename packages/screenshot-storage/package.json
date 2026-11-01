@@ -1,6 +1,6 @@
 {
   "name": "@siteping/screenshot-storage",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Screenshot storage for Siteping — Cloudflare Images, any S3-compatible bucket, your database (Drizzle: PostgreSQL, Turso/libSQL), the local filesystem, memory, or your own backend",
   "type": "module",
   "sideEffects": false,
@@ -128,7 +128,7 @@
   },
   "devDependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
-    "@electric-sql/pglite": "^0.5.10",
+    "@electric-sql/pglite": "^0.5.11",
     "@libsql/client": "^0.18.0",
     "@siteping/core": "workspace:*",
     "@smithy/signature-v4": "^5.7.4",

@@ -79,6 +79,22 @@ import { useSiteping } from "../../src/react.js";
 // Tests
 // ---------------------------------------------------------------------------
 
+/** One host per callback whose freshness across rerenders is under test. */
+function FeedbackSentHost({ cb }: { cb: (fb: unknown) => void }) {
+  useSiteping({ endpoint: "/api", projectName: "p", onFeedbackSent: cb });
+  return null;
+}
+
+function CommentAddedHost({ cb }: { cb: (comment: CommentResponse) => void }) {
+  useSiteping({ endpoint: "/api", projectName: "p", onCommentAdded: cb });
+  return null;
+}
+
+function ErrorHost({ cb }: { cb: (error: Error) => void }) {
+  useSiteping({ endpoint: "/api", projectName: "p", onError: cb });
+  return null;
+}
+
 function Probe({ config, onInstance }: { config: SitepingConfig; onInstance?: (i: SitepingInstance | null) => void }) {
   const instance = useSiteping(config);
   useEffect(() => {
@@ -138,12 +154,7 @@ describe("useSiteping", () => {
     const v1 = vi.fn();
     const v2 = vi.fn();
 
-    function Host({ cb }: { cb: (fb: unknown) => void }) {
-      useSiteping({ endpoint: "/api", projectName: "p", onFeedbackSent: cb });
-      return null;
-    }
-
-    const { rerender } = render(<Host cb={v1} />);
+    const { rerender } = render(<FeedbackSentHost cb={v1} />);
 
     // The widget calls the wired config callback (single delivery path —
     // no separate instance.on bridge that would double-fire it).
@@ -154,7 +165,7 @@ describe("useSiteping", () => {
 
     // Swap the callback prop — the wrapper must reach the latest one
     // *without* re-initing the widget.
-    rerender(<Host cb={v2} />);
+    rerender(<FeedbackSentHost cb={v2} />);
     expect(initSpy).toHaveBeenCalledTimes(1);
 
     act(() => {
@@ -203,13 +214,8 @@ describe("useSiteping", () => {
     const c1 = vi.fn();
     const c2 = vi.fn();
 
-    function Host({ cb }: { cb: (comment: CommentResponse) => void }) {
-      useSiteping({ endpoint: "/api", projectName: "p", onCommentAdded: cb });
-      return null;
-    }
-
-    const { rerender, unmount } = render(<Host cb={c1} />);
-    rerender(<Host cb={c2} />);
+    const { rerender, unmount } = render(<CommentAddedHost cb={c1} />);
+    rerender(<CommentAddedHost cb={c2} />);
     expect(initSpy).toHaveBeenCalledTimes(1);
 
     const reply = { id: "c-1" } as CommentResponse;
@@ -228,13 +234,8 @@ describe("useSiteping", () => {
     const e1 = vi.fn();
     const e2 = vi.fn();
 
-    function Host({ cb }: { cb: (error: Error) => void }) {
-      useSiteping({ endpoint: "/api", projectName: "p", onError: cb });
-      return null;
-    }
-
-    const { rerender } = render(<Host cb={e1} />);
-    rerender(<Host cb={e2} />);
+    const { rerender } = render(<ErrorHost cb={e1} />);
+    rerender(<ErrorHost cb={e2} />);
     expect(initSpy).toHaveBeenCalledTimes(1);
 
     act(() => {

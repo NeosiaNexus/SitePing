@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.7.0](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.7...adapter-prisma-v0.7.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core,adapter-kit:** make a repeated clientId throw StoreDuplicateError in every store ([#517](https://github.com/NeosiaNexus/SitePing/issues/517))
+* **adapter-kit:** require verifyProjectOwnership on every store ([#507](https://github.com/NeosiaNexus/SitePing/issues/507))
+* **adapter-prisma:** upload screenshots under the stored feedback's id, and share one logger ([#495](https://github.com/NeosiaNexus/SitePing/issues/495))
+* **server,widget,dashboard:** freeze the error contract on structural guards ([#473](https://github.com/NeosiaNexus/SitePing/issues/473))
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460))
+* **adapter-prisma:** type the handler's data source as prisma XOR store ([#458](https://github.com/NeosiaNexus/SitePing/issues/458))
+* **server,cli,adapter-prisma:** size MySQL columns for every value the server accepts ([#451](https://github.com/NeosiaNexus/SitePing/issues/451))
+
+### Features
+
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460)) ([c9799ae](https://github.com/NeosiaNexus/SitePing/commit/c9799aecad15434b84a8df4ee78d3735017daf9d))
+* **server,dashboard:** scope email access by project and permissions by comment ([#494](https://github.com/NeosiaNexus/SitePing/issues/494)) ([5261ea1](https://github.com/NeosiaNexus/SitePing/commit/5261ea1df5a0da70e650de95ad51f54f69235534))
+* **server:** notify status changes, deletions and replies through opt-in webhook events ([#483](https://github.com/NeosiaNexus/SitePing/issues/483)) ([1847516](https://github.com/NeosiaNexus/SitePing/commit/18475163282a7c44f19a03f9223e8875372da3ea))
+
+
+### Bug Fixes
+
+* **adapter-kit:** require verifyProjectOwnership on every store ([#507](https://github.com/NeosiaNexus/SitePing/issues/507)) ([4c1ecda](https://github.com/NeosiaNexus/SitePing/commit/4c1ecda4a97b020f0a056345b59d21cbbcd6feeb))
+* **adapter-prisma,adapter-kit:** store text holding NUL or an unpaired surrogate ([#470](https://github.com/NeosiaNexus/SitePing/issues/470)) ([c059cb2](https://github.com/NeosiaNexus/SitePing/commit/c059cb2522f3dcfba388890f766be8d9d52cb7f9))
+* **adapter-prisma:** type the handler's data source as prisma XOR store ([#458](https://github.com/NeosiaNexus/SitePing/issues/458)) ([d173b0f](https://github.com/NeosiaNexus/SitePing/commit/d173b0fc8dafb62efa84a351c66149234bd9f6af))
+* **adapter-prisma:** upload screenshots under the stored feedback's id, and share one logger ([#495](https://github.com/NeosiaNexus/SitePing/issues/495)) ([59ac33f](https://github.com/NeosiaNexus/SitePing/commit/59ac33f52db86ce97f6f62d9471649e1b288dfda))
+* **core,adapter-kit:** make a repeated clientId throw StoreDuplicateError in every store ([#517](https://github.com/NeosiaNexus/SitePing/issues/517)) ([060d935](https://github.com/NeosiaNexus/SitePing/commit/060d935500b484a123746cfa5888c562fc437ddb))
+* **server,cli,adapter-prisma:** size MySQL columns for every value the server accepts ([#451](https://github.com/NeosiaNexus/SitePing/issues/451)) ([acedb18](https://github.com/NeosiaNexus/SitePing/commit/acedb1836ac19ddc63d6dc73c23b661df5447880))
+* **server,widget,dashboard:** freeze the error contract on structural guards ([#473](https://github.com/NeosiaNexus/SitePing/issues/473)) ([fc1013c](https://github.com/NeosiaNexus/SitePing/commit/fc1013c9b3e3f4ea1655451ca386657ccc34831b))
+
+
+### Tests
+
+* **adapter-prisma:** run the conformance suite against a real SQLite database ([#472](https://github.com/NeosiaNexus/SitePing/issues/472)) ([6460938](https://github.com/NeosiaNexus/SitePing/commit/6460938ab529d1d7ae20e6dc922b42a5dcee8cc9))
+
+
+### Documentation
+
+* position SitePing as the open-source, self-hosted Marker.io alternative ([#520](https://github.com/NeosiaNexus/SitePing/issues/520)) ([258ede6](https://github.com/NeosiaNexus/SitePing/commit/258ede6db1baba1ff77247afd215dad4fc82364b))
+
 ## [0.6.7](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.6...adapter-prisma-v0.6.7) (2026-10-05)
 
 

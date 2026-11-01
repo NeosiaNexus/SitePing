@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.7...cli-v0.6.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460))
+* **server,cli,adapter-prisma:** size MySQL columns for every value the server accepts ([#451](https://github.com/NeosiaNexus/SitePing/issues/451))
+
+### Features
+
+* require Node.js 22 or later ([#460](https://github.com/NeosiaNexus/SitePing/issues/460)) ([c9799ae](https://github.com/NeosiaNexus/SitePing/commit/c9799aecad15434b84a8df4ee78d3735017daf9d))
+
+
+### Bug Fixes
+
+* **cli:** generate a route that builds its handler on the first request ([#453](https://github.com/NeosiaNexus/SitePing/issues/453)) ([9798d4d](https://github.com/NeosiaNexus/SitePing/commit/9798d4dd16359d0cc03552e3e4da0f1c348d361d))
+* **cli:** point init at the live schema docs and an npx command ([#481](https://github.com/NeosiaNexus/SitePing/issues/481)) ([1a57ccd](https://github.com/NeosiaNexus/SitePing/commit/1a57ccd970f711ae8b55ba5431af61664b15c1c2))
+* **server,cli,adapter-prisma:** size MySQL columns for every value the server accepts ([#451](https://github.com/NeosiaNexus/SitePing/issues/451)) ([acedb18](https://github.com/NeosiaNexus/SitePing/commit/acedb1836ac19ddc63d6dc73c23b661df5447880))
+
 ## [0.5.7](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.5.6...cli-v0.5.7) (2026-10-05)
 
 

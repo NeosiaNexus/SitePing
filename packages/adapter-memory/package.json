@@ -1,6 +1,6 @@
 {
   "name": "@siteping/adapter-memory",
-  "version": "0.5.4",
+  "version": "0.6.0",
   "description": "In-memory adapter for Siteping — zero dependencies, works everywhere",
   "type": "module",
   "sideEffects": false,
