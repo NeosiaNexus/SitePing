@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.3.0...dashboard-v0.3.1) (2026-11-02)
+
+
+### Miscellaneous
+
+* **deps:** bump the production-dependencies group across 1 directory with 8 updates ([#441](https://github.com/NeosiaNexus/SitePing/issues/441)) ([44afc15](https://github.com/NeosiaNexus/SitePing/commit/44afc1581d0a9f0a885f0ca622998e7bdb759a96))
+
 ## [0.3.0](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.2.9...dashboard-v0.3.0) (2026-10-30)
 
 
