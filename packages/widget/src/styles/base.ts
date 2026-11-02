@@ -199,7 +199,7 @@ export function buildStyles(colors: ThemeColors): string {
       height: 20px;
       padding: 0 6px;
       border-radius: var(--sp-radius-full);
-      background: #ef4444;
+      background: #dc2626;
       color: #fff;
       font-size: 11px;
       font-weight: 700;
@@ -1012,9 +1012,9 @@ export function buildStyles(colors: ThemeColors): string {
 
     @media (hover: hover) and (pointer: fine) {
       .sp-btn-delete-all:hover {
-        border-color: #ef4444;
-        color: #ef4444;
-        background: rgba(239, 68, 68, 0.06);
+        border-color: var(--sp-type-bug);
+        color: var(--sp-type-bug);
+        background: color-mix(in srgb, var(--sp-type-bug) 6%, transparent);
       }
     }
 
@@ -1080,19 +1080,20 @@ export function buildStyles(colors: ThemeColors): string {
       padding: 0 22px;
       border-radius: var(--sp-radius);
       border: none;
-      background: #ef4444;
+      /* red-600: white text reads 4.8:1 on it (red-500 gave 3.8:1). */
+      background: #dc2626;
       color: #fff;
       font-family: var(--sp-font);
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       transition: var(--sp-tr);
-      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
+      box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
     }
 
     @media (hover: hover) and (pointer: fine) {
       .sp-btn-danger:hover {
-        background: #dc2626;
+        background: #b91c1c;
         box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
       }
     }

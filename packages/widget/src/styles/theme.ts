@@ -335,6 +335,10 @@ export function cssVariables(colors: ThemeColors): string {
     --sp-status-open-bg: ${colors.statusOpenBg};
     --sp-status-resolved: ${colors.statusResolved};
     --sp-status-resolved-bg: ${colors.statusResolvedBg};
+    --sp-status-in-progress: ${colors.statusInProgress};
+    --sp-status-in-progress-bg: ${colors.statusInProgressBg};
+    --sp-status-wont-fix: ${colors.statusWontFix};
+    --sp-status-wont-fix-bg: ${colors.statusWontFixBg};
     --sp-radius: 12px;
     --sp-radius-lg: 16px;
     --sp-radius-xl: 20px;

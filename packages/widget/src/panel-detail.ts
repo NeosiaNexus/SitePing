@@ -218,28 +218,30 @@ export const DETAIL_CSS = /* css */ `
     letter-spacing: 0.02em;
   }
 
+  /* Theme tokens, tuned to 4.5:1 on their own tint in both themes (the
+     hardcoded tailwind-500s read 2.1:1 to 3.5:1 once the sheet turned opaque). */
   .sp-detail-status-pill--open {
-    background: rgba(34, 197, 94, 0.1);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.2);
+    background: var(--sp-status-open-bg);
+    color: var(--sp-status-open);
+    border: 1px solid color-mix(in srgb, var(--sp-status-open) 25%, transparent);
   }
 
   .sp-detail-status-pill--resolved {
-    background: rgba(156, 163, 175, 0.1);
-    color: #9ca3af;
-    border: 1px solid rgba(156, 163, 175, 0.2);
+    background: var(--sp-status-resolved-bg);
+    color: var(--sp-status-resolved);
+    border: 1px solid color-mix(in srgb, var(--sp-status-resolved) 25%, transparent);
   }
 
   .sp-detail-status-pill--in-progress {
-    background: rgba(245, 158, 11, 0.1);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.2);
+    background: var(--sp-status-in-progress-bg);
+    color: var(--sp-status-in-progress);
+    border: 1px solid color-mix(in srgb, var(--sp-status-in-progress) 25%, transparent);
   }
 
   .sp-detail-status-pill--wont-fix {
-    background: rgba(148, 163, 184, 0.1);
-    color: #94a3b8;
-    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: var(--sp-status-wont-fix-bg);
+    color: var(--sp-status-wont-fix);
+    border: 1px solid color-mix(in srgb, var(--sp-status-wont-fix) 25%, transparent);
   }
 
   .sp-detail-status-dot {
@@ -278,15 +280,15 @@ export const DETAIL_CSS = /* css */ `
   }
 
   .sp-detail-btn-resolve {
-    border: 1.5px solid #22c55e;
-    background: rgba(34, 197, 94, 0.06);
-    color: #22c55e;
+    border: 1.5px solid var(--sp-status-open);
+    background: color-mix(in srgb, var(--sp-status-open) 6%, var(--sp-bg));
+    color: var(--sp-status-open);
   }
 
   @media (hover: hover) and (pointer: fine) {
     .sp-detail-btn-resolve:hover {
-      background: rgba(34, 197, 94, 0.14);
-      box-shadow: 0 0 16px rgba(34, 197, 94, 0.12);
+      background: color-mix(in srgb, var(--sp-status-open) 12%, var(--sp-bg));
+      box-shadow: 0 0 16px color-mix(in srgb, var(--sp-status-open) 12%, transparent);
     }
   }
 
@@ -306,15 +308,15 @@ export const DETAIL_CSS = /* css */ `
 
 
   .sp-detail-btn-delete {
-    border: 1.5px solid #ef4444;
-    background: rgba(239, 68, 68, 0.06);
-    color: #ef4444;
+    border: 1.5px solid var(--sp-type-bug);
+    background: color-mix(in srgb, var(--sp-type-bug) 6%, var(--sp-bg));
+    color: var(--sp-type-bug);
   }
 
   @media (hover: hover) and (pointer: fine) {
     .sp-detail-btn-delete:hover {
-      background: rgba(239, 68, 68, 0.14);
-      box-shadow: 0 0 16px rgba(239, 68, 68, 0.12);
+      background: color-mix(in srgb, var(--sp-type-bug) 12%, var(--sp-bg));
+      box-shadow: 0 0 16px color-mix(in srgb, var(--sp-type-bug) 12%, transparent);
     }
   }
 
@@ -720,8 +722,8 @@ export const DETAIL_CSS = /* css */ `
   }
 
   .sp-detail-diag-count--errors {
-    background: rgba(239, 68, 68, 0.14);
-    color: #ef4444;
+    background: var(--sp-type-bug-bg);
+    color: var(--sp-type-bug);
   }
 
   .sp-detail-diag-body {
@@ -783,13 +785,13 @@ export const DETAIL_CSS = /* css */ `
     color: var(--sp-text-tertiary);
   }
   .sp-detail-diag-level--info {
-    color: #3b82f6;
+    color: var(--sp-type-question);
   }
   .sp-detail-diag-level--warn {
-    color: #f59e0b;
+    color: var(--sp-type-change);
   }
   .sp-detail-diag-level--error {
-    color: #ef4444;
+    color: var(--sp-type-bug);
   }
 
   .sp-detail-diag-message {
@@ -809,7 +811,7 @@ export const DETAIL_CSS = /* css */ `
   .sp-detail-diag-net-status {
     flex-shrink: 0;
     font-weight: 700;
-    color: #ef4444;
+    color: var(--sp-type-bug);
     min-width: 32px;
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -1216,10 +1218,10 @@ export class DetailView {
     // resolved, wont-fix), each with its own dot colour.
     const statusModifier = feedback.status.replace(/_/g, "-");
     const dotColors: Record<FeedbackStatus, string> = {
-      open: "#22c55e",
-      in_progress: "#f59e0b",
-      resolved: "#9ca3af",
-      wont_fix: "#94a3b8",
+      open: this.colors.statusOpen,
+      in_progress: this.colors.statusInProgress,
+      resolved: this.colors.statusResolved,
+      wont_fix: this.colors.statusWontFix,
     };
     const statusRow = el("div", { class: "sp-detail-status" });
     const pill = el("span", {

@@ -198,28 +198,29 @@ export const BULK_CSS = /* css */ `
     white-space: nowrap;
   }
 
+  /* Theme tokens: 4.5:1 in both themes (green-500 and red-500 read 2.2:1
+     and 3.8:1 on the bar). */
   .sp-bulk-btn-resolve {
-    color: #22c55e;
-    border-color: #22c55e;
+    color: var(--sp-status-open);
+    border-color: var(--sp-status-open);
   }
 
   @media (hover: hover) and (pointer: fine) {
     .sp-bulk-btn-resolve:hover {
-      background: rgba(34, 197, 94, 0.1);
-      box-shadow: 0 0 12px rgba(34, 197, 94, 0.15);
+      background: color-mix(in srgb, var(--sp-status-open) 10%, transparent);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--sp-status-open) 15%, transparent);
     }
   }
 
-
   .sp-bulk-btn-delete {
-    color: #ef4444;
-    border-color: #ef4444;
+    color: var(--sp-type-bug);
+    border-color: var(--sp-type-bug);
   }
 
   @media (hover: hover) and (pointer: fine) {
     .sp-bulk-btn-delete:hover {
-      background: rgba(239, 68, 68, 0.1);
-      box-shadow: 0 0 12px rgba(239, 68, 68, 0.15);
+      background: color-mix(in srgb, var(--sp-type-bug) 10%, transparent);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--sp-type-bug) 15%, transparent);
     }
   }
 
