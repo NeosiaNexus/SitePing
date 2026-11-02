@@ -5446,6 +5446,26 @@ describe("Panel on phones", () => {
       expect(root().style.transform).toBe("");
     });
 
+    it("ignores a second finger: it neither restarts the drag nor moves the sheet", () => {
+      const title = shadow.querySelector(".sp-panel-title")!;
+      pointer("pointerdown", title, 100);
+      pointer("pointermove", title, 250);
+      expect(root().style.transform).toBe("translateY(150px)");
+      // A second finger lands lower and moves: the sheet stays with the first.
+      title.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientY: 600, pointerId: 2, pointerType: "touch" }),
+      );
+      title.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientY: 700, pointerId: 2, pointerType: "touch" }),
+      );
+      title.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, clientY: 700, pointerId: 2, pointerType: "touch" }),
+      );
+      expect(root().style.transform).toBe("translateY(150px)");
+      pointer("pointercancel", title, 250);
+      expect(panel.isCurrentlyOpen).toBe(true);
+    });
+
     it("stays open when a fast flick ends moving back up", () => {
       // Apple: decide from the release velocity, not the distance covered.
       const now = vi.spyOn(Event.prototype, "timeStamp", "get");

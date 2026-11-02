@@ -697,7 +697,7 @@ export class MarkerManager {
         color:${look.color};
         cursor:pointer;pointer-events:auto;
         box-shadow:${look.shadow};
-        transition:transform 0.15s ${EASE_OUT}, box-shadow 0.15s ease;
+        transition:${prefersReducedMotion() ? "box-shadow 0.15s ease" : `transform 0.15s ${EASE_OUT}, box-shadow 0.15s ease`};
         touch-action:manipulation;
         user-select:none;
         -webkit-font-smoothing:antialiased;

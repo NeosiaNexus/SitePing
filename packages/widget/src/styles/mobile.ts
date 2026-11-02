@@ -303,6 +303,8 @@ export const MOBILE_CSS = /* css */ `
       backdrop-filter: none;
       box-shadow: var(--sp-shadow-xl);
       z-index: 30;
+      /* An action sheet at the bottom edge grows from there, not from its trigger. */
+      transform-origin: bottom center;
     }
 
     .sp-filter-dropdown-option,

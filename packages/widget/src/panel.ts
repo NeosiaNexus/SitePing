@@ -625,9 +625,11 @@ export class Panel {
       lastY = e.clientY;
       lastTime = e.timeStamp;
     };
+    let pointerId = -1;
     this.root.addEventListener("pointerdown", (e) => {
       const target = e.target as Element;
       if (
+        dragging || // a second finger never restarts the drag (the sheet would jump)
         e.pointerType === "mouse" ||
         !isCompactViewport() ||
         target.closest("button") ||
@@ -635,6 +637,7 @@ export class Panel {
       )
         return;
       dragging = true;
+      pointerId = e.pointerId;
       startY = lastY = e.clientY;
       startTime = lastTime = e.timeStamp;
       offset = 0;
@@ -644,7 +647,7 @@ export class Panel {
       this.root.setPointerCapture?.(e.pointerId);
     });
     this.root.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
+      if (!dragging || e.pointerId !== pointerId) return;
       sample(e);
       const dy = e.clientY - startY;
       offset = dy >= 0 ? dy : -rubberBand(-dy, this.root.offsetHeight);
@@ -652,7 +655,7 @@ export class Panel {
       this.scrim.style.opacity = String(1 - Math.max(0, offset) / Math.max(1, this.root.offsetHeight));
     });
     const release = (e: PointerEvent) => {
-      if (!dragging) return;
+      if (!dragging || e.pointerId !== pointerId) return;
       dragging = false;
       sample(e);
       // Hand the transform back to the stylesheet: the sheet animates from
@@ -1226,10 +1229,9 @@ export class Panel {
         removeKeydown();
         backdrop.style.opacity = "0";
         dialog.style.transform = "translateY(8px) scale(0.97)";
-        setTimeout(() => {
-          backdrop.remove();
-          resolve(result);
-        }, 200);
+        // The answer is acted on at once; only the fade-out takes its 150ms.
+        resolve(result);
+        setTimeout(() => backdrop.remove(), 150);
       };
 
       // Focus trap: Tab cycles between cancel and confirm
@@ -1268,11 +1270,12 @@ export class Panel {
         ? (this.root.getRootNode() as ShadowRoot).appendChild(backdrop)
         : this.root.appendChild(backdrop);
 
-      requestAnimationFrame(() => {
-        backdrop.style.opacity = "1";
-        dialog.style.transform = "translateY(0) scale(1)";
-        cancelBtn.focus();
-      });
+      // Commit the hidden start state first: a style change in the very next
+      // frame after insertion starts no transition, and the dialog popped in.
+      void backdrop.offsetHeight;
+      backdrop.style.opacity = "1";
+      dialog.style.transform = "none";
+      cancelBtn.focus();
     });
   }
 

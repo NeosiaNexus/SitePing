@@ -406,11 +406,15 @@ describe("launcher — annotation:complete integration", () => {
       expect(toast().textContent).toBe("Failed to send feedback");
       expect(toast().classList.contains("sp-toast--error")).toBe(true);
       toast().click();
+      // It fades out (150ms) before it leaves the page.
+      expect(toast().classList.contains("sp-toast--leaving")).toBe(true);
+      vi.advanceTimersByTime(150);
       expect(toast().hidden).toBe(true);
+      expect(toast().classList.contains("sp-toast--leaving")).toBe(false);
 
       await submit();
       expect(toast().hidden).toBe(false);
-      vi.advanceTimersByTime(8000);
+      vi.advanceTimersByTime(8000 + 150);
       expect(toast().hidden).toBe(true);
     });
   });

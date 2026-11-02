@@ -59,14 +59,20 @@ export const ANIMATION_CSS = /* css */ `
       background-color 0.15s ease,
       border-color 0.15s ease,
       box-shadow 0.15s ease,
-      color 0.15s ease;
+      color 0.15s ease,
+      scale 0.16s var(--sp-ease-out);
+  }
+
+  /* The individual scale property: it composes with the inline translate. */
+  .sp-radial-item:active {
+    scale: 0.97;
   }
 
   .sp-radial-item.sp-radial-item--open {
     opacity: 1;
     pointer-events: auto;
     /* Only the entrance staggers: hover colours and the exit stay immediate. */
-    transition-delay: calc(var(--sp-i, 0) * 30ms), calc(var(--sp-i, 0) * 30ms), 0s, 0s, 0s, 0s;
+    transition-delay: calc(var(--sp-i, 0) * 30ms), calc(var(--sp-i, 0) * 30ms), 0s, 0s, 0s, 0s, 0s;
   }
 
   /* ---- Loading spinner ---- */

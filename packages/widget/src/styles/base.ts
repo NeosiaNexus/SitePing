@@ -229,6 +229,11 @@ export function buildStyles(colors: ThemeColors): string {
       box-shadow: var(--sp-shadow-lg);
       cursor: pointer;
       animation: sp-toast-in 0.2s var(--sp-ease-out);
+      transition: opacity 0.15s ease;
+    }
+
+    .sp-toast--leaving {
+      opacity: 0;
     }
 
     .sp-toast[hidden] {
