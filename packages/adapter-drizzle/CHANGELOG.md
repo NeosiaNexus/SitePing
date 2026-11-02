@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/NeosiaNexus/SitePing/compare/adapter-drizzle-v0.2.0...adapter-drizzle-v0.2.1) (2026-11-02)
+
+
+### Miscellaneous
+
+* **deps-dev:** bump the dev-dependencies group across 1 directory with 7 updates ([#445](https://github.com/NeosiaNexus/SitePing/issues/445)) ([69c821e](https://github.com/NeosiaNexus/SitePing/commit/69c821e8acba7caab70b298a0e0dc98d75285746))
+
 ## [0.2.0](https://github.com/NeosiaNexus/SitePing/compare/adapter-drizzle-v0.1.0...adapter-drizzle-v0.2.0) (2026-10-30)
 
 
