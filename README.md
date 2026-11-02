@@ -27,42 +27,42 @@ own database.
 
 </div>
 
-> **[See SitePing in action →](https://siteping.dev/demo)** — Draw annotations, leave feedback, track bugs directly on the live site.
+> **[See SitePing in action →](https://siteping.dev/demo)**: draw annotations, leave feedback, track bugs directly on the live site.
 
 ---
 
 ## Why SitePing?
 
-Stop chasing client feedback across Slack threads, email chains, and Notion docs. SitePing gives your clients a **contextual** way to leave feedback — anchored to the exact element they're looking at.
+Stop chasing client feedback across Slack threads, email chains, and Notion docs. SitePing gives your clients a **contextual** way to leave feedback, anchored to the exact element they're looking at.
 
 | | SitePing | Marker.io | BugHerd | Userback |
 |---|---|---|---|---|
-| **Runs on your infrastructure** | Yes — your server, your database | No (hosted service) | No (hosted service) | No (hosted service) |
-| **Open source** | Yes, MIT — widget, server and inbox | Browser SDK only ([MIT](https://www.npmjs.com/package/@marker.io/browser)); the service is closed | No | Browser SDK only ([MIT](https://www.npmjs.com/package/@userback/widget)); the service is closed |
+| **Runs on your infrastructure** | Yes: your server, your database | No (hosted service) | No (hosted service) | No (hosted service) |
+| **Open source** | Yes, MIT: widget, server and inbox | Browser SDK only ([MIT](https://www.npmjs.com/package/@marker.io/browser)); the service is closed | No | Browser SDK only ([MIT](https://www.npmjs.com/package/@userback/widget)); the service is closed |
 | **Entry price** | Free | $39/mo billed yearly ($59 monthly), 3 members | $42/mo billed yearly ($50 monthly), 5 members | Free plan (2 seats); Team $39/mo billed yearly ($49 monthly) |
-| **Hosted for you** | No — you run one endpoint and a database | Yes | Yes | Yes |
+| **Hosted for you** | No: you run one endpoint and a database | Yes | Yes | Yes |
 
 <sub>Competitor plans and prices from [marker.io/pricing](https://marker.io/pricing), [bugherd.com/pricing](https://bugherd.com/pricing) and [userback.io/pricing](https://userback.io/pricing/), checked on 2026-10-30. Vercel Comments is left out on purpose: it is free on every Vercel plan, but every reviewer needs a Vercel account and inviting reviewers outside your team takes a Pro or Enterprise plan ([vercel.com/docs/comments](https://vercel.com/docs/comments)).</sub>
 
-What sets SitePing apart is how annotations are kept: each one is anchored to the DOM element it was drawn on, with several signals to find that element again after a deploy, and its rectangle is stored relative to that element — see [how anchoring works](https://siteping.dev/docs/widget/anchoring).
+What sets SitePing apart is how annotations are kept: each one is anchored to the DOM element it was drawn on, with several signals to find that element again after a deploy, and its rectangle is stored relative to that element. See [how anchoring works](https://siteping.dev/docs/widget/anchoring).
 
 ## Features
 
-- **Rectangle annotations** — clients draw directly on the page, with category + message
-- **DOM-anchored persistence** — annotations tie to elements, not pixels; they survive layout changes
-- **Instant right-click comments** — opt-in, and it never hijacks keyboard or modifier-key context menus
-- **Screenshots + diagnostics** — opt-in JPEG of the annotated area (with privacy masking) and console/network capture
-- **Discussion threads** — reviewers reply in the widget, your team answers from the inbox, on the endpoint you already mounted
-- **GitHub & GitLab issues** — [`@siteping/integration-issues`](https://siteping.dev/docs/issue-trackers) opens one issue per feedback and closes or reopens it with the feedback
-- **Phones & tablets** — clients tap an element to comment; on a phone, the form and the panel become bottom sheets
-- **Reviewer mode** — `readOnly`, and the server's permissions, hide what a visitor may not do
-- **Webhooks** — Slack, Discord or generic JSON when feedback lands, and opt-in when it changes status, is deleted or gets a reply
-- **Panel actions** — your own buttons and links in the feedback detail view: create a ticket, hand a feedback to an agent, open it in your tracker
-- **Triage inbox** — `<SitepingInbox />` (`@siteping/dashboard`): Linear-style, keyboard-first, light/dark, 9 locales
-- **Reliability built in** — failed sends retry with backoff, then wait in a localStorage queue for the next page load
-- **Shadow DOM isolation** — widget CSS never leaks into your site, and your site CSS never breaks the widget
-- **Dev-only by default** — auto-hides in production builds unless `forceShow: true`
-- **Lightweight** — ~59 kB gzipped on first load (ESM: the entry and the chunk it imports); the panel (~10 kB), screenshot engine, and non-English locales load on demand
+- **Rectangle annotations**: clients draw directly on the page, with category + message
+- **DOM-anchored persistence**: annotations tie to elements, not pixels; they survive layout changes
+- **Instant right-click comments**: opt-in, and it never hijacks keyboard or modifier-key context menus
+- **Screenshots + diagnostics**: opt-in JPEG of the annotated area (with privacy masking) and console/network capture
+- **Discussion threads**: reviewers reply in the widget, your team answers from the inbox, on the endpoint you already mounted
+- **GitHub & GitLab issues**: [`@siteping/integration-issues`](https://siteping.dev/docs/issue-trackers) opens one issue per feedback and closes or reopens it with the feedback
+- **Phones & tablets**: clients tap an element to comment; on a phone, the form and the panel become bottom sheets
+- **Reviewer mode**: `readOnly`, and the server's permissions, hide what a visitor may not do
+- **Webhooks**: Slack, Discord or generic JSON when feedback lands, and opt-in when it changes status, is deleted or gets a reply
+- **Panel actions**: your own buttons and links in the feedback detail view: create a ticket, hand a feedback to an agent, open it in your tracker
+- **Triage inbox**: `<SitepingInbox />` (`@siteping/dashboard`): Linear-style, keyboard-first, light/dark, 9 locales
+- **Reliability built in**: failed sends retry with backoff, then wait in a localStorage queue for the next page load
+- **Shadow DOM isolation**: widget CSS never leaks into your site, and your site CSS never breaks the widget
+- **Dev-only by default**: auto-hides in production builds unless `forceShow: true`
+- **Lightweight**: ~59 kB gzipped on first load (ESM: the entry and the chunk it imports); the panel (~10 kB), screenshot engine, and non-English locales load on demand
 
 ## Quickstart
 
@@ -91,11 +91,11 @@ import { SitepingInbox } from "@siteping/dashboard";
 <SitepingInbox projects="my-app" endpoint="/api/siteping" theme="auto" />
 ```
 
-No server? The widget also runs fully client-side with `store: new LocalStorageStore()` — the [three-minute quickstart](https://siteping.dev/docs/quickstart) covers both paths, prerequisites included.
+No server? The widget also runs fully client-side with `store: new LocalStorageStore()`; the [three-minute quickstart](https://siteping.dev/docs/quickstart) covers both paths, prerequisites included.
 
 ## Documentation
 
-The full documentation lives at **[siteping.dev/docs](https://siteping.dev/docs)** (English and French) — every option, default, and behavior on these pages is verified against the source code.
+The full documentation lives at **[siteping.dev/docs](https://siteping.dev/docs)** (English and French). Every option, default, and behavior on these pages is verified against the source code.
 
 | Package | | Docs |
 |---|---|---|
@@ -112,15 +112,15 @@ The full documentation lives at **[siteping.dev/docs](https://siteping.dev/docs)
 
 ## Contributing
 
-Bug reports, locale translations, docs fixes, features — everything counts, and locale additions are the friendliest first PR. Start with [CONTRIBUTING.md](./CONTRIBUTING.md).
+Bug reports, locale translations, docs fixes, features: everything counts, and locale additions are the friendliest first PR. Start with [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-Maintaining a fork with extra features (semantic anchors, screenshot storage backends, positioning fixes have all come from forks)? An upstream PR — or even an issue describing what you built — lets everyone benefit.
+Maintaining a fork with extra features (semantic anchors, screenshot storage backends, positioning fixes have all come from forks)? An upstream PR (or even an issue describing what you built) lets everyone benefit.
 
 ## Contributors
 
-Every line of code, locale, doc fix, and bug report makes SitePing better. Huge thanks to everyone who has shown up — first-time contributors especially.
+Every line of code, locale, doc fix, and bug report makes SitePing better. Huge thanks to everyone who has shown up, first-time contributors especially.
 
-This project follows the [all-contributors](https://allcontributors.org) specification — every kind of contribution counts ([emoji key](https://allcontributors.org/docs/en/emoji-key)).
+This project follows the [all-contributors](https://allcontributors.org) specification: every kind of contribution counts ([emoji key](https://allcontributors.org/docs/en/emoji-key)).
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -157,7 +157,7 @@ This project follows the [all-contributors](https://allcontributors.org) specifi
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-> Want to be in this list? Code, docs, translations, bug reports, design ideas — all count. See [CONTRIBUTING.md](./CONTRIBUTING.md) to get started. The [@all-contributors](https://allcontributors.org/docs/en/bot/usage) bot can add you automatically when a maintainer comments `@all-contributors please add @your-username for code, doc`.
+> Want to be in this list? Code, docs, translations, bug reports, design ideas: all count. See [CONTRIBUTING.md](./CONTRIBUTING.md) to get started. The [@all-contributors](https://allcontributors.org/docs/en/bot/usage) bot can add you automatically when a maintainer comments `@all-contributors please add @your-username for code, doc`.
 
 ### Activity
 

@@ -4,7 +4,7 @@
 
 # @siteping/adapter-prisma
 
-The production server adapter for [SitePing](https://github.com/NeosiaNexus/SitePing) — one endpoint that validates, authenticates, and persists client feedback in your database.
+The production server adapter for [SitePing](https://github.com/NeosiaNexus/SitePing): one endpoint that validates, authenticates, and persists client feedback in your database.
 
 **[Documentation](https://siteping.dev/docs/adapters/prisma)** · **[live demo](https://siteping.dev/demo)**
 
@@ -19,7 +19,7 @@ npm install @siteping/adapter-prisma
 ## Quick start
 
 ```ts
-// app/api/siteping/route.ts — Next.js App Router
+// app/api/siteping/route.ts (Next.js App Router)
 import { createSitepingHandler } from "@siteping/adapter-prisma";
 import { prisma } from "@/lib/prisma";
 
@@ -30,14 +30,14 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 ```
 
-The handlers are Web-standard `Request` → `Response` — mount them from any framework (Remix, SvelteKit, Hono, …). Add the Prisma models with `npx @siteping/cli sync`, apply them with `npx prisma db push` (or `migrate dev`), then run `npx prisma generate` — Prisma 7 no longer runs it from those commands.
+The handlers are Web-standard `Request` → `Response`: mount them from any framework (Remix, SvelteKit, Hono, …). Add the Prisma models with `npx @siteping/cli sync`, apply them with `npx prisma db push` (or `migrate dev`), then run `npx prisma generate`, since Prisma 7 no longer runs it from those commands.
 
 ## Highlights
 
-- **Safe by default** — status changes and deletes require the `apiKey`; in production the factory refuses to start without one. Author emails are redacted for unauthenticated readers and `clientId` never leaves the server
-- **Screenshot storage hook** — upload images to S3/R2/GCS instead of inlining data URLs
-- **Webhooks** — Slack, Discord, or generic POST on each new feedback, and opt-in on status changes, deletes and replies (5 s timeout, never blocks the request)
-- **Built on [`@siteping/server`](https://siteping.dev/docs/server)** — every server option works here too (custom `access`, lifecycle hooks, `waitUntil`…), and a non-Prisma store can mount through `@siteping/server` alone
+- **Safe by default**: status changes and deletes require the `apiKey`; in production the factory refuses to start without one. Author emails are redacted for unauthenticated readers and `clientId` never leaves the server
+- **Screenshot storage hook**: upload images to S3/R2/GCS instead of inlining data URLs
+- **Webhooks**: Slack, Discord, or generic POST on each new feedback, and opt-in on status changes, deletes and replies (5 s timeout, never blocks the request)
+- **Built on [`@siteping/server`](https://siteping.dev/docs/server)**: every server option works here too (custom `access`, lifecycle hooks, `waitUntil`…), and a non-Prisma store can mount through `@siteping/server` alone
 
 ## Documentation
 

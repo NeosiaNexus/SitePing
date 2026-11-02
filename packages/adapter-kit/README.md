@@ -1,6 +1,6 @@
 # @siteping/adapter-kit
 
-Everything needed to build — and conformance-test — a custom [Siteping](https://siteping.dev) store adapter.
+Everything needed to build (and conformance-test) a custom [Siteping](https://siteping.dev) store adapter.
 
 ```ts
 import { createCollectionStore, type SitepingStore } from "@siteping/adapter-kit";

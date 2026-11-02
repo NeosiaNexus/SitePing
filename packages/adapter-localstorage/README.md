@@ -4,7 +4,7 @@
 
 # @siteping/adapter-localstorage
 
-Client-side store for [SitePing](https://github.com/NeosiaNexus/SitePing) — the whole feedback loop in the browser, no server required. Ideal for demos, prototypes, and docs sites.
+Client-side store for [SitePing](https://github.com/NeosiaNexus/SitePing): the whole feedback loop in the browser, no server required. Ideal for demos, prototypes, and docs sites.
 
 **[Documentation](https://siteping.dev/docs/adapters/localstorage)**
 
@@ -21,12 +21,12 @@ import { initSiteping } from "@siteping/widget";
 import { LocalStorageStore } from "@siteping/adapter-localstorage";
 
 initSiteping({
-  store: new LocalStorageStore(),   // options: { key?: string } — default "siteping_feedbacks"
+  store: new LocalStorageStore(),   // options: { key?: string }, default "siteping_feedbacks"
   projectName: "my-demo",
 });
 ```
 
-Each visitor sees only their own feedback — data never leaves their browser. Corrupted stored data never crashes and is backed up to `<key>.corrupt` instead of being overwritten, quota pressure drops the screenshot before ever dropping the comment, and dates come back as real `Date` objects.
+Each visitor sees only their own feedback: data never leaves their browser. Corrupted stored data never crashes and is backed up to `<key>.corrupt` instead of being overwritten, quota pressure drops the screenshot before ever dropping the comment, and dates come back as real `Date` objects.
 
 ## License
 

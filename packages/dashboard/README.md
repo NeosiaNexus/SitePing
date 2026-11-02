@@ -6,9 +6,9 @@
 
 **A Linear-style triage inbox for your SitePing feedback.**
 
-`<SitepingInbox />` is a keyboard-first React component that lists every feedback your clients sent through [`@siteping/widget`](https://www.npmjs.com/package/@siteping/widget) — annotated screenshots re-rendered as the client framed them, status triage (open / in progress / resolved / won't fix) with undo, search, and deep links back to the live page.
+`<SitepingInbox />` is a keyboard-first React component that lists every feedback your clients sent through [`@siteping/widget`](https://www.npmjs.com/package/@siteping/widget): annotated screenshots re-rendered as the client framed them, status triage (open / in progress / resolved / won't fix) with undo, search, and deep links back to the live page.
 
-Part of [SitePing](https://github.com/NeosiaNexus/SitePing) — **[documentation](https://siteping.dev/docs/dashboard)**.
+Part of [SitePing](https://github.com/NeosiaNexus/SitePing) · **[documentation](https://siteping.dev/docs/dashboard)**.
 
 ## Install
 
@@ -28,9 +28,9 @@ import { SitepingInbox } from "@siteping/dashboard";
 
 Mount it on an admin page behind your app's login: on the endpoint's origin it sends your session cookie, for the server's [`access`](https://siteping.dev/docs/server#custom-access) policy to check. Never put the `apiKey` in a client bundle (`NEXT_PUBLIC_*`, `VITE_*`): it authorizes every status change and delete.
 
-Give it a container with a height — it fills its parent (min 480 px) and adapts to the container's width, not the viewport.
+Give it a container with a height: it fills its parent (min 480 px) and adapts to the container's width, not the viewport.
 
-Prefer your own UI? All the logic — fetching, filters, optimistic mutations, undo, pagination — is exposed as a headless hook:
+Prefer your own UI? All the logic (fetching, filters, optimistic mutations, undo, pagination) is exposed as a headless hook:
 
 ```tsx
 const inbox = useSitepingInbox({ projects: "my-app", endpoint: "/api/siteping" });
@@ -38,9 +38,9 @@ const inbox = useSitepingInbox({ projects: "my-app", endpoint: "/api/siteping" }
 
 ## Highlights
 
-- **Keyboard-first** — `j`/`k` navigate, `e`/`p`/`x` toggle statuses, `u` undo, `/` search, `?` shows the cheat sheet
-- **Three data modes** — HTTP `endpoint`, in-process `store`, or a fully custom 3-method `source` (tRPC/GraphQL/server actions)
-- **Themeable without Shadow DOM** — scoped `spd-` classes and `--spd-*` CSS variables; light/dark/auto with live system-theme tracking
+- **Keyboard-first**: `j`/`k` navigate, `e`/`p`/`x` toggle statuses, `u` undo, `/` search, `?` shows the cheat sheet
+- **Three data modes**: HTTP `endpoint`, in-process `store`, or a fully custom 3-method `source` (tRPC/GraphQL/server actions)
+- **Themeable without Shadow DOM**: scoped `spd-` classes and `--spd-*` CSS variables; light/dark/auto with live system-theme tracking
 - **9 built-in locales** plus runtime custom locales via `registerLocale`
 
 ## Documentation

@@ -19,7 +19,7 @@ npm install @siteping/adapter-drizzle @siteping/server drizzle-orm
 ## Quick start
 
 ```ts
-// db/schema.ts — then `drizzle-kit generate` as usual
+// db/schema.ts, then `drizzle-kit generate` as usual
 import { createSitepingPgTables } from "@siteping/adapter-drizzle/pg";
 export const { sitepingFeedbacks, sitepingAnnotations, sitepingComments } = createSitepingPgTables();
 

@@ -4,7 +4,7 @@
 
 # @siteping/server
 
-The HTTP endpoint of [SitePing](https://github.com/NeosiaNexus/SitePing) over any store, for any framework — validation, auth, CORS, redaction, hooks and webhooks on the Fetch API. No Node built-in: it runs on Node, Bun, Deno and edge workers.
+The HTTP endpoint of [SitePing](https://github.com/NeosiaNexus/SitePing) over any store, for any framework: validation, auth, CORS, redaction, hooks and webhooks on the Fetch API. No Node built-in: it runs on Node, Bun, Deno and edge workers.
 
 **[Documentation](https://siteping.dev/docs/server)**
 
@@ -19,13 +19,13 @@ Node ≥ 22, or any runtime with the Fetch API.
 ## Quick start
 
 ```ts
-// app/api/siteping/route.ts — Next.js App Router
+// app/api/siteping/route.ts (Next.js App Router)
 import { createSitepingHandler } from "@siteping/server";
 import { store } from "@/lib/siteping-store"; // Drizzle, memory, Prisma or your own
 
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store,
-  apiKey: process.env.SITEPING_API_KEY,    // Bearer auth — or `access` for your own sessions
+  apiKey: process.env.SITEPING_API_KEY,    // Bearer auth, or `access` for your own sessions
   allowedOrigins: ["https://my-site.com"], // exact-match CORS
 });
 ```

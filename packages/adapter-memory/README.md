@@ -4,7 +4,7 @@
 
 # @siteping/adapter-memory
 
-In-memory store for [SitePing](https://github.com/NeosiaNexus/SitePing) — zero dependencies, zero configuration. For tests, previews, and throwaway demos: restart the process and it's gone.
+In-memory store for [SitePing](https://github.com/NeosiaNexus/SitePing): zero dependencies, zero configuration. For tests, previews, and throwaway demos: restart the process and it's gone.
 
 **[Documentation](https://siteping.dev/docs/adapters/memory)**
 
@@ -30,9 +30,9 @@ createSitepingHandler({ store });
 initSiteping({ store, projectName: "preview" });
 ```
 
-`clear()` resets it between test cases. Duplicate `clientId` submissions return the existing record (retry-safe), unknown IDs throw `StoreNotFoundError`, and records are returned **by reference** — clone before mutating.
+`clear()` resets it between test cases. Duplicate `clientId` submissions return the existing record (retry-safe), unknown IDs throw `StoreNotFoundError`, and records are returned **by reference**: clone before mutating.
 
-Writing your own adapter? This store passes the shared 67-test conformance suite (`testSitepingStore` from `@siteping/adapter-kit/testing`) — yours should too.
+Writing your own adapter? This store passes the shared 67-test conformance suite (`testSitepingStore` from `@siteping/adapter-kit/testing`); yours should too.
 
 ## License
 

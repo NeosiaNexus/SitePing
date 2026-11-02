@@ -14,18 +14,18 @@ Set up and check [SitePing](https://github.com/NeosiaNexus/SitePing) from the co
 npx @siteping/cli init
 ```
 
-> Always `npx @siteping/cli …` — there is no `siteping` package on npm, so `npx siteping` only works once `@siteping/cli` is installed locally.
+> Always `npx @siteping/cli …`: there is no `siteping` package on npm, so `npx siteping` only works once `@siteping/cli` is installed locally.
 
 ## Commands
 
 | Command | What it does |
 |---------|--------------|
 | `init` | Interactive setup: adds the Prisma models and generates the Next.js App Router API route |
-| `sync [--schema <path>]` | Non-interactive, CI-friendly schema merge — creates/updates the SitePing models, never touches your own fields |
+| `sync [--schema <path>]` | Non-interactive, CI-friendly schema merge: creates/updates the SitePing models, never touches your own fields |
 | `status [--schema <path>]` | Health report: schema, API route, package, and widget integration (exits 1 when something's missing) |
 | `doctor --url <url> --endpoint <path> [--api-key <key>]` | One HTTP request against your running server to confirm a SitePing handler answers |
 
-Commit before `sync` — it re-prints the whole schema file, so formatting normalizes across your own models too.
+Commit before `sync`: it re-prints the whole schema file, so formatting normalizes across your own models too.
 
 ## Documentation
 
