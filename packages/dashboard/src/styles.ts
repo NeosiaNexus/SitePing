@@ -43,6 +43,8 @@ export const INBOX_CSS = `
   --spd-radius-sm: 6px;
   --spd-radius-xs: 4px;
   --spd-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Emil Kowalski's strong ease-out: presses and popovers answer at once. */
+  --spd-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --spd-row-h: 44px;
 
   position: relative;
@@ -201,9 +203,11 @@ export const INBOX_CSS = `
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.spd-root :is(.spd-project-select, .spd-type-filter select, select.spd-type-filter):hover {
-  background: var(--spd-raised);
-  border-color: var(--spd-border-strong);
+@media (hover: hover) and (pointer: fine) {
+  .spd-root :is(.spd-project-select, .spd-type-filter select, select.spd-type-filter):hover {
+    background: var(--spd-raised);
+    border-color: var(--spd-border-strong);
+  }
 }
 .spd-root :is(.spd-project, .spd-type-filter) > svg {
   position: absolute;
@@ -241,10 +245,12 @@ export const INBOX_CSS = `
   border-radius: var(--spd-radius-sm);
   white-space: nowrap;
 }
-.spd-tab:hover {
-  color: var(--spd-text);
-  background: color-mix(in srgb, var(--spd-raised) 90%, transparent);
-  box-shadow: inset 0 0 0 1px var(--spd-border-strong);
+@media (hover: hover) and (pointer: fine) {
+  .spd-tab:hover {
+    color: var(--spd-text);
+    background: color-mix(in srgb, var(--spd-raised) 90%, transparent);
+    box-shadow: inset 0 0 0 1px var(--spd-border-strong);
+  }
 }
 .spd-tab[aria-checked="true"] {
   color: var(--spd-text);
@@ -315,7 +321,11 @@ export const INBOX_CSS = `
   color: var(--spd-text-3);
   border-radius: var(--spd-radius-xs);
 }
-.spd-search-clear:hover { color: var(--spd-text); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-search-clear:hover {
+    color: var(--spd-text);
+  }
+}
 .spd-search-clear svg { width: 12px; height: 12px; }
 .spd-search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .spd-search-input:focus-visible { outline: none; }
@@ -349,7 +359,12 @@ export const INBOX_CSS = `
   color: var(--spd-text-2);
   border-radius: var(--spd-radius-sm);
 }
-.spd-icon-btn:hover { color: var(--spd-text); background: var(--spd-raised); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-icon-btn:hover {
+    color: var(--spd-text);
+    background: var(--spd-raised);
+  }
+}
 .spd-spin svg { animation: spd-spin 0.8s linear infinite; }
 @keyframes spd-spin { to { transform: rotate(360deg); } }
 
@@ -387,9 +402,13 @@ export const INBOX_CSS = `
   padding: 0 12px;
   border-bottom: 1px solid var(--spd-border);
   cursor: pointer;
-  transition: opacity 160ms var(--spd-ease), height 160ms var(--spd-ease);
+  transition: opacity 160ms var(--spd-ease);
 }
-.spd-row:hover { background: var(--spd-raised); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-row:hover {
+    background: var(--spd-raised);
+  }
+}
 .spd-row-focused,
 .spd-row[aria-selected="true"] {
   background: var(--spd-raised);
@@ -531,17 +550,38 @@ export const INBOX_CSS = `
   background: var(--spd-raised);
   border-color: var(--spd-border-strong);
 }
-.spd-btn:hover { border-color: var(--spd-text-3); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-btn:hover {
+    border-color: var(--spd-text-3);
+  }
+}
 .spd-btn-ghost { color: var(--spd-text-2); }
-.spd-btn-ghost:hover { color: var(--spd-text); background: var(--spd-raised); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-btn-ghost:hover {
+    color: var(--spd-text);
+    background: var(--spd-raised);
+  }
+}
 .spd-btn-primary { color: #ffffff; background: var(--spd-accent); }
 /* Hovers darken: the white label keeps at least its resting contrast, whatever --spd-accent a host sets. */
-.spd-btn-primary:hover { background: color-mix(in srgb, var(--spd-accent) 88%, #000000); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-btn-primary:hover {
+    background: color-mix(in srgb, var(--spd-accent) 88%, #000000);
+  }
+}
 .spd-btn-primary svg { width: 13px; height: 13px; }
 .spd-btn-danger { color: #ffffff; background: var(--spd-danger-strong); }
-.spd-btn-danger:hover { background: color-mix(in srgb, var(--spd-danger-strong) 85%, #000000); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-btn-danger:hover {
+    background: color-mix(in srgb, var(--spd-danger-strong) 85%, #000000);
+  }
+}
 .spd-btn-danger-ghost { color: var(--spd-danger); }
-.spd-btn-danger-ghost:hover { background: color-mix(in srgb, var(--spd-danger) 12%, transparent); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-btn-danger-ghost:hover {
+    background: color-mix(in srgb, var(--spd-danger) 12%, transparent);
+  }
+}
 
 /* -------------------------------------------------------------- skeleton */
 .spd-skel-row {
@@ -603,6 +643,9 @@ export const INBOX_CSS = `
 @keyframes spd-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+@keyframes spd-pop-in {
+  from { opacity: 0; transform: scale(0.97); }
 }
 .spd-drawer {
   position: absolute;
@@ -694,13 +737,19 @@ export const INBOX_CSS = `
   border-radius: var(--spd-radius-sm);
   white-space: nowrap;
 }
-button.spd-status-menu-trigger:hover { background: var(--spd-raised); }
+@media (hover: hover) and (pointer: fine) {
+  button.spd-status-menu-trigger:hover {
+    background: var(--spd-raised);
+  }
+}
 .spd-status-menu-trigger > svg { width: 13px; height: 13px; }
 .spd-status-menu-pop {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
   z-index: 7;
+  transform-origin: top right;
+  animation: spd-pop-in 120ms var(--spd-ease-out) backwards;
   min-width: 160px;
   padding: 4px;
   background: var(--spd-surface);
@@ -720,8 +769,14 @@ button.spd-status-menu-trigger:hover { background: var(--spd-raised); }
   border-radius: var(--spd-radius-xs);
   text-align: left;
 }
-.spd-status-menu-item:hover,
 .spd-status-menu-item-active { color: var(--spd-text); background: var(--spd-raised); }
+
+@media (hover: hover) and (pointer: fine) {
+  .spd-status-menu-item:hover {
+    color: var(--spd-text);
+    background: var(--spd-raised);
+  }
+}
 .spd-status-menu-item[aria-selected="true"] { color: var(--spd-text); }
 .spd-status-menu-item > svg:last-child { margin-left: auto; color: var(--spd-text-2); }
 
@@ -729,7 +784,11 @@ button.spd-status-menu-trigger:hover { background: var(--spd-raised); }
    No display here — the base .spd-diag-msg -webkit-box clamp must keep
    applying while collapsed (data-expanded flips it to block). */
 .spd-root :where(button).spd-diag-msg { width: 100%; text-align: left; }
-.spd-root :where(button).spd-diag-msg:hover { color: var(--spd-text); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-root :where(button).spd-diag-msg:hover {
+    color: var(--spd-text);
+  }
+}
 
 /* --------------------------------------------- evidence card (signature) */
 .spd-evidence {
@@ -820,7 +879,12 @@ button.spd-status-menu-trigger:hover { background: var(--spd-raised); }
   border-radius: var(--spd-radius-xs);
   white-space: nowrap;
 }
-.spd-evidence-toggle:hover { color: var(--spd-text); background: var(--spd-raised); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-evidence-toggle:hover {
+    color: var(--spd-text);
+    background: var(--spd-raised);
+  }
+}
 
 /* no-screenshot fallback — same bracket framing around the anchor data */
 .spd-evidence-fallback {
@@ -841,7 +905,11 @@ button.spd-status-menu-trigger:hover { background: var(--spd-raised); }
   overflow-wrap: anywhere;
   cursor: copy;
 }
-.spd-anchor-selector:hover { color: var(--spd-text); }
+@media (hover: hover) and (pointer: fine) {
+  .spd-anchor-selector:hover {
+    color: var(--spd-text);
+  }
+}
 .spd-anchor-snippet {
   padding: 2px 0 2px 10px;
   border-left: 2px solid var(--spd-border-strong);
@@ -895,7 +963,11 @@ button.spd-status-menu-trigger:hover { background: var(--spd-raised); }
   font-variant-numeric: tabular-nums;
 }
 .spd-meta-value a { color: var(--spd-accent-bright); }
-.spd-meta-value a:hover { text-decoration: underline; }
+@media (hover: hover) and (pointer: fine) {
+  .spd-meta-value a:hover {
+    text-decoration: underline;
+  }
+}
 /* technical values (URL, viewport, email) get the mono treatment */
 .spd-meta-value[data-mono],
 .spd-meta-value [data-mono] {
@@ -1094,7 +1166,6 @@ button.spd-status-menu-trigger:hover { background: var(--spd-raised); }
   justify-content: center;
   padding: 24px;
   background: var(--spd-dim);
-  animation: spd-fade-in 160ms var(--spd-ease);
 }
 .spd-shortcuts-card {
   min-width: 260px;
@@ -1162,13 +1233,59 @@ button.spd-status-menu-trigger:hover { background: var(--spd-raised); }
 
 /* ---------------------------------------------------------------- motion */
 @media (prefers-reduced-motion: reduce) {
-  /* !important is deliberate: this kill-switch must beat every specificity,
-     including compound rules like .spd-spin svg. */
+  /* !important is deliberate: this switch must beat every specificity,
+     including compound rules like .spd-spin svg. Fewer and gentler, not
+     zero: nothing moves, but fades and colour changes stay. */
   .spd-root *,
   .spd-root *::before,
   .spd-root *::after {
     animation: none !important;
-    transition: none !important;
+    transition-property: opacity, color, background-color, border-color, box-shadow !important;
+  }
+  /* The drawer and the toast fade in place instead of sliding. */
+  .spd-root :is(.spd-drawer, .spd-drawer-backdrop, .spd-toast) {
+    animation: spd-fade-in 120ms ease !important;
+  }
+  /* A frozen spinner reads as a hang: it keeps turning, slowly. */
+  .spd-root .spd-spin svg {
+    animation: spd-spin 1.6s linear infinite !important;
+  }
+}
+
+/* ------------------------------------------------------ touch and press */
+/* The press is felt on pointer-down. Rows are exempt: a list swept
+   tens of times a day stays still. */
+.spd-root :where(
+  .spd-btn,
+  .spd-btn-ghost,
+  .spd-btn-primary,
+  .spd-btn-danger,
+  .spd-btn-danger-ghost,
+  .spd-icon-btn,
+  .spd-tab,
+  .spd-status-menu-trigger,
+  .spd-evidence-toggle
+) {
+  touch-action: manipulation;
+  transition: transform 120ms var(--spd-ease-out);
+}
+.spd-root :where(
+  .spd-btn,
+  .spd-btn-ghost,
+  .spd-btn-primary,
+  .spd-btn-danger,
+  .spd-btn-danger-ghost,
+  .spd-icon-btn,
+  .spd-tab,
+  .spd-status-menu-trigger,
+  .spd-evidence-toggle
+):not(:disabled):active {
+  transform: scale(0.97);
+}
+/* iOS zooms the whole page into any field under 16px on focus. */
+@media (pointer: coarse) {
+  .spd-root :is(.spd-search-input, .spd-project-select, .spd-type-filter select, select.spd-type-filter) {
+    font-size: 16px;
   }
 }
 
