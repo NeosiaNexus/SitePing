@@ -53,7 +53,7 @@ const colors = buildThemeColors();
 describe("shortcuts: exports", () => {
   it("exports an i18n EN object with expected keys", () => {
     expect(SHORTCUTS_I18N_EN["shortcuts.title"]).toBe("Keyboard shortcuts");
-    expect(SHORTCUTS_I18N_EN["shortcuts.navigate"]).toBe("Navigate feedbacks");
+    expect(SHORTCUTS_I18N_EN["shortcuts.navigate"]).toBe("Navigate feedback");
     expect(SHORTCUTS_I18N_EN["shortcuts.resolve"]).toBe("Resolve / Reopen");
     expect(SHORTCUTS_I18N_EN["shortcuts.delete"]).toBe("Delete");
     expect(SHORTCUTS_I18N_EN["shortcuts.search"]).toBe("Focus search");
@@ -136,7 +136,7 @@ describe("focusCardByIndex", () => {
     focusCardByIndex(list, 2);
     const cards = list.querySelectorAll<HTMLElement>(".sp-card");
     expect(cards[2]?.classList.contains("sp-card--focused")).toBe(true);
-    expect(cards[2]?.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+    expect(cards[2]?.scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
 
   it("clamps a negative index to 0", () => {

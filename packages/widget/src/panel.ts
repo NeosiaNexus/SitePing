@@ -55,7 +55,7 @@ import { PanelStats } from "./panel-stats.js";
 import { buildThread, type ThreadDraft } from "./panel-thread.js";
 import { focusCardByIndex, getFocusedCardIndex, KeyboardShortcuts } from "./shortcuts.js";
 import { getStatusBgColor, getStatusColor, getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport } from "./viewport.js";
+import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
 
 /** Non-terminal statuses — complement of `CLOSED_FEEDBACK_STATUSES`; backs the panel's "Open" tab bucket. */
 const OPEN_FEEDBACK_STATUSES: readonly FeedbackStatus[] = FEEDBACK_STATUSES.filter((s) => !isClosedStatus(s));
@@ -318,7 +318,11 @@ export class Panel {
             // layout and miss on another screen size. They remain the fallback
             // when no pin is on screen (anchor lost, or markers hidden).
             if (!this.markers.revealPin(fb.id)) {
-              window.scrollTo({ left: ann.scrollX, top: ann.scrollY, behavior: "smooth" });
+              window.scrollTo({
+                left: ann.scrollX,
+                top: ann.scrollY,
+                behavior: prefersReducedMotion() ? "auto" : "smooth",
+              });
               this.markers.pinHighlight(fb);
             }
             // The phone sheet covers the page it just scrolled — get out of the way.
@@ -906,9 +910,7 @@ export class Panel {
 
         const groupContent = cardList("sp-group-content", pagePath);
         for (const feedback of groupFeedbacks) {
-          const card = this.createCard(feedback, globalIndex + 1);
-          card.style.setProperty("--sp-card-i", String(globalIndex));
-          groupContent.appendChild(card);
+          groupContent.appendChild(this.createCard(feedback, globalIndex + 1));
           globalIndex++;
         }
         this.listContainer.appendChild(groupContent);
@@ -917,9 +919,7 @@ export class Panel {
       // Flat list rendering
       const list = cardList("sp-cards", this.t("panel.feedbackList"));
       sorted.forEach((feedback, index) => {
-        const card = this.createCard(feedback, index + 1);
-        card.style.setProperty("--sp-card-i", String(index));
-        list.appendChild(card);
+        list.appendChild(this.createCard(feedback, index + 1));
       });
       this.listContainer.appendChild(list);
     }
@@ -1559,7 +1559,7 @@ export class Panel {
     const escapedId = CSS.escape(feedbackId);
     const card = this.listContainer.querySelector<HTMLElement>(`[data-feedback-id="${escapedId}"]`);
     if (card) {
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
       card.classList.add("sp-anim-flash");
       card.addEventListener(
         "animationend",

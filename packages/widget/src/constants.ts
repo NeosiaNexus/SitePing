@@ -30,4 +30,10 @@ export const INSTANT_ANNOTATION_SIZE = 20;
  * Duration in milliseconds of the annotation popup's open/close transition.
  * The popup is set to `display: none` only once the fade-out has finished.
  */
-export const POPUP_HIDE_TRANSITION_MS = 250;
+export const POPUP_HIDE_TRANSITION_MS = 200;
+
+/**
+ * Emil Kowalski's strong ease-out, for the surfaces mounted on the host page
+ * (popup, tooltip, markers): they cannot read the Shadow DOM's `--sp-ease-out`.
+ */
+export const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";

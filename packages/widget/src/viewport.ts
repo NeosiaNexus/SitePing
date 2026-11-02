@@ -19,6 +19,11 @@ export function isCoarsePointer(): boolean {
   return matches("(pointer: coarse)");
 }
 
+/** A mouse or trackpad: hover feedback is real here, not a sticky leftover of a tap. */
+export function canHover(): boolean {
+  return matches("(hover: hover) and (pointer: fine)");
+}
+
 /** Read live, not cached, so an OS setting change applies to the next animation. */
 export function prefersReducedMotion(): boolean {
   return matches("(prefers-reduced-motion: reduce)");

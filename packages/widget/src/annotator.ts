@@ -1,7 +1,7 @@
 import { type AnnotationPayload, type FeedbackType, newClientId, type ScreenshotRegion } from "@siteping/core";
-import { INSTANT_ANNOTATION_SIZE, Z_INDEX_MAX } from "./constants.js";
+import { EASE_OUT, INSTANT_ANNOTATION_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { deepElementFromPoint, findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anchor.js";
-import { el, setText } from "./dom-utils.js";
+import { el, pressable, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { deepFocusTarget, isWidgetChrome } from "./focus-tracker.js";
 import { isolateFromHost, registerEscapeLayer } from "./host-isolation.js";
@@ -10,7 +10,7 @@ import { Popup } from "./popup.js";
 import { NO_VIEWPORT_INSETS, type ViewportInsets } from "./popup-placement.js";
 import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screenshot.js";
 import type { ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
+import { canHover, isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
 
 /** Below this size (px) on either axis, a gesture is a click or a tap: it points at the element under it. */
 const MIN_RECT_SIZE = 10;
@@ -289,12 +289,14 @@ export class Annotator {
         background:${this.colors.glassBg};
         color:${this.colors.textTertiary};font-family:"Inter",system-ui,-apple-system,sans-serif;
         font-size:13px;font-weight:500;cursor:pointer;
-        transition:all 0.2s ease;
+        touch-action:manipulation;
+        transition:background-color 0.15s ease,border-color 0.15s ease,color 0.15s ease,opacity 0.15s ease,scale 0.16s ${EASE_OUT};
       `;
       setText(cancelBtn, this.t("annotator.cancel"));
       cancelBtn.addEventListener("click", () => this.cancelSession());
+      pressable(cancelBtn);
       cancelBtn.addEventListener("mouseenter", () => {
-        if (!this.cancelFrozen) this.paintCancel(true);
+        if (!this.cancelFrozen && canHover()) this.paintCancel(true);
       });
       cancelBtn.addEventListener("mouseleave", () => this.paintCancel(false));
       this.toolbarCancel = cancelBtn;

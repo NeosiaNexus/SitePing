@@ -39,6 +39,15 @@ export function buildStyles(colors: ThemeColors): string {
       -moz-osx-font-smoothing: grayscale;
       ${cssVariables(colors)}
 
+      /* Motion tokens (Emil Kowalski's curves): enter and answer the user with
+         ease-out, move across the screen with ease-in-out, slide panels with
+         the drawer curve. styles/animations.ts holds the shared rules. */
+      --sp-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --sp-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+      --sp-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+      /* The one transition of controls: colours ease, the press answers fast. */
+      --sp-tr: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease, transform 0.16s var(--sp-ease-out);
+
       /* Identity modal — theme-aware backdrop + panel */
       --sp-identity-bg: ${colors.glassBgHeavy};
       --sp-identity-overlay: ${colors.bg === "#ffffff" ? "rgba(15, 23, 42, 0.2)" : "rgba(0, 0, 0, 0.4)"};
@@ -65,6 +74,61 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     /* ============================
+       Touch and press (every control)
+       ============================ */
+
+    /* No double-tap delay, no text selection on a long press: controls answer
+       the finger like native ones. Content stays selectable. */
+    button,
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="option"] {
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    /* The press is felt on pointer-down, at once (zero specificity: a control
+       that positions itself with transform keeps it). */
+    :where(
+      .sp-panel-close,
+      .sp-filter-dropdown-btn,
+      .sp-segmented__btn,
+      .sp-btn-resolve,
+      .sp-btn-delete,
+      .sp-btn-delete-all,
+      .sp-btn-danger,
+      .sp-btn-primary,
+      .sp-btn-ghost,
+      .sp-sort-btn,
+      .sp-group-toggle,
+      .sp-mine-toggle,
+      .sp-export-btn,
+      .sp-bulk-btn-resolve,
+      .sp-bulk-btn-delete,
+      .sp-bulk-btn-deselect,
+      .sp-detail-back,
+      .sp-detail-btn-resolve,
+      .sp-detail-btn-reopen,
+      .sp-detail-btn-delete,
+      .sp-detail-btn-custom,
+      .sp-detail-btn-goto,
+      .sp-shortcuts-close
+    ):not(:disabled):active {
+      transform: scale(0.97);
+    }
+
+    /* Solid surfaces asked for: the theme already made glass opaque, so the
+       blur would only cost paint. */
+    @media (prefers-reduced-transparency: reduce) {
+      * {
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+      }
+    }
+
+    /* ============================
        FAB (Floating Action Button)
        ============================ */
 
@@ -84,9 +148,12 @@ export function buildStyles(colors: ThemeColors): string {
         0 4px 20px var(--sp-accent-glow),
         0 2px 8px rgba(0, 0, 0, 0.08);
       transition:
-        transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
-        box-shadow 0.3s ease;
+        transform 0.16s var(--sp-ease-out),
+        box-shadow 0.2s ease;
       outline: none;
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
     .sp-fab:focus-visible {
@@ -94,16 +161,16 @@ export function buildStyles(colors: ThemeColors): string {
       outline-offset: 3px;
     }
 
-    .sp-fab:hover {
-      transform: translateY(-2px) scale(1.05);
-      box-shadow:
-        0 8px 28px var(--sp-accent-glow),
-        0 4px 12px rgba(0, 0, 0, 0.1);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-fab:hover {
+        box-shadow:
+          0 8px 28px var(--sp-accent-glow),
+          0 4px 12px rgba(0, 0, 0, 0.1);
+      }
     }
 
     .sp-fab:active {
-      transform: translateY(0) scale(0.95);
-      transition-duration: 0.1s;
+      transform: scale(0.97);
     }
 
     .sp-fab--bottom-right {
@@ -120,7 +187,6 @@ export function buildStyles(colors: ThemeColors): string {
       width: 22px;
       height: 22px;
       fill: currentColor;
-      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
     /* ---- FAB Badge ---- */
@@ -161,7 +227,7 @@ export function buildStyles(colors: ThemeColors): string {
       font: 500 13px/1.4 var(--sp-font);
       box-shadow: var(--sp-shadow-lg);
       cursor: pointer;
-      animation: sp-toast-in 0.2s ease-out;
+      animation: sp-toast-in 0.2s var(--sp-ease-out);
     }
 
     .sp-toast[hidden] {
@@ -174,12 +240,6 @@ export function buildStyles(colors: ThemeColors): string {
 
     @keyframes sp-toast-in {
       from { opacity: 0; transform: translate(-50%, 8px); }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .sp-toast {
-        animation: none;
-      }
     }
 
     /* ============================
@@ -224,7 +284,6 @@ export function buildStyles(colors: ThemeColors): string {
       font-weight: 600;
     }
 
-    .sp-radial-item:hover,
     .sp-radial-item:focus-visible {
       background: rgba(255, 255, 255, 0.95);
       border-color: var(--sp-accent);
@@ -233,6 +292,18 @@ export function buildStyles(colors: ThemeColors): string {
         var(--sp-shadow-md),
         0 0 0 3px var(--sp-accent-light);
       outline: none;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .sp-radial-item:hover {
+        background: rgba(255, 255, 255, 0.95);
+        border-color: var(--sp-accent);
+        color: var(--sp-accent-text);
+        box-shadow:
+          var(--sp-shadow-md),
+          0 0 0 3px var(--sp-accent-light);
+        outline: none;
+      }
     }
 
     .sp-radial-item svg {
@@ -272,10 +343,16 @@ export function buildStyles(colors: ThemeColors): string {
       transform: translate(-4px, -50%);
     }
 
-    .sp-radial-item:hover .sp-radial-label,
     .sp-radial-item:focus-visible .sp-radial-label {
       opacity: 1;
       transform: translate(0, -50%);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .sp-radial-item:hover .sp-radial-label {
+        opacity: 1;
+        transform: translate(0, -50%);
+      }
     }
 
     /* ============================
@@ -297,7 +374,9 @@ export function buildStyles(colors: ThemeColors): string {
       box-shadow: var(--sp-shadow-xl);
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      /* clip, not hidden: a hidden box still scrolls under scrollIntoView and
+         focus(), which shifted the header and the parked detail view. */
+      overflow: clip;
     }
 
     .sp-panel-header {
@@ -331,12 +410,14 @@ export function buildStyles(colors: ThemeColors): string {
       align-items: center;
       justify-content: center;
       color: var(--sp-text-tertiary);
-      transition: all 0.2s ease;
+      transition: var(--sp-tr);
     }
 
-    .sp-panel-close:hover {
-      background: var(--sp-bg-hover);
-      color: var(--sp-text);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-panel-close:hover {
+        background: var(--sp-bg-hover);
+        color: var(--sp-text);
+      }
     }
 
     .sp-panel-close svg {
@@ -375,7 +456,7 @@ export function buildStyles(colors: ThemeColors): string {
       font-family: var(--sp-font);
       font-size: 13px;
       outline: none;
-      transition: all 0.2s ease;
+      transition: var(--sp-tr);
     }
 
     .sp-search::placeholder {
@@ -445,12 +526,14 @@ export function buildStyles(colors: ThemeColors): string {
       font-weight: 500;
       cursor: pointer;
       white-space: nowrap;
-      transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+      transition: var(--sp-tr);
     }
 
-    .sp-filter-dropdown-btn:hover {
-      border-color: var(--sp-chip-color);
-      background: var(--sp-chip-bg);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-filter-dropdown-btn:hover {
+        border-color: var(--sp-chip-color);
+        background: var(--sp-chip-bg);
+      }
     }
 
     .sp-filter-dropdown-btn[aria-expanded="true"] {
@@ -511,7 +594,7 @@ export function buildStyles(colors: ThemeColors): string {
       height: 14px;
       flex-shrink: 0;
       color: var(--sp-text-tertiary);
-      transition: transform 0.18s ease, color 0.18s ease;
+      transition: transform 0.2s var(--sp-ease-out), color 0.15s ease;
     }
 
     .sp-filter-dropdown-btn__chevron svg {
@@ -538,12 +621,13 @@ export function buildStyles(colors: ThemeColors): string {
       border: 1px solid var(--sp-glass-border);
       box-shadow: var(--sp-shadow-md);
       z-index: 10;
-      animation: sp-filter-menu-in 0.15s ease-out both;
+      transform-origin: top left;
+      animation: sp-menu-in 0.15s var(--sp-ease-out) backwards;
     }
 
-    @keyframes sp-filter-menu-in {
-      from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+    /* Every dropdown grows out of its trigger, above it (origin set per menu). */
+    @keyframes sp-menu-in {
+      from { opacity: 0; transform: scale(0.96); }
     }
 
     .sp-filter-dropdown-option {
@@ -564,7 +648,7 @@ export function buildStyles(colors: ThemeColors): string {
       font-weight: 500;
       cursor: pointer;
       text-align: left;
-      transition: background 0.12s ease, color 0.12s ease;
+      transition: background-color 0.12s ease, color 0.12s ease;
     }
 
     .sp-filter-dropdown-option__icon {
@@ -604,8 +688,10 @@ export function buildStyles(colors: ThemeColors): string {
       height: 13px;
     }
 
-    .sp-filter-dropdown-option:hover {
-      background: var(--sp-bg-hover);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-filter-dropdown-option:hover {
+        background: var(--sp-bg-hover);
+      }
     }
 
     .sp-filter-dropdown-option--active {
@@ -613,8 +699,10 @@ export function buildStyles(colors: ThemeColors): string {
       font-weight: 600;
     }
 
-    .sp-filter-dropdown-option--active:hover {
-      background: var(--sp-chip-bg);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-filter-dropdown-option--active:hover {
+        background: var(--sp-chip-bg);
+      }
     }
 
     /* ============================
@@ -649,7 +737,7 @@ export function buildStyles(colors: ThemeColors): string {
       font-weight: 500;
       cursor: pointer;
       white-space: nowrap;
-      transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+      transition: var(--sp-tr);
     }
 
     .sp-segmented__icon {
@@ -660,7 +748,7 @@ export function buildStyles(colors: ThemeColors): string {
       height: 13px;
       flex-shrink: 0;
       color: var(--sp-chip-color);
-      transition: color 0.18s ease, transform 0.18s ease;
+      transition: color 0.15s ease;
     }
 
     .sp-segmented__icon svg {
@@ -668,12 +756,16 @@ export function buildStyles(colors: ThemeColors): string {
       height: 13px;
     }
 
-    .sp-segmented__btn:hover {
-      color: var(--sp-chip-color);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-segmented__btn:hover {
+        color: var(--sp-chip-color);
+      }
     }
 
-    .sp-segmented__btn:hover .sp-segmented__icon {
-      color: var(--sp-chip-color);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-segmented__btn:hover .sp-segmented__icon {
+        color: var(--sp-chip-color);
+      }
     }
 
     .sp-segmented__btn--active {
@@ -687,31 +779,6 @@ export function buildStyles(colors: ThemeColors): string {
 
     .sp-segmented__btn--active .sp-segmented__icon {
       color: var(--sp-chip-color);
-    }
-
-    .sp-segmented__btn--open.sp-segmented__btn--active .sp-segmented__icon {
-      animation: sp-segmented-pulse 2.4s ease-in-out infinite;
-    }
-
-    @keyframes sp-segmented-pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(0.85); }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .sp-filter-dropdown-btn,
-      .sp-filter-dropdown-btn__chevron,
-      .sp-filter-dropdown-option,
-      .sp-segmented__btn,
-      .sp-segmented__icon {
-        transition: none;
-      }
-      .sp-filter-dropdown-menu {
-        animation: none;
-      }
-      .sp-segmented__btn--open.sp-segmented__btn--active .sp-segmented__icon {
-        animation: none;
-      }
     }
 
     /* ============================
@@ -737,8 +804,10 @@ export function buildStyles(colors: ThemeColors): string {
       border-radius: var(--sp-radius-full);
     }
 
-    .sp-list::-webkit-scrollbar-thumb:hover {
-      background: var(--sp-text-tertiary);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-list::-webkit-scrollbar-thumb:hover {
+        background: var(--sp-text-tertiary);
+      }
     }
 
     .sp-card {
@@ -750,19 +819,19 @@ export function buildStyles(colors: ThemeColors): string {
       background: var(--sp-glass-bg-heavy);
       border: 1px solid var(--sp-glass-border);
       box-shadow: var(--sp-shadow-xs);
-      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: var(--sp-tr);
     }
 
-    .sp-card:hover {
-      background: var(--sp-bg);
-      border-color: var(--sp-border);
-      box-shadow: var(--sp-shadow-md);
-      transform: translateY(-2px);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-card:hover {
+        background: var(--sp-bg);
+        border-color: var(--sp-border);
+        box-shadow: var(--sp-shadow-md);
+      }
     }
 
     .sp-card:active {
-      transform: translateY(0) scale(0.99);
-      transition-duration: 0.1s;
+      transform: scale(0.99);
     }
 
     .sp-card-bar {
@@ -777,10 +846,12 @@ export function buildStyles(colors: ThemeColors): string {
       min-width: 0;
     }
 
+    /* Long translated statuses (ru, fr, de) wrap the row, never a badge. */
     .sp-card-header {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 8px;
+      gap: 4px 8px;
       margin-bottom: 6px;
     }
 
@@ -792,6 +863,7 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-badge {
+      white-space: nowrap;
       padding: 2px 10px;
       border-radius: var(--sp-radius-full);
       font-size: 11px;
@@ -803,6 +875,8 @@ export function buildStyles(colors: ThemeColors): string {
       font-size: 11px;
       color: var(--sp-text-tertiary);
       margin-left: auto;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
 
     .sp-lost {
@@ -815,6 +889,8 @@ export function buildStyles(colors: ThemeColors): string {
       font-size: 13px;
       line-height: 1.5;
       color: var(--sp-text);
+      /* URLs and long compounds break instead of running out of the card. */
+      overflow-wrap: anywhere;
       display: -webkit-box;
       -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
@@ -837,8 +913,10 @@ export function buildStyles(colors: ThemeColors): string {
       transition: opacity 0.15s ease;
     }
 
-    .sp-card-expand:hover {
-      opacity: 0.8;
+    @media (hover: hover) and (pointer: fine) {
+      .sp-card-expand:hover {
+        opacity: 0.8;
+      }
     }
 
     .sp-card-footer {
@@ -863,7 +941,7 @@ export function buildStyles(colors: ThemeColors): string {
       display: flex;
       align-items: center;
       gap: 4px;
-      transition: all 0.2s ease;
+      transition: var(--sp-tr);
     }
 
     .sp-btn-resolve svg,
@@ -874,16 +952,20 @@ export function buildStyles(colors: ThemeColors): string {
 
     /* Hovered text in the theme's own green and red: green-500 and red-500
        read 2.2:1 and 3.8:1 on this tint in the light theme. */
-    .sp-btn-resolve:hover {
-      border-color: var(--sp-status-open);
-      color: var(--sp-status-open);
-      background: rgba(34, 197, 94, 0.06);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-btn-resolve:hover {
+        border-color: var(--sp-status-open);
+        color: var(--sp-status-open);
+        background: rgba(34, 197, 94, 0.06);
+      }
     }
 
-    .sp-btn-delete:hover {
-      border-color: var(--sp-type-bug);
-      color: var(--sp-type-bug);
-      background: rgba(239, 68, 68, 0.06);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-btn-delete:hover {
+        border-color: var(--sp-type-bug);
+        color: var(--sp-type-bug);
+        background: rgba(239, 68, 68, 0.06);
+      }
     }
 
     .sp-btn-resolve:disabled,
@@ -919,7 +1001,7 @@ export function buildStyles(colors: ThemeColors): string {
       display: flex;
       align-items: center;
       gap: 4px;
-      transition: all 0.2s ease;
+      transition: var(--sp-tr);
     }
 
     .sp-btn-delete-all svg {
@@ -927,10 +1009,12 @@ export function buildStyles(colors: ThemeColors): string {
       height: 13px;
     }
 
-    .sp-btn-delete-all:hover {
-      border-color: #ef4444;
-      color: #ef4444;
-      background: rgba(239, 68, 68, 0.06);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-btn-delete-all:hover {
+        border-color: #ef4444;
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.06);
+      }
     }
 
     .sp-btn-delete-all:disabled {
@@ -966,7 +1050,7 @@ export function buildStyles(colors: ThemeColors): string {
       box-shadow: var(--sp-shadow-xl);
       font-family: var(--sp-font);
       transform: translateY(8px) scale(0.97);
-      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: transform 0.2s var(--sp-ease-out);
     }
 
     .sp-confirm-title {
@@ -1001,19 +1085,15 @@ export function buildStyles(colors: ThemeColors): string {
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: var(--sp-tr);
       box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
     }
 
-    .sp-btn-danger:hover {
-      background: #dc2626;
-      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
-      transform: translateY(-1px);
-    }
-
-    .sp-btn-danger:active {
-      transform: translateY(0) scale(0.98);
-      transition-duration: 0.1s;
+    @media (hover: hover) and (pointer: fine) {
+      .sp-btn-danger:hover {
+        background: #dc2626;
+        box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+      }
     }
 
     .sp-card--resolved {
@@ -1051,7 +1131,7 @@ export function buildStyles(colors: ThemeColors): string {
       justify-content: center;
       z-index: ${Z_INDEX_MAX};
       opacity: 0;
-      transition: opacity 0.25s ease;
+      transition: opacity 0.2s ease;
     }
 
     .sp-identity-modal {
@@ -1067,7 +1147,7 @@ export function buildStyles(colors: ThemeColors): string {
       font-family: var(--sp-font);
       color: var(--sp-text);
       transform: translateY(12px) scale(0.97);
-      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: transform 0.2s var(--sp-ease-out);
     }
 
     .sp-identity--open {
@@ -1103,7 +1183,7 @@ export function buildStyles(colors: ThemeColors): string {
       font-family: var(--sp-font);
       font-size: 14px;
       outline: none;
-      transition: all 0.2s ease;
+      transition: var(--sp-tr);
     }
 
     .sp-input::placeholder {
@@ -1139,18 +1219,14 @@ export function buildStyles(colors: ThemeColors): string {
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: var(--sp-tr);
       box-shadow: 0 2px 8px var(--sp-accent-glow);
     }
 
-    .sp-btn-primary:hover {
-      box-shadow: 0 4px 16px var(--sp-accent-glow);
-      transform: translateY(-1px);
-    }
-
-    .sp-btn-primary:active {
-      transform: translateY(0) scale(0.98);
-      transition-duration: 0.1s;
+    @media (hover: hover) and (pointer: fine) {
+      .sp-btn-primary:hover {
+        box-shadow: 0 4px 16px var(--sp-accent-glow);
+      }
     }
 
     .sp-btn-primary:disabled {
@@ -1171,13 +1247,15 @@ export function buildStyles(colors: ThemeColors): string {
       font-size: 14px;
       font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: var(--sp-tr);
     }
 
-    .sp-btn-ghost:hover {
-      border-color: var(--sp-accent);
-      color: var(--sp-accent-text);
-      background: var(--sp-accent-light);
+    @media (hover: hover) and (pointer: fine) {
+      .sp-btn-ghost:hover {
+        border-color: var(--sp-accent);
+        color: var(--sp-accent-text);
+        background: var(--sp-accent-light);
+      }
     }
 
     /* ============================
@@ -1193,7 +1271,6 @@ export function buildStyles(colors: ThemeColors): string {
       color: var(--sp-text-tertiary);
       text-align: center;
       gap: 8px;
-      animation: sp-fade-in 0.3s ease-out both;
     }
 
     .sp-empty-text {

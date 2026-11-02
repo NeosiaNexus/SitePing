@@ -638,7 +638,7 @@ describe("Panel", () => {
       expect(resolveBtn).not.toBeNull();
     });
 
-    it("renders multiple cards with staggered animation index", async () => {
+    it("renders multiple cards without an entrance stagger (the list re-renders on every filter)", async () => {
       const feedbacks = [makeFeedback({ id: "fb-1" }), makeFeedback({ id: "fb-2" }), makeFeedback({ id: "fb-3" })];
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks, total: 3 });
 
@@ -646,9 +646,7 @@ describe("Panel", () => {
 
       const cards = shadow.querySelectorAll<HTMLElement>('[role="listitem"]');
       expect(cards.length).toBe(3);
-      expect(cards[0]!.style.getPropertyValue("--sp-card-i")).toBe("0");
-      expect(cards[1]!.style.getPropertyValue("--sp-card-i")).toBe("1");
-      expect(cards[2]!.style.getPropertyValue("--sp-card-i")).toBe("2");
+      for (const card of cards) expect(card.style.getPropertyValue("--sp-card-i")).toBe("");
     });
   });
 
@@ -2277,7 +2275,7 @@ describe("Panel", () => {
       await vi.waitFor(() => expect(deleteBtn.disabled).toBe(false));
       const checkbox = shadow.querySelector('[data-feedback-id="fb-2"] .sp-bulk-checkbox')!;
       expect(checkbox.getAttribute("aria-checked")).toBe("true");
-      expect(deleteBtn.textContent).toBe(`${t("bulk.delete")} 1`);
+      expect(deleteBtn.getAttribute("aria-label")).toBe(`${t("bulk.delete")} 1`);
     });
 
     it("bulkResolve partial failure still reloads the list", async () => {
@@ -2305,7 +2303,7 @@ describe("Panel", () => {
         shadow.querySelector(`[data-feedback-id="${id}"] .sp-bulk-checkbox`)!.getAttribute("aria-checked");
       expect(checked("fb-1")).toBe("false");
       expect(checked("fb-2")).toBe("true");
-      expect(resolveBtn.textContent).toBe(`${t("bulk.resolve")} 1`);
+      expect(resolveBtn.getAttribute("aria-label")).toBe(`${t("bulk.resolve")} 1`);
     });
 
     it("bulkDelete emits feedback:error on failure", async () => {
@@ -2924,12 +2922,8 @@ describe("Panel", () => {
       const groupContents = shadow.querySelectorAll<HTMLElement>(".sp-group-content");
       expect(groupContents.length).toBeGreaterThan(0);
 
-      // Cards should still be rendered with stagger index
       const cards = shadow.querySelectorAll<HTMLElement>(".sp-card");
       expect(cards.length).toBe(3);
-      // Global index in groups
-      expect(cards[0]!.style.getPropertyValue("--sp-card-i")).toBe("0");
-      expect(cards[2]!.style.getPropertyValue("--sp-card-i")).toBe("2");
     });
   });
 

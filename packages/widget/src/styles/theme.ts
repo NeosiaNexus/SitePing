@@ -133,7 +133,30 @@ export function resolveTheme(theme?: "light" | "dark" | "auto"): "light" | "dark
   return "light";
 }
 
+/**
+ * The OS asks for solid surfaces (reduced transparency) or stronger edges
+ * (increased contrast): glass turns opaque and borders take the secondary
+ * text colour. Read when the theme is built, like the colour scheme.
+ */
+function wantsSolidSurfaces(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-reduced-transparency: reduce), (prefers-contrast: more)").matches;
+}
+
 export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light" | "dark" | "auto"): ThemeColors {
+  const colors = buildPalette(accent, theme);
+  if (!wantsSolidSurfaces()) return colors;
+  return {
+    ...colors,
+    glassBg: colors.bg,
+    glassBgHeavy: colors.bg,
+    glassBorder: colors.textSecondary,
+    glassBorderSubtle: colors.border,
+    border: colors.textTertiary,
+  };
+}
+
+function buildPalette(accent: string, theme?: "light" | "dark" | "auto"): ThemeColors {
   const hex = normalizeHex(accent);
   const dark = mixHex(hex, "#000000", 0.15);
   const resolved = resolveTheme(theme);
@@ -199,9 +222,10 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
     textTertiary: "#64748b",
     border: "#e2e8f0",
     shadow: "rgba(0, 0, 0, 0.06)",
-    // Glass tokens
-    glassBg: "rgba(255, 255, 255, 0.72)",
-    glassBgHeavy: "rgba(255, 255, 255, 0.85)",
+    // Glass tokens, as opaque as the dark ones and for the same reason: over
+    // a black page, the worst case, 0.72 left tertiary text at 2.4:1.
+    glassBg: "rgba(255, 255, 255, 0.94)",
+    glassBgHeavy: "rgba(255, 255, 255, 0.97)",
     glassBorder: "rgba(255, 255, 255, 0.35)",
     glassBorderSubtle: "rgba(255, 255, 255, 0.18)",
     // Type colors, dark enough to read as badge text on their pastel (4.5:1+);

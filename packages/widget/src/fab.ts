@@ -290,10 +290,9 @@ export class Fab {
   }
 
   private setFabIcon(svgStr: string): void {
-    const badge = this.badgeEl;
-    this.fab.replaceChildren(parseSvg(svgStr));
-    // Re-append badge after icon swap
-    if (badge) this.fab.appendChild(badge);
+    // Swap the icon only: detaching and re-appending the badge would replay
+    // anything it animates and re-announce its live region on every toggle.
+    this.fab.querySelector("svg")?.replaceWith(parseSvg(svgStr));
   }
 
   private handleItemClick(id: RadialItemId): void {

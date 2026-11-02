@@ -183,7 +183,9 @@ describe("BulkActions", () => {
     await vi.waitFor(() => expect(deleteButton.disabled).toBe(false));
 
     expect(bulk.selectedIds).toEqual(["fb-1"]);
-    expect(deleteButton.textContent).toContain("Delete 1");
+    // The count lives in the bar, once; the button keeps it in its accessible name.
+    expect(deleteButton.textContent).toBe("Delete");
+    expect(deleteButton.getAttribute("aria-label")).toBe("Delete 1");
   });
 
   it("supports keyboard toggles and French labels", () => {
@@ -203,7 +205,8 @@ describe("BulkActions", () => {
 
     expect(bulk.selectedIds).toEqual(["fb-1"]);
     expect(bulk.barElement.textContent).toContain("1 sélectionné(s)");
-    expect(bulk.barElement.textContent).toContain("Résoudre 1");
+    expect(bulk.barElement.textContent).toContain("Résoudre");
+    expect(bulk.barElement.querySelector(".sp-bulk-btn-resolve")?.getAttribute("aria-label")).toBe("Résoudre 1");
 
     checkbox.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
     expect(bulk.selectedIds).toEqual([]);
@@ -223,7 +226,8 @@ describe("BulkActions", () => {
     await vi.waitFor(() => expect(resolveButton.disabled).toBe(false));
 
     expect(bulk.selectedIds).toEqual(["fb-1"]);
-    expect(resolveButton.textContent).toContain("Resolve 1");
+    expect(resolveButton.textContent).toBe("Resolve");
+    expect(resolveButton.getAttribute("aria-label")).toBe("Resolve 1");
   });
 
   it("resets registered checkboxes and destroys the floating bar", () => {

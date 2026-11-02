@@ -401,7 +401,7 @@ export const SORT_CSS = /* css */ `
     font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
     position: relative;
   }
 
@@ -411,10 +411,12 @@ export const SORT_CSS = /* css */ `
     flex-shrink: 0;
   }
 
-  .sp-sort-btn:hover {
-    border-color: var(--sp-accent);
-    color: var(--sp-accent-text);
-    background: var(--sp-accent-light);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-sort-btn:hover {
+      border-color: var(--sp-accent);
+      color: var(--sp-accent-text);
+      background: var(--sp-accent-light);
+    }
   }
 
   .sp-sort-btn[aria-expanded="true"] {
@@ -440,18 +442,8 @@ export const SORT_CSS = /* css */ `
     border: 1px solid var(--sp-glass-border);
     box-shadow: var(--sp-shadow-md);
     z-index: 10;
-    animation: sp-sort-menu-in 0.15s ease-out both;
-  }
-
-  @keyframes sp-sort-menu-in {
-    from {
-      opacity: 0;
-      transform: translateY(-4px) scale(0.97);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
+    transform-origin: top left;
+    animation: sp-menu-in 0.15s var(--sp-ease-out) backwards;
   }
 
   /* ============================
@@ -471,21 +463,25 @@ export const SORT_CSS = /* css */ `
     font-weight: 500;
     cursor: pointer;
     text-align: left;
-    transition: all 0.15s ease;
+    transition: var(--sp-tr);
   }
 
-  .sp-sort-option:hover {
-    background: var(--sp-bg-hover);
-    color: var(--sp-text);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-sort-option:hover {
+      background: var(--sp-bg-hover);
+      color: var(--sp-text);
+    }
   }
 
   .sp-sort-option--active {
     font-weight: 600;
   }
 
-  .sp-sort-option--active:hover {
-    background: var(--sp-accent-light);
-    color: var(--sp-accent-text);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-sort-option--active:hover {
+      background: var(--sp-accent-light);
+      color: var(--sp-accent-text);
+    }
   }
 
   /* ============================
@@ -507,7 +503,7 @@ export const SORT_CSS = /* css */ `
     font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
   }
 
   .sp-group-toggle svg,
@@ -517,11 +513,13 @@ export const SORT_CSS = /* css */ `
     flex-shrink: 0;
   }
 
-  .sp-group-toggle:hover,
-  .sp-mine-toggle:hover {
-    border-color: var(--sp-accent);
-    color: var(--sp-accent-text);
-    background: var(--sp-accent-light);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-group-toggle:hover,
+    .sp-mine-toggle:hover {
+      border-color: var(--sp-accent);
+      color: var(--sp-accent-text);
+      background: var(--sp-accent-light);
+    }
   }
 
   .sp-group-toggle--active,
@@ -532,11 +530,13 @@ export const SORT_CSS = /* css */ `
     box-shadow: 0 2px 8px var(--sp-accent-glow);
   }
 
-  .sp-group-toggle--active:hover,
-  .sp-mine-toggle--active:hover {
-    background: var(--sp-accent-gradient);
-    border-color: transparent;
-    color: #fff;
+  @media (hover: hover) and (pointer: fine) {
+    .sp-group-toggle--active:hover,
+    .sp-mine-toggle--active:hover {
+      background: var(--sp-accent-gradient);
+      border-color: transparent;
+      color: #fff;
+    }
   }
 
   /* ============================
@@ -555,11 +555,13 @@ export const SORT_CSS = /* css */ `
     position: sticky;
     top: 0;
     z-index: 2;
-    transition: background 0.2s ease;
+    transition: background-color 0.15s ease;
   }
 
-  .sp-group-header:hover {
-    background: var(--sp-bg-hover);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-group-header:hover {
+      background: var(--sp-bg-hover);
+    }
   }
 
   .sp-group-header:focus-visible {
@@ -574,7 +576,7 @@ export const SORT_CSS = /* css */ `
     width: 16px;
     height: 16px;
     flex-shrink: 0;
-    transition: transform 0.2s ease;
+    transition: transform 0.2s var(--sp-ease-out);
     transform: rotate(90deg);
   }
 
@@ -624,17 +626,10 @@ export const SORT_CSS = /* css */ `
      Page Group Content
      ============================ */
 
-  .sp-group-content {
-    overflow: hidden;
-    transition: max-height 0.25s ease, opacity 0.2s ease;
-    max-height: 5000px;
-    opacity: 1;
-  }
-
+  /* Folded groups leave the layout (and the Tab order) entirely; the old
+     max-height cap clipped every card past 5000px of one open group. */
   .sp-group-content--collapsed {
-    max-height: 0;
-    opacity: 0;
-    pointer-events: none;
+    display: none;
   }
 
   /* ============================
@@ -673,19 +668,4 @@ export const SORT_CSS = /* css */ `
     }
   }
 
-  /* ============================
-     Reduced Motion
-     ============================ */
-
-  @media (prefers-reduced-motion: reduce) {
-    .sp-sort-menu {
-      animation: none;
-    }
-    .sp-group-header-chevron {
-      transition: none;
-    }
-    .sp-group-content {
-      transition: none;
-    }
-  }
 `;

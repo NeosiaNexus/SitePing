@@ -1,6 +1,6 @@
 import type { FeedbackType } from "@siteping/core";
-import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
-import { el, isMacPlatform, parseSvg, setText } from "./dom-utils.js";
+import { EASE_OUT, POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
+import { el, isMacPlatform, parseSvg, pressable, setText } from "./dom-utils.js";
 import { addSurfaceKeydownListener, isolateFromHost, setSurfaceInert } from "./host-isolation.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
@@ -11,7 +11,7 @@ import {
   type ViewportInsets,
 } from "./popup-placement.js";
 import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport, prefersReducedMotion, trackKeyboardInset } from "./viewport.js";
+import { canHover, isCoarsePointer, isCompactViewport, prefersReducedMotion, trackKeyboardInset } from "./viewport.js";
 
 // Map each feedback type to its translation key, so `refreshLabels()` can
 // re-localize the existing type buttons without re-rendering the popup.
@@ -27,7 +27,11 @@ const TYPE_LABEL_KEYS: Record<FeedbackType, keyof Translations> = {
  * `none` under reduced motion and must restore this exact value, since the
  * root has no other transition (an empty inline value removes it).
  */
-const POPUP_TRANSITION = `opacity ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1),transform ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+const POPUP_TRANSITION = `opacity ${POPUP_HIDE_TRANSITION_MS}ms ease,transform ${POPUP_HIDE_TRANSITION_MS}ms ${EASE_OUT}`;
+/** The phone sheet rises on the drawer curve, a little longer; it leaves on the faster default. */
+const SHEET_IN_TRANSITION = "opacity 300ms ease,transform 300ms cubic-bezier(0.32, 0.72, 0, 1)";
+/** The controls' own transition: colours ease, the press answers fast. */
+const CONTROL_TRANSITION = `background-color 0.15s ease,border-color 0.15s ease,color 0.15s ease,box-shadow 0.15s ease,opacity 0.15s ease,scale 0.16s ${EASE_OUT}`;
 
 interface PopupResult {
   type: FeedbackType;
@@ -124,7 +128,7 @@ export class Popup {
         box-shadow:0 8px 32px ${this.colors.shadow}, 0 2px 8px ${this.colors.shadow};
         font-family:"Inter",system-ui,-apple-system,sans-serif;
         opacity:0;
-        transform:translateY(8px) scale(0.98);
+        transform:scale(0.96);
         transition:${POPUP_TRANSITION};
         display:none;
         -webkit-font-smoothing:antialiased;
@@ -158,7 +162,7 @@ export class Popup {
         display:flex;align-items:center;justify-content:center;gap:5px;
         font-family:"Inter",system-ui,-apple-system,sans-serif;
         font-size:13px;font-weight:500;color:${this.colors.textTertiary};
-        transition:all 0.2s ease;
+        transition:${CONTROL_TRANSITION};
         padding:0 12px;
       `;
       const icon = parseSvg(option.icon);
@@ -176,7 +180,7 @@ export class Popup {
       });
 
       btn.addEventListener("mouseenter", () => {
-        if (this.submittingState) return;
+        if (this.submittingState || !canHover()) return;
         if (btn.dataset.type !== this.selectedType) {
           const bgColor = getTypeBgColor(btn.dataset.type ?? "", this.colors);
           btn.style.background = bgColor;
@@ -192,6 +196,7 @@ export class Popup {
         }
       });
 
+      pressable(btn);
       this.typeRow.appendChild(btn);
     }
 
@@ -204,7 +209,7 @@ export class Popup {
       background:${this.colors.glassBgHeavy};
       color:${this.colors.text};font-family:"Inter",system-ui,-apple-system,sans-serif;
       font-size:13px;line-height:1.5;resize:vertical;
-      outline:none;transition:all 0.2s ease;
+      outline:none;transition:${CONTROL_TRANSITION};
       box-sizing:border-box;
     `;
     this.textarea.maxLength = 5000;
@@ -252,11 +257,11 @@ export class Popup {
       background:${this.colors.glassBg};
       color:${this.colors.textTertiary};font-family:"Inter",system-ui,-apple-system,sans-serif;
       font-size:13px;font-weight:500;cursor:pointer;
-      transition:all 0.2s ease;
+      transition:${CONTROL_TRANSITION};
     `;
     this.cancelBtn.addEventListener("click", () => this.dismiss());
     this.cancelBtn.addEventListener("mouseenter", () => {
-      if (this.submittingState) return;
+      if (this.submittingState || !canHover()) return;
       this.cancelBtn.style.borderColor = this.colors.accent;
       this.cancelBtn.style.color = this.colors.accentText;
     });
@@ -273,7 +278,7 @@ export class Popup {
       color:#fff;font-family:"Inter",system-ui,-apple-system,sans-serif;
       font-size:13px;font-weight:600;cursor:pointer;
       opacity:0.35;pointer-events:none;
-      transition:all 0.2s ease;
+      transition:${CONTROL_TRANSITION};
       box-shadow:0 2px 8px ${this.colors.accentGlow};
       display:inline-flex;align-items:center;justify-content:center;min-width:64px;
     `;
@@ -284,6 +289,8 @@ export class Popup {
     this.submitBtn.appendChild(this.submitLabel);
     this.submitBtn.addEventListener("click", () => this.submit());
 
+    pressable(this.cancelBtn);
+    pressable(this.submitBtn);
     btnRow.appendChild(this.cancelBtn);
     btnRow.appendChild(this.submitBtn);
 
@@ -416,7 +423,11 @@ export class Popup {
         }
       });
 
-      this.root.style.transition = prefersReducedMotion() ? "none" : POPUP_TRANSITION;
+      this.root.style.transition = prefersReducedMotion()
+        ? "none"
+        : this.sheet
+          ? SHEET_IN_TRANSITION
+          : POPUP_TRANSITION;
 
       // Trigger animation. Touch: focus the first type button rather than
       // the textarea, so the keyboard doesn't cover the sheet before the user
@@ -424,7 +435,7 @@ export class Popup {
       this.showFrame = requestAnimationFrame(() => {
         this.showFrame = null;
         this.root.style.opacity = "1";
-        this.root.style.transform = "translateY(0) scale(1)";
+        this.root.style.transform = "none";
         (touch ? this.typeRow.querySelector("button") : this.textarea)?.focus();
       });
     });
@@ -475,6 +486,11 @@ export class Popup {
     );
     style.top = `${top}px`;
     style.left = `${left}px`;
+    // Grow out of the rectangle the user just drew: from its centre line, on
+    // the side the card sits against.
+    const { width, height } = this.measure();
+    const originX = Math.min(Math.max(rectBounds.left + rectBounds.width / 2 - left, 0), width);
+    style.transformOrigin = `${Math.round(originX)}px ${top >= rectBounds.top + rectBounds.height / 2 ? 0 : height}px`;
     if (maxHeight !== null) {
       // Taller than the usable band (short viewport, high zoom, long
       // localized labels): cap it and let it scroll, starting from the top
@@ -486,7 +502,7 @@ export class Popup {
   }
 
   private hiddenTransform(): string {
-    return this.sheet ? "translateY(100%)" : "translateY(8px) scale(0.98)";
+    return this.sheet ? "translateY(100%)" : "scale(0.96)";
   }
 
   /** Rendered size, ignoring the entry transform; falls back when there is no layout. */
@@ -701,6 +717,7 @@ export class Popup {
     this.onSubmit = null;
     this.stopKeyboardTracking?.();
     this.stopKeyboardTracking = null;
+    if (!prefersReducedMotion()) this.root.style.transition = POPUP_TRANSITION;
     this.root.style.opacity = "0";
     this.root.style.transform = this.hiddenTransform();
     // Restore focus to the previously focused element

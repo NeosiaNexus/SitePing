@@ -4,10 +4,11 @@ import { COMPACT_MEDIA } from "../constants.js";
  * Phone and touch layer — appended last in the Shadow DOM stylesheet so it
  * wins over the desktop rules it adapts. Three independent axes:
  *
- * - `hover: none` — touch screens. Tapping leaves `:hover` stuck, so hover
- *   lifts are neutralised, and hover-revealed affordances (speed-dial labels,
- *   bulk checkboxes) become permanent: invisible elements must never be
- *   tappable.
+ * - no fine hover (touch screens, styluses) — the exact complement of the
+ *   `(hover: hover) and (pointer: fine)` query every `:hover` rule sits behind,
+ *   so a tap never leaves a hover look stuck, and hover-revealed affordances
+ *   (speed-dial labels, bulk checkboxes) become permanent: invisible elements
+ *   must never be tappable.
  * - `pointer: coarse` — finger-sized targets, and 16px form fields: iOS
  *   Safari zooms the whole page into any input under 16px on focus.
  * - `COMPACT_MEDIA` (up to 640px wide, or a touch screen up to 500px tall: a
@@ -46,18 +47,7 @@ export const MOBILE_CSS = /* css */ `
     display: none;
   }
 
-  @media (hover: none) {
-    .sp-fab:hover:not(:active),
-    .sp-card:hover:not(:active),
-    .sp-btn-primary:hover:not(:active),
-    .sp-btn-danger:hover:not(:active) {
-      transform: none;
-    }
-
-    .sp-card:hover:not(:active) {
-      box-shadow: var(--sp-shadow-xs);
-    }
-
+  @media not all and (hover: hover) and (pointer: fine) {
     .sp-radial-item--open .sp-radial-label {
       opacity: 1;
       transform: translate(0, -50%);
@@ -140,6 +130,14 @@ export const MOBILE_CSS = /* css */ `
     }
   }
 
+  /* Short screens (a laptop at 200% zoom, a phone held sideways): the stats
+     give their height to the list, which had shrunk to a few dozen pixels. */
+  @media (max-height: 600px) {
+    .sp-stats-bar {
+      display: none;
+    }
+  }
+
   @media ${COMPACT_MEDIA} {
     .sp-fab--bottom-right,
     .sp-radial--bottom-right {
@@ -161,7 +159,7 @@ export const MOBILE_CSS = /* css */ `
       opacity: 0;
       pointer-events: none;
       touch-action: none;
-      transition: opacity 0.3s ease;
+      transition: opacity 0.2s ease;
     }
 
     .sp-scrim--open {

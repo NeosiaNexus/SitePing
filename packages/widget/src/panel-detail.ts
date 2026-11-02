@@ -60,56 +60,25 @@ export const DETAIL_CSS = /* css */ `
      Detail View — Panel-in-Panel
      ============================ */
 
+  /* Opaque on purpose: a translucent sheet stacked on the translucent panel
+     lets the list behind it read through (Apple: never stack light materials). */
   .sp-detail {
     position: absolute;
     inset: 0;
     display: flex;
     flex-direction: column;
-    background: var(--sp-glass-bg);
-    backdrop-filter: blur(var(--sp-blur-heavy));
-    -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
+    background: var(--sp-bg);
     z-index: 20;
     transform: translateX(100%);
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.2s var(--sp-ease-out);
     will-change: transform;
-    overflow: hidden;
+    overflow: clip;
   }
 
+  /* Pushed in on the drawer curve, back out the same way, faster. */
   .sp-detail--visible {
     transform: translateX(0);
-  }
-
-  /* Fallback for browsers that cannot deliver a readable "frosted glass":
-     drop the translucent background to a solid one so the underlying list
-     does not bleed through. Two disjoint cohorts:
-
-       1. No backdrop-filter at all (Firefox <=102, legacy Edge / IE,
-          older Chromium on Linux).
-       2. Safari / iOS Safari where backdrop-filter is detectable only
-          via the -webkit- prefix. Empirically this still includes recent
-          Safari (observed on macOS Safari 18.6 in 2026, where
-          CSS.supports('backdrop-filter', 'blur(...)') returns false even
-          though the unprefixed property has shipped). On these builds the
-          long-standing nested-backdrop + transform compositing bug
-          silently no-ops the blur on .sp-detail (which is transformed and
-          lives inside another backdrop-filter ancestor, .sp-panel), so
-          the translucent default is unreadable. Detection is a pure
-          feature query: prefixed supported AND unprefixed not. No
-          user-agent sniffing.
-
-     Browsers where the glass effect renders correctly (most Chromium,
-     modern Firefox, any engine that advertises both property names via
-     CSS.supports) are unaffected. */
-  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .sp-detail {
-      background: var(--sp-bg);
-    }
-  }
-
-  @supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) {
-    .sp-detail {
-      background: var(--sp-bg);
-    }
+    transition: transform 0.3s var(--sp-ease-drawer);
   }
 
   /* ---- Header ---- */
@@ -138,20 +107,18 @@ export const DETAIL_CSS = /* css */ `
     align-items: center;
     justify-content: center;
     color: var(--sp-text-tertiary);
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
     flex-shrink: 0;
     padding: 0;
   }
 
-  .sp-detail-back:hover {
-    background: var(--sp-bg-hover);
-    color: var(--sp-text);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-back:hover {
+      background: var(--sp-bg-hover);
+      color: var(--sp-text);
+    }
   }
 
-  .sp-detail-back:active {
-    transform: scale(0.92);
-    transition-duration: 0.1s;
-  }
 
   .sp-detail-back svg {
     width: 18px;
@@ -196,8 +163,10 @@ export const DETAIL_CSS = /* css */ `
     border-radius: var(--sp-radius-full);
   }
 
-  .sp-detail-content::-webkit-scrollbar-thumb:hover {
-    background: var(--sp-text-tertiary);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-content::-webkit-scrollbar-thumb:hover {
+      background: var(--sp-text-tertiary);
+    }
   }
 
   /* ---- Section ---- */
@@ -205,16 +174,6 @@ export const DETAIL_CSS = /* css */ `
   .sp-detail-section {
     padding: 20px 24px;
     border-bottom: 1px solid var(--sp-border);
-    opacity: 0;
-    transform: translateY(8px);
-    animation: sp-detail-section-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
-  @keyframes sp-detail-section-in {
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
   }
 
   .sp-detail-section:last-child {
@@ -309,7 +268,7 @@ export const DETAIL_CSS = /* css */ `
     align-items: center;
     justify-content: center;
     gap: 6px;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
   }
 
   .sp-detail-actions button svg,
@@ -324,16 +283,13 @@ export const DETAIL_CSS = /* css */ `
     color: #22c55e;
   }
 
-  .sp-detail-btn-resolve:hover {
-    background: rgba(34, 197, 94, 0.14);
-    box-shadow: 0 0 16px rgba(34, 197, 94, 0.12);
-    transform: translateY(-1px);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-btn-resolve:hover {
+      background: rgba(34, 197, 94, 0.14);
+      box-shadow: 0 0 16px rgba(34, 197, 94, 0.12);
+    }
   }
 
-  .sp-detail-btn-resolve:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
-  }
 
   .sp-detail-btn-reopen {
     border: 1.5px solid var(--sp-accent);
@@ -341,16 +297,13 @@ export const DETAIL_CSS = /* css */ `
     color: var(--sp-accent-text);
   }
 
-  .sp-detail-btn-reopen:hover {
-    background: rgba(var(--sp-accent), 0.14);
-    box-shadow: 0 0 16px var(--sp-accent-glow);
-    transform: translateY(-1px);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-btn-reopen:hover {
+      background: rgba(var(--sp-accent), 0.14);
+      box-shadow: 0 0 16px var(--sp-accent-glow);
+    }
   }
 
-  .sp-detail-btn-reopen:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
-  }
 
   .sp-detail-btn-delete {
     border: 1.5px solid #ef4444;
@@ -358,16 +311,13 @@ export const DETAIL_CSS = /* css */ `
     color: #ef4444;
   }
 
-  .sp-detail-btn-delete:hover {
-    background: rgba(239, 68, 68, 0.14);
-    box-shadow: 0 0 16px rgba(239, 68, 68, 0.12);
-    transform: translateY(-1px);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-btn-delete:hover {
+      background: rgba(239, 68, 68, 0.14);
+      box-shadow: 0 0 16px rgba(239, 68, 68, 0.12);
+    }
   }
 
-  .sp-detail-btn-delete:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
-  }
 
   .sp-detail-btn-custom {
     border: 1.5px solid var(--sp-border);
@@ -376,18 +326,15 @@ export const DETAIL_CSS = /* css */ `
     text-decoration: none;
   }
 
-  .sp-detail-btn-custom:hover {
-    background: var(--sp-bg-hover);
-    border-color: var(--sp-accent);
-    color: var(--sp-accent-text);
-    box-shadow: 0 0 16px var(--sp-accent-glow);
-    transform: translateY(-1px);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-btn-custom:hover {
+      background: var(--sp-bg-hover);
+      border-color: var(--sp-accent);
+      color: var(--sp-accent-text);
+      box-shadow: 0 0 16px var(--sp-accent-glow);
+    }
   }
 
-  .sp-detail-btn-custom:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
-  }
 
   .sp-detail-actions--custom {
     flex-wrap: wrap;
@@ -661,7 +608,7 @@ export const DETAIL_CSS = /* css */ `
     align-items: center;
     justify-content: center;
     gap: 8px;
-    transition: all 0.25s ease;
+    transition: var(--sp-tr);
     box-shadow: 0 2px 12px var(--sp-accent-glow);
   }
 
@@ -670,15 +617,12 @@ export const DETAIL_CSS = /* css */ `
     height: 16px;
   }
 
-  .sp-detail-btn-goto:hover {
-    box-shadow: 0 4px 20px var(--sp-accent-glow);
-    transform: translateY(-2px);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-btn-goto:hover {
+      box-shadow: 0 4px 20px var(--sp-accent-glow);
+    }
   }
 
-  .sp-detail-btn-goto:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
-  }
 
   /* ---- Forced Colors / High Contrast ---- */
 
@@ -745,8 +689,10 @@ export const DETAIL_CSS = /* css */ `
     transition: background 0.15s ease;
   }
 
-  .sp-detail-diag-toggle:hover {
-    background: var(--sp-bg-hover);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-diag-toggle:hover {
+      background: var(--sp-bg-hover);
+    }
   }
 
   .sp-detail-diag-toggle svg {
@@ -893,17 +839,6 @@ export const DETAIL_CSS = /* css */ `
     text-align: center;
   }
 
-  /* ---- Reduced Motion ---- */
-
-  @media (prefers-reduced-motion: reduce) {
-    .sp-detail {
-      transition-duration: 0.01ms !important;
-    }
-
-    .sp-detail-section {
-      animation-duration: 0.01ms !important;
-    }
-  }
 `;
 
 // ---------------------------------------------------------------------------
@@ -1205,7 +1140,8 @@ export class DetailView {
 
     // Focus the back button for keyboard users
     requestAnimationFrame(() => {
-      backBtn.focus();
+      // Still off-screen while it slides in: focusing must not scroll the panel.
+      backBtn.focus({ preventScroll: true });
     });
   }
 

@@ -46,7 +46,7 @@ export const STATS_CSS = /* css */ `
     color: var(--sp-text);
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
-    transition: opacity 0.3s ease;
+    transition: opacity 0.2s ease;
   }
 
   .sp-stats-label {
@@ -71,12 +71,14 @@ export const STATS_CSS = /* css */ `
     overflow: hidden;
   }
 
+  /* Full width, revealed by clip-path: composited, no layout per frame. It
+     moves only when the share actually changes, never from zero on render. */
   .sp-stats-progress-fill {
     height: 100%;
     border-radius: 2px;
     background: linear-gradient(90deg, var(--sp-accent), #22c55e);
-    width: 0%;
-    transition: width 0.5s ease;
+    clip-path: inset(0 100% 0 0 round 2px);
+    transition: clip-path 0.3s var(--sp-ease-out);
   }
 
   .sp-stats-progress-label {
@@ -202,10 +204,7 @@ export class PanelStats {
     const visible = feedbacks.length;
     const pct = visible > 0 ? Math.round((closedCount / visible) * 100) : 0;
 
-    // Animate fill width via rAF so the transition kicks in after the DOM update
-    requestAnimationFrame(() => {
-      this.progressFill.style.width = `${pct}%`;
-    });
+    this.progressFill.style.clipPath = `inset(0 ${100 - pct}% 0 0 round 2px)`;
 
     const progressText = tWithParams(this.t, "stats.progress", { percent: pct });
     setText(this.progressLabel, progressText);

@@ -66,7 +66,8 @@ export function focusCardByIndex(listContainer: HTMLElement, index: number): voi
   const target = cards[clamped];
   if (!target) return;
   target.classList.add("sp-card--focused");
-  target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  // j/k is keyboard navigation: the list jumps, it never glides.
+  target.scrollIntoView({ block: "nearest" });
   target.focus({ preventScroll: true });
 }
 
@@ -94,7 +95,8 @@ const SHORTCUT_DEFS: ShortcutDef[] = [
 // ---------------------------------------------------------------------------
 
 export const SHORTCUTS_CSS = /* css */ `
-  /* ---- Help overlay backdrop ---- */
+  /* ---- Help overlay backdrop ----
+     Opened by the ? key: keyboard-initiated, so it appears at once (no fade). */
 
   .sp-shortcuts-overlay {
     position: fixed;
@@ -108,7 +110,6 @@ export const SHORTCUTS_CSS = /* css */ `
     z-index: 10;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.2s ease;
   }
 
   .sp-shortcuts-overlay--visible {
@@ -130,12 +131,6 @@ export const SHORTCUTS_CSS = /* css */ `
     box-shadow: var(--sp-shadow-xl);
     font-family: var(--sp-font);
     position: relative;
-    transform: scale(0.92) translateY(8px);
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .sp-shortcuts-overlay--visible .sp-shortcuts-card {
-    transform: scale(1) translateY(0);
   }
 
   /* ---- Title row ---- */
@@ -176,9 +171,11 @@ export const SHORTCUTS_CSS = /* css */ `
     transition: background 0.15s ease, color 0.15s ease;
   }
 
-  .sp-shortcuts-close:hover {
-    background: var(--sp-bg-hover);
-    color: var(--sp-text);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-shortcuts-close:hover {
+      background: var(--sp-bg-hover);
+      color: var(--sp-text);
+    }
   }
 
   .sp-shortcuts-close svg {
@@ -269,10 +266,12 @@ export const SHORTCUTS_CSS = /* css */ `
     right: 12px;
   }
 
-  .sp-shortcuts-hint:hover {
-    background: var(--sp-accent-light);
-    color: var(--sp-accent-text);
-    border-color: var(--sp-accent);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-shortcuts-hint:hover {
+      background: var(--sp-accent-light);
+      color: var(--sp-accent-text);
+      border-color: var(--sp-accent);
+    }
   }
 
   .sp-shortcuts-hint::after {
@@ -296,9 +295,11 @@ export const SHORTCUTS_CSS = /* css */ `
     transition: opacity 0.15s ease, transform 0.15s ease;
   }
 
-  .sp-shortcuts-hint:hover::after {
-    opacity: 1;
-    transform: translateY(0);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-shortcuts-hint:hover::after {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   /* ---- Card focus highlight (navigation) ---- */
@@ -309,17 +310,6 @@ export const SHORTCUTS_CSS = /* css */ `
     border-radius: inherit;
   }
 
-  /* ---- Reduced motion ---- */
-
-  @media (prefers-reduced-motion: reduce) {
-    .sp-shortcuts-overlay,
-    .sp-shortcuts-card,
-    .sp-shortcuts-close,
-    .sp-shortcuts-hint,
-    .sp-shortcuts-hint::after {
-      transition-duration: 0.01ms !important;
-    }
-  }
 `;
 
 // ---------------------------------------------------------------------------

@@ -36,7 +36,7 @@ export const EXPORT_CSS = /* css */ `
     display: flex;
     align-items: center;
     gap: 4px;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
     position: relative;
   }
 
@@ -45,10 +45,12 @@ export const EXPORT_CSS = /* css */ `
     height: 13px;
   }
 
-  .sp-export-btn:hover {
-    border-color: var(--sp-accent);
-    color: var(--sp-accent-text);
-    background: var(--sp-accent-light);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-export-btn:hover {
+      border-color: var(--sp-accent);
+      color: var(--sp-accent-text);
+      background: var(--sp-accent-light);
+    }
   }
 
   .sp-export-btn:disabled {
@@ -71,14 +73,16 @@ export const EXPORT_CSS = /* css */ `
     box-shadow: var(--sp-shadow-lg);
     z-index: 10;
     opacity: 0;
-    transform: translateY(-4px) scale(0.97);
-    transition: opacity 0.15s ease, transform 0.15s ease;
+    /* Grows out of its trigger (right-aligned), and is interruptible. */
+    transform: scale(0.96);
+    transform-origin: top right;
+    transition: opacity 0.15s ease, transform 0.15s var(--sp-ease-out);
     pointer-events: none;
   }
 
   .sp-export-menu--open {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
     pointer-events: auto;
   }
 
@@ -96,14 +100,20 @@ export const EXPORT_CSS = /* css */ `
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: var(--sp-tr);
     text-align: left;
   }
 
-  .sp-export-option:hover,
   .sp-export-option:focus-visible {
     background: var(--sp-accent-light);
     color: var(--sp-accent-text);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sp-export-option:hover {
+      background: var(--sp-accent-light);
+      color: var(--sp-accent-text);
+    }
   }
 
   .sp-export-option-icon {

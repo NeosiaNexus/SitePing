@@ -157,3 +157,19 @@ export function formatRelativeDate(isoString: string, locale = "en"): string {
 
   return new Date(isoString).toLocaleDateString(locale);
 }
+
+/**
+ * Press feedback for a control mounted on the host page, where no stylesheet
+ * reaches it (`:active` needs one): it sinks to 0.97 the moment the pointer
+ * goes down, and comes back on release. Uses `scale`, so it composes with any
+ * `transform` the control already has; its transition must list `scale`.
+ */
+export function pressable(control: HTMLElement): void {
+  const release = () => {
+    control.style.scale = "";
+  };
+  control.addEventListener("pointerdown", () => {
+    if (!(control as HTMLButtonElement).disabled) control.style.scale = "0.97";
+  });
+  for (const type of ["pointerup", "pointerleave", "pointercancel"]) control.addEventListener(type, release);
+}

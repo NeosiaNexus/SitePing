@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
-import { mockMatchMedia, mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
+import { FINE_HOVER_MEDIA, mockMatchMedia, mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Stubs — jsdom lacks matchMedia
@@ -998,6 +998,21 @@ describe("Annotator", () => {
   // -------------------------------------------------------------------------
 
   describe("cancel button hover effects", () => {
+    // Hover looks are for a mouse: a tap must not leave them stuck.
+    beforeEach(() => mockMediaQueries([FINE_HOVER_MEDIA]));
+    afterEach(() => mockMediaQueries([]));
+
+    it("a tap (no fine hover) leaves the cancel button's resting look", () => {
+      mockMediaQueries([]);
+      bus.emit("annotation:start");
+      const cancelBtn = Array.from(document.body.querySelectorAll("button")).find(
+        (btn) => btn.textContent === t("annotator.cancel"),
+      )!;
+      const borderBefore = cancelBtn.style.borderColor;
+      cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      expect(cancelBtn.style.borderColor).toBe(borderBefore);
+    });
+
     it("mouseenter on cancel changes styles", () => {
       bus.emit("annotation:start");
 
@@ -1320,6 +1335,7 @@ describe("Annotator", () => {
     });
 
     it("freezes the toolbar Cancel while a submission is in flight, then restores it (#397)", async () => {
+      mockMediaQueries([FINE_HOVER_MEDIA]);
       popupMocks.keepShowPending = true;
       const completeListener = vi.fn();
       bus.on("annotation:complete", completeListener);
@@ -1351,6 +1367,7 @@ describe("Annotator", () => {
       expect(cancelBtn.style.opacity).toBe("1");
       cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
       expect(cancelBtn.style.borderColor).not.toBe(restingBorder);
+      mockMediaQueries([]);
     });
 
     it("settles a submission whose failed send was queued as accepted, so the popup closes (#308)", async () => {

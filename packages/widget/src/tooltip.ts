@@ -1,5 +1,5 @@
 import type { FeedbackResponse } from "@siteping/core";
-import { Z_INDEX_MAX } from "./constants.js";
+import { EASE_OUT, Z_INDEX_MAX } from "./constants.js";
 import { el, formatRelativeDate, setText } from "./dom-utils.js";
 import { isolateFromHost } from "./host-isolation.js";
 import { createT, getStatusLabel, getTypeLabel } from "./i18n/index.js";
@@ -7,11 +7,15 @@ import { getStatusBgColor, getStatusColor, getTypeBgColor, getTypeColor, type Th
 
 const SHOW_DELAY = 120;
 const HIDE_DELAY = 80;
+const FADE_MS = 150;
+/** Within this long after a tooltip closed, the next one opens at once, without a fade. */
+const WARM_MS = 300;
 /**
  * Declared once: `show()` swaps it for `none` under reduced motion and must
  * restore this exact value, since an empty inline value removes it.
  */
-const TOOLTIP_TRANSITION = "opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)";
+const TOOLTIP_TRANSITION = `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ${EASE_OUT}`;
+const HIDDEN_TRANSFORM = "scale(0.97)";
 
 /**
  * Tooltip shown on annotation marker hover.
@@ -26,6 +30,8 @@ export class Tooltip {
   private showTimer: ReturnType<typeof setTimeout> | null = null;
   private hideTimer: ReturnType<typeof setTimeout> | null = null;
   private currentFeedbackId: string | null = null;
+  /** When the last tooltip went away: a sweep across pins shows the next one instantly. */
+  private closedAt = 0;
 
   readonly tooltipId = "sp-tooltip";
 
@@ -45,7 +51,7 @@ export class Tooltip {
         font-family: "Inter", system-ui, -apple-system, sans-serif;
         pointer-events: auto;
         opacity: 0;
-        transform: translateY(6px) scale(0.97);
+        transform: ${HIDDEN_TRANSFORM};
         transition: ${TOOLTIP_TRANSITION};
         visibility: hidden;
         -webkit-font-smoothing: antialiased;
@@ -93,20 +99,26 @@ export class Tooltip {
     if (this.currentFeedbackId === feedback.id) return;
     this.cancelShow();
 
-    this.showTimer = setTimeout(() => {
-      this.currentFeedbackId = feedback.id;
-      this.render(feedback);
-      this.position(anchorRect);
+    // One tooltip already open (or just closed): the user is sweeping across
+    // pins, so the next one skips both the delay and the fade.
+    const warm = this.root.style.visibility === "visible" || Date.now() - this.closedAt < WARM_MS;
+    this.showTimer = setTimeout(
+      () => {
+        this.currentFeedbackId = feedback.id;
+        this.render(feedback);
+        this.position(anchorRect);
 
-      // Check prefers-reduced-motion live (not cached at construction time)
-      const reduceMotion =
-        typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      this.root.style.transition = reduceMotion ? "none" : TOOLTIP_TRANSITION;
+        // Check prefers-reduced-motion live (not cached at construction time)
+        const reduceMotion =
+          typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        this.root.style.transition = reduceMotion || warm ? "none" : TOOLTIP_TRANSITION;
 
-      this.root.style.visibility = "visible";
-      this.root.style.opacity = "1";
-      this.root.style.transform = "translateY(0) scale(1)";
-    }, SHOW_DELAY);
+        this.root.style.visibility = "visible";
+        this.root.style.opacity = "1";
+        this.root.style.transform = "none";
+      },
+      warm ? 0 : SHOW_DELAY,
+    );
   }
 
   scheduleHide(): void {
@@ -116,14 +128,15 @@ export class Tooltip {
 
   hide(): void {
     this.cancelShow();
+    if (this.currentFeedbackId) this.closedAt = Date.now();
     this.currentFeedbackId = null;
     this.root.style.opacity = "0";
-    this.root.style.transform = "translateY(6px) scale(0.97)";
+    this.root.style.transform = HIDDEN_TRANSFORM;
     setTimeout(() => {
       if (!this.currentFeedbackId) {
         this.root.style.visibility = "hidden";
       }
-    }, 200);
+    }, FADE_MS);
   }
 
   private cancelShow(): void {
@@ -170,7 +183,9 @@ export class Tooltip {
       return span;
     };
 
-    const date = el("span", { style: `font-size:11px;color:${this.colors.textSecondary};margin-left:auto;` });
+    const date = el("span", {
+      style: `font-size:11px;color:${this.colors.textSecondary};margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums;`,
+    });
     setText(date, formatRelativeDate(feedback.createdAt, this.locale));
 
     header.appendChild(chip(typeLabel, typeColor, typeBg));
@@ -185,7 +200,7 @@ export class Tooltip {
 
     // Message body (safe — textContent only)
     const body = el("div", {
-      style: `font-size:13px;line-height:1.55;color:${this.colors.text};display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;`,
+      style: `font-size:13px;line-height:1.55;color:${this.colors.text};display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;`,
     });
     setText(body, feedback.message);
 
@@ -215,6 +230,8 @@ export class Tooltip {
 
     // Position arrow
     const arrowLeft = Math.max(16, Math.min(anchorRect.left + anchorRect.width / 2 - left - 6, tooltipRect.width - 22));
+    // Grow out of the pin it describes, through the arrow's tip.
+    this.root.style.transformOrigin = `${arrowLeft + 6}px ${isAbove ? "100%" : "0"}`;
 
     if (isAbove) {
       // Arrow at bottom, pointing down

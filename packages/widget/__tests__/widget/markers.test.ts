@@ -7,7 +7,7 @@ import { isolateFromHost } from "../../src/host-isolation.js";
 import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 import type { Tooltip } from "../../src/tooltip.js";
-import { mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
+import { FINE_HOVER_MEDIA, mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mock resolveAnnotation — avoids the full DOM resolution chain in jsdom
@@ -437,7 +437,8 @@ describe("MarkerManager", () => {
       expect(marker.style.animation).toBe("");
       expect(animate).toHaveBeenCalledOnce();
       expect(animate.mock.instances[0]).toBe(marker);
-      expect(animate.mock.calls[0]?.[0]).toContainEqual({ scale: 0, opacity: 0 });
+      // Never from nothing: the pin lands from 0.9, faded.
+      expect(animate.mock.calls[0]?.[0]).toContainEqual({ scale: 0.9, opacity: 0 });
     });
 
     it("increments marker count", () => {
@@ -746,6 +747,9 @@ describe("MarkerManager", () => {
   // -------------------------------------------------------------------------
 
   describe("marker interactions", () => {
+    beforeEach(() => mockMediaQueries([FINE_HOVER_MEDIA]));
+    afterEach(() => mockMediaQueries([]));
+
     it("mouseenter shows tooltip and highlight", () => {
       const fb = makeFeedback({ id: "fb-hover" });
       markers.render([fb]);
@@ -755,6 +759,15 @@ describe("MarkerManager", () => {
 
       expect(tooltip.show).toHaveBeenCalled();
       expect(markerEl.style.transform).toBe("scale(1.2)");
+    });
+
+    it("a tap (no fine hover) shows the tooltip but never leaves the pin zoomed", () => {
+      mockMediaQueries([]);
+      markers.render([makeFeedback({ id: "fb-tap" })]);
+      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-tap"]')!;
+      markerEl.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      expect(tooltip.show).toHaveBeenCalled();
+      expect(markerEl.style.transform).toBe("");
     });
 
     it("mouseleave calls tooltip.scheduleHide and resets scale", () => {
@@ -1725,6 +1738,34 @@ describe("MarkerManager", () => {
   // showHighlight — annotation that fails to resolve is skipped
   // -------------------------------------------------------------------------
 
+  describe("pin placement", () => {
+    it("hides the pin of an anchor that resolves to an element without a box (display:none)", () => {
+      // A display:none element still resolves, with an all-zero rect: its pin
+      // used to land at the page's top-left corner.
+      mockState.rectQueue.push({ x: 0, y: 0, w: 0, h: 0 });
+      markers.render([makeFeedback({ id: "fb-boxless" })]);
+
+      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-boxless"]')!;
+      expect(markerEl.style.display).toBe("none");
+      expect(markers.isLost("fb-boxless")).toBe(true);
+    });
+
+    it("keeps the pin of an edge-to-edge element inside the viewport's width", () => {
+      // Centred on the top-right corner, the pin would stick 13px out of a
+      // full-width element and give the client's page a horizontal scrollbar.
+      Object.defineProperty(document.documentElement, "clientWidth", { value: 390, configurable: true });
+      try {
+        mockState.rectQueue.push({ x: 0, y: 100, w: 390, h: 50 });
+        markers.render([makeFeedback({ id: "fb-edge" })]);
+
+        const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-edge"]')!;
+        expect(markerEl.style.left).toBe(`${390 - 26}px`);
+      } finally {
+        delete (document.documentElement as { clientWidth?: number }).clientWidth;
+      }
+    });
+  });
+
   describe("showHighlight — unresolved annotations skipped", () => {
     it("skips annotations where resolveAnnotation returns null", () => {
       const fb = makeFeedback({ id: "fb-skip" });
@@ -1824,6 +1865,9 @@ describe("MarkerManager", () => {
   // -------------------------------------------------------------------------
 
   describe("resolved feedback hover styling", () => {
+    beforeEach(() => mockMediaQueries([FINE_HOVER_MEDIA]));
+    afterEach(() => mockMediaQueries([]));
+
     it("applies muted shadow on resolved markers when hovered", () => {
       markers.render([makeFeedback({ id: "fb-res-hover", status: "resolved" })]);
 

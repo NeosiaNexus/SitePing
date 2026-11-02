@@ -89,10 +89,10 @@ export const es: Translations = {
   // Markers
   "marker.approximate": "Posición aproximada (confianza: {confidence}%)",
   "marker.aria": "Comentario #{number}: {type}, {status} — {message}",
-  "marker.count": "{count} marcadores de feedback mostrados",
+  "marker.count": "Marcadores de feedback mostrados: {count}",
 
   // FAB badge
-  "fab.badge": "{count} comentarios sin resolver",
+  "fab.badge": "Comentarios sin resolver: {count}",
 
   // Accessibility — screen reader announcements
   "feedback.sent.confirmation": "Comentario enviado correctamente",
@@ -101,7 +101,7 @@ export const es: Translations = {
   "feedback.deleted.confirmation": "Comentario eliminado",
 
   // Badge
-  "badge.count": "{count} comentarios sin resolver",
+  "badge.count": "Comentarios sin resolver: {count}",
 
   // Bulk actions toolbar
   "bulk.aria": "Acciones en lote",
@@ -119,7 +119,7 @@ export const es: Translations = {
   "sort.openFirst": "Abiertos primero",
   "sort.label": "Ordenar",
   "group.byPage": "Por página",
-  "group.feedbacks": "{count} comentarios",
+  "group.feedbacks": "Comentarios: {count}",
 
   // Stats bar
   "stats.aria": "Estadísticas de comentarios",

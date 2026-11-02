@@ -5,7 +5,7 @@ import { POPUP_HIDE_TRANSITION_MS } from "../../src/constants.js";
 import { createT, type TFunction, type Translations } from "../../src/i18n/index.js";
 import { Popup } from "../../src/popup.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
-import { mockMatchMedia, mockMediaQueries, mockVisualViewport, PHONE_MEDIA } from "../helpers.js";
+import { FINE_HOVER_MEDIA, mockMatchMedia, mockMediaQueries, mockVisualViewport, PHONE_MEDIA } from "../helpers.js";
 
 // jsdom does not implement window.matchMedia — provide a stub
 Object.defineProperty(window, "matchMedia", {
@@ -770,6 +770,19 @@ describe("Popup", () => {
   // -------------------------------------------------------------------------
 
   describe("type button hover effects", () => {
+    // Hover looks are for a mouse: a tap must not leave them stuck.
+    beforeEach(() => mockMediaQueries([FINE_HOVER_MEDIA]));
+    afterEach(() => mockMediaQueries([]));
+
+    it("a tap (no fine hover) leaves the type button's resting background", () => {
+      mockMediaQueries([]);
+      popup.show(makeBounds());
+      const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      const before = bugBtn.style.background;
+      bugBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      expect(bugBtn.style.background).toBe(before);
+    });
+
     it("mouseenter on type button changes background", () => {
       popup.show(makeBounds());
 
@@ -1010,6 +1023,10 @@ describe("Popup", () => {
   // -------------------------------------------------------------------------
 
   describe("cancel button hover effects", () => {
+    // Hover looks are for a mouse: a tap must not leave them stuck.
+    beforeEach(() => mockMediaQueries([FINE_HOVER_MEDIA]));
+    afterEach(() => mockMediaQueries([]));
+
     function getCancelButton(): HTMLButtonElement {
       const buttons = document.querySelectorAll<HTMLButtonElement>("button");
       return Array.from(buttons).find((btn) => btn.textContent === t("popup.cancel"))!;

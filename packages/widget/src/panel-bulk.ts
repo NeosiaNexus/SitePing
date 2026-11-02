@@ -3,7 +3,7 @@
  *
  * Allows multi-select on feedback cards with a floating action bar
  * for batch resolve/delete operations. Glassmorphism design with
- * spring animations and smooth transitions.
+ * short ease-out transitions.
  */
 
 import { el, hasFocusWithin, parseSvg, setButtonLoading, setHidden, setInert, setText } from "./dom-utils.js";
@@ -48,9 +48,10 @@ export const BULK_CSS = /* css */ `
     display: block;
   }
 
-  .sp-bulk-checkbox:hover {
-    color: var(--sp-accent-text);
-    transform: scale(1.1);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-bulk-checkbox:hover {
+      color: var(--sp-accent-text);
+    }
   }
 
   .sp-bulk-checkbox--checked {
@@ -60,8 +61,10 @@ export const BULK_CSS = /* css */ `
   }
 
   /* Show checkboxes when hovering a card */
-  .sp-card:hover .sp-bulk-checkbox {
-    opacity: 1;
+  @media (hover: hover) and (pointer: fine) {
+    .sp-card:hover .sp-bulk-checkbox {
+      opacity: 1;
+    }
   }
 
   /* When any card has selection, show ALL checkboxes */
@@ -78,8 +81,10 @@ export const BULK_CSS = /* css */ `
     background: var(--sp-accent-light) !important;
   }
 
-  .sp-card--selected:hover {
-    background: var(--sp-accent-light) !important;
+  @media (hover: hover) and (pointer: fine) {
+    .sp-card--selected:hover {
+      background: var(--sp-accent-light) !important;
+    }
   }
 
   /* ============================
@@ -104,14 +109,21 @@ export const BULK_CSS = /* css */ `
     color: var(--sp-text-secondary);
   }
 
-  .sp-bulk-select-all:hover {
-    background: var(--sp-bg-hover);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-bulk-select-all:hover {
+      background: var(--sp-bg-hover);
+    }
   }
 
   /* Show select-all on list hover or when selections exist */
-  .sp-list:hover .sp-bulk-select-all,
   .sp-list--has-selection .sp-bulk-select-all {
     opacity: 1;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sp-list:hover .sp-bulk-select-all {
+      opacity: 1;
+    }
   }
 
   .sp-bulk-select-all .sp-bulk-checkbox {
@@ -122,28 +134,6 @@ export const BULK_CSS = /* css */ `
      Floating Action Bar
      ============================ */
 
-  @keyframes sp-bulk-bar-in {
-    from {
-      transform: translateY(100%) scale(0.95);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0) scale(1);
-      opacity: 1;
-    }
-  }
-
-  @keyframes sp-bulk-bar-out {
-    from {
-      transform: translateY(0) scale(1);
-      opacity: 1;
-    }
-    to {
-      transform: translateY(100%) scale(0.95);
-      opacity: 0;
-    }
-  }
-
   .sp-bulk-bar {
     position: absolute;
     bottom: 16px;
@@ -151,8 +141,9 @@ export const BULK_CSS = /* css */ `
     right: 16px;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
-    gap: 12px;
+    gap: 8px 12px;
     padding: 12px 16px;
     border-radius: 16px;
     background: var(--sp-glass-bg-heavy);
@@ -163,16 +154,16 @@ export const BULK_CSS = /* css */ `
     z-index: 10;
     pointer-events: none;
     opacity: 0;
-    transform: translateY(100%) scale(0.95);
-    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-                opacity 0.25s ease;
+    /* Rises from the panel's bottom edge and leaves the same way. */
+    transform: translateY(calc(100% + 16px));
+    transition: transform 0.2s var(--sp-ease-out), opacity 0.15s ease;
     font-family: var(--sp-font);
   }
 
   .sp-bulk-bar--visible {
     pointer-events: auto;
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
   }
 
   .sp-bulk-bar-count {
@@ -187,6 +178,7 @@ export const BULK_CSS = /* css */ `
     display: flex;
     align-items: center;
     gap: 6px;
+    margin-left: auto;
   }
 
   .sp-bulk-btn-resolve,
@@ -202,7 +194,7 @@ export const BULK_CSS = /* css */ `
     display: flex;
     align-items: center;
     gap: 5px;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
     white-space: nowrap;
   }
 
@@ -211,30 +203,26 @@ export const BULK_CSS = /* css */ `
     border-color: #22c55e;
   }
 
-  .sp-bulk-btn-resolve:hover {
-    background: rgba(34, 197, 94, 0.1);
-    box-shadow: 0 0 12px rgba(34, 197, 94, 0.15);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-bulk-btn-resolve:hover {
+      background: rgba(34, 197, 94, 0.1);
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.15);
+    }
   }
 
-  .sp-bulk-btn-resolve:active {
-    transform: scale(0.96);
-    transition-duration: 0.1s;
-  }
 
   .sp-bulk-btn-delete {
     color: #ef4444;
     border-color: #ef4444;
   }
 
-  .sp-bulk-btn-delete:hover {
-    background: rgba(239, 68, 68, 0.1);
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.15);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-bulk-btn-delete:hover {
+      background: rgba(239, 68, 68, 0.1);
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.15);
+    }
   }
 
-  .sp-bulk-btn-delete:active {
-    transform: scale(0.96);
-    transition-duration: 0.1s;
-  }
 
   .sp-bulk-btn-resolve:disabled,
   .sp-bulk-btn-delete:disabled {
@@ -254,21 +242,19 @@ export const BULK_CSS = /* css */ `
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
     flex-shrink: 0;
     padding: 0;
   }
 
-  .sp-bulk-btn-deselect:hover {
-    background: var(--sp-bg-hover);
-    color: var(--sp-text);
-    border-color: var(--sp-text-tertiary);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-bulk-btn-deselect:hover {
+      background: var(--sp-bg-hover);
+      color: var(--sp-text);
+      border-color: var(--sp-text-tertiary);
+    }
   }
 
-  .sp-bulk-btn-deselect:active {
-    transform: scale(0.92);
-    transition-duration: 0.1s;
-  }
 
   .sp-bulk-btn-deselect svg {
     width: 12px;
@@ -311,15 +297,6 @@ export const BULK_CSS = /* css */ `
      Reduced Motion
      ============================ */
 
-  @media (prefers-reduced-motion: reduce) {
-    .sp-bulk-bar {
-      transition-duration: 0.01ms !important;
-    }
-
-    .sp-bulk-checkbox {
-      transition-duration: 0.01ms !important;
-    }
-  }
 `;
 
 // ---------------------------------------------------------------------------
@@ -597,17 +574,20 @@ export class BulkActions {
     const resolve = this.t("bulk.resolve");
     const del = this.t("bulk.delete");
 
-    // Resolve button
+    // The count shows once, in the bar (`.sp-bulk-bar-count`): repeating it
+    // on both buttons pushed "Supprimer" and the deselect button off a 320px
+    // screen. The accessible names keep it, for a screen reader on a button.
     this.resolveBtn.replaceChildren();
     const resolveLabel = document.createElement("span");
-    setText(resolveLabel, count > 0 ? `${resolve} ${count}` : resolve);
+    setText(resolveLabel, resolve);
     this.resolveBtn.appendChild(resolveLabel);
+    this.resolveBtn.setAttribute("aria-label", count > 0 ? `${resolve} ${count}` : resolve);
 
-    // Delete button
     this.deleteBtn.replaceChildren();
     const deleteLabel = document.createElement("span");
-    setText(deleteLabel, count > 0 ? `${del} ${count}` : del);
+    setText(deleteLabel, del);
     this.deleteBtn.appendChild(deleteLabel);
+    this.deleteBtn.setAttribute("aria-label", count > 0 ? `${del} ${count}` : del);
   }
 
   private updateCheckbox(feedbackId: string): void {
