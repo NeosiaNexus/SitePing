@@ -28,27 +28,21 @@ export function DiagnosticsTriggers() {
     }
   }
 
+  const base =
+    "press focus-ring flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] transition-colors duration-150 hover:bg-white/[0.06]";
+
   return (
-    <div className="flex flex-col gap-1.5">
-      <button
-        type="button"
-        onClick={logSequence}
-        className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent motion-reduce:transition-none"
-      >
+    <div className="flex flex-col gap-1">
+      <button type="button" onClick={logSequence} className={`${base} text-mist hover:text-paper`}>
+        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-cobalt-soft" />
         Log console messages
       </button>
-      <button
-        type="button"
-        onClick={logError}
-        className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent motion-reduce:transition-none"
-      >
+      <button type="button" onClick={logError} className={`${base} text-[#ff9b9b]`}>
+        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#ff6b6b]" />
         Trigger console.error
       </button>
-      <button
-        type="button"
-        onClick={failedFetch}
-        className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent motion-reduce:transition-none"
-      >
+      <button type="button" onClick={failedFetch} className={`${base} text-[#ff9b9b]`}>
+        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#ff6b6b]" />
         Trigger failed fetch
       </button>
     </div>
