@@ -40,6 +40,8 @@ function toRectData(a: Annotation): RectData {
 /** Half of the 26px marker diameter — used for centering on anchor corner. */
 const MARKER_OFFSET = 13;
 const MARKER_SIZE = 26;
+/** Extra hit area around a pin on touch screens (a finger needs ~44px). */
+const HIT_SLOP = 9;
 
 interface PinLook {
   bg: string;
@@ -91,8 +93,10 @@ interface MarkerPos {
  */
 function markerPosition(rect: DOMRect): MarkerPos {
   const viewportRight = document.documentElement.clientWidth;
+  // On touch screens the pin's widened hit area counts too.
+  const reach = MARKER_SIZE + (isCoarsePointer() ? HIT_SLOP : 0);
   let left = rect.right - MARKER_OFFSET;
-  if (rect.right <= viewportRight) left = Math.min(left, viewportRight - MARKER_SIZE);
+  if (rect.right <= viewportRight) left = Math.min(left, viewportRight - reach);
   return {
     top: Math.max(0, rect.top + window.scrollY - MARKER_OFFSET),
     left: Math.max(0, left) + window.scrollX,
@@ -721,7 +725,8 @@ export class MarkerManager {
       setText(marker, status === "resolved" ? "\u2713" : String(number));
     }
     // Fingers need ~44px: widen the hit area, not the 26px pin.
-    if (isCoarsePointer()) marker.appendChild(el("span", { style: "position:absolute;inset:-9px;border-radius:50%;" }));
+    if (isCoarsePointer())
+      marker.appendChild(el("span", { style: `position:absolute;inset:-${HIT_SLOP}px;border-radius:50%;` }));
 
     marker.addEventListener("mouseenter", () => {
       // A tap fires mouseenter too, and nothing would ever shrink the pin back.

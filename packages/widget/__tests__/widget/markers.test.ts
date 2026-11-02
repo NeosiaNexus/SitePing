@@ -1764,6 +1764,21 @@ describe("MarkerManager", () => {
         delete (document.documentElement as { clientWidth?: number }).clientWidth;
       }
     });
+
+    it("keeps a touch pin's widened hit area inside the viewport too", () => {
+      Object.defineProperty(document.documentElement, "clientWidth", { value: 390, configurable: true });
+      mockMediaQueries(["(pointer: coarse)"]);
+      try {
+        mockState.rectQueue.push({ x: 0, y: 100, w: 390, h: 50 });
+        markers.render([makeFeedback({ id: "fb-edge-touch" })]);
+
+        const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-edge-touch"]')!;
+        expect(markerEl.style.left).toBe(`${390 - 26 - 9}px`);
+      } finally {
+        mockMediaQueries([]);
+        delete (document.documentElement as { clientWidth?: number }).clientWidth;
+      }
+    });
   });
 
   describe("showHighlight — unresolved annotations skipped", () => {
