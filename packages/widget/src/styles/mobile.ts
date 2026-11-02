@@ -115,8 +115,15 @@ export const MOBILE_CSS = /* css */ `
     }
 
     .sp-btn-resolve,
-    .sp-btn-delete {
+    .sp-btn-delete,
+    .sp-bulk-btn-resolve,
+    .sp-bulk-btn-delete {
       min-height: 40px;
+    }
+
+    .sp-bulk-btn-deselect {
+      width: 40px;
+      height: 40px;
     }
 
     .sp-detail-back {

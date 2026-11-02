@@ -5432,13 +5432,37 @@ describe("Panel on phones", () => {
       }
     });
 
-    it("never drags the sheet upward", () => {
+    it("meets an upward pull with a rubber band, not a wall, and settles back", () => {
       const title = shadow.querySelector(".sp-panel-title")!;
       pointer("pointerdown", title, 300);
       pointer("pointermove", title, 120);
-      expect(root().style.transform).toBe("translateY(0px)");
+      // 180px of pull on an 800px sheet: it follows, but resists (88px).
+      const lift = Number(/translateY\((-?[\d.]+)px\)/.exec(root().style.transform)?.[1]);
+      expect(lift).toBeLessThan(0);
+      expect(lift).toBeGreaterThan(-180);
+      expect(lift).toBeCloseTo(-88.1, 0);
       pointer("pointercancel", title, 120);
       expect(panel.isCurrentlyOpen).toBe(true);
+      expect(root().style.transform).toBe("");
+    });
+
+    it("stays open when a fast flick ends moving back up", () => {
+      // Apple: decide from the release velocity, not the distance covered.
+      const now = vi.spyOn(Event.prototype, "timeStamp", "get");
+      try {
+        const title = shadow.querySelector(".sp-panel-title")!;
+        now.mockReturnValue(0);
+        pointer("pointerdown", title, 100);
+        now.mockReturnValue(100);
+        pointer("pointermove", title, 400);
+        now.mockReturnValue(120);
+        pointer("pointermove", title, 340);
+        now.mockReturnValue(130);
+        pointer("pointerup", title, 300);
+        expect(panel.isCurrentlyOpen).toBe(true);
+      } finally {
+        now.mockRestore();
+      }
     });
 
     it("springs back after a short, slow drag", () => {

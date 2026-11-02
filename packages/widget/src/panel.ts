@@ -69,13 +69,28 @@ function cardList(className: string, label: string): HTMLElement {
 }
 
 /**
+ * Apple's rubber band: past a boundary the sheet still follows, less and less
+ * the further it goes (`constant` 0.55, as in UIKit's scroll views).
+ */
+function rubberBand(overshoot: number, dimension: number, constant = 0.55): number {
+  return (overshoot * dimension * constant) / (dimension + constant * overshoot);
+}
+
+/**
+ * How far a throw at `velocity` (px/ms) carries before it settles, with the
+ * deceleration of a scroll view (0.998 per ms): Apple's momentum projection.
+ */
+function projectThrow(velocity: number, deceleration = 0.998): number {
+  return (velocity * deceleration) / (1 - deceleration);
+}
+
+/**
  * Side panel (400px) with feedback history, filters, search, stats,
  * sort/group, bulk actions, export, detail view, and keyboard shortcuts.
  * On phones it is a bottom sheet over a scrim — swipe its header down to close.
  *
  * Lives inside the Shadow DOM.
- * Glassmorphism: glass background, staggered card animations,
- * loading states, resolve feedback with disabled state.
+ * Glass background, loading states, resolve feedback with disabled state.
  */
 export class Panel {
   private root: HTMLElement;
@@ -589,12 +604,27 @@ export class Panel {
   /**
    * Swipe-down-to-close for the phone sheet. Only the headers (panel and
    * detail) are drag handles, so scrolling the list never dismisses it.
+   *
+   * After Apple's fluid-interface rules: the sheet stays under the finger,
+   * the scrim fades with it, an upward pull meets a rubber band instead of a
+   * wall, and release decides from where a throw would land (the velocity of
+   * the last move, projected), not from the distance alone.
    */
   private attachSheetDrag(): void {
     let startY = 0;
     let startTime = 0;
     let offset = 0;
     let dragging = false;
+    let lastY = 0;
+    let lastTime = 0;
+    /** px/ms of the latest move, or null until two samples are apart in time. */
+    let velocity: number | null = null;
+    const sample = (e: PointerEvent) => {
+      const dt = e.timeStamp - lastTime;
+      if (dt > 0 && e.clientY !== lastY) velocity = (e.clientY - lastY) / dt;
+      lastY = e.clientY;
+      lastTime = e.timeStamp;
+    };
     this.root.addEventListener("pointerdown", (e) => {
       const target = e.target as Element;
       if (
@@ -605,26 +635,35 @@ export class Panel {
       )
         return;
       dragging = true;
-      startY = e.clientY;
-      startTime = e.timeStamp;
+      startY = lastY = e.clientY;
+      startTime = lastTime = e.timeStamp;
       offset = 0;
+      velocity = null;
       this.root.style.transition = "none";
+      this.scrim.style.transition = "none";
       this.root.setPointerCapture?.(e.pointerId);
     });
     this.root.addEventListener("pointermove", (e) => {
       if (!dragging) return;
-      offset = Math.max(0, e.clientY - startY);
+      sample(e);
+      const dy = e.clientY - startY;
+      offset = dy >= 0 ? dy : -rubberBand(-dy, this.root.offsetHeight);
       this.root.style.transform = `translateY(${offset}px)`;
+      this.scrim.style.opacity = String(1 - Math.max(0, offset) / Math.max(1, this.root.offsetHeight));
     });
     const release = (e: PointerEvent) => {
       if (!dragging) return;
       dragging = false;
+      sample(e);
       // Hand the transform back to the stylesheet: the sheet animates from
       // where the finger left it, to closed or back to open.
       this.root.style.transition = "";
       this.root.style.transform = "";
-      const flick = offset > 40 && offset / Math.max(1, e.timeStamp - startTime) > 0.5;
-      if (flick || offset > this.root.offsetHeight / 4) this.close();
+      this.scrim.style.transition = "";
+      this.scrim.style.opacity = "";
+      if (e.type === "pointercancel") return;
+      const speed = velocity ?? Math.max(0, offset) / Math.max(1, e.timeStamp - startTime);
+      if (offset + projectThrow(speed) > this.root.offsetHeight / 4) this.close();
     };
     this.root.addEventListener("pointerup", release);
     this.root.addEventListener("pointercancel", release);
