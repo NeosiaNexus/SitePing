@@ -210,6 +210,7 @@ export function buildStyles(colors: ThemeColors): string {
       pointer-events: none;
       font-family: var(--sp-font);
       line-height: 1;
+      font-variant-numeric: tabular-nums;
     }
 
     /* ---- Submission outcome toast ---- */
