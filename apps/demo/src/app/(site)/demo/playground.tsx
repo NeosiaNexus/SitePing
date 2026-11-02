@@ -270,7 +270,7 @@ export function Playground() {
   const state = useMemo(() => parseState(params), [params]);
   const { mode, theme, locale, position, accent, screenshot, diagnostics, rightClick, identity } = state;
 
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [coach, setCoach] = useState<CoachState>("hidden");
   const dismissCoach = useCallback(() => setCoach("hidden"), []);
   const [draftAccent, setDraftAccent] = useState<string | null>(null);
@@ -282,9 +282,11 @@ export function Playground() {
   // playground rebuilds must not re-scroll the visitor back to it on every toggle.
   const firstInitRef = useRef(true);
 
-  // Start collapsed on narrow viewports so the panel doesn't cover the demo site.
+  // Open by default only where the panel fits beside the client site (its
+  // 72rem column plus the panel's 21.5rem on each side); elsewhere it waits as
+  // a pill, so it never covers the page the visitor came to annotate.
   useEffect(() => {
-    if (window.matchMedia("(max-width: 640px)").matches) setOpen(false);
+    if (window.matchMedia("(min-width: 1840px)").matches) setOpen(true);
   }, []);
 
   // Keep keyboard focus on the visible toggle after expanding/collapsing.
