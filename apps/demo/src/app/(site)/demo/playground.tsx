@@ -406,8 +406,10 @@ export function Playground() {
       className={`landing ${bricolage.variable} ${jetbrains.variable} !bg-transparent`}
     >
       {/* Phones: the pill sits in the bottom corner the widget's button doesn't use. */}
+      {/* The wrapper is sized by the panel even while it is collapsed: it must not take clicks
+          meant for the site underneath, only its two children do. */}
       <div
-        className={`fixed z-40 sm:bottom-auto sm:left-4 sm:right-auto sm:top-[7.5rem] ${
+        className={`pointer-events-none fixed z-40 sm:bottom-auto sm:left-4 sm:right-auto sm:top-[7.5rem] ${
           position === "bottom-left" ? "bottom-4 right-4" : "bottom-4 left-4"
         }`}
       >
@@ -419,8 +421,8 @@ export function Playground() {
           aria-expanded={open}
           aria-controls={PANEL_ID}
           tabIndex={open ? -1 : 0}
-          className={`press focus-ring absolute bottom-0 flex h-11 sm:bottom-auto sm:left-0 sm:right-auto sm:top-0 ${position === "bottom-left" ? "right-0" : "left-0"} items-center gap-2.5 whitespace-nowrap rounded-full bg-ink py-1.5 pl-1.5 pr-4 text-[14px] font-medium text-paper shadow-[0_14px_36px_-12px_rgb(5_7_26/0.6),0_0_0_1px_rgb(148_163_255/0.16)] transition-[opacity,transform] duration-200 ease-out-strong ${
-            open ? "pointer-events-none scale-95 opacity-0" : "opacity-100"
+          className={`press focus-ring absolute bottom-0 flex h-11 sm:bottom-auto sm:left-0 sm:right-auto sm:top-0 ${position === "bottom-left" ? "right-0" : "left-0"} items-center gap-2.5 whitespace-nowrap rounded-full bg-ink py-1.5 pl-1.5 pr-4 text-[14px] font-medium text-paper shadow-[0_14px_36px_-12px_rgb(5_7_26/0.6),0_0_0_1px_rgb(148_163_255/0.16)] transition-[opacity,scale,transform] duration-200 ease-out-strong ${
+            open ? "pointer-events-none scale-95 opacity-0" : "pointer-events-auto opacity-100"
           }`}
         >
           <LogoMark className="h-8 w-8" />
@@ -430,8 +432,10 @@ export function Playground() {
         <div
           id={PANEL_ID}
           inert={!open}
-          className={`flex max-h-[calc(100dvh-8.5rem)] w-[19.5rem] max-w-[calc(100vw-2rem)] flex-col sm:origin-top-left ${position === "bottom-left" ? "origin-bottom-right" : "origin-bottom-left"} overflow-hidden rounded-[1.4rem] bg-ink text-paper shadow-[0_30px_80px_-24px_rgb(5_7_26/0.75),0_0_0_1px_rgb(148_163_255/0.16)] transition-[opacity,transform] duration-200 ease-out-strong ${
-            open ? "scale-100 opacity-100" : "pointer-events-none scale-[0.96] opacity-0"
+          className={`flex max-h-[calc(100dvh-8.5rem)] w-[19.5rem] max-w-[calc(100vw-2rem)] flex-col sm:origin-top-left ${position === "bottom-left" ? "origin-bottom-right" : "origin-bottom-left"} overflow-hidden rounded-[1.4rem] bg-ink text-paper shadow-[0_30px_80px_-24px_rgb(5_7_26/0.75),0_0_0_1px_rgb(148_163_255/0.16)] transition-[opacity,scale] ease-out-strong ${
+            open
+              ? "pointer-events-auto scale-100 opacity-100 duration-200"
+              : "pointer-events-none scale-[0.96] opacity-0 duration-150"
           } motion-reduce:transition-opacity`}
         >
           <div className="flex items-center gap-3 border-b border-line py-3 pl-3 pr-2.5">

@@ -92,7 +92,9 @@ export function Comparison() {
           lede="Why pay $39–42 a month for feedback you can self-host for free?"
         />
 
-        <div className="mt-16 overflow-x-auto lg:mt-24">
+        {/* `relative` makes this scroller the containing block of the cells' sr-only labels; without it
+            they escape the clip and widen the whole page on phones (595px at 390px wide). */}
+        <div className="relative mt-16 overflow-x-auto lg:mt-24">
           <table className="w-full min-w-[680px] border-separate text-left" style={{ borderSpacing: 0 }}>
             <thead>
               <tr>
