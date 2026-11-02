@@ -4,7 +4,7 @@ import { COMPACT_MEDIA } from "../constants.js";
  * Phone and touch layer — appended last in the Shadow DOM stylesheet so it
  * wins over the desktop rules it adapts. Three independent axes:
  *
- * - no fine hover (touch screens, styluses) — the exact complement of the
+ * - no fine hover (touch screens, styluses): the exact complement of the
  *   `(hover: hover) and (pointer: fine)` query every `:hover` rule sits behind,
  *   so a tap never leaves a hover look stuck, and hover-revealed affordances
  *   (speed-dial labels, bulk checkboxes) become permanent: invisible elements

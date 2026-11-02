@@ -1261,12 +1261,12 @@ describe("DetailView", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // CSS — the detail sheet is opaque everywhere (it used to be translucent
+  // CSS: the detail sheet is opaque everywhere (it used to be translucent
   // with two @supports fallbacks, and still let the list show through in
   // Chromium). Guards that the translucent default doesn't come back.
   // ---------------------------------------------------------------------------
 
-  describe("DETAIL_CSS — an opaque sheet over the panel", () => {
+  describe("DETAIL_CSS: an opaque sheet over the panel", () => {
     // The detail is pushed over the translucent panel: a second translucent
     // layer let the list read through it (Apple: never stack light materials).
     const rule = () => DETAIL_CSS.replace(/\s+/g, " ").match(/\.sp-detail \{([^}]*)\}/)?.[1] ?? "";
