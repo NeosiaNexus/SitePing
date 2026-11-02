@@ -330,7 +330,17 @@ export class Annotator {
     isolateFromHost(this.overlay);
     if (this.toolbar) isolateFromHost(this.toolbar);
     document.body.appendChild(this.overlay);
-    if (this.toolbar) document.body.appendChild(this.toolbar);
+    if (this.toolbar) {
+      document.body.appendChild(this.toolbar);
+      // The mode arrives from the top edge it lives on (Apple: spatial
+      // consistency); started from the FAB menu, never from a shortcut.
+      if (!prefersReducedMotion() && typeof this.toolbar.animate === "function") {
+        this.toolbar.animate([{ transform: "translateY(-100%)" }, { transform: "none" }], {
+          duration: 250,
+          easing: EASE_OUT,
+        });
+      }
+    }
 
     // Move focus to the overlay so the keyboard-annotation path (Enter →
     // annotate the captured keyboard target) actually receives keydown —
