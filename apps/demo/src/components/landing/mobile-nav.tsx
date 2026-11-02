@@ -117,7 +117,8 @@ export function MobileNav() {
                 </a>
               ))}
 
-              <div className="mt-auto flex flex-col gap-3 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+              {/* Bottom padding clears the widget's button (bottom 16px, 52px tall), which stays above every layer. */}
+              <div className="mt-auto flex flex-col gap-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
                 <Link
                   href="/demo"
                   onClick={close}
