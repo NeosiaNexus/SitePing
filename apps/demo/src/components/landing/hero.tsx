@@ -158,7 +158,7 @@ export function Hero() {
           href="https://github.com/NeosiaNexus/SitePing"
           target="_blank"
           rel="noopener noreferrer"
-          className="press focus-ring pointer-events-auto mb-8 inline-flex w-fit cursor-pointer items-center gap-2 rounded-full py-1.5 pl-2 pr-3.5 text-sm text-mist transition-colors duration-150 ease-[ease] surface hover:text-paper"
+          className="press focus-ring pointer-events-auto mb-8 inline-flex w-fit cursor-pointer items-center gap-2 rounded-full py-1.5 pl-2 pr-3.5 text-sm text-mist transition-[color,background-color,border-color,transform] duration-150 ease-[ease] surface hover:text-paper"
         >
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.06]">
             <GitHubIcon className="h-3.5 w-3.5" />
@@ -243,7 +243,7 @@ export function Hero() {
             </span>
             <CopyButton
               text={INSTALL}
-              className="press focus-ring flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white/[0.06] font-sans text-xs text-mist transition-colors duration-150 hover:bg-white/[0.1] hover:text-paper"
+              className="press focus-ring flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white/[0.06] font-sans text-xs text-mist transition-[color,background-color,border-color,transform] duration-150 hover:bg-white/[0.1] hover:text-paper"
             />
           </div>
           <Link

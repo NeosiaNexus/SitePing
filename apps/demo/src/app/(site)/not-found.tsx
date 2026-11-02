@@ -1,25 +1,32 @@
 import Link from "next/link";
+import { bricolage } from "@/components/landing/fonts";
+import { LogoMark } from "@/components/landing/icons";
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-950 px-4 text-center">
-      <p className="text-sm font-medium tracking-widest text-accent-light/60 uppercase">404</p>
-      <h1 className="mt-3 text-4xl font-bold tracking-tight text-white sm:text-5xl">Page not found</h1>
-      <p className="mt-4 text-lg text-gray-400">This page doesn't exist or has been moved.</p>
-      <div className="mt-8 flex gap-4">
+    <main
+      className={`landing ${bricolage.variable} flex min-h-svh flex-col items-center justify-center px-6 text-center`}
+    >
+      <LogoMark className="h-10 w-10" />
+      <p className="mt-8 font-code text-[13px] text-dim">404</p>
+      <h1 className="type-title mt-3 text-[clamp(2.4rem,7vw,3.6rem)] text-paper">This page has no pin.</h1>
+      <p className="mt-4 max-w-[30rem] text-lg leading-relaxed text-mist">
+        It does not exist, or it moved. The rest of the site is one click away.
+      </p>
+      <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
         <Link
           href="/"
-          className="rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-light"
+          className="press focus-ring inline-flex h-11 items-center rounded-full bg-paper px-5 text-[15px] font-semibold text-ink transition-[color,background-color,border-color,transform] duration-150 hover:bg-white"
         >
-          Back to home
+          Back to the home page
         </Link>
         <Link
           href="/demo"
-          className="rounded-lg border border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-300 transition hover:border-gray-500 hover:text-white"
+          className="press focus-ring surface inline-flex h-11 items-center rounded-full px-5 text-[15px] text-paper transition-[color,background-color,border-color,transform] duration-150"
         >
-          Try the demo
+          Try the live demo
         </Link>
       </div>
-    </div>
+    </main>
   );
 }

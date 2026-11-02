@@ -50,13 +50,13 @@ export function Header() {
             target="_blank"
             rel="noopener noreferrer"
             aria-label="SitePing on GitHub"
-            className="press focus-ring flex h-9 w-9 items-center justify-center rounded-full text-mist transition-colors duration-150 ease-[ease] hover:bg-white/[0.06] hover:text-paper"
+            className="press focus-ring flex h-9 w-9 items-center justify-center rounded-full text-mist transition-[color,background-color,border-color,transform] duration-150 ease-[ease] hover:bg-white/[0.06] hover:text-paper"
           >
             <GitHubIcon className="h-[18px] w-[18px]" />
           </a>
           <Link
             href="/demo"
-            className="press focus-ring flex h-9 items-center rounded-full bg-paper px-4 text-sm font-semibold text-ink transition-colors duration-150 ease-[ease] hover:bg-white"
+            className="press focus-ring flex h-9 items-center rounded-full bg-paper px-4 text-sm font-semibold text-ink transition-[color,background-color,border-color,transform] duration-150 ease-[ease] hover:bg-white"
           >
             Try the live demo
           </Link>

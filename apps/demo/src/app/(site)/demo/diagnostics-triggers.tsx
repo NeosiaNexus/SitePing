@@ -29,7 +29,7 @@ export function DiagnosticsTriggers() {
   }
 
   const base =
-    "press focus-ring flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] transition-colors duration-150 hover:bg-white/[0.06]";
+    "press focus-ring flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] transition-[color,background-color,border-color,transform] duration-150 hover:bg-white/[0.06]";
 
   return (
     <div className="flex flex-col gap-1">

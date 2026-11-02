@@ -56,7 +56,7 @@ function LocaleSelect({ value }: { value: LocaleCode }) {
           id="inbox-locale"
           value={value}
           onChange={(event) => setQueryParam("locale", event.target.value, "en")}
-          className="focus-ring h-10 w-full cursor-pointer appearance-none rounded-xl bg-white/[0.04] px-3 pr-9 text-[14px] text-paper ring-1 ring-line"
+          className="focus-ring h-10 w-full cursor-pointer appearance-none rounded-xl bg-white/[0.04] px-3 pr-9 text-[14px] text-paper ring-1 ring-line pointer-coarse:text-base"
         >
           {LOCALES.map(([code, label]) => (
             <option key={code} value={code} className="bg-ink">

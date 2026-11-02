@@ -409,7 +409,7 @@ export function Playground() {
       {/* The wrapper is sized by the panel even while it is collapsed: it must not take clicks
           meant for the site underneath, only its two children do. */}
       <div
-        className={`pointer-events-none fixed z-40 sm:bottom-auto sm:left-4 sm:right-auto sm:top-[7.5rem] ${
+        className={`pointer-events-none fixed z-50 sm:bottom-auto sm:left-4 sm:right-auto sm:top-[7.5rem] ${
           position === "bottom-left" ? "bottom-4 right-4" : "bottom-4 left-4"
         }`}
       >
@@ -429,9 +429,14 @@ export function Playground() {
           Playground
         </button>
 
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: Escape is a convenience on a region whose own controls are all reachable */}
         <div
           id={PANEL_ID}
           inert={!open}
+          // Escape folds it back into the pill (focus follows, see above).
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !e.defaultPrevented) toggleOpen(false);
+          }}
           className={`flex max-h-[calc(100dvh-8.5rem)] w-[19.5rem] max-w-[calc(100vw-2rem)] flex-col sm:origin-top-left ${position === "bottom-left" ? "origin-bottom-right" : "origin-bottom-left"} overflow-hidden rounded-[1.4rem] bg-ink text-paper shadow-[0_30px_80px_-24px_rgb(5_7_26/0.75),0_0_0_1px_rgb(148_163_255/0.16)] transition-[opacity,scale] ease-out-strong ${
             open
               ? "pointer-events-auto scale-100 opacity-100 duration-200"
@@ -449,7 +454,7 @@ export function Playground() {
               type="button"
               onClick={() => toggleOpen(false)}
               aria-label="Collapse the playground"
-              className="press focus-ring flex h-8 w-8 items-center justify-center rounded-full text-dim transition-colors duration-150 hover:bg-white/[0.06] hover:text-paper"
+              className="press focus-ring flex h-8 w-8 items-center justify-center rounded-full text-dim transition-[color,background-color,border-color,transform] duration-150 hover:bg-white/[0.06] hover:text-paper"
             >
               <svg
                 className="h-4 w-4"
@@ -512,7 +517,7 @@ export function Playground() {
                     id="pg-locale"
                     value={locale}
                     onChange={(event) => patch({ locale: event.target.value as LocaleCode })}
-                    className="focus-ring w-full cursor-pointer appearance-none rounded-xl bg-white/[0.04] px-3 py-2 pr-9 text-[14px] text-paper ring-1 ring-line"
+                    className="focus-ring w-full cursor-pointer appearance-none rounded-xl bg-white/[0.04] px-3 py-2 pr-9 text-[14px] text-paper ring-1 ring-line pointer-coarse:text-base"
                   >
                     {LOCALES.map((entry) => (
                       <option key={entry.code} value={entry.code} className="bg-ink">
@@ -621,7 +626,7 @@ export function Playground() {
               <button
                 type="button"
                 onClick={handleReset}
-                className="press focus-ring w-full rounded-xl py-2 text-[13px] text-mist ring-1 ring-line transition-colors duration-150 hover:bg-white/[0.04] hover:text-paper"
+                className="press focus-ring w-full rounded-xl py-2 text-[13px] text-mist ring-1 ring-line transition-[color,background-color,border-color,transform] duration-150 hover:bg-white/[0.04] hover:text-paper"
               >
                 Reset to defaults
               </button>
