@@ -5,6 +5,7 @@ import { createStoreSource, SitepingInbox } from "@siteping/dashboard";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { type ReactNode, useMemo } from "react";
+import { Label, Segmented } from "../controls";
 
 // Same key the /demo playground writes to in local mode.
 const LOCAL_STORE_KEY = "siteping_demo_local";
@@ -14,7 +15,10 @@ export function DemoSiteLink({ children }: { children: ReactNode }) {
   const params = useSearchParams();
   const href = params.get("mode") === "local" ? "/demo?mode=local" : "/demo";
   return (
-    <Link href={href} className="text-gray-200 underline underline-offset-2 hover:text-white">
+    <Link
+      href={href}
+      className="focus-ring rounded text-paper underline decoration-line-strong underline-offset-4 transition-colors duration-150 hover:decoration-paper/60"
+    >
       {children}
     </Link>
   );
@@ -43,32 +47,35 @@ function setQueryParam(key: string, value: string, defaultValue: string): void {
   window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
 }
 
-interface SelectControlProps {
-  label: string;
-  id: string;
-  value: string;
-  defaultValue: string;
-  queryKey: string;
-  options: ReadonlyArray<readonly [string, string]>;
-}
-
-function SelectControl({ label, id, value, defaultValue, queryKey, options }: SelectControlProps) {
+function LocaleSelect({ value }: { value: LocaleCode }) {
   return (
-    <label htmlFor={id} className="flex items-center gap-2 text-xs font-medium text-gray-400">
-      {label}
-      <select
-        id={id}
-        value={value}
-        onChange={(event) => setQueryParam(queryKey, event.target.value, defaultValue)}
-        className="rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-sm text-gray-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-light"
-      >
-        {options.map(([optionValue, optionLabel]) => (
-          <option key={optionValue} value={optionValue}>
-            {optionLabel}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="w-40">
+      <Label htmlFor="inbox-locale">Language</Label>
+      <div className="relative">
+        <select
+          id="inbox-locale"
+          value={value}
+          onChange={(event) => setQueryParam("locale", event.target.value, "en")}
+          className="focus-ring h-10 w-full cursor-pointer appearance-none rounded-xl bg-white/[0.04] px-3 pr-9 text-[14px] text-paper ring-1 ring-line"
+        >
+          {LOCALES.map(([code, label]) => (
+            <option key={code} value={code} className="bg-ink">
+              {label}
+            </option>
+          ))}
+        </select>
+        <svg
+          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dim"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.75}
+          aria-hidden="true"
+        >
+          <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+    </div>
   );
 }
 
@@ -99,46 +106,41 @@ export function DemoInbox() {
   } as const;
 
   return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <SelectControl
-          label="Theme"
-          id="inbox-theme"
-          value={theme}
-          defaultValue="dark"
-          queryKey="theme"
-          options={[
-            ["light", "Light"],
-            ["dark", "Dark"],
-            ["auto", "Auto"],
-          ]}
-        />
-        <SelectControl
-          label="Density"
-          id="inbox-density"
-          value={density}
-          defaultValue="comfortable"
-          queryKey="density"
-          options={[
-            ["comfortable", "Comfortable"],
-            ["compact", "Compact"],
-          ]}
-        />
-        <SelectControl
-          label="Locale"
-          id="inbox-locale"
-          value={locale}
-          defaultValue="en"
-          queryKey="locale"
-          options={LOCALES}
-        />
+    <div className="flex h-full flex-col gap-5">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+        <div className="w-56">
+          <Segmented
+            legend="Theme"
+            name="inbox-theme"
+            value={theme}
+            options={[
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+              { value: "auto", label: "Auto" },
+            ]}
+            onChange={(value) => setQueryParam("theme", value, "dark")}
+          />
+        </div>
+        <div className="w-60">
+          <Segmented
+            legend="Density"
+            name="inbox-density"
+            value={density}
+            options={[
+              { value: "comfortable", label: "Comfortable" },
+              { value: "compact", label: "Compact" },
+            ]}
+            onChange={(value) => setQueryParam("density", value, "comfortable")}
+          />
+        </div>
+        <LocaleSelect value={locale} />
         {localMode ? (
-          <p className="text-xs text-gray-500">
-            Viewing feedbacks stored in this browser by the demo&apos;s local mode.
+          <p className="pb-2 text-[13px] text-dim">
+            Showing the notes the demo&apos;s local mode stored in this browser.
           </p>
         ) : null}
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-2xl shadow-[0_30px_80px_-30px_rgb(0_0_0/0.8),0_0_0_1px_rgb(148_163_255/0.14)]">
         {source ? (
           <SitepingInbox source={source} projects={["demo"]} {...shared} />
         ) : (

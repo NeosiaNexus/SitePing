@@ -1,29 +1,30 @@
-import { LandingAnimations } from "@/components/landing/animations";
+import { Capabilities } from "@/components/landing/capabilities";
 import { Comparison } from "@/components/landing/comparison";
 import { CtaFooter } from "@/components/landing/cta-footer";
 import { Faq } from "@/components/landing/faq";
-import { Features } from "@/components/landing/features";
+import { bricolage, jetbrains } from "@/components/landing/fonts";
 import { Footer } from "@/components/landing/footer";
 import { Header } from "@/components/landing/header";
 import { Hero } from "@/components/landing/hero";
-import { HowItWorks } from "@/components/landing/how-it-works";
+import { Install } from "@/components/landing/install";
+import { Loop } from "@/components/landing/loop";
 import { WidgetDogfood } from "@/components/landing/widget-dogfood";
 
 export default function LandingPage() {
   return (
-    <>
-      <LandingAnimations />
+    <div className={`landing ${bricolage.variable} ${jetbrains.variable} min-h-screen`}>
       <WidgetDogfood />
       <Header />
       <main>
         <Hero />
-        <Features />
-        <HowItWorks />
+        <Loop />
+        <Install />
+        <Capabilities />
         <Comparison />
         <Faq />
         <CtaFooter />
       </main>
       <Footer />
-    </>
+    </div>
   );
 }

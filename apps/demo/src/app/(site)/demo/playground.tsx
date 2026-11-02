@@ -2,8 +2,12 @@
 
 import type { SitepingInstance } from "@siteping/widget";
 import { useSearchParams } from "next/navigation";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CopyButton } from "@/components/landing/copy-button";
+import { bricolage, jetbrains } from "@/components/landing/fonts";
+import { LogoMark } from "@/components/landing/icons";
+import { Coach, type CoachState, coachAlreadySeen, markCoachSeen } from "./coach";
+import { Label, Section, Segmented, SwitchRow } from "./controls";
 import { DiagnosticsTriggers } from "./diagnostics-triggers";
 
 // ---------------------------------------------------------------------------
@@ -142,11 +146,11 @@ interface SnippetLine {
   tokens: readonly Token[];
 }
 
-const KEYWORD = "text-purple-400";
-const IDENT = "text-yellow-300";
-const PROP = "text-blue-300";
-const STR = "text-green-400";
-const PUNCT = "text-gray-500";
+const KEYWORD = "text-[#b8a6ff]";
+const IDENT = "text-paper";
+const PROP = "text-cobalt-soft";
+const STR = "text-[#8fe3b9]";
+const PUNCT = "text-dim";
 
 interface RawToken {
   text: string;
@@ -256,68 +260,6 @@ function buildSnippet(state: PlaygroundState): { lines: SnippetLine[]; text: str
 }
 
 // ---------------------------------------------------------------------------
-// Controls
-// ---------------------------------------------------------------------------
-
-interface RadioRowProps<T extends string> {
-  legend: string;
-  name: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange: (value: T) => void;
-}
-
-function RadioRow<T extends string>({ legend, name, value, options, onChange }: RadioRowProps<T>) {
-  return (
-    <fieldset>
-      <legend className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">{legend}</legend>
-      <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className="flex-1 cursor-pointer rounded-md px-2 py-1.5 text-center text-xs font-medium text-gray-600 transition-colors hover:text-gray-900 has-[:checked]:bg-white has-[:checked]:text-gray-900 has-[:checked]:shadow-sm has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent motion-reduce:transition-none"
-          >
-            <input
-              type="radio"
-              name={name}
-              value={option.value}
-              checked={value === option.value}
-              onChange={() => onChange(option.value)}
-              className="sr-only"
-            />
-            {option.label}
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
-
-interface ToggleRowProps {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  caption?: string;
-}
-
-function ToggleRow({ label, checked, onChange, caption }: ToggleRowProps) {
-  return (
-    <div>
-      <label className="flex cursor-pointer items-center justify-between gap-3 text-sm text-gray-700">
-        {label}
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
-          className="h-4 w-4 rounded border-gray-300 accent-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        />
-      </label>
-      {caption ? <p className="mt-0.5 text-xs leading-snug text-gray-500">{caption}</p> : null}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Playground panel
 // ---------------------------------------------------------------------------
 
@@ -329,6 +271,8 @@ export function Playground() {
   const { mode, theme, locale, position, accent, screenshot, diagnostics, rightClick, identity } = state;
 
   const [open, setOpen] = useState(true);
+  const [coach, setCoach] = useState<CoachState>("hidden");
+  const dismissCoach = useCallback(() => setCoach("hidden"), []);
   const [draftAccent, setDraftAccent] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tabRef = useRef<HTMLButtonElement>(null);
@@ -362,6 +306,7 @@ export function Playground() {
   useEffect(() => {
     let cancelled = false;
     let instance: SitepingInstance | null = null;
+    let hintTimer: number | undefined;
 
     (async () => {
       const [{ initSiteping }, storeModule] = await Promise.all([
@@ -387,10 +332,21 @@ export function Playground() {
           : { endpoint: "/api/siteping" }),
       });
       firstInitRef.current = false;
+
+      // Guidance: point at the button once per browser, and bridge to the
+      // inbox after every note sent.
+      instance.on("annotation:start", () => setCoach("hidden"));
+      instance.on("panel:open", () => setCoach("hidden"));
+      instance.on("feedback:sent", () => setCoach("sent"));
+      if (!coachAlreadySeen()) {
+        markCoachSeen();
+        hintTimer = window.setTimeout(() => setCoach((c) => (c === "hidden" ? "hint" : c)), 1400);
+      }
     })();
 
     return () => {
       cancelled = true;
+      window.clearTimeout(hintTimer);
       instance?.destroy();
     };
   }, [mode, theme, locale, position, accent, screenshot, diagnostics, rightClick, identity]);
@@ -438,29 +394,56 @@ export function Playground() {
   }
 
   const snippet = buildSnippet(state);
+  const inboxHref = mode === "local" ? "/demo/inbox?mode=local" : "/demo/inbox";
 
   return (
     // data-siteping-ignore keeps the panel out of widget screenshots.
     <aside
       data-siteping-ignore="true"
       aria-label="Widget playground"
-      className="fixed left-0 top-28 z-40 flex max-h-[calc(100vh-8.5rem)]"
+      className={`landing ${bricolage.variable} ${jetbrains.variable} !bg-transparent`}
     >
-      {open ? (
+      {/* Phones: the pill sits in the bottom corner the widget's button doesn't use. */}
+      <div
+        className={`fixed z-40 sm:bottom-auto sm:left-4 sm:right-auto sm:top-[7.5rem] ${
+          position === "bottom-left" ? "bottom-4 right-4" : "bottom-4 left-4"
+        }`}
+      >
+        {/* Collapsed: a pill. Open: the panel grows out of the same corner (origin top-left, 200ms). */}
+        <button
+          ref={tabRef}
+          type="button"
+          onClick={() => toggleOpen(true)}
+          aria-expanded={open}
+          aria-controls={PANEL_ID}
+          tabIndex={open ? -1 : 0}
+          className={`press focus-ring absolute bottom-0 flex h-11 sm:bottom-auto sm:left-0 sm:right-auto sm:top-0 ${position === "bottom-left" ? "right-0" : "left-0"} items-center gap-2.5 whitespace-nowrap rounded-full bg-ink py-1.5 pl-1.5 pr-4 text-[14px] font-medium text-paper shadow-[0_14px_36px_-12px_rgb(5_7_26/0.6),0_0_0_1px_rgb(148_163_255/0.16)] transition-[opacity,transform] duration-200 ease-out-strong ${
+            open ? "pointer-events-none scale-95 opacity-0" : "opacity-100"
+          }`}
+        >
+          <LogoMark className="h-8 w-8" />
+          Playground
+        </button>
+
         <div
           id={PANEL_ID}
-          className="flex w-72 max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-r-xl border border-l-0 border-gray-200 bg-white shadow-xl"
+          inert={!open}
+          className={`flex max-h-[calc(100dvh-8.5rem)] w-[19.5rem] max-w-[calc(100vw-2rem)] flex-col sm:origin-top-left ${position === "bottom-left" ? "origin-bottom-right" : "origin-bottom-left"} overflow-hidden rounded-[1.4rem] bg-ink text-paper shadow-[0_30px_80px_-24px_rgb(5_7_26/0.75),0_0_0_1px_rgb(148_163_255/0.16)] transition-[opacity,transform] duration-200 ease-out-strong ${
+            open ? "scale-100 opacity-100" : "pointer-events-none scale-[0.96] opacity-0"
+          } motion-reduce:transition-opacity`}
         >
-          <div className="flex items-center justify-between border-b border-gray-100 py-2 pl-4 pr-2">
-            <h2 className="text-sm font-bold tracking-tight text-gray-900">Widget playground</h2>
+          <div className="flex items-center gap-3 border-b border-line py-3 pl-3 pr-2.5">
+            <LogoMark className="h-8 w-8" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[15px] font-semibold leading-tight">Playground</h2>
+              <p className="text-[12.5px] leading-tight text-dim">Every change rebuilds the widget</p>
+            </div>
             <button
               ref={collapseRef}
               type="button"
               onClick={() => toggleOpen(false)}
-              aria-expanded="true"
-              aria-controls={PANEL_ID}
               aria-label="Collapse the playground"
-              className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-accent motion-reduce:transition-none"
+              className="press focus-ring flex h-8 w-8 items-center justify-center rounded-full text-dim transition-colors duration-150 hover:bg-white/[0.06] hover:text-paper"
             >
               <svg
                 className="h-4 w-4"
@@ -475,144 +458,146 @@ export function Playground() {
             </button>
           </div>
 
-          <div className="flex-1 space-y-5 overflow-y-auto p-4">
-            <div>
-              <RadioRow
-                legend="Mode"
+          <div className="flex-1 overflow-y-auto overscroll-contain [scrollbar-color:rgb(148_163_255/0.2)_transparent] [scrollbar-width:thin]">
+            <Section title="Where notes go">
+              <Segmented
+                legend="Storage"
                 name="pg-mode"
                 value={mode}
                 options={[
-                  { value: "server", label: "Server API" },
-                  { value: "local", label: "Local (this browser)" },
+                  { value: "server", label: "Demo server" },
+                  { value: "local", label: "This browser" },
                 ]}
                 onChange={(value) => patch({ mode: value })}
               />
-              <p className="mt-1.5 text-xs leading-snug text-gray-500">
+              <p className="-mt-1 text-[12.5px] leading-snug text-dim">
                 {mode === "local"
-                  ? "Feedbacks stay in this browser — no server involved"
-                  : "Feedbacks go to the demo API (resets every 10 minutes)"}
+                  ? "Notes stay in this browser's localStorage, no server involved."
+                  : "Notes go to the demo API, wiped every 10 minutes."}
               </p>
-            </div>
+            </Section>
 
-            <RadioRow
-              legend="Theme"
-              name="pg-theme"
-              value={theme}
-              options={[
-                { value: "light", label: "Light" },
-                { value: "dark", label: "Dark" },
-                { value: "auto", label: "Auto" },
-              ]}
-              onChange={(value) => patch({ theme: value })}
-            />
-
-            <div>
-              <label
-                htmlFor="pg-locale"
-                className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500"
-              >
-                Locale
-              </label>
-              <select
-                id="pg-locale"
-                value={locale}
-                onChange={(event) => patch({ locale: event.target.value as LocaleCode })}
-                className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                {LOCALES.map((entry) => (
-                  <option key={entry.code} value={entry.code}>
-                    {entry.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <RadioRow
-              legend="Position"
-              name="pg-position"
-              value={position}
-              options={[
-                { value: "bottom-right", label: "Bottom right" },
-                { value: "bottom-left", label: "Bottom left" },
-              ]}
-              onChange={(value) => patch({ position: value })}
-            />
-
-            <fieldset>
-              <legend className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Accent color
-              </legend>
-              <div className="flex items-center gap-2">
-                {SWATCHES.map((swatch) => (
-                  <button
-                    key={swatch.hex}
-                    type="button"
-                    onClick={() => handleAccentSelect(swatch.hex)}
-                    aria-label={`Accent ${swatch.name}`}
-                    aria-pressed={shownAccent.toLowerCase() === swatch.hex.toLowerCase()}
-                    style={{ backgroundColor: swatch.hex }}
-                    className="h-7 w-7 rounded-full border border-black/10 transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 aria-pressed:ring-2 aria-pressed:ring-gray-900 aria-pressed:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:scale-100"
-                  />
-                ))}
-                <label className="ml-1 flex cursor-pointer items-center gap-1.5 text-xs text-gray-600">
-                  <input
-                    type="color"
-                    value={toColorInputValue(shownAccent)}
-                    onChange={(event) => handleAccentInput(event.target.value)}
-                    aria-label="Custom accent color"
-                    className="h-7 w-8 cursor-pointer rounded border border-gray-200 bg-white p-0.5"
-                  />
-                  Custom
-                </label>
-              </div>
-            </fieldset>
-
-            <fieldset className="space-y-2.5">
-              <legend className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Options</legend>
-              <ToggleRow label="Screenshots" checked={screenshot} onChange={(value) => patch({ screenshot: value })} />
+            <Section title="Look">
+              <Segmented
+                legend="Theme"
+                name="pg-theme"
+                value={theme}
+                options={[
+                  { value: "light", label: "Light" },
+                  { value: "dark", label: "Dark" },
+                  { value: "auto", label: "Auto" },
+                ]}
+                onChange={(value) => patch({ theme: value })}
+              />
+              <Segmented
+                legend="Button position"
+                name="pg-position"
+                value={position}
+                options={[
+                  { value: "bottom-right", label: "Right" },
+                  { value: "bottom-left", label: "Left" },
+                ]}
+                onChange={(value) => patch({ position: value })}
+              />
               <div>
-                <ToggleRow
+                <Label htmlFor="pg-locale">Language</Label>
+                <div className="relative">
+                  <select
+                    id="pg-locale"
+                    value={locale}
+                    onChange={(event) => patch({ locale: event.target.value as LocaleCode })}
+                    className="focus-ring w-full cursor-pointer appearance-none rounded-xl bg-white/[0.04] px-3 py-2 pr-9 text-[14px] text-paper ring-1 ring-line"
+                  >
+                    {LOCALES.map((entry) => (
+                      <option key={entry.code} value={entry.code} className="bg-ink">
+                        {entry.label}
+                      </option>
+                    ))}
+                  </select>
+                  <svg
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dim"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  >
+                    <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+              </div>
+              <fieldset>
+                <legend className="mb-2 text-[13px] font-medium text-mist">Accent color</legend>
+                <div className="flex items-center gap-2.5">
+                  {SWATCHES.map((swatch) => (
+                    <button
+                      key={swatch.hex}
+                      type="button"
+                      onClick={() => handleAccentSelect(swatch.hex)}
+                      aria-label={`Accent ${swatch.name}`}
+                      aria-pressed={shownAccent.toLowerCase() === swatch.hex.toLowerCase()}
+                      style={{ backgroundColor: swatch.hex }}
+                      className="press focus-ring h-7 w-7 rounded-full shadow-[inset_0_0_0_1px_rgb(255_255_255/0.15)] transition-[box-shadow,transform] duration-150 aria-pressed:shadow-[0_0_0_2px_#05071a,0_0_0_4px_#eef1ff]"
+                    />
+                  ))}
+                  <label className="press relative ml-auto flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-[conic-gradient(#ff5f6d,#ffc371,#8fe3b9,#7690ff,#b8a6ff,#ff5f6d)] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.15)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-cobalt-soft">
+                    <input
+                      type="color"
+                      value={toColorInputValue(shownAccent)}
+                      onChange={(event) => handleAccentInput(event.target.value)}
+                      aria-label="Custom accent color"
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    />
+                  </label>
+                </div>
+              </fieldset>
+            </Section>
+
+            <Section title="Behaviour">
+              <div className="space-y-2">
+                <SwitchRow
+                  label="Screenshots"
+                  checked={screenshot}
+                  onChange={(value) => patch({ screenshot: value })}
+                />
+                <SwitchRow
                   label="Capture diagnostics"
                   checked={diagnostics}
                   onChange={(value) => patch({ diagnostics: value })}
                 />
                 {diagnostics ? (
-                  <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 p-2.5">
-                    <p className="mb-2 text-xs leading-snug text-gray-500">
-                      Fire fake events, then submit a feedback to see them captured.
+                  <div className="rounded-xl bg-white/[0.03] p-3 ring-1 ring-line">
+                    <p className="mb-2.5 text-[12.5px] leading-snug text-dim">
+                      Fire a few events, then send a note: they ride along with it.
                     </p>
                     <DiagnosticsTriggers />
                   </div>
                 ) : null}
+                <SwitchRow
+                  label="Right-click to comment"
+                  checked={rightClick}
+                  onChange={(value) => patch({ rightClick: value })}
+                />
+                <SwitchRow
+                  label="Prefilled identity"
+                  checked={identity}
+                  onChange={(value) => patch({ identity: value })}
+                  caption="Skips the name and email prompt, the way an SSO integration would."
+                />
               </div>
-              <ToggleRow
-                label="Right-click to comment"
-                checked={rightClick}
-                onChange={(value) => patch({ rightClick: value })}
-              />
-              <ToggleRow
-                label="Prefilled identity"
-                checked={identity}
-                onChange={(value) => patch({ identity: value })}
-                caption="Skips the name/email prompt, like an SSO integration would"
-              />
-            </fieldset>
+            </Section>
 
-            <button
-              type="button"
-              onClick={handleReset}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
-            >
-              Reset to defaults
-            </button>
-
-            <section aria-label="Generated widget code">
-              <div className="overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
-                <div className="flex items-center justify-between border-b border-gray-800 pl-3">
-                  <span className="font-mono text-xs text-gray-500">The code you&apos;d ship</span>
-                  <CopyButton text={snippet.text} />
+            <Section title="The code you'd ship">
+              <div className="overflow-hidden rounded-xl bg-[#03040f] ring-1 ring-line">
+                <div className="flex h-9 items-center justify-between border-b border-line pl-3 pr-1">
+                  <span className="font-code text-[11.5px] text-dim">app.ts</span>
+                  <CopyButton
+                    text={snippet.text}
+                    className="press focus-ring flex h-7 w-7 items-center justify-center rounded-lg text-dim transition-[color,background-color,transform] duration-150 hover:bg-white/[0.06] hover:text-paper"
+                  />
                 </div>
-                <pre className="overflow-x-auto px-3 py-3 font-mono text-xs leading-relaxed">
+                {/* Wraps instead of scrolling sideways: no scroll region to reach from the keyboard; Copy keeps the exact text. */}
+                <pre className="whitespace-pre-wrap break-words px-3 py-3 font-code text-[11.5px] leading-[1.7]">
                   <code>
                     {snippet.lines.map((line) => (
                       <Fragment key={line.key}>
@@ -627,20 +612,19 @@ export function Playground() {
                   </code>
                 </pre>
               </div>
-            </section>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="press focus-ring w-full rounded-xl py-2 text-[13px] text-mist ring-1 ring-line transition-colors duration-150 hover:bg-white/[0.04] hover:text-paper"
+              >
+                Reset to defaults
+              </button>
+            </Section>
           </div>
         </div>
-      ) : (
-        <button
-          ref={tabRef}
-          type="button"
-          onClick={() => toggleOpen(true)}
-          aria-expanded="false"
-          className="rounded-r-lg border border-l-0 border-gray-200 bg-white px-1.5 py-4 text-xs font-semibold tracking-wide text-gray-700 shadow-lg transition-colors [writing-mode:vertical-rl] hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-accent motion-reduce:transition-none"
-        >
-          Playground
-        </button>
-      )}
+      </div>
+
+      <Coach state={coach} position={position} inboxHref={inboxHref} onDismiss={dismissCoach} />
     </aside>
   );
 }

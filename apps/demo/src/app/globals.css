@@ -5,10 +5,37 @@
   --color-accent-light: #4d6aff;
   --color-accent-dark: #0f2cb8;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Landing palette: night-blue ink, cool paper, the widget's cobalt. */
+  --color-ink: #05071a;
+  --color-ink-raised: #0a0f2c;
+  --color-ink-high: #0e1436;
+  --color-paper: #eef1ff;
+  --color-mist: #a7afd4;
+  --color-dim: #7d87b4;
+  --color-cobalt: #173cff;
+  --color-cobalt-soft: #7690ff;
+  --color-line: rgb(148 163 255 / 0.12);
+  --color-line-strong: rgb(148 163 255 / 0.22);
+
+  /* Motion tokens (Emil Kowalski's curves). */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/*
+ * The landing's faces come from next/font variables set on the landing root,
+ * not on :root, so these tokens are inlined: each utility reads the variable
+ * where it is used.
+ */
+@theme inline {
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-code: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
 }
 
 html {
   scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -16,37 +43,132 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Hide GSAP-animated elements before JS hydrates — prevents flash */
-[data-gsap] {
-  opacity: 0;
-}
-
-/* ── Framework marquee ── */
-@keyframes marquee-left {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-@keyframes marquee-right {
-  from {
-    transform: translateX(-50%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-/* ── Reduced motion (needs !important to override GSAP inline styles) ── */
 @media (prefers-reduced-motion: reduce) {
-  [data-gsap] {
-    opacity: 1 !important;
-    transform: none !important;
+  html {
+    scroll-behavior: auto;
   }
-  .marquee-track {
-    animation: none !important;
+}
+
+/* Component layer, so a utility on the same element always wins. */
+@layer components {
+  /* ── Landing ─────────────────────────────────────────────────────────── */
+
+  .landing {
+    font-family: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+    font-optical-sizing: auto;
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  /* Tailwind 4 leaves buttons on the default cursor; the hero's crosshair would leak in. */
+  .landing :where(button, summary):not(:disabled) {
+    cursor: pointer;
+  }
+
+  .landing ::selection {
+    background: rgb(23 60 255 / 0.55);
+    color: #fff;
+  }
+
+  /* Display type: condensed width, tight tracking. */
+  .type-display {
+    font-stretch: 86%;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 0.92;
+  }
+
+  .type-title {
+    font-stretch: 90%;
+    font-weight: 650;
+    letter-spacing: -0.018em;
+    line-height: 1;
+    text-wrap: balance;
+  }
+
+  /* Anything pressable confirms the press. */
+  .press {
+    transition: transform 160ms var(--ease-out-strong);
+    touch-action: manipulation;
+  }
+
+  .press:active {
+    transform: scale(0.97);
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-cobalt-soft);
+    outline-offset: 3px;
+  }
+
+  /* Hairline surfaces: a translucent ring and an inner top highlight, no solid border. */
+  .surface {
+    background: var(--color-ink-raised);
+    box-shadow:
+      0 0 0 1px var(--color-line),
+      inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  /*
+   * Elements the hero's intro timeline reveals. Hidden before hydration so they
+   * don't flash in and out; a fail-safe shows them after 3s if the script never
+   * runs (the timeline is done by then, so it never cuts one short).
+   */
+  .landing [data-intro] {
+    opacity: 0;
+    animation: intro-failsafe 1ms 3s forwards;
+  }
+
+  @keyframes intro-failsafe {
+    to {
+      opacity: 1;
+    }
+  }
+
+  @media (scripting: none) {
+    .landing [data-intro] {
+      opacity: 1;
+    }
+  }
+
+  /* FAQ: native details that animate their height where the browser can. */
+  .faq-item {
+    interpolate-size: allow-keywords;
+  }
+
+  .faq-item::details-content {
+    height: 0;
+    overflow: clip;
+    transition:
+      height 220ms var(--ease-out-strong),
+      content-visibility 220ms allow-discrete;
+  }
+
+  .faq-item[open]::details-content {
+    height: auto;
+  }
+
+  .faq-item summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq-chevron {
+    transition: transform 220ms var(--ease-out-strong);
+  }
+
+  .faq-item[open] .faq-chevron {
+    transform: rotate(45deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landing [data-intro] {
+      opacity: 1;
+      animation: none;
+    }
+
+    .faq-item::details-content,
+    .faq-chevron {
+      transition: none;
+    }
   }
 }

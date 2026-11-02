@@ -23,7 +23,7 @@ const faqs: { q: string; a: ReactNode }[] = [
         re-drawn on the screenshot.{" "}
         <Link
           href="/demo/inbox"
-          className="text-accent-light underline underline-offset-2 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-light"
+          className="focus-ring rounded text-paper underline decoration-line-strong underline-offset-4 hover:decoration-paper/60"
         >
           See it working in the demo inbox
         </Link>
@@ -59,21 +59,52 @@ const faqs: { q: string; a: ReactNode }[] = [
 
 export function Faq() {
   return (
-    <section id="faq" className="bg-gray-950 px-6 py-24">
-      <div className="mx-auto max-w-5xl">
-        {/* Section title */}
-        <div data-gsap="section-title" className="text-center">
-          <div className="mx-auto mb-4 h-px w-8 bg-accent/50" />
-          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Frequently asked questions</h2>
+    <section id="faq" aria-labelledby="faq-title" className="relative scroll-mt-16 py-24 lg:py-32">
+      <div className="mx-auto grid max-w-[78rem] gap-12 px-6 lg:grid-cols-12 lg:gap-10 lg:px-10">
+        <div className="lg:col-span-4">
+          <div className="lg:sticky lg:top-28">
+            <h2 id="faq-title" className="type-title text-[clamp(2.4rem,5.4vw,4.6rem)] text-paper">
+              Questions, answered.
+            </h2>
+            <p className="mt-6 max-w-[22rem] text-lg leading-relaxed text-mist">
+              Something missing?{" "}
+              <a
+                href="https://github.com/NeosiaNexus/SitePing/issues"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="focus-ring rounded text-paper underline decoration-line-strong underline-offset-4 transition-colors duration-150 hover:decoration-paper/60"
+              >
+                Ask on GitHub
+              </a>
+              .
+            </p>
+          </div>
         </div>
 
-        {/* FAQ grid */}
-        <div className="mt-16 grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-x-12 md:gap-y-10">
+        {/* Native <details>: keyboard, find-in-page and no-JS work for free; the height animates where supported. */}
+        <div className="border-b border-line lg:col-span-8">
           {faqs.map((item) => (
-            <div key={item.q} data-gsap="faq-item">
-              <h3 className="font-medium text-white">{item.q}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-gray-400">{item.a}</p>
-            </div>
+            <details key={item.q} className="faq-item group border-t border-line">
+              <summary className="focus-ring flex cursor-pointer list-none items-center justify-between gap-6 rounded-lg py-6 text-left text-[18px] font-medium text-paper transition-colors duration-150 hover:text-white">
+                {item.q}
+                <span
+                  aria-hidden="true"
+                  className="faq-chevron flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.04] text-mist ring-1 ring-white/[0.06]"
+                >
+                  <svg
+                    className="h-3.5 w-3.5"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" d="M8 3v10M3 8h10" />
+                  </svg>
+                </span>
+              </summary>
+              <p className="max-w-[44rem] pb-7 pr-12 text-[16px] leading-relaxed text-mist">{item.a}</p>
+            </details>
           ))}
         </div>
       </div>

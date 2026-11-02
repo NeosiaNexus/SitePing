@@ -3,14 +3,23 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { bricolage } from "@/components/landing/fonts";
+import { LogoMark } from "@/components/landing/icons";
 
+/**
+ * The SitePing bar above both sides of the demo. It says which side you are
+ * on (the client's site or the freelancer's inbox) and takes you to the other.
+ */
 export function Banner() {
   const onInbox = usePathname() === "/demo/inbox";
 
   return (
-    <header className="border-b border-amber-200 bg-amber-50 px-4 py-2.5">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-6 gap-y-1 text-sm text-amber-900">
-        {/* useSearchParams needs Suspense for static rendering — fall back to server-mode copy */}
+    <header
+      data-siteping-ignore="true"
+      className={`landing ${bricolage.variable} relative z-50 border-b border-line bg-ink text-paper`}
+    >
+      <div className="mx-auto flex min-h-12 max-w-[90rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2 sm:px-6">
+        {/* useSearchParams needs Suspense for static rendering; fall back to server-mode copy */}
         <Suspense fallback={<BannerContent onInbox={onInbox} localMode={false} />}>
           <ModeAwareBannerContent onInbox={onInbox} />
         </Suspense>
@@ -20,58 +29,52 @@ export function Banner() {
 }
 
 function ModeAwareBannerContent({ onInbox }: { onInbox: boolean }) {
-  // The playground writes ?mode=local — thread it through the inbox links so
-  // both sides of the demo look at the same store.
+  // The playground writes ?mode=local: thread it through the links so both
+  // sides of the demo look at the same store.
   const localMode = useSearchParams().get("mode") === "local";
   return <BannerContent onInbox={onInbox} localMode={localMode} />;
 }
 
 function BannerContent({ onInbox, localMode }: { onInbox: boolean; localMode: boolean }) {
   const modeQuery = localMode ? "?mode=local" : "";
-
-  let message: string;
-  if (onInbox) {
-    message = localMode
-      ? "You're the freelancer now — feedbacks from the demo's local mode stay in this browser."
-      : "You're the freelancer now — feedback drawn on the demo site lands here. Data resets every 10 minutes.";
-  } else {
-    message = localMode
-      ? "Live demo, local mode — feedbacks stay in this browser. Every option in the playground is live — change it and the widget rebuilds."
-      : "Live demo — data resets every 10 minutes and is not persisted to any database. Every option in the playground is live — change it and the widget rebuilds.";
-  }
+  const side = onInbox ? "You are the freelancer" : "You are the client";
+  const note = localMode
+    ? "Local mode: notes stay in this browser."
+    : "Notes reset every 10 minutes and are never saved to a database.";
 
   return (
     <>
-      <div className="flex min-w-0 items-center gap-2">
-        <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path
-            fillRule="evenodd"
-            d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.168 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z"
-            clipRule="evenodd"
-          />
-        </svg>
-        <p>{message}</p>
+      <div className="flex min-w-0 items-center gap-3 text-[13.5px]">
+        <Link
+          href="/"
+          className="press focus-ring flex shrink-0 items-center gap-2 rounded-lg font-semibold text-paper"
+        >
+          <LogoMark className="h-6 w-6" />
+          <span className="hidden sm:inline">SitePing</span>
+        </Link>
+        <span aria-hidden="true" className="h-4 w-px bg-line-strong" />
+        <span className="flex items-center gap-2 whitespace-nowrap rounded-full bg-cobalt/15 px-2.5 py-0.5 text-[12.5px] font-medium text-[#a9b8ff]">
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-cobalt-soft" />
+          Live demo
+        </span>
+        <p className="min-w-0 truncate text-mist">
+          <span className="text-paper">{side}.</span> <span className="hidden md:inline">{note}</span>
+        </p>
       </div>
-      <div className="flex shrink-0 items-center gap-4">
-        {onInbox ? (
-          <Link
-            href={`/demo${modeQuery}`}
-            className="font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700"
-          >
-            Back to the demo site
-          </Link>
-        ) : (
-          <Link
-            href={`/demo/inbox${modeQuery}`}
-            className="font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700"
-          >
-            Open the inbox
-          </Link>
-        )}
-        <Link href="/" className="font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700">
+      <nav aria-label="Demo" className="flex shrink-0 items-center gap-1.5 text-[13.5px]">
+        <Link
+          href="/"
+          className="focus-ring hidden rounded-full px-3 py-1.5 text-mist transition-colors duration-150 hover:text-paper sm:inline-flex"
+        >
           Back to SitePing
         </Link>
-      </div>
+        <Link
+          href={onInbox ? `/demo${modeQuery}` : `/demo/inbox${modeQuery}`}
+          className="press focus-ring inline-flex h-8 items-center gap-1.5 rounded-full bg-paper px-3.5 font-semibold text-ink transition-colors duration-150 hover:bg-white"
+        >
+          {onInbox ? "Back to the demo site" : "Open the inbox"}
+        </Link>
+      </nav>
     </>
   );
 }
