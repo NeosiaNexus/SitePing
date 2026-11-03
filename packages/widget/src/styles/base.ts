@@ -12,18 +12,22 @@ import { cssVariables, type ThemeColors } from "./theme.js";
 /**
  * Build the complete CSS stylesheet for the Shadow DOM.
  *
- * Design: Glassmorphism — frosted glass surfaces, soft depth,
- * accent gradients, premium micro-interactions.
+ * Design: native, after Apple's system UI. The panel is a floating sheet of
+ * thick translucent material, lists are inset grouped rows, and controls are
+ * the system ones: filled search field, segmented control, tinted capsules,
+ * filled buttons. Surfaces read the `--sp-*` tokens of styles/theme.ts.
  *
  * Principles:
  * - :host uses `all: initial` to block inherited styles
  * - All classes prefixed with sp- (defense in depth)
- * - CSS custom properties for theming
- * - No external fonts — system-ui stack (Inter if available)
+ * - CSS custom properties for theming, resolved per scheme in JS (no
+ *   light-dark(), which browsers before 2024 drop)
+ * - No external fonts: the system face (San Francisco on Apple, Inter if available)
  * - :focus-visible on all interactive elements
  * - prefers-reduced-motion support
  */
 export function buildStyles(colors: ThemeColors): string {
+  const dark = colors.scheme === "dark";
   return /* css */ `
     :host {
       all: initial;
@@ -34,7 +38,7 @@ export function buildStyles(colors: ThemeColors): string {
       line-height: 1.5;
       color: var(--sp-text);
       /* Match native sub-controls (autofill, scrollbars, etc.) to the resolved theme */
-      color-scheme: ${colors.bg === "#ffffff" ? "light" : "dark"};
+      color-scheme: ${colors.scheme};
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       ${cssVariables(colors)}
@@ -48,11 +52,11 @@ export function buildStyles(colors: ThemeColors): string {
       /* The one transition of controls: colours ease, the press answers fast. */
       --sp-tr: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease, transform 0.16s var(--sp-ease-out);
 
-      /* Identity modal — theme-aware backdrop + panel */
-      --sp-identity-bg: ${colors.glassBgHeavy};
-      --sp-identity-overlay: ${colors.bg === "#ffffff" ? "rgba(15, 23, 42, 0.2)" : "rgba(0, 0, 0, 0.4)"};
-      /* Phone layout — dims the page behind bottom sheets and the speed dial */
-      --sp-scrim: ${colors.bg === "#ffffff" ? "rgba(15, 23, 42, 0.32)" : "rgba(0, 0, 0, 0.5)"};
+      /* Neutral dims behind the confirm and shortcuts dialogs, the identity
+         form, and (phones) the bottom sheets and the speed dial. */
+      --sp-backdrop: ${dark ? "rgba(0, 0, 0, 0.45)" : "rgba(0, 0, 0, 0.2)"};
+      --sp-identity-overlay: ${dark ? "rgba(0, 0, 0, 0.5)" : "rgba(0, 0, 0, 0.2)"};
+      --sp-scrim: ${dark ? "rgba(0, 0, 0, 0.55)" : "rgba(0, 0, 0, 0.24)"};
     }
 
     *, *::before, *::after {
@@ -119,25 +123,17 @@ export function buildStyles(colors: ThemeColors): string {
       transform: scale(0.97);
     }
 
-    /* Solid surfaces asked for: the theme already made glass opaque, so the
-       blur would only cost paint. */
-    @media (prefers-reduced-transparency: reduce) {
-      * {
-        -webkit-backdrop-filter: none !important;
-        backdrop-filter: none !important;
-      }
-    }
-
     /* ============================
        FAB (Floating Action Button)
        ============================ */
 
+    /* Flat accent, a top sheen and a coloured drop shadow, like a system button. */
     .sp-fab {
       position: fixed;
-      width: 52px;
-      height: 52px;
+      width: 54px;
+      height: 54px;
       border-radius: var(--sp-radius-full);
-      background: var(--sp-accent-gradient);
+      background: var(--sp-accent);
       color: #fff;
       border: none;
       cursor: pointer;
@@ -145,10 +141,12 @@ export function buildStyles(colors: ThemeColors): string {
       align-items: center;
       justify-content: center;
       box-shadow:
-        0 4px 20px var(--sp-accent-glow),
-        0 2px 8px rgba(0, 0, 0, 0.08);
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 8px 24px color-mix(in srgb, var(--sp-accent) 36%, transparent),
+        0 2px 6px rgba(0, 0, 0, 0.12);
       transition:
         transform 0.16s var(--sp-ease-out),
+        opacity 0.2s ease,
         box-shadow 0.2s ease;
       outline: none;
       touch-action: manipulation;
@@ -157,20 +155,29 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-fab:focus-visible {
-      outline: 2px solid #fff;
+      outline: 2px solid var(--sp-accent);
       outline-offset: 3px;
     }
 
     @media (hover: hover) and (pointer: fine) {
       .sp-fab:hover {
         box-shadow:
-          0 8px 28px var(--sp-accent-glow),
-          0 4px 12px rgba(0, 0, 0, 0.1);
+          inset 0 1px 0 rgba(255, 255, 255, 0.22),
+          0 12px 32px color-mix(in srgb, var(--sp-accent) 46%, transparent),
+          0 3px 8px rgba(0, 0, 0, 0.14);
       }
     }
 
     .sp-fab:active {
       transform: scale(0.97);
+    }
+
+    /* The open sheet covers the button: it steps back instead of glowing
+       through the material. */
+    div:has(> .sp-fab):has(~ .sp-panel.sp-panel--open) > .sp-fab {
+      opacity: 0;
+      transform: scale(0.9);
+      pointer-events: none;
     }
 
     .sp-fab--bottom-right {
@@ -184,8 +191,8 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-fab svg {
-      width: 22px;
-      height: 22px;
+      width: 23px;
+      height: 23px;
       fill: currentColor;
     }
 
@@ -193,40 +200,40 @@ export function buildStyles(colors: ThemeColors): string {
 
     .sp-fab-badge {
       position: absolute;
-      top: -4px;
-      right: -4px;
+      top: -3px;
+      right: -3px;
       min-width: 20px;
       height: 20px;
       padding: 0 6px;
       border-radius: var(--sp-radius-full);
-      background: #dc2626;
+      background: var(--sp-danger);
       color: #fff;
-      font-size: 11px;
-      font-weight: 700;
+      font: 600 11px/1 var(--sp-font);
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 2px solid #fff;
+      /* Cut out of the button by a ring of the page-facing background. */
+      border: 2px solid var(--sp-bg);
       pointer-events: none;
-      font-family: var(--sp-font);
-      line-height: 1;
-      font-variant-numeric: tabular-nums;
     }
 
-    /* ---- Submission outcome toast ---- */
+    /* ---- Submission outcome toast: a material capsule ---- */
 
     .sp-toast {
       position: fixed;
       left: 50%;
-      bottom: 92px;
+      bottom: 96px;
       transform: translateX(-50%);
       max-width: min(360px, calc(100vw - 32px));
-      padding: 10px 14px;
-      border-radius: var(--sp-radius-lg);
-      background: var(--sp-text);
-      color: var(--sp-bg);
-      font: 500 13px/1.4 var(--sp-font);
-      box-shadow: var(--sp-shadow-lg);
+      padding: 11px 18px;
+      border-radius: 20px;
+      background: var(--sp-material-thick);
+      -webkit-backdrop-filter: var(--sp-material-blur);
+      backdrop-filter: var(--sp-material-blur);
+      color: var(--sp-text);
+      font: 500 14px/1.35 var(--sp-font);
+      letter-spacing: -0.01em;
+      box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
       cursor: pointer;
       animation: sp-toast-in 0.2s var(--sp-ease-out);
       transition: opacity 0.15s ease;
@@ -240,8 +247,16 @@ export function buildStyles(colors: ThemeColors): string {
       display: none;
     }
 
-    .sp-toast--error {
-      border-left: 4px solid var(--sp-type-bug);
+    /* A failure carries a red dot before its text. */
+    .sp-toast--error::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: var(--sp-type-bug);
+      vertical-align: 1px;
     }
 
     @keyframes sp-toast-in {
@@ -255,8 +270,8 @@ export function buildStyles(colors: ThemeColors): string {
     .sp-radial {
       position: fixed;
       pointer-events: none;
-      width: 52px;
-      height: 52px;
+      width: 54px;
+      height: 54px;
     }
 
     .sp-radial--bottom-right {
@@ -269,52 +284,45 @@ export function buildStyles(colors: ThemeColors): string {
       left: 24px;
     }
 
+    /* Material buttons and labels: the bright top edge catches the light. */
     .sp-radial-item {
       position: absolute;
-      left: 4px;
-      bottom: 4px;
+      left: 5px;
+      bottom: 5px;
       width: 44px;
       height: 44px;
       border-radius: var(--sp-radius-full);
-      background: var(--sp-glass-bg-heavy);
-      backdrop-filter: blur(var(--sp-blur));
-      -webkit-backdrop-filter: blur(var(--sp-blur));
+      background: var(--sp-material-thick);
+      -webkit-backdrop-filter: var(--sp-material-blur);
+      backdrop-filter: var(--sp-material-blur);
       color: var(--sp-text);
-      border: 1px solid var(--sp-glass-border);
+      border: none;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: var(--sp-shadow-md);
+      box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
       font-size: 12px;
       font-weight: 600;
     }
 
     .sp-radial-item:focus-visible {
-      background: rgba(255, 255, 255, 0.95);
-      border-color: var(--sp-accent);
-      color: var(--sp-accent-text);
-      box-shadow:
-        var(--sp-shadow-md),
-        0 0 0 3px var(--sp-accent-light);
+      background: var(--sp-row);
+      color: var(--sp-accent-ink);
+      box-shadow: var(--sp-shadow-float), var(--sp-ring);
       outline: none;
     }
 
     @media (hover: hover) and (pointer: fine) {
       .sp-radial-item:hover {
-        background: rgba(255, 255, 255, 0.95);
-        border-color: var(--sp-accent);
-        color: var(--sp-accent-text);
-        box-shadow:
-          var(--sp-shadow-md),
-          0 0 0 3px var(--sp-accent-light);
-        outline: none;
+        background: var(--sp-row);
+        color: var(--sp-accent-ink);
       }
     }
 
     .sp-radial-item svg {
-      width: 18px;
-      height: 18px;
+      width: 19px;
+      height: 19px;
       flex-shrink: 0;
       stroke: currentColor;
       fill: none;
@@ -324,20 +332,22 @@ export function buildStyles(colors: ThemeColors): string {
       position: absolute;
       top: 50%;
       white-space: nowrap;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
+      letter-spacing: -0.01em;
       color: var(--sp-text);
       pointer-events: none;
       opacity: 0;
-      padding: 4px 12px;
-      border-radius: var(--sp-radius);
-      background: var(--sp-glass-bg-heavy);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--sp-glass-border);
-      box-shadow: var(--sp-shadow-sm);
+      padding: 6px 12px;
+      border-radius: var(--sp-radius-full);
+      background: var(--sp-material-thick);
+      -webkit-backdrop-filter: var(--sp-material-blur);
+      backdrop-filter: var(--sp-material-blur);
+      box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
       transform: translate(4px, -50%);
-      transition: opacity 0.2s ease, transform 0.2s ease;
+      transition:
+        opacity 0.18s ease,
+        transform 0.2s var(--sp-ease-out);
     }
 
     .sp-radial--bottom-right .sp-radial-label {
@@ -362,22 +372,22 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     /* ============================
-       Panel (Side drawer)
+       Panel: a floating inset sheet
        ============================ */
 
     .sp-panel {
       position: fixed;
-      top: 0;
-      right: 0;
-      width: 400px;
-      max-width: 100vw;
-      height: 100vh;
-      height: 100dvh;
-      background: var(--sp-glass-bg);
-      backdrop-filter: blur(var(--sp-blur-heavy));
-      -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
-      border-left: 1px solid var(--sp-glass-border);
-      box-shadow: var(--sp-shadow-xl);
+      top: 12px;
+      right: 12px;
+      bottom: 12px;
+      width: 380px;
+      max-width: calc(100vw - 24px);
+      border-radius: var(--sp-radius-xl);
+      background: var(--sp-material);
+      -webkit-backdrop-filter: var(--sp-material-blur);
+      backdrop-filter: var(--sp-material-blur);
+      /* A bright top edge, a faint inner rim, then the hairline and the drop. */
+      box-shadow: inset 0 0.5px 0 var(--sp-edge), inset 0 0 0 0.5px var(--sp-sheen-soft), var(--sp-shadow-sheet);
       display: flex;
       flex-direction: column;
       /* clip, not hidden: a hidden box still scrolls under scrollIntoView and
@@ -385,50 +395,66 @@ export function buildStyles(colors: ThemeColors): string {
       overflow: clip;
     }
 
+    /* The header and the filters sit on the sheet's own material: no bands. */
     .sp-panel-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 20px 24px;
-      border-bottom: 1px solid var(--sp-border);
-      background: var(--sp-glass-bg-heavy);
-      backdrop-filter: blur(var(--sp-blur));
-      -webkit-backdrop-filter: blur(var(--sp-blur));
+      padding: 16px 12px 8px 20px;
       position: relative;
       z-index: 2;
     }
 
+    /* A large title, as at the top of a system list. */
     .sp-panel-title {
-      font-size: 17px;
+      font-family: var(--sp-font-display);
+      font-size: 28px;
       font-weight: 700;
+      line-height: 1.15;
       color: var(--sp-text);
-      letter-spacing: -0.02em;
+      letter-spacing: -0.022em;
     }
 
+    /* Close: a 30px filled circle inside a 44px target. */
     .sp-panel-close {
+      position: relative;
       width: 44px;
       height: 44px;
-      border-radius: var(--sp-radius);
+      border-radius: 50%;
       border: none;
       background: transparent;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--sp-text-tertiary);
+      color: var(--sp-text-secondary);
       transition: var(--sp-tr);
+    }
+
+    .sp-panel-close::before {
+      content: "";
+      position: absolute;
+      inset: 7px;
+      border-radius: 50%;
+      background: var(--sp-fill);
+      transition: background-color 0.15s ease;
     }
 
     @media (hover: hover) and (pointer: fine) {
       .sp-panel-close:hover {
-        background: var(--sp-bg-hover);
         color: var(--sp-text);
+      }
+
+      .sp-panel-close:hover::before {
+        background: var(--sp-fill-strong);
       }
     }
 
     .sp-panel-close svg {
-      width: 16px;
-      height: 16px;
+      position: relative;
+      width: 13px;
+      height: 13px;
+      stroke-width: 2.6;
     }
 
     /* ============================
@@ -436,11 +462,7 @@ export function buildStyles(colors: ThemeColors): string {
        ============================ */
 
     .sp-filters {
-      padding: 16px 24px;
-      border-bottom: 1px solid var(--sp-border);
-      background: var(--sp-glass-bg-heavy);
-      backdrop-filter: blur(var(--sp-blur));
-      -webkit-backdrop-filter: blur(var(--sp-blur));
+      padding: 2px 16px 10px;
       position: sticky;
       top: 0;
       z-index: 1;
@@ -448,47 +470,41 @@ export function buildStyles(colors: ThemeColors): string {
 
     .sp-search-wrap {
       position: relative;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
+    /* A filled field; focus adds the accent ring, not a border. */
     .sp-search {
       width: 100%;
-      height: 40px;
-      padding: 0 12px 0 38px;
+      height: 36px;
+      padding: 0 12px 0 34px;
       border-radius: var(--sp-radius);
-      border: 1px solid var(--sp-border);
-      background: var(--sp-glass-bg-heavy);
+      border: none;
+      background: var(--sp-fill);
       color: var(--sp-text);
       font-family: var(--sp-font);
-      font-size: 13px;
+      font-size: 15px;
+      letter-spacing: -0.01em;
       outline: none;
       transition: var(--sp-tr);
     }
 
     .sp-search::placeholder {
-      color: var(--sp-text-tertiary);
+      color: var(--sp-text-secondary);
     }
 
     .sp-search:focus {
-      border-color: var(--sp-accent);
-      box-shadow: 0 0 0 3px var(--sp-accent-light);
-      background: var(--sp-bg);
+      box-shadow: var(--sp-ring);
     }
 
     .sp-search-icon {
       position: absolute;
-      left: 12px;
+      left: 10px;
       top: 50%;
       transform: translateY(-50%);
-      color: var(--sp-text-tertiary);
+      color: var(--sp-text-secondary);
       width: 16px;
       height: 16px;
-      transition: color 0.2s ease;
-    }
-
-    .sp-search:focus ~ .sp-search-icon,
-    .sp-search-wrap:focus-within .sp-search-icon {
-      color: var(--sp-accent-text);
     }
 
     /* ============================
@@ -513,22 +529,22 @@ export function buildStyles(colors: ThemeColors): string {
       min-width: 0;
     }
 
+    /* Type menu trigger: a borderless fill capsule, tinted once it filters. */
     .sp-filter-dropdown-btn {
       --sp-chip-color: var(--sp-text-secondary);
-      --sp-chip-bg: var(--sp-glass-bg-heavy);
 
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       width: 100%;
       height: 32px;
-      padding: 0 8px 0 10px;
+      padding: 0 10px;
       border-radius: var(--sp-radius-full);
-      border: 1px solid var(--sp-border);
-      background: var(--sp-glass-bg-heavy);
+      border: none;
+      background: var(--sp-fill);
       color: var(--sp-text);
       font-family: var(--sp-font);
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
       cursor: pointer;
       white-space: nowrap;
@@ -537,20 +553,17 @@ export function buildStyles(colors: ThemeColors): string {
 
     @media (hover: hover) and (pointer: fine) {
       .sp-filter-dropdown-btn:hover {
-        border-color: var(--sp-chip-color);
-        background: var(--sp-chip-bg);
+        background: var(--sp-fill-strong);
       }
     }
 
     .sp-filter-dropdown-btn[aria-expanded="true"] {
-      border-color: var(--sp-chip-color);
-      background: var(--sp-chip-bg);
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--sp-chip-color) 14%, transparent);
+      background: var(--sp-fill-strong);
     }
 
-    .sp-filter-dropdown-btn--filtered {
-      border-color: var(--sp-chip-color);
-      background: var(--sp-chip-bg);
+    .sp-filter-dropdown-btn--filtered,
+    .sp-filter-dropdown-btn--filtered[aria-expanded="true"] {
+      background: color-mix(in srgb, var(--sp-chip-color) 14%, transparent);
     }
 
     .sp-filter-dropdown-btn__icon {
@@ -578,18 +591,23 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-filter-dropdown-btn__prefix {
-      color: var(--sp-text-tertiary);
+      color: var(--sp-text-secondary);
       font-weight: 500;
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.04em;
     }
 
     .sp-filter-dropdown-btn__value {
-      color: var(--sp-chip-color);
+      color: var(--sp-text);
       font-weight: 600;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    /* The chosen type in its own colour, pushed toward the text to read on its tint. */
+    .sp-filter-dropdown-btn--filtered .sp-filter-dropdown-btn__value {
+      color: color-mix(in srgb, var(--sp-chip-color) var(--sp-ink-pct), var(--sp-ink-mix));
     }
 
     .sp-filter-dropdown-btn__chevron {
@@ -599,8 +617,8 @@ export function buildStyles(colors: ThemeColors): string {
       width: 14px;
       height: 14px;
       flex-shrink: 0;
-      color: var(--sp-text-tertiary);
-      transition: transform 0.2s var(--sp-ease-out), color 0.15s ease;
+      color: var(--sp-text-secondary);
+      transition: transform 0.2s var(--sp-ease-out);
     }
 
     .sp-filter-dropdown-btn__chevron svg {
@@ -610,22 +628,21 @@ export function buildStyles(colors: ThemeColors): string {
 
     .sp-filter-dropdown-btn[aria-expanded="true"] .sp-filter-dropdown-btn__chevron {
       transform: rotate(180deg);
-      color: var(--sp-chip-color);
     }
 
+    /* Menus: thick material, rounded, rows highlight with a fill. */
     .sp-filter-dropdown-menu {
       position: absolute;
       top: calc(100% + 6px);
       left: 0;
       right: 0;
       min-width: 180px;
-      padding: 4px;
-      border-radius: var(--sp-radius);
-      background: var(--sp-glass-bg-heavy);
-      backdrop-filter: blur(var(--sp-blur-heavy));
-      -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
-      border: 1px solid var(--sp-glass-border);
-      box-shadow: var(--sp-shadow-md);
+      padding: 6px;
+      border-radius: var(--sp-radius-lg);
+      background: var(--sp-material-thick);
+      -webkit-backdrop-filter: var(--sp-material-blur);
+      backdrop-filter: var(--sp-material-blur);
+      box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
       z-index: 10;
       transform-origin: top left;
       animation: sp-menu-in 0.15s var(--sp-ease-out) backwards;
@@ -638,20 +655,21 @@ export function buildStyles(colors: ThemeColors): string {
 
     .sp-filter-dropdown-option {
       --sp-chip-color: var(--sp-text-secondary);
-      --sp-chip-bg: transparent;
 
       display: flex;
       align-items: center;
       gap: 10px;
       width: 100%;
-      padding: 8px 10px;
+      min-height: 34px;
+      padding: 7px 10px;
       border: none;
       border-radius: 8px;
       background: transparent;
       color: var(--sp-text);
       font-family: var(--sp-font);
-      font-size: 12px;
-      font-weight: 500;
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: -0.005em;
       cursor: pointer;
       text-align: left;
       transition: background-color 0.12s ease, color 0.12s ease;
@@ -665,7 +683,7 @@ export function buildStyles(colors: ThemeColors): string {
       height: 22px;
       flex-shrink: 0;
       border-radius: 6px;
-      background: var(--sp-chip-bg);
+      background: color-mix(in srgb, var(--sp-chip-color) 14%, transparent);
       color: var(--sp-chip-color);
     }
 
@@ -686,7 +704,7 @@ export function buildStyles(colors: ThemeColors): string {
       width: 14px;
       height: 14px;
       flex-shrink: 0;
-      color: var(--sp-chip-color);
+      color: var(--sp-accent-ink);
     }
 
     .sp-filter-dropdown-option__check svg {
@@ -696,51 +714,45 @@ export function buildStyles(colors: ThemeColors): string {
 
     @media (hover: hover) and (pointer: fine) {
       .sp-filter-dropdown-option:hover {
-        background: var(--sp-bg-hover);
+        background: var(--sp-fill);
       }
     }
 
+    /* The chosen row keeps the text colour: the check marks it. */
     .sp-filter-dropdown-option--active {
-      color: var(--sp-chip-color);
       font-weight: 600;
-    }
-
-    @media (hover: hover) and (pointer: fine) {
-      .sp-filter-dropdown-option--active:hover {
-        background: var(--sp-chip-bg);
-      }
     }
 
     /* ============================
        Status segmented control
        ============================ */
 
+    /* A grey track and a raised thumb; the status icons keep their colour. */
     .sp-segmented {
       display: inline-flex;
       align-items: stretch;
       padding: 2px;
-      border-radius: var(--sp-radius-full);
-      border: 1px solid var(--sp-border);
-      background: var(--sp-glass-bg-heavy);
+      border-radius: 9px;
+      background: var(--sp-fill);
       flex-shrink: 0;
     }
 
     .sp-segmented__btn {
       --sp-chip-color: var(--sp-text-tertiary);
-      --sp-chip-bg: transparent;
 
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      height: 26px;
+      height: 28px;
       padding: 0 10px;
       border: none;
-      border-radius: var(--sp-radius-full);
+      border-radius: 7px;
       background: transparent;
-      color: var(--sp-text-secondary);
+      color: var(--sp-text);
       font-family: var(--sp-font);
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
+      letter-spacing: -0.01em;
       cursor: pointer;
       white-space: nowrap;
       transition: var(--sp-tr);
@@ -754,7 +766,6 @@ export function buildStyles(colors: ThemeColors): string {
       height: 13px;
       flex-shrink: 0;
       color: var(--sp-chip-color);
-      transition: color 0.15s ease;
     }
 
     .sp-segmented__icon svg {
@@ -763,38 +774,29 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     @media (hover: hover) and (pointer: fine) {
-      .sp-segmented__btn:hover {
-        color: var(--sp-chip-color);
-      }
-    }
-
-    @media (hover: hover) and (pointer: fine) {
-      .sp-segmented__btn:hover .sp-segmented__icon {
-        color: var(--sp-chip-color);
+      .sp-segmented__btn:not(.sp-segmented__btn--active):hover {
+        background: var(--sp-sheen);
       }
     }
 
     .sp-segmented__btn--active {
-      background: var(--sp-chip-bg);
-      color: var(--sp-chip-color);
+      background: var(--sp-thumb);
       font-weight: 600;
-      box-shadow:
-        inset 0 0 0 1px color-mix(in srgb, var(--sp-chip-color) 35%, transparent),
-        0 1px 2px rgba(0, 0, 0, 0.04);
-    }
-
-    .sp-segmented__btn--active .sp-segmented__icon {
-      color: var(--sp-chip-color);
+      box-shadow: var(--sp-shadow-thumb);
     }
 
     /* ============================
        Feedback Cards
        ============================ */
 
+    /* Inset grouped list: solid rows on the material. The top edge fades so
+       rows slide under the filters instead of being cut. */
     .sp-list {
       flex: 1;
       overflow-y: auto;
-      padding: 8px 12px;
+      padding: 8px 16px 16px;
+      -webkit-mask-image: linear-gradient(to bottom, transparent, #000 8px);
+      mask-image: linear-gradient(to bottom, transparent, #000 8px);
     }
 
     .sp-list::-webkit-scrollbar {
@@ -806,7 +808,7 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-list::-webkit-scrollbar-thumb {
-      background: var(--sp-border);
+      background: var(--sp-fill-strong);
       border-radius: var(--sp-radius-full);
     }
 
@@ -817,34 +819,38 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-card {
+      position: relative;
       display: flex;
-      padding: 14px 16px;
-      margin-bottom: 6px;
+      padding: 12px 14px 12px 12px;
+      margin-bottom: 8px;
       cursor: pointer;
-      border-radius: var(--sp-radius);
-      background: var(--sp-glass-bg-heavy);
-      border: 1px solid var(--sp-glass-border);
-      box-shadow: var(--sp-shadow-xs);
+      border-radius: var(--sp-radius-lg);
+      background: var(--sp-row);
+      box-shadow: var(--sp-shadow-row);
       transition: var(--sp-tr);
     }
 
     @media (hover: hover) and (pointer: fine) {
       .sp-card:hover {
-        background: var(--sp-bg);
-        border-color: var(--sp-border);
-        box-shadow: var(--sp-shadow-md);
+        background: var(--sp-row-hover);
+        box-shadow: var(--sp-shadow-row-hover);
       }
     }
 
     .sp-card:active {
-      transform: scale(0.99);
+      transform: scale(0.985);
     }
 
+    /* The type as a dot beside the number, not a bar down the row. */
     .sp-card-bar {
-      width: 3px;
-      border-radius: var(--sp-radius-full);
-      margin-right: 14px;
+      align-self: flex-start;
+      width: 8px;
+      height: 8px;
+      margin: 6px 10px 0 2px;
+      border-radius: 50%;
       flex-shrink: 0;
+      /* Edit mode hides it under the round check (panel-bulk.ts). */
+      transition: opacity 0.15s ease;
     }
 
     .sp-card-body {
@@ -857,28 +863,36 @@ export function buildStyles(colors: ThemeColors): string {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 4px 8px;
-      margin-bottom: 6px;
+      gap: 4px 6px;
+      margin-bottom: 4px;
     }
 
     .sp-card-number {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--sp-text-tertiary);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--sp-text);
       font-variant-numeric: tabular-nums;
     }
 
+    /* Tinted capsules. panel.ts paints each badge inline (colour and pastel
+       background per type and status): the tint is drawn from that colour,
+       hence !important over the inline background, and the text is the colour
+       pushed toward the text so it reads on the tint. */
     .sp-badge {
       white-space: nowrap;
-      padding: 2px 10px;
+      padding: 2px 8px;
       border-radius: var(--sp-radius-full);
       font-size: 11px;
       font-weight: 600;
-      letter-spacing: 0.02em;
+      line-height: 16px;
+      letter-spacing: 0.01em;
+      background: color-mix(in srgb, currentColor 13%, transparent) !important;
+      -webkit-text-fill-color: color-mix(in srgb, currentColor var(--sp-ink-pct-badge), var(--sp-ink-mix));
     }
 
     .sp-card-date {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--sp-text-tertiary);
       margin-left: auto;
       white-space: nowrap;
@@ -886,14 +900,15 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-lost {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--sp-text-tertiary);
       margin-top: 4px;
     }
 
     .sp-card-message {
-      font-size: 13px;
-      line-height: 1.5;
+      font-size: 14px;
+      line-height: 1.43;
+      letter-spacing: -0.006em;
       color: var(--sp-text);
       /* URLs and long compounds break instead of running out of the card. */
       overflow-wrap: anywhere;
@@ -908,9 +923,9 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-card-expand {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
-      color: var(--sp-accent-text);
+      color: var(--sp-accent-ink);
       cursor: pointer;
       background: none;
       border: none;
@@ -925,28 +940,30 @@ export function buildStyles(colors: ThemeColors): string {
       }
     }
 
+    /* Card actions: tinted text buttons, aligned on the row's right edge. */
     .sp-card-footer {
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      gap: 6px;
-      margin-top: 10px;
+      gap: 2px;
+      margin-top: 6px;
+      margin-right: -6px;
     }
 
     .sp-btn-resolve,
     .sp-btn-delete {
-      padding: 8px 14px;
-      border-radius: var(--sp-radius-full);
-      border: 1px solid var(--sp-border);
+      height: 30px;
+      padding: 0 10px;
+      border-radius: 8px;
+      border: none;
       background: transparent;
-      color: var(--sp-text-secondary);
       font-family: var(--sp-font);
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
       transition: var(--sp-tr);
     }
 
@@ -956,21 +973,31 @@ export function buildStyles(colors: ThemeColors): string {
       height: 14px;
     }
 
-    /* Hovered text in the theme's own green and red: green-500 and red-500
-       read 2.2:1 and 3.8:1 on this tint in the light theme. */
-    @media (hover: hover) and (pointer: fine) {
-      .sp-btn-resolve:hover {
-        border-color: var(--sp-status-open);
-        color: var(--sp-status-open);
-        background: rgba(34, 197, 94, 0.06);
-      }
+    /* Inks, not the raw status colours: they read 4.5:1 on the row and on
+       their own hover tint. Reopening (a resolved card) is an accent action. */
+    .sp-btn-resolve {
+      color: var(--sp-ink-green);
+    }
+
+    .sp-card--resolved .sp-btn-resolve {
+      color: var(--sp-accent-ink);
+    }
+
+    .sp-btn-delete {
+      color: var(--sp-ink-red);
     }
 
     @media (hover: hover) and (pointer: fine) {
+      .sp-btn-resolve:hover {
+        background: color-mix(in srgb, var(--sp-status-open) 10%, transparent);
+      }
+
+      .sp-card--resolved .sp-btn-resolve:hover {
+        background: color-mix(in srgb, var(--sp-accent) 10%, transparent);
+      }
+
       .sp-btn-delete:hover {
-        border-color: var(--sp-type-bug);
-        color: var(--sp-type-bug);
-        background: rgba(239, 68, 68, 0.06);
+        background: color-mix(in srgb, var(--sp-type-bug) 10%, transparent);
       }
     }
 
@@ -991,22 +1018,25 @@ export function buildStyles(colors: ThemeColors): string {
     .sp-panel-header-right {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 2px;
     }
 
+    /* A borderless red text capsule, like a destructive bar button. */
     .sp-btn-delete-all {
-      padding: 5px 12px;
+      height: 30px;
+      padding: 0 8px;
       border-radius: var(--sp-radius-full);
-      border: 1px solid var(--sp-border);
+      border: none;
       background: transparent;
-      color: var(--sp-text-tertiary);
+      color: var(--sp-ink-red);
       font-family: var(--sp-font);
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 500;
+      white-space: nowrap;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
       transition: var(--sp-tr);
     }
 
@@ -1017,9 +1047,7 @@ export function buildStyles(colors: ThemeColors): string {
 
     @media (hover: hover) and (pointer: fine) {
       .sp-btn-delete-all:hover {
-        border-color: var(--sp-type-bug);
-        color: var(--sp-type-bug);
-        background: color-mix(in srgb, var(--sp-type-bug) 6%, transparent);
+        background: color-mix(in srgb, var(--sp-type-bug) 10%, transparent);
       }
     }
 
@@ -1031,12 +1059,13 @@ export function buildStyles(colors: ThemeColors): string {
 
     /* ---- Confirm Dialog ---- */
 
+    /* ---- Confirm Dialog: a centred alert ---- */
+
+    /* A plain dim: the sheet's own material carries the blur. */
     .sp-confirm-backdrop {
       position: fixed;
       inset: 0;
-      background: var(--sp-backdrop, rgba(15, 23, 42, 0.2));
-      backdrop-filter: blur(var(--sp-blur));
-      -webkit-backdrop-filter: blur(var(--sp-blur));
+      background: var(--sp-backdrop);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1045,71 +1074,60 @@ export function buildStyles(colors: ThemeColors): string {
       transition: opacity 0.2s ease;
     }
 
+    .sp-confirm-dialog,
+    .sp-identity-modal {
+      border-radius: var(--sp-radius-xl);
+      background: var(--sp-material-thick);
+      -webkit-backdrop-filter: var(--sp-material-blur);
+      backdrop-filter: var(--sp-material-blur);
+      box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-sheet);
+    }
+
     .sp-confirm-dialog {
-      width: min(340px, calc(100vw - 32px));
-      padding: 28px;
-      border-radius: 20px;
-      background: var(--sp-glass-bg-heavy);
-      backdrop-filter: blur(var(--sp-blur-heavy));
-      -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
-      border: 1px solid var(--sp-glass-border);
-      box-shadow: var(--sp-shadow-xl);
-      font-family: var(--sp-font);
+      width: min(300px, calc(100vw - 32px));
+      padding: 22px 16px 16px;
+      text-align: center;
       transform: translateY(8px) scale(0.97);
       transition: transform 0.2s var(--sp-ease-out);
     }
 
     .sp-confirm-title {
       font-size: 17px;
-      font-weight: 700;
+      font-weight: 600;
       color: var(--sp-text);
-      letter-spacing: -0.02em;
-      margin-bottom: 8px;
+      letter-spacing: -0.022em;
+      margin-bottom: 4px;
     }
 
     .sp-confirm-message {
-      font-size: 14px;
+      font-size: 13px;
       color: var(--sp-text-secondary);
-      line-height: 1.5;
-      margin-bottom: 20px;
+      line-height: 1.4;
+      margin-bottom: 18px;
     }
 
+    /* Both choices share the width, as in a system alert. */
     .sp-confirm-actions {
       display: flex;
       gap: 8px;
       justify-content: flex-end;
     }
 
-    .sp-btn-danger {
-      height: 40px;
-      padding: 0 22px;
-      border-radius: var(--sp-radius);
-      border: none;
-      /* red-600: white text reads 4.8:1 on it (red-500 gave 3.8:1). */
-      background: #dc2626;
-      color: #fff;
-      font-family: var(--sp-font);
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: var(--sp-tr);
-      box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+    .sp-confirm-actions > button,
+    .sp-identity-actions > button {
+      flex: 1 1 0;
+      height: 44px;
     }
 
-    @media (hover: hover) and (pointer: fine) {
-      .sp-btn-danger:hover {
-        background: #b91c1c;
-        box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
-      }
-    }
-
-    .sp-card--resolved {
-      opacity: 0.5;
+    /* Closed cards stay legible: secondary text and a soft strike, not a fade. */
+    .sp-card--resolved .sp-card-number,
+    .sp-card--resolved .sp-card-message {
+      color: var(--sp-text-secondary);
     }
 
     .sp-card--resolved .sp-card-message {
       text-decoration: line-through;
-      text-decoration-color: var(--sp-text-tertiary);
+      text-decoration-color: color-mix(in srgb, var(--sp-text-secondary) 60%, transparent);
     }
 
     /* ============================
@@ -1120,7 +1138,7 @@ export function buildStyles(colors: ThemeColors): string {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 48px 24px;
+      padding: 56px 24px;
     }
 
     /* ============================
@@ -1131,8 +1149,6 @@ export function buildStyles(colors: ThemeColors): string {
       position: fixed;
       inset: 0;
       background: var(--sp-identity-overlay);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1141,17 +1157,11 @@ export function buildStyles(colors: ThemeColors): string {
       transition: opacity 0.2s ease;
     }
 
+    /* Material, radius and depth are shared with the confirm dialog. */
     .sp-identity-modal {
       width: 340px;
       max-width: calc(100vw - 32px);
-      padding: 28px;
-      border-radius: var(--sp-radius-xl);
-      background: var(--sp-identity-bg);
-      backdrop-filter: blur(var(--sp-blur-heavy));
-      -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
-      border: 1px solid var(--sp-glass-border);
-      box-shadow: 0 16px 48px var(--sp-shadow), 0 8px 16px var(--sp-shadow);
-      font-family: var(--sp-font);
+      padding: 24px 20px 18px;
       color: var(--sp-text);
       transform: translateY(12px) scale(0.97);
       transition: transform 0.2s var(--sp-ease-out);
@@ -1173,66 +1183,94 @@ export function buildStyles(colors: ThemeColors): string {
     }
 
     .sp-identity-title {
-      font-size: 17px;
+      font-family: var(--sp-font-display);
+      font-size: 20px;
       font-weight: 700;
       color: var(--sp-text);
-      letter-spacing: -0.02em;
+      letter-spacing: -0.022em;
     }
 
+    /* Filled fields: focus lifts them to the row colour inside the accent ring. */
     .sp-input {
       width: 100%;
-      height: 42px;
-      padding: 0 14px;
+      height: 40px;
+      padding: 0 12px;
       border-radius: var(--sp-radius);
-      border: 1px solid var(--sp-border);
-      background: var(--sp-glass-bg-heavy);
+      border: none;
+      background: var(--sp-fill);
       color: var(--sp-text);
       font-family: var(--sp-font);
-      font-size: 14px;
+      font-size: 15px;
+      letter-spacing: -0.01em;
       outline: none;
       transition: var(--sp-tr);
     }
 
     .sp-input::placeholder {
-      color: var(--sp-text-tertiary);
+      color: var(--sp-text-secondary);
     }
 
     .sp-input:focus {
-      border-color: var(--sp-accent);
-      box-shadow: 0 0 0 3px var(--sp-accent-light);
-      background: var(--sp-bg);
+      background: var(--sp-row);
+      box-shadow: var(--sp-ring);
     }
 
     .sp-input-label {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 500;
+      letter-spacing: 0.02em;
       color: var(--sp-text-secondary);
-      margin-bottom: 6px;
+      margin: 0 0 6px 4px;
       display: block;
     }
 
     /* ============================
-       Buttons
+       Buttons: filled, flat, rounded rectangles
        ============================ */
 
-    .sp-btn-primary {
+    .sp-btn-primary,
+    .sp-btn-ghost,
+    .sp-btn-danger {
       height: 40px;
-      padding: 0 22px;
-      border-radius: var(--sp-radius);
+      padding: 0 18px;
+      border-radius: 12px;
       border: none;
-      background: var(--sp-accent-gradient);
       color: #fff;
       font-family: var(--sp-font);
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 600;
+      letter-spacing: -0.01em;
       cursor: pointer;
       transition: var(--sp-tr);
-      box-shadow: 0 2px 8px var(--sp-accent-glow);
+    }
+
+    .sp-btn-primary {
+      background: var(--sp-accent);
+    }
+
+    /* Secondary: a grey fill, the text colour. */
+    .sp-btn-ghost {
+      background: var(--sp-fill);
+      color: var(--sp-text);
+      font-weight: 500;
+    }
+
+    /* White reads 4.5:1 or more on the system red of either scheme. */
+    .sp-btn-danger {
+      background: var(--sp-danger);
     }
 
     @media (hover: hover) and (pointer: fine) {
       .sp-btn-primary:hover {
-        box-shadow: 0 4px 16px var(--sp-accent-glow);
+        background: var(--sp-accent-dark);
+      }
+
+      .sp-btn-ghost:hover {
+        background: var(--sp-fill-strong);
+      }
+
+      .sp-btn-danger:hover {
+        background: var(--sp-danger-press);
       }
     }
 
@@ -1240,29 +1278,6 @@ export function buildStyles(colors: ThemeColors): string {
       opacity: 0.4;
       cursor: not-allowed;
       transform: none;
-      box-shadow: none;
-    }
-
-    .sp-btn-ghost {
-      height: 40px;
-      padding: 0 22px;
-      border-radius: var(--sp-radius);
-      border: 1px solid var(--sp-border);
-      background: var(--sp-glass-bg-heavy);
-      color: var(--sp-text-secondary);
-      font-family: var(--sp-font);
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: var(--sp-tr);
-    }
-
-    @media (hover: hover) and (pointer: fine) {
-      .sp-btn-ghost:hover {
-        border-color: var(--sp-accent);
-        color: var(--sp-accent-text);
-        background: var(--sp-accent-light);
-      }
     }
 
     /* ============================
@@ -1275,28 +1290,40 @@ export function buildStyles(colors: ThemeColors): string {
       align-items: center;
       justify-content: center;
       padding: 56px 24px;
-      color: var(--sp-text-tertiary);
+      color: var(--sp-text-secondary);
       text-align: center;
       gap: 8px;
     }
 
     .sp-empty-text {
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 500;
+      letter-spacing: -0.01em;
     }
 
     /* ============================
-       Load More
+       Load More: one more row of the list
        ============================ */
 
     .sp-load-more-wrap {
       display: flex;
       justify-content: center;
-      padding: 12px 0 4px;
+      padding: 4px 0 0;
     }
 
-    .sp-btn-load-more {
+    .sp-btn-ghost.sp-btn-load-more {
       width: 100%;
+      height: 44px;
+      border-radius: var(--sp-radius-lg);
+      background: var(--sp-row);
+      color: var(--sp-accent-ink);
+      box-shadow: var(--sp-shadow-row);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .sp-btn-ghost.sp-btn-load-more:hover {
+        background: var(--sp-row-hover);
+      }
     }
 
     /* ============================

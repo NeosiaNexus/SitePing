@@ -16,11 +16,15 @@ describe("buildStyles", () => {
     }
   });
 
-  it("makes focus/hover surfaces follow the resolved theme via var(--sp-bg)", () => {
+  it("makes focus/hover surfaces follow the resolved theme via surface tokens", () => {
     const dark = buildStyles(buildThemeColors("#0066ff", "dark"));
-    for (const block of [".sp-input:focus", ".sp-search:focus", ".sp-card:hover"]) {
-      const rule = dark.slice(dark.indexOf(block), dark.indexOf("}", dark.indexOf(block)));
-      expect(rule, `${block} should set a theme-aware background`).toContain("background: var(--sp-bg)");
+    for (const [block, token] of [
+      [".sp-input:focus", "--sp-row"],
+      [".sp-search", "--sp-fill"],
+      [".sp-card:hover", "--sp-row-hover"],
+    ] as const) {
+      const rule = dark.slice(dark.indexOf(`${block} {`), dark.indexOf("}", dark.indexOf(`${block} {`)));
+      expect(rule, `${block} should set a theme-aware background`).toContain(`background: var(${token})`);
     }
   });
 
@@ -41,7 +45,7 @@ describe("buildStyles", () => {
   });
 
   it("dims the page behind phone sheets with a theme-aware scrim", () => {
-    expect(buildStyles(buildThemeColors("#0066ff", "light"))).toContain("--sp-scrim: rgba(15, 23, 42, 0.32)");
-    expect(buildStyles(buildThemeColors("#0066ff", "dark"))).toContain("--sp-scrim: rgba(0, 0, 0, 0.5)");
+    expect(buildStyles(buildThemeColors("#0066ff", "light"))).toContain("--sp-scrim: rgba(0, 0, 0, 0.24)");
+    expect(buildStyles(buildThemeColors("#0066ff", "dark"))).toContain("--sp-scrim: rgba(0, 0, 0, 0.55)");
   });
 });

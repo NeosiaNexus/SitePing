@@ -1,36 +1,41 @@
 import { COMPACT_MEDIA } from "../constants.js";
 
 /**
- * Phone and touch layer — appended last in the Shadow DOM stylesheet so it
- * wins over the desktop rules it adapts. Three independent axes:
+ * Phone, touch and accessibility-preference layer: appended last in the
+ * Shadow DOM stylesheet so it wins over the desktop rules it adapts. Four
+ * independent axes:
  *
  * - no fine hover (touch screens, styluses): the exact complement of the
  *   `(hover: hover) and (pointer: fine)` query every `:hover` rule sits behind,
  *   so a tap never leaves a hover look stuck, and hover-revealed affordances
  *   (speed-dial labels, bulk checkboxes) become permanent: invisible elements
  *   must never be tappable.
- * - `pointer: coarse` — finger-sized targets, and 16px form fields: iOS
+ * - `pointer: coarse`: 40px targets at least, and 16px form fields: iOS
  *   Safari zooms the whole page into any input under 16px on focus.
  * - `COMPACT_MEDIA` (up to 640px wide, or a touch screen up to 500px tall: a
- *   phone held sideways) — the panel and its menus become bottom sheets. Glass
- *   turns solid there: translucent sheets are hard to read on a busy page, and
- *   backdrop blur is the most expensive paint on low-end phones.
+ *   phone held sideways): the panel becomes a bottom sheet with a grabber and
+ *   its menus become action sheets. Materials turn solid there: translucent
+ *   sheets are hard to read on a busy page, and backdrop blur is the most
+ *   expensive paint on low-end phones.
+ * - reduced transparency and increased contrast: solid materials, and under
+ *   increased contrast stronger separators and outlined rows. Media queries,
+ *   so they follow the OS setting live.
  *
  * Sheet mechanics worth knowing before editing:
  * - The headers (panel and detail) are the swipe-to-close handles, hence
  *   `touch-action: none`; the stats bar and filters take `pan-x`, so only the
  *   list scrolls vertically and a drag elsewhere never scrolls the page behind.
  * - Lists use `overscroll-behavior: contain` for the same reason.
- * - The filter row scrolls horizontally, which would clip the type menu — so
+ * - The filter row scrolls horizontally, which would clip the type menu, so
  *   menus become `position: fixed` action sheets. Fixed positioning resolves
  *   against the transformed panel (not the viewport), which lifts them out of
  *   the row; that only holds while no ancestor in between has a transform or
- *   backdrop-filter (why the filters' glass is dropped here).
+ *   backdrop-filter (why the filters carry no material of their own).
  * - Icon-only header buttons keep their text label, visually hidden, as the
  *   accessible name.
  *
  * Surfaces that live on `document.body` (popup, annotator toolbar, markers)
- * cannot see this sheet — they adapt in JS through `viewport.ts`. The CSS
+ * cannot see this sheet: they adapt in JS through `viewport.ts`. The CSS
  * string below is minified at build time, like the rest of the stylesheet.
  */
 export const MOBILE_CSS = /* css */ `
@@ -80,8 +85,8 @@ export const MOBILE_CSS = /* css */ `
     .sp-radial-item {
       width: 48px;
       height: 48px;
-      left: 2px;
-      bottom: 2px;
+      left: 3px;
+      bottom: 3px;
     }
 
     .sp-radial-item svg {
@@ -90,9 +95,8 @@ export const MOBILE_CSS = /* css */ `
     }
 
     .sp-radial-label {
-      font-size: 13px;
-      font-weight: 600;
-      padding: 8px 12px;
+      font-size: 14px;
+      padding: 8px 14px;
     }
 
     .sp-search,
@@ -100,24 +104,18 @@ export const MOBILE_CSS = /* css */ `
       font-size: 16px;
     }
 
-    .sp-filter-dropdown-btn {
-      height: 36px;
-    }
-
-    .sp-segmented__btn {
-      height: 32px;
-    }
-
+    .sp-search,
+    .sp-filter-dropdown-btn,
     .sp-sort-btn,
     .sp-group-toggle,
-    .sp-mine-toggle {
-      min-height: 36px;
-    }
-
+    .sp-mine-toggle,
+    .sp-segmented__btn,
     .sp-btn-resolve,
     .sp-btn-delete,
     .sp-bulk-btn-resolve,
-    .sp-bulk-btn-delete {
+    .sp-bulk-btn-delete,
+    .sp-thread-foot .sp-btn-primary {
+      height: 40px;
       min-height: 40px;
     }
 
@@ -132,8 +130,40 @@ export const MOBILE_CSS = /* css */ `
     }
 
     .sp-detail-actions button,
-    .sp-detail-actions a {
+    .sp-detail-actions a,
+    .sp-btn-primary,
+    .sp-btn-ghost,
+    .sp-btn-danger {
       height: 44px;
+    }
+
+    .sp-export-option,
+    .sp-filter-dropdown-option,
+    .sp-sort-option,
+    .sp-group-header {
+      min-height: 44px;
+    }
+
+    .sp-export-btn,
+    .sp-btn-delete-all,
+    .sp-bulk-select-all {
+      min-height: 40px;
+    }
+
+    /* The filled circle grows with the finger, inside the same 44px target. */
+    .sp-panel-close::before {
+      inset: 5px;
+    }
+
+    /* The expand link keeps its size in the card; its target grows around it. */
+    .sp-card-expand {
+      position: relative;
+    }
+
+    .sp-card-expand::after {
+      content: "";
+      position: absolute;
+      inset: -8px -10px;
     }
   }
 
@@ -174,6 +204,7 @@ export const MOBILE_CSS = /* css */ `
       pointer-events: auto;
     }
 
+    /* A bottom sheet on the solid grouped background. */
     .sp-panel {
       top: auto;
       left: 0;
@@ -183,12 +214,11 @@ export const MOBILE_CSS = /* css */ `
       max-width: none;
       height: calc(100vh - 48px);
       height: calc(100dvh - 40px - env(safe-area-inset-top, 0px));
-      border-left: none;
-      border-top: 1px solid var(--sp-glass-border);
-      border-radius: var(--sp-radius-xl) var(--sp-radius-xl) 0 0;
-      background: var(--sp-bg);
+      border-radius: 16px 16px 0 0;
+      background: var(--sp-grouped);
       -webkit-backdrop-filter: none;
       backdrop-filter: none;
+      box-shadow: var(--sp-shadow-sheet-up);
       transform: translateY(105%);
     }
 
@@ -199,28 +229,29 @@ export const MOBILE_CSS = /* css */ `
     .sp-panel-header,
     .sp-detail-header {
       position: relative;
-      padding-top: 22px;
-      background: var(--sp-bg);
-      -webkit-backdrop-filter: none;
-      backdrop-filter: none;
       touch-action: none;
     }
 
     .sp-panel-header {
-      padding: 22px 12px 12px 20px;
+      padding: 24px 8px 6px 20px;
     }
 
+    .sp-detail-header {
+      padding: 22px 12px 4px 6px;
+    }
+
+    /* The grabber: the swipe-to-close handle made visible. */
     .sp-panel-header::before,
     .sp-detail-header::before {
       content: "";
       position: absolute;
-      top: 8px;
+      top: 6px;
       left: 50%;
       width: 36px;
       height: 5px;
       margin-left: -18px;
       border-radius: 3px;
-      background: var(--sp-border);
+      background: var(--sp-grabber);
     }
 
     .sp-export-btn,
@@ -229,13 +260,14 @@ export const MOBILE_CSS = /* css */ `
       height: 40px;
       padding: 0;
       justify-content: center;
-      border-radius: var(--sp-radius);
+      border-radius: 50%;
+      background: transparent;
     }
 
     .sp-export-btn svg,
     .sp-btn-delete-all svg {
-      width: 17px;
-      height: 17px;
+      width: 19px;
+      height: 19px;
     }
 
     .sp-export-btn span,
@@ -249,14 +281,11 @@ export const MOBILE_CSS = /* css */ `
     }
 
     .sp-stats-bar {
-      padding: 10px 20px;
+      padding: 2px 20px 10px;
     }
 
     .sp-filters {
-      padding: 12px 16px 10px;
-      background: var(--sp-bg);
-      -webkit-backdrop-filter: none;
-      backdrop-filter: none;
+      padding: 2px 16px 8px;
     }
 
     .sp-stats-bar,
@@ -265,7 +294,7 @@ export const MOBILE_CSS = /* css */ `
     }
 
     .sp-search {
-      height: 44px;
+      height: 40px;
     }
 
     .sp-filter-bar {
@@ -288,20 +317,21 @@ export const MOBILE_CSS = /* css */ `
       width: auto;
     }
 
+    /* Action sheets: a solid row-coloured card above the bottom edge. */
     .sp-filter-dropdown-menu,
     .sp-sort-menu {
       position: fixed;
       top: auto;
-      left: 12px;
-      right: 12px;
-      bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      left: 8px;
+      right: 8px;
+      bottom: calc(8px + env(safe-area-inset-bottom, 0px));
       min-width: 0;
       padding: 6px;
-      border-radius: var(--sp-radius-lg);
-      background: var(--sp-bg);
+      border-radius: 16px;
+      background: var(--sp-row);
       -webkit-backdrop-filter: none;
       backdrop-filter: none;
-      box-shadow: var(--sp-shadow-xl);
+      box-shadow: var(--sp-shadow-popover);
       z-index: 30;
       /* An action sheet at the bottom edge grows from there, not from its trigger. */
       transform-origin: bottom center;
@@ -310,29 +340,23 @@ export const MOBILE_CSS = /* css */ `
     .sp-filter-dropdown-option,
     .sp-sort-option {
       min-height: 44px;
-      font-size: 14px;
+      font-size: 16px;
     }
 
     .sp-list {
-      padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+      padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px));
     }
 
     .sp-bulk-bar {
-      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    }
-
-    .sp-detail {
-      background: var(--sp-bg);
-      -webkit-backdrop-filter: none;
-      backdrop-filter: none;
+      bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     }
 
     .sp-detail-section {
-      padding: 18px 20px;
+      padding: 0 16px;
     }
 
     .sp-detail-content {
-      padding-bottom: env(safe-area-inset-bottom, 0px);
+      padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
     }
 
     .sp-identity-backdrop {
@@ -343,19 +367,48 @@ export const MOBILE_CSS = /* css */ `
       width: 100%;
       max-width: none;
       margin-bottom: var(--sp-kb, 0px);
-      padding: 24px 20px calc(20px + env(safe-area-inset-bottom, 0px));
-      border-radius: var(--sp-radius-xl) var(--sp-radius-xl) 0 0;
-      background: var(--sp-bg);
+      padding: 22px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+      border-radius: 16px 16px 0 0;
+      background: var(--sp-grouped);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
       transform: translateY(100%);
     }
 
+    /* Fields on the grouped sheet take the row colour, as in a system form. */
+    .sp-identity-modal .sp-input {
+      background: var(--sp-row);
+    }
+
     .sp-identity-actions button {
-      flex: 1;
-      height: 48px;
+      height: 50px;
     }
 
     .sp-identity-actions .sp-btn-primary {
       flex: 2;
+    }
+  }
+
+  /* ---- Accessibility preferences ----
+     The tokens (solid materials; under increased contrast denser fills and
+     secondary-text separators and hairlines) are swapped in theme.ts. */
+
+  /* Solid surfaces asked for: the blur would only cost paint. */
+  @media (prefers-reduced-transparency: reduce) {
+    * {
+      -webkit-backdrop-filter: none !important;
+      backdrop-filter: none !important;
+    }
+  }
+
+  /* Increased contrast: rows are drawn with an outline. */
+  @media (prefers-contrast: more) {
+    .sp-card,
+    .sp-detail-message,
+    .sp-detail-meta,
+    .sp-detail-annotation-info,
+    .sp-detail-diag-toggle {
+      box-shadow: inset 0 0 0 1px var(--sp-separator);
     }
   }
 `;

@@ -81,11 +81,12 @@ export const ANIMATION_CSS = /* css */ `
     to { transform: rotate(360deg); }
   }
 
+  /* A neutral system spinner: grey track, secondary-text head. */
   .sp-spinner {
     width: 20px;
     height: 20px;
-    border: 2px solid var(--sp-border);
-    border-top-color: var(--sp-accent);
+    border: 2px solid var(--sp-fill-strong);
+    border-top-color: var(--sp-text-secondary);
     border-radius: 50%;
     animation: sp-spin 0.6s linear infinite;
   }
