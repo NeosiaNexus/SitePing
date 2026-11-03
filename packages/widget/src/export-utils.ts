@@ -24,10 +24,13 @@ export const EXPORT_CSS = /* css */ `
      ============================ */
 
   /* A tinted text button, like a toolbar item. */
+  /* An icon bar button, like Delete all (base.ts): its label is visually hidden. */
   .sp-export-btn {
-    height: 30px;
-    padding: 0 8px;
-    border-radius: var(--sp-radius-full);
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
     border: none;
     background: transparent;
     color: var(--sp-accent-ink);
@@ -38,14 +41,13 @@ export const EXPORT_CSS = /* css */ `
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 5px;
     transition: var(--sp-tr);
     position: relative;
   }
 
   .sp-export-btn svg {
-    width: 13px;
-    height: 13px;
+    width: 17px;
+    height: 17px;
   }
 
   @media (hover: hover) and (pointer: fine) {
@@ -257,6 +259,8 @@ export class ExportButton {
     const label = document.createElement("span");
     setText(label, t("export.label"));
     btn.appendChild(label);
+    // The label is visually hidden (an icon bar button): the pointer gets it as a tooltip.
+    btn.title = t("export.label");
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       this.toggle();

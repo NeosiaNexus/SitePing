@@ -270,16 +270,6 @@ export const MOBILE_CSS = /* css */ `
       height: 19px;
     }
 
-    .sp-export-btn span,
-    .sp-btn-delete-all span {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
-
     .sp-stats-bar {
       padding: 2px 20px 10px;
     }

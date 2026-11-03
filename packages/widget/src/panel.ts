@@ -27,6 +27,7 @@ import {
 } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
+import { isWidgetChrome } from "./focus-tracker.js";
 import { addSurfaceKeydownListener, registerEscapeLayer } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import {
@@ -214,6 +215,8 @@ export class Panel {
     this.deleteAllBtn = document.createElement("button");
     this.deleteAllBtn.className = "sp-btn-delete-all";
     this.deleteAllBtn.setAttribute("aria-label", this.t("panel.deleteAll"));
+    // An icon bar button: the pointer gets its label as a tooltip.
+    this.deleteAllBtn.title = this.t("panel.deleteAll");
     this.deleteAllBtn.appendChild(parseSvg(ICON_TRASH));
     const deleteAllLabel = document.createElement("span");
     setText(deleteAllLabel, ` ${this.t("panel.deleteAll")}`);
@@ -482,6 +485,12 @@ export class Panel {
     this.bus.on("panel:toggle", (open) => {
       open ? this.open() : this.close();
     });
+    this.bus.on("annotation:start", () => {
+      this.annotating = true;
+    });
+    this.bus.on("annotation:end", () => {
+      this.annotating = false;
+    });
 
     // Keyboard handling: Escape to close + focus trap. Nested layers (menus,
     // confirm dialog) stop Escape before it bubbles here; the help overlay's
@@ -562,9 +571,49 @@ export class Panel {
   private onListMouseover: (e: Event) => void;
   private onListMouseout: (e: Event) => void;
 
+  /** An annotation session is running: Escape and clicks on the page are its own. */
+  private annotating = false;
+
+  /**
+   * The sheet floats over the page: a click on the page (outside every widget
+   * surface) closes it, as for any popover. Phones have the scrim for that.
+   * A reply being written is never thrown away by a stray click.
+   */
+  private readonly onOutsidePointer = (e: PointerEvent): void => {
+    if (!this.isOpen || this.annotating || e.button !== 0 || isCompactViewport()) return;
+    if (this.fromWidget(e) || this.hasDraft()) return;
+    this.close(false);
+  };
+
+  /**
+   * Escape closes the top layer even when focus is on the page (a click
+   * there moved it out of the widget): the detail first, then the sheet. One
+   * pressed inside the widget is the shadow root's handler's, and one the
+   * page already handled (its own modal) is left alone.
+   */
+  private readonly onOutsideKeydown = (e: KeyboardEvent): void => {
+    if (e.key !== "Escape" || !this.isOpen || this.annotating || e.defaultPrevented || this.fromWidget(e)) return;
+    if (this.detail.isVisible) this.detail.hide();
+    else this.close(false);
+  };
+
+  /** The event comes from the widget: its shadow root, or a surface it mounts on the page. */
+  private fromWidget(e: Event): boolean {
+    const path = e.composedPath();
+    if (path.includes(this.shadowRoot.host)) return true;
+    const target = path[0];
+    return target instanceof Element && isWidgetChrome(target);
+  }
+
+  private hasDraft(): boolean {
+    return Array.from(this.root.querySelectorAll("textarea")).some((field) => field.value.trim() !== "");
+  }
+
   async open(): Promise<void> {
     if (this.isOpen) return;
     this.isOpen = true;
+    document.addEventListener("pointerdown", this.onOutsidePointer, true);
+    document.addEventListener("keydown", this.onOutsideKeydown);
     // Phones: a sheet over a scrim is a modal dialog, and says so to screen
     // readers (VoiceOver then keeps to it); elsewhere the panel sits beside the page.
     const modal = isCompactViewport();
@@ -584,9 +633,12 @@ export class Panel {
     });
   }
 
-  close(): void {
+  /** `restoreFocus` is off when the user closed it from the page: focus stays where they clicked. */
+  close(restoreFocus = true): void {
     if (!this.isOpen) return;
     this.isOpen = false;
+    document.removeEventListener("pointerdown", this.onOutsidePointer, true);
+    document.removeEventListener("keydown", this.onOutsideKeydown);
     this.root.classList.remove("sp-panel--open");
     this.scrim.classList.remove("sp-scrim--open");
     this.root.setAttribute("aria-hidden", "true");
@@ -596,6 +648,7 @@ export class Panel {
     this.detail.hide();
     this.pendingScrollId = null;
     this.pendingDetail = false;
+    if (!restoreFocus) return;
     // Restore focus to the FAB
     const fab = (this.root.getRootNode() as ShadowRoot).querySelector<HTMLButtonElement>(".sp-fab");
     fab?.focus();
@@ -1722,6 +1775,8 @@ export class Panel {
     // A panel action's context can outlive the widget: its refresh() and
     // close() only act on an open panel.
     this.isOpen = false;
+    document.removeEventListener("pointerdown", this.onOutsidePointer, true);
+    document.removeEventListener("keydown", this.onOutsideKeydown);
     this.loadController?.abort();
     if (this.searchTimeout) clearTimeout(this.searchTimeout);
     this.listContainer.removeEventListener("click", this.onListClick);

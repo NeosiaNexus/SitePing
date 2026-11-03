@@ -400,6 +400,7 @@ export function buildStyles(colors: ThemeColors): string {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
       padding: 16px 12px 8px 20px;
       position: relative;
       z-index: 2;
@@ -413,6 +414,11 @@ export function buildStyles(colors: ThemeColors): string {
       line-height: 1.15;
       color: var(--sp-text);
       letter-spacing: -0.022em;
+      /* A long translation shortens the title, never pushes the buttons out. */
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     /* Close: a 30px filled circle inside a 44px target. */
@@ -1017,15 +1023,20 @@ export function buildStyles(colors: ThemeColors): string {
 
     .sp-panel-header-right {
       display: flex;
+      flex-shrink: 0;
       align-items: center;
       gap: 2px;
     }
 
-    /* A borderless red text capsule, like a destructive bar button. */
+    /* Bar buttons are icons, as in a system toolbar: a translated label
+       ("Tout supprimer", "Alle löschen") pushed Close out of the sheet. The
+       label stays in the button, visually hidden, as its accessible name. */
     .sp-btn-delete-all {
-      height: 30px;
-      padding: 0 8px;
-      border-radius: var(--sp-radius-full);
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      justify-content: center;
+      border-radius: 50%;
       border: none;
       background: transparent;
       color: var(--sp-ink-red);
@@ -1036,13 +1047,22 @@ export function buildStyles(colors: ThemeColors): string {
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 5px;
       transition: var(--sp-tr);
     }
 
     .sp-btn-delete-all svg {
-      width: 13px;
-      height: 13px;
+      width: 17px;
+      height: 17px;
+    }
+
+    .sp-btn-delete-all span,
+    .sp-export-btn span {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
 
     @media (hover: hover) and (pointer: fine) {

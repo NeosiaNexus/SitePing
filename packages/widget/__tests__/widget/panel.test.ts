@@ -1270,6 +1270,84 @@ describe("Panel", () => {
   // Keyboard: Escape + Focus trap
   // -------------------------------------------------------------------------
 
+  describe("a floating sheet: closed from the page", () => {
+    const isOpen = () => shadow.querySelector<HTMLElement>(".sp-panel")!.classList.contains("sp-panel--open");
+    const pointerdown = (target: EventTarget) =>
+      target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, composed: true, button: 0 }));
+
+    it("closes on a click on the page, and leaves focus where the user clicked", async () => {
+      await panel.open();
+      const field = document.createElement("input");
+      document.body.appendChild(field);
+      field.focus();
+      pointerdown(field);
+      expect(isOpen()).toBe(false);
+      expect(document.activeElement).toBe(field);
+      field.remove();
+    });
+
+    it("stays open for a click inside the panel or on a pin", async () => {
+      await panel.open();
+      pointerdown(shadow.querySelector(".sp-panel-title")!);
+      expect(isOpen()).toBe(true);
+      const pins = document.createElement("div");
+      pins.id = "siteping-markers";
+      const pin = document.createElement("div");
+      pins.appendChild(pin);
+      document.body.appendChild(pins);
+      pointerdown(pin);
+      expect(isOpen()).toBe(true);
+      pins.remove();
+    });
+
+    it("never throws away a reply being written", async () => {
+      await panel.open();
+      const draft = document.createElement("textarea");
+      draft.value = "On it, give me an hour";
+      shadow.querySelector(".sp-panel")!.appendChild(draft);
+      pointerdown(document.body);
+      expect(isOpen()).toBe(true);
+    });
+
+    it("leaves the page alone during an annotation session", async () => {
+      await panel.open();
+      bus.emit("annotation:start");
+      pointerdown(document.body);
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(isOpen()).toBe(true);
+      bus.emit("annotation:end");
+      pointerdown(document.body);
+      expect(isOpen()).toBe(false);
+    });
+
+    it("closes on Escape pressed with focus on the page", async () => {
+      await panel.open();
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(isOpen()).toBe(false);
+    });
+
+    it("leaves an Escape the page already handled (its own modal)", async () => {
+      await panel.open();
+      const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      escape.preventDefault();
+      document.body.dispatchEvent(escape);
+      expect(isOpen()).toBe(true);
+    });
+
+    it("stops listening once closed", async () => {
+      await panel.open();
+      panel.close();
+      await panel.open();
+      panel.close();
+      const remove = vi.spyOn(document, "removeEventListener");
+      await panel.open();
+      panel.close();
+      expect(remove).toHaveBeenCalledWith("pointerdown", expect.any(Function), true);
+      expect(remove).toHaveBeenCalledWith("keydown", expect.any(Function));
+      remove.mockRestore();
+    });
+  });
+
   describe("keyboard: escape and focus trap", () => {
     it("Escape key closes the panel when open", async () => {
       await panel.open();
