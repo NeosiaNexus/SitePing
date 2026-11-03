@@ -157,8 +157,6 @@ export interface Translations {
   "detail.diagnostics": string;
   "detail.diagnostics.console": string;
   "detail.diagnostics.network": string;
-  "detail.diagnostics.expand": string;
-  "detail.diagnostics.collapse": string;
   "detail.diagnostics.noEntries": string;
 
   // Discussion thread (detail view) — the composer reuses "popup.submit" and

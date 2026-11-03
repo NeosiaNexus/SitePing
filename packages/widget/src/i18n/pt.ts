@@ -155,8 +155,6 @@ export const pt: Translations = {
   "detail.diagnostics": "Diagnóstico",
   "detail.diagnostics.console": "Console",
   "detail.diagnostics.network": "Rede com falha",
-  "detail.diagnostics.expand": "Mostrar diagnóstico",
-  "detail.diagnostics.collapse": "Ocultar diagnóstico",
   "detail.diagnostics.noEntries": "Sem entradas",
 
   // Discussion thread (detail view)

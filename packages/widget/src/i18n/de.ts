@@ -155,8 +155,6 @@ export const de: Translations = {
   "detail.diagnostics": "Diagnose",
   "detail.diagnostics.console": "Konsole",
   "detail.diagnostics.network": "Fehlgeschlagenes Netzwerk",
-  "detail.diagnostics.expand": "Diagnose anzeigen",
-  "detail.diagnostics.collapse": "Diagnose ausblenden",
   "detail.diagnostics.noEntries": "Keine Einträge",
 
   // Discussion thread (detail view)

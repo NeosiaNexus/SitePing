@@ -154,8 +154,6 @@ export const ko: Translations = {
   "detail.diagnostics": "진단 정보",
   "detail.diagnostics.console": "콘솔",
   "detail.diagnostics.network": "실패한 네트워크 요청",
-  "detail.diagnostics.expand": "진단 정보 보기",
-  "detail.diagnostics.collapse": "진단 정보 숨기기",
   "detail.diagnostics.noEntries": "기록이 없습니다",
 
   // Discussion thread (detail view)
