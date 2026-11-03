@@ -154,6 +154,8 @@ export const ja: Translations = {
   "detail.diagnostics": "診断情報",
   "detail.diagnostics.console": "コンソール",
   "detail.diagnostics.network": "失敗した通信",
+  "detail.diagnostics.expand": "診断情報を表示",
+  "detail.diagnostics.collapse": "診断情報を隠す",
   "detail.diagnostics.noEntries": "項目はありません",
 
   // Discussion thread (detail view)

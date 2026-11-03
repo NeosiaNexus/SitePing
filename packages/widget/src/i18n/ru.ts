@@ -154,6 +154,8 @@ export const ru: Translations = {
   "detail.diagnostics": "Диагностика",
   "detail.diagnostics.console": "Консоль",
   "detail.diagnostics.network": "Сетевые ошибки",
+  "detail.diagnostics.expand": "Показать диагностику",
+  "detail.diagnostics.collapse": "Скрыть диагностику",
   "detail.diagnostics.noEntries": "Нет записей",
 
   // Discussion thread (detail view)
