@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.2](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.3.1...dashboard-v0.3.2) (2026-11-03)
+
+
+### Features
+
+* **widget:** Natif redesign, and UI polish of the widget, the dashboard and the site ([#535](https://github.com/NeosiaNexus/SitePing/issues/535)) ([d80ac52](https://github.com/NeosiaNexus/SitePing/commit/d80ac52951315e1aa7e293ccd57bdefecc01348b))
+
+
+### Documentation
+
+* drop the em dashes from the READMEs ([37deb7e](https://github.com/NeosiaNexus/SitePing/commit/37deb7eb04df496e0958f2efa5b00a1a895d48c4))
+
 ## [0.3.1](https://github.com/NeosiaNexus/SitePing/compare/dashboard-v0.3.0...dashboard-v0.3.1) (2026-11-02)
 
 
