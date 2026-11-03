@@ -86,6 +86,15 @@ function initialIndex(): number {
 export function WidgetPrototypeHarness() {
   const [current, setCurrent] = useState<number | null>(null);
   const [mountKey, setMountKey] = useState(0);
+  // Bottom by default; on phones the widget's sheets own the bottom edge.
+  const [onTop, setOnTop] = useState(false);
+  useEffect(() => {
+    const phone = window.matchMedia("(max-width: 640px)");
+    const update = () => setOnTop(phone.matches);
+    update();
+    phone.addEventListener("change", update);
+    return () => phone.removeEventListener("change", update);
+  }, []);
   const pickerRef = useRef<HTMLElement>(null);
   const highlightRef = useRef<HTMLSpanElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -196,8 +205,12 @@ export function WidgetPrototypeHarness() {
   return (
     <>
       <style>{PICKER_CSS}</style>
-      {/* Top: the widget's own surfaces (bottom sheets, the button) live at the bottom. */}
-      <nav ref={pickerRef} className="proto-picker" data-position="top" aria-label="Prototype variants">
+      <nav
+        ref={pickerRef}
+        className="proto-picker"
+        data-position={onTop ? "top" : undefined}
+        aria-label="Prototype variants"
+      >
         <span ref={highlightRef} className="proto-picker-highlight" aria-hidden="true" />
         {SKINS.map((skin, i) => (
           <button
