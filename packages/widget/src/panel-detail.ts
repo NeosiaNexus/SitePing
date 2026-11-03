@@ -1142,6 +1142,9 @@ export class DetailView {
     this.element.setAttribute("aria-hidden", "true");
     setInert(this.element, true);
     if (refocus) {
+      // The list was visibility:hidden behind the detail: flush the style
+      // first, or WebKit still sees the card hidden and refuses the focus.
+      void this.element.parentElement?.offsetWidth;
       const card =
         this.opener?.isConnected === true
           ? this.opener

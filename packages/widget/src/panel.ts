@@ -581,7 +581,9 @@ export class Panel {
    */
   private readonly onOutsidePointer = (e: PointerEvent): void => {
     if (!this.isOpen || this.annotating || e.button !== 0 || isCompactViewport()) return;
-    if (this.fromWidget(e) || this.hasDraft()) return;
+    // An open menu or dialog is the top layer: the click dismisses it (its
+    // own listener does), not the sheet under it.
+    if (this.fromWidget(e) || this.hasDraft() || this.hasOpenLayer()) return;
     this.close(false);
   };
 
@@ -593,6 +595,7 @@ export class Panel {
    */
   private readonly onOutsideKeydown = (e: KeyboardEvent): void => {
     if (e.key !== "Escape" || !this.isOpen || this.annotating || e.defaultPrevented || this.fromWidget(e)) return;
+    if (this.hasOpenLayer()) return;
     if (this.detail.isVisible) this.detail.hide();
     else this.close(false);
   };
@@ -603,6 +606,15 @@ export class Panel {
     if (path.includes(this.shadowRoot.host)) return true;
     const target = path[0];
     return target instanceof Element && isWidgetChrome(target);
+  }
+
+  /** A menu or a dialog open over the sheet (type, sort and export menus, the confirm dialog). */
+  private hasOpenLayer(): boolean {
+    return (
+      this.shadowRoot.querySelector(
+        ".sp-filter-dropdown-menu, .sp-sort-menu, .sp-export-menu--open, .sp-confirm-backdrop, .sp-shortcuts-overlay--visible",
+      ) !== null
+    );
   }
 
   private hasDraft(): boolean {
@@ -628,7 +640,10 @@ export class Panel {
     await this.loadFeedbacks();
     // Move focus into the panel. Touch: the close button — focusing the
     // search field would throw the keyboard over the list.
+    // Not if focus is already inside: a slow load would steal it back from
+    // the card or detail the user has moved to meanwhile.
     requestAnimationFrame(() => {
+      if (!this.isOpen || this.root.contains(this.shadowRoot.activeElement)) return;
       (isCoarsePointer() ? this.closeBtn : this.searchInput).focus();
     });
   }

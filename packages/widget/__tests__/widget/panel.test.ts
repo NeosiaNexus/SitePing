@@ -1300,6 +1300,19 @@ describe("Panel", () => {
       pins.remove();
     });
 
+    it("lets a click on the page close an open menu only, not the sheet", async () => {
+      await panel.open();
+      const menu = document.createElement("div");
+      menu.className = "sp-sort-menu";
+      shadow.appendChild(menu);
+      pointerdown(document.body);
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(isOpen()).toBe(true);
+      menu.remove();
+      pointerdown(document.body);
+      expect(isOpen()).toBe(false);
+    });
+
     it("never throws away a reply being written", async () => {
       await panel.open();
       const draft = document.createElement("textarea");
@@ -1328,9 +1341,9 @@ describe("Panel", () => {
 
     it("leaves an Escape the page already handled (its own modal)", async () => {
       await panel.open();
-      const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
-      escape.preventDefault();
-      document.body.dispatchEvent(escape);
+      const handled = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      handled.preventDefault();
+      document.body.dispatchEvent(handled);
       expect(isOpen()).toBe(true);
     });
 
