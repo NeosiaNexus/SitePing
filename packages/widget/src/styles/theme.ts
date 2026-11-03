@@ -88,6 +88,10 @@ export interface SurfaceTokens {
   shadowPopover: string;
   shadowThumb: string;
   shadowEdgeDrop: string;
+  /** Floating cards on the page (comment popup, pin tooltip). */
+  shadowCard: string;
+  /** The annotation overlay's tint over the page. */
+  overlayTint: string;
 }
 
 const SURFACES: Record<"light" | "dark", SurfaceTokens> = {
@@ -122,6 +126,8 @@ const SURFACES: Record<"light" | "dark", SurfaceTokens> = {
     shadowPopover: "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 18px 50px rgba(0, 0, 0, 0.22)",
     shadowThumb: "0 3px 8px rgba(0, 0, 0, 0.12), 0 1px 1px rgba(0, 0, 0, 0.04), 0 0 0 0.5px rgba(0, 0, 0, 0.04)",
     shadowEdgeDrop: "0 1px 0 rgba(0, 0, 0, 0.14)",
+    shadowCard: "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 18px 48px -6px rgba(0, 0, 0, 0.2), 0 4px 14px rgba(0, 0, 0, 0.06)",
+    overlayTint: "rgba(0, 0, 0, 0.06)",
   },
   dark: {
     material: "rgba(28, 28, 30, 0.84)",
@@ -153,6 +159,8 @@ const SURFACES: Record<"light" | "dark", SurfaceTokens> = {
     shadowPopover: "0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 18px 50px rgba(0, 0, 0, 0.6)",
     shadowThumb: "0 3px 8px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.2), 0 0 0 0.5px transparent",
     shadowEdgeDrop: "0 1px 0 rgba(0, 0, 0, 0.6)",
+    shadowCard: "0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 18px 48px -6px rgba(0, 0, 0, 0.6), 0 4px 14px rgba(0, 0, 0, 0.3)",
+    overlayTint: "rgba(0, 0, 0, 0.22)",
   },
 };
 
