@@ -29,7 +29,7 @@ test("the <script> bundle mounts, opens the panel and sends a feedback with a sc
     loadLocale: "function",
     registerLocale: "function",
   });
-  expect(await fab.evaluate((element) => getComputedStyle(element).width)).toBe("52px");
+  expect(await fab.evaluate((element) => getComputedStyle(element).width)).toBe("54px");
 
   await fab.click();
   await page.locator('[data-item-id="chat"]').click();
