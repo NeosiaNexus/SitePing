@@ -80,6 +80,8 @@ export interface SurfaceTokens {
   /** Status and type inks: a tint pushed toward the text, so it reads on its own fill. */
   inkMix: string;
   inkPct: string;
+  /** Badges push their ink a little less (they sit on a stronger tint). */
+  inkPctBadge: string;
   shadowRow: string;
   shadowRowHover: string;
   shadowFloat: string;
@@ -116,12 +118,11 @@ const SURFACES: Record<"light" | "dark", SurfaceTokens> = {
     dangerPress: "#b8000f",
     inkMix: "#000",
     inkPct: "76%",
+    inkPctBadge: "74%",
     shadowRow: "0 1px 2px rgba(0, 0, 0, 0.04)",
     shadowRowHover: "0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 16px rgba(0, 0, 0, 0.06)",
-    shadowFloat:
-      "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 10px 30px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05)",
-    shadowSheet:
-      "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 24px 60px -8px rgba(0, 0, 0, 0.22), 0 6px 18px rgba(0, 0, 0, 0.06)",
+    shadowFloat: "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 10px 30px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05)",
+    shadowSheet: "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 24px 60px -8px rgba(0, 0, 0, 0.22), 0 6px 18px rgba(0, 0, 0, 0.06)",
     shadowSheetUp: "0 -0.5px 0 rgba(0, 0, 0, 0.1), 0 -10px 40px rgba(0, 0, 0, 0.12)",
     shadowPopover: "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 18px 50px rgba(0, 0, 0, 0.22)",
     shadowThumb: "0 3px 8px rgba(0, 0, 0, 0.12), 0 1px 1px rgba(0, 0, 0, 0.04), 0 0 0 0.5px rgba(0, 0, 0, 0.04)",
@@ -151,11 +152,11 @@ const SURFACES: Record<"light" | "dark", SurfaceTokens> = {
     dangerPress: "#c81e15",
     inkMix: "#fff",
     inkPct: "62%",
+    inkPctBadge: "62%",
     shadowRow: "0 1px 2px rgba(0, 0, 0, 0.2)",
     shadowRowHover: "0 1px 2px rgba(0, 0, 0, 0.2), 0 6px 16px rgba(0, 0, 0, 0.25)",
     shadowFloat: "0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.25)",
-    shadowSheet:
-      "0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 24px 60px -8px rgba(0, 0, 0, 0.66), 0 6px 18px rgba(0, 0, 0, 0.3)",
+    shadowSheet: "0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 24px 60px -8px rgba(0, 0, 0, 0.66), 0 6px 18px rgba(0, 0, 0, 0.3)",
     shadowSheetUp: "0 -0.5px 0 rgba(0, 0, 0, 0.55), 0 -10px 40px rgba(0, 0, 0, 0.5)",
     shadowPopover: "0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 18px 50px rgba(0, 0, 0, 0.6)",
     shadowThumb: "0 3px 8px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.2), 0 0 0 0.5px transparent",
@@ -258,33 +259,35 @@ export function resolveTheme(theme?: "light" | "dark" | "auto"): "light" | "dark
   return "light";
 }
 
-/**
- * The OS asks for solid surfaces (reduced transparency) or stronger edges
- * (increased contrast): glass turns opaque and borders take the secondary
- * text colour. Read when the theme is built, like the colour scheme.
- */
-function wantsSolidSurfaces(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia("(prefers-reduced-transparency: reduce), (prefers-contrast: more)").matches;
+function prefers(query: string): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches;
 }
 
+/**
+ * The OS accessibility signals, read when the theme is built (like the colour
+ * scheme), for the surfaces painted from JS on the host page; styles/mobile.ts
+ * swaps the same tokens live in the Shadow DOM.
+ * - Reduced transparency: the materials turn solid (the grouped background).
+ * - Increased contrast: solid too, and firmer fills, separators and hairlines.
+ */
 export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light" | "dark" | "auto"): ThemeColors {
   const colors = buildPalette(accent, theme);
-  if (!wantsSolidSurfaces()) return colors;
+  const moreContrast = prefers("(prefers-contrast: more)");
+  if (!moreContrast && !prefers("(prefers-reduced-transparency: reduce)")) return colors;
+  const { surface } = colors;
+  const solid = surface.grouped;
   return {
     ...colors,
-    glassBg: colors.bg,
-    glassBgHeavy: colors.bg,
-    glassBorder: colors.textSecondary,
-    glassBorderSubtle: colors.border,
-    border: colors.textTertiary,
+    glassBg: solid,
+    glassBgHeavy: solid,
+    ...(moreContrast ? { glassBorderSubtle: colors.textSecondary } : {}),
     surface: {
-      ...colors.surface,
-      material: colors.bg,
-      materialThick: colors.bg,
-      edge: colors.textSecondary,
-      separator: colors.textTertiary,
-      fill: colors.surface.fillContrast,
+      ...surface,
+      material: solid,
+      materialThick: solid,
+      ...(moreContrast
+        ? { fill: surface.fillContrast, separator: colors.textSecondary, hairline: colors.textSecondary }
+        : {}),
     },
   };
 }
@@ -443,6 +446,14 @@ export function getTypeBgColor(type: string, colors: ThemeColors): string {
   }
 }
 
+/**
+ * A layered shadow whose hairline ring reads `--sp-hairline`, so the live
+ * increased-contrast swap (styles/mobile.ts) firms it up too.
+ */
+function hairlined(shadow: string, hairline: string): string {
+  return shadow.split(hairline).join("var(--sp-hairline)");
+}
+
 /** The system UI face, for the Shadow DOM and the surfaces on the page alike. */
 export const SYSTEM_FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif`;
 
@@ -490,10 +501,10 @@ export function cssVariables(colors: ThemeColors): string {
     --sp-blur: 20px;
     --sp-blur-heavy: 30px;
     --sp-shadow-xs: ${surface.shadowRow};
-    --sp-shadow-sm: ${surface.shadowFloat};
-    --sp-shadow-md: ${surface.shadowFloat};
-    --sp-shadow-lg: ${surface.shadowFloat};
-    --sp-shadow-xl: ${surface.shadowSheet};
+    --sp-shadow-sm: var(--sp-shadow-float);
+    --sp-shadow-md: var(--sp-shadow-float);
+    --sp-shadow-lg: var(--sp-shadow-float);
+    --sp-shadow-xl: var(--sp-shadow-sheet);
     /* The system face where there is one (San Francisco on Apple), Inter before
        the generic fallbacks so Linux does not land on DejaVu. */
     --sp-font: ${SYSTEM_FONT};
@@ -522,10 +533,10 @@ export function cssVariables(colors: ThemeColors): string {
     --sp-danger-press: ${surface.dangerPress};
     --sp-shadow-row: ${surface.shadowRow};
     --sp-shadow-row-hover: ${surface.shadowRowHover};
-    --sp-shadow-float: ${surface.shadowFloat};
-    --sp-shadow-sheet: ${surface.shadowSheet};
-    --sp-shadow-sheet-up: ${surface.shadowSheetUp};
-    --sp-shadow-popover: ${surface.shadowPopover};
+    --sp-shadow-float: ${hairlined(surface.shadowFloat, SURFACES[colors.scheme].hairline)};
+    --sp-shadow-sheet: ${hairlined(surface.shadowSheet, SURFACES[colors.scheme].hairline)};
+    --sp-shadow-sheet-up: ${hairlined(surface.shadowSheetUp, SURFACES[colors.scheme].hairline)};
+    --sp-shadow-popover: ${hairlined(surface.shadowPopover, SURFACES[colors.scheme].hairline)};
     --sp-shadow-thumb: ${surface.shadowThumb};
     --sp-shadow-edge-drop: ${surface.shadowEdgeDrop};
     --sp-ring: 0 0 0 3px color-mix(in srgb, var(--sp-accent) 30%, transparent);
@@ -533,6 +544,7 @@ export function cssVariables(colors: ThemeColors): string {
        on its own tint. Per element: color-mix(in srgb, <colour> var(--sp-ink-pct), var(--sp-ink-mix)). */
     --sp-ink-mix: ${surface.inkMix};
     --sp-ink-pct: ${surface.inkPct};
+    --sp-ink-pct-badge: ${surface.inkPctBadge};
     --sp-ink-green: ${dark ? "color-mix(in srgb, var(--sp-status-open) 80%, #fff)" : "color-mix(in srgb, var(--sp-status-open) 82%, #000)"};
     --sp-ink-red: ${dark ? "color-mix(in srgb, var(--sp-type-bug) 66%, #fff)" : "color-mix(in srgb, var(--sp-type-bug) 86%, #000)"};
     --sp-ink-amber: ${dark ? "color-mix(in srgb, var(--sp-status-in-progress) 70%, #fff)" : "color-mix(in srgb, var(--sp-status-in-progress) 80%, #000)"};
