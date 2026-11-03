@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/NeosiaNexus/SitePing/compare/adapter-memory-v0.6.0...adapter-memory-v0.6.1) (2026-11-03)
+
+
+### Documentation
+
+* drop the em dashes from the READMEs ([37deb7e](https://github.com/NeosiaNexus/SitePing/commit/37deb7eb04df496e0958f2efa5b00a1a895d48c4))
+
 ## [0.6.0](https://github.com/NeosiaNexus/SitePing/compare/adapter-memory-v0.5.4...adapter-memory-v0.6.0) (2026-10-30)
 
 
