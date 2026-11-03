@@ -130,7 +130,8 @@ const SURFACES: Record<"light" | "dark", SurfaceTokens> = {
     overlayTint: "rgba(0, 0, 0, 0.06)",
   },
   dark: {
-    material: "rgba(28, 28, 30, 0.84)",
+    // 0.86, not 0.84: over a white page, the worst case, tertiary text keeps 4.65:1 (4.37 at 0.84).
+    material: "rgba(28, 28, 30, 0.86)",
     materialThick: "rgba(38, 38, 40, 0.92)",
     grouped: "#1c1c1e",
     row: "#2c2c2e",
@@ -319,7 +320,8 @@ function buildPalette(accent: string, theme?: "light" | "dark" | "auto"): ThemeC
       // Type colors stay vibrant on dark
       typeQuestion: "#60a5fa",
       typeChange: "#fbbf24",
-      typeBug: "#f87171",
+      // Lifted from #f87171, which read 4.3:1 on its tint over the #2c2c2e row.
+      typeBug: "#fa7f7f",
       typeOther: "#94a3b8",
       // Dark pastel backgrounds
       typeQuestionBg: "rgba(59, 130, 246, 0.15)",

@@ -70,7 +70,7 @@ describe("theme: auto follows the OS live", () => {
 
     osSwitchesTo(true);
     expect(shadowCss()).toContain("color-scheme: dark");
-    expect(shadowCss()).toContain("--sp-bg: #0f172a");
+    expect(shadowCss()).toContain("--sp-bg: #1c1c1e");
     expect(tooltipBackground()).not.toBe(lightTooltip);
 
     osSwitchesTo(false);
