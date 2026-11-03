@@ -179,8 +179,8 @@ describe("Popup", () => {
       const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
       expect(dialog.style.top).toBe("408px");
       expect(dialog.style.overflowY).toBe("auto");
-      // The 16px vertical padding and 1px borders are excluded from the content-box cap.
-      expect(dialog.style.maxHeight).toBe(`${152 - 34}px`);
+      // The 16px vertical padding is excluded from the content-box cap (the card has no border).
+      expect(dialog.style.maxHeight).toBe(`${152 - 32}px`);
 
       popup.show(makeBounds({ bottom: 200 }));
       expect(dialog.style.maxHeight).toBe("");
@@ -783,26 +783,29 @@ describe("Popup", () => {
       expect(bugBtn.style.background).toBe(before);
     });
 
-    it("mouseenter on type button changes background", () => {
+    it("mouseenter on type button deepens its grey fill", () => {
       popup.show(makeBounds());
 
       const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      const rest = bugBtn.style.background;
       bugBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
 
-      // Background should change from default glassBg to a type-specific bg color
-      expect(bugBtn.style.background).not.toBe(colors.glassBg);
+      expect(bugBtn.style.background).not.toBe(rest);
+      // Serialized as jsdom would serialize the token.
+      const probe = document.createElement("i");
+      probe.style.background = colors.surface.fillStrong;
+      expect(bugBtn.style.background).toBe(probe.style.background);
     });
 
-    it("mouseleave on type button restores background", () => {
+    it("mouseleave on type button restores its resting fill", () => {
       popup.show(makeBounds());
 
       const bugBtn = document.querySelector<HTMLButtonElement>('[data-type="bug"]')!;
+      const rest = bugBtn.style.background;
       bugBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      const hoverBg = bugBtn.style.background;
-
       bugBtn.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
-      // After mouseleave, background should differ from hover state
-      expect(bugBtn.style.background).not.toBe(hoverBg);
+
+      expect(bugBtn.style.background).toBe(rest);
     });
   });
 
@@ -811,29 +814,29 @@ describe("Popup", () => {
   // -------------------------------------------------------------------------
 
   describe("textarea focus/blur styles", () => {
-    it("focus on textarea changes border color to accent", () => {
+    it("focus on textarea lifts it to a solid row with an accent ring", () => {
       popup.show(makeBounds());
 
       const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
-      const borderBefore = textarea.style.borderColor;
+      const backgroundBefore = textarea.style.background;
+      expect(textarea.style.boxShadow).toBe("none");
 
       textarea.dispatchEvent(new Event("focus", { bubbles: true }));
 
-      // Border color should change on focus
-      expect(textarea.style.borderColor).not.toBe(borderBefore);
+      expect(textarea.style.background).not.toBe(backgroundBefore);
+      expect(textarea.style.boxShadow).toContain("0 0 0 3px");
     });
 
-    it("blur on textarea restores border color", () => {
+    it("blur on textarea restores its resting fill and drops the ring", () => {
       popup.show(makeBounds());
 
       const textarea = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      const backgroundBefore = textarea.style.background;
       textarea.dispatchEvent(new Event("focus", { bubbles: true }));
-      const focusBorder = textarea.style.borderColor;
-
       textarea.dispatchEvent(new Event("blur", { bubbles: true }));
 
-      // Border color should revert from the focus state
-      expect(textarea.style.borderColor).not.toBe(focusBorder);
+      expect(textarea.style.background).toBe(backgroundBefore);
+      expect(textarea.style.boxShadow).toBe("none");
     });
   });
 
@@ -1032,31 +1035,37 @@ describe("Popup", () => {
       return Array.from(buttons).find((btn) => btn.textContent === t("popup.cancel"))!;
     }
 
-    it("mouseenter on cancel button changes border and text color to accent", () => {
+    it("mouseenter on cancel button deepens its grey fill", () => {
       popup.show(makeBounds());
 
       const cancelBtn = getCancelButton();
-      const beforeBorder = cancelBtn.style.borderColor;
-      const beforeColor = cancelBtn.style.color;
+      const before = cancelBtn.style.background;
 
       cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
 
-      expect(cancelBtn.style.borderColor).not.toBe(beforeBorder);
-      expect(cancelBtn.style.color).not.toBe(beforeColor);
+      expect(cancelBtn.style.background).not.toBe(before);
     });
 
-    it("mouseleave on cancel button restores border and text color", () => {
+    it("mouseleave on cancel button restores its resting fill", () => {
       popup.show(makeBounds());
 
       const cancelBtn = getCancelButton();
+      const before = cancelBtn.style.background;
       cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      const hoverBorder = cancelBtn.style.borderColor;
-      const hoverColor = cancelBtn.style.color;
-
       cancelBtn.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
 
-      expect(cancelBtn.style.borderColor).not.toBe(hoverBorder);
-      expect(cancelBtn.style.color).not.toBe(hoverColor);
+      expect(cancelBtn.style.background).toBe(before);
+    });
+
+    it("a tap (no fine hover) leaves the cancel button's resting fill", () => {
+      mockMediaQueries([]);
+      popup.show(makeBounds());
+
+      const cancelBtn = getCancelButton();
+      const before = cancelBtn.style.background;
+      cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+      expect(cancelBtn.style.background).toBe(before);
     });
   });
 
@@ -1161,6 +1170,35 @@ describe("Popup", () => {
         expect(submitBtn.getAttribute("aria-busy")).toBe("true");
         expect(submitBtn.querySelector('[data-role="sp-popup-spinner"]')).not.toBeNull();
       });
+
+      resolveSubmit();
+    });
+
+    it("keeps the submit button's accessible name while the spinner shows (axe button-name)", async () => {
+      let resolveSubmit!: () => void;
+      const onSubmit = vi.fn().mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+      );
+
+      popup.show(makeBounds(), onSubmit);
+      fillForm();
+
+      const submitBtn = getSubmitButton();
+      submitBtn.click();
+
+      await vi.waitFor(() => {
+        expect(submitBtn.getAttribute("aria-busy")).toBe("true");
+      });
+      // The label is the button's only name: hidden with display:none or
+      // visibility:hidden (or aria-hidden) it would leave the button nameless.
+      const label = submitBtn.querySelector("span")!;
+      const computed = window.getComputedStyle(label);
+      expect(computed.display).not.toBe("none");
+      expect(computed.visibility).not.toBe("hidden");
+      expect(label.closest("[aria-hidden='true']")).toBeNull();
+      expect(submitBtn.textContent).toBe(t("popup.submit"));
 
       resolveSubmit();
     });
@@ -1500,8 +1538,9 @@ describe("Popup on phones", () => {
     expect(el.style.right).toBe("0px");
     expect(el.style.bottom).toBe("0px");
     expect(el.style.width).toBe("auto");
-    expect(el.style.borderRadius).toBe("20px 20px 0 0");
-    expect(el.style.background).toBe("rgb(255, 255, 255)"); // solid colors.bg, not glass
+    expect(el.style.borderRadius).toBe("16px 16px 0 0");
+    expect(el.style.background).toBe("rgb(242, 242, 247)"); // solid grouped background, not material
+    expect(el.style.backdropFilter).toBe("none");
     // Only the panel sheet can be swiped away — no handle promising a drag here
     expect(el.firstElementChild!.querySelector("button[data-type]")).not.toBeNull();
     // jsdom has no layout: the sheet reports its top as the viewport bottom

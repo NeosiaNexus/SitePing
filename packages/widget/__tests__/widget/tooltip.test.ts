@@ -112,7 +112,10 @@ describe("Tooltip", () => {
       const [badge, chip] = document.getElementById("sp-tooltip")!.querySelectorAll("span");
       expect(badge!.textContent).toBe("Bug");
       expect(chip!.textContent).toBe("Sans suite");
-      expect(chip!.style.color).toBe("rgb(91, 103, 120)"); // statusWontFix (#5b6778), light theme
+      // statusWontFix (#5b6778, light theme): its 13% tint behind, its ink
+      // (pushed toward the text) on top.
+      expect(chip!.style.background).toBe("color-mix(in srgb, rgb(91, 103, 120) 13%, transparent)");
+      expect(chip!.style.color).toBe("color-mix(in srgb, rgb(91, 103, 120) 74%, rgb(0, 0, 0))");
     });
 
     it("renders message preview", () => {
@@ -467,7 +470,7 @@ describe("Tooltip", () => {
   // -------------------------------------------------------------------------
 
   describe("render", () => {
-    it("preserves the arrow element when re-rendering different feedback", () => {
+    it("replaces its content when re-rendering different feedback", () => {
       // First render
       tooltip.show(makeFeedback({ id: "fb-1", message: "first" }), makeDOMRect(100, 200, 26, 26));
       vi.advanceTimersByTime(200);
@@ -477,15 +480,14 @@ describe("Tooltip", () => {
       tooltip.hide();
       vi.advanceTimersByTime(250);
 
-      // Show different feedback — render runs again, iterating children including the arrow
       tooltip.show(makeFeedback({ id: "fb-2", message: "second" }), makeDOMRect(100, 200, 26, 26));
       vi.advanceTimersByTime(200);
 
-      // Arrow element should still be inside the tooltip (the else branch
-      // skipped removal of the arrow during the second render)
-      expect(el.children.length).toBeGreaterThanOrEqual(3); // header + body + arrow
-      // Body should now reflect the new message
+      // Header + body only: no arrow (the callout grows out of the pin
+      // instead), and nothing left over from the first render.
+      expect(el.children.length).toBe(2);
       expect(el.textContent).toContain("second");
+      expect(el.textContent).not.toContain("first");
     });
   });
 

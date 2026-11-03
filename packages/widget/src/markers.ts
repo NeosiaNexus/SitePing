@@ -8,11 +8,11 @@ import {
 import { EASE_OUT, Z_INDEX_MAX } from "./constants.js";
 import { type ResolvedAnnotation, resolveAnnotation } from "./dom/resolver.js";
 import { classifyVisibility } from "./dom/visibility.js";
-import { el, setText } from "./dom-utils.js";
+import { el, focusRing, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { isolateFromHost } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
-import { getTypeColor, type ThemeColors } from "./styles/theme.js";
+import { getTypeColor, SYSTEM_FONT, type ThemeColors } from "./styles/theme.js";
 import type { Tooltip } from "./tooltip.js";
 import { canHover, isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
 
@@ -45,38 +45,84 @@ const HIT_SLOP = 9;
 
 interface PinLook {
   bg: string;
-  /** `border-color` — one value, or four for a partial ring. */
+  /** `border-color`: one value, or four for a partial ring. */
   ring: string;
   color: string;
   shadow: string;
   hoverShadow: string;
 }
 
-/** Closed pins (resolved, wont_fix) are muted; their glyph tells them apart. */
-const CLOSED_PIN: PinLook = {
-  bg: "rgba(241,245,249,0.9)",
-  ring: "#cbd5e1",
-  color: "#94a3b8",
-  shadow: "0 2px 8px rgba(0,0,0,0.06)",
-  hoverShadow: "0 4px 16px rgba(0,0,0,0.1)",
+/** Lifted off the page: a hairline edge and a short drop, deeper under the hover zoom. */
+const PIN_SHADOW = "0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.22)";
+const PIN_HOVER_SHADOW = "0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(0, 0, 0, 0.28)";
+
+/**
+ * An open pin's fill under its white numeral, per type, in the dark scheme.
+ * The dark palette's type colours are pastels that read on dark grounds but
+ * not under white text; these deeper tones (the light palette's) keep the
+ * numeral at 4.5:1 or more in both schemes.
+ */
+const DARK_PIN_FILLS: Record<string, string> = {
+  question: "#2563eb",
+  change: "#b45309",
+  bug: "#d01f1f",
+  other: "#5b6778",
 };
 
 /**
- * A pin's look per status, in the dashboard's status language: the shape, not
- * colour alone, tells the four apart (#302). Open and in-progress pins keep
- * their number and type colour — they are still actionable — and an
- * in-progress pin fades half its ring, the dashboard's half-filled ◐. Closed
- * pins are muted: a check for `resolved`, a slash (⊘) for `wont_fix`, never a
- * check, since a declined request isn't a fix.
+ * Closed pins (resolved, wont_fix) are a quiet material disc with a grey
+ * glyph, per scheme; the glyph tells them apart. The check is text and
+ * reads 4.5:1; the slash is a 2px mark and needs 3:1, so it is lighter.
  */
-function pinLook(status: FeedbackStatus, typeColor: string): PinLook {
-  if (isClosedStatus(status)) return CLOSED_PIN;
+const CLOSED_PINS = {
+  light: { bg: "rgba(255, 255, 255, 0.94)", ring: "#ffffff", check: "#636366", slash: "#8e8e93" },
+  dark: { bg: "rgba(44, 44, 46, 0.94)", ring: "#48484a", check: "#c7c7cc", slash: "#aeaeb2" },
+} as const;
+const CLOSED_SHADOW = "0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.14)";
+const CLOSED_HOVER_SHADOW = "0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.18)";
+
+/**
+ * A pin's look per status, in the dashboard's status language: the shape, not
+ * colour alone, tells the four apart (#302). Open pins are filled with their
+ * type's colour under a white numeral and a white edge. In-progress pins keep
+ * their number on a tint of their colour instead, and fade half their ring (the
+ * dashboard's half-filled ◐). Closed pins are muted: a check for `resolved`, a
+ * slash (⊘) for `wont_fix`, never a check, since a declined request isn't a fix.
+ */
+function pinLook(status: FeedbackStatus, type: string, colors: ThemeColors): PinLook {
+  const dark = colors.scheme === "dark";
+  if (isClosedStatus(status)) {
+    const closed = CLOSED_PINS[colors.scheme];
+    return {
+      bg: closed.bg,
+      ring: closed.ring,
+      color: status === "wont_fix" ? closed.slash : closed.check,
+      shadow: CLOSED_SHADOW,
+      hoverShadow: CLOSED_HOVER_SHADOW,
+    };
+  }
+  const typeColor = getTypeColor(type, colors);
+  if (status === "in_progress") {
+    // The tint sits on the scheme's row colour; the faded half of the ring
+    // mixes toward it too, so it reads as the same disc, half drawn.
+    const { row } = colors.surface;
+    const faded = `color-mix(in srgb, ${typeColor} 35%, ${row})`;
+    return {
+      bg: `color-mix(in srgb, ${typeColor} ${dark ? 18 : 14}%, ${row})`,
+      ring: `${typeColor} ${typeColor} ${faded} ${faded}`,
+      // Light: the type colour pushed toward black reads 4.5:1 on its tint;
+      // dark: the pastel itself does.
+      color: dark ? typeColor : `color-mix(in srgb, ${typeColor} 80%, #000000)`,
+      shadow: PIN_SHADOW,
+      hoverShadow: PIN_HOVER_SHADOW,
+    };
+  }
   return {
-    bg: "rgba(255,255,255,0.92)",
-    ring: status === "in_progress" ? `${typeColor} ${typeColor} ${typeColor}40 ${typeColor}40` : typeColor,
-    color: typeColor,
-    shadow: `0 2px 12px ${typeColor}25, 0 2px 6px rgba(0,0,0,0.06)`,
-    hoverShadow: `0 4px 20px ${typeColor}35, 0 4px 12px rgba(0,0,0,0.08)`,
+    bg: dark ? (DARK_PIN_FILLS[type] ?? DARK_PIN_FILLS.other ?? typeColor) : typeColor,
+    ring: "#ffffff",
+    color: "#ffffff",
+    shadow: PIN_SHADOW,
+    hoverShadow: PIN_HOVER_SHADOW,
   };
 }
 
@@ -588,12 +634,12 @@ export class MarkerManager {
         position:absolute;top:-6px;right:-6px;
         min-width:16px;height:16px;padding:0 4px;
         border-radius:9999px;
-        background:${this.colors.accent};color:#fff;
+        background:#1d1d1f;color:#fff;
         font-size:10px;font-weight:700;
         display:flex;align-items:center;justify-content:center;
         border:1.5px solid #fff;
         pointer-events:none;
-        font-family:"Inter",system-ui,-apple-system,sans-serif;
+        font-family:${SYSTEM_FONT};
         line-height:1;
       `,
     });
@@ -679,7 +725,7 @@ export class MarkerManager {
 
   private createMarker(number: number, feedback: FeedbackResponse, pos: { top: number; left: number }): HTMLElement {
     const { status } = feedback;
-    const look = pinLook(status, getTypeColor(feedback.type, this.colors));
+    const look = pinLook(status, feedback.type, this.colors);
 
     const marker = el("div", {
       style: /* css */ `
@@ -692,8 +738,8 @@ export class MarkerManager {
         border:2px solid;
         border-color:${look.ring};
         display:flex;align-items:center;justify-content:center;
-        font-family:"Inter",system-ui,-apple-system,sans-serif;
-        font-size:11px;font-weight:700;
+        font-family:${SYSTEM_FONT};
+        font-size:12px;font-weight:700;letter-spacing:-0.01em;
         color:${look.color};
         cursor:pointer;pointer-events:auto;
         box-shadow:${look.shadow};
@@ -715,6 +761,7 @@ export class MarkerManager {
     });
     marker.setAttribute("aria-label", ariaLabel);
     marker.setAttribute("aria-describedby", this.tooltip.tooltipId);
+    focusRing(marker, this.colors.accent);
     if (status === "wont_fix") {
       marker.appendChild(
         el("span", {
@@ -726,7 +773,7 @@ export class MarkerManager {
     }
     // Fingers need ~44px: widen the hit area, not the 26px pin.
     if (isCoarsePointer())
-      marker.appendChild(el("span", { style: `position:absolute;inset:-${HIT_SLOP}px;border-radius:50%;` }));
+      marker.appendChild(el("span", { style: /* css */ `position:absolute;inset:-${HIT_SLOP}px;border-radius:50%;` }));
 
     marker.addEventListener("mouseenter", () => {
       // A tap fires mouseenter too, and nothing would ever shrink the pin back.
@@ -866,7 +913,7 @@ export class MarkerManager {
           width:${rect.width}px;height:${rect.height}px;
           border:2px solid ${typeColor};
           background:${typeColor}0c;
-          border-radius:8px;
+          border-radius:12px;
           pointer-events:none;z-index:-1;
           opacity:${fade ? 0 : 1};
           box-shadow:0 0 16px ${typeColor}20;

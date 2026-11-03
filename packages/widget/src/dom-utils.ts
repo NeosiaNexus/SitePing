@@ -173,3 +173,20 @@ export function pressable(control: HTMLElement): void {
   });
   for (const type of ["pointerup", "pointerleave", "pointercancel"]) control.addEventListener(type, release);
 }
+
+/**
+ * The accent focus ring for a control mounted on the host page, where no
+ * stylesheet reaches it (`:focus-visible` needs one): drawn when the browser
+ * would show a focus ring (keyboard focus, not a click), cleared on blur.
+ */
+export function focusRing(control: HTMLElement, color: string): void {
+  control.addEventListener("focus", () => {
+    if (!control.matches(":focus-visible")) return;
+    control.style.outline = `2px solid ${color}`;
+    control.style.outlineOffset = "2px";
+  });
+  control.addEventListener("blur", () => {
+    control.style.outline = "";
+    control.style.outlineOffset = "";
+  });
+}
