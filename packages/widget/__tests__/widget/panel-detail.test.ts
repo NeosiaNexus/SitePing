@@ -624,6 +624,13 @@ describe("DetailView", () => {
       expect(setup.view.element.getAttribute("aria-hidden")).toBe("true");
     });
 
+    it("pushes over the panel: its parent slides the list away while it shows", () => {
+      setup.view.show(makeFeedback(), 1);
+      expect(setup.host.classList.contains("sp-panel--detail")).toBe(true);
+      setup.view.hide();
+      expect(setup.host.classList.contains("sp-panel--detail")).toBe(false);
+    });
+
     it("hide() is a no-op when not visible", () => {
       // Default state is not visible
       expect(setup.view.isVisible).toBe(false);
@@ -1235,6 +1242,10 @@ describe("DetailView", () => {
 
       const toggle = setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-diag-toggle")!;
       const body = setup.view.element.querySelector(".sp-detail-diag-body")!;
+      // Named by its visible text (WCAG 2.5.3, axe label-content-name-mismatch):
+      // no aria-label overriding it, and the name starts with the visible label.
+      expect(toggle.hasAttribute("aria-label")).toBe(false);
+      expect(toggle.textContent?.startsWith("Diagnostics")).toBe(true);
       expect(toggle.getAttribute("aria-expanded")).toBe("false");
       expect(body.classList.contains("sp-detail-diag-body--open")).toBe(false);
 
@@ -1245,6 +1256,8 @@ describe("DetailView", () => {
       toggle.click();
       expect(toggle.getAttribute("aria-expanded")).toBe("false");
       expect(body.classList.contains("sp-detail-diag-body--open")).toBe(false);
+      // The state lives in aria-expanded alone; the name never switches.
+      expect(toggle.hasAttribute("aria-label")).toBe(false);
     });
 
     it("renders network errors with status 0 as 'ERR'", () => {
@@ -1261,23 +1274,29 @@ describe("DetailView", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // CSS: the detail sheet is opaque everywhere (it used to be translucent
-  // with two @supports fallbacks, and still let the list show through in
-  // Chromium). Guards that the translucent default doesn't come back.
+  // CSS: a navigation push. The detail has no surface of its own (it lays its
+  // sections on the sheet's material), so the list it covers must leave:
+  // a second translucent layer over readable content is what Apple warns
+  // against (never stack light materials).
   // ---------------------------------------------------------------------------
 
-  describe("DETAIL_CSS: an opaque sheet over the panel", () => {
-    // The detail is pushed over the translucent panel: a second translucent
-    // layer let the list read through it (Apple: never stack light materials).
-    const rule = () => DETAIL_CSS.replace(/\s+/g, " ").match(/\.sp-detail \{([^}]*)\}/)?.[1] ?? "";
+  describe("DETAIL_CSS: a push, never a second material over the list", () => {
+    const css = () => DETAIL_CSS.replace(/\s+/g, " ");
+    const rule = (selector: string) =>
+      css().match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
 
-    it("paints .sp-detail with the solid background in every engine", () => {
-      expect(rule()).toContain("background: var(--sp-bg);");
+    it("paints no background or blur of its own on .sp-detail, and needs no @supports fallback", () => {
+      expect(rule(".sp-detail")).not.toContain("background");
+      expect(rule(".sp-detail")).not.toContain("backdrop-filter");
+      expect(DETAIL_CSS).not.toContain("@supports");
     });
 
-    it("draws no backdrop blur of its own, and needs no @supports fallback", () => {
-      expect(rule()).not.toContain("backdrop-filter");
-      expect(DETAIL_CSS).not.toContain("@supports");
+    it("hides the list, its header and filters while the detail shows", () => {
+      const pushed = rule(".sp-panel--detail > :is(.sp-panel-header, .sp-stats-bar, .sp-filters, .sp-list)");
+      expect(pushed).toContain("visibility: hidden");
+      expect(pushed).toContain("opacity: 0");
+      // The floating bars over the list leave with it.
+      expect(rule(".sp-panel--detail > :is(.sp-bulk-bar, .sp-shortcuts-hint)")).toContain("visibility: hidden");
     });
   });
 });

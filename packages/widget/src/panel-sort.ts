@@ -6,13 +6,14 @@
  * - Group by page toggle (collapsible URL sections)
  * - Pure sort/group utility functions
  *
- * Glassmorphism design — glass surfaces, accent gradients,
- * smooth micro-interactions.
+ * System look: borderless fill capsules, a material menu with a check on
+ * the current order, section headers on a blurred band.
  */
 
 import { type FeedbackResponse, type FeedbackType, isClosedStatus } from "@siteping/core";
 import { el, onClickOutside, parseSvg, setText } from "./dom-utils.js";
 import type { TFunction } from "./i18n/index.js";
+import { ICON_CHECK } from "./icons.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -141,7 +142,6 @@ export function createPageGroupHeader(pagePath: string, count: number): HTMLElem
   header.setAttribute("role", "button");
   header.setAttribute("tabindex", "0");
   header.setAttribute("aria-expanded", "true");
-  header.style.borderBottomColor = "var(--sp-border)";
 
   // Chevron
   const chevronWrap = el("span", { class: "sp-group-header-chevron" });
@@ -164,8 +164,6 @@ export function createPageGroupHeader(pagePath: string, count: number): HTMLElem
 
   // Count badge
   const countEl = el("span", { class: "sp-group-header-count" });
-  countEl.style.background = "var(--sp-accent-light)";
-  countEl.style.color = "var(--sp-accent)";
   setText(countEl, String(count));
   header.appendChild(countEl);
 
@@ -303,12 +301,8 @@ export class PanelSortControls {
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", String(opt.mode === this._sortMode));
 
-      if (opt.mode === this._sortMode) {
-        item.style.background = "var(--sp-accent-light)";
-        item.style.color = "var(--sp-accent-text)";
-      }
-
       setText(item, opt.label);
+      if (opt.mode === this._sortMode) item.appendChild(parseSvg(ICON_CHECK));
 
       item.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -371,10 +365,7 @@ export const SORT_CSS = /* css */ `
   .sp-sort-controls {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-top: 4px;
-    padding-top: 8px;
-    border-top: 1px solid var(--sp-border);
+    gap: 8px;
   }
 
   /* Groups the sort button with its menu for outside clicks, without a box:
@@ -384,63 +375,94 @@ export const SORT_CSS = /* css */ `
   }
 
   /* ============================
-     Sort Dropdown Button
+     Sort Button and Toggles
      ============================ */
 
-  .sp-sort-btn {
+  /* Borderless fill capsules, like the system's toolbar buttons; a toggle
+     that is on fills with the accent. */
+  .sp-sort-btn,
+  .sp-group-toggle,
+  .sp-mine-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 5px 12px;
+    gap: 6px;
+    min-height: 30px;
+    padding: 0 12px;
     border-radius: var(--sp-radius-full);
-    border: 1px solid var(--sp-border);
-    background: var(--sp-glass-bg-heavy);
-    color: var(--sp-text-secondary);
+    border: none;
+    background: var(--sp-fill);
+    color: var(--sp-text);
     font-family: var(--sp-font);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
     transition: var(--sp-tr);
+  }
+
+  .sp-sort-btn {
     position: relative;
+  }
+
+  .sp-sort-btn svg,
+  .sp-group-toggle svg,
+  .sp-mine-toggle svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    color: var(--sp-text-secondary);
   }
 
   .sp-sort-btn svg {
     width: 14px;
     height: 14px;
-    flex-shrink: 0;
   }
 
   @media (hover: hover) and (pointer: fine) {
-    .sp-sort-btn:hover {
-      border-color: var(--sp-accent);
-      color: var(--sp-accent-text);
-      background: var(--sp-accent-light);
+    .sp-sort-btn:hover,
+    .sp-group-toggle:hover,
+    .sp-mine-toggle:hover {
+      background: var(--sp-fill-strong);
+    }
+
+    .sp-group-toggle--active:hover,
+    .sp-mine-toggle--active:hover {
+      background: var(--sp-accent-dark);
     }
   }
 
   .sp-sort-btn[aria-expanded="true"] {
-    border-color: var(--sp-accent);
-    color: var(--sp-accent-text);
-    background: var(--sp-accent-light);
+    background: var(--sp-fill-strong);
+  }
+
+  .sp-group-toggle--active,
+  .sp-mine-toggle--active {
+    background: var(--sp-accent);
+    color: #fff;
+  }
+
+  .sp-group-toggle--active svg,
+  .sp-mine-toggle--active svg {
+    color: inherit;
   }
 
   /* ============================
      Sort Floating Menu
      ============================ */
 
+  /* Hangs from the filters block (the dropdown wrapper has no box), aligned
+     under its button. */
   .sp-sort-menu {
     position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
+    top: calc(100% - 4px);
+    left: 16px;
     min-width: 170px;
-    padding: 4px;
-    border-radius: var(--sp-radius);
-    background: var(--sp-glass-bg-heavy);
-    backdrop-filter: blur(var(--sp-blur-heavy));
-    -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
-    border: 1px solid var(--sp-glass-border);
-    box-shadow: var(--sp-shadow-md);
+    padding: 6px;
+    border-radius: var(--sp-radius-lg);
+    background: var(--sp-material-thick);
+    backdrop-filter: var(--sp-material-blur);
+    -webkit-backdrop-filter: var(--sp-material-blur);
+    box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
     z-index: 10;
     transform-origin: top left;
     animation: sp-menu-in 0.15s var(--sp-ease-out) backwards;
@@ -453,14 +475,16 @@ export const SORT_CSS = /* css */ `
   .sp-sort-option {
     display: block;
     width: 100%;
-    padding: 8px 12px;
+    min-height: 34px;
+    padding: 7px 10px;
     border: none;
     border-radius: 8px;
     background: transparent;
-    color: var(--sp-text-secondary);
+    color: var(--sp-text);
     font-family: var(--sp-font);
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: -0.005em;
     cursor: pointer;
     text-align: left;
     transition: var(--sp-tr);
@@ -468,88 +492,42 @@ export const SORT_CSS = /* css */ `
 
   @media (hover: hover) and (pointer: fine) {
     .sp-sort-option:hover {
-      background: var(--sp-bg-hover);
-      color: var(--sp-text);
+      background: var(--sp-fill);
     }
   }
 
+  /* The current order carries a check, like the type menu, not a tint. */
   .sp-sort-option--active {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     font-weight: 600;
   }
 
-  @media (hover: hover) and (pointer: fine) {
-    .sp-sort-option--active:hover {
-      background: var(--sp-accent-light);
-      color: var(--sp-accent-text);
-    }
-  }
-
-  /* ============================
-     Group by Page and "Mine" Toggles
-     ============================ */
-
-  .sp-group-toggle,
-  .sp-mine-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px 12px;
-    border-radius: var(--sp-radius-full);
-    border: 1px solid var(--sp-border);
-    background: var(--sp-glass-bg-heavy);
-    color: var(--sp-text-secondary);
-    font-family: var(--sp-font);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: var(--sp-tr);
-  }
-
-  .sp-group-toggle svg,
-  .sp-mine-toggle svg {
+  .sp-sort-option--active svg {
     width: 13px;
     height: 13px;
     flex-shrink: 0;
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    .sp-group-toggle:hover,
-    .sp-mine-toggle:hover {
-      border-color: var(--sp-accent);
-      color: var(--sp-accent-text);
-      background: var(--sp-accent-light);
-    }
-  }
-
-  .sp-group-toggle--active,
-  .sp-mine-toggle--active {
-    background: var(--sp-accent-gradient);
-    border-color: transparent;
-    color: #fff;
-    box-shadow: 0 2px 8px var(--sp-accent-glow);
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    .sp-group-toggle--active:hover,
-    .sp-mine-toggle--active:hover {
-      background: var(--sp-accent-gradient);
-      border-color: transparent;
-      color: #fff;
-    }
+    color: var(--sp-accent-ink);
+    stroke-width: 2.5;
   }
 
   /* ============================
      Page Group Header
      ============================ */
 
+  /* A section header that stays on top of its cards, on a blurred band. */
   .sp-group-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    background: var(--sp-accent-light);
-    border-bottom: 1px solid var(--sp-border);
+    margin: 2px -4px 6px;
+    padding: 8px;
+    border-radius: var(--sp-radius);
+    background: color-mix(in srgb, var(--sp-grouped) 72%, transparent);
+    backdrop-filter: var(--sp-material-blur);
+    -webkit-backdrop-filter: var(--sp-material-blur);
     cursor: pointer;
     user-select: none;
     position: sticky;
@@ -560,7 +538,7 @@ export const SORT_CSS = /* css */ `
 
   @media (hover: hover) and (pointer: fine) {
     .sp-group-header:hover {
-      background: var(--sp-bg-hover);
+      background: color-mix(in srgb, var(--sp-grouped) 72%, var(--sp-fill-strong));
     }
   }
 
@@ -583,7 +561,7 @@ export const SORT_CSS = /* css */ `
   .sp-group-header-chevron svg {
     width: 12px;
     height: 12px;
-    color: var(--sp-text-tertiary);
+    color: var(--sp-text-secondary);
   }
 
   .sp-group-header--collapsed .sp-group-header-chevron {
@@ -599,11 +577,11 @@ export const SORT_CSS = /* css */ `
   .sp-group-header-icon svg {
     width: 14px;
     height: 14px;
-    color: var(--sp-text-tertiary);
+    color: var(--sp-text-secondary);
   }
 
   .sp-group-header-path {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--sp-text-secondary);
     flex: 1;
@@ -614,10 +592,12 @@ export const SORT_CSS = /* css */ `
   }
 
   .sp-group-header-count {
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 12px;
+    font-weight: 600;
     padding: 1px 8px;
     border-radius: var(--sp-radius-full);
+    background: color-mix(in srgb, var(--sp-accent) 13%, transparent);
+    color: var(--sp-accent-ink);
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
   }

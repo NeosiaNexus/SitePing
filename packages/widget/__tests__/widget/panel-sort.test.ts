@@ -146,6 +146,21 @@ describe("PanelSortControls", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
+  it("marks the current order with a check, not an inline tint", () => {
+    const controls = new PanelSortControls(vi.fn(), createT("en"));
+    document.body.appendChild(controls.element);
+    controls.element.querySelector<HTMLButtonElement>(".sp-sort-btn")!.click();
+
+    const options = [...controls.element.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+    const active = options.filter((o) => o.querySelector("svg"));
+    expect(active).toEqual([controls.element.querySelector(".sp-sort-option--active")]);
+    // The check is decorative: the option still reads as its label alone.
+    expect(active[0]!.querySelector("svg")!.getAttribute("aria-hidden")).toBe("true");
+    expect(active[0]!.textContent).toBe("Newest first");
+    // Colours come from the stylesheet (theme tokens), never inline.
+    for (const option of options) expect(option.getAttribute("style")).toBeNull();
+  });
+
   it("toggles group-by-page state and renders French labels", () => {
     const onChange = vi.fn();
     const controls = new PanelSortControls(onChange, createT("fr"));
@@ -392,6 +407,9 @@ describe("createPageGroupHeader", () => {
     expect(header.getAttribute("role")).toBe("button");
     expect(header.getAttribute("aria-expanded")).toBe("true");
     expect(header.querySelector(".sp-group-header-count")?.textContent).toBe("7");
+    // Styled by the stylesheet alone (theme tokens), so a theme change reaches it.
+    expect(header.getAttribute("style")).toBeNull();
+    expect(header.querySelector(".sp-group-header-count")?.getAttribute("style")).toBeNull();
     expect(header.querySelector<HTMLElement>(".sp-group-header-path")?.title).toContain("/very/long/path");
 
     header.click();

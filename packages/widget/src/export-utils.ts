@@ -23,19 +23,22 @@ export const EXPORT_CSS = /* css */ `
      Export Button & Menu
      ============================ */
 
+  /* A tinted text button, like a toolbar item. */
   .sp-export-btn {
-    padding: 5px 12px;
+    height: 30px;
+    padding: 0 8px;
     border-radius: var(--sp-radius-full);
-    border: 1px solid var(--sp-border);
+    border: none;
     background: transparent;
-    color: var(--sp-text-tertiary);
+    color: var(--sp-accent-ink);
     font-family: var(--sp-font);
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 500;
+    white-space: nowrap;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     transition: var(--sp-tr);
     position: relative;
   }
@@ -47,9 +50,7 @@ export const EXPORT_CSS = /* css */ `
 
   @media (hover: hover) and (pointer: fine) {
     .sp-export-btn:hover {
-      border-color: var(--sp-accent);
-      color: var(--sp-accent-text);
-      background: var(--sp-accent-light);
+      background: color-mix(in srgb, var(--sp-accent) 10%, transparent);
     }
   }
 
@@ -64,13 +65,12 @@ export const EXPORT_CSS = /* css */ `
     top: calc(100% + 6px);
     right: 0;
     min-width: 180px;
-    padding: 4px;
-    border-radius: var(--sp-radius);
-    background: var(--sp-glass-bg-heavy);
-    backdrop-filter: blur(var(--sp-blur));
-    -webkit-backdrop-filter: blur(var(--sp-blur));
-    border: 1px solid var(--sp-glass-border);
-    box-shadow: var(--sp-shadow-lg);
+    padding: 6px;
+    border-radius: var(--sp-radius-lg);
+    background: var(--sp-material-thick);
+    backdrop-filter: var(--sp-material-blur);
+    -webkit-backdrop-filter: var(--sp-material-blur);
+    box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
     z-index: 10;
     opacity: 0;
     /* Grows out of its trigger (right-aligned), and is interruptible. */
@@ -86,33 +86,34 @@ export const EXPORT_CSS = /* css */ `
     pointer-events: auto;
   }
 
+  /* Rows highlight with a grey fill, the text keeps its colour. */
   .sp-export-option {
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 8px 16px;
+    min-height: 34px;
+    padding: 7px 10px;
     border: none;
     border-radius: 8px;
     background: transparent;
-    color: var(--sp-text-secondary);
+    color: var(--sp-text);
     font-family: var(--sp-font);
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 400;
+    letter-spacing: -0.005em;
     cursor: pointer;
     transition: var(--sp-tr);
     text-align: left;
   }
 
   .sp-export-option:focus-visible {
-    background: var(--sp-accent-light);
-    color: var(--sp-accent-text);
+    background: var(--sp-fill);
   }
 
   @media (hover: hover) and (pointer: fine) {
     .sp-export-option:hover {
-      background: var(--sp-accent-light);
-      color: var(--sp-accent-text);
+      background: var(--sp-fill);
     }
   }
 
@@ -121,6 +122,7 @@ export const EXPORT_CSS = /* css */ `
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    color: var(--sp-text-secondary);
   }
 
   .sp-export-option-icon svg {
@@ -246,7 +248,7 @@ export class ExportButton {
     // Wrapper for relative positioning of the menu
     this.element = el("div", { style: "position: relative; display: inline-flex;" });
 
-    // Trigger button — matches .sp-btn-delete-all pill style
+    // Trigger button: a tinted text button, like .sp-btn-delete-all
     const btn = document.createElement("button");
     btn.className = "sp-export-btn";
     btn.setAttribute("aria-haspopup", "true");
