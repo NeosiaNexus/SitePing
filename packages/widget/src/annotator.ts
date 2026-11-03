@@ -390,6 +390,11 @@ export class Annotator {
    */
   private toolbarInsets(): ViewportInsets {
     if (!this.toolbar) return NO_VIEWPORT_INSETS;
+    // A note drawn while the island is still sliding in would measure it
+    // mid-flight: it lands at once, where the popup must keep clear of it.
+    if (typeof this.toolbar.getAnimations === "function") {
+      for (const animation of this.toolbar.getAnimations()) animation.finish();
+    }
     const toolbarRect = this.toolbar.getBoundingClientRect();
     if (toolbarRect.height === 0) return NO_VIEWPORT_INSETS;
     const viewportHeight = window.innerHeight;
