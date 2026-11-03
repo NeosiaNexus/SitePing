@@ -105,7 +105,7 @@ export class Panel {
   private typeDropdownMenu: HTMLElement | null = null;
   private removeTypeDropdownOutsideClick: (() => void) | null = null;
   private statusSegmented!: SegmentedControl<"all" | FeedbackStatus>;
-  private typeOptions!: ReadonlyArray<{ value: string; label: string; icon: string; color: string; bg: string }>;
+  private typeOptions!: ReadonlyArray<{ value: string; label: string; icon: string; color: string }>;
   private feedbacks: FeedbackResponse[] = [];
   private currentPage = 1;
   private totalFeedbacks = 0;
@@ -1317,35 +1317,30 @@ export class Panel {
         label: this.t("panel.filterAll"),
         icon: ICON_LAYERS,
         color: "var(--sp-accent-text)",
-        bg: "var(--sp-accent-light)",
       },
       {
         value: "question",
         label: this.t("type.question"),
         icon: ICON_QUESTION,
         color: "var(--sp-type-question)",
-        bg: "var(--sp-type-question-bg)",
       },
       {
         value: "change",
         label: this.t("type.change"),
         icon: ICON_CHANGE,
         color: "var(--sp-type-change)",
-        bg: "var(--sp-type-change-bg)",
       },
       {
         value: "bug",
         label: this.t("type.bug"),
         icon: ICON_BUG,
         color: "var(--sp-type-bug)",
-        bg: "var(--sp-type-bug-bg)",
       },
       {
         value: "other",
         label: this.t("type.other"),
         icon: ICON_OTHER,
         color: "var(--sp-type-other)",
-        bg: "var(--sp-type-other-bg)",
       },
     ];
 
@@ -1382,7 +1377,6 @@ export class Panel {
 
     this.typeDropdownBtn.replaceChildren();
     this.typeDropdownBtn.style.setProperty("--sp-chip-color", active.color);
-    this.typeDropdownBtn.style.setProperty("--sp-chip-bg", active.bg);
     this.typeDropdownBtn.dataset.filter = active.value;
     this.typeDropdownBtn.classList.toggle("sp-filter-dropdown-btn--filtered", active.value !== "all");
     this.typeDropdownBtn.setAttribute("aria-label", `${this.t("type.label")}: ${active.label}`);
@@ -1419,7 +1413,6 @@ export class Panel {
       const isActive = this.activeFilters.has(option.value);
       item.className = `sp-filter-dropdown-option${isActive ? " sp-filter-dropdown-option--active" : ""}`;
       item.style.setProperty("--sp-chip-color", option.color);
-      item.style.setProperty("--sp-chip-bg", option.bg);
       item.dataset.filter = option.value;
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", String(isActive));
@@ -1478,14 +1471,12 @@ export class Panel {
           label: this.t("panel.statusAll"),
           icon: ICON_LAYERS,
           color: "var(--sp-accent-text)",
-          bg: "var(--sp-accent-light)",
         },
         {
           value: "open",
           label: this.t("panel.statusOpen"),
           icon: ICON_DOT_OPEN,
           color: "var(--sp-status-open)",
-          bg: "var(--sp-status-open-bg)",
         },
         {
           // Filters the closed bucket (resolved + wont_fix): labelled "Closed".
@@ -1493,7 +1484,6 @@ export class Panel {
           label: this.t("panel.statusClosed"),
           icon: ICON_ARCHIVE,
           color: "var(--sp-status-resolved)",
-          bg: "var(--sp-status-resolved-bg)",
         },
       ],
       value: "all",
