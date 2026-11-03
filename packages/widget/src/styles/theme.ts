@@ -38,7 +38,123 @@ export interface ThemeColors {
   statusInProgressBg: string;
   statusWontFix: string;
   statusWontFixBg: string;
+  /** The resolved scheme: the page surfaces (popup, tooltip, pins) branch on it. */
+  scheme: "light" | "dark";
+  /** Apple-style surfaces: materials, fills, separators and depth. */
+  surface: SurfaceTokens;
 }
+
+/**
+ * The native look's surface tokens, after Apple's system colours: thick
+ * translucent materials over the page, inset grouped rows, tinted fills,
+ * hairline separators and layered shadows. One set per scheme; text on the
+ * materials reads 4.5:1 even over a black (light) or white (dark) page.
+ */
+export interface SurfaceTokens {
+  /** The sheet itself: translucent, blurred and saturated behind. */
+  material: string;
+  /** Floating layers on top of the sheet (menus, callouts, bars). */
+  materialThick: string;
+  /** Inset grouped background, under the rows. */
+  grouped: string;
+  row: string;
+  rowHover: string;
+  /** Grey fills: fields, segmented tracks, secondary buttons. */
+  fill: string;
+  fillStrong: string;
+  /** The fill under increased contrast. */
+  fillContrast: string;
+  separator: string;
+  /** The bright edge where light catches the material. */
+  edge: string;
+  sheen: string;
+  sheenSoft: string;
+  hairline: string;
+  /** The segmented control's raised thumb. */
+  thumb: string;
+  grabber: string;
+  /** systemGray3, for inactive glyphs. */
+  gray3: string;
+  danger: string;
+  dangerPress: string;
+  /** Status and type inks: a tint pushed toward the text, so it reads on its own fill. */
+  inkMix: string;
+  inkPct: string;
+  shadowRow: string;
+  shadowRowHover: string;
+  shadowFloat: string;
+  shadowSheet: string;
+  shadowSheetUp: string;
+  shadowPopover: string;
+  shadowThumb: string;
+  shadowEdgeDrop: string;
+}
+
+const SURFACES: Record<"light" | "dark", SurfaceTokens> = {
+  light: {
+    material: "rgba(246, 246, 248, 0.84)",
+    materialThick: "rgba(248, 248, 250, 0.92)",
+    grouped: "#f2f2f7",
+    row: "#ffffff",
+    rowHover: "#f8f8fa",
+    fill: "rgba(118, 118, 128, 0.12)",
+    fillStrong: "rgba(118, 118, 128, 0.2)",
+    fillContrast: "rgba(118, 118, 128, 0.22)",
+    separator: "rgba(60, 60, 67, 0.17)",
+    edge: "rgba(255, 255, 255, 0.8)",
+    sheen: "rgba(255, 255, 255, 0.55)",
+    sheenSoft: "rgba(255, 255, 255, 0.4)",
+    hairline: "rgba(0, 0, 0, 0.1)",
+    thumb: "#ffffff",
+    grabber: "rgba(60, 60, 67, 0.3)",
+    gray3: "#c7c7cc",
+    danger: "#d70015",
+    dangerPress: "#b8000f",
+    inkMix: "#000",
+    inkPct: "76%",
+    shadowRow: "0 1px 2px rgba(0, 0, 0, 0.04)",
+    shadowRowHover: "0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 16px rgba(0, 0, 0, 0.06)",
+    shadowFloat:
+      "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 10px 30px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05)",
+    shadowSheet:
+      "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 24px 60px -8px rgba(0, 0, 0, 0.22), 0 6px 18px rgba(0, 0, 0, 0.06)",
+    shadowSheetUp: "0 -0.5px 0 rgba(0, 0, 0, 0.1), 0 -10px 40px rgba(0, 0, 0, 0.12)",
+    shadowPopover: "0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 18px 50px rgba(0, 0, 0, 0.22)",
+    shadowThumb: "0 3px 8px rgba(0, 0, 0, 0.12), 0 1px 1px rgba(0, 0, 0, 0.04), 0 0 0 0.5px rgba(0, 0, 0, 0.04)",
+    shadowEdgeDrop: "0 1px 0 rgba(0, 0, 0, 0.14)",
+  },
+  dark: {
+    material: "rgba(28, 28, 30, 0.84)",
+    materialThick: "rgba(38, 38, 40, 0.92)",
+    grouped: "#1c1c1e",
+    row: "#2c2c2e",
+    rowHover: "#333336",
+    fill: "rgba(118, 118, 128, 0.24)",
+    fillStrong: "rgba(118, 118, 128, 0.36)",
+    fillContrast: "rgba(118, 118, 128, 0.4)",
+    separator: "rgba(84, 84, 88, 0.6)",
+    edge: "rgba(255, 255, 255, 0.12)",
+    sheen: "rgba(255, 255, 255, 0.06)",
+    sheenSoft: "rgba(255, 255, 255, 0.06)",
+    hairline: "rgba(0, 0, 0, 0.55)",
+    thumb: "#636366",
+    grabber: "rgba(235, 235, 245, 0.3)",
+    gray3: "#636366",
+    danger: "#e0251b",
+    dangerPress: "#c81e15",
+    inkMix: "#fff",
+    inkPct: "62%",
+    shadowRow: "0 1px 2px rgba(0, 0, 0, 0.2)",
+    shadowRowHover: "0 1px 2px rgba(0, 0, 0, 0.2), 0 6px 16px rgba(0, 0, 0, 0.25)",
+    shadowFloat: "0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.25)",
+    shadowSheet:
+      "0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 24px 60px -8px rgba(0, 0, 0, 0.66), 0 6px 18px rgba(0, 0, 0, 0.3)",
+    shadowSheetUp: "0 -0.5px 0 rgba(0, 0, 0, 0.55), 0 -10px 40px rgba(0, 0, 0, 0.5)",
+    shadowPopover: "0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 18px 50px rgba(0, 0, 0, 0.6)",
+    shadowThumb: "0 3px 8px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.2), 0 0 0 0.5px transparent",
+    shadowEdgeDrop: "0 1px 0 rgba(0, 0, 0, 0.6)",
+  },
+};
 
 const DEFAULT_ACCENT = "#0066ff";
 const HEX6_RE = /^#[0-9a-fA-F]{6}$/;
@@ -153,6 +269,14 @@ export function buildThemeColors(accent: string = DEFAULT_ACCENT, theme?: "light
     glassBorder: colors.textSecondary,
     glassBorderSubtle: colors.border,
     border: colors.textTertiary,
+    surface: {
+      ...colors.surface,
+      material: colors.bg,
+      materialThick: colors.bg,
+      edge: colors.textSecondary,
+      separator: colors.textTertiary,
+      fill: colors.surface.fillContrast,
+    },
   };
 }
 
@@ -167,23 +291,23 @@ function buildPalette(accent: string, theme?: "light" | "dark" | "auto"): ThemeC
       accentLight: hex + "22", // slightly more visible on dark bg
       accentDark: dark,
       accentGlow: hex + "44",
-      accentGradient: `linear-gradient(135deg, ${hex}, ${dark})`,
+      // Flat: system controls carry one colour, not a gradient.
+      accentGradient: hex,
       // Lightened until it reads on accentLight over bgHover, the lighter of the two grounds.
-      accentText: readableOn(hex, mixHex("#1e293b", hex, 0x22 / 255), "#ffffff"),
-      bg: "#0f172a",
-      bgHover: "#1e293b",
-      text: "#f1f5f9",
-      textSecondary: "#94a3b8",
-      // 5.9:1 on bg, 4.8:1 on bgHover (AA for small text; slate-500 was 3.1–3.8:1).
-      textTertiary: "#8695aa",
-      border: "#334155",
-      shadow: "rgba(0, 0, 0, 0.3)",
-      // Glass tokens — dark frosted glass. Opaque enough that a white page
-      // behind it, the worst case, leaves tertiary text at 5:1 (0.78 left 2.9:1).
-      glassBg: "rgba(15, 23, 42, 0.94)",
-      glassBgHeavy: "rgba(15, 23, 42, 0.96)",
-      glassBorder: "rgba(51, 65, 85, 0.5)",
-      glassBorderSubtle: "rgba(51, 65, 85, 0.3)",
+      accentText: readableOn(hex, mixHex("#2c2c2e", hex, 0x22 / 255), "#ffffff"),
+      // Apple's dark system palette (systemBackground, secondary fills, labels).
+      bg: "#1c1c1e",
+      bgHover: "#2c2c2e",
+      text: "#f5f5f7",
+      textSecondary: "#c1c1c6",
+      textTertiary: "#a8a8ae",
+      border: "#3a3a3c",
+      shadow: "rgba(0, 0, 0, 0.4)",
+      // Glass tokens: the sheet's material (see SURFACES).
+      glassBg: SURFACES.dark.material,
+      glassBgHeavy: SURFACES.dark.materialThick,
+      glassBorder: SURFACES.dark.edge,
+      glassBorderSubtle: SURFACES.dark.separator,
       // Type colors stay vibrant on dark
       typeQuestion: "#60a5fa",
       typeChange: "#fbbf24",
@@ -204,6 +328,8 @@ function buildPalette(accent: string, theme?: "light" | "dark" | "auto"): ThemeC
       statusInProgressBg: "rgba(245, 158, 11, 0.15)",
       statusWontFix: "#a3b0c2",
       statusWontFixBg: "rgba(148, 163, 184, 0.15)",
+      scheme: "dark",
+      surface: SURFACES.dark,
     };
   }
 
@@ -212,22 +338,23 @@ function buildPalette(accent: string, theme?: "light" | "dark" | "auto"): ThemeC
     accentLight: hex + "14", // 8% opacity
     accentDark: dark,
     accentGlow: hex + "33", // 20% opacity
-    accentGradient: `linear-gradient(135deg, ${hex}, ${dark})`,
+    accentGradient: hex,
     // Darkened until it reads on accentLight over bgHover, the darker of the two grounds.
-    accentText: readableOn(hex, mixHex("#f8f9fb", hex, 0x14 / 255), "#000000"),
+    accentText: readableOn(hex, mixHex("#f2f2f7", hex, 0x14 / 255), "#000000"),
+    // Apple's light system palette. Secondary text reads 5:1 on the material
+    // even over a black page; tertiary text only ever sits on solid rows.
     bg: "#ffffff",
-    bgHover: "#f8f9fb",
-    text: "#0f172a",
-    textSecondary: "#475569",
-    textTertiary: "#64748b",
-    border: "#e2e8f0",
-    shadow: "rgba(0, 0, 0, 0.06)",
-    // Glass tokens, as opaque as the dark ones and for the same reason: over
-    // a black page, the worst case, 0.72 left tertiary text at 2.4:1.
-    glassBg: "rgba(255, 255, 255, 0.94)",
-    glassBgHeavy: "rgba(255, 255, 255, 0.97)",
-    glassBorder: "rgba(255, 255, 255, 0.35)",
-    glassBorderSubtle: "rgba(255, 255, 255, 0.18)",
+    bgHover: "#f2f2f7",
+    text: "#1d1d1f",
+    textSecondary: "#4f4f54",
+    textTertiary: "#636368",
+    border: "#e3e3e8",
+    shadow: "rgba(0, 0, 0, 0.08)",
+    // Glass tokens: the sheet's material (see SURFACES).
+    glassBg: SURFACES.light.material,
+    glassBgHeavy: SURFACES.light.materialThick,
+    glassBorder: SURFACES.light.edge,
+    glassBorderSubtle: SURFACES.light.separator,
     // Type colors, dark enough to read as badge text on their pastel (4.5:1+);
     // blue-500, red-500 and slate-500 read 3.4–4.5:1 there.
     typeQuestion: "#2563eb",
@@ -249,6 +376,8 @@ function buildPalette(accent: string, theme?: "light" | "dark" | "auto"): ThemeC
     statusInProgressBg: "#fffbeb",
     statusWontFix: "#5b6778",
     statusWontFixBg: "#f1f5f9",
+    scheme: "light",
+    surface: SURFACES.light,
   };
 }
 
@@ -304,7 +433,12 @@ export function getTypeBgColor(type: string, colors: ThemeColors): string {
   }
 }
 
+/** The system UI face, for the Shadow DOM and the surfaces on the page alike. */
+export const SYSTEM_FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif`;
+
 export function cssVariables(colors: ThemeColors): string {
+  const { surface } = colors;
+  const dark = colors.scheme === "dark";
   return /* css */ `
     --sp-accent: ${colors.accent};
     --sp-accent-light: ${colors.accentLight};
@@ -339,17 +473,59 @@ export function cssVariables(colors: ThemeColors): string {
     --sp-status-in-progress-bg: ${colors.statusInProgressBg};
     --sp-status-wont-fix: ${colors.statusWontFix};
     --sp-status-wont-fix-bg: ${colors.statusWontFixBg};
-    --sp-radius: 12px;
-    --sp-radius-lg: 16px;
-    --sp-radius-xl: 20px;
+    --sp-radius: 10px;
+    --sp-radius-lg: 14px;
+    --sp-radius-xl: 22px;
     --sp-radius-full: 9999px;
     --sp-blur: 20px;
-    --sp-blur-heavy: 32px;
-    --sp-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
-    --sp-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.04);
-    --sp-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
-    --sp-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.04);
-    --sp-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.06);
-    --sp-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --sp-blur-heavy: 30px;
+    --sp-shadow-xs: ${surface.shadowRow};
+    --sp-shadow-sm: ${surface.shadowFloat};
+    --sp-shadow-md: ${surface.shadowFloat};
+    --sp-shadow-lg: ${surface.shadowFloat};
+    --sp-shadow-xl: ${surface.shadowSheet};
+    /* The system face where there is one (San Francisco on Apple), Inter before
+       the generic fallbacks so Linux does not land on DejaVu. */
+    --sp-font: ${SYSTEM_FONT};
+    --sp-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Inter, system-ui, sans-serif;
+    --sp-font-mono: ui-monospace, "SF Mono", Menlo, "Cascadia Code", Consolas, monospace;
+
+    /* Native surfaces (see SURFACES) */
+    --sp-material: ${surface.material};
+    --sp-material-thick: ${surface.materialThick};
+    --sp-material-blur: blur(30px) saturate(180%);
+    --sp-grouped: ${surface.grouped};
+    --sp-row: ${surface.row};
+    --sp-row-hover: ${surface.rowHover};
+    --sp-fill: ${surface.fill};
+    --sp-fill-strong: ${surface.fillStrong};
+    --sp-fill-contrast: ${surface.fillContrast};
+    --sp-separator: ${surface.separator};
+    --sp-edge: ${surface.edge};
+    --sp-sheen: ${surface.sheen};
+    --sp-sheen-soft: ${surface.sheenSoft};
+    --sp-hairline: ${surface.hairline};
+    --sp-thumb: ${surface.thumb};
+    --sp-grabber: ${surface.grabber};
+    --sp-gray3: ${surface.gray3};
+    --sp-danger: ${surface.danger};
+    --sp-danger-press: ${surface.dangerPress};
+    --sp-shadow-row: ${surface.shadowRow};
+    --sp-shadow-row-hover: ${surface.shadowRowHover};
+    --sp-shadow-float: ${surface.shadowFloat};
+    --sp-shadow-sheet: ${surface.shadowSheet};
+    --sp-shadow-sheet-up: ${surface.shadowSheetUp};
+    --sp-shadow-popover: ${surface.shadowPopover};
+    --sp-shadow-thumb: ${surface.shadowThumb};
+    --sp-shadow-edge-drop: ${surface.shadowEdgeDrop};
+    --sp-ring: 0 0 0 3px color-mix(in srgb, var(--sp-accent) 30%, transparent);
+    /* Inks: a status, type or chip colour pushed toward the text, so it reads
+       on its own tint. Per element: color-mix(in srgb, <colour> var(--sp-ink-pct), var(--sp-ink-mix)). */
+    --sp-ink-mix: ${surface.inkMix};
+    --sp-ink-pct: ${surface.inkPct};
+    --sp-ink-green: ${dark ? "color-mix(in srgb, var(--sp-status-open) 80%, #fff)" : "color-mix(in srgb, var(--sp-status-open) 82%, #000)"};
+    --sp-ink-red: ${dark ? "color-mix(in srgb, var(--sp-type-bug) 66%, #fff)" : "color-mix(in srgb, var(--sp-type-bug) 86%, #000)"};
+    --sp-ink-amber: ${dark ? "color-mix(in srgb, var(--sp-status-in-progress) 70%, #fff)" : "color-mix(in srgb, var(--sp-status-in-progress) 80%, #000)"};
+    --sp-accent-ink: ${dark ? "color-mix(in srgb, var(--sp-accent-text) 70%, #fff)" : "var(--sp-accent-text)"};
   `;
 }
