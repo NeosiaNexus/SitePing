@@ -396,9 +396,15 @@ export function launch(config: SitepingConfig): SitepingInstance {
   toast.setAttribute("aria-hidden", "true");
   toast.hidden = true;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  // It fades in (sp-toast-in) and now fades out the same way, faster.
   const hideToast = () => {
     clearTimeout(toastTimer);
-    toast.hidden = true;
+    if (toast.hidden) return;
+    toast.classList.add("sp-toast--leaving");
+    toastTimer = setTimeout(() => {
+      toast.hidden = true;
+      toast.classList.remove("sp-toast--leaving");
+    }, 150);
   };
   toast.addEventListener("click", hideToast);
   shadow.appendChild(toast);
@@ -406,6 +412,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     liveRegion.textContent = text;
     toast.textContent = text;
     toast.classList.toggle("sp-toast--error", failed);
+    toast.classList.remove("sp-toast--leaving");
     toast.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(hideToast, failed ? 8000 : 4000);
@@ -1004,11 +1011,12 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
       unregisterEscapeLayer();
       stopKeyboardTracking();
       backdrop.classList.remove("sp-identity--open");
+      // The next step (often another modal) starts once this one is gone.
       setTimeout(() => {
         backdrop.remove();
         previouslyFocused?.focus();
         resolve(result);
-      }, 250);
+      }, 200);
     };
 
     const cancelBtn = document.createElement("button");
@@ -1091,10 +1099,10 @@ function promptIdentity(shadowRoot: ShadowRoot, t: TFunction, overPopup: boolean
 
     shadowRoot.appendChild(backdrop);
 
-    // Animate in
-    requestAnimationFrame(() => {
-      backdrop.classList.add("sp-identity--open");
-      nameInput.focus();
-    });
+    // Animate in: commit the hidden start state first, or the very next
+    // frame's class change starts no transition and the modal pops in.
+    void backdrop.offsetHeight;
+    backdrop.classList.add("sp-identity--open");
+    nameInput.focus();
   });
 }

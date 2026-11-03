@@ -87,6 +87,9 @@ export function mockMatchMedia(matches = false): void {
   });
 }
 
+/** A mouse or trackpad (`viewport.ts` `canHover`): hover looks only apply under it. */
+export const FINE_HOVER_MEDIA = "(hover: hover) and (pointer: fine)";
+
 /** Media queries the phone layout reads (`viewport.ts`) — pass to `mockMediaQueries`. */
 export const PHONE_MEDIA = [COMPACT_MEDIA, "(pointer: coarse)"];
 

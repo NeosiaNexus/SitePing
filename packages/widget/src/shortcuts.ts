@@ -66,7 +66,8 @@ export function focusCardByIndex(listContainer: HTMLElement, index: number): voi
   const target = cards[clamped];
   if (!target) return;
   target.classList.add("sp-card--focused");
-  target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  // j/k is keyboard navigation: the list jumps, it never glides.
+  target.scrollIntoView({ block: "nearest" });
   target.focus({ preventScroll: true });
 }
 
@@ -94,21 +95,20 @@ const SHORTCUT_DEFS: ShortcutDef[] = [
 // ---------------------------------------------------------------------------
 
 export const SHORTCUTS_CSS = /* css */ `
-  /* ---- Help overlay backdrop ---- */
+  /* ---- Help overlay backdrop ----
+     Opened by the ? key: keyboard-initiated, so it appears at once (no fade).
+     The card is the material: a blurred backdrop under it would only cost paint. */
 
   .sp-shortcuts-overlay {
     position: fixed;
     inset: 0;
     background: var(--sp-backdrop, rgba(15, 23, 42, 0.2));
-    backdrop-filter: blur(var(--sp-blur));
-    -webkit-backdrop-filter: blur(var(--sp-blur));
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 10;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.2s ease;
   }
 
   .sp-shortcuts-overlay--visible {
@@ -116,26 +116,18 @@ export const SHORTCUTS_CSS = /* css */ `
     pointer-events: auto;
   }
 
-  /* ---- Glassmorphism card ---- */
+  /* ---- Material card ---- */
 
   .sp-shortcuts-card {
-    width: 380px;
-    max-width: calc(100vw - 32px);
-    padding: 24px 28px 20px;
-    border-radius: 20px;
-    background: var(--sp-glass-bg-heavy);
-    backdrop-filter: blur(var(--sp-blur-heavy));
-    -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
-    border: 1px solid var(--sp-glass-border);
-    box-shadow: var(--sp-shadow-xl);
+    width: min(356px, calc(100% - 24px));
+    padding: 22px 22px 18px;
+    border-radius: var(--sp-radius-xl);
+    background: var(--sp-material-thick);
+    backdrop-filter: var(--sp-material-blur);
+    -webkit-backdrop-filter: var(--sp-material-blur);
+    box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-sheet);
     font-family: var(--sp-font);
     position: relative;
-    transform: scale(0.92) translateY(8px);
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .sp-shortcuts-overlay--visible .sp-shortcuts-card {
-    transform: scale(1) translateY(0);
   }
 
   /* ---- Title row ---- */
@@ -144,8 +136,9 @@ export const SHORTCUTS_CSS = /* css */ `
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 16px;
-    font-weight: 700;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.022em;
     color: var(--sp-text);
     margin-bottom: 18px;
   }
@@ -157,18 +150,18 @@ export const SHORTCUTS_CSS = /* css */ `
     flex-shrink: 0;
   }
 
-  /* ---- Close button ---- */
+  /* ---- Close button: a filled circle ---- */
 
   .sp-shortcuts-close {
     position: absolute;
-    top: 16px;
-    right: 16px;
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
+    top: 14px;
+    right: 14px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
     border: none;
-    background: transparent;
-    color: var(--sp-text-tertiary);
+    background: var(--sp-fill);
+    color: var(--sp-text-secondary);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -176,9 +169,11 @@ export const SHORTCUTS_CSS = /* css */ `
     transition: background 0.15s ease, color 0.15s ease;
   }
 
-  .sp-shortcuts-close:hover {
-    background: var(--sp-bg-hover);
-    color: var(--sp-text);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-shortcuts-close:hover {
+      background: var(--sp-fill-strong);
+      color: var(--sp-text);
+    }
   }
 
   .sp-shortcuts-close svg {
@@ -210,28 +205,25 @@ export const SHORTCUTS_CSS = /* css */ `
 
   .sp-shortcuts-separator {
     font-size: 11px;
-    color: var(--sp-text-tertiary);
+    color: var(--sp-text-secondary);
     user-select: none;
   }
 
-  /* ---- Key badge (<kbd> styling) ---- */
+  /* ---- Key badge (<kbd> styling): a raised key, hairline edge ---- */
 
   .sp-kbd {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 28px;
-    height: 26px;
+    min-width: 26px;
+    height: 24px;
     padding: 0 7px;
     border-radius: 6px;
-    background: var(--sp-bg-hover);
-    border: 1px solid var(--sp-border);
-    box-shadow:
-      inset 0 -1px 0 rgba(0, 0, 0, 0.08),
-      0 1px 2px rgba(0, 0, 0, 0.04);
-    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", Menlo, monospace;
+    background: var(--sp-row);
+    box-shadow: 0 0 0 0.5px var(--sp-separator), var(--sp-shadow-edge-drop);
+    font-family: var(--sp-font);
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--sp-text);
     text-align: center;
     line-height: 1;
@@ -242,37 +234,41 @@ export const SHORTCUTS_CSS = /* css */ `
 
   .sp-shortcuts-desc {
     font-size: 13px;
-    color: var(--sp-text-secondary);
+    color: var(--sp-text);
     line-height: 1.3;
   }
 
-  /* ---- Hint button (bottom-right of panel) ---- */
+  /* ---- Hint button (bottom-right of panel): a material disc ---- */
 
   .sp-shortcuts-hint {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border-radius: var(--sp-radius-full);
-    border: 1px solid var(--sp-border);
-    background: var(--sp-bg-hover);
-    color: var(--sp-text-tertiary);
-    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", Menlo, monospace;
-    font-size: 12px;
-    font-weight: 700;
+    border: none;
+    background: var(--sp-material-thick);
+    backdrop-filter: var(--sp-material-blur);
+    -webkit-backdrop-filter: var(--sp-material-blur);
+    box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
+    color: var(--sp-text-secondary);
+    font-family: var(--sp-font);
+    font-size: 13px;
+    font-weight: 600;
     line-height: 1;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease;
     position: absolute;
     bottom: 12px;
     right: 12px;
   }
 
-  .sp-shortcuts-hint:hover {
-    background: var(--sp-accent-light);
-    color: var(--sp-accent-text);
-    border-color: var(--sp-accent);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-shortcuts-hint:hover {
+      background: color-mix(in srgb, var(--sp-accent) 14%, transparent);
+      color: var(--sp-accent-ink);
+    }
   }
 
   .sp-shortcuts-hint::after {
@@ -280,15 +276,16 @@ export const SHORTCUTS_CSS = /* css */ `
     position: absolute;
     bottom: calc(100% + 6px);
     right: 0;
-    padding: 4px 8px;
-    border-radius: 6px;
-    background: var(--sp-glass-bg-heavy);
-    border: 1px solid var(--sp-glass-border);
-    box-shadow: var(--sp-shadow-sm);
+    padding: 5px 10px;
+    border-radius: var(--sp-radius-full);
+    background: var(--sp-material-thick);
+    backdrop-filter: var(--sp-material-blur);
+    -webkit-backdrop-filter: var(--sp-material-blur);
+    box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
     font-family: var(--sp-font);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
-    color: var(--sp-text-secondary);
+    color: var(--sp-text);
     white-space: nowrap;
     opacity: 0;
     pointer-events: none;
@@ -296,9 +293,20 @@ export const SHORTCUTS_CSS = /* css */ `
     transition: opacity 0.15s ease, transform 0.15s ease;
   }
 
-  .sp-shortcuts-hint:hover::after {
-    opacity: 1;
-    transform: translateY(0);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-shortcuts-hint:hover::after {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Forced colours drop the shadows that draw these edges. */
+  @media (forced-colors: active) {
+    .sp-shortcuts-card,
+    .sp-shortcuts-hint,
+    .sp-kbd {
+      border: 1px solid ButtonText;
+    }
   }
 
   /* ---- Card focus highlight (navigation) ---- */
@@ -309,17 +317,6 @@ export const SHORTCUTS_CSS = /* css */ `
     border-radius: inherit;
   }
 
-  /* ---- Reduced motion ---- */
-
-  @media (prefers-reduced-motion: reduce) {
-    .sp-shortcuts-overlay,
-    .sp-shortcuts-card,
-    .sp-shortcuts-close,
-    .sp-shortcuts-hint,
-    .sp-shortcuts-hint::after {
-      transition-duration: 0.01ms !important;
-    }
-  }
 `;
 
 // ---------------------------------------------------------------------------

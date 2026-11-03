@@ -36,10 +36,15 @@ export default function InboxPage() {
               >
                 <DemoSiteLink>demo site</DemoSiteLink>
               </Suspense>{" "}
-              lands here, on the element it was drawn on, with its screenshot. Work through it from the keyboard.
+              lands here, on the element it was drawn on, with its screenshot.
+              <span className="pointer-coarse:hidden"> Work through it from the keyboard.</span>
             </p>
           </div>
-          <ul aria-label="Keyboard shortcuts" className="flex flex-wrap gap-x-4 gap-y-2 lg:col-span-5 lg:justify-end">
+          {/* Shortcuts mean nothing on a touch screen: the list shows where a keyboard is likely. */}
+          <ul
+            aria-label="Keyboard shortcuts"
+            className="flex flex-wrap gap-x-4 gap-y-2 pointer-coarse:hidden lg:col-span-5 lg:justify-end"
+          >
             {keys.map(([combo, action]) => (
               <li key={action} className="flex items-center gap-1.5 text-[13px] text-dim">
                 {combo.split(" ").map((k) => (
@@ -55,7 +60,7 @@ export default function InboxPage() {
             ))}
           </ul>
         </header>
-        <div className="h-[calc(100vh-15rem)] min-h-[560px]">
+        <div className="h-[calc(100dvh-15rem)] min-h-[560px]">
           {/* useSearchParams in DemoInbox requires a Suspense boundary for static rendering */}
           <Suspense fallback={null}>
             <DemoInbox />

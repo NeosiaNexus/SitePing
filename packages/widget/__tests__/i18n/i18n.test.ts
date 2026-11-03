@@ -64,7 +64,7 @@ describe("createT", () => {
 
   it("returns English translations for 'en'", () => {
     const t = createT("en");
-    expect(t("panel.title")).toBe("Feedbacks");
+    expect(t("panel.title")).toBe("Feedback");
     expect(t("panel.close")).toBe("Close panel");
     expect(t("popup.submit")).toBe("Send");
   });
@@ -177,7 +177,7 @@ describe("interpolate", () => {
   });
 
   it("tWithParams interpolates a translated template", () => {
-    expect(tWithParams(createT("en"), "marker.count", { count: 7 })).toBe("7 feedback markers displayed");
+    expect(tWithParams(createT("en"), "marker.count", { count: 7 })).toBe("Feedback markers shown: 7");
   });
 
   it("tWithParams fills every placeholder of a multi-param template", () => {

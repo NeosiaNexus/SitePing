@@ -18,7 +18,9 @@ export function Banner() {
       data-siteping-ignore="true"
       className={`landing ${bricolage.variable} relative z-50 border-b border-line bg-ink text-paper`}
     >
-      <div className="mx-auto flex min-h-12 max-w-[90rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2 sm:px-6">
+      {/* One row from sm up: the note truncates instead of wrapping the banner to 81px, a height the
+          playground's pill (top: 7.5rem) and the client site's sticky nav both assume is 48px. */}
+      <div className="mx-auto flex min-h-12 max-w-[90rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2 sm:flex-nowrap sm:px-6">
         {/* useSearchParams needs Suspense for static rendering; fall back to server-mode copy */}
         <Suspense fallback={<BannerContent onInbox={onInbox} localMode={false} />}>
           <ModeAwareBannerContent onInbox={onInbox} />
@@ -70,7 +72,7 @@ function BannerContent({ onInbox, localMode }: { onInbox: boolean; localMode: bo
         </Link>
         <Link
           href={onInbox ? `/demo${modeQuery}` : `/demo/inbox${modeQuery}`}
-          className="press focus-ring inline-flex h-8 items-center gap-1.5 rounded-full bg-paper px-3.5 font-semibold text-ink transition-colors duration-150 hover:bg-white"
+          className="press focus-ring inline-flex h-8 items-center gap-1.5 rounded-full bg-paper px-3.5 font-semibold text-ink transition-[color,background-color,border-color,transform] duration-150 hover:bg-white"
         >
           {onInbox ? "Back to the demo site" : "Open the inbox"}
         </Link>

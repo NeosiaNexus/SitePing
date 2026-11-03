@@ -23,32 +23,37 @@ export const EXPORT_CSS = /* css */ `
      Export Button & Menu
      ============================ */
 
+  /* A tinted text button, like a toolbar item. */
+  /* An icon bar button, like Delete all (base.ts): its label is visually hidden. */
   .sp-export-btn {
-    padding: 5px 12px;
-    border-radius: var(--sp-radius-full);
-    border: 1px solid var(--sp-border);
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+    border: none;
     background: transparent;
-    color: var(--sp-text-tertiary);
+    color: var(--sp-accent-ink);
     font-family: var(--sp-font);
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 500;
+    white-space: nowrap;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 4px;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
     position: relative;
   }
 
   .sp-export-btn svg {
-    width: 13px;
-    height: 13px;
+    width: 17px;
+    height: 17px;
   }
 
-  .sp-export-btn:hover {
-    border-color: var(--sp-accent);
-    color: var(--sp-accent-text);
-    background: var(--sp-accent-light);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-export-btn:hover {
+      background: color-mix(in srgb, var(--sp-accent) 10%, transparent);
+    }
   }
 
   .sp-export-btn:disabled {
@@ -62,48 +67,56 @@ export const EXPORT_CSS = /* css */ `
     top: calc(100% + 6px);
     right: 0;
     min-width: 180px;
-    padding: 4px;
-    border-radius: var(--sp-radius);
-    background: var(--sp-glass-bg-heavy);
-    backdrop-filter: blur(var(--sp-blur));
-    -webkit-backdrop-filter: blur(var(--sp-blur));
-    border: 1px solid var(--sp-glass-border);
-    box-shadow: var(--sp-shadow-lg);
+    padding: 6px;
+    border-radius: var(--sp-radius-lg);
+    background: var(--sp-material-thick);
+    backdrop-filter: var(--sp-material-blur);
+    -webkit-backdrop-filter: var(--sp-material-blur);
+    box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
     z-index: 10;
     opacity: 0;
-    transform: translateY(-4px) scale(0.97);
-    transition: opacity 0.15s ease, transform 0.15s ease;
+    /* Grows out of its trigger (right-aligned), and is interruptible. */
+    transform: scale(0.96);
+    transform-origin: top right;
+    transition: opacity 0.15s ease, transform 0.15s var(--sp-ease-out);
     pointer-events: none;
   }
 
   .sp-export-menu--open {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
     pointer-events: auto;
   }
 
+  /* Rows highlight with a grey fill, the text keeps its colour. */
   .sp-export-option {
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 8px 16px;
+    min-height: 34px;
+    padding: 7px 10px;
     border: none;
     border-radius: 8px;
     background: transparent;
-    color: var(--sp-text-secondary);
+    color: var(--sp-text);
     font-family: var(--sp-font);
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 400;
+    letter-spacing: -0.005em;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: var(--sp-tr);
     text-align: left;
   }
 
-  .sp-export-option:hover,
   .sp-export-option:focus-visible {
-    background: var(--sp-accent-light);
-    color: var(--sp-accent-text);
+    background: var(--sp-fill);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sp-export-option:hover {
+      background: var(--sp-fill);
+    }
   }
 
   .sp-export-option-icon {
@@ -111,6 +124,7 @@ export const EXPORT_CSS = /* css */ `
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    color: var(--sp-text-secondary);
   }
 
   .sp-export-option-icon svg {
@@ -236,7 +250,7 @@ export class ExportButton {
     // Wrapper for relative positioning of the menu
     this.element = el("div", { style: "position: relative; display: inline-flex;" });
 
-    // Trigger button — matches .sp-btn-delete-all pill style
+    // Trigger button: a tinted text button, like .sp-btn-delete-all
     const btn = document.createElement("button");
     btn.className = "sp-export-btn";
     btn.setAttribute("aria-haspopup", "true");
@@ -245,6 +259,8 @@ export class ExportButton {
     const label = document.createElement("span");
     setText(label, t("export.label"));
     btn.appendChild(label);
+    // The label is visually hidden (an icon bar button): the pointer gets it as a tooltip.
+    btn.title = t("export.label");
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       this.toggle();

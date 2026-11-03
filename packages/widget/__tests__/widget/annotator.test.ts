@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type WidgetEvents } from "../../src/events.js";
 import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
-import { mockMatchMedia, mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
+import { FINE_HOVER_MEDIA, mockMatchMedia, mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Stubs — jsdom lacks matchMedia
@@ -998,19 +998,34 @@ describe("Annotator", () => {
   // -------------------------------------------------------------------------
 
   describe("cancel button hover effects", () => {
-    it("mouseenter on cancel changes styles", () => {
+    // Hover looks are for a mouse: a tap must not leave them stuck.
+    beforeEach(() => mockMediaQueries([FINE_HOVER_MEDIA]));
+    afterEach(() => mockMediaQueries([]));
+
+    it("a tap (no fine hover) leaves the cancel button's resting look", () => {
+      mockMediaQueries([]);
+      bus.emit("annotation:start");
+      const cancelBtn = Array.from(document.body.querySelectorAll("button")).find(
+        (btn) => btn.textContent === t("annotator.cancel"),
+      )!;
+      const backgroundBefore = cancelBtn.style.background;
+      cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      expect(cancelBtn.style.background).toBe(backgroundBefore);
+    });
+
+    it("mouseenter on cancel turns it red", () => {
       bus.emit("annotation:start");
 
       const buttons = document.body.querySelectorAll("button");
       const cancelBtn = Array.from(buttons).find((btn) => btn.textContent === t("annotator.cancel"))!;
 
-      const borderBefore = cancelBtn.style.borderColor;
+      const backgroundBefore = cancelBtn.style.background;
       const colorBefore = cancelBtn.style.color;
 
       cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
 
       // jsdom normalizes hex to rgb — just check the style changed
-      expect(cancelBtn.style.borderColor).not.toBe(borderBefore);
+      expect(cancelBtn.style.background).not.toBe(backgroundBefore);
       expect(cancelBtn.style.color).not.toBe(colorBefore);
     });
 
@@ -1019,15 +1034,14 @@ describe("Annotator", () => {
 
       const buttons = document.body.querySelectorAll("button");
       const cancelBtn = Array.from(buttons).find((btn) => btn.textContent === t("annotator.cancel"))!;
+      const backgroundBefore = cancelBtn.style.background;
+      const colorBefore = cancelBtn.style.color;
 
       cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      const hoverBorder = cancelBtn.style.borderColor;
-      const hoverColor = cancelBtn.style.color;
-
       cancelBtn.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
-      // After mouseleave, border and color should differ from hover state
-      expect(cancelBtn.style.borderColor).not.toBe(hoverBorder);
-      expect(cancelBtn.style.color).not.toBe(hoverColor);
+
+      expect(cancelBtn.style.background).toBe(backgroundBefore);
+      expect(cancelBtn.style.color).toBe(colorBefore);
     });
   });
 
@@ -1320,6 +1334,7 @@ describe("Annotator", () => {
     });
 
     it("freezes the toolbar Cancel while a submission is in flight, then restores it (#397)", async () => {
+      mockMediaQueries([FINE_HOVER_MEDIA]);
       popupMocks.keepShowPending = true;
       const completeListener = vi.fn();
       bus.on("annotation:complete", completeListener);
@@ -1329,7 +1344,7 @@ describe("Annotator", () => {
       const cancelBtn = Array.from(document.body.querySelectorAll("button")).find(
         (btn) => btn.textContent === t("annotator.cancel"),
       )!;
-      const restingBorder = cancelBtn.style.borderColor;
+      const restingBackground = cancelBtn.style.background;
       expect(cancelBtn.hasAttribute("aria-disabled")).toBe(false);
 
       overlay.dispatchEvent(new MouseEvent("mousedown", { clientX: 50, clientY: 50, bubbles: true }));
@@ -1342,7 +1357,7 @@ describe("Annotator", () => {
       expect(cancelBtn.getAttribute("aria-disabled")).toBe("true");
       expect(cancelBtn.style.opacity).toBe("0.5");
       cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      expect(cancelBtn.style.borderColor).toBe(restingBorder);
+      expect(cancelBtn.style.background).toBe(restingBackground);
 
       // Settled: back to an active button.
       bus.emit("feedback:error", new Error("offline"));
@@ -1350,7 +1365,8 @@ describe("Annotator", () => {
       expect(cancelBtn.hasAttribute("aria-disabled")).toBe(false);
       expect(cancelBtn.style.opacity).toBe("1");
       cancelBtn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      expect(cancelBtn.style.borderColor).not.toBe(restingBorder);
+      expect(cancelBtn.style.background).not.toBe(restingBackground);
+      mockMediaQueries([]);
     });
 
     it("settles a submission whose failed send was queued as accepted, so the popup closes (#308)", async () => {
@@ -2001,15 +2017,20 @@ describe("Annotator on touch screens", () => {
     expect(findOverlay()!.getAttribute("aria-label")).toBe(t("annotator.instruction"));
   });
 
-  it("uses a solid toolbar on phones, clear of the notch", () => {
+  it("floats the toolbar as a centred island on phones, clear of the notch", () => {
     mockMediaQueries(PHONE_MEDIA);
     bus.emit("annotation:start");
     const cancel = Array.from(document.body.querySelectorAll("button")).find(
       (b) => b.textContent === t("annotator.cancel"),
     )!;
     const toolbar = cancel.parentElement!;
-    expect(toolbar.style.background).toBe("rgb(255, 255, 255)");
-    expect(toolbar.style.padding).toContain("safe-area-inset-top");
+    expect(toolbar.style.top).toContain("safe-area-inset-top");
+    // Centred by auto margins, not a transform: the slide-in animates transform.
+    expect(toolbar.style.width).toBe("max-content");
+    expect(toolbar.style.margin).toBe("0px auto");
+    expect(toolbar.style.transform).toBe("");
+    // Wraps inside the screen rather than overflow it.
+    expect(toolbar.style.maxWidth).toBe("calc(100vw - 24px)");
   });
 
   describe("keeping the selection above the phone sheet", () => {

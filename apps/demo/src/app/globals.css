@@ -49,6 +49,28 @@ body {
   }
 }
 
+/*
+ * Apple's accessibility signals beyond motion: solid surfaces when the OS asks
+ * for less transparency, firmer hairlines and secondary text when it asks for
+ * more contrast. The tokens are plain custom properties, so this is all it takes.
+ */
+@media (prefers-reduced-transparency: reduce) {
+  .landing [class*="backdrop-blur"],
+  .landing[class*="backdrop-blur"] {
+    background-color: var(--color-ink) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-line: rgb(148 163 255 / 0.4);
+    --color-line-strong: rgb(148 163 255 / 0.6);
+    --color-dim: var(--color-mist);
+  }
+}
+
 /* Component layer, so a utility on the same element always wins. */
 @layer components {
   /* ── Landing ─────────────────────────────────────────────────────────── */
@@ -63,6 +85,11 @@ body {
   /* Tailwind 4 leaves buttons on the default cursor; the hero's crosshair would leak in. */
   .landing :where(button, summary):not(:disabled) {
     cursor: pointer;
+  }
+
+  /* No orphaned last word in running text; headings already balance. */
+  .landing p {
+    text-wrap: pretty;
   }
 
   .landing ::selection {

@@ -1,7 +1,7 @@
 import { type AnnotationPayload, type FeedbackType, newClientId, type ScreenshotRegion } from "@siteping/core";
-import { INSTANT_ANNOTATION_SIZE, Z_INDEX_MAX } from "./constants.js";
+import { EASE_OUT, INSTANT_ANNOTATION_SIZE, Z_INDEX_MAX } from "./constants.js";
 import { deepElementFromPoint, findAnchorElement, generateAnchor, rectToPercentages } from "./dom/anchor.js";
-import { el, setText } from "./dom-utils.js";
+import { el, focusRing, pressable, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { deepFocusTarget, isWidgetChrome } from "./focus-tracker.js";
 import { isolateFromHost, registerEscapeLayer } from "./host-isolation.js";
@@ -9,11 +9,35 @@ import type { TFunction } from "./i18n/index.js";
 import { Popup } from "./popup.js";
 import { NO_VIEWPORT_INSETS, type ViewportInsets } from "./popup-placement.js";
 import { type AnnotatedScreenshot, captureAnnotatedScreenshot } from "./screenshot.js";
-import type { ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
+import { SYSTEM_FONT, type ThemeColors } from "./styles/theme.js";
+import { canHover, isCoarsePointer, prefersReducedMotion } from "./viewport.js";
 
 /** Below this size (px) on either axis, a gesture is a click or a tap: it points at the element under it. */
 const MIN_RECT_SIZE = 10;
+
+/** Reduced transparency or increased contrast: the island turns opaque, like the theme's materials. */
+function solidSurfaces(): boolean {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-transparency: reduce), (prefers-contrast: more)").matches
+  );
+}
+
+/**
+ * The annotation bar is a dark island in both schemes, like a system
+ * recording indicator: it reads over any page and never passes for page UI.
+ */
+const ISLAND = {
+  bg: "rgba(0, 0, 0, 0.86)",
+  /** Reduced transparency: the same island, opaque. */
+  bgSolid: "#000000",
+  text: "#f5f5f7",
+  instruction: "rgba(255, 255, 255, 0.94)",
+  cancelBg: "rgba(255, 255, 255, 0.16)",
+  /** Cancel's hover: a red tint with a light red label, 5:1 on the island. */
+  cancelHoverBg: "rgba(255, 69, 58, 0.26)",
+  cancelHoverText: "#ff8a80",
+} as const;
 
 /** The part of a viewport rect that is on screen. */
 function clampToViewport(r: DOMRect): DOMRect {
@@ -74,10 +98,9 @@ function newPopupSession(): PopupSession {
 /**
  * Annotation mode: full-page overlay with rectangle drawing.
  *
- * Glassmorphism design:
- * - Frosted glass toolbar at top
- * - Subtle tinted overlay
- * - Accent-colored drawing rectangle with glow
+ * - A dark floating island at the top centre carries the instruction and Cancel
+ * - A light scrim over the page
+ * - An accent rectangle with a soft halo for the selection
  */
 export class Annotator {
   private overlay: HTMLElement | null = null;
@@ -181,7 +204,6 @@ export class Annotator {
     if (this.isActive) return;
     this.isActive = true;
     const drawMode = !this.instantMode;
-    const compact = isCompactViewport();
     const touch = isCoarsePointer();
     // The visible copy on touch says "tap an element". The overlay's name keeps
     // the Enter route (#162): tablets with a keyboard, and screen readers on them.
@@ -209,7 +231,8 @@ export class Annotator {
     this.savedOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Overlay — subtle blue tint for depth.
+    // Overlay: the page dims a little (more in dark, where a light tint would
+    // not read), so the annotation mode is visibly on.
     //
     // Overlay, toolbar and the drawn rectangle live on document.body, outside
     // the siteping-widget shadow host. Without the `data-siteping-ignore`
@@ -221,7 +244,7 @@ export class Annotator {
         position:fixed;inset:0;
         z-index:${Z_INDEX_MAX - 1};
         pointer-events:auto;
-        background:rgba(15, 23, 42, 0.04);
+        background:${this.colors.surface.overlayTint};
         cursor:${drawMode ? "crosshair" : "default"};
         touch-action:none;-webkit-touch-callout:none;
         -webkit-user-select:none;user-select:none;
@@ -236,34 +259,42 @@ export class Annotator {
     this.overlay.setAttribute("aria-label", drawMode ? instruction : this.t("annotator.instantInstruction"));
     this.overlay.setAttribute("data-siteping-ignore", "true");
 
-    // Toolbar — glassmorphism bar (suppressed in instant mode: the
-    // "Draw a rectangle" copy is wrong when the composer is already open)
+    // Toolbar: a floating island at the top centre (suppressed in instant
+    // mode: the "Draw a rectangle" copy is wrong when the composer is already
+    // open). Centred by `left:0;right:0` with auto side margins around a
+    // max-content width, not a transform: the slide-in below animates
+    // `transform`. It wraps to two lines on a phone rather than overflow.
     if (drawMode) {
+      const island = solidSurfaces()
+        ? `background:${ISLAND.bgSolid};`
+        : `background:${ISLAND.bg};backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);`;
       this.toolbar = el("div", {
         style: /* css */ `
-          position:fixed;top:0;left:0;right:0;
+          position:fixed;top:calc(env(safe-area-inset-top, 0px) + 10px);left:0;right:0;
+          width:max-content;max-width:calc(100vw - 24px);margin:0 auto;
           z-index:${Z_INDEX_MAX};
           pointer-events:auto;
-          min-height:52px;box-sizing:border-box;
-          padding:calc(env(safe-area-inset-top, 0px) + 8px) ${compact ? "12px 8px 16px" : "16px 8px"};
-          background:${compact ? this.colors.bg : this.colors.glassBg};
-          backdrop-filter:blur(24px);
-          -webkit-backdrop-filter:blur(24px);
-          border-bottom:1px solid ${this.colors.glassBorder};
-          display:flex;align-items:center;justify-content:center;gap:${compact ? 12 : 16}px;
-          font-family:"Inter",system-ui,-apple-system,sans-serif;
-          font-size:14px;line-height:1.35;color:${this.colors.text};
-          box-shadow:0 4px 16px ${this.colors.shadow};
+          min-height:44px;box-sizing:border-box;
+          padding:5px 5px 5px 16px;
+          border:none;border-radius:22px;
+          ${island}
+          box-shadow:inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 12px 32px rgba(0, 0, 0, 0.28);
+          display:flex;align-items:center;justify-content:center;gap:12px;
+          font-family:${SYSTEM_FONT};
+          font-size:13px;line-height:1.35;color:${ISLAND.text};
           -webkit-font-smoothing:antialiased;
         `,
       });
       this.toolbar.setAttribute("data-siteping-ignore", "true");
 
+      // The accent lifted toward white, so it glows (and rings Cancel's
+      // keyboard focus) on the dark island, whatever accent the host picked.
+      const islandAccent = `color-mix(in srgb, ${this.colors.accent} 50%, #ffffff)`;
       const dot = el("span", {
         style: /* css */ `
           width:8px;height:8px;border-radius:50%;flex-shrink:0;
-          background:${this.colors.accent};
-          box-shadow:0 0 8px ${this.colors.accentGlow};
+          background:${islandAccent};
+          box-shadow:0 0 10px color-mix(in srgb, ${this.colors.accent} 60%, #ffffff);
         `,
       });
 
@@ -279,25 +310,29 @@ export class Annotator {
         });
       }
 
-      const instructionEl = el("span", { style: "font-weight:500;letter-spacing:-0.01em;min-width:0;" });
+      const instructionEl = el("span", {
+        style: /* css */ `font-weight:500;letter-spacing:-0.005em;min-width:0;color:${ISLAND.instruction};`,
+      });
       setText(instructionEl, touch ? this.t("annotator.touchInstruction") : instruction);
 
       const cancelBtn = document.createElement("button");
       cancelBtn.style.cssText = /* css */ `
-        height:${touch ? 40 : 34}px;padding:0 18px;border-radius:9999px;flex-shrink:0;
-        border:1px solid ${this.colors.border};
-        background:${this.colors.glassBg};
-        color:${this.colors.textTertiary};font-family:"Inter",system-ui,-apple-system,sans-serif;
-        font-size:13px;font-weight:500;cursor:pointer;
-        transition:all 0.2s ease;
+        height:${touch ? 40 : 34}px;padding:0 14px;border:none;border-radius:9999px;flex-shrink:0;
+        color:#ffffff;font-family:${SYSTEM_FONT};
+        font-size:13px;font-weight:600;cursor:pointer;
+        touch-action:manipulation;
+        transition:background-color 0.15s ease,color 0.15s ease,opacity 0.15s ease,scale 0.16s ${EASE_OUT};
       `;
       setText(cancelBtn, this.t("annotator.cancel"));
       cancelBtn.addEventListener("click", () => this.cancelSession());
+      pressable(cancelBtn);
+      focusRing(cancelBtn, islandAccent);
       cancelBtn.addEventListener("mouseenter", () => {
-        if (!this.cancelFrozen) this.paintCancel(true);
+        if (!this.cancelFrozen && canHover()) this.paintCancel(true);
       });
       cancelBtn.addEventListener("mouseleave", () => this.paintCancel(false));
       this.toolbarCancel = cancelBtn;
+      this.paintCancel(false);
 
       this.toolbar.appendChild(dot);
       this.toolbar.appendChild(instructionEl);
@@ -328,7 +363,17 @@ export class Annotator {
     isolateFromHost(this.overlay);
     if (this.toolbar) isolateFromHost(this.toolbar);
     document.body.appendChild(this.overlay);
-    if (this.toolbar) document.body.appendChild(this.toolbar);
+    if (this.toolbar) {
+      document.body.appendChild(this.toolbar);
+      // The mode arrives from the top edge it lives on (Apple: spatial
+      // consistency); started from the FAB menu, never from a shortcut.
+      if (!prefersReducedMotion() && typeof this.toolbar.animate === "function") {
+        this.toolbar.animate([{ transform: "translateY(-100%)" }, { transform: "none" }], {
+          duration: 250,
+          easing: EASE_OUT,
+        });
+      }
+    }
 
     // Move focus to the overlay so the keyboard-annotation path (Enter →
     // annotate the captured keyboard target) actually receives keydown —
@@ -345,6 +390,11 @@ export class Annotator {
    */
   private toolbarInsets(): ViewportInsets {
     if (!this.toolbar) return NO_VIEWPORT_INSETS;
+    // A note drawn while the island is still sliding in would measure it
+    // mid-flight: it lands at once, where the popup must keep clear of it.
+    if (typeof this.toolbar.getAnimations === "function") {
+      for (const animation of this.toolbar.getAnimations()) animation.finish();
+    }
     const toolbarRect = this.toolbar.getBoundingClientRect();
     if (toolbarRect.height === 0) return NO_VIEWPORT_INSETS;
     const viewportHeight = window.innerHeight;
@@ -376,9 +426,8 @@ export class Annotator {
   private paintCancel(hover: boolean): void {
     const btn = this.toolbarCancel;
     if (!btn) return;
-    btn.style.borderColor = hover ? this.colors.typeBug : this.colors.border;
-    btn.style.color = hover ? this.colors.typeBug : this.colors.textTertiary;
-    btn.style.background = hover ? this.colors.typeBugBg : this.colors.glassBg;
+    btn.style.color = hover ? ISLAND.cancelHoverText : "#ffffff";
+    btn.style.background = hover ? ISLAND.cancelHoverBg : ISLAND.cancelBg;
   }
 
   /**
@@ -534,19 +583,21 @@ export class Annotator {
   }
 
   /**
-   * The accent-colored selection rectangle — shared by pointer drawing and
-   * the keyboard (Enter) highlight so the two paths can't drift visually.
+   * The accent-colored selection rectangle, shared by pointer drawing, the
+   * keyboard (Enter) highlight and the right-click point, so the paths can't
+   * drift visually: a 10% accent wash inside a 4px accent halo.
    * Excluded from screenshot capture (see overlay creation in activate()).
    */
   private createDrawingRect(): HTMLElement {
+    const { accent } = this.colors;
     const rect = el("div", {
       style: /* css */ `
         position:fixed;
-        border:2px solid ${this.colors.accent};
-        background:${this.colors.accent}12;
+        border:2px solid ${accent};
+        background:color-mix(in srgb, ${accent} 10%, transparent);
         pointer-events:none;
-        border-radius:8px;
-        box-shadow:0 0 16px ${this.colors.accentGlow};
+        border-radius:12px;
+        box-shadow:0 0 0 4px color-mix(in srgb, ${accent} 16%, transparent), 0 8px 24px rgba(0, 0, 0, 0.08);
         transition:box-shadow 0.15s ease;
       `,
     });
@@ -694,21 +745,13 @@ export class Annotator {
 
     // Create a visual indicator at the click point
     this.drawingRect?.remove();
-    this.drawingRect = el("div", {
-      style: /* css */ `
-        position:fixed;
-        left:${x}px;
-        top:${y}px;
-        width:${INSTANT_ANNOTATION_SIZE}px;
-        height:${INSTANT_ANNOTATION_SIZE}px;
-        border:2px solid ${this.colors.accent};
-        background:${this.colors.accent}12;
-        pointer-events:none;
-        border-radius:8px;
-        box-shadow:0 0 16px ${this.colors.accentGlow};
-      `,
+    this.drawingRect = this.createDrawingRect();
+    Object.assign(this.drawingRect.style, {
+      left: `${x}px`,
+      top: `${y}px`,
+      width: `${INSTANT_ANNOTATION_SIZE}px`,
+      height: `${INSTANT_ANNOTATION_SIZE}px`,
     });
-    this.drawingRect.setAttribute("data-siteping-ignore", "true");
     this.overlay?.appendChild(this.drawingRect);
 
     await this.openForm(annotation, pointRect, captureRect);

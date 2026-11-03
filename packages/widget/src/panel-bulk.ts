@@ -2,8 +2,8 @@
  * Bulk Actions system for the feedback panel.
  *
  * Allows multi-select on feedback cards with a floating action bar
- * for batch resolve/delete operations. Glassmorphism design with
- * spring animations and smooth transitions.
+ * for batch resolve/delete operations: round checks, after the system's
+ * edit mode, and a floating material capsule.
  */
 
 import { el, hasFocusWithin, parseSvg, setButtonLoading, setHidden, setInert, setText } from "./dom-utils.js";
@@ -14,9 +14,9 @@ import type { ThemeColors } from "./styles/theme.js";
 // SVG Icons
 // ---------------------------------------------------------------------------
 
-export const ICON_CHECKBOX = `<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="1" y="1" width="16" height="16" rx="4" stroke="currentColor" stroke-width="2"/></svg>`;
+export const ICON_CHECKBOX = `<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="1" y="1" width="16" height="16" rx="8" stroke="currentColor" stroke-width="2"/></svg>`;
 
-export const ICON_CHECKBOX_CHECKED = `<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="1" y="1" width="16" height="16" rx="4" fill="url(#sp-cb-grad)" stroke="none"/><polyline points="5 9 8 12 13 6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="sp-cb-grad" x1="0" y1="0" x2="18" y2="18" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--sp-accent)"/><stop offset="100%" stop-color="var(--sp-accent-dark)"/></linearGradient></defs></svg>`;
+export const ICON_CHECKBOX_CHECKED = `<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="1" y="1" width="16" height="16" rx="8" fill="currentColor"/><polyline points="5 9 8 12 13 6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 // ---------------------------------------------------------------------------
 // CSS
@@ -27,14 +27,15 @@ export const BULK_CSS = /* css */ `
      Bulk Checkbox
      ============================ */
 
+  /* A round check, after the system's edit mode. */
   .sp-bulk-checkbox {
     position: relative;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
     cursor: pointer;
     border-radius: 4px;
-    color: var(--sp-border);
+    color: var(--sp-gray3);
     opacity: 0;
     transition: opacity 0.15s ease, color 0.15s ease, transform 0.15s ease;
     display: inline-flex;
@@ -43,24 +44,30 @@ export const BULK_CSS = /* css */ `
   }
 
   .sp-bulk-checkbox svg {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     display: block;
   }
 
-  .sp-bulk-checkbox:hover {
-    color: var(--sp-accent-text);
-    transform: scale(1.1);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-bulk-checkbox:hover {
+      color: var(--sp-accent);
+    }
   }
 
   .sp-bulk-checkbox--checked {
-    color: var(--sp-accent-text);
+    color: var(--sp-accent);
     opacity: 1 !important;
-    filter: drop-shadow(0 0 4px var(--sp-accent-glow));
   }
 
-  /* Show checkboxes when hovering a card */
-  .sp-card:hover .sp-bulk-checkbox {
+  /* Show checkboxes when hovering a card, or reaching one by keyboard */
+  @media (hover: hover) and (pointer: fine) {
+    .sp-card:hover .sp-bulk-checkbox {
+      opacity: 1;
+    }
+  }
+
+  .sp-bulk-checkbox:focus-visible {
     opacity: 1;
   }
 
@@ -69,17 +76,45 @@ export const BULK_CSS = /* css */ `
     opacity: 1;
   }
 
+  /* The card's check takes the type dot's place instead of pushing the row:
+     the dot steps aside whenever the check shows. */
+  .sp-card-header > .sp-bulk-checkbox {
+    position: absolute;
+    top: 13px;
+    left: 9px;
+  }
+
+  .sp-list--has-selection .sp-card-bar,
+  .sp-card:has(.sp-bulk-checkbox:focus-visible) .sp-card-bar {
+    opacity: 0;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sp-card:hover:has(.sp-bulk-checkbox) .sp-card-bar {
+      opacity: 0;
+    }
+  }
+
+  @media not all and (hover: hover) and (pointer: fine) {
+    .sp-card:has(.sp-bulk-checkbox) .sp-card-bar {
+      opacity: 0;
+    }
+  }
+
   /* ============================
      Card Selected State
      ============================ */
 
+  /* !important: the card's own hover background is more specific. */
   .sp-card--selected {
-    border-left: 3px solid var(--sp-accent) !important;
-    background: var(--sp-accent-light) !important;
+    background: color-mix(in srgb, var(--sp-accent) 9%, var(--sp-row)) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sp-accent) 30%, transparent);
   }
 
-  .sp-card--selected:hover {
-    background: var(--sp-accent-light) !important;
+  @media (hover: hover) and (pointer: fine) {
+    .sp-card--selected:hover {
+      background: color-mix(in srgb, var(--sp-accent) 12%, var(--sp-row)) !important;
+    }
   }
 
   /* ============================
@@ -90,8 +125,8 @@ export const BULK_CSS = /* css */ `
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    margin-bottom: 4px;
+    padding: 6px 4px;
+    margin-bottom: 2px;
     border-radius: var(--sp-radius);
     background: transparent;
     cursor: pointer;
@@ -99,19 +134,26 @@ export const BULK_CSS = /* css */ `
     transition: opacity 0.2s ease, background 0.2s ease;
     user-select: none;
     font-family: var(--sp-font);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--sp-text-secondary);
   }
 
-  .sp-bulk-select-all:hover {
-    background: var(--sp-bg-hover);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-bulk-select-all:hover {
+      background: var(--sp-fill);
+    }
   }
 
   /* Show select-all on list hover or when selections exist */
-  .sp-list:hover .sp-bulk-select-all,
   .sp-list--has-selection .sp-bulk-select-all {
     opacity: 1;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sp-list:hover .sp-bulk-select-all {
+      opacity: 1;
+    }
   }
 
   .sp-bulk-select-all .sp-bulk-checkbox {
@@ -122,118 +164,89 @@ export const BULK_CSS = /* css */ `
      Floating Action Bar
      ============================ */
 
-  @keyframes sp-bulk-bar-in {
-    from {
-      transform: translateY(100%) scale(0.95);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0) scale(1);
-      opacity: 1;
-    }
-  }
-
-  @keyframes sp-bulk-bar-out {
-    from {
-      transform: translateY(0) scale(1);
-      opacity: 1;
-    }
-    to {
-      transform: translateY(100%) scale(0.95);
-      opacity: 0;
-    }
-  }
-
+  /* A floating material capsule over the list. */
   .sp-bulk-bar {
     position: absolute;
-    bottom: 16px;
-    left: 16px;
-    right: 16px;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px;
-    border-radius: 16px;
-    background: var(--sp-glass-bg-heavy);
-    backdrop-filter: blur(var(--sp-blur-heavy));
-    -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
-    border: 1px solid var(--sp-glass-border);
-    box-shadow: var(--sp-shadow-xl);
+    gap: 8px 12px;
+    padding: 8px 8px 8px 16px;
+    border-radius: 18px;
+    background: var(--sp-material-thick);
+    backdrop-filter: var(--sp-material-blur);
+    -webkit-backdrop-filter: var(--sp-material-blur);
+    box-shadow: inset 0 0.5px 0 var(--sp-edge), var(--sp-shadow-float);
     z-index: 10;
     pointer-events: none;
     opacity: 0;
-    transform: translateY(100%) scale(0.95);
-    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-                opacity 0.25s ease;
+    /* Rises from the panel's bottom edge and leaves the same way. */
+    transform: translateY(calc(100% + 16px));
+    transition: transform 0.2s var(--sp-ease-out), opacity 0.15s ease;
     font-family: var(--sp-font);
   }
 
   .sp-bulk-bar--visible {
     pointer-events: auto;
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
   }
 
   .sp-bulk-bar-count {
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--sp-text);
     white-space: nowrap;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
   }
 
   .sp-bulk-bar-actions {
     display: flex;
     align-items: center;
     gap: 6px;
+    margin-left: auto;
   }
 
+  /* Tinted buttons: an ink that reads 4.5:1 on its own tint. */
   .sp-bulk-btn-resolve,
   .sp-bulk-btn-delete {
-    padding: 7px 14px;
-    border-radius: var(--sp-radius-full);
-    border: 1.5px solid transparent;
-    background: transparent;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: var(--sp-radius);
+    border: none;
     font-family: var(--sp-font);
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 5px;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
     white-space: nowrap;
   }
 
   .sp-bulk-btn-resolve {
-    color: #22c55e;
-    border-color: #22c55e;
-  }
-
-  .sp-bulk-btn-resolve:hover {
-    background: rgba(34, 197, 94, 0.1);
-    box-shadow: 0 0 12px rgba(34, 197, 94, 0.15);
-  }
-
-  .sp-bulk-btn-resolve:active {
-    transform: scale(0.96);
-    transition-duration: 0.1s;
+    color: var(--sp-ink-green);
+    background: color-mix(in srgb, var(--sp-status-open) 13%, transparent);
   }
 
   .sp-bulk-btn-delete {
-    color: #ef4444;
-    border-color: #ef4444;
+    color: var(--sp-ink-red);
+    background: color-mix(in srgb, var(--sp-type-bug) 11%, transparent);
   }
 
-  .sp-bulk-btn-delete:hover {
-    background: rgba(239, 68, 68, 0.1);
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.15);
-  }
+  @media (hover: hover) and (pointer: fine) {
+    .sp-bulk-btn-resolve:hover {
+      background: color-mix(in srgb, var(--sp-status-open) 19%, transparent);
+    }
 
-  .sp-bulk-btn-delete:active {
-    transform: scale(0.96);
-    transition-duration: 0.1s;
+    .sp-bulk-btn-delete:hover {
+      background: color-mix(in srgb, var(--sp-type-bug) 16%, transparent);
+    }
   }
 
   .sp-bulk-btn-resolve:disabled,
@@ -244,30 +257,26 @@ export const BULK_CSS = /* css */ `
   }
 
   .sp-bulk-btn-deselect {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     border-radius: var(--sp-radius-full);
-    border: 1px solid var(--sp-border);
-    background: transparent;
-    color: var(--sp-text-tertiary);
+    border: none;
+    background: var(--sp-fill);
+    color: var(--sp-text-secondary);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
     flex-shrink: 0;
     padding: 0;
   }
 
-  .sp-bulk-btn-deselect:hover {
-    background: var(--sp-bg-hover);
-    color: var(--sp-text);
-    border-color: var(--sp-text-tertiary);
-  }
-
-  .sp-bulk-btn-deselect:active {
-    transform: scale(0.92);
-    transition-duration: 0.1s;
+  @media (hover: hover) and (pointer: fine) {
+    .sp-bulk-btn-deselect:hover {
+      background: var(--sp-fill-strong);
+      color: var(--sp-text);
+    }
   }
 
   .sp-bulk-btn-deselect svg {
@@ -302,22 +311,13 @@ export const BULK_CSS = /* css */ `
       color: HighlightText !important;
     }
 
+    /* The disc takes the text colour: the white check would vanish on it. */
+    .sp-bulk-checkbox--checked polyline {
+      stroke: Highlight;
+    }
+
     .sp-card--selected {
       border-left: 4px solid Highlight !important;
-    }
-  }
-
-  /* ============================
-     Reduced Motion
-     ============================ */
-
-  @media (prefers-reduced-motion: reduce) {
-    .sp-bulk-bar {
-      transition-duration: 0.01ms !important;
-    }
-
-    .sp-bulk-checkbox {
-      transition-duration: 0.01ms !important;
     }
   }
 `;
@@ -597,17 +597,20 @@ export class BulkActions {
     const resolve = this.t("bulk.resolve");
     const del = this.t("bulk.delete");
 
-    // Resolve button
+    // The count shows once, in the bar (`.sp-bulk-bar-count`): repeating it
+    // on both buttons pushed "Supprimer" and the deselect button off a 320px
+    // screen. The accessible names keep it, for a screen reader on a button.
     this.resolveBtn.replaceChildren();
     const resolveLabel = document.createElement("span");
-    setText(resolveLabel, count > 0 ? `${resolve} ${count}` : resolve);
+    setText(resolveLabel, resolve);
     this.resolveBtn.appendChild(resolveLabel);
+    this.resolveBtn.setAttribute("aria-label", count > 0 ? `${resolve} ${count}` : resolve);
 
-    // Delete button
     this.deleteBtn.replaceChildren();
     const deleteLabel = document.createElement("span");
-    setText(deleteLabel, count > 0 ? `${del} ${count}` : del);
+    setText(deleteLabel, del);
     this.deleteBtn.appendChild(deleteLabel);
+    this.deleteBtn.setAttribute("aria-label", count > 0 ? `${del} ${count}` : del);
   }
 
   private updateCheckbox(feedbackId: string): void {

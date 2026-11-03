@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const SEEN_KEY = "siteping_demo_coach_seen";
 
@@ -47,9 +47,26 @@ export function Coach({
   const [shown, setShown] = useState<CoachState>(state);
   const [visible, setVisible] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  // The "sent" toast's 9s countdown pauses while it is read (hovered,
+  // focused) or the tab is hidden, and resumes with what was left (Sonner).
+  const remaining = useRef(0);
+  const startedAt = useRef(0);
+  const pause = useCallback(() => {
+    if (timer.current === undefined) return;
+    window.clearTimeout(timer.current);
+    timer.current = undefined;
+    remaining.current -= Date.now() - startedAt.current;
+  }, []);
+  const resume = useCallback(() => {
+    if (timer.current !== undefined || remaining.current <= 0 || document.hidden) return;
+    startedAt.current = Date.now();
+    timer.current = window.setTimeout(onDismiss, Math.max(1500, remaining.current));
+  }, [onDismiss]);
 
   useEffect(() => {
     window.clearTimeout(timer.current);
+    timer.current = undefined;
+    remaining.current = 0;
     if (state === "hidden") {
       setVisible(false);
       return;
@@ -57,11 +74,21 @@ export function Coach({
     setShown(state);
     // Next frame, so the entry transition has a start state to leave.
     const raf = requestAnimationFrame(() => setVisible(true));
-    if (state === "sent") timer.current = window.setTimeout(onDismiss, 9000);
+    if (state === "sent") {
+      remaining.current = 9000;
+      resume();
+    }
     return () => cancelAnimationFrame(raf);
-  }, [state, onDismiss]);
+  }, [state, resume]);
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    const onVisibility = () => (document.hidden ? pause() : resume());
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearTimeout(timer.current);
+    };
+  }, [pause, resume]);
 
   if (shown === "hidden") return null;
 
@@ -76,8 +103,13 @@ export function Coach({
     <div
       data-siteping-ignore="true"
       role="status"
-      onPointerEnter={() => window.clearTimeout(timer.current)}
-      className={`landing fixed bottom-[5.5rem] z-[2147483000] w-[min(20rem,calc(100vw-2rem))] sm:bottom-[1.6rem] sm:w-[min(20rem,calc(100vw-7rem))] rounded-2xl bg-ink p-4 text-paper shadow-[0_20px_50px_-12px_rgb(5_7_26/0.7),0_0_0_1px_rgb(148_163_255/0.18)] transition-[opacity,transform] ${place} ${
+      // Faded out, it is out of the Tab order and the accessibility tree.
+      inert={!visible}
+      onPointerEnter={pause}
+      onPointerLeave={resume}
+      onFocus={pause}
+      onBlur={resume}
+      className={`landing fixed bottom-[5.5rem] z-[2147483000] w-[min(20rem,calc(100vw-2rem))] sm:bottom-[1.6rem] sm:w-[min(20rem,calc(100vw-7rem))] rounded-2xl bg-ink p-4 text-paper shadow-[0_20px_50px_-12px_rgb(5_7_26/0.7),0_0_0_1px_rgb(148_163_255/0.18)] transition-[opacity,translate] ${place} ${
         visible
           ? "translate-y-0 opacity-100 duration-[250ms] ease-out-strong"
           : "pointer-events-none translate-y-2 opacity-0 duration-150 ease-[ease]"
@@ -127,7 +159,7 @@ export function Coach({
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss"
-        className="press focus-ring absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full text-dim transition-colors duration-150 hover:bg-white/[0.06] hover:text-paper"
+        className="press focus-ring absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full text-dim transition-[color,background-color,border-color,transform] duration-150 hover:bg-white/[0.06] hover:text-paper"
       >
         <svg
           viewBox="0 0 16 16"

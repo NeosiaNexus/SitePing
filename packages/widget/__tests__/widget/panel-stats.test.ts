@@ -146,7 +146,7 @@ describe("PanelStats", () => {
 
     // Progress reflects the closed share: 2/4 = 50%
     const fill = stats.element.querySelector<HTMLElement>(".sp-stats-progress-fill")!;
-    expect(fill.style.width).toBe("50%");
+    expect(fill.style.clipPath).toBe("inset(0 50% 0 0 round 2px)");
   });
 
   it("never reports declined requests as resolved (#302)", () => {
@@ -177,7 +177,7 @@ describe("PanelStats", () => {
     );
 
     const fill = stats.element.querySelector<HTMLElement>(".sp-stats-progress-fill")!;
-    expect(fill.style.width).toBe("50%");
+    expect(fill.style.clipPath).toBe("inset(0 50% 0 0 round 2px)");
 
     const label = stats.element.querySelector<HTMLElement>(".sp-stats-progress-label")!;
     expect(label.textContent).toContain("50%");
@@ -192,7 +192,7 @@ describe("PanelStats", () => {
 
     expect(stats.element.hidden).toBe(false);
     const fill = stats.element.querySelector<HTMLElement>(".sp-stats-progress-fill")!;
-    expect(fill.style.width).toBe("0%");
+    expect(fill.style.clipPath).toBe("inset(0 100% 0 0 round 2px)");
     const label = stats.element.querySelector<HTMLElement>(".sp-stats-progress-label")!;
     expect(label.textContent).toContain("0%");
 
@@ -227,6 +227,6 @@ describe("PanelStats", () => {
     );
 
     const fill = stats.element.querySelector<HTMLElement>(".sp-stats-progress-fill")!;
-    expect(fill.style.width).toBe("33%");
+    expect(fill.style.clipPath).toBe("inset(0 67% 0 0 round 2px)");
   });
 });

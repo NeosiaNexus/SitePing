@@ -21,7 +21,6 @@ import { el, parseSvg, setText } from "../dom-utils.js";
 export interface SegmentedDecoration {
   icon?: string;
   color?: string;
-  bg?: string;
 }
 
 export interface SegmentedOption<T extends string> extends SegmentedDecoration {
@@ -85,7 +84,6 @@ export class SegmentedControl<T extends string> {
       btn.tabIndex = isActive ? 0 : -1;
       if (isActive) btn.classList.add("sp-segmented__btn--active");
       if (option.color) btn.style.setProperty("--sp-chip-color", option.color);
-      if (option.bg) btn.style.setProperty("--sp-chip-bg", option.bg);
 
       if (option.icon) {
         const iconWrap = el("span", { class: "sp-segmented__icon" });

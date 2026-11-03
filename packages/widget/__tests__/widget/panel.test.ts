@@ -638,7 +638,7 @@ describe("Panel", () => {
       expect(resolveBtn).not.toBeNull();
     });
 
-    it("renders multiple cards with staggered animation index", async () => {
+    it("renders multiple cards without an entrance stagger (the list re-renders on every filter)", async () => {
       const feedbacks = [makeFeedback({ id: "fb-1" }), makeFeedback({ id: "fb-2" }), makeFeedback({ id: "fb-3" })];
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks, total: 3 });
 
@@ -646,9 +646,7 @@ describe("Panel", () => {
 
       const cards = shadow.querySelectorAll<HTMLElement>('[role="listitem"]');
       expect(cards.length).toBe(3);
-      expect(cards[0]!.style.getPropertyValue("--sp-card-i")).toBe("0");
-      expect(cards[1]!.style.getPropertyValue("--sp-card-i")).toBe("1");
-      expect(cards[2]!.style.getPropertyValue("--sp-card-i")).toBe("2");
+      for (const card of cards) expect(card.style.getPropertyValue("--sp-card-i")).toBe("");
     });
   });
 
@@ -1271,6 +1269,97 @@ describe("Panel", () => {
   // -------------------------------------------------------------------------
   // Keyboard: Escape + Focus trap
   // -------------------------------------------------------------------------
+
+  describe("a floating sheet: closed from the page", () => {
+    const isOpen = () => shadow.querySelector<HTMLElement>(".sp-panel")!.classList.contains("sp-panel--open");
+    const pointerdown = (target: EventTarget) =>
+      target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, composed: true, button: 0 }));
+
+    it("closes on a click on the page, and leaves focus where the user clicked", async () => {
+      await panel.open();
+      const field = document.createElement("input");
+      document.body.appendChild(field);
+      field.focus();
+      pointerdown(field);
+      expect(isOpen()).toBe(false);
+      expect(document.activeElement).toBe(field);
+      field.remove();
+    });
+
+    it("stays open for a click inside the panel or on a pin", async () => {
+      await panel.open();
+      pointerdown(shadow.querySelector(".sp-panel-title")!);
+      expect(isOpen()).toBe(true);
+      const pins = document.createElement("div");
+      pins.id = "siteping-markers";
+      const pin = document.createElement("div");
+      pins.appendChild(pin);
+      document.body.appendChild(pins);
+      pointerdown(pin);
+      expect(isOpen()).toBe(true);
+      pins.remove();
+    });
+
+    it("lets a click on the page close an open menu only, not the sheet", async () => {
+      await panel.open();
+      const menu = document.createElement("div");
+      menu.className = "sp-sort-menu";
+      shadow.appendChild(menu);
+      pointerdown(document.body);
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(isOpen()).toBe(true);
+      menu.remove();
+      pointerdown(document.body);
+      expect(isOpen()).toBe(false);
+    });
+
+    it("never throws away a reply being written", async () => {
+      await panel.open();
+      const draft = document.createElement("textarea");
+      draft.value = "On it, give me an hour";
+      shadow.querySelector(".sp-panel")!.appendChild(draft);
+      pointerdown(document.body);
+      expect(isOpen()).toBe(true);
+    });
+
+    it("leaves the page alone during an annotation session", async () => {
+      await panel.open();
+      bus.emit("annotation:start");
+      pointerdown(document.body);
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(isOpen()).toBe(true);
+      bus.emit("annotation:end");
+      pointerdown(document.body);
+      expect(isOpen()).toBe(false);
+    });
+
+    it("closes on Escape pressed with focus on the page", async () => {
+      await panel.open();
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(isOpen()).toBe(false);
+    });
+
+    it("leaves an Escape the page already handled (its own modal)", async () => {
+      await panel.open();
+      const handled = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      handled.preventDefault();
+      document.body.dispatchEvent(handled);
+      expect(isOpen()).toBe(true);
+    });
+
+    it("stops listening once closed", async () => {
+      await panel.open();
+      panel.close();
+      await panel.open();
+      panel.close();
+      const remove = vi.spyOn(document, "removeEventListener");
+      await panel.open();
+      panel.close();
+      expect(remove).toHaveBeenCalledWith("pointerdown", expect.any(Function), true);
+      expect(remove).toHaveBeenCalledWith("keydown", expect.any(Function));
+      remove.mockRestore();
+    });
+  });
 
   describe("keyboard: escape and focus trap", () => {
     it("Escape key closes the panel when open", async () => {
@@ -2277,7 +2366,7 @@ describe("Panel", () => {
       await vi.waitFor(() => expect(deleteBtn.disabled).toBe(false));
       const checkbox = shadow.querySelector('[data-feedback-id="fb-2"] .sp-bulk-checkbox')!;
       expect(checkbox.getAttribute("aria-checked")).toBe("true");
-      expect(deleteBtn.textContent).toBe(`${t("bulk.delete")} 1`);
+      expect(deleteBtn.getAttribute("aria-label")).toBe(`${t("bulk.delete")} 1`);
     });
 
     it("bulkResolve partial failure still reloads the list", async () => {
@@ -2305,7 +2394,7 @@ describe("Panel", () => {
         shadow.querySelector(`[data-feedback-id="${id}"] .sp-bulk-checkbox`)!.getAttribute("aria-checked");
       expect(checked("fb-1")).toBe("false");
       expect(checked("fb-2")).toBe("true");
-      expect(resolveBtn.textContent).toBe(`${t("bulk.resolve")} 1`);
+      expect(resolveBtn.getAttribute("aria-label")).toBe(`${t("bulk.resolve")} 1`);
     });
 
     it("bulkDelete emits feedback:error on failure", async () => {
@@ -2924,12 +3013,8 @@ describe("Panel", () => {
       const groupContents = shadow.querySelectorAll<HTMLElement>(".sp-group-content");
       expect(groupContents.length).toBeGreaterThan(0);
 
-      // Cards should still be rendered with stagger index
       const cards = shadow.querySelectorAll<HTMLElement>(".sp-card");
       expect(cards.length).toBe(3);
-      // Global index in groups
-      expect(cards[0]!.style.getPropertyValue("--sp-card-i")).toBe("0");
-      expect(cards[2]!.style.getPropertyValue("--sp-card-i")).toBe("2");
     });
   });
 
@@ -5438,13 +5523,57 @@ describe("Panel on phones", () => {
       }
     });
 
-    it("never drags the sheet upward", () => {
+    it("meets an upward pull with a rubber band, not a wall, and settles back", () => {
       const title = shadow.querySelector(".sp-panel-title")!;
       pointer("pointerdown", title, 300);
       pointer("pointermove", title, 120);
-      expect(root().style.transform).toBe("translateY(0px)");
+      // 180px of pull on an 800px sheet: it follows, but resists (88px).
+      const lift = Number(/translateY\((-?[\d.]+)px\)/.exec(root().style.transform)?.[1]);
+      expect(lift).toBeLessThan(0);
+      expect(lift).toBeGreaterThan(-180);
+      expect(lift).toBeCloseTo(-88.1, 0);
       pointer("pointercancel", title, 120);
       expect(panel.isCurrentlyOpen).toBe(true);
+      expect(root().style.transform).toBe("");
+    });
+
+    it("ignores a second finger: it neither restarts the drag nor moves the sheet", () => {
+      const title = shadow.querySelector(".sp-panel-title")!;
+      pointer("pointerdown", title, 100);
+      pointer("pointermove", title, 250);
+      expect(root().style.transform).toBe("translateY(150px)");
+      // A second finger lands lower and moves: the sheet stays with the first.
+      title.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientY: 600, pointerId: 2, pointerType: "touch" }),
+      );
+      title.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientY: 700, pointerId: 2, pointerType: "touch" }),
+      );
+      title.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, clientY: 700, pointerId: 2, pointerType: "touch" }),
+      );
+      expect(root().style.transform).toBe("translateY(150px)");
+      pointer("pointercancel", title, 250);
+      expect(panel.isCurrentlyOpen).toBe(true);
+    });
+
+    it("stays open when a fast flick ends moving back up", () => {
+      // Apple: decide from the release velocity, not the distance covered.
+      const now = vi.spyOn(Event.prototype, "timeStamp", "get");
+      try {
+        const title = shadow.querySelector(".sp-panel-title")!;
+        now.mockReturnValue(0);
+        pointer("pointerdown", title, 100);
+        now.mockReturnValue(100);
+        pointer("pointermove", title, 400);
+        now.mockReturnValue(120);
+        pointer("pointermove", title, 340);
+        now.mockReturnValue(130);
+        pointer("pointerup", title, 300);
+        expect(panel.isCurrentlyOpen).toBe(true);
+      } finally {
+        now.mockRestore();
+      }
     });
 
     it("springs back after a short, slow drag", () => {

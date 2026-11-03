@@ -7,7 +7,7 @@ import { isolateFromHost } from "../../src/host-isolation.js";
 import { createT } from "../../src/i18n/index.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 import type { Tooltip } from "../../src/tooltip.js";
-import { mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
+import { FINE_HOVER_MEDIA, mockMediaQueries, PHONE_MEDIA } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mock resolveAnnotation — avoids the full DOM resolution chain in jsdom
@@ -299,7 +299,7 @@ describe("MarkerManager", () => {
       expect(marker.textContent).toContain("1");
     });
 
-    it("fades half the ring of an in_progress marker, unlike an open one (#302)", () => {
+    it("tints an in_progress marker and fades half its ring, unlike a filled open one (#302)", () => {
       markers.render([
         makeFeedback({ id: "fb-open", type: "bug", status: "open" }),
         makeFeedback({ id: "fb-wip", type: "bug", status: "in_progress" }),
@@ -307,15 +307,45 @@ describe("MarkerManager", () => {
 
       const open = document.querySelector<HTMLElement>('[data-feedback-id="fb-open"]')!;
       const wip = document.querySelector<HTMLElement>('[data-feedback-id="fb-wip"]')!;
-      // jsdom serializes colours as rgb()/rgba(): `#d01f1f` and `#d01f1f40`.
-      const full = open.style.borderColor;
-      expect(full).toBe("rgb(208, 31, 31)");
-      expect([wip.style.borderTopColor, wip.style.borderRightColor]).toEqual([full, full]);
-      expect([wip.style.borderBottomColor, wip.style.borderLeftColor]).toEqual([
-        "rgba(208, 31, 31, 0.25)",
-        "rgba(208, 31, 31, 0.25)",
+      // jsdom serializes `#d01f1f` (light typeBug) as rgb().
+      const tone = "rgb(208, 31, 31)";
+      // Open: filled with the type colour under a white numeral and edge.
+      expect(open.style.background).toBe(tone);
+      expect(open.style.color).toBe("rgb(255, 255, 255)");
+      expect(open.style.borderColor).toBe("rgb(255, 255, 255)");
+      // In progress: a tint of it, half the ring drawn in full, half faded.
+      expect(wip.style.background).toBe(`color-mix(in srgb, ${tone} 14%, rgb(255, 255, 255))`);
+      expect([wip.style.borderTopColor, wip.style.borderRightColor]).toEqual([tone, tone]);
+      const faded = `color-mix(in srgb, ${tone} 35%, rgb(255, 255, 255))`;
+      expect([wip.style.borderBottomColor, wip.style.borderLeftColor]).toEqual([faded, faded]);
+      expect(wip.style.color).not.toBe(open.style.color);
+    });
+
+    it("keeps a deep fill under the white numeral in the dark scheme, not the dark pastel", () => {
+      const dark = new MarkerManager(buildThemeColors(undefined, "dark"), tooltip, bus, t);
+      try {
+        dark.render([makeFeedback({ id: "fb-dark", type: "bug", status: "open" })]);
+        const pin = document.querySelectorAll<HTMLElement>('[data-feedback-id="fb-dark"]');
+        const marker = pin[pin.length - 1]!;
+        // #d01f1f reads 5:1 under white; the dark palette's #f87171 would read 2.8:1.
+        expect(marker.style.background).toBe("rgb(208, 31, 31)");
+        expect(marker.style.color).toBe("rgb(255, 255, 255)");
+      } finally {
+        dark.destroy();
+      }
+    });
+
+    it("mutes closed markers: a material disc with a grey glyph, lighter for the slash", () => {
+      markers.render([
+        makeFeedback({ id: "fb-res", status: "resolved" }),
+        makeFeedback({ id: "fb-wont", status: "wont_fix" }),
       ]);
-      expect(wip.style.color).toBe(open.style.color);
+
+      const resolved = document.querySelector<HTMLElement>('[data-feedback-id="fb-res"]')!;
+      const wont = document.querySelector<HTMLElement>('[data-feedback-id="fb-wont"]')!;
+      expect(resolved.style.background).toBe("rgba(255, 255, 255, 0.94)");
+      expect(resolved.style.color).toBe("rgb(99, 99, 102)"); // #636366, 4.5:1 for the check
+      expect(wont.style.color).toBe("rgb(142, 142, 147)"); // #8e8e93, 3:1 for the 2px slash
     });
 
     it("tells the four statuses apart by glyph and ring, not by colour alone", () => {
@@ -437,7 +467,8 @@ describe("MarkerManager", () => {
       expect(marker.style.animation).toBe("");
       expect(animate).toHaveBeenCalledOnce();
       expect(animate.mock.instances[0]).toBe(marker);
-      expect(animate.mock.calls[0]?.[0]).toContainEqual({ scale: 0, opacity: 0 });
+      // Never from nothing: the pin lands from 0.9, faded.
+      expect(animate.mock.calls[0]?.[0]).toContainEqual({ scale: 0.9, opacity: 0 });
     });
 
     it("increments marker count", () => {
@@ -746,6 +777,9 @@ describe("MarkerManager", () => {
   // -------------------------------------------------------------------------
 
   describe("marker interactions", () => {
+    beforeEach(() => mockMediaQueries([FINE_HOVER_MEDIA]));
+    afterEach(() => mockMediaQueries([]));
+
     it("mouseenter shows tooltip and highlight", () => {
       const fb = makeFeedback({ id: "fb-hover" });
       markers.render([fb]);
@@ -755,6 +789,15 @@ describe("MarkerManager", () => {
 
       expect(tooltip.show).toHaveBeenCalled();
       expect(markerEl.style.transform).toBe("scale(1.2)");
+    });
+
+    it("a tap (no fine hover) shows the tooltip but never leaves the pin zoomed", () => {
+      mockMediaQueries([]);
+      markers.render([makeFeedback({ id: "fb-tap" })]);
+      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-tap"]')!;
+      markerEl.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      expect(tooltip.show).toHaveBeenCalled();
+      expect(markerEl.style.transform).toBe("");
     });
 
     it("mouseleave calls tooltip.scheduleHide and resets scale", () => {
@@ -1725,6 +1768,49 @@ describe("MarkerManager", () => {
   // showHighlight — annotation that fails to resolve is skipped
   // -------------------------------------------------------------------------
 
+  describe("pin placement", () => {
+    it("hides the pin of an anchor that resolves to an element without a box (display:none)", () => {
+      // A display:none element still resolves, with an all-zero rect: its pin
+      // used to land at the page's top-left corner.
+      mockState.rectQueue.push({ x: 0, y: 0, w: 0, h: 0 });
+      markers.render([makeFeedback({ id: "fb-boxless" })]);
+
+      const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-boxless"]')!;
+      expect(markerEl.style.display).toBe("none");
+      expect(markers.isLost("fb-boxless")).toBe(true);
+    });
+
+    it("keeps the pin of an edge-to-edge element inside the viewport's width", () => {
+      // Centred on the top-right corner, the pin would stick 13px out of a
+      // full-width element and give the client's page a horizontal scrollbar.
+      Object.defineProperty(document.documentElement, "clientWidth", { value: 390, configurable: true });
+      try {
+        mockState.rectQueue.push({ x: 0, y: 100, w: 390, h: 50 });
+        markers.render([makeFeedback({ id: "fb-edge" })]);
+
+        const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-edge"]')!;
+        expect(markerEl.style.left).toBe(`${390 - 26}px`);
+      } finally {
+        delete (document.documentElement as { clientWidth?: number }).clientWidth;
+      }
+    });
+
+    it("keeps a touch pin's widened hit area inside the viewport too", () => {
+      Object.defineProperty(document.documentElement, "clientWidth", { value: 390, configurable: true });
+      mockMediaQueries(["(pointer: coarse)"]);
+      try {
+        mockState.rectQueue.push({ x: 0, y: 100, w: 390, h: 50 });
+        markers.render([makeFeedback({ id: "fb-edge-touch" })]);
+
+        const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-edge-touch"]')!;
+        expect(markerEl.style.left).toBe(`${390 - 26 - 9}px`);
+      } finally {
+        mockMediaQueries([]);
+        delete (document.documentElement as { clientWidth?: number }).clientWidth;
+      }
+    });
+  });
+
   describe("showHighlight — unresolved annotations skipped", () => {
     it("skips annotations where resolveAnnotation returns null", () => {
       const fb = makeFeedback({ id: "fb-skip" });
@@ -1824,17 +1910,20 @@ describe("MarkerManager", () => {
   // -------------------------------------------------------------------------
 
   describe("resolved feedback hover styling", () => {
+    beforeEach(() => mockMediaQueries([FINE_HOVER_MEDIA]));
+    afterEach(() => mockMediaQueries([]));
+
     it("applies muted shadow on resolved markers when hovered", () => {
       markers.render([makeFeedback({ id: "fb-res-hover", status: "resolved" })]);
 
       const markerEl = document.querySelector<HTMLElement>('[data-feedback-id="fb-res-hover"]')!;
       markerEl.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      // Resolved branch on mouseenter (line 465-466) sets a different boxShadow
-      expect(markerEl.style.boxShadow).toContain("0 4px 16px");
+      // Closed pins lift less than open ones on hover
+      expect(markerEl.style.boxShadow).toContain("0 4px 12px");
 
       markerEl.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
-      // Resolved branch on mouseleave (line 474-475) sets the muted shadow
-      expect(markerEl.style.boxShadow).toContain("0 2px 8px");
+      // and settle back to their quiet shadow
+      expect(markerEl.style.boxShadow).toContain("0 2px 6px");
     });
   });
 

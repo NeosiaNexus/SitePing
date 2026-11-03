@@ -27,6 +27,7 @@ import {
 } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { ExportButton } from "./export-utils.js";
+import { isWidgetChrome } from "./focus-tracker.js";
 import { addSurfaceKeydownListener, registerEscapeLayer } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
 import {
@@ -55,7 +56,7 @@ import { PanelStats } from "./panel-stats.js";
 import { buildThread, type ThreadDraft } from "./panel-thread.js";
 import { focusCardByIndex, getFocusedCardIndex, KeyboardShortcuts } from "./shortcuts.js";
 import { getStatusBgColor, getStatusColor, getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport } from "./viewport.js";
+import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
 
 /** Non-terminal statuses — complement of `CLOSED_FEEDBACK_STATUSES`; backs the panel's "Open" tab bucket. */
 const OPEN_FEEDBACK_STATUSES: readonly FeedbackStatus[] = FEEDBACK_STATUSES.filter((s) => !isClosedStatus(s));
@@ -69,13 +70,28 @@ function cardList(className: string, label: string): HTMLElement {
 }
 
 /**
+ * Apple's rubber band: past a boundary the sheet still follows, less and less
+ * the further it goes (`constant` 0.55, as in UIKit's scroll views).
+ */
+function rubberBand(overshoot: number, dimension: number, constant = 0.55): number {
+  return (overshoot * dimension * constant) / (dimension + constant * overshoot);
+}
+
+/**
+ * How far a throw at `velocity` (px/ms) carries before it settles, with the
+ * deceleration of a scroll view (0.998 per ms): Apple's momentum projection.
+ */
+function projectThrow(velocity: number, deceleration = 0.998): number {
+  return (velocity * deceleration) / (1 - deceleration);
+}
+
+/**
  * Side panel (400px) with feedback history, filters, search, stats,
  * sort/group, bulk actions, export, detail view, and keyboard shortcuts.
  * On phones it is a bottom sheet over a scrim — swipe its header down to close.
  *
  * Lives inside the Shadow DOM.
- * Glassmorphism: glass background, staggered card animations,
- * loading states, resolve feedback with disabled state.
+ * Glass background, loading states, resolve feedback with disabled state.
  */
 export class Panel {
   private root: HTMLElement;
@@ -90,7 +106,7 @@ export class Panel {
   private typeDropdownMenu: HTMLElement | null = null;
   private removeTypeDropdownOutsideClick: (() => void) | null = null;
   private statusSegmented!: SegmentedControl<"all" | FeedbackStatus>;
-  private typeOptions!: ReadonlyArray<{ value: string; label: string; icon: string; color: string; bg: string }>;
+  private typeOptions!: ReadonlyArray<{ value: string; label: string; icon: string; color: string }>;
   private feedbacks: FeedbackResponse[] = [];
   private currentPage = 1;
   private totalFeedbacks = 0;
@@ -199,6 +215,8 @@ export class Panel {
     this.deleteAllBtn = document.createElement("button");
     this.deleteAllBtn.className = "sp-btn-delete-all";
     this.deleteAllBtn.setAttribute("aria-label", this.t("panel.deleteAll"));
+    // An icon bar button: the pointer gets its label as a tooltip.
+    this.deleteAllBtn.title = this.t("panel.deleteAll");
     this.deleteAllBtn.appendChild(parseSvg(ICON_TRASH));
     const deleteAllLabel = document.createElement("span");
     setText(deleteAllLabel, ` ${this.t("panel.deleteAll")}`);
@@ -318,7 +336,11 @@ export class Panel {
             // layout and miss on another screen size. They remain the fallback
             // when no pin is on screen (anchor lost, or markers hidden).
             if (!this.markers.revealPin(fb.id)) {
-              window.scrollTo({ left: ann.scrollX, top: ann.scrollY, behavior: "smooth" });
+              window.scrollTo({
+                left: ann.scrollX,
+                top: ann.scrollY,
+                behavior: prefersReducedMotion() ? "auto" : "smooth",
+              });
               this.markers.pinHighlight(fb);
             }
             // The phone sheet covers the page it just scrolled — get out of the way.
@@ -463,6 +485,12 @@ export class Panel {
     this.bus.on("panel:toggle", (open) => {
       open ? this.open() : this.close();
     });
+    this.bus.on("annotation:start", () => {
+      this.annotating = true;
+    });
+    this.bus.on("annotation:end", () => {
+      this.annotating = false;
+    });
 
     // Keyboard handling: Escape to close + focus trap. Nested layers (menus,
     // confirm dialog) stop Escape before it bubbles here; the help overlay's
@@ -543,9 +571,61 @@ export class Panel {
   private onListMouseover: (e: Event) => void;
   private onListMouseout: (e: Event) => void;
 
+  /** An annotation session is running: Escape and clicks on the page are its own. */
+  private annotating = false;
+
+  /**
+   * The sheet floats over the page: a click on the page (outside every widget
+   * surface) closes it, as for any popover. Phones have the scrim for that.
+   * A reply being written is never thrown away by a stray click.
+   */
+  private readonly onOutsidePointer = (e: PointerEvent): void => {
+    if (!this.isOpen || this.annotating || e.button !== 0 || isCompactViewport()) return;
+    // An open menu or dialog is the top layer: the click dismisses it (its
+    // own listener does), not the sheet under it.
+    if (this.fromWidget(e) || this.hasDraft() || this.hasOpenLayer()) return;
+    this.close(false);
+  };
+
+  /**
+   * Escape closes the top layer even when focus is on the page (a click
+   * there moved it out of the widget): the detail first, then the sheet. One
+   * pressed inside the widget is the shadow root's handler's, and one the
+   * page already handled (its own modal) is left alone.
+   */
+  private readonly onOutsideKeydown = (e: KeyboardEvent): void => {
+    if (e.key !== "Escape" || !this.isOpen || this.annotating || e.defaultPrevented || this.fromWidget(e)) return;
+    if (this.hasOpenLayer()) return;
+    if (this.detail.isVisible) this.detail.hide();
+    else this.close(false);
+  };
+
+  /** The event comes from the widget: its shadow root, or a surface it mounts on the page. */
+  private fromWidget(e: Event): boolean {
+    const path = e.composedPath();
+    if (path.includes(this.shadowRoot.host)) return true;
+    const target = path[0];
+    return target instanceof Element && isWidgetChrome(target);
+  }
+
+  /** A menu or a dialog open over the sheet (type, sort and export menus, the confirm dialog). */
+  private hasOpenLayer(): boolean {
+    return (
+      this.shadowRoot.querySelector(
+        ".sp-filter-dropdown-menu, .sp-sort-menu, .sp-export-menu--open, .sp-confirm-backdrop, .sp-shortcuts-overlay--visible",
+      ) !== null
+    );
+  }
+
+  private hasDraft(): boolean {
+    return Array.from(this.root.querySelectorAll("textarea")).some((field) => field.value.trim() !== "");
+  }
+
   async open(): Promise<void> {
     if (this.isOpen) return;
     this.isOpen = true;
+    document.addEventListener("pointerdown", this.onOutsidePointer, true);
+    document.addEventListener("keydown", this.onOutsideKeydown);
     // Phones: a sheet over a scrim is a modal dialog, and says so to screen
     // readers (VoiceOver then keeps to it); elsewhere the panel sits beside the page.
     const modal = isCompactViewport();
@@ -560,14 +640,20 @@ export class Panel {
     await this.loadFeedbacks();
     // Move focus into the panel. Touch: the close button — focusing the
     // search field would throw the keyboard over the list.
+    // Not if focus is already inside: a slow load would steal it back from
+    // the card or detail the user has moved to meanwhile.
     requestAnimationFrame(() => {
+      if (!this.isOpen || this.root.contains(this.shadowRoot.activeElement)) return;
       (isCoarsePointer() ? this.closeBtn : this.searchInput).focus();
     });
   }
 
-  close(): void {
+  /** `restoreFocus` is off when the user closed it from the page: focus stays where they clicked. */
+  close(restoreFocus = true): void {
     if (!this.isOpen) return;
     this.isOpen = false;
+    document.removeEventListener("pointerdown", this.onOutsidePointer, true);
+    document.removeEventListener("keydown", this.onOutsideKeydown);
     this.root.classList.remove("sp-panel--open");
     this.scrim.classList.remove("sp-scrim--open");
     this.root.setAttribute("aria-hidden", "true");
@@ -577,6 +663,7 @@ export class Panel {
     this.detail.hide();
     this.pendingScrollId = null;
     this.pendingDetail = false;
+    if (!restoreFocus) return;
     // Restore focus to the FAB
     const fab = (this.root.getRootNode() as ShadowRoot).querySelector<HTMLButtonElement>(".sp-fab");
     fab?.focus();
@@ -585,15 +672,32 @@ export class Panel {
   /**
    * Swipe-down-to-close for the phone sheet. Only the headers (panel and
    * detail) are drag handles, so scrolling the list never dismisses it.
+   *
+   * After Apple's fluid-interface rules: the sheet stays under the finger,
+   * the scrim fades with it, an upward pull meets a rubber band instead of a
+   * wall, and release decides from where a throw would land (the velocity of
+   * the last move, projected), not from the distance alone.
    */
   private attachSheetDrag(): void {
     let startY = 0;
     let startTime = 0;
     let offset = 0;
     let dragging = false;
+    let lastY = 0;
+    let lastTime = 0;
+    /** px/ms of the latest move, or null until two samples are apart in time. */
+    let velocity: number | null = null;
+    const sample = (e: PointerEvent) => {
+      const dt = e.timeStamp - lastTime;
+      if (dt > 0 && e.clientY !== lastY) velocity = (e.clientY - lastY) / dt;
+      lastY = e.clientY;
+      lastTime = e.timeStamp;
+    };
+    let pointerId = -1;
     this.root.addEventListener("pointerdown", (e) => {
       const target = e.target as Element;
       if (
+        dragging || // a second finger never restarts the drag (the sheet would jump)
         e.pointerType === "mouse" ||
         !isCompactViewport() ||
         target.closest("button") ||
@@ -601,26 +705,36 @@ export class Panel {
       )
         return;
       dragging = true;
-      startY = e.clientY;
-      startTime = e.timeStamp;
+      pointerId = e.pointerId;
+      startY = lastY = e.clientY;
+      startTime = lastTime = e.timeStamp;
       offset = 0;
+      velocity = null;
       this.root.style.transition = "none";
+      this.scrim.style.transition = "none";
       this.root.setPointerCapture?.(e.pointerId);
     });
     this.root.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      offset = Math.max(0, e.clientY - startY);
+      if (!dragging || e.pointerId !== pointerId) return;
+      sample(e);
+      const dy = e.clientY - startY;
+      offset = dy >= 0 ? dy : -rubberBand(-dy, this.root.offsetHeight);
       this.root.style.transform = `translateY(${offset}px)`;
+      this.scrim.style.opacity = String(1 - Math.max(0, offset) / Math.max(1, this.root.offsetHeight));
     });
     const release = (e: PointerEvent) => {
-      if (!dragging) return;
+      if (!dragging || e.pointerId !== pointerId) return;
       dragging = false;
+      sample(e);
       // Hand the transform back to the stylesheet: the sheet animates from
       // where the finger left it, to closed or back to open.
       this.root.style.transition = "";
       this.root.style.transform = "";
-      const flick = offset > 40 && offset / Math.max(1, e.timeStamp - startTime) > 0.5;
-      if (flick || offset > this.root.offsetHeight / 4) this.close();
+      this.scrim.style.transition = "";
+      this.scrim.style.opacity = "";
+      if (e.type === "pointercancel") return;
+      const speed = velocity ?? Math.max(0, offset) / Math.max(1, e.timeStamp - startTime);
+      if (offset + projectThrow(speed) > this.root.offsetHeight / 4) this.close();
     };
     this.root.addEventListener("pointerup", release);
     this.root.addEventListener("pointercancel", release);
@@ -906,9 +1020,7 @@ export class Panel {
 
         const groupContent = cardList("sp-group-content", pagePath);
         for (const feedback of groupFeedbacks) {
-          const card = this.createCard(feedback, globalIndex + 1);
-          card.style.setProperty("--sp-card-i", String(globalIndex));
-          groupContent.appendChild(card);
+          groupContent.appendChild(this.createCard(feedback, globalIndex + 1));
           globalIndex++;
         }
         this.listContainer.appendChild(groupContent);
@@ -917,9 +1029,7 @@ export class Panel {
       // Flat list rendering
       const list = cardList("sp-cards", this.t("panel.feedbackList"));
       sorted.forEach((feedback, index) => {
-        const card = this.createCard(feedback, index + 1);
-        card.style.setProperty("--sp-card-i", String(index));
-        list.appendChild(card);
+        list.appendChild(this.createCard(feedback, index + 1));
       });
       this.listContainer.appendChild(list);
     }
@@ -1187,10 +1297,9 @@ export class Panel {
         removeKeydown();
         backdrop.style.opacity = "0";
         dialog.style.transform = "translateY(8px) scale(0.97)";
-        setTimeout(() => {
-          backdrop.remove();
-          resolve(result);
-        }, 200);
+        // The answer is acted on at once; only the fade-out takes its 150ms.
+        resolve(result);
+        setTimeout(() => backdrop.remove(), 150);
       };
 
       // Focus trap: Tab cycles between cancel and confirm
@@ -1229,11 +1338,12 @@ export class Panel {
         ? (this.root.getRootNode() as ShadowRoot).appendChild(backdrop)
         : this.root.appendChild(backdrop);
 
-      requestAnimationFrame(() => {
-        backdrop.style.opacity = "1";
-        dialog.style.transform = "translateY(0) scale(1)";
-        cancelBtn.focus();
-      });
+      // Commit the hidden start state first: a style change in the very next
+      // frame after insertion starts no transition, and the dialog popped in.
+      void backdrop.offsetHeight;
+      backdrop.style.opacity = "1";
+      dialog.style.transform = "none";
+      cancelBtn.focus();
     });
   }
 
@@ -1275,35 +1385,30 @@ export class Panel {
         label: this.t("panel.filterAll"),
         icon: ICON_LAYERS,
         color: "var(--sp-accent-text)",
-        bg: "var(--sp-accent-light)",
       },
       {
         value: "question",
         label: this.t("type.question"),
         icon: ICON_QUESTION,
         color: "var(--sp-type-question)",
-        bg: "var(--sp-type-question-bg)",
       },
       {
         value: "change",
         label: this.t("type.change"),
         icon: ICON_CHANGE,
         color: "var(--sp-type-change)",
-        bg: "var(--sp-type-change-bg)",
       },
       {
         value: "bug",
         label: this.t("type.bug"),
         icon: ICON_BUG,
         color: "var(--sp-type-bug)",
-        bg: "var(--sp-type-bug-bg)",
       },
       {
         value: "other",
         label: this.t("type.other"),
         icon: ICON_OTHER,
         color: "var(--sp-type-other)",
-        bg: "var(--sp-type-other-bg)",
       },
     ];
 
@@ -1340,7 +1445,6 @@ export class Panel {
 
     this.typeDropdownBtn.replaceChildren();
     this.typeDropdownBtn.style.setProperty("--sp-chip-color", active.color);
-    this.typeDropdownBtn.style.setProperty("--sp-chip-bg", active.bg);
     this.typeDropdownBtn.dataset.filter = active.value;
     this.typeDropdownBtn.classList.toggle("sp-filter-dropdown-btn--filtered", active.value !== "all");
     this.typeDropdownBtn.setAttribute("aria-label", `${this.t("type.label")}: ${active.label}`);
@@ -1377,7 +1481,6 @@ export class Panel {
       const isActive = this.activeFilters.has(option.value);
       item.className = `sp-filter-dropdown-option${isActive ? " sp-filter-dropdown-option--active" : ""}`;
       item.style.setProperty("--sp-chip-color", option.color);
-      item.style.setProperty("--sp-chip-bg", option.bg);
       item.dataset.filter = option.value;
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", String(isActive));
@@ -1436,14 +1539,12 @@ export class Panel {
           label: this.t("panel.statusAll"),
           icon: ICON_LAYERS,
           color: "var(--sp-accent-text)",
-          bg: "var(--sp-accent-light)",
         },
         {
           value: "open",
           label: this.t("panel.statusOpen"),
           icon: ICON_DOT_OPEN,
           color: "var(--sp-status-open)",
-          bg: "var(--sp-status-open-bg)",
         },
         {
           // Filters the closed bucket (resolved + wont_fix): labelled "Closed".
@@ -1451,7 +1552,6 @@ export class Panel {
           label: this.t("panel.statusClosed"),
           icon: ICON_ARCHIVE,
           color: "var(--sp-status-resolved)",
-          bg: "var(--sp-status-resolved-bg)",
         },
       ],
       value: "all",
@@ -1559,7 +1659,7 @@ export class Panel {
     const escapedId = CSS.escape(feedbackId);
     const card = this.listContainer.querySelector<HTMLElement>(`[data-feedback-id="${escapedId}"]`);
     if (card) {
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
       card.classList.add("sp-anim-flash");
       card.addEventListener(
         "animationend",
@@ -1690,6 +1790,8 @@ export class Panel {
     // A panel action's context can outlive the widget: its refresh() and
     // close() only act on an open panel.
     this.isOpen = false;
+    document.removeEventListener("pointerdown", this.onOutsidePointer, true);
+    document.removeEventListener("keydown", this.onOutsideKeydown);
     this.loadController?.abort();
     if (this.searchTimeout) clearTimeout(this.searchTimeout);
     this.listContainer.removeEventListener("click", this.onListClick);

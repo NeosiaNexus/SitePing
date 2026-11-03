@@ -89,10 +89,10 @@ export const de: Translations = {
   // Markers
   "marker.approximate": "Ungefähre Position (Konfidenz: {confidence}%)",
   "marker.aria": "Feedback #{number}: {type}, {status} — {message}",
-  "marker.count": "{count} Feedback-Markierungen angezeigt",
+  "marker.count": "Angezeigte Feedback-Markierungen: {count}",
 
   // FAB badge
-  "fab.badge": "{count} unerledigte Feedbacks",
+  "fab.badge": "Unerledigte Feedbacks: {count}",
 
   // Accessibility — screen reader announcements
   "feedback.sent.confirmation": "Feedback erfolgreich gesendet",
@@ -101,7 +101,7 @@ export const de: Translations = {
   "feedback.deleted.confirmation": "Feedback gelöscht",
 
   // Badge
-  "badge.count": "{count} unerledigte Feedbacks",
+  "badge.count": "Unerledigte Feedbacks: {count}",
 
   // Bulk actions toolbar
   "bulk.aria": "Sammelaktionen",
@@ -119,7 +119,7 @@ export const de: Translations = {
   "sort.openFirst": "Offene zuerst",
   "sort.label": "Sortieren",
   "group.byPage": "Nach Seite",
-  "group.feedbacks": "{count} Feedbacks",
+  "group.feedbacks": "Feedbacks: {count}",
 
   // Stats bar
   "stats.aria": "Feedbackstatistik",

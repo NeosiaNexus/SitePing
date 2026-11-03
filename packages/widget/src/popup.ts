@@ -1,6 +1,6 @@
 import type { FeedbackType } from "@siteping/core";
-import { POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
-import { el, isMacPlatform, parseSvg, setText } from "./dom-utils.js";
+import { EASE_OUT, POPUP_HIDE_TRANSITION_MS, Z_INDEX_MAX } from "./constants.js";
+import { el, focusRing, isMacPlatform, parseSvg, pressable, setText } from "./dom-utils.js";
 import { addSurfaceKeydownListener, isolateFromHost, setSurfaceInert } from "./host-isolation.js";
 import type { TFunction, Translations } from "./i18n/index.js";
 import { ICON_BUG, ICON_CHANGE, ICON_OTHER, ICON_QUESTION } from "./icons.js";
@@ -10,8 +10,8 @@ import {
   POPUP_FALLBACK_SIZE,
   type ViewportInsets,
 } from "./popup-placement.js";
-import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
-import { isCoarsePointer, isCompactViewport, prefersReducedMotion, trackKeyboardInset } from "./viewport.js";
+import { getTypeColor, SYSTEM_FONT, type ThemeColors } from "./styles/theme.js";
+import { canHover, isCoarsePointer, isCompactViewport, prefersReducedMotion, trackKeyboardInset } from "./viewport.js";
 
 // Map each feedback type to its translation key, so `refreshLabels()` can
 // re-localize the existing type buttons without re-rendering the popup.
@@ -27,7 +27,13 @@ const TYPE_LABEL_KEYS: Record<FeedbackType, keyof Translations> = {
  * `none` under reduced motion and must restore this exact value, since the
  * root has no other transition (an empty inline value removes it).
  */
-const POPUP_TRANSITION = `opacity ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1),transform ${POPUP_HIDE_TRANSITION_MS}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+const POPUP_TRANSITION = `opacity ${POPUP_HIDE_TRANSITION_MS}ms ease,transform ${POPUP_HIDE_TRANSITION_MS}ms ${EASE_OUT}`;
+/** The phone sheet rises on the drawer curve, a little longer; it leaves on the faster default. */
+const SHEET_IN_TRANSITION = "opacity 300ms ease,transform 300ms cubic-bezier(0.32, 0.72, 0, 1)";
+/** The controls' own transition: colours ease, the press answers fast. */
+const CONTROL_TRANSITION = `background-color 0.15s ease,border-color 0.15s ease,color 0.15s ease,box-shadow 0.15s ease,opacity 0.15s ease,scale 0.16s ${EASE_OUT}`;
+/** The card's material: the page shows through, blurred and saturated, as under an Apple sheet. */
+const MATERIAL_BLUR = "blur(30px) saturate(180%)";
 
 interface PopupResult {
   type: FeedbackType;
@@ -51,10 +57,11 @@ type PopupSubmitHandler = (result: PopupResult) => Promise<void>;
 /**
  * Popup form shown after drawing an annotation rectangle.
  *
- * Glassmorphism design: frosted glass background, soft shadows,
- * pill-shaped type buttons, gradient submit button.
- * On phones it is a solid bottom sheet that rides above the on-screen
- * keyboard instead of a card floating over the annotated area.
+ * A floating card of translucent material (Apple's native look): grey
+ * filled controls, the categories as tiles tinted by their own colour, a
+ * filled accent Send. On phones it is a solid bottom sheet of grouped rows
+ * that rides above the on-screen keyboard instead of a card floating over
+ * the annotated area.
  * Lives outside Shadow DOM.
  */
 export class Popup {
@@ -116,15 +123,12 @@ export class Popup {
         pointer-events:auto;
         width:300px;
         padding:16px;
-        border-radius:16px;
-        background:${this.colors.glassBg};
-        backdrop-filter:blur(24px);
-        -webkit-backdrop-filter:blur(24px);
-        border:1px solid ${this.colors.glassBorder};
-        box-shadow:0 8px 32px ${this.colors.shadow}, 0 2px 8px ${this.colors.shadow};
-        font-family:"Inter",system-ui,-apple-system,sans-serif;
+        border:none;
+        border-radius:18px;
+        color:${this.colors.text};
+        font-family:${SYSTEM_FONT};
         opacity:0;
-        transform:translateY(8px) scale(0.98);
+        transform:scale(0.96);
         transition:${POPUP_TRANSITION};
         display:none;
         -webkit-font-smoothing:antialiased;
@@ -148,27 +152,29 @@ export class Popup {
       { type: "bug", icon: ICON_BUG },
       { type: "other", icon: ICON_OTHER },
     ];
-    this.typeRow = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;" });
+    this.typeRow = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;" });
     for (const option of typeOptions) {
       const btn = document.createElement("button");
+      // A tile: the icon over its label, 50px tall (a finger target too).
       btn.style.cssText = /* css */ `
-        height:44px;
-        border-radius:9999px;border:1px solid ${this.colors.border};
-        background:${this.colors.glassBg};cursor:pointer;
-        display:flex;align-items:center;justify-content:center;gap:5px;
-        font-family:"Inter",system-ui,-apple-system,sans-serif;
-        font-size:13px;font-weight:500;color:${this.colors.textTertiary};
-        transition:all 0.2s ease;
-        padding:0 12px;
+        height:50px;padding:0 12px;
+        border:none;border-radius:12px;cursor:pointer;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+        font-family:${SYSTEM_FONT};
+        font-size:13px;font-weight:500;letter-spacing:-0.005em;
+        transition:${CONTROL_TRANSITION};
       `;
       const icon = parseSvg(option.icon);
       // Through the CSSOM, not a `style` attribute: a strict CSP
       // (`style-src` without 'unsafe-inline') blocks the attribute only.
-      icon.style.cssText = "width:13px;height:13px;flex-shrink:0;";
+      // The icon always wears its category's colour, so the four read apart
+      // before one is picked.
+      icon.style.cssText = `width:17px;height:17px;flex-shrink:0;color:${getTypeColor(option.type, this.colors)};`;
       btn.appendChild(icon);
       btn.appendChild(document.createElement("span"));
       btn.dataset.type = option.type;
       btn.setAttribute("aria-pressed", "false");
+      this.paintType(btn);
 
       btn.addEventListener("click", () => {
         if (this.submittingState) return;
@@ -176,60 +182,51 @@ export class Popup {
       });
 
       btn.addEventListener("mouseenter", () => {
-        if (this.submittingState) return;
-        if (btn.dataset.type !== this.selectedType) {
-          const bgColor = getTypeBgColor(btn.dataset.type ?? "", this.colors);
-          btn.style.background = bgColor;
-          btn.style.borderColor = getTypeColor(btn.dataset.type ?? "", this.colors) + "40";
-        }
+        if (this.submittingState || !canHover()) return;
+        this.paintType(btn, true);
       });
 
       btn.addEventListener("mouseleave", () => {
         if (this.submittingState) return;
-        if (btn.dataset.type !== this.selectedType) {
-          btn.style.background = this.colors.glassBg;
-          btn.style.borderColor = this.colors.border;
-        }
+        this.paintType(btn);
       });
 
+      pressable(btn);
+      focusRing(btn, this.colors.accent);
       this.typeRow.appendChild(btn);
     }
 
     // Textarea
     this.textarea = document.createElement("textarea");
+    // A filled field, no border: focus lifts it to a solid row ringed in the accent.
     this.textarea.style.cssText = /* css */ `
-      width:100%;min-height:72px;max-height:152px;
-      padding:10px 12px;border-radius:12px;
-      border:1px solid ${this.colors.border};
-      background:${this.colors.glassBgHeavy};
-      color:${this.colors.text};font-family:"Inter",system-ui,-apple-system,sans-serif;
-      font-size:13px;line-height:1.5;resize:vertical;
-      outline:none;transition:all 0.2s ease;
+      width:100%;min-height:80px;max-height:152px;
+      padding:9px 12px;border:none;border-radius:12px;
+      color:${this.colors.text};font-family:${SYSTEM_FONT};
+      font-size:15px;line-height:1.35;letter-spacing:-0.01em;resize:vertical;
+      outline:none;box-shadow:none;transition:${CONTROL_TRANSITION};
       box-sizing:border-box;
     `;
     this.textarea.maxLength = 5000;
+    this.paintField(false);
 
     // Keyboard shortcut hint
     this.hint = el("div", {
       style: /* css */ `
-        font-size:11px;color:${this.colors.textTertiary};
-        text-align:right;margin-top:4px;
-        font-family:"Inter",system-ui,-apple-system,sans-serif;
+        font-size:11px;color:${this.colors.textSecondary};
+        text-align:right;margin-top:6px;
+        font-family:${SYSTEM_FONT};
         letter-spacing:0.01em;
       `,
     });
 
     this.textarea.addEventListener("focus", () => {
       if (this.submittingState) return;
-      this.textarea.style.borderColor = this.colors.accent;
-      this.textarea.style.boxShadow = `0 0 0 3px ${this.colors.accent}14`;
-      this.textarea.style.background = this.colors.bg;
+      this.paintField(true);
     });
     this.textarea.addEventListener("blur", () => {
       if (this.submittingState) return;
-      this.textarea.style.borderColor = this.colors.border;
-      this.textarea.style.boxShadow = "none";
-      this.textarea.style.background = this.colors.glassBgHeavy;
+      this.paintField(false);
     });
     this.textarea.addEventListener("input", () => {
       this.updateSubmitState();
@@ -245,36 +242,34 @@ export class Popup {
     // Button row
     const btnRow = el("div", { style: "display:flex;justify-content:flex-end;gap:8px;margin-top:12px;" });
 
+    // System buttons: a grey filled Cancel, a filled accent Send, both pills.
     this.cancelBtn = document.createElement("button");
     this.cancelBtn.style.cssText = /* css */ `
-      height:34px;padding:0 16px;border-radius:9999px;
-      border:1px solid ${this.colors.border};
-      background:${this.colors.glassBg};
-      color:${this.colors.textTertiary};font-family:"Inter",system-ui,-apple-system,sans-serif;
-      font-size:13px;font-weight:500;cursor:pointer;
-      transition:all 0.2s ease;
+      height:34px;padding:0 18px;border:none;border-radius:9999px;
+      color:${this.colors.text};font-family:${SYSTEM_FONT};
+      font-size:15px;font-weight:500;letter-spacing:-0.01em;cursor:pointer;
+      transition:${CONTROL_TRANSITION};
     `;
+    this.paintCancel(false);
     this.cancelBtn.addEventListener("click", () => this.dismiss());
     this.cancelBtn.addEventListener("mouseenter", () => {
-      if (this.submittingState) return;
-      this.cancelBtn.style.borderColor = this.colors.accent;
-      this.cancelBtn.style.color = this.colors.accentText;
+      if (this.submittingState || !canHover()) return;
+      this.paintCancel(true);
     });
     this.cancelBtn.addEventListener("mouseleave", () => {
       if (this.submittingState) return;
-      this.cancelBtn.style.borderColor = this.colors.border;
-      this.cancelBtn.style.color = this.colors.textTertiary;
+      this.paintCancel(false);
     });
 
     this.submitBtn = document.createElement("button");
     this.submitBtn.style.cssText = /* css */ `
-      height:34px;padding:0 18px;border-radius:9999px;
-      border:none;background:${this.colors.accentGradient};
-      color:#fff;font-family:"Inter",system-ui,-apple-system,sans-serif;
-      font-size:13px;font-weight:600;cursor:pointer;
+      position:relative;
+      height:34px;padding:0 20px;border:none;border-radius:9999px;
+      background:${this.colors.accent};
+      color:#fff;font-family:${SYSTEM_FONT};
+      font-size:15px;font-weight:600;letter-spacing:-0.01em;cursor:pointer;
       opacity:0.35;pointer-events:none;
-      transition:all 0.2s ease;
-      box-shadow:0 2px 8px ${this.colors.accentGlow};
+      transition:${CONTROL_TRANSITION};
       display:inline-flex;align-items:center;justify-content:center;min-width:64px;
     `;
     // The submit label lives in its own <span> so the submitting-state spinner
@@ -283,7 +278,19 @@ export class Popup {
     this.submitLabel = document.createElement("span");
     this.submitBtn.appendChild(this.submitLabel);
     this.submitBtn.addEventListener("click", () => this.submit());
+    // Darkens on hover; the pointer-events gate already keeps a disabled Send out of it.
+    this.submitBtn.addEventListener("mouseenter", () => {
+      if (this.submittingState || !canHover()) return;
+      this.submitBtn.style.background = this.colors.accentDark;
+    });
+    this.submitBtn.addEventListener("mouseleave", () => {
+      this.submitBtn.style.background = this.colors.accent;
+    });
 
+    pressable(this.cancelBtn);
+    pressable(this.submitBtn);
+    focusRing(this.cancelBtn, this.colors.accent);
+    focusRing(this.submitBtn, this.colors.accent);
     btnRow.appendChild(this.cancelBtn);
     btnRow.appendChild(this.submitBtn);
 
@@ -364,14 +371,15 @@ export class Popup {
       this.selectedType = null;
       this.textarea.value = "";
       this.submittingState = false;
+      // Decided first: the controls' fills differ on the sheet.
+      const touch = isCoarsePointer();
+      this.sheet = isCompactViewport();
       this.updateSubmitState();
       this.resetTypeButtons();
 
       // Save focus to restore on close
       this.previouslyFocused = document.activeElement as HTMLElement | null;
 
-      const touch = isCoarsePointer();
-      this.sheet = isCompactViewport();
       // Finger-sized actions; 16px text so iOS doesn't zoom the page on focus.
       // No ⌘/Ctrl+Enter hint without a hardware keyboard.
       const buttonHeight = this.sheet ? "48px" : touch ? "44px" : "34px";
@@ -379,8 +387,11 @@ export class Popup {
       this.submitBtn.style.height = buttonHeight;
       this.cancelBtn.style.flex = this.sheet ? "1" : "";
       this.submitBtn.style.flex = this.sheet ? "2" : "";
-      this.textarea.style.fontSize = touch ? "16px" : "13px";
-      this.textarea.style.minHeight = this.sheet ? "96px" : "72px";
+      this.textarea.style.fontSize = touch ? "16px" : "15px";
+      this.textarea.style.minHeight = this.sheet ? "104px" : "80px";
+      this.paintField(false);
+      this.paintCancel(false);
+      this.submitBtn.style.background = this.colors.accent;
       this.hint.style.display = touch ? "none" : "";
       this.root.style.transform = this.hiddenTransform();
       setSurfaceInert(this.root, false);
@@ -416,7 +427,11 @@ export class Popup {
         }
       });
 
-      this.root.style.transition = prefersReducedMotion() ? "none" : POPUP_TRANSITION;
+      this.root.style.transition = prefersReducedMotion()
+        ? "none"
+        : this.sheet
+          ? SHEET_IN_TRANSITION
+          : POPUP_TRANSITION;
 
       // Trigger animation. Touch: focus the first type button rather than
       // the textarea, so the keyboard doesn't cover the sheet before the user
@@ -424,7 +439,7 @@ export class Popup {
       this.showFrame = requestAnimationFrame(() => {
         this.showFrame = null;
         this.root.style.opacity = "1";
-        this.root.style.transform = "translateY(0) scale(1)";
+        this.root.style.transform = "none";
         (touch ? this.typeRow.querySelector("button") : this.textarea)?.focus();
       });
     });
@@ -433,12 +448,17 @@ export class Popup {
   /** Card next to the annotated rect, or — on phones — a bottom sheet above the keyboard. */
   private layout(rectBounds: DOMRect, insets: ViewportInsets): void {
     const style = this.root.style;
+    const { surface } = this.colors;
     style.width = this.sheet ? "auto" : "300px";
-    style.borderRadius = this.sheet ? "20px 20px 0 0" : "16px";
-    style.background = this.sheet ? this.colors.bg : this.colors.glassBg;
+    style.borderRadius = this.sheet ? "16px 16px 0 0" : "18px";
+    // The sheet is solid grouped background (it covers half the screen and
+    // holds the keyboard's focus); the card is material, lit along its top edge.
+    style.background = this.sheet ? surface.grouped : surface.material;
+    style.backdropFilter = this.sheet ? "none" : MATERIAL_BLUR;
+    style.setProperty("-webkit-backdrop-filter", this.sheet ? "none" : MATERIAL_BLUR);
     style.boxShadow = this.sheet
-      ? `0 -8px 32px ${this.colors.shadow}`
-      : `0 8px 32px ${this.colors.shadow}, 0 2px 8px ${this.colors.shadow}`;
+      ? `0 -0.5px 0 ${surface.hairline}, 0 -10px 40px rgba(0, 0, 0, 0.16)`
+      : `inset 0 0.5px 0 ${surface.edge}, ${surface.shadowCard}`;
     style.overscrollBehavior = this.sheet ? "contain" : "";
     this.stopKeyboardTracking?.();
     this.stopKeyboardTracking = null;
@@ -475,6 +495,11 @@ export class Popup {
     );
     style.top = `${top}px`;
     style.left = `${left}px`;
+    // Grow out of the rectangle the user just drew: from its centre line, on
+    // the side the card sits against.
+    const { width, height } = this.measure();
+    const originX = Math.min(Math.max(rectBounds.left + rectBounds.width / 2 - left, 0), width);
+    style.transformOrigin = `${Math.round(originX)}px ${top >= rectBounds.top + rectBounds.height / 2 ? 0 : height}px`;
     if (maxHeight !== null) {
       // Taller than the usable band (short viewport, high zoom, long
       // localized labels): cap it and let it scroll, starting from the top
@@ -486,7 +511,7 @@ export class Popup {
   }
 
   private hiddenTransform(): string {
-    return this.sheet ? "translateY(100%)" : "translateY(8px) scale(0.98)";
+    return this.sheet ? "translateY(100%)" : "scale(0.96)";
   }
 
   /** Rendered size, ignoring the entry transform; falls back when there is no layout. */
@@ -514,14 +539,8 @@ export class Popup {
     this.selectedType = type;
     const buttons = container.querySelectorAll<HTMLButtonElement>("button");
     for (const btn of buttons) {
-      const isActive = btn.dataset.type === type;
-      const color = getTypeColor(btn.dataset.type ?? "", this.colors);
-      const bgColor = getTypeBgColor(btn.dataset.type ?? "", this.colors);
-      btn.style.background = isActive ? bgColor : this.colors.glassBg;
-      btn.style.borderColor = isActive ? color + "60" : this.colors.border;
-      btn.style.color = isActive ? color : this.colors.textTertiary;
-      btn.style.fontWeight = isActive ? "600" : "500";
-      btn.setAttribute("aria-pressed", String(isActive));
+      btn.setAttribute("aria-pressed", String(btn.dataset.type === type));
+      this.paintType(btn);
     }
     this.updateSubmitState();
   }
@@ -531,12 +550,47 @@ export class Popup {
     for (const btn of buttons) {
       btn.setAttribute("aria-pressed", "false");
       btn.disabled = false;
-      btn.style.background = this.colors.glassBg;
-      btn.style.borderColor = this.colors.border;
-      btn.style.color = this.colors.textTertiary;
-      btn.style.fontWeight = "500";
       btn.style.cursor = "pointer";
+      this.paintType(btn);
     }
+  }
+
+  /**
+   * A category tile at rest, hovered or picked. Picked, it takes its own
+   * colour: a tint over the row, the label pushed toward the text so it
+   * reads 4.5:1 on it, and a ring that tells it apart without the tint.
+   * Grey fill at rest, a solid row on the phone sheet's grouped background.
+   */
+  private paintType(btn: HTMLButtonElement, hover = false): void {
+    const { surface } = this.colors;
+    const style = btn.style;
+    if (btn.getAttribute("aria-pressed") === "true") {
+      const color = getTypeColor(btn.dataset.type ?? "", this.colors);
+      style.background = `color-mix(in srgb, ${color} 15%, ${surface.row})`;
+      style.color = `color-mix(in srgb, ${color} 78%, ${surface.inkMix})`;
+      style.fontWeight = "600";
+      style.boxShadow = `inset 0 0 0 1.5px ${color}`;
+      return;
+    }
+    style.background = hover ? surface.fillStrong : this.sheet ? surface.row : surface.fill;
+    style.color = this.colors.text;
+    style.fontWeight = "500";
+    style.boxShadow = "none";
+  }
+
+  /** The message field: filled at rest, a solid row with the accent ring while focused. */
+  private paintField(focused: boolean): void {
+    const { surface } = this.colors;
+    this.textarea.style.background = focused || this.sheet ? surface.row : surface.fill;
+    this.textarea.style.boxShadow = focused
+      ? `0 0 0 3px color-mix(in srgb, ${this.colors.accent} 30%, transparent)`
+      : "none";
+  }
+
+  /** Cancel's grey fill, a step stronger on hover and on the sheet (it sits on grouped grey there). */
+  private paintCancel(hover: boolean): void {
+    const { surface } = this.colors;
+    this.cancelBtn.style.background = hover || this.sheet ? surface.fillStrong : surface.fill;
   }
 
   // A category helps triage but gates nothing: Send needs only a message, and
@@ -602,8 +656,11 @@ export class Popup {
   private enterSubmittingState(): void {
     this.submittingState = true;
 
-    // Submit: spinner instead of text, keep button width stable
-    this.submitLabel.style.display = "none";
+    // Submit: the spinner over the label. The label turns transparent rather
+    // than `display: none`: it keeps the button's width, and it stays in the
+    // accessibility tree as the button's name (axe button-name), which a
+    // removed label would leave empty while `aria-busy` announces the wait.
+    this.submitLabel.style.opacity = "0";
     this.submitBtn.disabled = true;
     this.submitBtn.style.cursor = "wait";
     this.submitBtn.style.opacity = "0.85";
@@ -638,7 +695,7 @@ export class Popup {
     this.spinnerAnimation = null;
     const spinner = this.submitBtn.querySelector<HTMLDivElement>('[data-role="sp-popup-spinner"]');
     spinner?.remove();
-    this.submitLabel.style.display = "";
+    this.submitLabel.style.opacity = "";
     this.submitBtn.removeAttribute("aria-busy");
     this.submitBtn.style.cursor = "pointer";
 
@@ -672,7 +729,10 @@ export class Popup {
   private buildSpinner(): HTMLDivElement {
     const spinner = document.createElement("div");
     spinner.dataset.role = "sp-popup-spinner";
+    // Centred over the transparent label by auto margins, not a transform:
+    // the rotation below owns `transform`.
     spinner.style.cssText = /* css */ `
+      position:absolute;inset:0;margin:auto;
       width:14px;height:14px;
       border:2px solid rgba(255,255,255,0.35);
       border-top-color:#fff;
@@ -701,6 +761,7 @@ export class Popup {
     this.onSubmit = null;
     this.stopKeyboardTracking?.();
     this.stopKeyboardTracking = null;
+    if (!prefersReducedMotion()) this.root.style.transition = POPUP_TRANSITION;
     this.root.style.opacity = "0";
     this.root.style.transform = this.hiddenTransform();
     // Restore focus to the previously focused element

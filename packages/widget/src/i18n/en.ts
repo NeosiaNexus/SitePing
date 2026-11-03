@@ -2,16 +2,16 @@ import type { Translations } from "./types.js";
 
 export const en: Translations = {
   // Panel
-  "panel.title": "Feedbacks",
+  "panel.title": "Feedback",
   "panel.ariaLabel": "Siteping feedback panel",
   "panel.feedbackList": "Feedback list",
-  "panel.loading": "Loading feedbacks",
+  "panel.loading": "Loading feedback",
   "panel.close": "Close panel",
   "panel.deleteAll": "Delete all",
   "panel.deleteAllConfirmTitle": "Delete all",
-  "panel.deleteAllConfirmMessage": "Delete all feedbacks for this project? This action cannot be undone.",
+  "panel.deleteAllConfirmMessage": "Delete all feedback for this project? This action cannot be undone.",
   "panel.search": "Search...",
-  "panel.searchAria": "Search feedbacks",
+  "panel.searchAria": "Search feedback",
   "panel.filterAll": "All",
   "panel.loadError": "Failed to load",
   "panel.retry": "Retry",
@@ -88,10 +88,10 @@ export const en: Translations = {
   // Markers
   "marker.approximate": "Approximate position (confidence: {confidence}%)",
   "marker.aria": "Feedback #{number}: {type}, {status} — {message}",
-  "marker.count": "{count} feedback markers displayed",
+  "marker.count": "Feedback markers shown: {count}",
 
   // FAB badge
-  "fab.badge": "{count} unresolved feedbacks",
+  "fab.badge": "Unresolved feedback: {count}",
 
   // Accessibility — screen reader announcements
   "feedback.sent.confirmation": "Feedback sent successfully",
@@ -100,7 +100,7 @@ export const en: Translations = {
   "feedback.deleted.confirmation": "Feedback deleted",
 
   // Badge
-  "badge.count": "{count} unresolved feedbacks",
+  "badge.count": "Unresolved feedback: {count}",
 
   // Bulk actions toolbar
   "bulk.aria": "Bulk actions",
@@ -118,7 +118,7 @@ export const en: Translations = {
   "sort.openFirst": "Open first",
   "sort.label": "Sort",
   "group.byPage": "By page",
-  "group.feedbacks": "{count} feedbacks",
+  "group.feedbacks": "Feedback: {count}",
 
   // Stats bar
   "stats.aria": "Feedback statistics",
@@ -167,7 +167,7 @@ export const en: Translations = {
 
   // Keyboard shortcuts overlay
   "shortcuts.title": "Keyboard shortcuts",
-  "shortcuts.navigate": "Navigate feedbacks",
+  "shortcuts.navigate": "Navigate feedback",
   "shortcuts.resolve": "Resolve / Reopen",
   "shortcuts.delete": "Delete",
   "shortcuts.search": "Focus search",

@@ -15,14 +15,22 @@ export function MobileNav() {
   useEffect(() => {
     if (!open) return;
     const trigger = triggerRef.current;
+    const panel = panelRef.current;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    panelRef.current?.querySelector<HTMLElement>("a, button")?.focus();
+    // A modal for real: everything else on the page leaves the Tab order and
+    // the accessibility tree while it is open (aria-modal alone does neither).
+    const background = Array.from(document.body.children).filter(
+      (child): child is HTMLElement => child instanceof HTMLElement && child !== panel && !child.inert,
+    );
+    for (const element of background) element.inert = true;
+    panel?.querySelector<HTMLElement>("a, button")?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => {
+      for (const element of background) element.inert = false;
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKey);
       trigger?.focus();
@@ -109,7 +117,8 @@ export function MobileNav() {
                 </a>
               ))}
 
-              <div className="mt-auto flex flex-col gap-3 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+              {/* Bottom padding clears the widget's button (bottom 16px, 52px tall), which stays above every layer. */}
+              <div className="mt-auto flex flex-col gap-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
                 <Link
                   href="/demo"
                   onClick={close}

@@ -5,16 +5,16 @@ import {
   isClosedStatus,
   type RectData,
 } from "@siteping/core";
-import { Z_INDEX_MAX } from "./constants.js";
+import { EASE_OUT, Z_INDEX_MAX } from "./constants.js";
 import { type ResolvedAnnotation, resolveAnnotation } from "./dom/resolver.js";
 import { classifyVisibility } from "./dom/visibility.js";
-import { el, setText } from "./dom-utils.js";
+import { el, focusRing, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { isolateFromHost } from "./host-isolation.js";
 import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18n/index.js";
-import { getTypeColor, type ThemeColors } from "./styles/theme.js";
+import { getTypeColor, SYSTEM_FONT, type ThemeColors } from "./styles/theme.js";
 import type { Tooltip } from "./tooltip.js";
-import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
+import { canHover, isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./viewport.js";
 
 type Annotation = FeedbackResponse["annotations"][number];
 
@@ -39,41 +39,90 @@ function toRectData(a: Annotation): RectData {
 
 /** Half of the 26px marker diameter — used for centering on anchor corner. */
 const MARKER_OFFSET = 13;
+const MARKER_SIZE = 26;
+/** Extra hit area around a pin on touch screens (a finger needs ~44px). */
+const HIT_SLOP = 9;
 
 interface PinLook {
   bg: string;
-  /** `border-color` — one value, or four for a partial ring. */
+  /** `border-color`: one value, or four for a partial ring. */
   ring: string;
   color: string;
   shadow: string;
   hoverShadow: string;
 }
 
-/** Closed pins (resolved, wont_fix) are muted; their glyph tells them apart. */
-const CLOSED_PIN: PinLook = {
-  bg: "rgba(241,245,249,0.9)",
-  ring: "#cbd5e1",
-  color: "#94a3b8",
-  shadow: "0 2px 8px rgba(0,0,0,0.06)",
-  hoverShadow: "0 4px 16px rgba(0,0,0,0.1)",
+/** Lifted off the page: a hairline edge and a short drop, deeper under the hover zoom. */
+const PIN_SHADOW = "0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.22)";
+const PIN_HOVER_SHADOW = "0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(0, 0, 0, 0.28)";
+
+/**
+ * An open pin's fill under its white numeral, per type, in the dark scheme.
+ * The dark palette's type colours are pastels that read on dark grounds but
+ * not under white text; these deeper tones (the light palette's) keep the
+ * numeral at 4.5:1 or more in both schemes.
+ */
+const DARK_PIN_FILLS: Record<string, string> = {
+  question: "#2563eb",
+  change: "#b45309",
+  bug: "#d01f1f",
+  other: "#5b6778",
 };
 
 /**
- * A pin's look per status, in the dashboard's status language: the shape, not
- * colour alone, tells the four apart (#302). Open and in-progress pins keep
- * their number and type colour — they are still actionable — and an
- * in-progress pin fades half its ring, the dashboard's half-filled ◐. Closed
- * pins are muted: a check for `resolved`, a slash (⊘) for `wont_fix`, never a
- * check, since a declined request isn't a fix.
+ * Closed pins (resolved, wont_fix) are a quiet material disc with a grey
+ * glyph, per scheme; the glyph tells them apart. The check is text and
+ * reads 4.5:1; the slash is a 2px mark and needs 3:1, so it is lighter.
  */
-function pinLook(status: FeedbackStatus, typeColor: string): PinLook {
-  if (isClosedStatus(status)) return CLOSED_PIN;
+const CLOSED_PINS = {
+  light: { bg: "rgba(255, 255, 255, 0.94)", ring: "#ffffff", check: "#636366", slash: "#8e8e93" },
+  dark: { bg: "rgba(44, 44, 46, 0.94)", ring: "#48484a", check: "#c7c7cc", slash: "#aeaeb2" },
+} as const;
+const CLOSED_SHADOW = "0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.14)";
+const CLOSED_HOVER_SHADOW = "0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.18)";
+
+/**
+ * A pin's look per status, in the dashboard's status language: the shape, not
+ * colour alone, tells the four apart (#302). Open pins are filled with their
+ * type's colour under a white numeral and a white edge. In-progress pins keep
+ * their number on a tint of their colour instead, and fade half their ring (the
+ * dashboard's half-filled ◐). Closed pins are muted: a check for `resolved`, a
+ * slash (⊘) for `wont_fix`, never a check, since a declined request isn't a fix.
+ */
+function pinLook(status: FeedbackStatus, type: string, colors: ThemeColors): PinLook {
+  const dark = colors.scheme === "dark";
+  if (isClosedStatus(status)) {
+    const closed = CLOSED_PINS[colors.scheme];
+    return {
+      bg: closed.bg,
+      ring: closed.ring,
+      color: status === "wont_fix" ? closed.slash : closed.check,
+      shadow: CLOSED_SHADOW,
+      hoverShadow: CLOSED_HOVER_SHADOW,
+    };
+  }
+  const typeColor = getTypeColor(type, colors);
+  if (status === "in_progress") {
+    // The tint sits on the scheme's row colour; the faded half of the ring
+    // mixes toward it too, so it reads as the same disc, half drawn.
+    const { row } = colors.surface;
+    const faded = `color-mix(in srgb, ${typeColor} 35%, ${row})`;
+    return {
+      bg: `color-mix(in srgb, ${typeColor} ${dark ? 18 : 14}%, ${row})`,
+      ring: `${typeColor} ${typeColor} ${faded} ${faded}`,
+      // Light: the type colour pushed toward black reads 4.5:1 on its tint;
+      // dark: the pastel itself does.
+      color: dark ? typeColor : `color-mix(in srgb, ${typeColor} 80%, #000000)`,
+      shadow: PIN_SHADOW,
+      hoverShadow: PIN_HOVER_SHADOW,
+    };
+  }
   return {
-    bg: "rgba(255,255,255,0.92)",
-    ring: status === "in_progress" ? `${typeColor} ${typeColor} ${typeColor}40 ${typeColor}40` : typeColor,
-    color: typeColor,
-    shadow: `0 2px 12px ${typeColor}25, 0 2px 6px rgba(0,0,0,0.06)`,
-    hoverShadow: `0 4px 20px ${typeColor}35, 0 4px 12px rgba(0,0,0,0.08)`,
+    bg: dark ? (DARK_PIN_FILLS[type] ?? DARK_PIN_FILLS.other ?? typeColor) : typeColor,
+    ring: "#ffffff",
+    color: "#ffffff",
+    shadow: PIN_SHADOW,
+    hoverShadow: PIN_HOVER_SHADOW,
   };
 }
 
@@ -82,13 +131,26 @@ interface MarkerPos {
   left: number;
 }
 
-/** Convert a resolved rect to document-absolute marker position. */
+/**
+ * Convert a resolved rect to document-absolute marker position: centred on
+ * the rect's top-right corner, but kept inside the viewport's width when the
+ * rect itself is, so a pin on an edge-to-edge element never widens the
+ * client's page (a horizontal scrollbar on a phone).
+ */
 function markerPosition(rect: DOMRect): MarkerPos {
+  const viewportRight = document.documentElement.clientWidth;
+  // On touch screens the pin's widened hit area counts too.
+  const reach = MARKER_SIZE + (isCoarsePointer() ? HIT_SLOP : 0);
+  let left = rect.right - MARKER_OFFSET;
+  if (rect.right <= viewportRight) left = Math.min(left, viewportRight - reach);
   return {
-    top: rect.top + window.scrollY - MARKER_OFFSET,
-    left: rect.right + window.scrollX - MARKER_OFFSET,
+    top: Math.max(0, rect.top + window.scrollY - MARKER_OFFSET),
+    left: Math.max(0, left) + window.scrollX,
   };
 }
+
+/** An anchor that resolved to an element without a box (display:none) has no place for a pin. */
+const hasBox = (rect: DOMRect): boolean => rect.width > 0 || rect.height > 0;
 
 interface MarkerEntry {
   feedback: FeedbackResponse;
@@ -137,7 +199,7 @@ function play(element: HTMLElement, keyframes: Keyframe[], options: KeyframeAnim
   if (!prefersReducedMotion() && typeof element.animate === "function") element.animate(keyframes, options);
 }
 
-const HIGHLIGHT_FADE = 300;
+const HIGHLIGHT_FADE = 200;
 const REPOSITION_DEBOUNCE = 200;
 /** Back-off between full re-resolutions of an anchor that resolved hidden or
  * orphaned, on mutation ticks (resize bypasses it — see hiddenRecheckAt). */
@@ -362,7 +424,7 @@ export class MarkerManager {
         }
 
         const wasVisible = markerEl.style.display !== "none";
-        if (!resolved) {
+        if (!resolved || !hasBox(resolved.rect)) {
           if (wasVisible) visibilityChanged = true;
           markerEl.style.display = "none";
           continue;
@@ -394,7 +456,7 @@ export class MarkerManager {
     // the highlight rect keeps its old pixel position and visibly drifts
     // away from the underlying content.
     if (this.pinnedFeedback) {
-      this.showHighlight(this.pinnedFeedback);
+      this.showHighlight(this.pinnedFeedback, false);
     }
   }
 
@@ -448,10 +510,14 @@ export class MarkerManager {
     const entry = this.buildEntry(feedback, index);
     for (const m of entry.elements) {
       // `scale`, not `transform`: the marker's position and hover zoom own transform.
-      play(m, [{ scale: 0, opacity: 0 }, { scale: 1.2, opacity: 1, offset: 0.6 }, { scale: 1 }], {
-        duration: 350,
-        easing: "cubic-bezier(0.34,1.56,0.64,1)",
-      });
+      play(
+        m,
+        [
+          { scale: 0.9, opacity: 0 },
+          { scale: 1, opacity: 1 },
+        ],
+        { duration: 250, easing: EASE_OUT },
+      );
     }
     this.entries.push(entry);
     this.buildClusters();
@@ -462,7 +528,8 @@ export class MarkerManager {
   private buildEntry(feedback: FeedbackResponse, index: number): MarkerEntry {
     const entry: MarkerEntry = { feedback, elements: [], positions: [] };
     for (const annotation of feedback.annotations) {
-      const resolved = resolveAnnotation(toAnchorData(annotation), toRectData(annotation));
+      const found = resolveAnnotation(toAnchorData(annotation), toRectData(annotation));
+      const resolved = found && hasBox(found.rect) ? found : null;
       const pos = resolved ? markerPosition(resolved.rect) : { top: 0, left: 0 };
       const marker = this.createMarker(index, feedback, pos);
       if (resolved) this.applyConfidenceStyle(marker, resolved.confidence, feedback);
@@ -567,12 +634,12 @@ export class MarkerManager {
         position:absolute;top:-6px;right:-6px;
         min-width:16px;height:16px;padding:0 4px;
         border-radius:9999px;
-        background:${this.colors.accent};color:#fff;
+        background:#1d1d1f;color:#fff;
         font-size:10px;font-weight:700;
         display:flex;align-items:center;justify-content:center;
         border:1.5px solid #fff;
         pointer-events:none;
-        font-family:"Inter",system-ui,-apple-system,sans-serif;
+        font-family:${SYSTEM_FONT};
         line-height:1;
       `,
     });
@@ -604,7 +671,7 @@ export class MarkerManager {
       e.stopPropagation();
       this.collapseAllClusters();
       cluster.expanded = true;
-      this.applyFanPositions(cluster);
+      this.glide(cluster, () => this.applyFanPositions(cluster));
       this.setBadgesVisible(cluster, false);
       return true;
     }
@@ -614,8 +681,27 @@ export class MarkerManager {
   private collapseCluster(cluster: Cluster): void {
     if (!cluster.expanded) return;
     cluster.expanded = false;
-    this.applyStackPositions(cluster);
+    this.glide(cluster, () => this.applyStackPositions(cluster));
     this.setBadgesVisible(cluster, true);
+  }
+
+  /**
+   * Re-place a cluster's pins, and let them travel from where they were
+   * (FLIP on the `translate` property, which leaves `transform` to the hover
+   * zoom). Only a click fans or folds a cluster; reposition ticks jump.
+   */
+  private glide(cluster: Cluster, place: () => void): void {
+    const pins = cluster.entries.map((_, i) => clusterMarker(cluster, i));
+    const before = pins.map((m) => m && { top: parseFloat(m.style.top), left: parseFloat(m.style.left) });
+    place();
+    pins.forEach((m, i) => {
+      const from = before[i];
+      if (!m || !from) return;
+      const dx = from.left - parseFloat(m.style.left);
+      const dy = from.top - parseFloat(m.style.top);
+      if (dx || dy)
+        play(m, [{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }], { duration: 200, easing: EASE_OUT });
+    });
   }
 
   private collapseAllClusters(): void {
@@ -639,7 +725,7 @@ export class MarkerManager {
 
   private createMarker(number: number, feedback: FeedbackResponse, pos: { top: number; left: number }): HTMLElement {
     const { status } = feedback;
-    const look = pinLook(status, getTypeColor(feedback.type, this.colors));
+    const look = pinLook(status, feedback.type, this.colors);
 
     const marker = el("div", {
       style: /* css */ `
@@ -652,12 +738,13 @@ export class MarkerManager {
         border:2px solid;
         border-color:${look.ring};
         display:flex;align-items:center;justify-content:center;
-        font-family:"Inter",system-ui,-apple-system,sans-serif;
-        font-size:11px;font-weight:700;
+        font-family:${SYSTEM_FONT};
+        font-size:12px;font-weight:700;letter-spacing:-0.01em;
         color:${look.color};
         cursor:pointer;pointer-events:auto;
         box-shadow:${look.shadow};
-        transition:top 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), left 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.15s ease, box-shadow 0.15s ease;
+        transition:${prefersReducedMotion() ? "box-shadow 0.15s ease" : `transform 0.15s ${EASE_OUT}, box-shadow 0.15s ease`};
+        touch-action:manipulation;
         user-select:none;
         -webkit-font-smoothing:antialiased;
       `,
@@ -674,6 +761,7 @@ export class MarkerManager {
     });
     marker.setAttribute("aria-label", ariaLabel);
     marker.setAttribute("aria-describedby", this.tooltip.tooltipId);
+    focusRing(marker, this.colors.accent);
     if (status === "wont_fix") {
       marker.appendChild(
         el("span", {
@@ -684,11 +772,15 @@ export class MarkerManager {
       setText(marker, status === "resolved" ? "\u2713" : String(number));
     }
     // Fingers need ~44px: widen the hit area, not the 26px pin.
-    if (isCoarsePointer()) marker.appendChild(el("span", { style: "position:absolute;inset:-9px;border-radius:50%;" }));
+    if (isCoarsePointer())
+      marker.appendChild(el("span", { style: /* css */ `position:absolute;inset:-${HIT_SLOP}px;border-radius:50%;` }));
 
     marker.addEventListener("mouseenter", () => {
-      marker.style.transform = "scale(1.2)";
-      marker.style.boxShadow = look.hoverShadow;
+      // A tap fires mouseenter too, and nothing would ever shrink the pin back.
+      if (canHover()) {
+        marker.style.transform = "scale(1.2)";
+        marker.style.boxShadow = look.hoverShadow;
+      }
       this.tooltip.show(feedback, marker.getBoundingClientRect());
       if (!this.pinnedFeedback) this.showHighlight(feedback);
     });
@@ -758,7 +850,7 @@ export class MarkerManager {
     const entry = this.entries.find((e) => e.feedback.id === feedbackId);
     const markerEl = entry?.elements.find(isShown);
     if (!entry || !markerEl) return false;
-    markerEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    markerEl.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
     this.pinHighlight(entry.feedback);
     this.highlight(feedbackId);
     return true;
@@ -804,11 +896,12 @@ export class MarkerManager {
     }
   }
 
-  showHighlight(feedback: FeedbackResponse): void {
+  /** `fade` is off when a reposition re-places an already visible highlight: it must not blink. */
+  showHighlight(feedback: FeedbackResponse, fade = true): void {
     this.removeHighlightElements();
     for (const annotation of feedback.annotations) {
       const resolved = resolveAnnotation(toAnchorData(annotation), toRectData(annotation));
-      if (!resolved) continue;
+      if (!resolved || !hasBox(resolved.rect)) continue;
 
       const typeColor = getTypeColor(feedback.type, this.colors);
       const rect = resolved.rect;
@@ -820,15 +913,16 @@ export class MarkerManager {
           width:${rect.width}px;height:${rect.height}px;
           border:2px solid ${typeColor};
           background:${typeColor}0c;
-          border-radius:8px;
+          border-radius:12px;
           pointer-events:none;z-index:-1;
-          opacity:0;
+          opacity:${fade ? 0 : 1};
           box-shadow:0 0 16px ${typeColor}20;
           transition:opacity ${HIGHLIGHT_FADE}ms ease;
         `,
       });
       this.container.appendChild(highlight);
       this.highlightElements.push(highlight);
+      if (!fade) continue;
       void highlight.offsetHeight; // Force reflow for CSS transition
       highlight.style.opacity = "1";
     }

@@ -304,7 +304,7 @@ test.describe("Annotation popup lifecycle", () => {
 
   test("keeps its open/close transition after show()", async ({ page }) => {
     const dialog = await drawAndOpenPopup(page);
-    await expect(dialog).toHaveCSS("transition-duration", "0.25s, 0.25s");
+    await expect(dialog).toHaveCSS("transition-duration", "0.2s, 0.2s");
   });
 
   test("is not hit-testable while it fades out", async ({ page }) => {
@@ -917,9 +917,9 @@ test.describe("Default locale is English", () => {
     await s.click('[data-item-id="chat"]');
     await s.waitFor(".sp-panel--open");
 
-    // Panel title should be "Feedbacks" (same in both locales, but verifying)
+    // English says "Feedback" (uncountable); French keeps "Feedbacks"
     const title = await s.text(".sp-panel-title");
-    expect(title).toBe("Feedbacks");
+    expect(title).toBe("Feedback");
 
     // Empty state should use English
     await s.waitFor(".sp-empty-text");

@@ -157,3 +157,36 @@ export function formatRelativeDate(isoString: string, locale = "en"): string {
 
   return new Date(isoString).toLocaleDateString(locale);
 }
+
+/**
+ * Press feedback for a control mounted on the host page, where no stylesheet
+ * reaches it (`:active` needs one): it sinks to 0.97 the moment the pointer
+ * goes down, and comes back on release. Uses `scale`, so it composes with any
+ * `transform` the control already has; its transition must list `scale`.
+ */
+export function pressable(control: HTMLElement): void {
+  const release = () => {
+    control.style.scale = "";
+  };
+  control.addEventListener("pointerdown", () => {
+    if (!(control as HTMLButtonElement).disabled) control.style.scale = "0.97";
+  });
+  for (const type of ["pointerup", "pointerleave", "pointercancel"]) control.addEventListener(type, release);
+}
+
+/**
+ * The accent focus ring for a control mounted on the host page, where no
+ * stylesheet reaches it (`:focus-visible` needs one): drawn when the browser
+ * would show a focus ring (keyboard focus, not a click), cleared on blur.
+ */
+export function focusRing(control: HTMLElement, color: string): void {
+  control.addEventListener("focus", () => {
+    if (!control.matches(":focus-visible")) return;
+    control.style.outline = `2px solid ${color}`;
+    control.style.outlineOffset = "2px";
+  });
+  control.addEventListener("blur", () => {
+    control.style.outline = "";
+    control.style.outlineOffset = "";
+  });
+}

@@ -5,8 +5,8 @@
  * a feedback card, showing full details: message, metadata, annotation
  * info, status actions, and a "Go to annotation" button.
  *
- * Glassmorphism design — frosted glass surfaces, staggered section
- * animations, accent gradients, premium micro-interactions.
+ * A navigation push: the list slides away and the detail lays out inset
+ * grouped sections (rows on the sheet's material, captions above them).
  */
 
 import {
@@ -22,7 +22,7 @@ import { getStatusLabel, getTypeLabel, type TFunction, tWithParams } from "./i18
 import { ICON_USER } from "./icons.js";
 import { type PanelActionItem, safeHref, snapshotFeedback } from "./panel-actions.js";
 import type { TriagePermission } from "./panel-bulk.js";
-import { getTypeBgColor, getTypeColor, type ThemeColors } from "./styles/theme.js";
+import { getTypeColor, type ThemeColors } from "./styles/theme.js";
 
 // ---------------------------------------------------------------------------
 // SVG Icons
@@ -49,7 +49,6 @@ const ICON_CODE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_CROSSHAIR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>`;
 
 const ICON_CHEVRON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>`;
-const ICON_TERMINAL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
 
 // ---------------------------------------------------------------------------
 // CSS
@@ -57,59 +56,53 @@ const ICON_TERMINAL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 
 export const DETAIL_CSS = /* css */ `
   /* ============================
-     Detail View — Panel-in-Panel
+     Detail View: a navigation push
      ============================ */
 
+  /* No surface of its own: the list slides away under it (below), so the
+     detail lays its sections straight on the sheet's material and never
+     stacks a second translucent layer over readable content. */
   .sp-detail {
     position: absolute;
     inset: 0;
     display: flex;
     flex-direction: column;
-    background: var(--sp-glass-bg);
-    backdrop-filter: blur(var(--sp-blur-heavy));
-    -webkit-backdrop-filter: blur(var(--sp-blur-heavy));
     z-index: 20;
     transform: translateX(100%);
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.2s var(--sp-ease-out);
     will-change: transform;
-    overflow: hidden;
+    overflow: clip;
   }
 
+  /* Pushed in on the drawer curve, back out the same way, faster. */
   .sp-detail--visible {
     transform: translateX(0);
+    transition: transform 0.3s var(--sp-ease-drawer);
   }
 
-  /* Fallback for browsers that cannot deliver a readable "frosted glass":
-     drop the translucent background to a solid one so the underlying list
-     does not bleed through. Two disjoint cohorts:
-
-       1. No backdrop-filter at all (Firefox <=102, legacy Edge / IE,
-          older Chromium on Linux).
-       2. Safari / iOS Safari where backdrop-filter is detectable only
-          via the -webkit- prefix. Empirically this still includes recent
-          Safari (observed on macOS Safari 18.6 in 2026, where
-          CSS.supports('backdrop-filter', 'blur(...)') returns false even
-          though the unprefixed property has shipped). On these builds the
-          long-standing nested-backdrop + transform compositing bug
-          silently no-ops the blur on .sp-detail (which is transformed and
-          lives inside another backdrop-filter ancestor, .sp-panel), so
-          the translucent default is unreadable. Detection is a pure
-          feature query: prefixed supported AND unprefixed not. No
-          user-agent sniffing.
-
-     Browsers where the glass effect renders correctly (most Chromium,
-     modern Firefox, any engine that advertises both property names via
-     CSS.supports) are unaffected. */
-  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .sp-detail {
-      background: var(--sp-bg);
-    }
+  /* The list it covers slides a little left and fades, like a navigation
+     stack; hidden once out of sight, so it leaves the tab order and the
+     accessibility tree. It comes back on the faster curve, at once visible. */
+  .sp-panel > :is(.sp-panel-header, .sp-stats-bar, .sp-filters, .sp-list) {
+    transition:
+      opacity 0.2s var(--sp-ease-out),
+      transform 0.2s var(--sp-ease-out),
+      visibility 0s;
   }
 
-  @supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) {
-    .sp-detail {
-      background: var(--sp-bg);
-    }
+  .sp-panel--detail > :is(.sp-panel-header, .sp-stats-bar, .sp-filters, .sp-list) {
+    opacity: 0;
+    transform: translateX(-24%);
+    visibility: hidden;
+    transition:
+      opacity 0.3s var(--sp-ease-drawer),
+      transform 0.3s var(--sp-ease-drawer),
+      visibility 0s linear 0.3s;
+  }
+
+  .sp-panel--detail > :is(.sp-bulk-bar, .sp-shortcuts-hint) {
+    visibility: hidden;
+    opacity: 0;
   }
 
   /* ---- Header ---- */
@@ -117,52 +110,46 @@ export const DETAIL_CSS = /* css */ `
   .sp-detail-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--sp-border);
-    background: var(--sp-glass-bg-heavy);
-    backdrop-filter: blur(var(--sp-blur));
-    -webkit-backdrop-filter: blur(var(--sp-blur));
+    gap: 4px;
+    padding: 10px 12px 6px 6px;
     flex-shrink: 0;
-    min-height: 64px;
+    min-height: 60px;
   }
 
+  /* The back chevron: an accent glyph in a 44px circle. */
   .sp-detail-back {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--sp-radius);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
     border: none;
     background: transparent;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--sp-text-tertiary);
-    transition: all 0.2s ease;
+    color: var(--sp-accent-ink);
+    transition: var(--sp-tr);
     flex-shrink: 0;
     padding: 0;
   }
 
-  .sp-detail-back:hover {
-    background: var(--sp-bg-hover);
-    color: var(--sp-text);
-  }
-
-  .sp-detail-back:active {
-    transform: scale(0.92);
-    transition-duration: 0.1s;
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-back:hover {
+      background: var(--sp-fill);
+    }
   }
 
   .sp-detail-back svg {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
+    stroke-width: 2.4;
   }
 
   .sp-detail-title {
-    font-size: 16px;
-    font-weight: 700;
+    font-size: 17px;
+    font-weight: 600;
     color: var(--sp-text);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.024em;
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -176,11 +163,14 @@ export const DETAIL_CSS = /* css */ `
 
   /* ---- Content ---- */
 
+  /* Sections fade out under the header rather than being cut by it. */
   .sp-detail-content {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 0;
+    padding: 0 0 20px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 10px);
+    mask-image: linear-gradient(to bottom, transparent, #000 10px);
   }
 
   .sp-detail-content::-webkit-scrollbar {
@@ -192,51 +182,34 @@ export const DETAIL_CSS = /* css */ `
   }
 
   .sp-detail-content::-webkit-scrollbar-thumb {
-    background: var(--sp-border);
+    background: var(--sp-fill-strong);
     border-radius: var(--sp-radius-full);
   }
 
-  .sp-detail-content::-webkit-scrollbar-thumb:hover {
-    background: var(--sp-text-tertiary);
-  }
-
-  /* ---- Section ---- */
-
-  .sp-detail-section {
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--sp-border);
-    opacity: 0;
-    transform: translateY(8px);
-    animation: sp-detail-section-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
-  @keyframes sp-detail-section-in {
-    to {
-      opacity: 1;
-      transform: translateY(0);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-content::-webkit-scrollbar-thumb:hover {
+      background: var(--sp-text-tertiary);
     }
   }
 
-  .sp-detail-section:last-child {
-    border-bottom: none;
+  /* ---- Section: inset grouped, a caption over its rows ---- */
+
+  .sp-detail-section {
+    margin-top: 22px;
+    padding: 0 16px;
+  }
+
+  .sp-detail-section:first-child {
+    margin-top: 8px;
   }
 
   .sp-detail-section-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--sp-text-tertiary);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--sp-text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 14px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .sp-detail-section-title svg {
-    width: 14px;
-    height: 14px;
-    opacity: 0.6;
+    letter-spacing: 0.04em;
+    margin: 0 16px 7px;
   }
 
   /* ---- Status + Actions Section ---- */
@@ -245,148 +218,113 @@ export const DETAIL_CSS = /* css */ `
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
   }
 
   .sp-detail-status-pill {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 5px 14px;
+    padding: 5px 12px;
     border-radius: var(--sp-radius-full);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
-    letter-spacing: 0.02em;
+    letter-spacing: -0.005em;
   }
 
+  /* A tint of the status with its ink, 4.5:1 on the tint in both themes;
+     closed statuses go grey. */
   .sp-detail-status-pill--open {
-    background: rgba(34, 197, 94, 0.1);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.2);
-  }
-
-  .sp-detail-status-pill--resolved {
-    background: rgba(156, 163, 175, 0.1);
-    color: #9ca3af;
-    border: 1px solid rgba(156, 163, 175, 0.2);
+    background: color-mix(in srgb, var(--sp-status-open) 13%, transparent);
+    color: var(--sp-ink-green);
   }
 
   .sp-detail-status-pill--in-progress {
-    background: rgba(245, 158, 11, 0.1);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.2);
+    background: color-mix(in srgb, var(--sp-status-in-progress) 13%, transparent);
+    color: var(--sp-ink-amber);
   }
 
+  .sp-detail-status-pill--resolved,
   .sp-detail-status-pill--wont-fix {
-    background: rgba(148, 163, 184, 0.1);
-    color: #94a3b8;
-    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: var(--sp-fill);
+    color: var(--sp-text-secondary);
   }
 
   .sp-detail-status-dot {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
   .sp-detail-actions {
     display: flex;
-    gap: 8px;
+    gap: 10px;
   }
 
+  /* Tinted buttons, the system's large size. */
   .sp-detail-actions button,
   .sp-detail-actions a {
     flex: 1;
-    height: 40px;
+    height: 44px;
     padding: 0 16px;
-    border-radius: var(--sp-radius);
+    border: none;
+    border-radius: 12px;
     font-family: var(--sp-font);
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
+    letter-spacing: -0.01em;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    transition: all 0.2s ease;
+    transition: var(--sp-tr);
   }
 
   .sp-detail-actions button svg,
   .sp-detail-actions a svg {
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
   }
 
   .sp-detail-btn-resolve {
-    border: 1.5px solid #22c55e;
-    background: rgba(34, 197, 94, 0.06);
-    color: #22c55e;
-  }
-
-  .sp-detail-btn-resolve:hover {
-    background: rgba(34, 197, 94, 0.14);
-    box-shadow: 0 0 16px rgba(34, 197, 94, 0.12);
-    transform: translateY(-1px);
-  }
-
-  .sp-detail-btn-resolve:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
+    background: color-mix(in srgb, var(--sp-status-open) 14%, transparent);
+    color: var(--sp-ink-green);
   }
 
   .sp-detail-btn-reopen {
-    border: 1.5px solid var(--sp-accent);
-    background: var(--sp-accent-light);
-    color: var(--sp-accent-text);
-  }
-
-  .sp-detail-btn-reopen:hover {
-    background: rgba(var(--sp-accent), 0.14);
-    box-shadow: 0 0 16px var(--sp-accent-glow);
-    transform: translateY(-1px);
-  }
-
-  .sp-detail-btn-reopen:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
+    background: color-mix(in srgb, var(--sp-accent) 13%, transparent);
+    color: var(--sp-accent-ink);
   }
 
   .sp-detail-btn-delete {
-    border: 1.5px solid #ef4444;
-    background: rgba(239, 68, 68, 0.06);
-    color: #ef4444;
-  }
-
-  .sp-detail-btn-delete:hover {
-    background: rgba(239, 68, 68, 0.14);
-    box-shadow: 0 0 16px rgba(239, 68, 68, 0.12);
-    transform: translateY(-1px);
-  }
-
-  .sp-detail-btn-delete:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
+    background: color-mix(in srgb, var(--sp-type-bug) 11%, transparent);
+    color: var(--sp-ink-red);
   }
 
   .sp-detail-btn-custom {
-    border: 1.5px solid var(--sp-border);
-    background: var(--sp-glass-bg-heavy);
+    background: var(--sp-fill);
     color: var(--sp-text);
     text-decoration: none;
   }
 
-  .sp-detail-btn-custom:hover {
-    background: var(--sp-bg-hover);
-    border-color: var(--sp-accent);
-    color: var(--sp-accent-text);
-    box-shadow: 0 0 16px var(--sp-accent-glow);
-    transform: translateY(-1px);
-  }
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-btn-resolve:hover {
+      background: color-mix(in srgb, var(--sp-status-open) 20%, transparent);
+    }
 
-  .sp-detail-btn-custom:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
+    .sp-detail-btn-reopen:hover {
+      background: color-mix(in srgb, var(--sp-accent) 19%, transparent);
+    }
+
+    .sp-detail-btn-delete:hover {
+      background: color-mix(in srgb, var(--sp-type-bug) 16%, transparent);
+    }
+
+    .sp-detail-btn-custom:hover {
+      background: var(--sp-fill-strong);
+    }
   }
 
   .sp-detail-actions--custom {
@@ -415,20 +353,19 @@ export const DETAIL_CSS = /* css */ `
     opacity: 0.5;
     cursor: not-allowed;
     pointer-events: none;
-    transform: none;
-    box-shadow: none;
   }
 
-  /* ---- Message Section ---- */
+  /* ---- Message Section: a solid row, body text size ---- */
 
   .sp-detail-message {
-    font-size: 14px;
-    line-height: 1.65;
+    font-size: 15px;
+    line-height: 1.47;
+    letter-spacing: -0.012em;
     color: var(--sp-text);
-    padding: 14px 16px;
-    border-left: 3px solid var(--sp-accent);
-    border-radius: 0 var(--sp-radius) var(--sp-radius) 0;
-    background: var(--sp-glass-bg-heavy);
+    padding: 12px 16px;
+    border-radius: var(--sp-radius-lg);
+    background: var(--sp-row);
+    box-shadow: var(--sp-shadow-row);
     white-space: pre-wrap;
     word-break: break-word;
   }
@@ -441,11 +378,11 @@ export const DETAIL_CSS = /* css */ `
 
   .sp-comment {
     margin-top: 8px;
-    border-left-color: var(--sp-border);
   }
 
+  /* The team's replies take a faint accent tint. */
   .sp-comment[data-role="team"] {
-    border-left-color: var(--sp-accent);
+    background: color-mix(in srgb, var(--sp-accent) 8%, var(--sp-row));
   }
 
   .sp-comment-head,
@@ -453,16 +390,12 @@ export const DETAIL_CSS = /* css */ `
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
   }
 
   .sp-comment-head {
     margin-bottom: 4px;
+    font-size: 13px;
     font-weight: 600;
-  }
-
-  .sp-comment-head .sp-badge {
-    background: var(--sp-accent-light);
   }
 
   .sp-comment-head time,
@@ -476,15 +409,35 @@ export const DETAIL_CSS = /* css */ `
     margin-left: auto;
   }
 
-  .sp-thread-input {
+  /* The reply field is a row of the section, not a grey field
+     (two classes: over .sp-input and its focus state). */
+  .sp-input.sp-thread-input {
     height: auto;
-    margin-top: 10px;
-    padding: 10px 14px;
+    min-height: 84px;
+    margin-top: 8px;
+    padding: 11px 16px;
+    border-radius: var(--sp-radius-lg);
+    background: var(--sp-row);
+    line-height: 1.4;
+    box-shadow: var(--sp-shadow-row);
+  }
+
+  .sp-input.sp-thread-input:focus {
+    background: var(--sp-row);
+    box-shadow: var(--sp-ring);
   }
 
   .sp-thread-foot {
     justify-content: space-between;
     margin-top: 8px;
+    padding-left: 16px;
+    font-size: 12px;
+  }
+
+  .sp-thread-foot .sp-btn-primary {
+    height: 34px;
+    padding: 0 18px;
+    border-radius: var(--sp-radius-full);
   }
 
   /* A reply in flight: Send spins, and keeps the keyboard focus. */
@@ -503,8 +456,9 @@ export const DETAIL_CSS = /* css */ `
   .sp-thread-error {
     margin-top: 8px;
     padding: 8px 12px;
-    border-radius: var(--sp-radius);
-    background: var(--sp-type-bug-bg);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--sp-type-bug) 11%, transparent);
+    color: var(--sp-ink-red);
     font-size: 12px;
   }
 
@@ -520,67 +474,84 @@ export const DETAIL_CSS = /* css */ `
     height: auto;
     max-height: 400px;
     object-fit: contain;
-    border-radius: var(--sp-radius);
-    border: 1px solid var(--sp-glass-border);
-    background: var(--sp-glass-bg-heavy);
+    border-radius: var(--sp-radius-lg);
+    background: var(--sp-row);
+    box-shadow: 0 0 0 0.5px var(--sp-separator);
   }
 
-  /* ---- Metadata Section ---- */
+  /* ---- Metadata and annotation: rows with inset separators ---- */
 
-  .sp-detail-meta {
+  .sp-detail-meta,
+  .sp-detail-annotation-info {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    padding: 0 16px;
+    border-radius: var(--sp-radius-lg);
+    background: var(--sp-row);
+    box-shadow: var(--sp-shadow-row);
   }
 
-  .sp-detail-meta-row {
+  .sp-detail-meta-row,
+  .sp-detail-annotation-row {
     display: flex;
     align-items: flex-start;
     gap: 12px;
   }
 
-  .sp-detail-meta-row svg {
-    width: 14px;
-    height: 14px;
+  .sp-detail-meta-row svg,
+  .sp-detail-annotation-row svg {
+    width: 16px;
+    height: 16px;
     color: var(--sp-text-tertiary);
     flex-shrink: 0;
-    margin-top: 1px;
+    margin-top: 13px;
   }
 
+  /* The separator starts at the text, past the icon. */
   .sp-detail-meta-content {
     flex: 1;
     min-width: 0;
+    padding: 10px 0;
   }
 
-  .sp-detail-meta-label {
-    font-size: 10px;
-    font-weight: 600;
+  .sp-detail-meta-row + .sp-detail-meta-row .sp-detail-meta-content,
+  .sp-detail-annotation-row + .sp-detail-annotation-row .sp-detail-meta-content {
+    border-top: 0.5px solid var(--sp-separator);
+  }
+
+  .sp-detail-meta-label,
+  .sp-detail-annotation-label {
+    font-size: 11px;
+    font-weight: 500;
     color: var(--sp-text-tertiary);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.04em;
     line-height: 1;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
 
-  .sp-detail-meta-value {
-    font-size: 13px;
-    line-height: 1.4;
+  .sp-detail-meta-value,
+  .sp-detail-annotation-value {
+    font-size: 15px;
+    line-height: 1.33;
+    letter-spacing: -0.01em;
     color: var(--sp-text);
     word-break: break-all;
   }
 
-  .sp-detail-meta-value--mono {
-    font-family: "SF Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
+  .sp-detail-meta-value--mono,
+  .sp-detail-annotation-value--mono {
+    font-family: var(--sp-font-mono);
     font-size: 12px;
-    background: var(--sp-glass-bg-heavy);
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid var(--sp-glass-border-subtle);
+    letter-spacing: 0;
+    background: var(--sp-fill);
+    padding: 1px 6px;
+    border-radius: 6px;
   }
 
   .sp-detail-meta-value--secondary {
     color: var(--sp-text-secondary);
-    font-size: 12px;
+    font-size: 13px;
   }
 
   /* ---- Annotation Section ---- */
@@ -588,56 +559,10 @@ export const DETAIL_CSS = /* css */ `
   .sp-detail-annotation {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-  }
-
-  .sp-detail-annotation-info {
-    display: flex;
-    flex-direction: column;
     gap: 10px;
-    padding: 14px;
-    border-radius: var(--sp-radius);
-    background: var(--sp-glass-bg-heavy);
-    border: 1px solid var(--sp-glass-border-subtle);
-  }
-
-  .sp-detail-annotation-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .sp-detail-annotation-row svg {
-    width: 13px;
-    height: 13px;
-    color: var(--sp-text-tertiary);
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-
-  .sp-detail-annotation-label {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--sp-text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    line-height: 1;
-    margin-bottom: 3px;
-  }
-
-  .sp-detail-annotation-value {
-    font-size: 12px;
-    line-height: 1.4;
-    color: var(--sp-text);
-    word-break: break-all;
   }
 
   .sp-detail-annotation-value--mono {
-    font-family: "SF Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
-    font-size: 11px;
-    background: var(--sp-bg-hover);
-    padding: 2px 6px;
-    border-radius: 4px;
     display: inline-block;
     max-width: 100%;
     overflow: hidden;
@@ -649,20 +574,20 @@ export const DETAIL_CSS = /* css */ `
     width: 100%;
     height: 44px;
     padding: 0 20px;
-    border-radius: var(--sp-radius);
+    border-radius: 12px;
     border: none;
-    background: var(--sp-accent-gradient);
+    background: var(--sp-accent);
     color: #fff;
     font-family: var(--sp-font);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
+    letter-spacing: -0.01em;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    transition: all 0.25s ease;
-    box-shadow: 0 2px 12px var(--sp-accent-glow);
+    transition: var(--sp-tr);
   }
 
   .sp-detail-btn-goto svg {
@@ -670,14 +595,192 @@ export const DETAIL_CSS = /* css */ `
     height: 16px;
   }
 
-  .sp-detail-btn-goto:hover {
-    box-shadow: 0 4px 20px var(--sp-accent-glow);
-    transform: translateY(-2px);
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-btn-goto:hover {
+      background: var(--sp-accent-dark);
+    }
   }
 
-  .sp-detail-btn-goto:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 0.1s;
+  /* ---- Diagnostics: a disclosure row, then grouped mono lists ---- */
+
+  .sp-detail-diag {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .sp-detail-diag-toggle {
+    width: 100%;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 14px 0 16px;
+    border-radius: var(--sp-radius-lg);
+    border: none;
+    background: var(--sp-row);
+    box-shadow: var(--sp-shadow-row);
+    color: var(--sp-text);
+    font-family: var(--sp-font);
+    font-size: 15px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sp-detail-diag-toggle:hover {
+      background: var(--sp-row-hover);
+    }
+  }
+
+  .sp-detail-diag-toggle svg {
+    width: 12px;
+    height: 12px;
+    color: var(--sp-text-tertiary);
+    transition: transform 0.2s ease;
+  }
+
+  .sp-detail-diag-toggle[aria-expanded="true"] svg {
+    transform: rotate(90deg);
+  }
+
+  .sp-detail-diag-counts {
+    display: inline-flex;
+    gap: 6px;
+    font-weight: 500;
+    color: var(--sp-text-secondary);
+  }
+
+  .sp-detail-diag-count {
+    padding: 2px 8px;
+    border-radius: var(--sp-radius-full);
+    background: var(--sp-fill);
+    color: var(--sp-text-secondary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sp-detail-diag-count--errors {
+    background: color-mix(in srgb, var(--sp-type-bug) 11%, transparent);
+    color: var(--sp-ink-red);
+  }
+
+  .sp-detail-diag-body {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .sp-detail-diag-body--open {
+    display: flex;
+  }
+
+  .sp-detail-diag-group-title {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--sp-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 16px 7px;
+  }
+
+  .sp-detail-diag-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-radius: var(--sp-radius-lg);
+    background: var(--sp-row);
+    box-shadow: var(--sp-shadow-row);
+    max-height: 240px;
+    overflow-y: auto;
+  }
+
+  .sp-detail-diag-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 14px;
+    border-bottom: 0.5px solid var(--sp-separator);
+    font-family: var(--sp-font-mono);
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--sp-text);
+  }
+
+  .sp-detail-diag-list li:last-child {
+    border-bottom: none;
+  }
+
+  .sp-detail-diag-level {
+    flex-shrink: 0;
+    font-weight: 700;
+    width: 44px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 10px;
+  }
+
+  .sp-detail-diag-level--log {
+    color: var(--sp-text-tertiary);
+  }
+  .sp-detail-diag-level--info {
+    color: var(--sp-type-question);
+  }
+  .sp-detail-diag-level--warn {
+    color: var(--sp-type-change);
+  }
+  .sp-detail-diag-level--error {
+    color: var(--sp-type-bug);
+  }
+
+  .sp-detail-diag-message {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  .sp-detail-diag-net {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .sp-detail-diag-net-status {
+    flex-shrink: 0;
+    font-weight: 700;
+    color: var(--sp-type-bug);
+    min-width: 32px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sp-detail-diag-net-method {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--sp-text-tertiary);
+    min-width: 44px;
+  }
+
+  .sp-detail-diag-net-url {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--sp-text);
+  }
+
+  .sp-detail-diag-empty {
+    padding: 12px;
+    font-style: italic;
+    font-size: 11px;
+    color: var(--sp-text-tertiary);
+    text-align: center;
   }
 
   /* ---- Forced Colors / High Contrast ---- */
@@ -714,194 +817,14 @@ export const DETAIL_CSS = /* css */ `
       color: ButtonText !important;
     }
 
-    .sp-detail-message {
-      border-left: 3px solid ButtonText !important;
-    }
-  }
-
-  /* ---- Diagnostics Section ---- */
-
-  .sp-detail-diag {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .sp-detail-diag-toggle {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 10px 12px;
-    border-radius: var(--sp-radius);
-    border: 1px solid var(--sp-glass-border-subtle);
-    background: var(--sp-glass-bg-heavy);
-    color: var(--sp-text);
-    font-family: var(--sp-font);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
-
-  .sp-detail-diag-toggle:hover {
-    background: var(--sp-bg-hover);
-  }
-
-  .sp-detail-diag-toggle svg {
-    width: 12px;
-    height: 12px;
-    transition: transform 0.2s ease;
-  }
-
-  .sp-detail-diag-toggle[aria-expanded="true"] svg {
-    transform: rotate(90deg);
-  }
-
-  .sp-detail-diag-counts {
-    display: inline-flex;
-    gap: 6px;
-    font-weight: 500;
-    color: var(--sp-text-tertiary);
-  }
-
-  .sp-detail-diag-count {
-    padding: 1px 7px;
-    border-radius: var(--sp-radius-full);
-    background: var(--sp-bg-hover);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .sp-detail-diag-count--errors {
-    background: rgba(239, 68, 68, 0.14);
-    color: #ef4444;
-  }
-
-  .sp-detail-diag-body {
-    display: none;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .sp-detail-diag-body--open {
-    display: flex;
-  }
-
-  .sp-detail-diag-group-title {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--sp-text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 6px;
-  }
-
-  .sp-detail-diag-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    border-radius: var(--sp-radius);
-    border: 1px solid var(--sp-glass-border-subtle);
-    background: var(--sp-glass-bg-heavy);
-    max-height: 240px;
-    overflow-y: auto;
-  }
-
-  .sp-detail-diag-list li {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--sp-glass-border-subtle);
-    font-family: "SF Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
-    font-size: 11px;
-    line-height: 1.45;
-    color: var(--sp-text);
-  }
-
-  .sp-detail-diag-list li:last-child {
-    border-bottom: none;
-  }
-
-  .sp-detail-diag-level {
-    flex-shrink: 0;
-    font-weight: 700;
-    width: 44px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-size: 10px;
-  }
-
-  .sp-detail-diag-level--log {
-    color: var(--sp-text-tertiary);
-  }
-  .sp-detail-diag-level--info {
-    color: #3b82f6;
-  }
-  .sp-detail-diag-level--warn {
-    color: #f59e0b;
-  }
-  .sp-detail-diag-level--error {
-    color: #ef4444;
-  }
-
-  .sp-detail-diag-message {
-    flex: 1;
-    min-width: 0;
-    word-break: break-word;
-    white-space: pre-wrap;
-  }
-
-  .sp-detail-diag-net {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .sp-detail-diag-net-status {
-    flex-shrink: 0;
-    font-weight: 700;
-    color: #ef4444;
-    min-width: 32px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .sp-detail-diag-net-method {
-    flex-shrink: 0;
-    font-weight: 600;
-    color: var(--sp-text-tertiary);
-    min-width: 44px;
-  }
-
-  .sp-detail-diag-net-url {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--sp-text);
-  }
-
-  .sp-detail-diag-empty {
-    padding: 12px;
-    font-style: italic;
-    font-size: 11px;
-    color: var(--sp-text-tertiary);
-    text-align: center;
-  }
-
-  /* ---- Reduced Motion ---- */
-
-  @media (prefers-reduced-motion: reduce) {
-    .sp-detail {
-      transition-duration: 0.01ms !important;
-    }
-
-    .sp-detail-section {
-      animation-duration: 0.01ms !important;
+    /* The rows are drawn by shadows, which forced colours drop. */
+    .sp-detail-message,
+    .sp-detail-screenshot,
+    .sp-detail-meta,
+    .sp-detail-annotation-info,
+    .sp-detail-diag-toggle,
+    .sp-detail-diag-list {
+      border: 1px solid ButtonText;
     }
   }
 `;
@@ -1101,7 +1024,7 @@ export class DetailView {
     header.appendChild(title);
 
     const badge = el("span", { class: "sp-badge" });
-    badge.style.background = getTypeBgColor(feedback.type, this.colors);
+    // The badge tints itself from its colour (see .sp-badge).
     badge.style.color = getTypeColor(feedback.type, this.colors);
     setText(badge, getTypeLabel(feedback.type, this.t));
     header.appendChild(badge);
@@ -1125,7 +1048,6 @@ export class DetailView {
     messageSection.appendChild(messageSectionTitle);
 
     const messageBlock = el("div", { class: "sp-detail-message" });
-    messageBlock.style.borderLeftColor = getTypeColor(feedback.type, this.colors);
     setText(messageBlock, feedback.message);
     messageSection.appendChild(messageBlock);
     // The discussion thread reads on from the message it answers.
@@ -1165,10 +1087,7 @@ export class DetailView {
     if (feedback.annotations.length > 0) {
       const annSection = this.buildSection(sectionIndex++);
       const annSectionTitle = el("div", { class: "sp-detail-section-title" });
-      annSectionTitle.appendChild(parseSvg(ICON_MAP_PIN));
-      const annTitleText = el("span");
-      setText(annTitleText, this.t("detail.annotation"));
-      annSectionTitle.appendChild(annTitleText);
+      setText(annSectionTitle, this.t("detail.annotation"));
       annSection.appendChild(annSectionTitle);
       this.buildAnnotation(annSection, feedback);
       this.content.appendChild(annSection);
@@ -1180,10 +1099,7 @@ export class DetailView {
     if (hasDiagnostics(feedback.diagnostics)) {
       const diagSection = this.buildSection(sectionIndex++);
       const diagSectionTitle = el("div", { class: "sp-detail-section-title" });
-      diagSectionTitle.appendChild(parseSvg(ICON_TERMINAL));
-      const diagTitleText = el("span");
-      setText(diagTitleText, this.t("detail.diagnostics"));
-      diagSectionTitle.appendChild(diagTitleText);
+      setText(diagSectionTitle, this.t("detail.diagnostics"));
       diagSection.appendChild(diagSectionTitle);
       this.buildDiagnostics(diagSection, feedback);
       this.content.appendChild(diagSection);
@@ -1202,10 +1118,13 @@ export class DetailView {
     // Force reflow before adding visible class to trigger CSS transition
     void this.element.offsetHeight;
     this.element.classList.add("sp-detail--visible");
+    // The panel slides its list away under the pushed view (see DETAIL_CSS).
+    this.element.parentElement?.classList.add("sp-panel--detail");
 
     // Focus the back button for keyboard users
     requestAnimationFrame(() => {
-      backBtn.focus();
+      // Still off-screen while it slides in: focusing must not scroll the panel.
+      backBtn.focus({ preventScroll: true });
     });
   }
 
@@ -1219,9 +1138,13 @@ export class DetailView {
     const refocus = hasFocusWithin(this.element);
     const id = this.currentFeedback?.id;
     this.element.classList.remove("sp-detail--visible");
+    this.element.parentElement?.classList.remove("sp-panel--detail");
     this.element.setAttribute("aria-hidden", "true");
     setInert(this.element, true);
     if (refocus) {
+      // The list was visibility:hidden behind the detail: flush the style
+      // first, or WebKit still sees the card hidden and refuses the focus.
+      void this.element.parentElement?.offsetWidth;
       const card =
         this.opener?.isConnected === true
           ? this.opener
@@ -1280,10 +1203,10 @@ export class DetailView {
     // resolved, wont-fix), each with its own dot colour.
     const statusModifier = feedback.status.replace(/_/g, "-");
     const dotColors: Record<FeedbackStatus, string> = {
-      open: "#22c55e",
-      in_progress: "#f59e0b",
-      resolved: "#9ca3af",
-      wont_fix: "#94a3b8",
+      open: this.colors.statusOpen,
+      in_progress: this.colors.statusInProgress,
+      resolved: this.colors.statusResolved,
+      wont_fix: this.colors.statusWontFix,
     };
     const statusRow = el("div", { class: "sp-detail-status" });
     const pill = el("span", {
@@ -1530,8 +1453,9 @@ export class DetailView {
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "sp-detail-diag-toggle";
+    // Named by its visible text ("Diagnostics", then the counts), which speech
+    // users read off the row (WCAG 2.5.3); aria-expanded carries the state.
     toggle.setAttribute("aria-expanded", "false");
-    toggle.setAttribute("aria-label", this.t("detail.diagnostics.expand"));
     const toggleLabel = document.createElement("span");
     const leftRow = document.createElement("span");
     leftRow.style.display = "inline-flex";
@@ -1614,13 +1538,8 @@ export class DetailView {
 
     toggle.addEventListener("click", () => {
       const expanded = toggle.getAttribute("aria-expanded") === "true";
-      const next = !expanded;
-      toggle.setAttribute("aria-expanded", String(next));
-      toggle.setAttribute(
-        "aria-label",
-        next ? this.t("detail.diagnostics.collapse") : this.t("detail.diagnostics.expand"),
-      );
-      body.classList.toggle("sp-detail-diag-body--open", next);
+      toggle.setAttribute("aria-expanded", String(!expanded));
+      body.classList.toggle("sp-detail-diag-body--open", !expanded);
     });
 
     wrapper.appendChild(toggle);

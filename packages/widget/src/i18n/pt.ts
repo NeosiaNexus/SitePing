@@ -89,10 +89,10 @@ export const pt: Translations = {
   // Markers
   "marker.approximate": "Posição aproximada (confiança: {confidence}%)",
   "marker.aria": "Feedback #{number}: {type}, {status} — {message}",
-  "marker.count": "{count} marcadores de feedback exibidos",
+  "marker.count": "Marcadores de feedback exibidos: {count}",
 
   // FAB badge
-  "fab.badge": "{count} feedbacks não resolvidos",
+  "fab.badge": "Feedbacks não resolvidos: {count}",
 
   // Accessibility — screen reader announcements
   "feedback.sent.confirmation": "Feedback enviado com sucesso",
@@ -101,7 +101,7 @@ export const pt: Translations = {
   "feedback.deleted.confirmation": "Feedback excluído",
 
   // Badge
-  "badge.count": "{count} feedbacks não resolvidos",
+  "badge.count": "Feedbacks não resolvidos: {count}",
 
   // Bulk actions toolbar
   "bulk.aria": "Ações em massa",
@@ -119,7 +119,7 @@ export const pt: Translations = {
   "sort.openFirst": "Abertos primeiro",
   "sort.label": "Ordenar",
   "group.byPage": "Por página",
-  "group.feedbacks": "{count} feedbacks",
+  "group.feedbacks": "Feedbacks: {count}",
 
   // Stats bar
   "stats.aria": "Estatísticas de feedbacks",

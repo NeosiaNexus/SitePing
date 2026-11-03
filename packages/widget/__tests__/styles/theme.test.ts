@@ -114,22 +114,43 @@ describe("badge text on its tint (axe color-contrast)", () => {
   });
 });
 
-describe("resolve and delete hover text", () => {
-  // Hover is outside what axe computes; base.ts draws the hovered Resolve and
-  // Delete text in statusOpen and typeBug on a 6% green / red tint.
-  it("is drawn in the theme's tokens, not a fixed green and red", () => {
+describe("resolve and delete text (Natif inks)", () => {
+  // Resolve and Delete read in inks, the status and type colours pushed toward
+  // the text (theme.ts: --sp-ink-green, --sp-ink-red); hover only lays a 10%
+  // tint under them. Hover is outside what axe computes, hence this check.
+  it("draws them in the inks at rest, with a 10% tint on hover", () => {
     const css = buildStyles(buildThemeColors());
-    expect(css).toMatch(/\.sp-btn-resolve:hover\s*\{[^}]*[{;\s]color:\s*var\(--sp-status-open\)/);
-    expect(css).toMatch(/\.sp-btn-delete:hover\s*\{[^}]*[{;\s]color:\s*var\(--sp-type-bug\)/);
+    expect(css).toMatch(/\.sp-btn-resolve\s*\{[^}]*[{;\s]color:\s*var\(--sp-ink-green\)/);
+    expect(css).toMatch(/\.sp-btn-delete\s*\{[^}]*[{;\s]color:\s*var\(--sp-ink-red\)/);
+    expect(css).toMatch(/\.sp-btn-resolve:hover\s*\{[^}]*var\(--sp-status-open\) 10%, transparent\)/);
+    expect(css).toMatch(/\.sp-btn-delete:hover\s*\{[^}]*var\(--sp-type-bug\) 10%, transparent\)/);
   });
 
-  it.each(["light", "dark"] as const)("reaches 4.5:1 on its tint in the %s theme", (theme) => {
-    const c = buildThemeColors(undefined, theme);
-    for (const ground of [c.bg, c.bgHover]) {
-      expect(contrast(c.statusOpen, over("rgba(34, 197, 94, 0.06)", ground))).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(c.typeBug, over("rgba(239, 68, 68, 0.06)", ground))).toBeGreaterThanOrEqual(4.5);
-    }
-  });
+  // color-mix(in srgb, c p, m) is c laid at opacity p over m.
+  const alpha = (p: number) =>
+    Math.round(p * 255)
+      .toString(16)
+      .padStart(2, "0");
+  const ink = (color: string, toward: string, p: number) => over(`${color}${alpha(p)}`, toward);
+
+  it.each(["light", "dark"] as const)(
+    "keeps both inks at 4.5:1 on rows, bare and hovered, in the %s theme",
+    (theme) => {
+      const c = buildThemeColors(undefined, theme);
+      const dark = theme === "dark";
+      const green = ink(c.statusOpen, dark ? "#ffffff" : "#000000", dark ? 0.8 : 0.82);
+      const red = ink(c.typeBug, dark ? "#ffffff" : "#000000", dark ? 0.66 : 0.86);
+      for (const ground of [c.surface.row, c.surface.rowHover]) {
+        for (const [text, base] of [
+          [green, c.statusOpen],
+          [red, c.typeBug],
+        ] as const) {
+          expect(contrast(text, ground), `${text} on ${ground}`).toBeGreaterThanOrEqual(4.5);
+          expect(contrast(text, over(`${base}${alpha(0.1)}`, ground)), `${text} on tint`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    },
+  );
 });
 
 describe("accentText (axe color-contrast)", () => {

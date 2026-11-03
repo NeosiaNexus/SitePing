@@ -11,8 +11,8 @@ export const STATS_CSS = /* css */ `
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 12px 24px;
-    border-bottom: 1px solid var(--sp-border);
+    /* No rule under it: the summary reads as part of the sheet's title block. */
+    padding: 2px 20px 12px;
     user-select: none;
   }
 
@@ -23,7 +23,7 @@ export const STATS_CSS = /* css */ `
   .sp-stats-row {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 18px;
   }
 
   .sp-stats-item {
@@ -33,26 +33,28 @@ export const STATS_CSS = /* css */ `
   }
 
   .sp-stats-dot {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
   .sp-stats-value {
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 600;
     line-height: 1;
+    letter-spacing: -0.02em;
     color: var(--sp-text);
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
-    transition: opacity 0.3s ease;
+    transition: opacity 0.2s ease;
   }
 
   .sp-stats-label {
     font-size: 11px;
+    font-weight: 500;
     line-height: 1;
-    color: var(--sp-text-tertiary);
+    color: var(--sp-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -67,22 +69,24 @@ export const STATS_CSS = /* css */ `
     flex: 1;
     height: 4px;
     border-radius: 2px;
-    background: var(--sp-border);
+    background: var(--sp-fill-strong);
     overflow: hidden;
   }
 
+  /* Full width, revealed by clip-path: composited, no layout per frame. It
+     moves only when the share actually changes, never from zero on render. */
   .sp-stats-progress-fill {
     height: 100%;
     border-radius: 2px;
-    background: linear-gradient(90deg, var(--sp-accent), #22c55e);
-    width: 0%;
-    transition: width 0.5s ease;
+    background: var(--sp-accent);
+    clip-path: inset(0 100% 0 0 round 2px);
+    transition: clip-path 0.3s var(--sp-ease-out);
   }
 
   .sp-stats-progress-label {
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1;
-    color: var(--sp-text-tertiary);
+    color: var(--sp-text-secondary);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
@@ -202,10 +206,7 @@ export class PanelStats {
     const visible = feedbacks.length;
     const pct = visible > 0 ? Math.round((closedCount / visible) * 100) : 0;
 
-    // Animate fill width via rAF so the transition kicks in after the DOM update
-    requestAnimationFrame(() => {
-      this.progressFill.style.width = `${pct}%`;
-    });
+    this.progressFill.style.clipPath = `inset(0 ${100 - pct}% 0 0 round 2px)`;
 
     const progressText = tWithParams(this.t, "stats.progress", { percent: pct });
     setText(this.progressLabel, progressText);
