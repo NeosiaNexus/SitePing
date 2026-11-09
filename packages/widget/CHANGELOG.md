@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.3](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.12.2...widget-v0.12.3) (2026-11-09)
+
+
+### Bug Fixes
+
+* **widget:** capture the annotated spot on smooth-scrolling pages in Firefox ([#539](https://github.com/NeosiaNexus/SitePing/issues/539)) ([437116f](https://github.com/NeosiaNexus/SitePing/commit/437116f938e6128692a924dda527675ca5e74ea4))
+
 ## [0.12.2](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.12.1...widget-v0.12.2) (2026-11-03)
 
 
