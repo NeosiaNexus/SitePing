@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/NeosiaNexus/SitePing/compare/server-v0.2.2...server-v0.2.3) (2026-11-09)
+
+
+### Miscellaneous
+
+* **deps-dev:** bump the dev-dependencies group with 5 updates ([#537](https://github.com/NeosiaNexus/SitePing/issues/537)) ([1ee2d1a](https://github.com/NeosiaNexus/SitePing/commit/1ee2d1ac3ebb3c21c7193ca7d4457977acb5a7d3))
+
 ## [0.2.2](https://github.com/NeosiaNexus/SitePing/compare/server-v0.2.1...server-v0.2.2) (2026-11-03)
 
 
