@@ -189,6 +189,15 @@
       "contributions": [
         "translation"
       ]
+    },
+    {
+      "login": "theroch",
+      "name": "Frank Rochlitzer",
+      "avatar_url": "https://avatars.githubusercontent.com/u/3726836?v=4",
+      "profile": "https://www.b3-it.de",
+      "contributions": [
+        "bug"
+      ]
     }
   ],
   "commitType": "docs"
