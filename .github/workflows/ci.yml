@@ -129,13 +129,18 @@ jobs:
         run: |
           version=$(node -p "require('./node_modules/@playwright/test/package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          # The runner image is part of the cache key: the browsers are built
+          # against the image's system libraries (WebKit links the image's
+          # ICU), so a cache filled on ubuntu-24.04 fails to launch once
+          # ubuntu-latest moves to ubuntu-26.04.
+          echo "image=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}
 
       - name: Build
         run: bun run build
