@@ -35,6 +35,7 @@ interface CapturedOptions {
   width?: number;
   height?: number;
   ignoreElements?: (element: Element) => boolean;
+  onclone?: (document: Document, element: HTMLElement) => void | Promise<void>;
 }
 
 function lastCaptureOptions(): CapturedOptions {
@@ -282,5 +283,33 @@ describe("captureAnnotatedScreenshot — ignoreElements predicate", () => {
     const regular = document.createElement("p");
     regular.textContent = "Plain page content";
     expect(ignore(regular)).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------
+// onclone — the cloned document must scroll instantly.
+//
+// html2canvas-pro scrolls its clone of the page to the host's offset before
+// measuring. With `html { scroll-behavior: smooth }` Firefox animated that
+// scroll and measured a clone still at the top, so the capture showed the
+// top of the page whatever the annotated spot (#536). The e2e spec
+// (e2e/screenshot.spec.ts) proves the pixels; this locks the hook itself.
+// -----------------------------------------------------------------------
+
+describe("captureAnnotatedScreenshot — onclone settles the clone's scroll", () => {
+  it("forces instant scrolling on the cloned root and body, with priority over the page's stylesheet", async () => {
+    await captureAnnotatedScreenshot(new DOMRect(0, 0, 100, 100));
+    const onclone = lastCaptureOptions().onclone;
+    expect(onclone).toBeTypeOf("function");
+
+    const clone = document.implementation.createHTMLDocument("clone");
+    clone.documentElement.style.scrollBehavior = "smooth";
+    clone.body.style.scrollBehavior = "smooth";
+    await onclone?.(clone, clone.body);
+
+    for (const element of [clone.documentElement, clone.body]) {
+      expect(element.style.getPropertyValue("scroll-behavior")).toBe("auto");
+      expect(element.style.getPropertyPriority("scroll-behavior")).toBe("important");
+    }
   });
 });

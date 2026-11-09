@@ -32,6 +32,7 @@ interface Html2CanvasOptions {
   allowTaint?: boolean;
   logging?: boolean;
   ignoreElements?: (element: Element) => boolean;
+  onclone?: (document: Document, element: HTMLElement) => void | Promise<void>;
 }
 
 let cachedHtml2Canvas: Html2CanvasFn | null | undefined; // undefined = not loaded yet, null = failed
@@ -79,6 +80,27 @@ export interface AnnotatedScreenshot {
   dataUrl: string;
   /** The drawn rect's position within the image, as fractions of its dimensions. */
   region: ScreenshotRegion;
+}
+
+/**
+ * Runs inside html2canvas-pro's cloned document before it is rendered.
+ *
+ * The engine clones the page into an off-screen iframe and scrolls that
+ * clone to the host's scroll offset, so element bounds come back in document
+ * coordinates. The clone inherits the host's stylesheets, and with
+ * `html { scroll-behavior: smooth }` Firefox animates that `scrollTo` instead
+ * of jumping: the clone is still at the top when it is measured and every
+ * bound is short by the scroll offset. The capture then shows the top of the
+ * page whatever the annotated spot (#536). Chromium and WebKit jump, but a
+ * smooth clone still misplaces their `position: fixed` elements. Forcing
+ * instant scrolling on the clone's scrolling boxes (the root element, and the
+ * body for quirks-mode pages) makes the measure exact everywhere; the host
+ * page is untouched.
+ */
+function settleClonedScroll(clonedDocument: Document): void {
+  for (const element of [clonedDocument.documentElement, clonedDocument.body]) {
+    if (element) element.style.setProperty("scroll-behavior", "auto", "important");
+  }
 }
 
 /** Clamp `value` into `[min, max]`. */
@@ -154,6 +176,7 @@ export async function captureAnnotatedScreenshot(
       useCORS: true,
       allowTaint: true,
       logging: false,
+      onclone: settleClonedScroll,
       ignoreElements: (element: Element) => {
         // Matched elements (and their descendants) are removed from the
         // render pass — the page underneath shows through. Two layers of

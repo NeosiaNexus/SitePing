@@ -420,6 +420,18 @@ const server = createServer((req, res) => {
       }
       html = html.replace(anchor, `${anchor}      enableScreenshot: true,\n`);
     }
+    // ?smooth=1 makes the page scroll smoothly, like siteping.dev, and paints
+    // the tall section green so a capture can tell it from the top of the
+    // page (screenshot.spec.ts, #536).
+    if (url.searchParams.get("smooth") === "1") {
+      const anchor = "  </style>\n";
+      if (!html.includes(anchor)) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("smooth=1: failed to inject the smooth-scroll style into the page template");
+        return;
+      }
+      html = html.replace(anchor, `    html { scroll-behavior: smooth; }\n    .tall { background: rgb(0, 200, 0); }\n${anchor}`);
+    }
     if (url.searchParams.get("panelActions") === "1") {
       const anchor = "      accentColor: '#6366f1',\n";
       if (!html.includes(anchor)) {
