@@ -263,6 +263,7 @@ export class DrizzleSitepingStore implements DrizzleStore {
     else if (query.status) filter.statuses = [query.status];
     if (query.url) filter.url = query.url;
     if (query.urlPattern) filter.urlPattern = query.urlPattern;
+    if (query.flowId) filter.flowId = query.flowId;
     if (query.search) filter.search = query.search;
 
     // A huge `page` from a direct caller yields an offset PostgreSQL and

@@ -269,6 +269,16 @@ describe("LocalStorageStore specific", () => {
       expect(revived.annotations[0]!.anchorKey).toBeNull();
     });
 
+    it("revives a record written before flows outside any flow", async () => {
+      await store.createFeedback(input);
+      const raw = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<Record<string, unknown>>;
+      for (const key of ["flowId", "flowStep", "flowTitle"]) delete raw[0]![key];
+      localStorage.setItem("test_feedbacks", JSON.stringify(raw));
+
+      const store2 = new LocalStorageStore({ key: "test_feedbacks" });
+      expect(await store2.findByClientId("c1")).toMatchObject({ flowId: null, flowStep: null, flowTitle: null });
+    });
+
     it("revives a record written before threads with an empty one, and persists its first comment", async () => {
       const fb = await store.createFeedback(input);
       const raw = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<Record<string, unknown>>;

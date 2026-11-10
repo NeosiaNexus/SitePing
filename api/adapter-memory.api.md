@@ -221,6 +221,9 @@ interface FeedbackCreateInput {
     authorName: string;
     clientId: string;
     diagnostics?: DiagnosticsSnapshot | null | undefined;
+    flowId?: null | string | undefined;
+    flowStep?: null | number | undefined;
+    flowTitle?: null | string | undefined;
     message: string;
     projectName: string;
     screenshotDataUrl?: null | string | undefined;
@@ -244,6 +247,7 @@ interface FeedbackPage {
 }
 
 interface FeedbackQuery {
+    flowId?: string | undefined;
     limit?: number | undefined;
     page?: number | undefined;
     projectName: string;
@@ -263,6 +267,9 @@ interface FeedbackRecord {
     comments?: CommentRecord[] | undefined;
     createdAt: Date;
     diagnostics: DiagnosticsSnapshot | null;
+    flowId?: null | string | undefined;
+    flowStep?: null | number | undefined;
+    flowTitle?: null | string | undefined;
     id: string;
     message: string;
     projectName: string;

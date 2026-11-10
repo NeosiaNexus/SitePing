@@ -962,6 +962,70 @@ export function testSitepingStore(
     });
 
     // ------------------------------------------------------------------
+    // Flows (optional record fields) — a store that leaves `flowId` out of
+    // the record it returns does not keep flows: every case is skipped for
+    // it, and runs once it returns the field
+    // ------------------------------------------------------------------
+
+    describe("flows", () => {
+      it("persists flowId, flowStep and flowTitle, and returns them on every read (when implemented)", async () => {
+        const created = await store.createFeedback(
+          createInput({ clientId: "flow-step", flowId: "flow-signup", flowStep: 2, flowTitle: "Sign-up" }),
+        );
+        if (created.flowId === undefined) return;
+
+        const { feedbacks } = await store.getFeedbacks({ projectName: "test-project" });
+        for (const record of [created, await store.findByClientId("flow-step"), feedbacks[0]]) {
+          expect(record?.flowId).toBe("flow-signup");
+          expect(record?.flowStep).toBe(2);
+          expect(record?.flowTitle).toBe("Sign-up");
+        }
+      });
+
+      it("keeps an untitled flow's flowTitle null (when implemented)", async () => {
+        const created = await store.createFeedback(createInput({ flowId: "flow-untitled", flowStep: 1 }));
+        if (created.flowId === undefined) return;
+
+        expect(created.flowStep).toBe(1);
+        expect(created.flowTitle).toBeNull();
+      });
+
+      it("stores a feedback outside any flow with null flow fields (when implemented)", async () => {
+        const probe = await store.createFeedback(createInput({ flowId: "flow-probe", flowStep: 1 }));
+        if (probe.flowId === undefined) return;
+
+        const record = await store.createFeedback(createInput({ clientId: "no-flow" }));
+        for (const read of [record, await store.findByClientId("no-flow")]) {
+          expect(read?.flowId).toBeNull();
+          expect(read?.flowStep).toBeNull();
+          expect(read?.flowTitle).toBeNull();
+        }
+      });
+
+      it("filters by flowId (when implemented)", async () => {
+        const first = await store.createFeedback(createInput({ flowId: "flow-a", flowStep: 1 }));
+        if (first.flowId === undefined) return;
+        await store.createFeedback(createInput({ flowId: "flow-a", flowStep: 2 }));
+        await store.createFeedback(createInput({ flowId: "flow-b", flowStep: 1 }));
+        await store.createFeedback(createInput());
+
+        const result = await store.getFeedbacks({ projectName: "test-project", flowId: "flow-a" });
+        expect(result.total).toBe(2);
+        expect(result.feedbacks.map((f) => f.flowStep).sort()).toEqual([1, 2]);
+        expect(result.feedbacks.every((f) => f.flowId === "flow-a")).toBe(true);
+      });
+
+      it("scopes the flowId filter to the project (when implemented)", async () => {
+        const step = await store.createFeedback(createInput({ flowId: "flow-shared", flowStep: 1 }));
+        if (step.flowId === undefined) return;
+        await store.createFeedback(createInput({ projectName: "other-project", flowId: "flow-shared", flowStep: 1 }));
+
+        const result = await store.getFeedbacks({ projectName: "test-project", flowId: "flow-shared" });
+        expect(result.feedbacks.map((f) => f.id)).toEqual([step.id]);
+      });
+    });
+
+    // ------------------------------------------------------------------
     // Comments (optional contract members) — every case is skipped for a
     // store without `addComment` / `deleteComment`, and runs once it has them
     // ------------------------------------------------------------------

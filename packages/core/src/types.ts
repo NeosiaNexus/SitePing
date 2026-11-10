@@ -64,6 +64,14 @@ export const IDENTITY_FIELD_MAX_LENGTH = 200;
 export const PROJECT_NAME_MAX_LENGTH = 191;
 export const CLIENT_ID_MAX_LENGTH = 191;
 
+/**
+ * Most steps one flow holds, and the longest `flowTitle` — the HTTP
+ * schema's caps on `flowStep` (1 to this) and `flowTitle`. A flow's
+ * `flowId` follows the `clientId` rules: same alphabet, same length cap.
+ */
+export const MAX_FLOW_STEPS = 100;
+export const FLOW_TITLE_MAX_LENGTH = 200;
+
 /** Deep-link configuration — controls how a feedback id is read from the URL. */
 export interface SitepingDeepLinkOptions {
   /** Query parameter name carrying the feedback id. Defaults to `"siteping"`. */
@@ -659,6 +667,16 @@ export interface FeedbackCreateInput {
    * `FeedbackRecord.diagnostics` so reviewers can replay the context.
    */
   diagnostics?: DiagnosticsSnapshot | null | undefined;
+  /**
+   * Id shared by every step of a multi-page flow — one reviewer walking
+   * through several pages and leaving one feedback on each. Null or absent
+   * when the feedback is not part of a flow.
+   */
+  flowId?: string | null | undefined;
+  /** Position of this feedback within its flow, from 1. Null or absent without a flow. */
+  flowStep?: number | null | undefined;
+  /** What the reviewer called the flow. Null when they left it untitled, or without a flow. */
+  flowTitle?: string | null | undefined;
 }
 
 /** Input for a single annotation when creating a feedback. */
@@ -722,6 +740,8 @@ export interface FeedbackQuery {
    * different concrete instances of the same template.
    */
   urlPattern?: string | undefined;
+  /** Filter to the steps of one flow (`FeedbackRecord.flowId`). */
+  flowId?: string | undefined;
 }
 
 /**
@@ -793,6 +813,18 @@ export interface FeedbackRecord {
    * diagnostics weren't enabled on the widget side.
    */
   diagnostics: DiagnosticsSnapshot | null;
+  /**
+   * Id shared by every step of a multi-page flow, null outside a flow.
+   * Optional so that a store written before flows — or a database not yet
+   * migrated for them — stays a valid store: a record without these fields
+   * reads as a feedback outside any flow. `@siteping/server` always sends
+   * the three of them, `null` when absent.
+   */
+  flowId?: string | null | undefined;
+  /** Position within the flow, from 1; null outside a flow. */
+  flowStep?: number | null | undefined;
+  /** The flow's title, null when untitled or outside a flow. */
+  flowTitle?: string | null | undefined;
 }
 
 /** A persisted annotation record returned by the store. */
@@ -1225,6 +1257,15 @@ export interface FeedbackPayload {
    * captured at submit time when `captureDiagnostics` is enabled.
    */
   diagnostics?: DiagnosticsSnapshot | null | undefined;
+  /**
+   * Id shared by every step of a multi-page flow — the `clientId` alphabet
+   * and length cap. Sent with `flowStep`, never without it.
+   */
+  flowId?: string | null | undefined;
+  /** Position of this feedback within its flow, 1 to `MAX_FLOW_STEPS`. Sent with `flowId`. */
+  flowStep?: number | null | undefined;
+  /** What the reviewer called the flow, up to `FLOW_TITLE_MAX_LENGTH` characters; null when untitled. */
+  flowTitle?: string | null | undefined;
 }
 
 /** Single source of truth for console diagnostic severity levels. */
@@ -1445,8 +1486,11 @@ export type CommentResponse = Prettify<
  * using what protocol N added, instead of probing for fields. A server that
  * predates it sends none: read that as 0. The OpenAPI document shipped as
  * `@siteping/server/openapi.json` describes this version.
+ *
+ * Protocol 2 added multi-page flows: the `flowId`, `flowStep` and
+ * `flowTitle` fields, always sent on a feedback, and the `flowId` list filter.
  */
-export const SITEPING_PROTOCOL_VERSION = 1;
+export const SITEPING_PROTOCOL_VERSION = 2;
 
 /** What the store behind an endpoint supports — advertised on every list response. */
 export interface SitepingCapabilities {

@@ -128,6 +128,9 @@ const feedbackResponse = z.object({
   screenshotUrl: z.string().nullable(),
   screenshotRegion: screenshotRegionSchema.nullable(),
   diagnostics: diagnosticsResponse.nullable(),
+  flowId: z.string().nullable(),
+  flowStep: z.number().int().nullable(),
+  flowTitle: z.string().nullable(),
   permissions: feedbackPermissions,
 });
 

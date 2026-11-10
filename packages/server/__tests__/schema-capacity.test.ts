@@ -34,12 +34,18 @@ const validComment = {
   clientId: "comment-1",
 };
 
+/** Fields a feedback field is only valid with — a flow's id, step and title go together. */
+const COMPANIONS: Partial<Record<string, Record<string, unknown>>> = {
+  flowId: { flowStep: 1 },
+  flowTitle: { flowId: "flow-1", flowStep: 1 },
+};
+
 const SURFACES: Surface[] = [
   {
     model: "SitepingFeedback",
     fields: feedbackCreateSchema,
     parse: (input) => feedbackCreateSchema.safeParse(input),
-    build: (field, value) => ({ ...validPayload, [field]: value }),
+    build: (field, value) => ({ ...validPayload, ...COMPANIONS[field], [field]: value }),
     read: (parsed, field) => (parsed as Record<string, unknown>)[field],
   },
   {

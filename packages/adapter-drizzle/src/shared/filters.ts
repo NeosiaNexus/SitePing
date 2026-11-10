@@ -14,6 +14,7 @@ export interface FeedbackFilterColumns {
   status: Column;
   url: Column;
   urlPattern: Column;
+  flowId: Column;
   message: Column;
   /** The message lowercased in JavaScript on insert; `NULL` on rows the store did not write. */
   messageSearch: Column;
@@ -96,6 +97,7 @@ export function buildFeedbackWhere(
   if (filter.statuses) conditions.push(inArray(columns.status, [...filter.statuses]));
   if (filter.url) conditions.push(eq(columns.url, filter.url));
   if (filter.urlPattern) conditions.push(eq(columns.urlPattern, filter.urlPattern));
+  if (filter.flowId) conditions.push(eq(columns.flowId, filter.flowId));
   if (filter.search) conditions.push(messageContainsCondition(columns, fallbackLikeOperator, filter.search));
   return and(...conditions);
 }

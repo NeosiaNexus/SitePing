@@ -81,6 +81,9 @@ export function createSitepingPgTables(names: SitepingTableNames = DEFAULT_SITEP
       screenshotUrl: text("screenshot_url"),
       screenshotRegion: jsonb("screenshot_region").$type<ScreenshotRegion>(),
       diagnostics: jsonb("diagnostics").$type<DiagnosticsSnapshot>(),
+      flowId: text("flow_id"),
+      flowStep: integer("flow_step"),
+      flowTitle: text("flow_title"),
       viewport: text("viewport").notNull(),
       userAgent: text("user_agent").notNull(),
       authorName: text("author_name").notNull(),
@@ -105,6 +108,7 @@ export function createSitepingPgTables(names: SitepingTableNames = DEFAULT_SITEP
       uniqueIndex(`${names.feedbacks}_client_id_key`).on(table.clientId),
       index(`${names.feedbacks}_project_status_created_idx`).on(table.projectName, table.status, table.createdAt),
       index(`${names.feedbacks}_project_url_idx`).on(table.projectName, table.url),
+      index(`${names.feedbacks}_project_flow_idx`).on(table.projectName, table.flowId),
     ],
   );
 

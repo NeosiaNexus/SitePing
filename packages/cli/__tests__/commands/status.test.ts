@@ -51,6 +51,9 @@ model SitepingFeedback {
   screenshotUrl String?             @db.Text
   screenshotRegion Json?
   diagnostics   Json?
+  flowId        String?
+  flowStep      Int?
+  flowTitle     String?
   viewport      String
   userAgent     String
   authorName    String
@@ -65,6 +68,7 @@ model SitepingFeedback {
   @@index([projectName])
   @@index([projectName, status, createdAt])
   @@index([projectName, url])
+  @@index([projectName, flowId])
 }
 
 model SitepingAnnotation {
@@ -220,6 +224,9 @@ model SitepingFeedback {
   screenshotUrl String?             @db.Text
   screenshotRegion Json?
   diagnostics   Json?
+  flowId        String?
+  flowStep      Int?
+  flowTitle     String?
   viewport      String
   userAgent     String
   authorName    String
@@ -233,6 +240,7 @@ model SitepingFeedback {
   @@index([projectName])
   @@index([projectName, status, createdAt])
   @@index([projectName, url])
+  @@index([projectName, flowId])
 }
 
 model SitepingAnnotation {

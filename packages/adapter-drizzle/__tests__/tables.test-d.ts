@@ -1,4 +1,4 @@
-import type { AnnotationRecord, CommentRecord, FeedbackRecord } from "@siteping/core";
+import type { AnnotationRecord, CommentRecord, FeedbackRecord, Prettify } from "@siteping/core";
 import { expectTypeOf, test } from "vitest";
 import type { LibSQLSitepingStoreOptions, SitepingSqliteTables } from "../src/libsql/index.js";
 import type { PgSitepingStoreOptions, SitepingPgTables } from "../src/pg/index.js";
@@ -8,8 +8,14 @@ import type { PgSitepingStoreOptions, SitepingPgTables } from "../src/pg/index.j
 // add only internal columns: `creationSequence` on PostgreSQL feedbacks
 // (tie-break of "newest first" — SQLite uses its implicit `rowid`), `position`
 // on annotations (submission order) and comments (posting order), and
-// `messageSearch` on feedbacks (Unicode-lowercased message searched).
-type FeedbackRow = Omit<FeedbackRecord, "annotations" | "comments">;
+// `messageSearch` on feedbacks (Unicode-lowercased message searched). The
+// record's optional flow fields are columns here, always read back.
+type FlowKey = "flowId" | "flowStep" | "flowTitle";
+type FeedbackRow = Prettify<
+  Omit<FeedbackRecord, "annotations" | "comments" | FlowKey> & {
+    [Key in FlowKey]-?: Exclude<FeedbackRecord[Key], undefined>;
+  }
+>;
 
 test("PostgreSQL tables match the core records", () => {
   type FeedbackSelect = SitepingPgTables["sitepingFeedbacks"]["$inferSelect"];

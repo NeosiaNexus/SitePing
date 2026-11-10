@@ -1,4 +1,10 @@
-import { ANCHOR_ELEMENT_ID_MAX, ANCHOR_ELEMENT_TAG_MAX, IDENTITY_FIELD_MAX_LENGTH } from "@siteping/core";
+import {
+  ANCHOR_ELEMENT_ID_MAX,
+  ANCHOR_ELEMENT_TAG_MAX,
+  CLIENT_ID_MAX_LENGTH,
+  FLOW_TITLE_MAX_LENGTH,
+  IDENTITY_FIELD_MAX_LENGTH,
+} from "@siteping/core";
 import { describe, expect, it } from "vitest";
 import {
   feedbackCreateSchema,
@@ -362,6 +368,54 @@ describe("feedbackCreateSchema", () => {
       expect(result.success).toBe(true);
     });
   });
+
+  describe("multi-page flow", () => {
+    const step = { flowId: "flow-1a2b", flowStep: 1, flowTitle: "Sign-up" };
+
+    it("accepts a step with its flowId, flowStep and flowTitle", () => {
+      const result = feedbackCreateSchema.safeParse({ ...validPayload, ...step });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toMatchObject(step);
+    });
+
+    it("accepts an untitled step, and a feedback outside any flow sent with null fields", () => {
+      expect(feedbackCreateSchema.safeParse({ ...validPayload, flowId: "flow-1", flowStep: 2 }).success).toBe(true);
+      expect(
+        feedbackCreateSchema.safeParse({ ...validPayload, flowId: null, flowStep: null, flowTitle: null }).success,
+      ).toBe(true);
+    });
+
+    it("trims the title", () => {
+      const result = feedbackCreateSchema.safeParse({ ...validPayload, ...step, flowTitle: "  Checkout  " });
+      expect(result.success && result.data.flowTitle).toBe("Checkout");
+    });
+
+    it.each([0, 101, 1.5, -1])("rejects flowStep %s (an integer from 1 to 100)", (flowStep) => {
+      expect(feedbackCreateSchema.safeParse({ ...validPayload, ...step, flowStep }).success).toBe(false);
+    });
+
+    it.each(["../etc", "a/b", "", "x".repeat(CLIENT_ID_MAX_LENGTH + 1)])(
+      "rejects flowId %j, outside the clientId alphabet or length",
+      (flowId) => {
+        expect(feedbackCreateSchema.safeParse({ ...validPayload, ...step, flowId }).success).toBe(false);
+      },
+    );
+
+    it("rejects a title over 200 characters", () => {
+      const flowTitle = "t".repeat(FLOW_TITLE_MAX_LENGTH + 1);
+      expect(feedbackCreateSchema.safeParse({ ...validPayload, ...step, flowTitle }).success).toBe(false);
+    });
+
+    it.each([
+      ["a flowId without its flowStep", { flowId: "flow-1" }, "flowStep"],
+      ["a flowStep without its flowId", { flowStep: 1 }, "flowStep"],
+      ["a flowTitle without a flow", { flowTitle: "Sign-up" }, "flowTitle"],
+    ])("rejects %s", (_label, fields, field) => {
+      const result = feedbackCreateSchema.safeParse({ ...validPayload, ...fields });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(formatValidationErrors(result.error).map((issue) => issue.field)).toEqual([field]);
+    });
+  });
 });
 
 describe("feedbackPatchSchema", () => {
@@ -456,6 +510,12 @@ describe("getQuerySchema", () => {
   it("rejects an empty statuses string", () => {
     const result = getQuerySchema.safeParse({ projectName: "test-project", statuses: "" });
     expect(result.success).toBe(false);
+  });
+
+  it("accepts a flowId filter, and refuses one outside the clientId alphabet", () => {
+    const result = getQuerySchema.safeParse({ projectName: "test-project", flowId: "flow-1" });
+    expect(result.success && result.data.flowId).toBe("flow-1");
+    expect(getQuerySchema.safeParse({ projectName: "test-project", flowId: "../x" }).success).toBe(false);
   });
 
   it("leaves statuses undefined when the param is absent", () => {

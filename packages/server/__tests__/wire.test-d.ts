@@ -32,8 +32,18 @@ test("the wire shapes serialize to the API types clients read", () => {
   expectTypeOf<Prettify<Serialized<Omit<WireComment, "permissions">>>>().toEqualTypeOf<
     Prettify<Omit<CommentResponse, "permissions">>
   >();
-  expectTypeOf<Prettify<Serialized<Omit<WireFeedback, "comments" | "permissions">>>>().toEqualTypeOf<
-    Prettify<Omit<FeedbackResponse, "comments" | "permissions">>
+  expectTypeOf<
+    Prettify<Serialized<Omit<WireFeedback, "comments" | "permissions" | "flowId" | "flowStep" | "flowTitle">>>
+  >().toEqualTypeOf<
+    Prettify<Omit<FeedbackResponse, "comments" | "permissions" | "flowId" | "flowStep" | "flowTitle">>
+  >();
+  // Always sent, `null` outside a flow: clients only meet missing flow fields
+  // on servers that predate protocol 2.
+  expectTypeOf<Serialized<WireFeedback>["flowId"]>().toEqualTypeOf<string | null>();
+  expectTypeOf<Serialized<WireFeedback>["flowStep"]>().toEqualTypeOf<number | null>();
+  expectTypeOf<Serialized<WireFeedback>["flowTitle"]>().toEqualTypeOf<string | null>();
+  expectTypeOf<Serialized<Omit<WireFeedback, "comments" | "permissions">>>().toExtend<
+    Omit<FeedbackResponse, "comments" | "permissions">
   >();
   // Always sent: clients only meet a missing thread, or missing permissions,
   // on servers that predate them.

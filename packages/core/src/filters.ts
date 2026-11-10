@@ -11,6 +11,7 @@
  *   - status / statuses  (`statuses` bucket wins when both are set)
  *   - url
  *   - urlPattern
+ *   - flowId
  *   - search       (lowercase substring match on `message`)
  *
  * Pagination goes through `clampPagination`: `limit` capped at 100, `page`
@@ -96,7 +97,7 @@ function sortTime(record: FeedbackRecord): number {
  * its list) applies exactly the stores' semantics. Pagination is ignored.
  */
 export function matchesFeedbackQuery(record: FeedbackRecord, query: FeedbackQuery): boolean {
-  const { type, status, statuses, url, urlPattern, search } = query;
+  const { type, status, statuses, url, urlPattern, flowId, search } = query;
   return (
     record.projectName === query.projectName &&
     (!type || record.type === type) &&
@@ -105,6 +106,7 @@ export function matchesFeedbackQuery(record: FeedbackRecord, query: FeedbackQuer
     (statuses && statuses.length > 0 ? statuses.includes(record.status) : !status || record.status === status) &&
     (!url || record.url === url) &&
     (!urlPattern || record.urlPattern === urlPattern) &&
+    (!flowId || record.flowId === flowId) &&
     (!search || record.message.toLowerCase().includes(search.toLowerCase()))
   );
 }

@@ -25,6 +25,7 @@ export interface FeedbackFilter {
   statuses?: readonly FeedbackStatus[];
   url?: string;
   urlPattern?: string;
+  flowId?: string;
   search?: string;
 }
 

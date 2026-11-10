@@ -270,6 +270,7 @@ interface FeedbackWhereInput {
   status?: FeedbackStatus | { in: FeedbackStatus[] };
   url?: string;
   urlPattern?: string;
+  flowId?: string;
   message?: { contains: string; mode?: "insensitive" };
 }
 
@@ -433,6 +434,12 @@ export class PrismaStore implements SitepingStore {
         // and Prisma will throw if we pass an unknown column, so omit the
         // key entirely when diagnostics is null.
         ...(data.diagnostics ? { diagnostics: data.diagnostics } : {}),
+        // Same omit-when-null contract for the `flowId` / `flowStep` /
+        // `flowTitle` columns: a feedback outside a flow writes none of them,
+        // so a schema without them keeps taking every such feedback.
+        ...(data.flowId
+          ? { flowId: data.flowId, flowStep: data.flowStep ?? null, flowTitle: data.flowTitle ?? null }
+          : {}),
         viewport: data.viewport,
         userAgent: data.userAgent,
         authorName: data.authorName,
@@ -557,7 +564,7 @@ export class PrismaStore implements SitepingStore {
 
   async getFeedbacks(query: FeedbackQuery): Promise<FeedbackPage> {
     const storable = toStorableValue(query);
-    const { projectName, type, status, statuses, search, url, urlPattern } = storable;
+    const { projectName, type, status, statuses, search, url, urlPattern, flowId } = storable;
     // Same clamp as the in-memory pipeline: the HTTP schema already bounds
     // page/limit, but direct callers reach the store without it.
     const { limit, skip } = clampPagination(storable);
@@ -573,6 +580,7 @@ export class PrismaStore implements SitepingStore {
     }
     if (url) where.url = url;
     if (urlPattern) where.urlPattern = urlPattern;
+    if (flowId) where.flowId = flowId;
     if (search) {
       where.message = this.caseInsensitiveSearch ? { contains: search, mode: "insensitive" } : { contains: search };
     }

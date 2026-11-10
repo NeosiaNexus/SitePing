@@ -2,14 +2,14 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SitePing HTTP API",
-    "version": "1",
+    "version": "2",
     "description": "The protocol `createSitepingHandler` (`@siteping/server`) serves: one endpoint, mounted at any path (`/api/siteping` here, what `npx @siteping/cli init` generates), five methods, JSON bodies. `info.version` is the protocol version a list response sends as `protocol`. Error strings are informational: branch on the status code. See https://siteping.dev/docs/server#wire-protocol.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
     }
   },
-  "x-siteping-protocol": 1,
+  "x-siteping-protocol": 2,
   "paths": {
     "/api/siteping": {
       "get": {
@@ -123,6 +123,17 @@
             "schema": {
               "type": "string",
               "maxLength": 2000
+            }
+          },
+          {
+            "name": "flowId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 191,
+              "pattern": "^[a-zA-Z0-9_-]+$"
             }
           }
         ],
@@ -743,6 +754,42 @@
                 "type": "null"
               }
             ]
+          },
+          "flowId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 191,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flowStep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flowTitle": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1016,6 +1063,30 @@
               }
             ]
           },
+          "flowId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "flowStep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flowTitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "permissions": {
             "$ref": "#/components/schemas/FeedbackPermissions"
           }
@@ -1040,6 +1111,9 @@
           "screenshotUrl",
           "screenshotRegion",
           "diagnostics",
+          "flowId",
+          "flowStep",
+          "flowTitle",
           "permissions"
         ]
       },

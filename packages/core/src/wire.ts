@@ -39,6 +39,7 @@ export function feedbackQueryToSearchParams(query: FeedbackQuery): URLSearchPara
   if (query.search) params.set("search", query.search);
   if (query.url) params.set("url", query.url);
   if (query.urlPattern) params.set("urlPattern", query.urlPattern);
+  if (query.flowId) params.set("flowId", query.flowId);
   return params;
 }
 

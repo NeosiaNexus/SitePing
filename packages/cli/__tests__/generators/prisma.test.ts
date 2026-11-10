@@ -91,7 +91,8 @@ model User {
 /**
  * The Siteping models as `sync` wrote them for MySQL before the columns were
  * sized from the server's caps (cli 0.5.7): every plain `String` a
- * `VARCHAR(191)`, the inline screenshot a 64 KB `TEXT`.
+ * `VARCHAR(191)`, the inline screenshot a 64 KB `TEXT` — with the later flow
+ * columns written the same unsized way.
  */
 const MYSQL_MODELS_BEFORE_SIZING = `
 model SitepingFeedback {
@@ -105,6 +106,9 @@ model SitepingFeedback {
   screenshotUrl    String?              @db.Text
   screenshotRegion Json?
   diagnostics      Json?
+  flowId           String?
+  flowStep         Int?
+  flowTitle        String?
   viewport         String
   userAgent        String
   authorName       String
@@ -119,6 +123,7 @@ model SitepingFeedback {
   @@index([projectName])
   @@index([projectName, status, createdAt])
   @@index([projectName, url])
+  @@index([projectName, flowId])
 }
 
 model SitepingAnnotation {
@@ -464,6 +469,11 @@ describe("syncPrismaModels", () => {
     // Optional Json fields: screenshotRegion + diagnostics
     expect(output).toMatch(/screenshotRegion\s+Json\?/);
     expect(output).toMatch(/diagnostics\s+Json\?/);
+    // Optional multi-page flow columns, and the index that reads a flow's steps
+    expect(output).toMatch(/flowId\s+String\?/);
+    expect(output).toMatch(/flowStep\s+Int\?/);
+    expect(output).toMatch(/flowTitle\s+String\?/);
+    expect(output).toContain("@@index([projectName, flowId])");
     // createdAt with @default(now())
     expect(output).toMatch(/createdAt\s+DateTime\s+@default\(now\(\)\)/);
   });
@@ -650,6 +660,7 @@ describe("syncPrismaModels", () => {
         widened("SitepingFeedback", "url"),
         widened("SitepingFeedback", "urlPattern"),
         widened("SitepingFeedback", "screenshotUrl", "@db.Text → @db.MediumText"),
+        widened("SitepingFeedback", "flowTitle"),
         widened("SitepingFeedback", "userAgent"),
         widened("SitepingFeedback", "authorName"),
         widened("SitepingFeedback", "authorEmail"),

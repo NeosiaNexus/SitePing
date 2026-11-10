@@ -122,6 +122,9 @@ export function buildFeedbackRecord(
     screenshotUrl: input.screenshotDataUrl ?? null,
     screenshotRegion: input.screenshotRegion ?? null,
     diagnostics: input.diagnostics ?? null,
+    flowId: input.flowId ?? null,
+    flowStep: input.flowStep ?? null,
+    flowTitle: input.flowTitle ?? null,
   };
 }
 

@@ -285,6 +285,30 @@ describe("createSitepingHandler", () => {
       expect(createArg.data).not.toHaveProperty("screenshotRegion");
     });
 
+    it("passes a flow step's flowId, flowStep and flowTitle into Prisma create", async () => {
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify({ ...validPayloadNoAnnotations, flowId: "flow-1", flowStep: 2, flowTitle: "Sign-up" }),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(201);
+      const createArg = prisma.sitepingFeedback.create.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+      expect(createArg.data).toMatchObject({ flowId: "flow-1", flowStep: 2, flowTitle: "Sign-up" });
+    });
+
+    it("omits the flow columns when the feedback is outside a flow (unsynced schemas)", async () => {
+      const req = new Request("http://localhost/api/siteping", {
+        method: "POST",
+        body: JSON.stringify(validPayloadNoAnnotations),
+      });
+      const res = await handler.POST(req);
+      expect(res.status).toBe(201);
+      const createArg = prisma.sitepingFeedback.create.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+      expect(createArg.data).not.toHaveProperty("flowId");
+      expect(createArg.data).not.toHaveProperty("flowStep");
+      expect(createArg.data).not.toHaveProperty("flowTitle");
+    });
+
     it("returns 400 for an invalid screenshotRegion", async () => {
       const req = new Request("http://localhost/api/siteping", {
         method: "POST",

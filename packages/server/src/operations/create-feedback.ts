@@ -47,6 +47,10 @@ function toCreateInput(data: FeedbackPayload): FeedbackCreateInput {
     screenshotDataUrl: data.screenshotDataUrl ?? null,
     screenshotRegion: data.screenshotRegion ?? null,
     diagnostics: data.diagnostics ?? null,
+    flowId: data.flowId ?? null,
+    flowStep: data.flowStep ?? null,
+    // A blank title (trimmed by the schema) is an untitled flow.
+    flowTitle: data.flowTitle || null,
   };
 }
 

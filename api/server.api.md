@@ -78,6 +78,9 @@ export interface FeedbackCreateInput {
     authorName: string;
     clientId: string;
     diagnostics?: DiagnosticsSnapshot | null | undefined;
+    flowId?: null | string | undefined;
+    flowStep?: null | number | undefined;
+    flowTitle?: null | string | undefined;
     message: string;
     projectName: string;
     screenshotDataUrl?: null | string | undefined;
@@ -117,6 +120,9 @@ export interface FeedbackRecord {
     comments?: CommentRecord[] | undefined;
     createdAt: Date;
     diagnostics: DiagnosticsSnapshot | null;
+    flowId?: null | string | undefined;
+    flowStep?: null | number | undefined;
+    flowTitle?: null | string | undefined;
     id: string;
     message: string;
     projectName: string;
@@ -165,6 +171,7 @@ export type GenericWebhookPayload = Prettify<Serialized<Omit<FeedbackRecord, "cl
 }>;
 
 export interface GetQueryInput {
+    flowId?: string | undefined;
     limit: number;
     page: number;
     projectName: string;
@@ -176,7 +183,7 @@ export interface GetQueryInput {
     urlPattern?: string | undefined;
 }
 
-export const SITEPING_PROTOCOL_VERSION = 1;
+export const SITEPING_PROTOCOL_VERSION = 2;
 
 export interface ScreenshotRegion {
     hPct: number;
@@ -475,6 +482,7 @@ interface FeedbackPage {
 }
 
 interface FeedbackQuery {
+    flowId?: string | undefined;
     limit?: number | undefined;
     page?: number | undefined;
     projectName: string;

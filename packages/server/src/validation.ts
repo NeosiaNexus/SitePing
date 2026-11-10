@@ -17,7 +17,9 @@ import {
   EMAIL_PATTERN,
   FEEDBACK_STATUSES,
   FEEDBACK_TYPES,
+  FLOW_TITLE_MAX_LENGTH,
   IDENTITY_FIELD_MAX_LENGTH,
+  MAX_FLOW_STEPS,
   PROJECT_NAME_MAX_LENGTH,
 } from "@siteping/core";
 import * as zod from "zod";
@@ -125,7 +127,7 @@ const clientIdSchema = z
   .max(CLIENT_ID_MAX_LENGTH)
   .regex(/^[a-zA-Z0-9_-]+$/, "clientId must be alphanumeric (a-z, A-Z, 0-9, _, -)");
 
-export const feedbackCreateSchema = z.object({
+const feedbackCreateFields = z.object({
   projectName: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH),
   type: z.enum(FEEDBACK_TYPES),
   message: z.string().min(1).max(5000),
@@ -167,7 +169,26 @@ export const feedbackCreateSchema = z.object({
   // this when `captureDiagnostics` is enabled; null + omitted are both
   // accepted so existing clients keep working unchanged.
   diagnostics: diagnosticsSchema.nullable().optional(),
+  // Optional multi-page flow: every step of one flow shares `flowId`, and
+  // `flowStep` orders them. The id lands where a clientId does (an indexed
+  // column, a list filter), so it follows the same rules. Older widgets never
+  // send these; null + omitted are both accepted.
+  flowId: clientIdSchema.nullable().optional(),
+  flowStep: z.number().int().min(1).max(MAX_FLOW_STEPS).nullable().optional(),
+  flowTitle: z.string().trim().max(FLOW_TITLE_MAX_LENGTH).nullable().optional(),
 });
+
+// A step without its flow, or a flow without its step, could never be
+// grouped or ordered: both or neither. A title belongs to a flow.
+export const feedbackCreateSchema = feedbackCreateFields
+  .refine((data) => (data.flowId == null) === (data.flowStep == null), {
+    message: "flowId and flowStep must be sent together",
+    path: ["flowStep"],
+  })
+  .refine((data) => data.flowTitle == null || data.flowId != null, {
+    message: "flowTitle requires a flowId",
+    path: ["flowTitle"],
+  });
 
 // `feedbackId` names the thread — its presence is what routes a POST here
 // rather than to `feedbackCreateSchema`.
@@ -223,6 +244,8 @@ export const getQuerySchema = z.object({
   // Page scope filters — used by the panel's "this page / this type" controls
   url: z.string().max(2000).optional(),
   urlPattern: z.string().max(2000).optional(),
+  // The steps of one flow
+  flowId: clientIdSchema.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -264,6 +287,7 @@ export interface GetQueryInput {
   search?: string | undefined;
   url?: string | undefined;
   urlPattern?: string | undefined;
+  flowId?: string | undefined;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,9 @@ import {
   ANCHOR_ELEMENT_TAG_MAX,
   CLIENT_ID_MAX_LENGTH,
   type FeedbackRecord,
+  FLOW_TITLE_MAX_LENGTH,
   IDENTITY_FIELD_MAX_LENGTH,
+  MAX_FLOW_STEPS,
   PROJECT_NAME_MAX_LENGTH,
 } from "@siteping/core";
 import { describe, expect, it, vi } from "vitest";
@@ -86,6 +88,50 @@ describe("createSitepingHandler — any store", () => {
     const [first, second] = [await page("page=1&limit=1"), await page("page=2&limit=1")];
     expect([first.total, first.feedbacks.length, second.feedbacks.length]).toEqual([3, 1, 1]);
     expect(second.feedbacks[0]?.id).not.toBe(first.feedbacks[0]?.id);
+  });
+
+  it("stores a flow's steps, serves the flowId filter, and sends null flow fields outside a flow", async () => {
+    const store = new MemoryStore();
+    const handler = createSitepingHandler({ store });
+    const submit = async (clientId: string, more = {}) => {
+      expect((await handler.POST(request("POST", { ...validPayloadNoAnnotations, clientId, ...more }))).status).toBe(
+        201,
+      );
+    };
+    await submit("step-1", { flowId: "flow-a", flowStep: 1, flowTitle: "Sign-up" });
+    await submit("step-2", { flowId: "flow-a", flowStep: 2, flowTitle: "Sign-up" });
+    await submit("other-flow", { flowId: "flow-b", flowStep: 1 });
+    await submit("no-flow");
+    const page = async (query = "") =>
+      (await (
+        await handler.GET(new Request(`${ENDPOINT}?projectName=${validPayloadNoAnnotations.projectName}${query}`))
+      ).json()) as { feedbacks: FeedbackRecord[]; total: number; protocol: number };
+
+    expect(await store.findByClientId("step-2")).toMatchObject({ flowId: "flow-a", flowStep: 2, flowTitle: "Sign-up" });
+    const flow = await page("&flowId=flow-a");
+    expect(flow.total).toBe(2);
+    expect(flow.feedbacks.map((f) => f.flowStep).sort()).toEqual([1, 2]);
+    expect(flow.protocol).toBeGreaterThanOrEqual(2);
+    const outside = (await page()).feedbacks.find((f) => f.flowId === null);
+    expect(outside).toMatchObject({ flowId: null, flowStep: null, flowTitle: null });
+  });
+
+  it("sends null flow fields for a store that leaves them out", async () => {
+    const store = new MemoryStore();
+    const getFeedbacks = store.getFeedbacks.bind(store);
+    // A store written before flows: its records carry no flow fields at all.
+    store.getFeedbacks = async (query) => {
+      const result = await getFeedbacks(query);
+      return {
+        ...result,
+        feedbacks: result.feedbacks.map(({ flowId: _id, flowStep: _step, flowTitle: _title, ...rest }) => rest),
+      };
+    };
+    const handler = createSitepingHandler({ store });
+    await handler.POST(request("POST", validPayloadNoAnnotations));
+
+    const listed = (await (await handler.GET(listRequest())).json()) as { feedbacks: FeedbackRecord[] };
+    expect(listed.feedbacks[0]).toMatchObject({ flowId: null, flowStep: null, flowTitle: null });
   });
 
   it("refuses to start without a store", () => {
@@ -287,6 +333,9 @@ describe("createSitepingHandler — request body size", () => {
       clientId: text(CLIENT_ID_MAX_LENGTH),
       screenshotDataUrl: `data:image/jpeg;base64,${text(1_500_000 - 23)}`,
       screenshotRegion: { xPct: 0, yPct: 0, wPct: 1, hPct: 1 },
+      flowId: text(CLIENT_ID_MAX_LENGTH),
+      flowStep: MAX_FLOW_STEPS,
+      flowTitle: text(FLOW_TITLE_MAX_LENGTH),
       diagnostics: {
         console: Array.from({ length: 50 }, () => ({ level: "error", timestamp: text(50), message: text(600) })),
         network: Array.from({ length: 20 }, () => ({

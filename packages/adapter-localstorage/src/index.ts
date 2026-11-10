@@ -227,7 +227,7 @@ export class LocalStorageStore implements SitepingStore {
 // after the adapter's first release may be missing on records written back
 // then (0.4.3 predates `urlPattern`, `screenshotUrl`, `anchorKey`,
 // `screenshotRegion` and `diagnostics`; every release before threads lacks
-// `comments`).
+// `comments`, every release before flows `flowId`, `flowStep` and `flowTitle`).
 // ---------------------------------------------------------------------------
 
 /** Nullable record fields that a blob written by an older release may lack. */
@@ -359,5 +359,8 @@ function reviveFeedback(raw: StoredFeedback): FeedbackRecord {
     screenshotUrl: raw.screenshotUrl ?? null,
     screenshotRegion: raw.screenshotRegion ?? null,
     diagnostics: raw.diagnostics ?? null,
+    flowId: raw.flowId ?? null,
+    flowStep: raw.flowStep ?? null,
+    flowTitle: raw.flowTitle ?? null,
   };
 }

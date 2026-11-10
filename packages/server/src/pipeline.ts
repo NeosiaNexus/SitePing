@@ -50,11 +50,19 @@ interface PipelineDependencies<Principal> {
 /** A comment as it goes on the wire — the requester's permissions always present. */
 export type WireComment = Omit<CommentRecord, "clientId"> & { permissions: CommentPermissions };
 
-/** A feedback as it goes on the wire — its thread and the requester's permissions always present. */
-export type WireFeedback = Omit<FeedbackRecord, "clientId" | "comments"> & {
+/**
+ * A feedback as it goes on the wire — its thread, its flow fields (`null`
+ * outside a flow) and the requester's permissions always present.
+ */
+export type WireFeedback = Omit<FeedbackRecord, "clientId" | "comments" | WireFlowKey> & {
+  [Key in WireFlowKey]-?: Exclude<FeedbackRecord[Key], undefined>;
+} & {
   comments: WireComment[];
   permissions: FeedbackPermissions;
 };
+
+/** The optional record fields of a multi-page flow, sent as `null` by a store that leaves them out. */
+type WireFlowKey = "flowId" | "flowStep" | "flowTitle";
 
 /**
  * Serialize a comment for the HTTP wire — `clientId` stripped and
@@ -74,7 +82,8 @@ function toWireComment(comment: CommentRecord, includeEmail: boolean): Omit<Wire
  * exposing it via responses would turn that into a record-theft oracle.
  * `authorEmail` is PII: blanked unless the requester may read it — on the
  * feedback per `includeEmail`, on its comments per `includeCommentEmails`.
- * A store without comments leaves the thread out: it goes out as `[]`.
+ * A store without comments leaves the thread out: it goes out as `[]`; one
+ * without flows leaves the flow fields out: they go out as `null`.
  * Never mutates the input — webhooks receive the same record object.
  */
 function toWireFeedback(
@@ -85,6 +94,9 @@ function toWireFeedback(
   const { clientId: _clientId, comments, ...wire } = feedback;
   return {
     ...wire,
+    flowId: wire.flowId ?? null,
+    flowStep: wire.flowStep ?? null,
+    flowTitle: wire.flowTitle ?? null,
     ...(includeEmail ? {} : { authorEmail: "" }),
     comments: (comments ?? []).map((comment) => toWireComment(comment, includeCommentEmails)),
   };

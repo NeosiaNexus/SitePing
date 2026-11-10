@@ -19,6 +19,7 @@ import {
   COMMENT_BODY_MAX_LENGTH,
   type CommentRecord,
   type FeedbackRecord,
+  FLOW_TITLE_MAX_LENGTH,
   IDENTITY_FIELD_MAX_LENGTH,
   PROJECT_NAME_MAX_LENGTH,
 } from "./types.js";
@@ -126,6 +127,9 @@ const _SITEPING_MODELS = {
       screenshotUrl: { type: "String", optional: true, nativeType: "Text", maxLength: 1_500_000 },
       screenshotRegion: { type: "Json", optional: true },
       diagnostics: { type: "Json", optional: true },
+      flowId: { type: "String", optional: true, maxLength: CLIENT_ID_MAX_LENGTH },
+      flowStep: { type: "Int", optional: true },
+      flowTitle: { type: "String", optional: true, maxLength: FLOW_TITLE_MAX_LENGTH },
       viewport: { type: "String", maxLength: 50 },
       userAgent: { type: "String", maxLength: 500 },
       authorName: { type: "String", maxLength: IDENTITY_FIELD_MAX_LENGTH },
@@ -147,6 +151,8 @@ const _SITEPING_MODELS = {
       { fields: ["projectName"] },
       { fields: ["projectName", "status", "createdAt"] },
       { fields: ["projectName", "url"] },
+      // The steps of one flow, read together.
+      { fields: ["projectName", "flowId"] },
     ],
   },
   SitepingAnnotation: {
