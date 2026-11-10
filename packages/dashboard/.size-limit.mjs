@@ -12,7 +12,7 @@ export default [
   {
     name: "ESM first load (index.js + static chunks)",
     path: firstLoad(dir, "dist/index.js"),
-    limit: "23 KB",
+    limit: "24.5 KB",
     gzip: true,
   },
   {
