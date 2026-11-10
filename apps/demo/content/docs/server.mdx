@@ -585,7 +585,7 @@ One endpoint, five methods. All bodies are JSON.
 | `DELETE` | Delete one or all — or [a comment](/docs/comments#delete-a-comment), when the body has a `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | CORS preflight | `204` |
 
-**GET query parameters:** `projectName` (required), `page` (default 1), `limit` (default 50, max 100), `type`, `status`, `statuses` (comma-separated list, max 4 — e.g. `statuses=open,in_progress`), `search`, `url`, `urlPattern`.
+**GET query parameters:** `projectName` (required), `page` (default 1), `limit` (default 50, max 100), `type`, `status`, `statuses` (comma-separated list, max 4 — e.g. `statuses=open,in_progress`), `search`, `url`, `urlPattern`, `flowId` (the steps of one [flow](#multi-page-flows)).
 
 **PATCH body:** `{ id, projectName, status }` — all three required. `status` is one of `open`, `in_progress`, `resolved`, `wont_fix`. The server derives `resolvedAt` automatically: set when the status is closed (`resolved`/`wont_fix`), cleared otherwise.
 
@@ -601,7 +601,7 @@ The protocol ships with `@siteping/server` as an OpenAPI 3.1 document, generated
 import spec from "@siteping/server/openapi.json" with { type: "json" };
 ```
 
-Every list response carries `protocol`, the version of the protocol the server speaks (`SITEPING_PROTOCOL_VERSION`, exported by `@siteping/server`: `1`). It rises with each addition a client may rely on, so a client checks `protocol >= N` before using what version N added, rather than probing for fields. Servers that predate it send none: read that as `0`.
+Every list response carries `protocol`, the version of the protocol the server speaks (`SITEPING_PROTOCOL_VERSION`, exported by `@siteping/server`: `2`). It rises with each addition a client may rely on, so a client checks `protocol >= N` before using what version N added, rather than probing for fields. Servers that predate it send none: read that as `0`. Version 2 added [multi-page flows](#multi-page-flows).
 
 What 1.x keeps stable:
 
@@ -613,7 +613,21 @@ What 1.x keeps stable:
 
 ### Validation limits worth knowing
 
-The whole body ≤ `maxBodyBytes` (4 MiB) · `message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · comment `body` ≤ 5000 chars, 100 `client` comments per thread (`team` replies are not capped) · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `projectName` ≤ 191 chars · `clientId` ≤ 191 chars and matches `[a-zA-Z0-9_-]+` · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
+The whole body ≤ `maxBodyBytes` (4 MiB) · `message` ≤ 5000 chars · `annotations` ≤ 50 per feedback · comment `body` ≤ 5000 chars, 100 `client` comments per thread (`team` replies are not capped) · `screenshotDataUrl` ≤ 1.5 MB, JPEG/PNG/WebP only · `diagnostics` ≤ 50 console + 20 network entries · `projectName` ≤ 191 chars · `clientId` ≤ 191 chars and matches `[a-zA-Z0-9_-]+`, and so does a `flowId` · `flowStep` an integer from 1 to 100 · `flowTitle` ≤ 200 chars · `authorEmail` matches the same Unicode-aware pattern as the widget's identity modal (`françois@exemple.fr` is fine), so an address the modal accepts is never rejected here.
+
+### Multi-page flows
+
+A flow is one reviewer walking through several pages and leaving one feedback on each — "sign-up is confusing" told as the email step, the late code and the wrong welcome name. Every step is an ordinary feedback, with its own anchor, screenshot and status; three optional fields on the `POST` body link them:
+
+| Field | Value |
+|---|---|
+| `flowId` | Shared by every step of one flow — the `clientId` alphabet (`[a-zA-Z0-9_-]+`) and length cap (191) |
+| `flowStep` | The step's position, an integer from 1 to 100 |
+| `flowTitle` | What the reviewer called the flow, up to 200 characters, trimmed; `null`, omitted or blank for an untitled flow |
+
+`flowId` and `flowStep` go together: one without the other is a `400`, and so is a `flowTitle` without a `flowId`. Each step is stored on its own, as it is sent, so a flow left unfinished keeps the steps already sent.
+
+Every feedback in a response carries the three fields, `null` outside a flow — also from a store that predates flows, which keeps none. `GET ?flowId=…` lists the steps of one flow, newest first like any list: sort them by `flowStep`. Servers before protocol 2 ignore the fields and the filter, so a client checks `protocol >= 2` before relying on them.
 
 ## Webhooks
 

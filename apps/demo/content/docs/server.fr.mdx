@@ -585,7 +585,7 @@ Un endpoint, cinq méthodes. Tous les corps sont en JSON.
 | `DELETE` | Supprimer un ou tous — ou [un commentaire](/fr/docs/comments#supprimer-un-commentaire), quand le corps porte un `commentId` | `200` + `{ deleted: true }` |
 | `OPTIONS` | Préflight CORS | `204` |
 
-**Paramètres de requête du GET :** `projectName` (obligatoire), `page` (défaut 1), `limit` (défaut 50, max 100), `type`, `status`, `statuses` (liste séparée par des virgules, max 4 — ex. `statuses=open,in_progress`), `search`, `url`, `urlPattern`.
+**Paramètres de requête du GET :** `projectName` (obligatoire), `page` (défaut 1), `limit` (défaut 50, max 100), `type`, `status`, `statuses` (liste séparée par des virgules, max 4 — ex. `statuses=open,in_progress`), `search`, `url`, `urlPattern`, `flowId` (les étapes d'un [parcours](#parcours-sur-plusieurs-pages)).
 
 **Corps du PATCH :** `{ id, projectName, status }` — les trois sont obligatoires. `status` vaut `open`, `in_progress`, `resolved` ou `wont_fix`. Le serveur déduit `resolvedAt` automatiquement : renseigné quand le statut est clos (`resolved`/`wont_fix`), effacé sinon.
 
@@ -601,7 +601,7 @@ Le protocole est livré avec `@siteping/server` sous forme de document OpenAPI 3
 import spec from "@siteping/server/openapi.json" with { type: "json" };
 ```
 
-Chaque réponse de liste porte `protocol`, la version du protocole que parle le serveur (`SITEPING_PROTOCOL_VERSION`, exporté par `@siteping/server` : `1`). Elle augmente à chaque ajout sur lequel un client peut s'appuyer : un client vérifie `protocol >= N` avant d'utiliser ce que la version N a ajouté, au lieu de sonder les champs. Les serveurs qui la précèdent n'en envoient pas : lisez-le comme `0`.
+Chaque réponse de liste porte `protocol`, la version du protocole que parle le serveur (`SITEPING_PROTOCOL_VERSION`, exporté par `@siteping/server` : `2`). Elle augmente à chaque ajout sur lequel un client peut s'appuyer : un client vérifie `protocol >= N` avant d'utiliser ce que la version N a ajouté, au lieu de sonder les champs. Les serveurs qui la précèdent n'en envoient pas : lisez-le comme `0`. La version 2 a ajouté les [parcours sur plusieurs pages](#parcours-sur-plusieurs-pages).
 
 Ce que la 1.x garde stable :
 
@@ -613,7 +613,21 @@ Ce que la 1.x garde stable :
 
 ### Les limites de validation à connaître
 
-Le corps entier ≤ `maxBodyBytes` (4 Mio) · `message` ≤ 5000 caractères · `annotations` ≤ 50 par feedback · `body` d'un commentaire ≤ 5000 caractères, 100 commentaires `client` par fil (les réponses `team` ne sont pas plafonnées) · `screenshotDataUrl` ≤ 1,5 Mo, JPEG/PNG/WebP uniquement · `diagnostics` ≤ 50 entrées console + 20 réseau · `projectName` ≤ 191 caractères · `clientId` ≤ 191 caractères et doit correspondre à `[a-zA-Z0-9_-]+` · `authorEmail` suit le même motif Unicode que la fenêtre d'identité du widget (`françois@exemple.fr` passe), donc une adresse acceptée par la fenêtre n'est jamais refusée ici.
+Le corps entier ≤ `maxBodyBytes` (4 Mio) · `message` ≤ 5000 caractères · `annotations` ≤ 50 par feedback · `body` d'un commentaire ≤ 5000 caractères, 100 commentaires `client` par fil (les réponses `team` ne sont pas plafonnées) · `screenshotDataUrl` ≤ 1,5 Mo, JPEG/PNG/WebP uniquement · `diagnostics` ≤ 50 entrées console + 20 réseau · `projectName` ≤ 191 caractères · `clientId` ≤ 191 caractères et doit correspondre à `[a-zA-Z0-9_-]+`, de même qu'un `flowId` · `flowStep` un entier de 1 à 100 · `flowTitle` ≤ 200 caractères · `authorEmail` suit le même motif Unicode que la fenêtre d'identité du widget (`françois@exemple.fr` passe), donc une adresse acceptée par la fenêtre n'est jamais refusée ici.
+
+### Parcours sur plusieurs pages
+
+Un parcours, c'est un relecteur qui traverse plusieurs pages et laisse un retour sur chacune — « l'inscription est confuse » raconté comme l'étape de l'e-mail, le code qui arrive en retard et le mauvais nom sur la page d'accueil. Chaque étape est un feedback ordinaire, avec son ancrage, sa capture et son statut ; trois champs facultatifs du corps du `POST` les relient :
+
+| Champ | Valeur |
+|---|---|
+| `flowId` | Partagé par toutes les étapes d'un parcours — l'alphabet (`[a-zA-Z0-9_-]+`) et la longueur maximale (191) d'un `clientId` |
+| `flowStep` | La position de l'étape, un entier de 1 à 100 |
+| `flowTitle` | Le nom que le relecteur a donné au parcours, 200 caractères au plus, sans espaces autour ; `null`, absent ou vide pour un parcours sans titre |
+
+`flowId` et `flowStep` vont ensemble : l'un sans l'autre répond `400`, tout comme un `flowTitle` sans `flowId`. Chaque étape est stockée seule, telle qu'elle est envoyée : un parcours laissé inachevé garde les étapes déjà envoyées.
+
+Chaque feedback d'une réponse porte les trois champs, à `null` hors parcours — y compris depuis un store antérieur aux parcours, qui n'en garde aucun. `GET ?flowId=…` liste les étapes d'un parcours, de la plus récente à la plus ancienne comme toute liste : triez-les par `flowStep`. Les serveurs antérieurs au protocole 2 ignorent ces champs et ce filtre : un client vérifie `protocol >= 2` avant de s'appuyer dessus.
 
 ## Webhooks
 

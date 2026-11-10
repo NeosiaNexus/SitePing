@@ -52,11 +52,14 @@ Three tables, `siteping_feedbacks`, `siteping_annotations` and `siteping_comment
 | `<feedbacks>_client_id_key` (unique) | `client_id` — arbitrates duplicate submissions |
 | `<feedbacks>_project_status_created_idx` | `project_name`, `status`, `created_at` |
 | `<feedbacks>_project_url_idx` | `project_name`, `url` |
+| `<feedbacks>_project_flow_idx` | `project_name`, `flow_id` — the steps of one [flow](/docs/server#multi-page-flows) |
 | `<annotations>_feedback_id_idx` | `feedback_id` |
 | `<comments>_client_id_key` (unique) | `client_id` — arbitrates duplicate comments |
 | `<comments>_feedback_created_idx` | `feedback_id`, `created_at` |
 
 Column types follow the dialect: on PostgreSQL, JSON fields are `jsonb` and timestamps are `timestamptz(3)`; on libSQL, JSON fields are stored as text and timestamps as epoch milliseconds.
+
+> **Upgrading to the release that adds [multi-page flows](/docs/server#multi-page-flows).** The feedback table gains three nullable columns — `flow_id`, `flow_step` (an integer) and `flow_title` — and the `<feedbacks>_project_flow_idx` index. Run `npx drizzle-kit generate` and apply the migration before you deploy: the store reads every column of its tables, so it fails against a feedback table that lacks them. Existing rows read as feedback outside any flow.
 
 A JavaScript string can hold a NUL character, or half of a surrogate pair — text cut inside an emoji ends with one. PostgreSQL stores neither, so the store replaces each with U+FFFD, the Unicode replacement character, in everything it writes, on both dialects, and a record reads back exactly as it was returned. Search terms, filters and ids get the same replacement, so they find what was stored for them.
 

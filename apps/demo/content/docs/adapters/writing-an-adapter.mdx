@@ -114,7 +114,7 @@ Matching guards ship alongside: `isStoreNotFound`, `isStoreDuplicate`, `isStoreL
 
 `getFeedbacks` takes a `FeedbackQuery` and returns `{ feedbacks, total }`, where `total` is the count **before** pagination. The behavior the suite checks:
 
-- Filters: `projectName` (always), then `type`, `status`, `statuses`, `url`, `urlPattern`, `search` (substring on `message`).
+- Filters: `projectName` (always), then `type`, `status`, `statuses`, `url`, `urlPattern`, `search` (substring on `message`), and `flowId` when your store keeps [flows](#multi-page-flows).
 - `statuses` is a bucket — any of the listed values — and wins over `status` when both are set. An empty array means no status filter.
 - Newest first, by `createdAt` descending.
 - `page` is 1-based, `limit` defaults to 50 and is capped at 100.
@@ -151,6 +151,15 @@ Implement it whenever your store serves more than one project. When it's absent,
 - A thread holds at most `MAX_COMMENTS_PER_FEEDBACK` (100) `client` comments — `team` ones neither count nor are refused —, a comment leaves the feedback's `updatedAt` alone, and deleting a feedback deletes its thread.
 
 `buildCommentRecord(data, { id, feedbackId })` builds the record, and `createCollectionStore` implements all three methods when you pass `comments: true`. Pass it once `load` hands back each comment's `createdAt` as a `Date` — a JSON backend revives it like the record's own dates. Threads are off by default, so a snapshot adapter written before them keeps its surface, and its storage format, when the kit updates.
+
+## Multi-page flows
+
+A [flow](/docs/server#multi-page-flows) is several feedbacks that share a `flowId`, ordered by `flowStep` and named by an optional `flowTitle`. The three fields are optional on `FeedbackRecord`: a store that leaves them out of its records has no flows — every feedback reads as one outside any flow, and the handler sends the fields as `null`. To keep flows:
+
+- Store the three values a `FeedbackCreateInput` carries, and return them on every record — `null` for a feedback outside a flow. `buildFeedbackRecord` already does; a SQL store adds three nullable columns, and an index on `(projectName, flowId)` serves the filter.
+- Filter `getFeedbacks` on `flowId` (an exact match). Order stays newest first: clients sort a flow's steps by `flowStep`.
+
+`createCollectionStore` keeps flows with nothing to opt into: the fields ride along on the records your `load` and `persist` handle.
 
 ## Prove it: the conformance suite
 
@@ -194,7 +203,7 @@ testSitepingStore(() => new KvStore(), {
 });
 ```
 
-`createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` and `deleteComment` are covered too: stores that don't implement them skip the assertions, so adding any of them later is checked automatically with no test changes. The comment cases include a comment racing status changes on the same store.
+`createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` and `deleteComment` are covered too: stores that don't implement them skip the assertions, so adding any of them later is checked automatically with no test changes. Flows work the same way: the flow cases are skipped for a store whose records leave `flowId` out, and run once they carry it. The comment cases include a comment racing status changes on the same store.
 
 ## Using your adapter
 

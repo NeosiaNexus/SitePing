@@ -52,11 +52,14 @@ Trois tables, `siteping_feedbacks`, `siteping_annotations` et `siteping_comments
 | `<feedbacks>_client_id_key` (unique) | `client_id` — arbitre les soumissions en double |
 | `<feedbacks>_project_status_created_idx` | `project_name`, `status`, `created_at` |
 | `<feedbacks>_project_url_idx` | `project_name`, `url` |
+| `<feedbacks>_project_flow_idx` | `project_name`, `flow_id` — les étapes d'un [parcours](/fr/docs/server#parcours-sur-plusieurs-pages) |
 | `<annotations>_feedback_id_idx` | `feedback_id` |
 | `<comments>_client_id_key` (unique) | `client_id` — départage les commentaires en double |
 | `<comments>_feedback_created_idx` | `feedback_id`, `created_at` |
 
 Les types de colonnes suivent le dialecte : sur PostgreSQL, les champs JSON sont en `jsonb` et les dates en `timestamptz(3)` ; sur libSQL, les champs JSON sont stockés en texte et les dates en millisecondes epoch.
+
+> **Mise à jour vers la version qui ajoute les [parcours sur plusieurs pages](/fr/docs/server#parcours-sur-plusieurs-pages).** La table des feedbacks gagne trois colonnes nullables — `flow_id`, `flow_step` (un entier) et `flow_title` — et l'index `<feedbacks>_project_flow_idx`. Lancez `npx drizzle-kit generate` et appliquez la migration avant de déployer : le store lit toutes les colonnes de ses tables, il échoue donc sur une table de feedbacks qui ne les a pas. Les lignes existantes se lisent comme des retours hors de tout parcours.
 
 Une chaîne JavaScript peut contenir un caractère NUL, ou la moitié d'une paire de substitution — un texte coupé au milieu d'un emoji se termine par l'une d'elles. PostgreSQL ne stocke ni l'un ni l'autre : le store remplace donc chacun par U+FFFD, le caractère de remplacement Unicode, dans tout ce qu'il écrit, sur les deux dialectes, et un enregistrement se relit exactement tel qu'il a été renvoyé. Les termes de recherche, les filtres et les ids subissent le même remplacement, pour retrouver ce qui a été stocké à leur place.
 

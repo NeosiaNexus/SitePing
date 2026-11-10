@@ -114,7 +114,7 @@ Les gardes correspondantes sont fournies : `isStoreNotFound`, `isStoreDuplicate`
 
 `getFeedbacks` prend un `FeedbackQuery` et renvoie `{ feedbacks, total }`, où `total` est le compte **avant** pagination. Le comportement vérifié par la suite :
 
-- Filtres : `projectName` (toujours), puis `type`, `status`, `statuses`, `url`, `urlPattern`, `search` (sous-chaîne dans `message`).
+- Filtres : `projectName` (toujours), puis `type`, `status`, `statuses`, `url`, `urlPattern`, `search` (sous-chaîne dans `message`), et `flowId` si votre store garde les [parcours](#parcours-sur-plusieurs-pages).
 - `statuses` est un seau — n'importe laquelle des valeurs listées — et l'emporte sur `status` quand les deux sont présents. Un tableau vide vaut absence de filtre.
 - Du plus récent au plus ancien, par `createdAt` décroissant.
 - `page` commence à 1, `limit` vaut 50 par défaut et est plafonné à 100.
@@ -151,6 +151,15 @@ Implémentez-la dès que votre store sert plus d'un projet. En son absence, les 
 - Un fil contient au plus `MAX_COMMENTS_PER_FEEDBACK` (100) commentaires `client` — les `team` ne comptent pas et ne sont jamais refusés —, un commentaire ne touche pas à l'`updatedAt` du feedback, et supprimer un feedback supprime son fil.
 
 `buildCommentRecord(data, { id, feedbackId })` construit l'enregistrement, et `createCollectionStore` implémente les trois méthodes quand vous passez `comments: true`. Passez-le dès que `load` rend le `createdAt` de chaque commentaire sous forme de `Date` — un backend JSON le ranime comme les dates de l'enregistrement. Les fils sont désactivés par défaut : un adapter snapshot écrit avant eux garde sa surface, et son format de stockage, quand le kit se met à jour.
+
+## Parcours sur plusieurs pages
+
+Un [parcours](/fr/docs/server#parcours-sur-plusieurs-pages) regroupe plusieurs feedbacks qui partagent un `flowId`, ordonnés par `flowStep` et nommés par un `flowTitle` facultatif. Les trois champs sont optionnels sur `FeedbackRecord` : un store qui les laisse hors de ses enregistrements n'a pas de parcours — chaque feedback se lit comme hors de tout parcours, et le handler envoie les champs à `null`. Pour garder les parcours :
+
+- Stockez les trois valeurs que porte un `FeedbackCreateInput`, et renvoyez-les sur chaque enregistrement — `null` pour un feedback hors parcours. `buildFeedbackRecord` le fait déjà ; un store SQL ajoute trois colonnes nullables, et un index sur `(projectName, flowId)` sert le filtre.
+- Filtrez `getFeedbacks` sur `flowId` (égalité exacte). L'ordre reste du plus récent au plus ancien : les clients trient les étapes d'un parcours par `flowStep`.
+
+`createCollectionStore` garde les parcours sans rien à activer : les champs voyagent avec les enregistrements que gèrent votre `load` et votre `persist`.
 
 ## La preuve : la suite de conformité
 
@@ -194,7 +203,7 @@ testSitepingStore(() => new KvStore(), {
 });
 ```
 
-`createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` et `deleteComment` sont couvertes elles aussi : les stores qui ne les implémentent pas sautent les assertions, donc ajouter l'une d'elles plus tard est vérifié automatiquement, sans toucher aux tests. Les cas de commentaires comprennent un commentaire posté en même temps que des changements de statut sur le même store.
+`createFeedbackIfAbsent`, `addComment`, `addCommentIfAbsent` et `deleteComment` sont couvertes elles aussi : les stores qui ne les implémentent pas sautent les assertions, donc ajouter l'une d'elles plus tard est vérifié automatiquement, sans toucher aux tests. Les parcours suivent la même règle : leurs cas sont sautés pour un store dont les enregistrements laissent `flowId` de côté, et s'exécutent dès qu'ils le portent. Les cas de commentaires comprennent un commentaire posté en même temps que des changements de statut sur le même store.
 
 ## Utiliser votre adapter
 
