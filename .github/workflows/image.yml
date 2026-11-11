@@ -1,0 +1,88 @@
+name: Image
+
+# Builds the production image of siteping.dev (apps/demo) and pushes it to the
+# registry of the cluster that hosts the site, on every merge to main. Nothing
+# here deploys: the hosting repository decides which digest runs (a reviewed
+# "promotion"), and the job summary gives the command to do it.
+#
+# OFF until the repository variable REGISTRE_ACTIF is `oui`: the registry only
+# exists once the cluster is in service. The registry credentials come from
+# secrets; nothing in this file is sensitive.
+
+on:
+  push:
+    branches: [main]
+    # A merge that cannot change the image builds nothing.
+    paths-ignore:
+      - "**.md"
+      - "e2e/**"
+      - "examples/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRE: ${{ vars.REGISTRE || 'registre.devwave.fr' }}
+  IMAGE: siteping/site
+
+jobs:
+  image:
+    name: Build and push
+    if: vars.REGISTRE_ACTIF == 'oui'
+    runs-on: ${{ vars.RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          docker build \
+            --file apps/demo/Dockerfile \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            -t "$REGISTRE/$IMAGE:$GITHUB_SHA" .
+
+      # What the cluster enforces: read-only root filesystem, no capability.
+      - name: Smoke test the image
+        run: |
+          set -euo pipefail
+          docker run -d --name essai --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges -p 127.0.0.1:3000:3000 "$REGISTRE/$IMAGE:$GITHUB_SHA"
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3000/api/sante >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3000/api/sante
+          for path in / /demo /docs /fr/docs "/api/siteping?projectName=smoke"; do
+            curl -sf -o /dev/null "http://127.0.0.1:3000$path"
+          done
+          docker rm -f essai >/dev/null
+
+      - name: Push
+        env:
+          REGISTRE_UTILISATEUR: ${{ secrets.REGISTRE_UTILISATEUR }}
+          REGISTRE_MOT_DE_PASSE: ${{ secrets.REGISTRE_MOT_DE_PASSE }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$REGISTRE_MOT_DE_PASSE" | docker login "$REGISTRE" -u "$REGISTRE_UTILISATEUR" --password-stdin
+          docker push "$REGISTRE/$IMAGE:$GITHUB_SHA"
+          digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRE/$IMAGE:$GITHUB_SHA" | sed 's/.*@//')"
+          {
+            echo "### Image pushed"
+            echo
+            echo "\`$REGISTRE/$IMAGE@$digest\`"
+            echo
+            echo "Promote it, in the hosting repository:"
+            echo
+            echo "\`\`\`bash"
+            echo "bin/promouvoir.sh siteping $GITHUB_SHA $digest"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
