@@ -67,6 +67,7 @@ jobs:
           docker rm -f essai >/dev/null
 
       - name: Push
+        id: pousser
         env:
           REGISTRE_UTILISATEUR: ${{ secrets.REGISTRE_UTILISATEUR }}
           REGISTRE_MOT_DE_PASSE: ${{ secrets.REGISTRE_MOT_DE_PASSE }}
@@ -75,6 +76,7 @@ jobs:
           printf '%s' "$REGISTRE_MOT_DE_PASSE" | docker login "$REGISTRE" -u "$REGISTRE_UTILISATEUR" --password-stdin
           docker push "$REGISTRE/$IMAGE:$GITHUB_SHA"
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRE/$IMAGE:$GITHUB_SHA" | sed 's/.*@//')"
+          echo "empreinte=$digest" >> "$GITHUB_OUTPUT"
           {
             echo "### Image pushed"
             echo
@@ -86,3 +88,23 @@ jobs:
             echo "bin/promouvoir.sh siteping $GITHUB_SHA $digest"
             echo "\`\`\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Asks devwave-gitops to open the pull request that promotes this image. Without
+      # the PROMOTION_JETON secret the step does nothing: the promotion stays the
+      # command written in the summary above.
+      - name: Request the promotion
+        env:
+          PROMOTION_JETON: ${{ secrets.PROMOTION_JETON }}
+          EMPREINTE: ${{ steps.pousser.outputs.empreinte }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PROMOTION_JETON" ]; then
+            echo "PROMOTION_JETON is not set: promote by hand (see the summary)."
+            exit 0
+          fi
+          curl --silent --show-error --fail-with-body --request POST \
+            --header "Authorization: Bearer $PROMOTION_JETON" \
+            --header "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/devwave-dev/devwave-gitops/dispatches \
+            --data "{\"event_type\":\"promotion\",\"client_payload\":{\"client\":\"siteping\",\"revision\":\"$GITHUB_SHA\",\"empreinte\":\"$EMPREINTE\"}}"
+          echo "Promotion requested from devwave-gitops."
