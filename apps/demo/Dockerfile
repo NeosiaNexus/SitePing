@@ -3,6 +3,7 @@
 # The build context is the repository root:
 #
 #   docker build -f apps/demo/Dockerfile -t siteping-demo .
+#   (add --build-arg NEXT_PUBLIC_RYBBIT_SITE_ID=<id> to measure the audience)
 #   docker run --rm --read-only --tmpfs /tmp -p 3000:3000 siteping-demo
 #
 # Base images are pinned by digest, not just by tag: a tag is mutable, so
@@ -23,6 +24,12 @@ RUN bun run --filter='@siteping/core' build && \
     bun run --filter='@siteping/adapter-memory' build && \
     bun run --filter='@siteping/adapter-localstorage' build && \
     bun run --filter='@siteping/server' build
+
+# Rybbit site id (audience measurement), inlined into the site at build time.
+# Empty: the site loads no measurement script. Declared here, after the
+# package builds, so changing it only invalidates the demo build.
+ARG NEXT_PUBLIC_RYBBIT_SITE_ID=""
+ENV NEXT_PUBLIC_RYBBIT_SITE_ID=$NEXT_PUBLIC_RYBBIT_SITE_ID
 RUN cd apps/demo && bun run build
 
 # --- Runner ---

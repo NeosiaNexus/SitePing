@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
+import { Analytics } from "@/components/analytics";
 import { provider } from "@/lib/docs/ui";
 import { DocsProvider } from "./docs-provider";
 import "./docs.css";
@@ -40,6 +41,7 @@ export default async function DocsRootLayout({
     <html lang={lang} className={inter.variable} suppressHydrationWarning>
       <body>
         <DocsProvider i18n={provider(lang)}>{children}</DocsProvider>
+        <Analytics />
       </body>
     </html>
   );

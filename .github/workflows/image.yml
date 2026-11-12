@@ -41,10 +41,15 @@ jobs:
         with:
           persist-credentials: false
 
+      # The Rybbit site id comes from a repository variable; without it the
+      # image is built with no audience measurement.
       - name: Build
+        env:
+          NEXT_PUBLIC_RYBBIT_SITE_ID: ${{ vars.NEXT_PUBLIC_RYBBIT_SITE_ID }}
         run: |
           set -euo pipefail
           docker build \
+            --build-arg "NEXT_PUBLIC_RYBBIT_SITE_ID=$NEXT_PUBLIC_RYBBIT_SITE_ID" \
             --file apps/demo/Dockerfile \
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
