@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { Analytics } from "@/components/analytics";
 import { NotFoundContent } from "@/components/landing/not-found-content";
 import "./globals.css";
 
@@ -22,6 +23,7 @@ export default function GlobalNotFound() {
     <html lang="en" className={inter.variable}>
       <body className="bg-ink font-sans text-paper">
         <NotFoundContent />
+        <Analytics />
       </body>
     </html>
   );

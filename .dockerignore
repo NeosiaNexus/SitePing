@@ -1,0 +1,22 @@
+# Build context of the demo image (apps/demo/Dockerfile). The context is the
+# repository root, since the image builds the workspace packages the demo
+# depends on, so this file has to sit here: Docker reads the .dockerignore at
+# the root of the context, never the one next to the Dockerfile.
+.git
+.github
+.env*
+**/.env*
+!**/.env.example
+*.md
+node_modules
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/*.tsbuildinfo
+coverage
+test-results
+playwright-report
+e2e
+examples
+packages/*/__tests__
