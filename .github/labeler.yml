@@ -7,7 +7,7 @@ version: 1
 #
 # The engine is Go/RE2: no lookaheads. `type:chore` excludes deps scopes
 # via explicit alternation (any scope not starting with "deps"); the only
-# real-world deps scopes are dependabot's `chore(deps)` / `chore(deps-dev)`.
+# real-world deps scopes are Renovate's `chore(deps)` / `chore(deps-dev)`.
 
 labels:
   - label: "enhancement"

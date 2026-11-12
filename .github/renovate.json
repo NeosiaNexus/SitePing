@@ -1,0 +1,68 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Weekly dependency updates. Carries over, rule by rule, what the Dependabot config had learned the hard way: see the description of each rule.",
+  "extends": ["config:recommended", ":semanticCommitTypeAll(chore)", ":semanticCommitScope(deps)"],
+  "timezone": "Europe/Paris",
+  "schedule": ["before 7am on monday"],
+  "minimumReleaseAge": "7 days",
+  "rangeStrategy": "bump",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 10,
+  "packageRules": [
+    {
+      "description": "The repo is squash-only and the auto-labeller reads the PR title: dev dependencies keep the chore(deps-dev) scope Dependabot used.",
+      "matchDepTypes": ["devDependencies"],
+      "semanticCommitScope": "deps-dev"
+    },
+    {
+      "description": "Production dependencies: minors and patches arrive as one pull request, reviewed by a human (a chore commit releases the packages).",
+      "matchManagers": ["bun"],
+      "matchDepTypes": ["dependencies", "peerDependencies", "optionalDependencies", "overrides"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "production dependencies",
+      "groupSlug": "production-dependencies"
+    },
+    {
+      "description": "Dev dependencies: minors and patches arrive as one pull request, merged on its own once the required checks pass.",
+      "matchManagers": ["bun"],
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "dev dependencies",
+      "groupSlug": "dev-dependencies",
+      "automerge": true
+    },
+    {
+      "description": "The coverage provider must ship the same major as vitest itself: separate major bumps each fail CI alone (#223/#225, #285/#288). No update-type filter, majors included, so the family always moves as one pull request.",
+      "matchPackageNames": ["vitest", "@vitest/**"],
+      "groupName": "vitest",
+      "groupSlug": "vitest",
+      "automerge": false
+    },
+    {
+      "description": "Every @size-limit/* plugin pins size-limit exactly: split pull requests (#265/#266) each go green alone but leave a nested duplicate CLI in the lockfile.",
+      "matchPackageNames": ["size-limit", "@size-limit/**"],
+      "groupName": "size-limit",
+      "groupSlug": "size-limit",
+      "automerge": false
+    },
+    {
+      "description": "CodeQL init and analyze run in the same job and refuse to mix versions; upload-sarif (scorecard.yml) and majors move with them as one pull request.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["github/codeql-action", "github/codeql-action/**"],
+      "groupName": "codeql-action",
+      "groupSlug": "codeql-action"
+    },
+    {
+      "description": "The demo image pins its bases by digest, and only the digests move here. The tags are deliberate: node:22-alpine is the oldest Node major the packages support, and the bun tag must stay in lockstep with packageManager and the setup-bun pin. Moving a tag is a manual, coordinated change.",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "enabled": false
+    },
+    {
+      "description": "Same agreement outside the Dockerfile: the Bun and Node versions (packageManager, setup-bun, setup-node) never move on their own.",
+      "matchDepNames": ["bun", "node"],
+      "matchManagers": ["bun", "npm", "github-actions"],
+      "enabled": false
+    }
+  ]
+}

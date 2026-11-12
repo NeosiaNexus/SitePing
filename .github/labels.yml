@@ -2,7 +2,7 @@
 #
 # We keep the default GitHub labels (bug, enhancement, documentation,
 # dependencies, good first issue, help wanted) un-prefixed because they are
-# the standard names that Dependabot, badges and the GitHub search syntax
+# the standard names that Renovate, badges and the GitHub search syntax
 # expect.
 #
 # All other "type of change" labels live under the `type:` namespace so they
