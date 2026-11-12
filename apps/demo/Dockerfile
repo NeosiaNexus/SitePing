@@ -8,8 +8,8 @@
 #
 # Base images are pinned by digest, not just by tag: a tag is mutable, so
 # `1.3.11-alpine` can be repointed at a different image than the one this
-# Dockerfile was reviewed against. Dependabot's docker ecosystem bumps the
-# digests (see .github/dependabot.yml), so pinning does not freeze them.
+# Dockerfile was reviewed against. Renovate bumps the digests, and only the
+# digests (see .github/renovate.json), so pinning does not freeze them.
 FROM oven/bun:1.3.11-alpine@sha256:7ed9f74c326d1c260abe247ac423ccbf5ac92af62bb442d515d1f92f21e8ea9b AS builder
 RUN apk add --no-cache nodejs
 WORKDIR /app

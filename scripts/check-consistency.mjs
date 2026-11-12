@@ -195,8 +195,8 @@ for (const pkgPath of Object.keys(manifest)) {
 
 // The root `overrides.esbuild` is the supply-chain floor for every transitive
 // esbuild (#242), and it wins over packages/widget's own devDependency. When
-// Dependabot bumps only the widget spec (#269), the lockfile cannot move: the
-// bump lands as a no-op and every later bun update job dies on NoChangeError.
+// a bot bumps only the widget spec (Dependabot did, #269), the lockfile
+// cannot move: the bump lands as a no-op and later update jobs fail.
 // Keeping the two specs identical makes such a PR fail here instead, so the
 // override is bumped in the same PR.
 const esbuildOverride = JSON.parse(read("package.json")).overrides?.esbuild;

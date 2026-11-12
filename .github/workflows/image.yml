@@ -17,6 +17,7 @@ on:
       - "**.md"
       - "e2e/**"
       - "examples/**"
+      - ".github/renovate.json"
   workflow_dispatch:
 
 permissions:
