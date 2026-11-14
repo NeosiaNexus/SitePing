@@ -610,6 +610,7 @@ interface SitepingBaseConfig {
     captureDiagnostics?: DiagnosticsCaptureOptions | boolean | undefined;
     debug?: boolean | undefined;
     deepLink?: SitepingDeepLinkOptions | boolean | undefined;
+    defaultPanelScope?: "all" | "page" | undefined;
     enableRightClickComment?: boolean | undefined;
     enableScreenshot?: boolean | undefined;
     forceShow?: boolean | undefined;

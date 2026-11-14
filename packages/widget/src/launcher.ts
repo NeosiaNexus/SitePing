@@ -471,6 +471,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
         panelInstance = new mod.Panel(shadow, colors, bus, client, config.projectName, markers, t, locale, {
           getScope,
           scopeAnnotationsByUrl,
+          defaultPanelScope: config.defaultPanelScope,
           panelActions: config.panelActions,
           ownFeedback: own,
           resolveIdentity,

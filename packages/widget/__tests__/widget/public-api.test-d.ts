@@ -62,6 +62,23 @@ describe("readOnly", () => {
   });
 });
 
+describe("defaultPanelScope", () => {
+  it("is a shared option, in both modes", () => {
+    expectTypeOf(initSiteping).toBeCallableWith({
+      projectName: "p",
+      endpoint: "/api/siteping",
+      defaultPanelScope: "all",
+    });
+    expectTypeOf(initSiteping).toBeCallableWith({ projectName: "p", store, defaultPanelScope: "page" });
+    expectTypeOf<SitepingConfig["defaultPanelScope"]>().toEqualTypeOf<"page" | "all" | undefined>();
+  });
+
+  it("leaves out the template scope, which only some routes offer", () => {
+    // @ts-expect-error: "This type" can't be a default, it needs the route's urlPattern
+    initSiteping({ projectName: "p", store, defaultPanelScope: "template" });
+  });
+});
+
 describe("panelActions", () => {
   it("accepts button and link actions in both modes", () => {
     expectTypeOf(initSiteping).toBeCallableWith({

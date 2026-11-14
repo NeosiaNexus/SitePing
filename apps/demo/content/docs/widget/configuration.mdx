@@ -73,7 +73,8 @@ For a client who reviews while your team triages. On top of it, the widget hides
 
 | Option | Type | Default | What it does |
 |---|---|---|---|
-| `scopeAnnotationsByUrl` | `boolean` | `true` | Only show markers created on the current page. Filtered both server-side and client-side, so annotations can't leak across pages. `false` gives a project-wide view: the panel lists every feedback, and a marker shows wherever its anchor resolves — for feedback on what every page shares, such as a header |
+| `scopeAnnotationsByUrl` | `boolean` | `true` | Only show markers created on the current page. Filtered both server-side and client-side, so annotations can't leak across pages. `false` gives project-wide markers: a marker shows wherever its anchor resolves, for feedback on what every page shares, such as a header. The panel's list has its own scope, set by `defaultPanelScope` |
+| `defaultPanelScope` | `"page"` \| `"all"` | `"page"` | The scope the panel's list opens on: *This page*, or *All pages* for reviewers who triage across the whole site. They can still switch, and their choice holds until the widget is destroyed. The markers follow `scopeAnnotationsByUrl` either way |
 | `getPageScope` | `() => { url, urlPattern }` | pathname | Customize what "the current page" means — return a stable `url` (and optionally a template like `/products/:id` as `urlPattern`) so dynamic routes share their feedback |
 | `watchNavigation` | `boolean` | `true` | Re-fetch feedbacks on SPA navigation (History API patch + `popstate`/`hashchange`). Data only — it never scrolls or refocuses. Set `false` and call `refresh()` yourself to opt out |
 

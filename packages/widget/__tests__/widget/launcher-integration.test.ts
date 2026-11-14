@@ -2179,4 +2179,31 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
   });
+
+  describe("defaultPanelScope", () => {
+    /** The panel list's first query: the launcher's marker queries carry no `page`. */
+    async function openListQuery(instance: ReturnType<typeof launch>): Promise<Record<string, unknown>> {
+      instance.open();
+      let query: Record<string, unknown> | undefined;
+      await vi.waitFor(() => {
+        query = mockGetFeedbacks.mock.calls.map((call) => call[1]).find((options) => options?.page === 1);
+        expect(query).toBeDefined();
+      });
+      return query!;
+    }
+
+    it("reaches the panel: its list opens on every page's feedback", async () => {
+      const instance = launch(defaultConfig({ defaultPanelScope: "all" }));
+
+      expect(await openListQuery(instance)).not.toHaveProperty("url");
+      instance.destroy();
+    });
+
+    it("defaults to the current page", async () => {
+      const instance = launch(defaultConfig());
+
+      expect(await openListQuery(instance)).toHaveProperty("url", window.location.pathname);
+      instance.destroy();
+    });
+  });
 });

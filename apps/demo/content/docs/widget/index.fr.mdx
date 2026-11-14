@@ -141,7 +141,7 @@ Les filtres du panneau se combinent et ne restreignent que la liste — les marq
 - **Recherche** : cherche dans le texte du message.
 - **Type** : garde un seul type de feedback.
 - **Statut** : *Ouvert* couvre `open` et `in_progress`, *Résolu* couvre `resolved` et `wont_fix`.
-- **Portée** : *Cette page* (par défaut), *Ce type* — toutes les pages qui partagent le modèle de route courant, proposé quand [`getPageScope`](/fr/docs/widget/configuration#cadrage-par-page) renvoie un `urlPattern` — ou *Toutes les pages*.
+- **Portée** : *Cette page* (par défaut, voir [`defaultPanelScope`](/fr/docs/widget/configuration#cadrage-par-page)), *Ce type* — toutes les pages qui partagent le modèle de route courant, proposé quand [`getPageScope`](/fr/docs/widget/configuration#cadrage-par-page) renvoie un `urlPattern` — ou *Toutes les pages*.
 - **Mes feedbacks** : garde les feedbacks envoyés depuis ce navigateur.
 
 « Mes feedbacks » ne demande ni identité ni support côté serveur, en mode HTTP comme en mode `store`. Le widget retient l'identifiant de chaque feedback qu'il envoie — les 500 plus récents par projet et par endpoint, dans le `localStorage`, y compris ceux que la file d'attente hors ligne envoie plus tard — et filtre de son côté : il parcourt les pages de la liste jusqu'à les avoir tous trouvés, puis les affiche d'un coup. Le serveur ne peut pas le faire à sa place : son `GET` public [masque les emails des auteurs](/fr/docs/server#ce-que-les-réponses-exposent), et un filtre par email permettrait à n'importe qui de vérifier si une adresse a envoyé des feedbacks. « Mes feedbacks » veut donc dire *ce navigateur* : les feedbacks envoyés depuis un autre navigateur ou appareil, ou avant l'effacement des données du site, n'y figurent pas.
