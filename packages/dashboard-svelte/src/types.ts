@@ -1,0 +1,358 @@
+import type {
+  CommentCreateInput,
+  CommentPermissions,
+  CommentRecord,
+  FeedbackPermissions,
+  FeedbackQuery,
+  FeedbackRecord,
+  FeedbackStatus,
+  FeedbackType,
+  SitepingCapabilities,
+  SitepingHeadersOption,
+  SitepingLocale,
+  SitepingStore,
+  SitepingTheme,
+} from "@siteping/core";
+import type { Snippet } from "svelte";
+
+// ---------------------------------------------------------------------------
+// Data source
+// ---------------------------------------------------------------------------
+
+/**
+ * A feedback as the inbox holds it: the stored record, plus what the
+ * requester may do with it when the source says — the endpoint source
+ * passes on the server's `permissions`. Without them, nothing is refused.
+ */
+export type InboxRecord = Omit<FeedbackRecord, "comments"> & {
+  comments?: InboxComment[] | undefined;
+  permissions?: FeedbackPermissions | undefined;
+};
+
+/**
+ * A reply as the inbox holds it: the stored comment, plus what the requester
+ * may do with it when the source says — the endpoint source passes on the
+ * server's `permissions`. Without them, the record's decide.
+ */
+export type InboxComment = CommentRecord & { permissions?: CommentPermissions | undefined };
+
+/** What `InboxSource.list` resolves: a page of records and what the source supports. */
+export interface InboxPage {
+  feedbacks: InboxRecord[];
+  total: number;
+  /**
+   * `comments: false` makes threads read-only, and `deleteComments: false`
+   * hides their delete buttons; left out, `addComment` and `removeComment`
+   * alone decide.
+   */
+  capabilities?: SitepingCapabilities | undefined;
+}
+
+/**
+ * Abstract data source consumed by `createSitepingInbox`.
+ *
+ * Two built-in factories exist — `createEndpointSource` (HTTP, talks to the
+ * adapter request handlers) and `createStoreSource` (direct `SitepingStore`,
+ * client-side mode) — but consumers can hand-roll one to plug the inbox into
+ * any backend (tRPC, GraphQL, server actions, …).
+ */
+export interface InboxSource {
+  /**
+   * Paginated, filtered feedback query. Must resolve real `Date` objects on
+   * records, their threads included.
+   */
+  list(query: FeedbackQuery): Promise<InboxPage>;
+  /**
+   * Persist a status change and resolve the saved record. Its `permissions`
+   * replace the listed ones; left out, the listed ones stay. Closure
+   * semantics (`resolvedAt`) are derived at this edge — callers only pass
+   * the target status.
+   */
+  setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<InboxRecord>;
+  /** Permanently delete a feedback. */
+  remove(id: string, projectName: string): Promise<void>;
+  /**
+   * Optional — post a reply on a feedback's thread and resolve the stored
+   * comment. A source without it has read-only threads.
+   */
+  addComment?(feedbackId: string, projectName: string, input: CommentCreateInput): Promise<InboxComment>;
+  /** Optional — delete a reply from a feedback's thread. `projectName` comes second, as in every method here. */
+  removeComment?(feedbackId: string, projectName: string, commentId: string): Promise<void>;
+}
+
+/** Options accepted by `createEndpointSource`. */
+export interface EndpointSourceOptions {
+  /** HTTP endpoint exposing the Siteping request handlers (e.g. `/api/siteping`). */
+  endpoint: string;
+  /** Convenience auth — sent as `Authorization: Bearer <apiKey>` on every request. */
+  apiKey?: string | undefined;
+  /**
+   * Extra request headers, static or lazily computed (sync or async) per
+   * request — e.g. a fresh session token. An explicit `Authorization` entry
+   * here takes precedence over `apiKey`.
+   */
+  headers?: SitepingHeadersOption | undefined;
+  /**
+   * The `fetch` the source sends every request with — `globalThis.fetch` by
+   * default. Wrap it to log or trace requests, to set a request option such
+   * as `credentials: "include"` for cookie auth across origins, or to route
+   * requests to a test double.
+   */
+  fetchFn?: typeof fetch | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Controller contract
+// ---------------------------------------------------------------------------
+
+/** Status filter — a concrete status, or `"all"`. */
+export type InboxStatusFilter = FeedbackStatus | "all";
+
+/** Type filter — a concrete feedback type, or `"all"`. */
+export type InboxTypeFilter = FeedbackType | "all";
+
+/** Options shared by every `createSitepingInbox` source mode. */
+export interface InboxSharedOptions {
+  /** Project name(s) to triage. The first entry is selected initially. */
+  projects: string | readonly string[];
+  /** Page size for list queries. Defaults to 50, clamped to 1..100. */
+  pageSize?: number | undefined;
+  /** Called after a status change is persisted, with the saved record and the status it had before. */
+  onStatusChange?: ((feedback: FeedbackRecord, previous: FeedbackStatus) => void) | undefined;
+  /** Called after a feedback is permanently deleted. */
+  onDelete?: ((feedback: FeedbackRecord) => void) | undefined;
+  /** Called on every load or mutation failure, with a typed `SitepingError` where available. */
+  onError?: ((error: Error) => void) | undefined;
+  /**
+   * Who replies from this inbox — typically the signed-in team member, not the
+   * widget's `identity`, which names the reviewer. Without it, threads are
+   * read-only. Replies ask for the `team` role, which the
+   * server grants only to a caller its access policy vouches for (the
+   * `apiKey`, or `canCommentAsTeam`); any other reply is stored as `client`.
+   */
+  author?: { name: string; email?: string | undefined } | undefined;
+  /**
+   * Hide status changes and deletions, of feedbacks and of replies — for a
+   * stakeholder who reads, and replies when `author` is set. The source's
+   * `permissions` hide what the server would refuse on top of it. It only
+   * hides: the server decides what it accepts.
+   */
+  readOnly?: boolean | undefined;
+  /**
+   * Base for relative feedback URLs — the widget stores page pathnames — in
+   * "Open on page" and the drawer's page link: one site's origin, or a map
+   * keyed by project name for an inbox over several sites. Defaults to the
+   * inbox's own location, which is right only when the inbox runs on the
+   * site's origin. Absolute record URLs are kept as stored. A headless UI
+   * passes the same value to `recordPageUrl`.
+   */
+  siteUrl?: InboxSiteUrl | undefined;
+}
+
+/**
+ * `siteUrl` — an absolute http(s) URL (`"https://client.example.com"`), or
+ * one per project name. A project without an entry keeps the default.
+ */
+export type InboxSiteUrl = string | Readonly<Record<string, string>>;
+
+/** Custom-source mode — bring your own `InboxSource` (tRPC, GraphQL, …). */
+export interface InboxCustomSourceOptions extends InboxSharedOptions {
+  /** Custom data source. */
+  source: InboxSource;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  store?: never;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  endpoint?: never;
+  /** Endpoint mode only. */
+  apiKey?: never;
+  /** Endpoint mode only. */
+  headers?: never;
+}
+
+/** Store mode — direct `SitepingStore` access, no server round-trip. */
+export interface InboxStoreOptions extends InboxSharedOptions {
+  /** Direct store for client-side mode. */
+  store: SitepingStore;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  source?: never;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  endpoint?: never;
+  /** Endpoint mode only. */
+  apiKey?: never;
+  /** Endpoint mode only. */
+  headers?: never;
+}
+
+/** Endpoint mode — HTTP against the Siteping request handlers. */
+export interface InboxEndpointOptions extends InboxSharedOptions {
+  /** HTTP endpoint exposing the Siteping request handlers. */
+  endpoint: string;
+  /** Sent as `Authorization: Bearer <apiKey>`. */
+  apiKey?: string | undefined;
+  /** Extra request headers — see `EndpointSourceOptions.headers`. */
+  headers?: EndpointSourceOptions["headers"];
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  source?: never;
+  /** Use exactly one of `source`, `store`, `endpoint`. */
+  store?: never;
+}
+
+/**
+ * Options accepted by `createSitepingInbox` (and, by extension,
+ * `<SitepingInbox />`) — a union over the three source modes. Supplying no
+ * source, several sources, or endpoint-only options (`apiKey`/`headers`)
+ * alongside `store`/`source` is a compile error instead of a runtime throw
+ * or a silently ignored option.
+ */
+export type UseSitepingInboxOptions = InboxCustomSourceOptions | InboxStoreOptions | InboxEndpointOptions;
+
+/**
+ * Full state + actions returned by `createSitepingInbox` — everything needed to
+ * render a triage inbox. Mutations are optimistic: state updates immediately,
+ * rolls back on failure (the rejected promise carries the error so UIs can
+ * surface a toast on top of the `onError` callback).
+ */
+export interface InboxState {
+  /** Currently selected project. */
+  project: string;
+  /** All configured projects (normalized to an array). */
+  projects: readonly string[];
+  /** Switch project — resets focus, drawer and pending undo. */
+  setProject(p: string): void;
+  /** Active status tab. */
+  status: InboxStatusFilter;
+  /** Switch the status tab — a filter, unlike `InboxSource.setStatus`, which changes a feedback's status. */
+  setStatusFilter(s: InboxStatusFilter): void;
+  /** Active type filter. */
+  type: InboxTypeFilter;
+  /** Switch the type filter. */
+  setTypeFilter(t: InboxTypeFilter): void;
+  /** Raw search input — updates synchronously; the refetch is debounced 250ms. */
+  search: string;
+  setSearch(s: string): void;
+  /** Currently loaded rows (page 1..n concatenated). */
+  items: InboxRecord[];
+  /** Total matching the current filters — `null` until the first page resolves. */
+  total: number | null;
+  /** Per-status tab counts — refreshed with the list; adjusted locally on mutations. */
+  counts: Partial<Record<"all" | FeedbackStatus, number>>;
+  /** True while page 1 is (re)loading. */
+  loading: boolean;
+  /** True while an additional page is loading. */
+  loadingMore: boolean;
+  /** Last load failure for the current filters — cleared on refetch. */
+  error: Error | null;
+  /** Whether more pages exist beyond the loaded rows. */
+  hasMore: boolean;
+  /**
+   * High-level view resolution — the exact algebra the shipped
+   * `<SitepingInbox />` uses to pick between skeleton, error state, empty
+   * state and the list, exposed so headless consumers don't have to
+   * re-derive it from the flags:
+   * - `"loading"` — first page is loading and nothing is displayable.
+   * - `"error"` — the load failed and nothing is displayable.
+   * - `"empty"` — loaded fine, zero rows for the current filters.
+   * - `"ready"` — rows are displayable (stale rows stay visible during a
+   *   refetch — check `loading` for granular spinners).
+   */
+  view: "loading" | "error" | "empty" | "ready";
+  /** Fetch the next page and append it. */
+  loadMore(): Promise<void>;
+  /** Re-fetch page 1 + counts for the current filters. */
+  refresh(): Promise<void>;
+  /** Keyboard-focused row id (aria-activedescendant target). */
+  focusedId: string | null;
+  focus(id: string): void;
+  focusNext(): void;
+  focusPrev(): void;
+  /** Id of the feedback opened in the drawer, or `null`. */
+  openedId: string | null;
+  /** The opened record — survives leaving the filtered list while the drawer stays open. */
+  opened: InboxRecord | null;
+  /**
+   * Open a feedback in the drawer and focus its row. `openedId` is set at once;
+   * for an id not loaded yet (e.g. from a URL), `opened` stays `null` until
+   * `items` holds its record.
+   */
+  openFeedback(id: string): void;
+  closeFeedback(): void;
+  /**
+   * Optimistic status change with rollback on error. Rejects after rolling
+   * back. Does nothing on a record `permissionsOf` refuses it.
+   */
+  changeStatus(id: string, status: FeedbackStatus): Promise<void>;
+  /**
+   * Optimistic delete (no undo — confirm in the UI) with rollback on error.
+   * Rejects after rolling back. Does nothing on a record `permissionsOf`
+   * refuses it.
+   */
+  deleteFeedback(id: string): Promise<void>;
+  /**
+   * Whether replies can be posted: an `author` is set, the source implements
+   * `addComment`, and the endpoint advertises comments.
+   */
+  canComment: boolean;
+  /**
+   * Whether replies can be deleted: `canComment`, not `readOnly`, the source
+   * implements `removeComment`, and the endpoint advertises their deletion.
+   */
+  canDeleteComment: boolean;
+  /**
+   * What the user may do with a record here: nothing `readOnly`,
+   * `canComment` or `canDeleteComment` rule out, nor anything its
+   * `permissions` refuse.
+   */
+  permissionsOf(record: InboxRecord): FeedbackPermissions;
+  /**
+   * What the user may do with one reply of a record here: delete it when
+   * `canDeleteComment` allows and the reply's `permissions` grant it — or,
+   * without them, the record's `canDeleteComment`. A server that lets
+   * authors delete only their own replies grants it reply by reply.
+   */
+  commentPermissionsOf(record: InboxRecord, comment: InboxComment): CommentPermissions;
+  /**
+   * Post a reply as `author`. Not optimistic: the thread shows it once the
+   * source has stored it. Rejects after `onError`. Pass the `clientId` of a
+   * failed attempt to resend it — the server answers with the stored reply
+   * if that attempt did land, instead of adding it twice; one is generated
+   * when omitted. Does nothing for a record the inbox does not hold, or
+   * whose `permissionsOf` refuses it.
+   */
+  addComment(id: string, body: string, clientId?: string): Promise<void>;
+  /**
+   * Delete a reply once the source confirms it. Rejects after `onError`.
+   * Does nothing for a record the inbox does not hold, or when
+   * `commentPermissionsOf` refuses the reply — `permissionsOf`, for a reply
+   * the record does not hold.
+   */
+  deleteComment(id: string, commentId: string): Promise<void>;
+  /** Last status change eligible for undo, or `null`. */
+  pendingUndo: { id: string; previousStatus: FeedbackStatus } | null;
+  /** Revert the pending status change. Clears `pendingUndo` without creating a new one. */
+  undo(): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Component props
+// ---------------------------------------------------------------------------
+
+/** Presentation props specific to the shipped `<SitepingInbox />` component. */
+export interface SitepingInboxPresentationProps {
+  /** Accent color (any `#RGB`/`#RRGGBB`/`#RRGGBBAA` hex) — defaults to `"#0066ff"`. */
+  accentColor?: string | undefined;
+  /** Color theme — defaults to `"auto"`, which tracks the system preference live. */
+  theme?: SitepingTheme | undefined;
+  /** Row density — defaults to `"comfortable"`. */
+  density?: "comfortable" | "compact" | undefined;
+  /** UI locale — defaults to `"en"`; non-English built-ins are lazy-loaded. */
+  locale?: SitepingLocale | undefined;
+  /** Extra class name(s) appended to the root element. */
+  class?: string | undefined;
+  /** Query parameter used by "Open on page" deep links — defaults to `"siteping"`. */
+  deepLinkParam?: string | undefined;
+  /** Replaces the default empty state shown when the project has no feedback at all. */
+  emptyState?: Snippet | undefined;
+}
+
+/** Props accepted by `<SitepingInbox />` — source-mode options plus presentation. */
+export type SitepingInboxProps = UseSitepingInboxOptions & SitepingInboxPresentationProps;

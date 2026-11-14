@@ -90,6 +90,16 @@
       }
     },
     {
+      "includes": ["**/*.svelte"],
+      "formatter": { "enabled": false },
+      "linter": {
+        "rules": {
+          "correctness": { "noUnusedVariables": "off", "noUnusedImports": "off" },
+          "style": { "useConst": "off", "useImportType": "off" }
+        }
+      }
+    },
+    {
       "includes": ["apps/demo/src/app/globals.css"],
       "linter": {
         "rules": {

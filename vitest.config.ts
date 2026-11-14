@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 const source = (pkg: string, entry = "index") =>
   fileURLToPath(new URL(`packages/${pkg}/src/${entry}.ts`, import.meta.url));
@@ -47,6 +47,20 @@ export default defineConfig({
     // more files balloons to ~15 GB at 2. No-op in CI (≤4 cores).
     // (vitest 4 replaced poolOptions.forks.maxForks with top-level maxWorkers.)
     maxWorkers: 4,
+    // The Svelte dashboard compiles `.svelte` files and resolves the `browser`
+    // export conditions (Svelte's client runtime), so it runs as a project of
+    // its own (packages/dashboard-svelte/vitest.config.ts) — the rest of the
+    // monorepo keeps this config unchanged.
+    projects: [
+      {
+        test: {
+          name: "siteping",
+          exclude: [...configDefaults.exclude, "packages/dashboard-svelte/**"],
+          typecheck: { exclude: [...configDefaults.typecheck.exclude, "packages/dashboard-svelte/**"] },
+        },
+      },
+      "packages/dashboard-svelte",
+    ],
     coverage: {
       provider: "istanbul",
       reporter: ["text", "lcov", "json-summary"],

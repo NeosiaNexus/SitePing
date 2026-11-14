@@ -1,0 +1,62 @@
+{
+  "name": "@siteping/dashboard-svelte",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Linear-style triage inbox Svelte 5 component for SitePing feedback",
+  "type": "module",
+  "sideEffects": false,
+  "svelte": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "svelte": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "scripts": {
+    "build": "svelte-package -i src -o dist && node scripts/link-core.mjs dist",
+    "check": "tsc --noEmit && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "siteping",
+    "feedback",
+    "dashboard",
+    "inbox",
+    "triage",
+    "svelte",
+    "component",
+    "client-review",
+    "typescript"
+  ],
+  "author": "neosianexus",
+  "license": "MIT",
+  "homepage": "https://siteping.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NeosiaNexus/SitePing.git",
+    "directory": "packages/dashboard-svelte"
+  },
+  "bugs": {
+    "url": "https://github.com/NeosiaNexus/SitePing/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@siteping/core": "workspace:*",
+    "@sveltejs/package": "^3.0.2",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@testing-library/dom": "^10.4.1",
+    "svelte": "^5.57.3",
+    "svelte-check": "^4.7.8"
+  },
+  "peerDependencies": {
+    "svelte": "^5.40.0"
+  }
+}

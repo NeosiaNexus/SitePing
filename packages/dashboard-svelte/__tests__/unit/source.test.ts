@@ -1,0 +1,511 @@
+import type { FeedbackQuery, FeedbackStatus, FeedbackUpdateInput, SitepingStore } from "@siteping/core";
+import {
+  createCollectionStore,
+  isSitepingError,
+  SitepingAuthError,
+  SitepingNetworkError,
+  SitepingValidationError,
+} from "@siteping/core";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { createEndpointSource, createStoreSource } from "../../src/source.js";
+import { errorFetch, jsonFetch, makeAnnotationResponse, makeRecord, makeResponse } from "../helpers.js";
+
+const ENDPOINT = "https://app.example/api/siteping";
+
+function lastCall(fetchFn: Mock<typeof fetch>): { url: string; init: RequestInit } {
+  const [url, init] = fetchFn.mock.calls.at(-1) as [string, RequestInit];
+  return { url, init };
+}
+
+describe("createEndpointSource — list()", () => {
+  it("builds a GET with projectName only and cache:no-store", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await source.list({ projectName: "demo" });
+
+    const { url, init } = lastCall(fetchFn);
+    const parsed = new URL(url);
+    expect(parsed.origin + parsed.pathname).toBe(ENDPOINT);
+    expect(parsed.searchParams.get("projectName")).toBe("demo");
+    expect([...parsed.searchParams.keys()]).toEqual(["projectName"]);
+    expect(init.method).toBe("GET");
+    expect(init.cache).toBe("no-store");
+  });
+
+  it("serializes every supported filter into the query string", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    const query: FeedbackQuery = {
+      projectName: "demo",
+      page: 3,
+      limit: 25,
+      status: "in_progress",
+      type: "bug",
+      search: "overlap",
+      url: "/pricing",
+      urlPattern: "/orders/:id",
+    };
+    await source.list(query);
+
+    const params = new URL(lastCall(fetchFn).url).searchParams;
+    expect(params.get("projectName")).toBe("demo");
+    expect(params.get("page")).toBe("3");
+    expect(params.get("limit")).toBe("25");
+    expect(params.get("status")).toBe("in_progress");
+    expect(params.get("type")).toBe("bug");
+    expect(params.get("search")).toBe("overlap");
+    expect(params.get("url")).toBe("/pricing");
+    expect(params.get("urlPattern")).toBe("/orders/:id");
+  });
+
+  it("omits falsy page/limit/status/type/search", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await source.list({ projectName: "demo", page: 0, limit: 0, status: undefined, type: undefined, search: "" });
+
+    const params = new URL(lastCall(fetchFn).url).searchParams;
+    expect([...params.keys()]).toEqual(["projectName"]);
+  });
+
+  it("keeps a query string already on the endpoint (appends with &)", async () => {
+    // `${endpoint}?${params}` produced "?tenant=acme?projectName=…" — a 400.
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({ endpoint: `${ENDPOINT}?tenant=acme`, fetchFn });
+    await source.list({ projectName: "demo" });
+
+    const params = new URL(lastCall(fetchFn).url).searchParams;
+    expect(params.get("tenant")).toBe("acme");
+    expect(params.get("projectName")).toBe("demo");
+  });
+
+  it("sends no Content-Type on GET", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await source.list({ projectName: "demo" });
+    const headers = lastCall(fetchFn).init.headers as Record<string, string>;
+    expect(headers["Content-Type"]).toBeUndefined();
+  });
+
+  it("revives ISO dates on records, including annotations[].createdAt, and blanks clientId", async () => {
+    const response = makeResponse({
+      resolvedAt: "2026-07-21T09:00:00.000Z",
+      createdAt: "2026-07-20T10:00:00.000Z",
+      updatedAt: "2026-07-20T11:30:00.000Z",
+      annotations: [makeAnnotationResponse({ createdAt: "2026-07-19T08:00:00.000Z" })],
+    });
+    const fetchFn = jsonFetch({ feedbacks: [response], total: 1 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+
+    const page = await source.list({ projectName: "demo" });
+    const record = page.feedbacks[0];
+    expect(page.total).toBe(1);
+    expect(record?.resolvedAt).toBeInstanceOf(Date);
+    expect(record?.resolvedAt?.toISOString()).toBe("2026-07-21T09:00:00.000Z");
+    expect(record?.createdAt).toBeInstanceOf(Date);
+    expect(record?.updatedAt).toBeInstanceOf(Date);
+    expect(record?.annotations[0]?.createdAt).toBeInstanceOf(Date);
+    expect(record?.clientId).toBe("");
+  });
+
+  it("revives each comment's createdAt, blanks its clientId, and keeps a thread-less record as is", async () => {
+    const comment = {
+      id: "c1",
+      feedbackId: "fb-1",
+      body: "Fixed in 1.4",
+      authorName: "Bob",
+      authorEmail: "",
+      authorRole: "team" as const,
+      createdAt: "2026-07-22T08:00:00.000Z",
+    };
+    const fetchFn = jsonFetch({ feedbacks: [makeResponse({ comments: [comment] }), makeResponse()], total: 2 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+
+    const [threaded, threadless] = (await source.list({ projectName: "demo" })).feedbacks;
+
+    expect(threaded?.comments).toEqual([{ ...comment, clientId: "", createdAt: new Date(comment.createdAt) }]);
+    expect(threadless?.comments).toBeUndefined();
+  });
+
+  it("advertises comments and their deletion as the server does — and neither for a server that predates them", async () => {
+    const advertised = createEndpointSource({
+      endpoint: ENDPOINT,
+      fetchFn: jsonFetch({ feedbacks: [], total: 0, capabilities: { comments: true, deleteComments: true } }),
+    });
+    expect((await advertised.list({ projectName: "demo" })).capabilities).toEqual({
+      comments: true,
+      deleteComments: true,
+    });
+
+    const appendOnly = createEndpointSource({
+      endpoint: ENDPOINT,
+      fetchFn: jsonFetch({ feedbacks: [], total: 0, capabilities: { comments: true, deleteComments: false } }),
+    });
+    expect((await appendOnly.list({ projectName: "demo" })).capabilities).toEqual({
+      comments: true,
+      deleteComments: false,
+    });
+
+    const legacy = createEndpointSource({ endpoint: ENDPOINT, fetchFn: jsonFetch({ feedbacks: [], total: 0 }) });
+    expect((await legacy.list({ projectName: "demo" })).capabilities).toEqual({
+      comments: false,
+      deleteComments: false,
+    });
+  });
+
+  it("keeps a null resolvedAt as null (no Date coercion)", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [makeResponse({ resolvedAt: null })], total: 1 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    const page = await source.list({ projectName: "demo" });
+    expect(page.feedbacks[0]?.resolvedAt).toBeNull();
+  });
+
+  it("passes each record's permissions on, on lists and saved records alike", async () => {
+    const permissions = { canChangeStatus: false, canDelete: true, canComment: true, canDeleteComment: false };
+    const listed = createEndpointSource({
+      endpoint: ENDPOINT,
+      fetchFn: jsonFetch({ feedbacks: [makeResponse({ permissions }), makeResponse({ id: "legacy" })], total: 2 }),
+    });
+    const saved = createEndpointSource({ endpoint: ENDPOINT, fetchFn: jsonFetch(makeResponse({ permissions })) });
+
+    const page = await listed.list({ projectName: "demo" });
+
+    expect(page.feedbacks.map((f) => f.permissions)).toEqual([permissions, undefined]);
+    expect((await saved.setStatus("fb-resp-1", "demo", "resolved")).permissions).toEqual(permissions);
+  });
+});
+
+describe("createEndpointSource — auth & headers", () => {
+  it("adds Authorization: Bearer from apiKey", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, apiKey: "secret-key", fetchFn });
+    await source.list({ projectName: "demo" });
+    const headers = lastCall(fetchFn).init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer secret-key");
+  });
+
+  it("merges a static headers object", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, headers: { "X-Team": "acme" }, fetchFn });
+    await source.list({ projectName: "demo" });
+    const headers = lastCall(fetchFn).init.headers as Record<string, string>;
+    expect(headers["X-Team"]).toBe("acme");
+  });
+
+  it("supports an async headers function (fresh token per request)", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const headers = vi.fn(async () => ({ Authorization: "Bearer async-token" }));
+    const source = createEndpointSource({ endpoint: ENDPOINT, headers, fetchFn });
+    await source.list({ projectName: "demo" });
+    expect(headers).toHaveBeenCalledTimes(1);
+    expect((lastCall(fetchFn).init.headers as Record<string, string>).Authorization).toBe("Bearer async-token");
+  });
+
+  it("supports a sync headers function", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({ endpoint: ENDPOINT, headers: () => ({ "X-Sync": "1" }), fetchFn });
+    await source.list({ projectName: "demo" });
+    expect((lastCall(fetchFn).init.headers as Record<string, string>)["X-Sync"]).toBe("1");
+  });
+
+  it("lets an explicit Authorization header override apiKey", async () => {
+    const fetchFn = jsonFetch({ feedbacks: [], total: 0 });
+    const source = createEndpointSource({
+      endpoint: ENDPOINT,
+      apiKey: "from-api-key",
+      headers: { Authorization: "Bearer from-headers" },
+      fetchFn,
+    });
+    await source.list({ projectName: "demo" });
+    expect((lastCall(fetchFn).init.headers as Record<string, string>).Authorization).toBe("Bearer from-headers");
+  });
+
+  it("lets an explicit header override the built-ins whatever its casing", async () => {
+    const fetchFn = jsonFetch(makeResponse());
+    const source = createEndpointSource({
+      endpoint: ENDPOINT,
+      apiKey: "KEY",
+      headers: { authorization: "Bearer SESSION", "content-type": "application/merge-patch+json" },
+      fetchFn,
+    });
+    await source.setStatus("fb-resp-1", "demo", "resolved");
+    // Duplicate-cased keys would go out joined ("Bearer KEY, Bearer SESSION").
+    expect(lastCall(fetchFn).init.headers).toEqual({
+      authorization: "Bearer SESSION",
+      "content-type": "application/merge-patch+json",
+    });
+  });
+});
+
+describe("createEndpointSource — setStatus() & remove()", () => {
+  it("PATCHes {id, projectName, status} as JSON with Content-Type", async () => {
+    const fetchFn = jsonFetch(makeResponse({ id: "fb-1", status: "resolved" }));
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    const record = await source.setStatus("fb-1", "demo", "resolved");
+
+    const { url, init } = lastCall(fetchFn);
+    expect(url).toBe(ENDPOINT);
+    expect(init.method).toBe("PATCH");
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+    expect(JSON.parse(init.body as string)).toEqual({ id: "fb-1", projectName: "demo", status: "resolved" });
+    expect(record.status).toBe("resolved");
+    expect(record.createdAt).toBeInstanceOf(Date);
+  });
+
+  it("DELETEs {id, projectName} as JSON", async () => {
+    const fetchFn = jsonFetch({});
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await source.remove("fb-9", "demo");
+
+    const { url, init } = lastCall(fetchFn);
+    expect(url).toBe(ENDPOINT);
+    expect(init.method).toBe("DELETE");
+    expect(JSON.parse(init.body as string)).toEqual({ id: "fb-9", projectName: "demo" });
+  });
+});
+
+describe("createEndpointSource — addComment() & removeComment()", () => {
+  const input = {
+    body: "On it",
+    authorName: "Studio",
+    authorEmail: "",
+    authorRole: "team" as const,
+    clientId: "reply-1",
+  };
+
+  it("POSTs the reply with its feedbackId to the shared endpoint and revives the stored comment", async () => {
+    const stored = { id: "c-1", feedbackId: "fb-1", ...input, createdAt: "2026-07-22T08:00:00.000Z" };
+    const { clientId: _clientId, ...wire } = stored;
+    const fetchFn = jsonFetch(wire);
+    const source = createEndpointSource({ endpoint: ENDPOINT, apiKey: "k", fetchFn });
+
+    const comment = await source.addComment?.("fb-1", "demo", input);
+
+    const { url, init } = lastCall(fetchFn);
+    expect(url).toBe(ENDPOINT);
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer k" });
+    expect(JSON.parse(init.body as string)).toEqual({ ...input, projectName: "demo", feedbackId: "fb-1" });
+    expect(comment).toEqual({ ...stored, clientId: "", createdAt: new Date(stored.createdAt) });
+  });
+
+  it("DELETEs {projectName, feedbackId, commentId} as JSON", async () => {
+    const fetchFn = jsonFetch({ deleted: true });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await source.removeComment?.("fb-1", "demo", "c-1");
+
+    const { init } = lastCall(fetchFn);
+    expect(init.method).toBe("DELETE");
+    expect(JSON.parse(init.body as string)).toEqual({ projectName: "demo", feedbackId: "fb-1", commentId: "c-1" });
+  });
+
+  it("maps a refusal to its typed error", async () => {
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(403) });
+    await expect(source.addComment?.("fb-1", "demo", input)).rejects.toBeInstanceOf(SitepingAuthError);
+    await expect(source.removeComment?.("fb-1", "demo", "c-1")).rejects.toBeInstanceOf(SitepingAuthError);
+  });
+});
+
+describe("createEndpointSource — error mapping", () => {
+  it.each([
+    [401, SitepingAuthError],
+    [403, SitepingAuthError],
+    [400, SitepingValidationError],
+    [422, SitepingValidationError],
+  ])("maps %i to the right typed error", async (status, ctor) => {
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(status) });
+    await expect(source.list({ projectName: "demo" })).rejects.toBeInstanceOf(ctor);
+  });
+
+  it.each([401, 403] as const)(
+    "keeps the %i on the AUTH error, to tell a dead session from a refusal",
+    async (status) => {
+      const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(status) });
+      await expect(source.list({ projectName: "demo" })).rejects.toMatchObject({ code: "AUTH", status });
+      await expect(source.setStatus("fb-1", "demo", "resolved")).rejects.toMatchObject({ code: "AUTH", status });
+    },
+  );
+
+  it("maps 5xx to a retryable SitepingError with code SERVER, which isSitepingError matches", async () => {
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(500, "kaboom") });
+    const error = await source.list({ projectName: "demo" }).catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: "SERVER", retryable: true });
+    expect(isSitepingError(error)).toBe(true);
+  });
+
+  it.each([408, 429])("maps %i (a proxy timeout or a rate limit) to a retryable SERVER error", async (status) => {
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(status) });
+    const error = await source.list({ projectName: "demo" }).catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(SitepingValidationError);
+    expect(error).toMatchObject({ code: "SERVER", retryable: true });
+  });
+
+  it("includes the status and body text in the error message", async () => {
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(422, "invalid status value") });
+    await expect(source.list({ projectName: "demo" })).rejects.toThrow(/422 invalid status value/);
+  });
+
+  it("falls back to a generic message when the error body cannot be read", async () => {
+    const badResponse = {
+      ok: false,
+      status: 500,
+      text: () => Promise.reject(new Error("stream already consumed")),
+    } as unknown as Response;
+    const fetchFn = vi.fn(async () => badResponse);
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await expect(source.list({ projectName: "demo" })).rejects.toThrow(/Unknown error/);
+  });
+
+  it("omits the body from the message when the error response is empty", async () => {
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn: errorFetch(500, "") });
+    await expect(source.list({ projectName: "demo" })).rejects.toThrow(/: 500$/);
+  });
+
+  it("wraps a fetch rejection in SitepingNetworkError", async () => {
+    const fetchFn = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await expect(source.list({ projectName: "demo" })).rejects.toBeInstanceOf(SitepingNetworkError);
+  });
+
+  it("passes an existing SitepingNetworkError through unchanged", async () => {
+    const original = new SitepingNetworkError("already network");
+    const fetchFn = vi.fn(async () => {
+      throw original;
+    });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await expect(source.list({ projectName: "demo" })).rejects.toBe(original);
+  });
+
+  it("stringifies a non-Error rejection", async () => {
+    const fetchFn = vi.fn(async () => {
+      throw "plain string failure";
+    });
+    const source = createEndpointSource({ endpoint: ENDPOINT, fetchFn });
+    await expect(source.list({ projectName: "demo" })).rejects.toThrow(/plain string failure/);
+  });
+
+  it("defaults to globalThis.fetch when no fetchFn is provided", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ feedbacks: [], total: 0 }), { status: 200 }));
+    try {
+      const source = createEndpointSource({ endpoint: ENDPOINT });
+      await source.list({ projectName: "demo" });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("createStoreSource", () => {
+  function fakeStore() {
+    return {
+      getFeedbacks: vi.fn(async (_q: FeedbackQuery) => ({ feedbacks: [makeRecord()], total: 1 })),
+      updateFeedback: vi.fn(async (id: string, data: FeedbackUpdateInput) => makeRecord({ id, ...data })),
+      deleteFeedback: vi.fn(async (_id: string) => undefined),
+      createFeedback: vi.fn(),
+      findByClientId: vi.fn(),
+      deleteAllFeedbacks: vi.fn(),
+    } as unknown as SitepingStore & {
+      getFeedbacks: ReturnType<typeof vi.fn>;
+      updateFeedback: ReturnType<typeof vi.fn>;
+      deleteFeedback: ReturnType<typeof vi.fn>;
+    };
+  }
+
+  let store: ReturnType<typeof fakeStore>;
+  beforeEach(() => {
+    store = fakeStore();
+  });
+
+  it("list() delegates to store.getFeedbacks", async () => {
+    const source = createStoreSource(store);
+    const query: FeedbackQuery = { projectName: "demo", status: "open" };
+    const page = await source.list(query);
+    expect(store.getFeedbacks).toHaveBeenCalledWith(query);
+    expect(page.total).toBe(1);
+  });
+
+  it.each<[FeedbackStatus, boolean]>([
+    ["open", false],
+    ["in_progress", false],
+    ["resolved", true],
+    ["wont_fix", true],
+  ])("setStatus(%s) derives resolvedAt (closed=%s) at the edge", async (status, closed) => {
+    const source = createStoreSource(store);
+    await source.setStatus("fb-1", "demo", status);
+    const [, data] = store.updateFeedback.mock.calls[0] as [string, FeedbackUpdateInput];
+    expect(data.status).toBe(status);
+    if (closed) {
+      expect(data.resolvedAt).toBeInstanceOf(Date);
+    } else {
+      expect(data.resolvedAt).toBeNull();
+    }
+  });
+
+  it("remove() delegates to store.deleteFeedback", async () => {
+    const source = createStoreSource(store);
+    await source.remove("fb-1", "demo");
+    expect(store.deleteFeedback).toHaveBeenCalledWith("fb-1");
+  });
+
+  it("leaves the thread methods out for a store that keeps no comments", () => {
+    const source = createStoreSource(store);
+    expect(source.addComment).toBeUndefined();
+    expect(source.removeComment).toBeUndefined();
+  });
+
+  it("posts and deletes replies through a store that keeps them, as the store's own methods", async () => {
+    let rows = [makeRecord({ id: "a", projectName: "demo" })];
+    const threaded = createCollectionStore({
+      load: async () => rows,
+      persist: async (next) => {
+        rows = next;
+      },
+      generateId: () => crypto.randomUUID(),
+      comments: true,
+    });
+    const source = createStoreSource(threaded);
+    const input = {
+      body: "On it",
+      authorName: "Studio",
+      authorEmail: "",
+      authorRole: "team" as const,
+      clientId: "r-1",
+    };
+
+    const comment = await source.addComment?.("a", "demo", input);
+    expect(comment).toMatchObject({ feedbackId: "a", body: "On it", authorRole: "team" });
+    expect(rows[0]?.comments).toHaveLength(1);
+
+    await source.removeComment?.("a", "demo", comment?.id ?? "");
+    expect(rows[0]?.comments).toEqual([]);
+  });
+
+  it("two status changes 1 ms apart over an async collection store both land", async () => {
+    // A remote-KV-shaped backend: every load and persist takes 5 ms (#341).
+    let rows = [makeRecord({ id: "a" }), makeRecord({ id: "b" })];
+    const kvLatency = () => new Promise<void>((resolve) => setTimeout(resolve, 5));
+    const source = createStoreSource(
+      createCollectionStore({
+        load: async () => {
+          await kvLatency();
+          return rows;
+        },
+        persist: async (next) => {
+          await kvLatency();
+          rows = next;
+        },
+        generateId: () => crypto.randomUUID(),
+      }),
+    );
+
+    const first = source.setStatus("a", "demo", "resolved");
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    await Promise.all([first, source.setStatus("b", "demo", "wont_fix")]);
+
+    expect(Object.fromEntries(rows.map((f) => [f.id, f.status]))).toEqual({ a: "resolved", b: "wont_fix" });
+  });
+});
