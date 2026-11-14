@@ -16,7 +16,7 @@
     },
     "check": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "content/**", "source.config.ts", "package.json", "tsconfig.json"],
+      "inputs": ["src/**", "content/**", "source.config.ts", "next.config.ts", "package.json", "tsconfig.json"],
       "outputs": []
     }
   }

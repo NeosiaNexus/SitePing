@@ -6,7 +6,7 @@
     "dev": "fumadocs-mdx && next dev --turbopack",
     "build": "fumadocs-mdx && next build",
     "start": "next start",
-    "check": "fumadocs-mdx && tsc --noEmit",
+    "check": "fumadocs-mdx && next typegen && tsc --noEmit",
     "clean": "rm -rf .next"
   },
   "engines": {

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .next/
+# Rewritten by next dev/build/typegen (dev and build paths differ); `check` regenerates it
+next-env.d.ts
 .turbo/
 *.tsbuildinfo
 .DS_Store
