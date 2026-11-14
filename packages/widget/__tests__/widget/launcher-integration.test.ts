@@ -2181,8 +2181,12 @@ describe("launcher — annotation:complete integration", () => {
   });
 
   describe("defaultPanelScope", () => {
-    /** The panel list's first query: the launcher's marker queries carry no `page`. */
-    async function openListQuery(instance: ReturnType<typeof launch>): Promise<Record<string, unknown>> {
+    let instance: ReturnType<typeof launch> | undefined;
+    afterEach(() => instance?.destroy());
+
+    /** Launches the widget, opens the panel, and returns its list's first query (the launcher's marker queries carry no `page`). */
+    async function openListQuery(config: SitepingConfig): Promise<Record<string, unknown>> {
+      instance = launch(config);
       instance.open();
       let query: Record<string, unknown> | undefined;
       await vi.waitFor(() => {
@@ -2193,17 +2197,11 @@ describe("launcher — annotation:complete integration", () => {
     }
 
     it("reaches the panel: its list opens on every page's feedback", async () => {
-      const instance = launch(defaultConfig({ defaultPanelScope: "all" }));
-
-      expect(await openListQuery(instance)).not.toHaveProperty("url");
-      instance.destroy();
+      expect(await openListQuery(defaultConfig({ defaultPanelScope: "all" }))).not.toHaveProperty("url");
     });
 
     it("defaults to the current page", async () => {
-      const instance = launch(defaultConfig());
-
-      expect(await openListQuery(instance)).toHaveProperty("url", window.location.pathname);
-      instance.destroy();
+      expect(await openListQuery(defaultConfig())).toHaveProperty("url", window.location.pathname);
     });
   });
 });

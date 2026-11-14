@@ -4489,8 +4489,9 @@ describe("Panel", () => {
         expect(apiClient.getFeedbacks).toHaveBeenCalledWith("test-project", { page: 1, limit: 20, url: "/" });
       });
 
-      it("opens on the page for any other value, the hidden template scope included", async () => {
-        rebuildWith("template");
+      // "template" would select a scope this route hides; "everywhere", none at all
+      it.each(["template", "everywhere"])('opens on the page for "%s", outside the type', async (value) => {
+        rebuildWith(value);
 
         await panel.open();
 
