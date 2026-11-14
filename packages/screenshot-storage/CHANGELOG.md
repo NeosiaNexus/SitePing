@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/NeosiaNexus/SitePing/compare/screenshot-storage-v0.2.2...screenshot-storage-v0.2.3) (2026-11-14)
+
+
+### Miscellaneous
+
+* **deps-dev:** bump the dev-dependencies group with 8 updates ([#551](https://github.com/NeosiaNexus/SitePing/issues/551)) ([d8908e4](https://github.com/NeosiaNexus/SitePing/commit/d8908e4e86b89db798991be3e3f1ef661d4c0250))
+
 ## [0.2.2](https://github.com/NeosiaNexus/SitePing/compare/screenshot-storage-v0.2.1...screenshot-storage-v0.2.2) (2026-11-09)
 
 

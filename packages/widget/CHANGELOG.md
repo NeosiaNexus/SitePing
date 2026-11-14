@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.4](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.12.3...widget-v0.12.4) (2026-11-14)
+
+
+### Features
+
+* **widget:** open the panel's list on all pages with defaultPanelScope ([#556](https://github.com/NeosiaNexus/SitePing/issues/556)) ([464b457](https://github.com/NeosiaNexus/SitePing/commit/464b45722222361d7d7576dbb0d595900fef92d1))
+
 ## [0.12.3](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.12.2...widget-v0.12.3) (2026-11-09)
 
 
