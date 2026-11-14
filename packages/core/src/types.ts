@@ -237,14 +237,24 @@ export interface SitepingBaseConfig {
    */
   getPageScope?: (() => PageScope) | undefined;
   /**
-   * When true (default), the widget filters initial markers and panel results
-   * by `feedback.url === scope.url`, so annotations created on one page never
-   * leak to other pages — even if their CSS selector accidentally matches.
-   * Set to `false` for a project-wide view: the panel lists every feedback of
-   * the project, and a marker shows wherever its anchor resolves — for
-   * feedback on what every page shares, such as a header or a footer.
+   * When true (default), the widget only shows the markers of feedback
+   * created on the current page (`feedback.url === scope.url`), so
+   * annotations never leak to other pages, even if their CSS selector
+   * happens to match there. Set to `false` for project-wide markers: a marker
+   * shows wherever its anchor resolves, for feedback on what every page
+   * shares, such as a header or a footer. The panel's list has a scope filter
+   * of its own: see `defaultPanelScope`.
    */
   scopeAnnotationsByUrl?: boolean | undefined;
+  /**
+   * The scope the panel's list opens on: `"page"` (default) lists the
+   * current page's feedback, `"all"` every feedback of the project, for
+   * reviewers who triage across the whole site. The reviewer can still
+   * switch, and their choice holds until the widget is destroyed. The
+   * markers on the page follow `scopeAnnotationsByUrl`, whatever the list
+   * shows.
+   */
+  defaultPanelScope?: "page" | "all" | undefined;
   /**
    * Capture a JPEG screenshot of the annotated area on submit. Defaults to
    * `false` — opt-in because:

@@ -9,6 +9,7 @@ import {
   isClosedStatus,
   MAX_PAGE_LIMIT,
   type PageScope,
+  type SitepingConfig,
   type SitepingIdentity,
   type SitepingPanelAction,
 } from "@siteping/core";
@@ -60,6 +61,9 @@ import { isCoarsePointer, isCompactViewport, prefersReducedMotion } from "./view
 
 /** Non-terminal statuses — complement of `CLOSED_FEEDBACK_STATUSES`; backs the panel's "Open" tab bucket. */
 const OPEN_FEEDBACK_STATUSES: readonly FeedbackStatus[] = FEEDBACK_STATUSES.filter((s) => !isClosedStatus(s));
+
+/** The list's scope filter: the current page, its route template, or the whole project. */
+type PanelScope = "page" | "template" | "all";
 
 /** An ARIA list for cards (each card is its `listitem`), named `label`. */
 function cardList(className: string, label: string): HTMLElement {
@@ -157,10 +161,10 @@ export class Panel {
   // the current page (or template) and filter markers accordingly.
   private readonly getScope: () => PageScope;
   private readonly scopeAnnotationsByUrl: boolean;
-  /** "this" = current url, "template" = url pattern, "all" = no scope filter */
-  private scopeSegmented!: SegmentedControl<"this" | "template" | "all">;
-  /** Cached initial scope value — applied after construction in `buildScopeSegmented`. */
-  private readonly initialScopeFilter: "this" | "template" | "all" = "this";
+  /** "page" = current url, "template" = url pattern, "all" = no scope filter */
+  private scopeSegmented!: SegmentedControl<PanelScope>;
+  /** The scope the list opens on (`defaultPanelScope`); the reviewer's choice then holds. */
+  private readonly initialScopeFilter: PanelScope;
   /** "Mine" filter: only the feedback sent from this browser, whose ids the launcher remembers. */
   private mineOnly = false;
   private readonly ownFeedback: Pick<OwnFeedback, "ids" | "remove">;
@@ -177,6 +181,7 @@ export class Panel {
     options?: {
       getScope: () => PageScope;
       scopeAnnotationsByUrl: boolean;
+      defaultPanelScope?: SitepingConfig["defaultPanelScope"];
       panelActions?: readonly SitepingPanelAction[] | undefined;
       ownFeedback?: Pick<OwnFeedback, "ids" | "remove"> | undefined;
       resolveIdentity?: () => Promise<SitepingIdentity | null>;
@@ -188,6 +193,8 @@ export class Panel {
     this.resolveIdentity = options?.resolveIdentity ?? (async () => null);
     this.getScope = options?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
     this.scopeAnnotationsByUrl = options?.scopeAnnotationsByUrl ?? true;
+    // Anything but "all" opens on the page, an untyped caller's typo included
+    this.initialScopeFilter = options?.defaultPanelScope === "all" ? "all" : "page";
     this.ownFeedback = options?.ownFeedback ?? { ids: () => new Set(), remove: () => {} };
 
     // Phone layout: dims the page behind the sheet; a tap on it closes the panel.
@@ -807,7 +814,7 @@ export class Panel {
     if (typeFilter) options.type = typeFilter;
     if (statuses) options.statuses = statuses;
     if (search) options.search = search;
-    if (currentScope === "this") {
+    if (currentScope === "page") {
       options.url = scope.url;
     } else if (currentScope === "template" && scope.urlPattern) {
       options.urlPattern = scope.urlPattern;
@@ -886,7 +893,7 @@ export class Panel {
     if (typeFilter) options.type = typeFilter;
     if (statuses) options.statuses = statuses;
     if (search) options.search = search;
-    if (currentScope === "this") {
+    if (currentScope === "page") {
       options.url = scope.url;
     } else if (currentScope === "template" && scope.urlPattern) {
       options.urlPattern = scope.urlPattern;
@@ -1573,9 +1580,9 @@ export class Panel {
    * every `loadFeedbacks` so SPA navigation stays consistent.
    */
   private buildScopeSegmented(): HTMLElement {
-    this.scopeSegmented = new SegmentedControl<"this" | "template" | "all">({
+    this.scopeSegmented = new SegmentedControl<PanelScope>({
       options: [
-        { value: "this", label: this.t("scope.thisPage") },
+        { value: "page", label: this.t("scope.thisPage") },
         { value: "template", label: this.t("scope.thisType") },
         { value: "all", label: this.t("scope.all") },
       ],
@@ -1605,7 +1612,7 @@ export class Panel {
     const showTemplate = !!scope.urlPattern;
     this.scopeSegmented.setOptionVisible("template", showTemplate);
     if (!showTemplate && this.scopeSegmented.value === "template") {
-      this.scopeSegmented.select("this");
+      this.scopeSegmented.select("page");
     }
   }
 

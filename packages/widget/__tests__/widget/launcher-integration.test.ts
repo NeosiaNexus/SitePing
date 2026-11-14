@@ -2179,4 +2179,29 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
   });
+
+  describe("defaultPanelScope", () => {
+    let instance: ReturnType<typeof launch> | undefined;
+    afterEach(() => instance?.destroy());
+
+    /** Launches the widget, opens the panel, and returns its list's first query (the launcher's marker queries carry no `page`). */
+    async function openListQuery(config: SitepingConfig): Promise<Record<string, unknown>> {
+      instance = launch(config);
+      instance.open();
+      let query: Record<string, unknown> | undefined;
+      await vi.waitFor(() => {
+        query = mockGetFeedbacks.mock.calls.map((call) => call[1]).find((options) => options?.page === 1);
+        expect(query).toBeDefined();
+      });
+      return query!;
+    }
+
+    it("reaches the panel: its list opens on every page's feedback", async () => {
+      expect(await openListQuery(defaultConfig({ defaultPanelScope: "all" }))).not.toHaveProperty("url");
+    });
+
+    it("defaults to the current page", async () => {
+      expect(await openListQuery(defaultConfig())).toHaveProperty("url", window.location.pathname);
+    });
+  });
 });

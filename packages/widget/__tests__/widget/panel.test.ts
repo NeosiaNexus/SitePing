@@ -299,7 +299,7 @@ describe("Panel", () => {
     it("calls getFeedbacks on open", async () => {
       await panel.open();
 
-      // Default scope filter is "this", so url=/ (jsdom pathname) is passed.
+      // Default scope filter is "page", so url=/ (jsdom pathname) is passed.
       expect(apiClient.getFeedbacks).toHaveBeenCalledWith("test-project", { page: 1, limit: 20, url: "/" });
     });
 
@@ -4363,8 +4363,8 @@ describe("Panel", () => {
 
       const buttons = scopeSegmented.querySelectorAll<HTMLButtonElement>(".sp-segmented__btn");
       expect(buttons.length).toBe(3);
-      const thisBtn = scopeSegmented.querySelector<HTMLButtonElement>('[data-scope-filter="this"]')!;
-      expect(thisBtn.getAttribute("aria-checked")).toBe("true");
+      const pageBtn = scopeSegmented.querySelector<HTMLButtonElement>('[data-scope-filter="page"]')!;
+      expect(pageBtn.getAttribute("aria-checked")).toBe("true");
     });
 
     it("hides 'this type' button when scope has no urlPattern", () => {
@@ -4417,7 +4417,7 @@ describe("Panel", () => {
       // syncScopeAvailability runs on loadFeedbacks; templateBtn is now visible
       expect(templateBtn.style.display).not.toBe("none");
 
-      // Default scope is "this" → url filter is /orders/42
+      // Default scope is "page" → url filter is /orders/42
       expect(apiClient.getFeedbacks).toHaveBeenCalledWith(
         "test-project",
         expect.objectContaining({ url: "/orders/42" }),
@@ -4447,6 +4447,56 @@ describe("Panel", () => {
         // Markers should always render only the local subset
         const lastCall = markers.render.mock.calls[markers.render.mock.calls.length - 1];
         expect(lastCall?.[0]).toEqual([here]);
+      });
+    });
+
+    describe("defaultPanelScope", () => {
+      /** Rebuilds the panel with `defaultPanelScope`, typed loosely to stand in for an untyped caller. */
+      function rebuildWith(defaultPanelScope: string): void {
+        panel.destroy();
+        panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+          getScope: () => ({ url: "/", urlPattern: null }),
+          scopeAnnotationsByUrl: true,
+          defaultPanelScope: defaultPanelScope as "page" | "all",
+        });
+        apiClient.getFeedbacks.mockClear();
+      }
+      const isChecked = (scope: string) =>
+        shadow.querySelector(`[data-scope-filter="${scope}"]`)!.getAttribute("aria-checked") === "true";
+
+      it("opens the list on every page's feedback with \"all\", the markers still on the page's", async () => {
+        rebuildWith("all");
+
+        await panel.open();
+
+        expect(isChecked("all")).toBe(true);
+        expect(apiClient.getFeedbacks.mock.calls.map((call) => call[1])).toEqual([
+          { page: 1, limit: 20 },
+          { limit: 20, url: "/" },
+        ]);
+      });
+
+      it("keeps the reviewer's choice when the panel reopens", async () => {
+        rebuildWith("all");
+        await panel.open();
+        shadow.querySelector<HTMLButtonElement>('[data-scope-filter="page"]')!.click();
+        panel.close();
+        apiClient.getFeedbacks.mockClear();
+
+        await panel.open();
+
+        expect(isChecked("page")).toBe(true);
+        expect(apiClient.getFeedbacks).toHaveBeenCalledWith("test-project", { page: 1, limit: 20, url: "/" });
+      });
+
+      // "template" would select a scope this route hides; "everywhere", none at all
+      it.each(["template", "everywhere"])('opens on the page for "%s", outside the type', async (value) => {
+        rebuildWith(value);
+
+        await panel.open();
+
+        expect(isChecked("page")).toBe(true);
+        expect(apiClient.getFeedbacks).toHaveBeenCalledWith("test-project", { page: 1, limit: 20, url: "/" });
       });
     });
   });
