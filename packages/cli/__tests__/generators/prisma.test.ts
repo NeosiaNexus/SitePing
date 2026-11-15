@@ -544,6 +544,15 @@ describe("syncPrismaModels", () => {
       expect(readFileSync(schemaPath, "utf-8")).toBe(source);
     });
 
+    it("refuses MongoDB, which the store was never tested on, and leaves the file alone", () => {
+      const source = schemaFor("mongodb");
+      writeFileSync(schemaPath, source);
+
+      expect(() => syncPrismaModels(schemaPath)).toThrow(/^MongoDB is not supported: /);
+      expect(() => diffPrismaSchema(schemaPath)).toThrow(/^MongoDB is not supported: /);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(source);
+    });
+
     it("looks providers up as data: a provider named like an Object.prototype key is not refused", () => {
       writeFileSync(schemaPath, schemaFor("toString"));
 
