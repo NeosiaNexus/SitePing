@@ -161,6 +161,12 @@ export function useSiteping(config: SitepingConfig): SitepingInstance | null {
         if (mounted) configRef.current.onAnnotationEnd?.();
       },
       panelActions: freshPanelActions(configRef),
+      // The widget reads `identity` at each write: after a sign-in or a
+      // sign-out, the next feedback or reply goes out as the new account,
+      // with no remount (#85).
+      get identity() {
+        return configRef.current.identity;
+      },
     });
     if (!mounted) {
       // Cleanup already ran (StrictMode dev edge case) — tear down to avoid
