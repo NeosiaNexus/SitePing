@@ -45,7 +45,8 @@ const prismaMajor = Number(
     JSON.parse(readFileSync(join(packageDir, "node_modules", "prisma", "package.json"), "utf8")) as { version: string }
   ).version.split(".")[0],
 );
-const postgresUrl = process.env.SITEPING_CONFORMANCE_DATABASE_URL;
+// Empty means unset: the CI matrix passes an empty value for its SQLite lane.
+const postgresUrl = process.env.SITEPING_CONFORMANCE_DATABASE_URL || undefined;
 if (postgresUrl && prismaMajor >= 7) {
   throw new Error("SITEPING_CONFORMANCE_DATABASE_URL is read on Prisma 5 and 6 only: Prisma 7 runs on SQLite here");
 }
@@ -83,8 +84,7 @@ const location =
         return ["--config", config];
       })()
     : ["--schema", schemaPath];
-// A shared PostgreSQL may hold the tables of an earlier run: start from empty ones.
-const push = prismaMajor >= 7 ? ["db", "push"] : ["db", "push", "--skip-generate", "--force-reset"];
+const push = prismaMajor >= 7 ? ["db", "push"] : ["db", "push", "--skip-generate"];
 for (const command of [["generate"], push]) {
   execFileSync(prismaCli, [...command, ...location], {
     cwd: workDir,
