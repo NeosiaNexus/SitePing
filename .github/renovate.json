@@ -1,7 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": "Weekly dependency updates. Carries over, rule by rule, what the Dependabot config had learned the hard way: see the description of each rule.",
-  "extends": ["config:recommended", ":semanticCommitTypeAll(chore)", ":semanticCommitScope(deps)"],
+  "extends": [
+    "config:recommended",
+    ":semanticCommitTypeAll(chore)",
+    ":semanticCommitScope(deps)",
+    "customManagers:biomeVersions"
+  ],
   "semanticCommits": "enabled",
   "timezone": "Europe/Paris",
   "schedule": ["before 7am on monday"],
@@ -53,6 +58,16 @@
       "description": "The root overrides.esbuild must equal packages/widget's esbuild devDependency (check:consistency, #269): one pull request moves both, or each half fails CI alone. Both are build tooling, so it stays in the auto-merged build(deps-dev) group.",
       "matchPackageNames": ["esbuild"],
       "matchDepTypes": ["devDependencies", "overrides"],
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps-dev",
+      "groupName": "dev dependencies",
+      "groupSlug": "dev-dependencies",
+      "automerge": true
+    },
+    {
+      "description": "biome.json's $schema names the Biome version (customManagers:biomeVersions): it moves with the @biomejs/biome devDependency, in the same pull request.",
+      "matchManagers": ["custom.jsonata"],
+      "matchDepNames": ["@biomejs/biome"],
       "semanticCommitType": "build",
       "semanticCommitScope": "deps-dev",
       "groupName": "dev dependencies",
