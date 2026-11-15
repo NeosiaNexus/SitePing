@@ -329,7 +329,7 @@ describe("feedbackCreateSchema", () => {
     it("rejects clientId with NUL byte", () => {
       const result = feedbackCreateSchema.safeParse({
         ...validPayload,
-        clientId: "foo bar",
+        clientId: "foo\u0000bar",
       });
       expect(result.success).toBe(false);
     });

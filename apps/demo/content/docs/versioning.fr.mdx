@@ -78,7 +78,7 @@ Les modèles qu'écrit la CLI (`SITEPING_MODELS`, rendus par `npx @siteping/cli 
 | **Node.js** | Les versions listées par le champ `engines.node` de chaque package, testées en CI | Une majeure |
 | **TypeScript** | 5.0 et ultérieur — y compris avec `strict` et `exactOptionalPropertyTypes`, et `moduleResolution` à `bundler`, `node16` ou `nodenext`, depuis ESM comme depuis CommonJS | Une mineure, vers une version sortie depuis au moins deux ans |
 | **Navigateurs** | Chrome et Edge 111+, Firefox 113+, Safari 16.4+ (iOS et iPadOS compris) | Une mineure, vers des versions sorties depuis au moins 30 mois |
-| **Peer dependencies** | `react` ≥ 18 (`/react` du widget, dashboard) · `@prisma/client` 5, 6 ou 7 (adapter-prisma, optionnel) · `vitest` ≥ 3 (`@siteping/adapter-kit/testing`, optionnel) | Élargir une plage est une mineure, abandonner une version majeure d'une peer est une majeure |
+| **Peer dependencies** | `react` ≥ 18 (`/react` du widget, dashboard) · `@prisma/client` 5, 6 ou 7 (adapter-prisma, optionnel ; 6.2 ou plus récent sur SQLite) · `vitest` 3, 4 ou 5 (`@siteping/adapter-kit/testing`, optionnel), chaque version majeure passée en CI | Élargir une plage est une mineure, abandonner une version majeure d'une peer est une majeure |
 
 Le minimum navigateurs découle de ce qui est livré : les styles du dashboard utilisent `color-mix()` et les container queries, et le bundle `<script>` du widget embarque sa bibliothèque de capture, dont les blocs `static` de classe demandent Safari 16.4. Installé depuis npm, le widget laisse cette bibliothèque à votre bundler, qui décide s'il la compile pour des cibles plus anciennes.
 
