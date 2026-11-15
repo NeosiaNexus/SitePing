@@ -358,3 +358,129 @@ jobs:
 
       - name: Unit tests on Node ${{ matrix.node-version }}
         run: ./node_modules/.bin/vitest run
+
+  # adapter-prisma's `@prisma/client` peer range is ^5 || ^6 || ^7 (#496),
+  # and the unit suite runs Prisma 7 only (SQLite, #472). This job runs the
+  # same conformance suite through PrismaStore on the older majors (#512):
+  # on PostgreSQL, and on SQLite from 6.2, the first Prisma with a Json
+  # column there (Prisma 5 rejects the schema on SQLite).
+  prisma-compat:
+    name: prisma-compat (${{ matrix.prisma }}, ${{ matrix.database }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { prisma: "5", database: postgresql }
+          - { prisma: "6", database: postgresql }
+          - { prisma: "6", database: sqlite }
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_PASSWORD: siteping
+          POSTGRES_DB: siteping
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.11"
+
+      - name: Cache bun install
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - name: Use Prisma ${{ matrix.prisma }} in adapter-prisma
+        env:
+          PRISMA_MAJOR: ${{ matrix.prisma }}
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = 'packages/adapter-prisma/package.json';
+          const p = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const range = '^' + process.env.PRISMA_MAJOR;
+          p.devDependencies.prisma = range;
+          p.devDependencies['@prisma/client'] = range;
+          fs.writeFileSync(path, JSON.stringify(p, null, 2) + '\n');
+          "
+
+      # Not --frozen-lockfile: the swap invalidates the lockfile by design,
+      # on an ephemeral runner.
+      - run: bun install
+
+      - name: Conformance suite on Prisma ${{ matrix.prisma }}, ${{ matrix.database }}
+        env:
+          # Empty on the SQLite lane: the test then creates a SQLite file.
+          SITEPING_CONFORMANCE_DATABASE_URL: ${{ matrix.database == 'postgresql' && 'postgresql://postgres:siteping@localhost:5432/siteping' || '' }}
+        run: ./node_modules/.bin/vitest run packages/adapter-prisma/__tests__/prisma-conformance.test.ts
+
+  # adapter-kit's conformance suite runs in the adapter author's vitest, an
+  # optional peer it bounds at >=3 <6 (#496). The unit suite runs vitest 5;
+  # here a consumer project installs the packed adapter-kit and
+  # adapter-memory next to each older major and runs the suite (#512).
+  vitest-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        vitest: ["3", "4"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.11"
+
+      - name: Cache bun install
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build adapter-kit and adapter-memory
+        run: bun x turbo run build --filter=@siteping/adapter-kit --filter=@siteping/adapter-memory
+
+      # bun, not npm, installs the consumer: npm 10's arborist crashes on
+      # `npm install vitest@4` in an empty project ("reading 'edgesOut'").
+      - name: Conformance suite in a consumer project on vitest ${{ matrix.vitest }}
+        env:
+          VITEST_MAJOR: ${{ matrix.vitest }}
+        run: |
+          consumer="$RUNNER_TEMP/consumer"
+          mkdir -p "$consumer"
+          for pkg in adapter-kit adapter-memory; do
+            (cd "packages/$pkg" && npm pack --silent --pack-destination "$consumer")
+          done
+          cd "$consumer"
+          printf '{ "name": "consumer", "private": true, "type": "module" }\n' > package.json
+          bun add ./siteping-adapter-kit-*.tgz ./siteping-adapter-memory-*.tgz "vitest@$VITEST_MAJOR"
+          cat > store.test.mjs <<'TEST'
+          import { MemoryStore } from "@siteping/adapter-memory";
+          import { testSitepingStore } from "@siteping/adapter-kit/testing";
+
+          testSitepingStore(() => new MemoryStore());
+          TEST
+          ./node_modules/.bin/vitest --version
+          ./node_modules/.bin/vitest run
