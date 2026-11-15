@@ -70,6 +70,10 @@ function freshPanelActions(ref: { readonly current: SitepingConfig }): SitepingC
 /**
  * Initialise the SitePing widget for the lifetime of the calling component.
  *
+ * Every callback and `identity` follow re-renders: after a sign-in or a
+ * sign-out, the next feedback or reply goes out as the new account. Other
+ * options are read once, at mount.
+ *
  * Several components can call it (a layout and a page): they share one
  * widget, which stays mounted until the last of them unmounts. Like a second
  * `initSiteping()`, a later call doesn't reconfigure it: the widget keeps the
