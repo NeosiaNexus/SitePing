@@ -159,7 +159,7 @@ export function statusCommand(options: StatusCommandOptions): void {
   if (!schemaResult.found) {
     p.log.error(`${pad("Prisma schema", 25)}Not found`);
   } else if (schemaResult.error !== undefined) {
-    p.log.error(`${pad("Prisma schema", 25)}Cannot read: ${schemaResult.error}`);
+    p.log.error(`${pad("Prisma schema", 25)}Cannot check: ${schemaResult.error}`);
   } else {
     const issues = [
       ...schemaResult.missingModels.map((m) => `model ${m}`),
