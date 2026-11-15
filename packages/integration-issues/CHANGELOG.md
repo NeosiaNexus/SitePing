@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/NeosiaNexus/SitePing/compare/integration-issues-v0.2.0...integration-issues-v0.2.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **integration-issues:** read a searched issue again before skipping a write on its state ([#565](https://github.com/NeosiaNexus/SitePing/issues/565)) ([8e6e37b](https://github.com/NeosiaNexus/SitePing/commit/8e6e37b94be234203f20c2f077efe564c7c896d7))
+
 ## [0.2.0](https://github.com/NeosiaNexus/SitePing/compare/integration-issues-v0.1.0...integration-issues-v0.2.0) (2026-10-30)
 
 
