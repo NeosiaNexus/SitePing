@@ -230,6 +230,27 @@ describe("useSiteping", () => {
     expect(c2).toHaveBeenCalledTimes(1);
   });
 
+  it("hands the widget the identity of the latest render, without re-initing (#85)", () => {
+    const first = { name: "Alice", email: "alice@example.com" };
+    const second = { name: "Bob", email: "bob@example.com" };
+    const config = (identity: SitepingConfig["identity"]): SitepingConfig => ({
+      endpoint: "/api",
+      projectName: "p",
+      identity,
+    });
+
+    const { rerender } = render(<Probe config={config(first)} />);
+    expect(wiredConfig().identity).toEqual(first);
+
+    rerender(<Probe config={config(second)} />);
+    expect(initSpy).toHaveBeenCalledTimes(1);
+    expect(wiredConfig().identity).toEqual(second);
+
+    // A sign-out: the widget falls back to its own prompt and saved identity.
+    rerender(<Probe config={config(undefined)} />);
+    expect(wiredConfig().identity).toBeUndefined();
+  });
+
   it("keeps onError fresh across rerenders (was frozen at mount before)", () => {
     const e1 = vi.fn();
     const e2 = vi.fn();

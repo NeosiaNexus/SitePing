@@ -455,7 +455,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 ```
 
-The session also spares signed-in users the widget's identity prompt: pass it as [`identity`](/docs/widget/configuration). The widget reads `identity` once, at init, so key the component on the account — a sign-in or a sign-out then remounts it:
+The session also spares signed-in users the widget's identity prompt: pass it as [`identity`](/docs/widget/configuration). `useSiteping` follows re-renders, so a sign-in or a sign-out applies to the next feedback or reply, with no remount:
 
 ```tsx
 // app/feedback.tsx — mounted in your root layout
@@ -473,7 +473,7 @@ export function Feedback() {
   const { data: session, isPending } = authClient.useSession();
   if (isPending) return null;
   const user = session?.user;
-  return <Widget key={user?.id ?? "visitor"} identity={user && { name: user.name, email: user.email }} />;
+  return <Widget identity={user && { name: user.name, email: user.email }} />;
 }
 ```
 

@@ -547,6 +547,26 @@ describe("launcher — annotation:complete integration", () => {
       instance.destroy();
     });
 
+    it("reads config.identity at each write, which useSiteping relies on to follow re-renders (#85)", async () => {
+      mockGetIdentity.mockReturnValue(null);
+      mockSendFeedback.mockResolvedValue(makeFeedbackResponse());
+      const config = defaultConfig({ identity: { name: "Alice", email: "alice@example.com" } });
+
+      const instance = launch(config);
+      // What the hook's getter returns after a re-render with another account.
+      config.identity = { name: "Bob", email: "bob@example.com" };
+      capturedBus!.emit("annotation:complete", makeAnnotationCompleteData());
+
+      await vi.waitFor(() => {
+        expect(mockSendFeedback).toHaveBeenCalledOnce();
+      });
+      const payload = mockSendFeedback.mock.calls[0]![0];
+      expect(payload.authorName).toBe("Bob");
+      expect(payload.authorEmail).toBe("bob@example.com");
+
+      instance.destroy();
+    });
+
     it("config.identity wins over a stored localStorage identity", async () => {
       mockGetIdentity.mockReturnValue({ name: "LocalStorage User", email: "ls@example.com" });
       const response = makeFeedbackResponse();

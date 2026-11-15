@@ -455,7 +455,7 @@ export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
 });
 ```
 
-La session épargne aussi aux utilisateurs connectés la modale d'identité du widget : passez-la en [`identity`](/fr/docs/widget/configuration). Le widget ne lit `identity` qu'une fois, à l'init : indexez donc le composant sur le compte — une connexion ou une déconnexion le remonte :
+La session épargne aussi aux utilisateurs connectés la modale d'identité du widget : passez-la en [`identity`](/fr/docs/widget/configuration). `useSiteping` suit les rendus : une connexion ou une déconnexion s'applique au retour ou à la réponse suivante, sans remontage :
 
 ```tsx
 // app/feedback.tsx — monté dans votre layout racine
@@ -473,7 +473,7 @@ export function Feedback() {
   const { data: session, isPending } = authClient.useSession();
   if (isPending) return null;
   const user = session?.user;
-  return <Widget key={user?.id ?? "visitor"} identity={user && { name: user.name, email: user.email }} />;
+  return <Widget identity={user && { name: user.name, email: user.email }} />;
 }
 ```
 
