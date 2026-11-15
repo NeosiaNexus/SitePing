@@ -142,6 +142,8 @@ model SitepingComment {
 
 > **Upgrading on MySQL.** A schema synced by an earlier `@siteping/cli` keeps `VARCHAR(191)` columns. A value that does not fit — the user agent of Instagram's or Facebook's in-app browser, a full page URL from `getPageScope` — makes the `POST` answer `422`, which the widget does not retry, and the handler logs `[siteping] A value is too long for the store`. `npx @siteping/cli status` lists those columns; run `npx @siteping/cli sync`, then `npx prisma migrate dev` (or `db push`). The migration widens the columns and rebuilds the URL index; existing rows keep their values.
 
+> On SQLite, use Prisma 6.2 or later: earlier versions have no `Json` column there, which `screenshotRegion` and `diagnostics` use, and `prisma db push` rejects the schema. CI runs the store's conformance suite on Prisma 5 and 6 against PostgreSQL, and on Prisma 6 and 7 against SQLite.
+
 ## Discussion threads
 
 The `SitepingComment` model holds [discussion threads](/docs/comments). A schema synced before it keeps working: without the model, the generated client has no `sitepingComment` delegate, so `PrismaStore` reads every thread empty and the handler answers comment writes with `501`. To turn threads on:

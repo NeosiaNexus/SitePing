@@ -142,6 +142,8 @@ model SitepingComment {
 
 > **Mise à jour sur MySQL.** Un schéma synchronisé par un `@siteping/cli` antérieur garde des colonnes `VARCHAR(191)`. Une valeur qui n'y tient pas — le user agent du navigateur intégré d'Instagram ou de Facebook, une URL de page complète venue de `getPageScope` — fait répondre au `POST` un `422`, que le widget ne rejoue pas, et le handler journalise `[siteping] A value is too long for the store`. `npx @siteping/cli status` signale ces colonnes ; lancez `npx @siteping/cli sync`, puis `npx prisma migrate dev` (ou `db push`). La migration élargit les colonnes et reconstruit l'index sur l'URL ; les lignes existantes gardent leurs valeurs.
 
+> Sur SQLite, utilisez Prisma 6.2 ou plus récent : les versions antérieures n'y ont pas de colonne `Json`, qu'utilisent `screenshotRegion` et `diagnostics`, et `prisma db push` refuse le schéma. La CI fait passer la suite de conformité du store sur Prisma 5 et 6 avec PostgreSQL, et sur Prisma 6 et 7 avec SQLite.
+
 ## Fils de discussion
 
 Le modèle `SitepingComment` contient les [fils de discussion](/fr/docs/comments). Un schéma synchronisé avant lui continue de fonctionner : sans le modèle, le client généré n'a pas de délégué `sitepingComment`, donc `PrismaStore` lit chaque fil vide et le handler répond `501` aux écritures de commentaires. Pour activer les fils :
