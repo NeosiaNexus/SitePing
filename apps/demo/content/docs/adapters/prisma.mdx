@@ -53,7 +53,7 @@ A missing key then fails the first request, with the same message, instead of th
 | `prisma` | `SitepingPrismaClient` | — | Your Prisma client. Pass it or `store`, never both |
 | `store` | `SitepingStore` | — | Use any store instead of Prisma |
 | `screenshotStorage` | `ScreenshotStorage` | — | Upload screenshots somewhere real instead of inlining data URLs. With `prisma` only |
-| `caseInsensitiveSearch` | `boolean` | auto-detected | Detected from the Prisma provider (on for PostgreSQL, MongoDB, CockroachDB). With `prisma` only |
+| `caseInsensitiveSearch` | `boolean` | auto-detected | Detected from the Prisma provider (on for PostgreSQL and CockroachDB). With `prisma` only |
 
 The types enforce the split: no source at all, `prisma` next to `store`, or `screenshotStorage` / `caseInsensitiveSearch` next to a custom `store` is a compile error, not an option silently ignored.
 
@@ -137,6 +137,8 @@ model SitepingComment {
 > `@db.Text` targets PostgreSQL and MySQL. SQLite and CockroachDB reject it, and plain `String` is already unbounded there — `sync` reads your datasource `provider` and leaves `@db.Text` out on those databases. Writing the schema by hand? Drop those attributes yourself.
 
 > SQL Server is not supported: Prisma's SQL Server connector has no `Json` type, which `screenshotRegion` and `diagnostics` use. On a `sqlserver` datasource, `sync` and `status` stop with that reason instead of writing a schema `prisma db push` rejects.
+
+> MongoDB is not supported either: the store is tested on PostgreSQL, MySQL, SQLite and CockroachDB, and Prisma 7 has no MongoDB connector yet. `sync` and `status` stop on a `mongodb` datasource too.
 
 > On MySQL, where a plain `String` is a `VARCHAR(191)`, `sync` sizes each column for the longest value the server accepts. `projectName` and `clientId` stay plain: the server caps them at 191 characters. The longer text columns — `url`, `urlPattern`, `userAgent`, names, emails, an annotation's `fingerprint` and `anchorKey` — get `@db.Text`, `screenshotUrl` gets `@db.MediumText` so an inline screenshot fits, and the `(projectName, url)` index takes the first 191 characters of the URL: `@@index([projectName, url(length: 191)])`.
 

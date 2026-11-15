@@ -512,6 +512,10 @@ const UNSUPPORTED_PROVIDERS: ReadonlyMap<string, string> = new Map([
     "sqlserver",
     `SQL Server is not supported: Prisma's SQL Server connector has no Json type, which ${JSON_COLUMNS.join(" and ")} use.`,
   ],
+  [
+    "mongodb",
+    "MongoDB is not supported: the Siteping store is tested on PostgreSQL, MySQL, SQLite and CockroachDB only, and Prisma 7 has no MongoDB connector yet.",
+  ],
 ]);
 
 /** The datasource `provider`, or `undefined` when this file declares none. */

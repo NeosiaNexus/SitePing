@@ -53,7 +53,7 @@ Une clé manquante fait alors échouer la première requête, avec le même mess
 | `prisma` | `SitepingPrismaClient` | — | Votre client Prisma. Passez-le, ou `store`, jamais les deux |
 | `store` | `SitepingStore` | — | Utiliser n'importe quel store au lieu de Prisma |
 | `screenshotStorage` | `ScreenshotStorage` | — | Envoyer les captures quelque part de réel au lieu de les inliner en URL `data:`. Avec `prisma` uniquement |
-| `caseInsensitiveSearch` | `boolean` | détecté automatiquement | Détecté depuis le provider Prisma (actif pour PostgreSQL, MongoDB, CockroachDB). Avec `prisma` uniquement |
+| `caseInsensitiveSearch` | `boolean` | détecté automatiquement | Détecté depuis le provider Prisma (actif pour PostgreSQL et CockroachDB). Avec `prisma` uniquement |
 
 Les types imposent cette séparation : aucune source, `prisma` à côté de `store`, ou `screenshotStorage` / `caseInsensitiveSearch` à côté d'un `store` personnalisé est une erreur de compilation, pas une option ignorée en silence.
 
@@ -137,6 +137,8 @@ model SitepingComment {
 > `@db.Text` cible PostgreSQL et MySQL. SQLite et CockroachDB le refusent, et un `String` simple y est déjà sans limite — `sync` lit le `provider` de votre datasource et y omet `@db.Text`. Vous écrivez le schéma à la main ? Retirez ces attributs vous-même.
 
 > SQL Server n'est pas pris en charge : le connecteur SQL Server de Prisma n'a pas de type `Json`, qu'utilisent `screenshotRegion` et `diagnostics`. Sur une datasource `sqlserver`, `sync` et `status` s'arrêtent en donnant cette raison, au lieu d'écrire un schéma que `prisma db push` refuse.
+
+> MongoDB n'est pas pris en charge non plus : le store est testé sur PostgreSQL, MySQL, SQLite et CockroachDB, et Prisma 7 n'a pas encore de connecteur MongoDB. `sync` et `status` s'arrêtent aussi sur une datasource `mongodb`.
 
 > Sur MySQL, où un `String` simple est un `VARCHAR(191)`, `sync` dimensionne chaque colonne pour la plus longue valeur qu'accepte le serveur. `projectName` et `clientId` restent simples : le serveur les plafonne à 191 caractères. Les colonnes de texte plus longues — `url`, `urlPattern`, `userAgent`, les noms, les e-mails, le `fingerprint` et l'`anchorKey` d'une annotation — reçoivent `@db.Text`, `screenshotUrl` reçoit `@db.MediumText` pour qu'une capture inline y tienne, et l'index `(projectName, url)` prend les 191 premiers caractères de l'URL : `@@index([projectName, url(length: 191)])`.
 
