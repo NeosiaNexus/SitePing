@@ -34,7 +34,8 @@ bun run api:check          # built public API of the 1.0 packages vs api/*.api.m
 bun run api:update         # rewrite api/*.api.md from the build, after an intended API change
 bun run check:consistency  # locale counts/lists + demo pickers, package registration, fix-dts chains, esbuild override,
                            # fileURLToPath in tooling, no @prisma/client import in adapter-prisma, workspace dependencies
-                           # pinned before publish, one Node floor (engines, CI, publish jobs, demo image, docs)
+                           # pinned before publish, one Node floor (engines, CI, publish jobs, demo image, docs),
+                           # Renovate's bundled dev dependency list
 bun run knip               # dead files / exports / dependencies
 bun run skew               # published packages vs this change, both ways (needs a build and npm, see below)
 bun run new:locale <code>  # scaffold a new built-in locale (see Adding a Locale)
@@ -404,7 +405,7 @@ Releases are **fully automated** via [Release Please](https://github.com/googlea
 
 > **Pre-1.0 behavior** (all current packages): `feat` bumps **patch** instead of minor, breaking changes (`!`) bump **minor** instead of major.
 
-> **Every type listed in `changelog-sections`** (`release-please-config.json`: feat, fix, perf, refactor, test, docs, chore) releases the packages whose files it touches — a `docs:` edit to a package README publishes a patch. `build:` and `ci:` are the types that never release. Dependabot's `chore(deps)` and `chore(deps-dev)` bumps therefore release a patch too, even for a dev dependency that ships nothing.
+> **Every type listed in `changelog-sections`** (`release-please-config.json`: feat, fix, perf, refactor, test, docs, chore) releases the packages whose files it touches — a `docs:` edit to a package README publishes a patch. `build:` and `ci:` are the types that never release. Renovate titles dev-dependency bumps `build(deps-dev)` for that reason (#513), and production bumps `chore(deps)`, which release. The exception is a devDependency that a tsup `noExternal` inlines into a published bundle (the CLI's `commander`, `@clack/prompts`, `@mrleebo/prisma-ast`): it ships, so `.github/renovate.json` keeps it on `chore(deps)` in the production pull request, and `check:consistency` fails when that list and the bundled devDependencies differ.
 
 **What you don't need to do:**
 - Edit `package.json` version — Release Please does it

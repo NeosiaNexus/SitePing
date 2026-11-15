@@ -1,7 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": "Weekly dependency updates. Carries over, rule by rule, what the Dependabot config had learned the hard way: see the description of each rule.",
-  "extends": ["config:recommended", ":semanticCommitTypeAll(chore)", ":semanticCommitScope(deps)"],
+  "extends": [
+    "config:recommended",
+    ":semanticCommitTypeAll(chore)",
+    ":semanticCommitScope(deps)",
+    "customManagers:biomeVersions"
+  ],
+  "semanticCommits": "enabled",
   "timezone": "Europe/Paris",
   "schedule": ["before 7am on monday"],
   "minimumReleaseAge": "7 days",
@@ -10,8 +16,9 @@
   "prConcurrentLimit": 10,
   "packageRules": [
     {
-      "description": "The repo is squash-only and the auto-labeller reads the PR title: dev dependencies keep the chore(deps-dev) scope Dependabot used.",
+      "description": "Dev dependencies ship nothing, so their bumps are titled build(deps-dev): release-please releases every type in changelog-sections but never build or ci (#513). The repo is squash-only, so the title is the commit release-please and the auto-labeller read.",
       "matchDepTypes": ["devDependencies"],
+      "semanticCommitType": "build",
       "semanticCommitScope": "deps-dev"
     },
     {
@@ -27,6 +34,42 @@
       "matchManagers": ["bun"],
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "dev dependencies",
+      "groupSlug": "dev-dependencies",
+      "automerge": true
+    },
+    {
+      "description": "Except the dev dependencies a tsup noExternal inlines into a published bundle (the CLI's): they ship, so their bumps keep a releasing chore(deps) title and a human review. check:consistency keeps this list equal to the bundled devDependencies.",
+      "matchDepTypes": ["devDependencies"],
+      "matchPackageNames": ["@clack/prompts", "@mrleebo/prisma-ast", "commander"],
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps",
+      "automerge": false
+    },
+    {
+      "description": "Their minors and patches join the production pull request.",
+      "matchDepTypes": ["devDependencies"],
+      "matchPackageNames": ["@clack/prompts", "@mrleebo/prisma-ast", "commander"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "production dependencies",
+      "groupSlug": "production-dependencies"
+    },
+    {
+      "description": "The root overrides.esbuild must equal packages/widget's esbuild devDependency (check:consistency, #269): one pull request moves both, or each half fails CI alone. Both are build tooling, so it stays in the auto-merged build(deps-dev) group.",
+      "matchPackageNames": ["esbuild"],
+      "matchDepTypes": ["devDependencies", "overrides"],
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps-dev",
+      "groupName": "dev dependencies",
+      "groupSlug": "dev-dependencies",
+      "automerge": true
+    },
+    {
+      "description": "biome.json's $schema names the Biome version (customManagers:biomeVersions): it moves with the @biomejs/biome devDependency, in the same pull request.",
+      "matchManagers": ["custom.jsonata"],
+      "matchDepNames": ["@biomejs/biome"],
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps-dev",
       "groupName": "dev dependencies",
       "groupSlug": "dev-dependencies",
       "automerge": true
@@ -63,6 +106,11 @@
       "matchDepNames": ["bun", "node"],
       "matchManagers": ["bun", "npm", "github-actions"],
       "enabled": false
+    },
+    {
+      "description": "TypeScript 7.0 (the Go compiler) is skipped: tsup's declaration build and attw do not run on it yet. 7.1 and later are proposed as usual.",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "!/^7\\.0\\./"
     }
   ]
 }
