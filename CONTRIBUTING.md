@@ -7,6 +7,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 - [Bun](https://bun.sh/) **1.3.x** — the exact version is pinned in `packageManager` (root `package.json`) and used by CI. Bun 1.4 is known to break the demo build locally (symlinked `.bun` installs rejected by Turbopack — workaround: `bun install --linker=hoisted`); stick to the pinned line.
 - Node.js ^22.22.2 or >= 24.15 for development — the test and size tooling (vitest 5, jsdom 30, size-limit 14) requires it. The published packages declare `engines.node >= 22`, and CI runs the full suite on Node 22 and 24
 - For Playwright E2E tests: `bunx playwright install` — the config runs **three engines** (Chromium, Firefox, WebKit)
+- On Windows: `.gitattributes` checks every file out with LF line endings, whatever `core.autocrlf` says, because Biome rejects CRLF. A clone made before that file landed (#345) still holds CRLF copies: on a clean tree (it discards uncommitted changes), run `git rm --cached -r . && git reset --hard` once. Run scripts through `bun run`, which uses Bun Shell on Windows for `rm -rf` and `NAME=value` prefixes. CI only runs Linux, so WSL remains the safest setup.
 
 ## Setup
 
@@ -33,7 +34,8 @@ bun run api:check          # built public API of the 1.0 packages vs api/*.api.m
 bun run api:update         # rewrite api/*.api.md from the build, after an intended API change
 bun run check:consistency  # locale counts/lists + demo pickers, package registration, fix-dts chains, esbuild override,
                            # fileURLToPath in tooling, no @prisma/client import in adapter-prisma, workspace dependencies
-                           # pinned before publish, one Node floor (engines, CI, publish jobs, demo image, docs)
+                           # pinned before publish, one Node floor (engines, CI, publish jobs, demo image, docs),
+                           # Renovate's bundled dev dependency list
 bun run knip               # dead files / exports / dependencies
 bun run skew               # published packages vs this change, both ways (needs a build and npm, see below)
 bun run new:locale <code>  # scaffold a new built-in locale (see Adding a Locale)
@@ -403,7 +405,7 @@ Releases are **fully automated** via [Release Please](https://github.com/googlea
 
 > **Pre-1.0 behavior** (all current packages): `feat` bumps **patch** instead of minor, breaking changes (`!`) bump **minor** instead of major.
 
-> **Every type listed in `changelog-sections`** (`release-please-config.json`: feat, fix, perf, refactor, test, docs, chore) releases the packages whose files it touches — a `docs:` edit to a package README publishes a patch. `build:` and `ci:` are the types that never release. Dependabot's `chore(deps)` and `chore(deps-dev)` bumps therefore release a patch too, even for a dev dependency that ships nothing.
+> **Every type listed in `changelog-sections`** (`release-please-config.json`: feat, fix, perf, refactor, test, docs, chore) releases the packages whose files it touches — a `docs:` edit to a package README publishes a patch. `build:` and `ci:` are the types that never release. Renovate titles dev-dependency bumps `build(deps-dev)` for that reason (#513), and production bumps `chore(deps)`, which release. The exception is a devDependency that a tsup `noExternal` inlines into a published bundle (the CLI's `commander`, `@clack/prompts`, `@mrleebo/prisma-ast`): it ships, so `.github/renovate.json` keeps it on `chore(deps)` in the production pull request, and `check:consistency` fails when that list and the bundled devDependencies differ.
 
 **What you don't need to do:**
 - Edit `package.json` version — Release Please does it

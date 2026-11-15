@@ -1,0 +1,10 @@
+# Every checkout gets LF, whatever core.autocrlf says: Git for Windows sets it
+# to true by default, and Biome's formatter rejects CRLF (#345).
+* text=auto eol=lf
+
+*.gif binary
+*.ico binary
+*.jpg binary
+*.png binary
+*.webp binary
+*.woff2 binary
