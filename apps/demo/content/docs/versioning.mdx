@@ -78,7 +78,7 @@ The models the CLI writes (`SITEPING_MODELS`, rendered by `npx @siteping/cli syn
 | **Node.js** | The lines each package's `engines.node` lists, tested in CI | A major |
 | **TypeScript** | 5.0 and later — including under `strict` and `exactOptionalPropertyTypes`, with `moduleResolution` set to `bundler`, `node16` or `nodenext`, from ESM and from CommonJS | A minor, to a version released at least two years earlier |
 | **Browsers** | Chrome and Edge 111+, Firefox 113+, Safari 16.4+ (iOS and iPadOS included) | A minor, to versions released at least 30 months earlier |
-| **Peer dependencies** | `react` ≥ 18 (widget's `/react`, dashboard) · `@prisma/client` 5, 6 or 7 (adapter-prisma, optional) · `vitest` ≥ 3 (`@siteping/adapter-kit/testing`, optional) | Widening a range is a minor, dropping a major of a peer is a major |
+| **Peer dependencies** | `react` ≥ 18 (widget's `/react`, dashboard) · `@prisma/client` 5, 6 or 7 (adapter-prisma, optional; 6.2 or later on SQLite) · `vitest` 3, 4 or 5 (`@siteping/adapter-kit/testing`, optional), each major run in CI | Widening a range is a minor, dropping a major of a peer is a major |
 
 The browser floor comes from what ships: the dashboard's styles use `color-mix()` and container queries, and the widget's `<script>` bundle inlines its screenshot library, whose class static blocks need Safari 16.4. Installed from npm, the widget leaves that library to your bundler, which decides whether to compile it for older targets.
 

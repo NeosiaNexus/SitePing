@@ -171,6 +171,8 @@ Deployments that share a repository and a project name (staging and production, 
 
 To sync a status or delete one feedback, the tracker is first searched for the feedback id (GitHub's search API, GitLab's `search` parameter). If the search misses, the hooks list the first page of `siteping` issues, newest first: GitHub's search index lags a few seconds behind a new issue. A search that answered settles the rest, since it only misses issues too new for its index. When it failed (GitHub allows 30 searches a minute), or found more issues quoting the feedback id than it returned, the hooks list further. Deleting a whole project always lists every issue.
 
+Reopening writes nothing when the issue is already open, and a delete does not close an issue already closed (it keeps its close reason). The index also lags behind a state change, so before skipping a write on the strength of a search hit, the GitHub tracker reads that issue itself: an Undo right after a resolve still reopens it.
+
 The listing stops after `maxListedPages` pages of 100 issues, and it counts the SitePing issues of every project in the repository, closed ones included, so a repository outgrows it in time. Past that, the hooks do not guess. A project delete is refused with a `502` rather than leaving the older issues open, and so is a status sync or a delete whose issue the search did not settle and the listing did not reach. With the default of 10, the cap is the repository's 1,000 newest SitePing issues. Raise it for a larger backlog: only project deletes and the lookups the search does not settle list that far.
 
 Only labelled issues count. On GitHub and GitLab, an outsider cannot label an issue, so they cannot make one pass for SitePing's.
@@ -205,6 +207,12 @@ const tracker: IssueTracker = {
   // more matches than it returned.
   async searchSitepingIssues(feedbackId) {
     return { issues: [], truncated: false };
+  },
+  // Optional: the issue as the tracker holds it now ({ reference, body, isOpen }).
+  // Implement it when the search answers from an index that can lag behind a
+  // state change: the hooks then read a search hit again before skipping a write.
+  async getIssue(reference) {
+    return { reference, body: "", isOpen: true };
   },
 };
 ```

@@ -37,7 +37,7 @@ const items: { title: string; body: string; token?: string; icon: string | reado
   },
   {
     title: "Light on the page",
-    body: "About 59 kB gzipped on first load. The panel, screenshot capture and other locales load when they're needed, and CI fails any change that outgrows the budget.",
+    body: "About 51 kB gzipped on first load. The panel, screenshot capture and other locales load when they're needed, and CI fails any change that outgrows the budget.",
     icon: "M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z",
   },
   {

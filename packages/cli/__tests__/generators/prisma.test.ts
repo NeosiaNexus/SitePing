@@ -33,7 +33,7 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
-import { syncPrismaModels } from "../../src/generators/prisma.js";
+import { diffPrismaSchema, syncPrismaModels } from "../../src/generators/prisma.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -525,12 +525,29 @@ describe("syncPrismaModels", () => {
       expect(syncPrismaModels(schemaPath).changes).toEqual([]);
     });
 
-    it.each(["postgresql", "mysql", "sqlserver"])("emits @db.Text on %s", (provider) => {
+    it.each(["postgresql", "mysql"])("emits @db.Text on %s", (provider) => {
       writeFileSync(schemaPath, schemaFor(provider));
 
       syncPrismaModels(schemaPath);
 
       expect(readFileSync(schemaPath, "utf-8")).toMatch(/^\s*message\s+String\s+@db\.Text$/m);
+    });
+
+    it("refuses SQL Server, whose connector has no Json type, and leaves the file alone", () => {
+      const source = schemaFor("sqlserver");
+      writeFileSync(schemaPath, source);
+
+      const message =
+        "SQL Server is not supported: Prisma's SQL Server connector has no Json type, which SitepingFeedback.screenshotRegion and SitepingFeedback.diagnostics use.";
+      expect(() => syncPrismaModels(schemaPath)).toThrow(message);
+      expect(() => diffPrismaSchema(schemaPath)).toThrow(message);
+      expect(readFileSync(schemaPath, "utf-8")).toBe(source);
+    });
+
+    it("looks providers up as data: a provider named like an Object.prototype key is not refused", () => {
+      writeFileSync(schemaPath, schemaFor("toString"));
+
+      expect(() => syncPrismaModels(schemaPath)).not.toThrow();
     });
 
     it("removes a @db.Text an earlier sync wrote on SQLite", () => {

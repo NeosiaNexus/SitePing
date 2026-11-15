@@ -171,6 +171,8 @@ Des déploiements qui partagent un dépôt et un nom de projet (la recette et la
 
 Pour synchroniser un statut ou supprimer un feedback, le gestionnaire est d'abord interrogé par une recherche sur l'identifiant du feedback (l'API de recherche de GitHub, le paramètre `search` de GitLab). Si la recherche ne trouve rien, les hooks listent la première page des tickets `siteping`, du plus récent au plus ancien : l'index de recherche de GitHub a quelques secondes de retard sur un nouveau ticket. Une recherche qui a répondu fait foi pour le reste, puisqu'elle ne manque que les tickets trop récents pour son index. Quand elle a échoué (GitHub accepte 30 recherches par minute), ou qu'elle a trouvé plus de tickets citant l'identifiant du feedback qu'elle n'en a renvoyé, les hooks listent plus loin. La suppression d'un projet entier liste toujours tous les tickets.
 
+Une réouverture n'écrit rien quand le ticket est déjà ouvert, et une suppression ne ferme pas un ticket déjà fermé (il garde sa raison de fermeture). L'index a aussi du retard sur un changement d'état : avant de sauter une écriture sur la foi d'un résultat de recherche, le gestionnaire GitHub relit donc ce ticket lui-même. Une annulation juste après une résolution rouvre bien le ticket.
+
 La liste s'arrête après `maxListedPages` pages de 100 tickets, et elle compte les tickets SitePing de tous les projets du dépôt, fermés compris : un dépôt finit donc par la dépasser. Au-delà, les hooks ne devinent pas. La suppression d'un projet est refusée par un `502` plutôt que de laisser ouverts les tickets plus anciens, et il en va de même pour une synchronisation de statut ou une suppression dont la recherche n'a pas tranché et dont le ticket n'a pas été listé. Avec la valeur par défaut de 10, la limite est de 1 000 tickets SitePing, les plus récents du dépôt. Augmentez-la pour un historique plus grand : seules la suppression d'un projet et les recherches d'un ticket que l'API de recherche ne tranche pas listent aussi loin.
 
 Seuls les tickets avec le label comptent. Sur GitHub et GitLab, une personne extérieure ne peut pas poser de label sur un ticket, et ne peut donc pas en faire passer un pour un ticket de SitePing.
@@ -206,6 +208,13 @@ const tracker: IssueTracker = {
   // tickets qu'elle n'en renvoie.
   async searchSitepingIssues(feedbackId) {
     return { issues: [], truncated: false };
+  },
+  // Facultatif : le ticket tel que le gestionnaire le tient maintenant
+  // ({ reference, body, isOpen }). À fournir quand la recherche répond depuis un
+  // index qui peut retarder sur un changement d'état : les hooks relisent alors
+  // un résultat de recherche avant de sauter une écriture.
+  async getIssue(reference) {
+    return { reference, body: "", isOpen: true };
   },
 };
 ```

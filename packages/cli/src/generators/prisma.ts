@@ -210,6 +210,8 @@ function reconcileSitepingModels(schema: Schema, siblings: readonly Schema[]): S
   }
 
   const provider = [schema, ...siblings].map((file) => datasourceProvider(file)).find((p) => p !== undefined);
+  const unsupported = provider === undefined ? undefined : UNSUPPORTED_PROVIDERS.get(provider);
+  if (unsupported) throw new Error(unsupported);
   // A multi-schema datasource needs `@@schema` on every model: a model sync
   // adds goes to the database schema the existing Siteping models live in.
   const databaseSchema = Object.keys(SITEPING_MODELS)
@@ -490,8 +492,27 @@ const NATIVE_TYPE_PROVIDERS: Record<
   Extract<SitepingFieldDef, { nativeType: string }>["nativeType"],
   ReadonlySet<string>
 > = {
-  Text: new Set(["postgresql", "postgres", "mysql", "sqlserver"]),
+  Text: new Set(["postgresql", "postgres", "mysql"]),
 };
+
+/** `Model.field` of every Siteping column typed `Json`. */
+const JSON_COLUMNS = Object.entries(SITEPING_MODELS).flatMap(([model, def]) =>
+  Object.entries(def.fields as Record<string, FieldDef>)
+    .filter(([, field]) => field.type === "Json")
+    .map(([field]) => `${model}.${field}`),
+);
+
+/**
+ * Connectors no Siteping schema can target, and why. `sync`, `status` and
+ * `init` stop there with the reason instead of writing a schema that
+ * `prisma db push` rejects (P1012).
+ */
+const UNSUPPORTED_PROVIDERS: ReadonlyMap<string, string> = new Map([
+  [
+    "sqlserver",
+    `SQL Server is not supported: Prisma's SQL Server connector has no Json type, which ${JSON_COLUMNS.join(" and ")} use.`,
+  ],
+]);
 
 /** The datasource `provider`, or `undefined` when this file declares none. */
 function datasourceProvider(schema: Schema): string | undefined {

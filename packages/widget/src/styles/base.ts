@@ -1,12 +1,12 @@
 import { Z_INDEX_MAX } from "../constants.js";
-import { EXPORT_CSS } from "../export-utils.js";
-import { BULK_CSS } from "../panel-bulk.js";
-import { DETAIL_CSS } from "../panel-detail.js";
-import { SORT_CSS } from "../panel-sort.js";
-import { STATS_CSS } from "../panel-stats.js";
-import { SHORTCUTS_CSS } from "../shortcuts.js";
 import { ANIMATION_CSS } from "./animations.js";
+import { BULK_CSS } from "./bulk.js";
+import { DETAIL_CSS } from "./detail.js";
+import { EXPORT_CSS } from "./export.js";
 import { MOBILE_CSS } from "./mobile.js";
+import { SHORTCUTS_CSS } from "./shortcuts.js";
+import { SORT_CSS } from "./sort.js";
+import { STATS_CSS } from "./stats.js";
 import { cssVariables, type ThemeColors } from "./theme.js";
 
 /**

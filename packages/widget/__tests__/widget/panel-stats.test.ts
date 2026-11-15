@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { en as STATS_I18N_EN } from "../../src/i18n/en.js";
 import { fr as STATS_I18N_FR } from "../../src/i18n/fr.js";
 import { createT } from "../../src/i18n/index.js";
-import { PanelStats, STATS_CSS } from "../../src/panel-stats.js";
+import { PanelStats } from "../../src/panel-stats.js";
+import { STATS_CSS } from "../../src/styles/stats.js";
 
 function makeFeedback(overrides: Partial<FeedbackResponse> = {}): FeedbackResponse {
   return {

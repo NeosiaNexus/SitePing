@@ -33,7 +33,7 @@ const faqs: { q: string; a: ReactNode }[] = [
   },
   {
     q: "How big is the widget bundle?",
-    a: "About 59 kB gzipped on first load — the ESM entry and the chunk it imports, everything the browser fetches before the widget runs. The feedback panel (about 10 kB), screenshot capture, and non-English locales load on demand on top of that. CI fails any change that outgrows these budgets.",
+    a: "About 51 kB gzipped on first load — the ESM entry and the chunk it imports, everything the browser fetches before the widget runs. The feedback panel (about 21 kB), screenshot capture, and non-English locales load on demand on top of that. CI fails any change that outgrows these budgets.",
   },
   {
     q: "What about the GDPR?",

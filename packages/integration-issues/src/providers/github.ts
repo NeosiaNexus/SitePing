@@ -149,6 +149,12 @@ export function createGitHubTracker({
       };
     },
 
+    // The search index can hold an issue's state from before a change made seconds ago.
+    async getIssue(reference) {
+      const issue = await request<GitHubIssue>({ method: "GET", path: `${issuesPath}/${reference.key}` });
+      return toTrackedIssue(issue, issue.body ?? "");
+    },
+
     // Listed by label (consistent right after creation, unlike the search index).
     async findSitepingIssues(marker, { maxPages = maxListedPages } = {}) {
       const matches: TrackedIssue[] = [];

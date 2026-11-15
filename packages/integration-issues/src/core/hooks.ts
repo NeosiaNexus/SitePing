@@ -91,6 +91,12 @@ export interface IssueTrackerHooks {
   onDeleting(target: DeletionTarget): Promise<void>;
 }
 
+/** A feedback's issue, and whether it came from the search, whose index can lag behind the tracker. */
+interface FoundIssue {
+  issue: TrackedIssue;
+  fromSearch: boolean;
+}
+
 const noRedaction = (text: string): string => text;
 const defaultDeletedComment = (feedbackId: string): string =>
   DELETED_FEEDBACK_COMMENT_TEMPLATE.replace("{feedbackId}", feedbackId);
@@ -149,7 +155,7 @@ export function createIssueTrackerHooks({
     return link?.instance === instance ? link : null;
   };
 
-  const issueOf = async (feedbackId: string): Promise<TrackedIssue | null> => {
+  const issueOf = async (feedbackId: string): Promise<FoundIssue | null> => {
     const isLinked = (issue: TrackedIssue) => linkOf(issue)?.feedbackId === feedbackId;
     const marker = feedbackMarkerFragment(feedbackId);
     // `null` when the search failed: its miss then says nothing.
@@ -159,15 +165,17 @@ export function createIssueTrackerHooks({
       return null;
     });
     const found = searched?.issues.find(isLinked);
-    if (found) return found;
+    if (found) return { issue: found, fromSearch: true };
     // The newest page holds the issues too new for the search index, and a recent feedback's issue.
     const newest = await tracker.findSitepingIssues(marker, { maxPages: 1 });
     const recent = newest.issues.find(isLinked);
     // A search that returned every match leaves no older issue to find.
-    if (recent || !newest.truncated || searched?.truncated === false) return recent ?? null;
+    if (recent) return { issue: recent, fromSearch: false };
+    if (!newest.truncated || searched?.truncated === false) return null;
     const listing = await tracker.findSitepingIssues(marker);
     const listed = listing.issues.find(isLinked);
-    if (listed || !listing.truncated) return listed ?? null;
+    if (listed) return { issue: listed, fromSearch: false };
+    if (!listing.truncated) return null;
     throw new Error(
       `[siteping] ${tracker.name}: the issue of feedback "${feedbackId}" is not among the SitePing issues listed, ` +
         "and more are left unlisted. Raise maxListedPages to reach it.",
@@ -186,12 +194,21 @@ export function createIssueTrackerHooks({
     return listing.issues.filter((issue) => linkOf(issue)?.projectName === projectName);
   };
 
+  /**
+   * Whether the issue is open. A search hit is read again when the tracker
+   * can: seconds after a resolve, the index may still answer "open", and an
+   * Undo then would skip the reopen (#415).
+   */
+  const isOpenNow = async ({ issue, fromSearch }: FoundIssue): Promise<boolean> =>
+    fromSearch && tracker.getIssue ? (await tracker.getIssue(issue.reference)).isOpen : issue.isOpen;
+
   /** Close as not planned if still open, and leave the deletion comment once, even across retries. */
-  const closeDeleted = async (issue: TrackedIssue, feedbackId: string): Promise<void> => {
-    if (issue.isOpen) await tracker.updateIssueStatus(issue.reference, "wont_fix");
-    const comments = await tracker.listComments(issue.reference);
+  const closeDeleted = async (found: FoundIssue, feedbackId: string): Promise<void> => {
+    const { reference } = found.issue;
+    if (await isOpenNow(found)) await tracker.updateIssueStatus(reference, "wont_fix");
+    const comments = await tracker.listComments(reference);
     if (!comments.some(isDeletionComment)) {
-      await tracker.addComment(issue.reference, buildDeletionComment(deletedCommentText(feedbackId)));
+      await tracker.addComment(reference, buildDeletionComment(deletedCommentText(feedbackId)));
     }
   };
 
@@ -214,23 +231,24 @@ export function createIssueTrackerHooks({
     async onUpdated(feedback) {
       if (!syncStatus) return;
       await queue.forFeedback(feedback.projectName, feedback.id, async () => {
-        const issue = await issueOf(feedback.id);
+        const found = await issueOf(feedback.id);
         // An open status on an open issue changes nothing; a closed one may still change the close reason.
-        if (issue && (isClosedStatus(feedback.status) || !issue.isOpen)) {
-          await tracker.updateIssueStatus(issue.reference, feedback.status);
+        if (found && (isClosedStatus(feedback.status) || !(await isOpenNow(found)))) {
+          await tracker.updateIssueStatus(found.issue.reference, feedback.status);
         }
       });
     },
     onDeleting: (target) =>
       target.kind === "single"
         ? queue.forFeedback(target.projectName, target.id, async () => {
-            const issue = await issueOf(target.id);
-            if (issue) await closeDeleted(issue, target.id);
+            const found = await issueOf(target.id);
+            if (found) await closeDeleted(found, target.id);
           })
         : queue.forProject(target.projectName, async () => {
             for (const issue of await issuesOfProject(target.projectName)) {
               const link = linkOf(issue);
-              if (link) await closeDeleted(issue, link.feedbackId);
+              // Listed by label, not searched: the state is current.
+              if (link) await closeDeleted({ issue, fromSearch: false }, link.feedbackId);
             }
           }),
   };

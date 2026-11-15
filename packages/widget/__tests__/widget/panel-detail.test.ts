@@ -11,7 +11,8 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createT } from "../../src/i18n/index.js";
 import { normalizePanelActions } from "../../src/panel-actions.js";
-import { DETAIL_CSS, type DetailCallbacks, DetailView } from "../../src/panel-detail.js";
+import { type DetailCallbacks, DetailView } from "../../src/panel-detail.js";
+import { DETAIL_CSS } from "../../src/styles/detail.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 
 // ---------------------------------------------------------------------------
