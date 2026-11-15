@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.5](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.12.4...widget-v0.12.5) (2026-11-15)
+
+
+### Bug Fixes
+
+* **widget:** follow identity changes across useSiteping re-renders ([#568](https://github.com/NeosiaNexus/SitePing/issues/568)) ([ce57cf9](https://github.com/NeosiaNexus/SitePing/commit/ce57cf903b4c812716c622c2c1fc6d902cabf226))
+
+
+### Performance
+
+* **widget:** keep the panel's code off the first load ([#566](https://github.com/NeosiaNexus/SitePing/issues/566)) ([7024495](https://github.com/NeosiaNexus/SitePing/commit/7024495f59e88b429f8a839ae2e51aa3cfc5ecb0))
+
 ## [0.12.4](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.12.3...widget-v0.12.4) (2026-11-14)
 
 

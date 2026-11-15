@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.2](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.6.1...cli-v0.6.2) (2026-11-15)
+
+
+### Bug Fixes
+
+* **cli:** stop on a MongoDB datasource too ([#570](https://github.com/NeosiaNexus/SitePing/issues/570)) ([d0188d1](https://github.com/NeosiaNexus/SitePing/commit/d0188d1ae7b3ced987c0744921780ce07782d0b4))
+* **cli:** stop on a SQL Server datasource instead of writing a schema Prisma rejects ([#563](https://github.com/NeosiaNexus/SitePing/issues/563)) ([9a018e1](https://github.com/NeosiaNexus/SitePing/commit/9a018e1818029d43e70b0a4ab41ac2d53436894b))
+
 ## [0.6.1](https://github.com/NeosiaNexus/SitePing/compare/cli-v0.6.0...cli-v0.6.1) (2026-11-03)
 
 
