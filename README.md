@@ -21,7 +21,7 @@ own database.
 [![coverage](https://img.shields.io/codecov/c/github/NeosiaNexus/SitePing?style=flat&colorA=000000&colorB=000000)](https://app.codecov.io/gh/NeosiaNexus/SitePing)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/NeosiaNexus/SitePing?label=scorecard&style=flat&colorA=000000&colorB=000000)](https://scorecard.dev/viewer/?uri=github.com/NeosiaNexus/SitePing)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
-[![Bundle Size](https://img.shields.io/badge/widget-~59%20kB%20gzip%20first%20load-blue)](./packages/widget/.size-limit.mjs)
+[![Bundle Size](https://img.shields.io/badge/widget-~51%20kB%20gzip%20first%20load-blue)](./packages/widget/.size-limit.mjs)
 
 [**Documentation**](https://siteping.dev/docs) &middot; [Quickstart](https://siteping.dev/docs/quickstart) &middot; [Live Demo](https://siteping.dev/demo) &middot; [Contributing](./CONTRIBUTING.md)
 
@@ -62,7 +62,7 @@ What sets SitePing apart is how annotations are kept: each one is anchored to th
 - **Reliability built in**: failed sends retry with backoff, then wait in a localStorage queue for the next page load
 - **Shadow DOM isolation**: widget CSS never leaks into your site, and your site CSS never breaks the widget
 - **Dev-only by default**: auto-hides in production builds unless `forceShow: true`
-- **Lightweight**: ~59 kB gzipped on first load (ESM: the entry and the chunk it imports); the panel (~10 kB), screenshot engine, and non-English locales load on demand
+- **Lightweight**: ~51 kB gzipped on first load (ESM: the entry and the chunk it imports); the panel (~21 kB), screenshot engine, and non-English locales load on demand
 
 ## Quickstart
 

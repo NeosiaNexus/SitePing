@@ -12,19 +12,19 @@ export default [
   {
     name: "ESM first load (index.js + static chunks)",
     path: firstLoad(dir, "dist/index.js"),
-    limit: "64 KB",
+    limit: "52 KB",
     gzip: true,
   },
   {
     name: "React entry first load (react.js + static imports)",
     path: firstLoad(dir, "dist/react.js"),
-    limit: "64.5 KB",
+    limit: "53 KB",
     gzip: true,
   },
   {
     name: "Panel, on first open (lazy)",
     path: lazyLoad(dir, "dist/index.js", /^panel-/),
-    limit: "11 KB",
+    limit: "22 KB",
     gzip: true,
   },
   {

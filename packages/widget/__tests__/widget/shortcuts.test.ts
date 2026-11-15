@@ -9,9 +9,9 @@ import {
   getFocusedCardIndex,
   ICON_KEYBOARD,
   KeyboardShortcuts,
-  SHORTCUTS_CSS,
   type ShortcutCallbacks,
 } from "../../src/shortcuts.js";
+import { SHORTCUTS_CSS } from "../../src/styles/shortcuts.js";
 import { buildThemeColors } from "../../src/styles/theme.js";
 import { createShadowRoot } from "../helpers.js";
 
