@@ -71,4 +71,12 @@ export interface IssueTracker {
    * do not settle lists up to the provider's cap, and is refused past it.
    */
   searchSitepingIssues?(feedbackId: string): Promise<IssueListing>;
+  /**
+   * Optional: the issue as the tracker holds it now. Implement it when
+   * `searchSitepingIssues` answers from an index that can lag behind a state
+   * change (GitHub's does, for a few seconds): before skipping a write
+   * because an issue the search found is already open or closed, the hooks
+   * read it again. Without it, they trust the search's state.
+   */
+  getIssue?(reference: IssueReference): Promise<TrackedIssue>;
 }

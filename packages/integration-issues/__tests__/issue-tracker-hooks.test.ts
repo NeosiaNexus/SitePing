@@ -391,6 +391,59 @@ for (const provider of providers) {
       expect(fake.requests.filter((request) => request.method !== "GET")).toEqual([]);
     });
 
+    describe.runIf(provider.name === "GitHub")("a search index behind a state change (#415)", () => {
+      /** From now on, searches answer each issue's state as it is at this point. */
+      const staleSearch = () => (fake as ReturnType<typeof createFakeGitHub>).staleSearch();
+      const issue = () => fake.issues[0] as FakeTracker["issues"][number];
+
+      it("reopens the issue on an Undo right after a resolve", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        staleSearch();
+        await patch(handler, feedback.id, "resolved");
+
+        await patch(handler, feedback.id, "open");
+
+        expect(issue().isOpen).toBe(true);
+        expect(issue().stateReason).toBe("reopened");
+      });
+
+      it("closes the issue of a feedback deleted right after a reopen", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        await patch(handler, feedback.id, "resolved");
+        staleSearch();
+        await patch(handler, feedback.id, "open");
+
+        expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(200);
+
+        provider.expectClosedAs(issue(), "wont_fix");
+      });
+
+      it("keeps the close reason of a feedback deleted right after a resolve", async () => {
+        const handler = createHandler();
+        const feedback = await send(handler);
+        staleSearch();
+        await patch(handler, feedback.id, "resolved");
+
+        expect((await remove(handler, { id: feedback.id, projectName: "site" })).status).toBe(200);
+
+        provider.expectClosedAs(issue(), "resolved");
+      });
+
+      it("trusts the search's state on a tracker without getIssue", async () => {
+        const { getIssue: _, ...withoutGetIssue } = provider.createTracker(fake);
+        const handler = createHandler({ tracker: withoutGetIssue });
+        const feedback = await send(handler);
+        staleSearch();
+        await patch(handler, feedback.id, "resolved");
+
+        await patch(handler, feedback.id, "open");
+
+        expect(issue().isOpen).toBe(false);
+      });
+    });
+
     describe("finding a feedback's issue", () => {
       const reads = () => fake.requests.filter((request) => request.method === "GET");
 

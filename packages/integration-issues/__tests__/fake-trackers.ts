@@ -139,6 +139,11 @@ function page<Item>(items: Item[], url: URL): Item[] {
 export function createFakeGitHub(repository: string): FakeTracker & {
   /** The repository already has this label: GitHub attaches it to a request that names it in any casing. */
   useExistingLabel(name: string): void;
+  /**
+   * Make searches answer each issue's state as it is now, whatever changes
+   * later: GitHub's search index lags a few seconds behind a state change.
+   */
+  staleSearch(): void;
 } {
   const base = `/repos/${repository}/issues`;
   const escapedBase = escapeRegExp(base);
@@ -146,6 +151,8 @@ export function createFakeGitHub(repository: string): FakeTracker & {
   const find = (key: string | undefined) => server.issues.find((issue) => issue.key === key);
   // GitHub matches label names case-insensitively and answers with the repository's casing.
   const existingLabels: string[] = [];
+  /** The state searches answer for each issue, when the index is stale. */
+  let indexedState: Map<string, boolean> | null = null;
   const sameLabel = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
   const hasLabel = (issue: FakeIssue, name: string) => issue.labels.some((label) => sameLabel(label, name));
   const toGitHub = (issue: FakeIssue) => ({
@@ -168,10 +175,11 @@ export function createFakeGitHub(repository: string): FakeTracker & {
           const scoped = query.includes(`repo:${repository} `) && query.includes("in:body");
           const items = server.settings.searchLags || !scoped || !label ? [] : [...server.issues].reverse();
           const found = items.filter((issue) => hasLabel(issue, label ?? "") && issue.body.includes(phrase));
+          const indexed = (issue: FakeIssue) => ({ ...issue, isOpen: indexedState?.get(issue.key) ?? issue.isOpen });
           return Response.json({
             total_count: found.length,
             incomplete_results: false,
-            items: page(found, url).map(toGitHub),
+            items: page(found, url).map(indexed).map(toGitHub),
           });
         },
       ],
@@ -210,6 +218,14 @@ export function createFakeGitHub(repository: string): FakeTracker & {
         },
       ],
       [
+        "GET",
+        new RegExp(`^${escapedBase}/(\\d+)$`),
+        (_request, match) => {
+          const issue = find(match[1]);
+          return issue ? Response.json(toGitHub(issue)) : new Response(null, { status: 404 });
+        },
+      ],
+      [
         "PATCH",
         new RegExp(`^${escapedBase}/(\\d+)$`),
         async (request, match) => {
@@ -240,7 +256,13 @@ export function createFakeGitHub(repository: string): FakeTracker & {
     // `new Request` adds no User-Agent, as on runtimes without a default one.
     ["user-agent"],
   );
-  return { ...server, useExistingLabel: (name) => existingLabels.push(name) };
+  return {
+    ...server,
+    useExistingLabel: (name) => existingLabels.push(name),
+    staleSearch: () => {
+      indexedState = new Map(server.issues.map((issue) => [issue.key, issue.isOpen]));
+    },
+  };
 }
 
 export function createFakeGitLab(project: string): FakeTracker {
