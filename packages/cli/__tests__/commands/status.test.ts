@@ -433,7 +433,7 @@ describe("statusCommand", () => {
 
       expect(() => statusCommand({ schema: schemaPath })).not.toThrow();
 
-      expect(allMessages(logErrorSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Cannot read: /));
+      expect(allMessages(logErrorSpy)).toContainEqual(expect.stringMatching(/^Prisma schema\s+Cannot check: /));
       // The remaining checks still run, and the command fails like any other error.
       expect(allMessages(logSuccessSpy).some((m) => m.includes("API route"))).toBe(true);
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -464,7 +464,7 @@ describe("statusCommand", () => {
       statusCommand({});
 
       expect(allMessages(logErrorSpy)).toContainEqual(
-        expect.stringMatching(/^Prisma schema\s+Cannot read: \S+[/\\]broken\.prisma: Expecting/),
+        expect.stringMatching(/^Prisma schema\s+Cannot check: \S+[/\\]broken\.prisma: Expecting/),
       );
     });
 

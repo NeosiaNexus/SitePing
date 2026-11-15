@@ -182,7 +182,7 @@ With a `screenshotStorage`, `PrismaStore` inserts the feedback first, uploads un
 
 ### MySQL: widen the columns
 
-A MySQL schema synced by an earlier CLI keeps `VARCHAR(191)` columns that some values overflow (`422` on submit). Run `npx @siteping/cli sync`, then migrate — see [Database schema](/docs/adapters/prisma#database-schema). PostgreSQL, SQLite, SQL Server and CockroachDB see no change.
+A MySQL schema synced by an earlier CLI keeps `VARCHAR(191)` columns that some values overflow (`422` on submit). Run `npx @siteping/cli sync`, then migrate — see [Database schema](/docs/adapters/prisma#database-schema). PostgreSQL, SQLite and CockroachDB see no change.
 
 ## Custom stores
 
