@@ -17,6 +17,12 @@ import { cssLiteralsPlugin } from "./scripts/css-literals.js";
 //    tsup's Rollup tree-shaking pass would drop: this build doesn't need that
 //    pass (esbuild already tree-shakes), nor splitting (no dynamic import).
 //
+// The builds run in parallel, so none cleans dist/: the package build script
+// removes it first. A `clean` here also runs at the start of that build's
+// declaration pass, which deletes every `.d.ts` in dist/, the React entry's
+// included when its own pass finished first (the release run of widget
+// 0.12.5 found dist/react.d.ts missing).
+//
 // `cssLiteralsPlugin` minifies the `/* css */`-marked template literals —
 // the stylesheet and inline styles — which the JS minifier ships verbatim.
 //
@@ -61,7 +67,7 @@ export default defineConfig([
     target: "es2022",
     dts: true,
     sourcemap: true,
-    clean: true,
+    clean: false,
     minify: true,
     splitting: true,
     treeshake: "recommended",

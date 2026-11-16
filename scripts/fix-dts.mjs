@@ -94,4 +94,20 @@ for (const file of dtsFiles) {
   }
 }
 
+// 4. Every file the package.json points at exists. Builds that share dist/
+// can delete each other's output (a `clean` runs again at the start of each
+// declaration pass), and the release build publishes without publint: a
+// missing declaration would ship.
+const pkgDir = resolve(targetDir, "..");
+const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+const targets = (value) =>
+  typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value).flatMap(targets) : [];
+const missing = [...targets(pkg.exports), ...targets([pkg.main, pkg.module, pkg.types])].filter(
+  (path) => path.startsWith("./") && !path.includes("*") && !existsSync(join(pkgDir, path)),
+);
+if (missing.length > 0) {
+  console.error(`  MISSING files that package.json points at: ${[...new Set(missing)].join(", ")}`);
+  process.exit(1);
+}
+
 console.log("fix-dts: done");
