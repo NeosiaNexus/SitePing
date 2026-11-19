@@ -162,11 +162,21 @@ const isPinnable = (resolved: Pick<ResolvedAnnotation, "element" | "rect">): boo
   hasBox(resolved.rect) && !isVisibilityHidden(resolved.element);
 
 /**
- * Events after which a host may show or hide an anchor without touching the
- * DOM tree: a class or attribute flipped by a click (a menu opening), and the
- * end of the fade that follows it.
+ * An anchor worth resolving again after a layout change: no box, or hidden
+ * with `visibility`. A twin the page now shows may exist (#171), whichever
+ * way the page hides the other one.
  */
-const PAINT_EVENTS = ["click", "transitionend", "animationend"] as const;
+const isOutOfSight = (element: Element): boolean =>
+  classifyVisibility(element) === "hidden" || isVisibilityHidden(element);
+
+/**
+ * Events after which a host may show or hide an anchor without touching the
+ * DOM tree: a class or attribute flipped by a click or a key (a menu opening,
+ * Escape closing it), focus moving into a menu that opens on focus, and the
+ * end of the fade that follows. A menu shown by `:hover` alone, with no
+ * transition, sends none of these: its pin waits for the next pass.
+ */
+const PAINT_EVENTS = ["click", "keyup", "focusin", "transitionend", "animationend"] as const;
 
 interface MarkerEntry {
   feedback: FeedbackResponse;
@@ -307,7 +317,8 @@ export class MarkerManager {
     // would wait for the next scroll to appear, and to go away again. It is a
     // scroll-grade pass: boxes and `visibility` are read from the cached
     // anchors, nothing is re-resolved. Capture phase, as a host modal may stop
-    // these events from bubbling; the widget's own pins and tooltip are skipped.
+    // these events from bubbling. Pins and tooltip are skipped, as a pass moves
+    // them; the popup and the annotation overlay cost one harmless pass.
     this.paintHandler = (e) => {
       const target = e.target;
       if (target instanceof Node && (this.container.contains(target) || this.tooltip.contains(target))) return;
@@ -415,8 +426,7 @@ export class MarkerManager {
         let resolved: ReturnType<typeof resolveAnnotation>;
 
         const backedOff = (this.hiddenRecheckAt.get(cacheKey) ?? 0) > now;
-        const cacheUsable =
-          cachedEl?.isConnected && (backedOff || !(recheckVisibility && classifyVisibility(cachedEl) === "hidden"));
+        const cacheUsable = cachedEl?.isConnected && (backedOff || !(recheckVisibility && isOutOfSight(cachedEl)));
 
         if (cached && cachedEl && cacheUsable) {
           const anchorRect = cachedEl.getBoundingClientRect();
@@ -447,7 +457,7 @@ export class MarkerManager {
               const { confidence, strategy } = resolved;
               this.anchorCache.set(cacheKey, { ref: new WeakRef(resolved.element), confidence, strategy });
             }
-            if (!resolved || classifyVisibility(resolved.element) === "hidden") {
+            if (!resolved || isOutOfSight(resolved.element)) {
               this.hiddenRecheckAt.set(cacheKey, now + HIDDEN_RECHECK_MS);
             } else {
               this.hiddenRecheckAt.delete(cacheKey);

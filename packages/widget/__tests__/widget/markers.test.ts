@@ -1165,14 +1165,59 @@ describe("MarkerManager", () => {
       expect(pin("fb-menu").style.display).toBe("flex");
     });
 
+    it("re-checks when a key closes the menu, or focus opens it", () => {
+      vi.useFakeTimers();
+      const { menu } = mountMenuItem();
+      markers.render([makeFeedback({ id: "fb-menu" })]);
+
+      menu.style.visibility = "hidden";
+      document.body.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape", bubbles: true }));
+      vi.advanceTimersByTime(400);
+      expect(pin("fb-menu").style.display).toBe("none");
+
+      menu.style.visibility = "visible";
+      menu.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      vi.advanceTimersByTime(400);
+      expect(pin("fb-menu").style.display).toBe("flex");
+    });
+
+    it("resolves again after a resize when the cached anchor is hidden with visibility (#171)", () => {
+      vi.useFakeTimers();
+      const { item } = mountMenuItem();
+      markers.render([makeFeedback({ id: "fb-twin" })]);
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      const calls = mockState.calls;
+
+      // The breakpoint hides this copy; its twin is what the page shows now.
+      item.style.visibility = "hidden";
+      const twin = document.createElement("a");
+      document.body.appendChild(twin);
+      twin.getBoundingClientRect = () => new DOMRect(400, 100, 200, 100);
+      mockState.element = twin;
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(mockState.calls).toBe(calls + 1);
+      expect(pin("fb-twin").style.display).toBe("flex");
+      twin.remove();
+    });
+
     it("stops listening once destroyed", () => {
+      const add = vi.spyOn(document, "addEventListener");
       const remove = vi.spyOn(document, "removeEventListener");
+      const fresh = new MarkerManager(colors, createMockTooltip(), new EventBus<WidgetEvents>(), t);
 
-      markers.destroy();
+      fresh.destroy();
 
-      for (const type of ["click", "transitionend", "animationend"]) {
-        expect(remove).toHaveBeenCalledWith(type, expect.any(Function), { capture: true });
+      for (const type of ["click", "keyup", "focusin", "transitionend", "animationend"]) {
+        const added = add.mock.calls.filter(([event, , options]) => {
+          return event === type && typeof options === "object" && options.passive === true;
+        });
+        expect(added).toHaveLength(1);
+        expect(remove).toHaveBeenCalledWith(type, added[0]?.[1], { capture: true });
       }
+      add.mockRestore();
       remove.mockRestore();
     });
   });
