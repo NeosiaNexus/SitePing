@@ -7,7 +7,7 @@ import {
 } from "@siteping/core";
 import { EASE_OUT, Z_INDEX_MAX } from "./constants.js";
 import { type ResolvedAnnotation, resolveAnnotation } from "./dom/resolver.js";
-import { classifyVisibility } from "./dom/visibility.js";
+import { classifyVisibility, isVisibilityHidden } from "./dom/visibility.js";
 import { el, focusRing, setText } from "./dom-utils.js";
 import type { EventBus, WidgetEvents } from "./events.js";
 import { isolateFromHost } from "./host-isolation.js";
@@ -152,6 +152,22 @@ function markerPosition(rect: DOMRect): MarkerPos {
 /** An anchor that resolved to an element without a box (display:none) has no place for a pin. */
 const hasBox = (rect: DOMRect): boolean => rect.width > 0 || rect.height > 0;
 
+/**
+ * Whether a resolved anchor has a place for a pin: it has a box, and
+ * `visibility` does not hide it. A closed menu hidden with
+ * `visibility: hidden` keeps its geometry, and a pin drawn from it would sit
+ * on whatever the page shows there instead.
+ */
+const isPinnable = (resolved: Pick<ResolvedAnnotation, "element" | "rect">): boolean =>
+  hasBox(resolved.rect) && !isVisibilityHidden(resolved.element);
+
+/**
+ * Events after which a host may show or hide an anchor without touching the
+ * DOM tree: a class or attribute flipped by a click (a menu opening), and the
+ * end of the fade that follows it.
+ */
+const PAINT_EVENTS = ["click", "transitionend", "animationend"] as const;
+
 interface MarkerEntry {
   feedback: FeedbackResponse;
   /**
@@ -223,6 +239,7 @@ export class MarkerManager {
   private repositionTimer: number | null = null;
   private mutationObserver: MutationObserver | null = null;
   private scrollHandler: (() => void) | null = null;
+  private paintHandler: ((e: Event) => void) | null = null;
   private resizeHandler: (() => void) | null = null;
   /**
    * The element each annotation last resolved to, with that resolution's
@@ -284,6 +301,21 @@ export class MarkerManager {
 
     this.scrollHandler = () => this.scheduleReposition("scroll");
     window.addEventListener("scroll", this.scrollHandler, { passive: true, capture: true });
+
+    // A host that opens a menu flips a class or an attribute: no scroll, no
+    // resize, no child-list mutation. Without this pass a pin inside the menu
+    // would wait for the next scroll to appear, and to go away again. It is a
+    // scroll-grade pass: boxes and `visibility` are read from the cached
+    // anchors, nothing is re-resolved. Capture phase, as a host modal may stop
+    // these events from bubbling; the widget's own pins and tooltip are skipped.
+    this.paintHandler = (e) => {
+      const target = e.target;
+      if (target instanceof Node && (this.container.contains(target) || this.tooltip.contains(target))) return;
+      this.scheduleReposition("scroll");
+    };
+    for (const type of PAINT_EVENTS) {
+      document.addEventListener(type, this.paintHandler, { passive: true, capture: true });
+    }
 
     // Re-resolve after DOM changes (SPA, lazy-load).
     // Filter out widget-owned mutations and skip batches with only irrelevant
@@ -424,7 +456,7 @@ export class MarkerManager {
         }
 
         const wasVisible = markerEl.style.display !== "none";
-        if (!resolved || !hasBox(resolved.rect)) {
+        if (!resolved || !isPinnable(resolved)) {
           if (wasVisible) visibilityChanged = true;
           markerEl.style.display = "none";
           continue;
@@ -529,7 +561,7 @@ export class MarkerManager {
     const entry: MarkerEntry = { feedback, elements: [], positions: [] };
     for (const annotation of feedback.annotations) {
       const found = resolveAnnotation(toAnchorData(annotation), toRectData(annotation));
-      const resolved = found && hasBox(found.rect) ? found : null;
+      const resolved = found && isPinnable(found) ? found : null;
       const pos = resolved ? markerPosition(resolved.rect) : { top: 0, left: 0 };
       const marker = this.createMarker(index, feedback, pos);
       if (resolved) this.applyConfidenceStyle(marker, resolved.confidence, feedback);
@@ -901,7 +933,7 @@ export class MarkerManager {
     this.removeHighlightElements();
     for (const annotation of feedback.annotations) {
       const resolved = resolveAnnotation(toAnchorData(annotation), toRectData(annotation));
-      if (!resolved || !hasBox(resolved.rect)) continue;
+      if (!resolved || !isPinnable(resolved)) continue;
 
       const typeColor = getTypeColor(feedback.type, this.colors);
       const rect = resolved.rect;
@@ -979,6 +1011,9 @@ export class MarkerManager {
     }
     if (this.resizeHandler) window.removeEventListener("resize", this.resizeHandler);
     if (this.scrollHandler) window.removeEventListener("scroll", this.scrollHandler, { capture: true });
+    if (this.paintHandler) {
+      for (const type of PAINT_EVENTS) document.removeEventListener(type, this.paintHandler, { capture: true });
+    }
     if (this.onDocumentClickForClusters) document.removeEventListener("click", this.onDocumentClickForClusters, true);
     this.mutationObserver?.disconnect();
     this.container.remove();

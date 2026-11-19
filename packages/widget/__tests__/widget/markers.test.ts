@@ -1031,6 +1031,152 @@ describe("MarkerManager", () => {
   // repositionAll
   // -------------------------------------------------------------------------
 
+  // -------------------------------------------------------------------------
+  // Anchors hidden with `visibility` (a closed menu that keeps its box)
+  // -------------------------------------------------------------------------
+
+  describe("anchor hidden with visibility", () => {
+    /** A host menu: a box at a fixed place, shown or hidden by the caller. */
+    function mountMenuItem(): { menu: HTMLElement; item: HTMLElement } {
+      const menu = document.createElement("nav");
+      const item = document.createElement("a");
+      menu.appendChild(item);
+      document.body.appendChild(menu);
+      // jsdom does no layout: the box a closed `visibility: hidden` menu keeps.
+      item.getBoundingClientRect = () => new DOMRect(100, 100, 200, 100);
+      mockState.element = item;
+      return { menu, item };
+    }
+
+    const pin = (id: string) => document.querySelector<HTMLElement>(`[data-feedback-id="${id}"]`)!;
+
+    afterEach(() => {
+      vi.useRealTimers();
+      for (const nav of document.querySelectorAll("nav")) nav.remove();
+    });
+
+    it("renders no pin for an anchor inside a closed menu", () => {
+      const { menu } = mountMenuItem();
+      menu.style.visibility = "hidden";
+
+      markers.render([makeFeedback({ id: "fb-menu" })]);
+
+      expect(pin("fb-menu").style.display).toBe("none");
+      expect(markers.isLost("fb-menu")).toBe(true);
+      expect(markers.revealPin("fb-menu")).toBe(false);
+    });
+
+    it("draws no highlight for an anchor inside a closed menu", () => {
+      const { menu } = mountMenuItem();
+      const feedback = makeFeedback({ id: "fb-menu" });
+      markers.render([feedback]);
+      markers.showHighlight(feedback);
+      const shown = document.getElementById("siteping-markers")!.childElementCount;
+
+      menu.style.visibility = "hidden";
+      markers.showHighlight(feedback);
+
+      expect(document.getElementById("siteping-markers")!.childElementCount).toBeLessThan(shown);
+    });
+
+    it("shows the pin when a click opens the menu, with no scroll, resize or DOM mutation", () => {
+      vi.useFakeTimers();
+      const { menu } = mountMenuItem();
+      menu.style.visibility = "hidden";
+      markers.render([makeFeedback({ id: "fb-menu" })]);
+      const placed = vi.fn();
+      bus.on("markers:placed", placed);
+
+      // The host's opener: an attribute flips, the tree does not change.
+      menu.style.visibility = "visible";
+      document.body.dispatchEvent(new Event("click", { bubbles: true }));
+      vi.advanceTimersByTime(400);
+
+      expect(pin("fb-menu").style.display).toBe("flex");
+      expect(markers.isLost("fb-menu")).toBe(false);
+      expect(placed).toHaveBeenCalledTimes(1);
+    });
+
+    it("hides the pin once the menu has faded out", () => {
+      vi.useFakeTimers();
+      const { menu } = mountMenuItem();
+      markers.render([makeFeedback({ id: "fb-menu" })]);
+      expect(pin("fb-menu").style.display).toBe("flex");
+
+      // `visibility` flips at the end of the closing fade: only the
+      // transition's end tells the widget.
+      menu.style.visibility = "hidden";
+      menu.dispatchEvent(new Event("transitionend", { bubbles: true }));
+      vi.advanceTimersByTime(400);
+
+      expect(pin("fb-menu").style.display).toBe("none");
+      expect(markers.isLost("fb-menu")).toBe(true);
+    });
+
+    it("re-checks after a keyframe animation too", () => {
+      vi.useFakeTimers();
+      const { menu } = mountMenuItem();
+      markers.render([makeFeedback({ id: "fb-menu" })]);
+
+      menu.style.visibility = "hidden";
+      menu.dispatchEvent(new Event("animationend", { bubbles: true }));
+      vi.advanceTimersByTime(400);
+
+      expect(pin("fb-menu").style.display).toBe("none");
+    });
+
+    it("does not re-resolve the anchor on such a pass", () => {
+      vi.useFakeTimers();
+      mountMenuItem();
+      markers.render([makeFeedback({ id: "fb-menu" })]);
+      // The first pass after a render resolves once and caches the anchor.
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+      const calls = mockState.calls;
+
+      document.body.dispatchEvent(new Event("click", { bubbles: true }));
+      vi.advanceTimersByTime(400);
+
+      expect(mockState.calls).toBe(calls);
+    });
+
+    it("keeps the pin on a transparent anchor, which still takes clicks", () => {
+      vi.useFakeTimers();
+      const { item } = mountMenuItem();
+      item.style.opacity = "0";
+
+      markers.render([makeFeedback({ id: "fb-clear" })]);
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(400);
+
+      expect(pin("fb-clear").style.display).toBe("flex");
+    });
+
+    it("ignores the widget's own pins as a trigger", () => {
+      vi.useFakeTimers();
+      const { menu } = mountMenuItem();
+      markers.render([makeFeedback({ id: "fb-menu" })]);
+
+      menu.style.visibility = "hidden";
+      pin("fb-menu").dispatchEvent(new Event("transitionend", { bubbles: true }));
+      vi.advanceTimersByTime(400);
+
+      // No pass ran: the pin still stands where the last one left it.
+      expect(pin("fb-menu").style.display).toBe("flex");
+    });
+
+    it("stops listening once destroyed", () => {
+      const remove = vi.spyOn(document, "removeEventListener");
+
+      markers.destroy();
+
+      for (const type of ["click", "transitionend", "animationend"]) {
+        expect(remove).toHaveBeenCalledWith(type, expect.any(Function), { capture: true });
+      }
+      remove.mockRestore();
+    });
+  });
+
   describe("repositionAll", () => {
     it("uses cached element refs when available", () => {
       vi.useFakeTimers();

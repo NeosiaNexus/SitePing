@@ -86,6 +86,26 @@ export function classifyVisibility(element: Element): VisibilityClass {
   return "hidden";
 }
 
+/**
+ * Whether `visibility` hides the element: a closed menu, drawer or tab panel
+ * that keeps its box (and usually fades with `opacity`). A pin must not show
+ * there: the element is not painted and cannot be pointed at, so no feedback
+ * was ever left on it in that state. `opacity: 0` alone does not count: such
+ * an element still takes clicks (a transparent file input over a button), and
+ * may be the very thing that was annotated.
+ *
+ * `visibility` is inherited, so one read on the element covers its ancestors.
+ */
+export function isVisibilityHidden(element: Element): boolean {
+  if (!element.isConnected) return false;
+  try {
+    const visibility = getComputedStyle(element).visibility;
+    return visibility === "hidden" || visibility === "collapse";
+  } catch {
+    return false;
+  }
+}
+
 /** Score multiplier for a visibility class — tiering, not filtering. */
 export function visibilityFactor(cls: VisibilityClass): number {
   switch (cls) {

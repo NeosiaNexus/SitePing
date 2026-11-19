@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyVisibility, visibilityFactor } from "../../src/dom/visibility";
+import { classifyVisibility, isVisibilityHidden, visibilityFactor } from "../../src/dom/visibility";
 
 // jsdom implements neither checkVisibility nor layout (every rect is zero,
 // getClientRects is always empty) — see the research trap: naive visibility
@@ -131,6 +131,65 @@ describe("classifyVisibility — fallback path (no checkVisibility)", () => {
     // neutral in unit-test environments and exotic embedders.
     const el = makeDiv();
     expect(classifyVisibility(el)).toBe("unknown");
+  });
+});
+
+describe("isVisibilityHidden", () => {
+  it("is false for an element the page shows", () => {
+    expect(isVisibilityHidden(makeDiv())).toBe(false);
+  });
+
+  it("is true when the element's own visibility hides it", () => {
+    const el = makeDiv();
+    el.style.visibility = "hidden";
+    expect(isVisibilityHidden(el)).toBe(true);
+  });
+
+  it("is true when an ancestor's visibility hides it (inherited)", () => {
+    const menu = makeDiv();
+    const item = document.createElement("a");
+    menu.appendChild(item);
+    menu.style.visibility = "hidden";
+    expect(isVisibilityHidden(item)).toBe(true);
+  });
+
+  it("is false for a child shown again inside a hidden ancestor", () => {
+    const menu = makeDiv();
+    const item = document.createElement("a");
+    menu.appendChild(item);
+    menu.style.visibility = "hidden";
+    item.style.visibility = "visible";
+    expect(isVisibilityHidden(item)).toBe(false);
+  });
+
+  it("is true for visibility: collapse", () => {
+    const el = makeDiv();
+    const style = vi
+      .spyOn(window, "getComputedStyle")
+      .mockReturnValue({ visibility: "collapse" } as CSSStyleDeclaration);
+    expect(isVisibilityHidden(el)).toBe(true);
+    style.mockRestore();
+  });
+
+  it("is false for opacity: 0, which still takes clicks", () => {
+    const el = makeDiv();
+    el.style.opacity = "0";
+    expect(isVisibilityHidden(el)).toBe(false);
+  });
+
+  it("is false for a detached element, which resolution already drops", () => {
+    const el = document.createElement("div");
+    el.style.visibility = "hidden";
+    expect(isVisibilityHidden(el)).toBe(false);
+  });
+
+  it("is false when getComputedStyle throws", () => {
+    const el = makeDiv();
+    const style = vi.spyOn(window, "getComputedStyle").mockImplementation(() => {
+      throw new Error("no style");
+    });
+    expect(isVisibilityHidden(el)).toBe(false);
+    style.mockRestore();
   });
 });
 
