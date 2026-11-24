@@ -49,6 +49,7 @@ import {
 } from "./icons.js";
 import type { MarkerManager } from "./markers.js";
 import type { OwnFeedback } from "./own-feedback.js";
+import { type MarkerFilter, markerQuery, pageMarkers } from "./page-markers.js";
 import { normalizePanelActions } from "./panel-actions.js";
 import { BulkActions, type TriagePermission } from "./panel-bulk.js";
 import { DetailView } from "./panel-detail.js";
@@ -161,6 +162,8 @@ export class Panel {
   // the current page (or template) and filter markers accordingly.
   private readonly getScope: () => PageScope;
   private readonly scopeAnnotationsByUrl: boolean;
+  /** Which feedback gets a marker: `scopeAnnotationsByUrl` and `showClosedMarkers`. */
+  private readonly markerFilter: MarkerFilter;
   /** "page" = current url, "template" = url pattern, "all" = no scope filter */
   private scopeSegmented!: SegmentedControl<PanelScope>;
   /** The scope the list opens on (`defaultPanelScope`); the reviewer's choice then holds. */
@@ -181,6 +184,7 @@ export class Panel {
     options?: {
       getScope: () => PageScope;
       scopeAnnotationsByUrl: boolean;
+      showClosedMarkers?: boolean | undefined;
       defaultPanelScope?: SitepingConfig["defaultPanelScope"];
       panelActions?: readonly SitepingPanelAction[] | undefined;
       ownFeedback?: Pick<OwnFeedback, "ids" | "remove"> | undefined;
@@ -193,6 +197,7 @@ export class Panel {
     this.resolveIdentity = options?.resolveIdentity ?? (async () => null);
     this.getScope = options?.getScope ?? (() => ({ url: window.location.pathname, urlPattern: null }));
     this.scopeAnnotationsByUrl = options?.scopeAnnotationsByUrl ?? true;
+    this.markerFilter = { byUrl: this.scopeAnnotationsByUrl, closed: options?.showClosedMarkers ?? true };
     // Anything but "all" opens on the page, an untyped caller's typo included
     this.initialScopeFilter = options?.defaultPanelScope === "all" ? "all" : "page";
     this.ownFeedback = options?.ownFeedback ?? { ids: () => new Set(), remove: () => {} };
@@ -339,16 +344,17 @@ export class Panel {
           if (fb.annotations.length > 0) {
             const ann = fb.annotations[0];
             if (!ann) return;
-            // Follow the live pin: the stored offsets come from the author's
-            // layout and miss on another screen size. They remain the fallback
-            // when no pin is on screen (anchor lost, or markers hidden).
-            if (!this.markers.revealPin(fb.id)) {
+            // Follow the live pin, or the live highlight of a feedback with no
+            // pin (a closed one under `showClosedMarkers: false`): the stored
+            // offsets come from the author's layout and miss on another screen
+            // size. They remain the fallback when the anchor is lost or the
+            // markers are hidden.
+            if (!this.markers.revealPin(fb.id) && !this.markers.revealHighlight(fb)) {
               window.scrollTo({
                 left: ann.scrollX,
                 top: ann.scrollY,
                 behavior: prefersReducedMotion() ? "auto" : "smooth",
               });
-              this.markers.pinHighlight(fb);
             }
             // The phone sheet covers the page it just scrolled — get out of the way.
             if (isCompactViewport()) this.close();
@@ -923,10 +929,17 @@ export class Panel {
     }
   }
 
-  /** Whether a list query returns the page markers' feedbacks too: no filter, and the markers' URL scope. */
+  /**
+   * Whether a list query returns the page markers' feedbacks too: no filter
+   * but the markers' own, their URL scope and their statuses (none, or the
+   * open ones under `showClosedMarkers: false`).
+   */
   private isMarkerQuery(options: GetFeedbacksOptions, scope: PageScope): boolean {
-    const markerUrl = this.scopeAnnotationsByUrl ? scope.url : undefined;
-    return !options.type && !options.statuses && !options.search && !options.urlPattern && options.url === markerUrl;
+    const marker = markerQuery(scope, this.markerFilter);
+    const sameStatuses =
+      (options.statuses ?? []).length === (marker.statuses ?? []).length &&
+      (options.statuses ?? []).every((status) => marker.statuses?.includes(status));
+    return !options.type && !options.search && !options.urlPattern && options.url === marker.url && sameStatuses;
   }
 
   /**
@@ -976,9 +989,8 @@ export class Panel {
 
   /** Fetch the page markers' own query (the launcher's) when the list shows a filtered or wider one. */
   private async loadPageMarkers(scope: PageScope, signal: AbortSignal): Promise<void> {
-    const query = this.scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: scope.url } : { limit: PAGE_SIZE };
     try {
-      const { feedbacks } = await this.client.getFeedbacks(this.projectName, query);
+      const { feedbacks } = await this.client.getFeedbacks(this.projectName, markerQuery(scope, this.markerFilter));
       if (!signal.aborted) this.renderPageMarkers(feedbacks, scope); // Else a newer load owns the markers
     } catch {
       // Non-critical: the current markers stay
@@ -987,11 +999,12 @@ export class Panel {
 
   /**
    * Markers render only the current-URL slice, even when the panel shows a
-   * wider scope, so the user never sees out-of-context dots on the page. The
-   * filter is defensive: a backend may ignore the `url` query.
+   * wider scope, so the user never sees out-of-context dots on the page, and
+   * no closed feedback under `showClosedMarkers: false`. The filter is
+   * defensive: a backend may ignore the `url` or `statuses` query.
    */
   private renderPageMarkers(feedbacks: FeedbackResponse[], scope: PageScope): void {
-    this.markers.render(this.scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === scope.url) : feedbacks);
+    this.markers.render(pageMarkers(feedbacks, scope, this.markerFilter));
   }
 
   private renderList(): void {

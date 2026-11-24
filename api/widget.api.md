@@ -632,6 +632,7 @@ interface SitepingBaseConfig {
     readOnly?: boolean | undefined;
     scopeAnnotationsByUrl?: boolean | undefined;
     showAnnotationsToggle?: boolean | undefined;
+    showClosedMarkers?: boolean | undefined;
     theme?: SitepingTheme | undefined;
     watchNavigation?: boolean | undefined;
 }

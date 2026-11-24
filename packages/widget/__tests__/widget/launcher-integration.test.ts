@@ -2224,4 +2224,67 @@ describe("launcher — annotation:complete integration", () => {
       expect(await openListQuery(defaultConfig())).toHaveProperty("url", window.location.pathname);
     });
   });
+
+  describe("showClosedMarkers", () => {
+    const pageOpen = makeFeedbackResponse({ id: "fb-open", status: "open", url: "/here" });
+    const pageDone = makeFeedbackResponse({ id: "fb-done", status: "resolved", url: "/here" });
+    const pageDropped = makeFeedbackResponse({ id: "fb-dropped", status: "wont_fix", url: "/here" });
+    const config = (overrides: Partial<Omit<SitepingHttpConfig, "store">> = {}) =>
+      defaultConfig({ getPageScope: () => ({ url: "/here", urlPattern: null }), ...overrides });
+    const lastMarkerRender = () => mockMarkersRender.mock.calls.at(-1)?.[0];
+    let instance: ReturnType<typeof launch> | undefined;
+
+    beforeEach(() => {
+      // A server that ignores the status filter: the widget must not rely on it
+      mockGetFeedbacks.mockResolvedValue({ feedbacks: [pageOpen, pageDone, pageDropped], total: 3 });
+    });
+    afterEach(() => {
+      instance?.destroy();
+      instance = undefined;
+      mockGetFeedbacks.mockResolvedValue({ feedbacks: [], total: 0 });
+    });
+
+    it("defaults to true: every marker, from a query without a status filter", async () => {
+      instance = launch(config());
+
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen, pageDone, pageDropped]));
+      expect(mockGetFeedbacks).toHaveBeenCalledWith("test-project", { limit: 20, url: "/here" });
+    });
+
+    it("false asks for the open statuses on load and draws no closed marker", async () => {
+      instance = launch(config({ showClosedMarkers: false }));
+
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+      expect(mockGetFeedbacks).toHaveBeenCalledWith("test-project", {
+        limit: 20,
+        url: "/here",
+        statuses: ["open", "in_progress"],
+      });
+    });
+
+    it("false holds for a refresh with the panel closed, and without URL scoping", async () => {
+      instance = launch(config({ showClosedMarkers: false, scopeAnnotationsByUrl: false }));
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+      mockGetFeedbacks.mockClear();
+      mockMarkersRender.mockClear();
+
+      instance.refresh();
+
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+      expect(mockGetFeedbacks).toHaveBeenCalledWith("test-project", { limit: 20, statuses: ["open", "in_progress"] });
+    });
+
+    it("false reaches the panel: its All list keeps the closed feedback, the markers do not", async () => {
+      instance = launch(config({ showClosedMarkers: false }));
+      await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+      mockMarkersRender.mockClear();
+
+      instance.open();
+
+      const shadow = document.querySelector("siteping-widget")!.shadowRoot!;
+      await vi.waitFor(() => expect(shadow.querySelectorAll(".sp-card")).toHaveLength(3));
+      await vi.waitFor(() => expect(mockMarkersRender).toHaveBeenCalled());
+      expect(lastMarkerRender()).toEqual([pageOpen]);
+    });
+  });
 });

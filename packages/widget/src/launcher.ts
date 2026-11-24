@@ -3,6 +3,7 @@ import {
   type DiagnosticsSnapshot,
   type FeedbackPayload,
   IDENTITY_FIELD_MAX_LENGTH,
+  isClosedStatus,
   isValidEmail,
   type PageScope,
   type SitepingConfig,
@@ -29,6 +30,7 @@ import { createT, loadLocale, type TFunction } from "./i18n/index.js";
 import { getIdentity, saveIdentity } from "./identity.js";
 import { MarkerManager } from "./markers.js";
 import { ownFeedback } from "./own-feedback.js";
+import { type MarkerFilter, markerQuery, pageMarkers } from "./page-markers.js";
 import type { Panel as PanelType } from "./panel.js";
 import { StoreClient } from "./store-client.js";
 import { buildStyles } from "./styles/base.js";
@@ -247,6 +249,8 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // every initial markers load and on `instance.refresh()`, so SPA hosts can
   // re-fetch when the route changes.
   const scopeAnnotationsByUrl = config.scopeAnnotationsByUrl ?? true;
+  const showClosedMarkers = config.showClosedMarkers ?? true;
+  const markerFilter: MarkerFilter = { byUrl: scopeAnnotationsByUrl, closed: showClosedMarkers };
   const getScope = (): PageScope => {
     try {
       const result = config.getPageScope?.();
@@ -262,6 +266,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     theme: config.theme ?? "light",
     locale,
     scopeAnnotationsByUrl,
+    showClosedMarkers,
   });
 
   // Diagnostics — capture console + failed network at submit time when
@@ -471,6 +476,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
         panelInstance = new mod.Panel(shadow, colors, bus, client, config.projectName, markers, t, locale, {
           getScope,
           scopeAnnotationsByUrl,
+          showClosedMarkers,
           defaultPanelScope: config.defaultPanelScope,
           panelActions: config.panelActions,
           ownFeedback: own,
@@ -646,7 +652,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
         // Compare against the scope captured before submit (route may have
         // changed during the network round-trip — re-reading scope here
         // would race with SPA navigation).
-        if (!scopeAnnotationsByUrl || response.url === scope.url) {
+        if (pageMarkers([response], scope, markerFilter).length > 0) {
           markers.addFeedback(response, markers.count + 1);
         }
         notify(t("feedback.sent.confirmation"), false);
@@ -673,8 +679,9 @@ export function launch(config: SitepingConfig): SitepingInstance {
   // when scopeAnnotationsByUrl is enabled so the server narrows results to the
   // current page — preventing annotations from one page accidentally rendering
   // on another (when CSS selectors happen to match unrelated elements).
+  // Likewise `showClosedMarkers: false` asks for the open statuses only.
   const initialScope = getScope();
-  const initialOptions = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: initialScope.url } : { limit: PAGE_SIZE };
+  const initialOptions = markerQuery(initialScope, markerFilter);
   const deepLinkOpts = normaliseDeepLinkOptions(config.deepLink);
   // Claim a generation for the initial load so a navigation that fires while
   // this fetch is in flight (doRefresh bumps the counter) supersedes it — the
@@ -688,8 +695,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
     .then(([{ feedbacks }]) => {
       if (destroyed || markerGeneration !== initialLoadGeneration) return;
       // Defensive client-side filter — backend may not yet support the `url` query.
-      const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === initialScope.url) : feedbacks;
-      markers.render(visible);
+      markers.render(pageMarkers(feedbacks, initialScope, markerFilter));
       // Apply deeplink focus once markers exist. Failures here are
       // non-fatal — a malformed URL or an unknown ID just leaves the page
       // as the user found it, so log and move on.
@@ -703,7 +709,7 @@ export function launch(config: SitepingConfig): SitepingInstance {
             );
             // A link to a feedback — "Open on page", a reply notification —
             // opens its detail view too, where its thread is (#381).
-            if (matched) {
+            const openDetail = () =>
               loadPanel()
                 .then(async (panel) => {
                   if (!panel || destroyed) return;
@@ -711,6 +717,28 @@ export function launch(config: SitepingConfig): SitepingInstance {
                   panel.showFeedback(focusId);
                 })
                 .catch((err) => log("deepLink could not open the feedback:", err));
+            if (matched) {
+              openDetail();
+            } else if (!showClosedMarkers) {
+              // Under `showClosedMarkers: false` a closed feedback has no
+              // marker to focus, but a link to it still opens its detail
+              // view: look it up in the list the panel opens on (its All tab,
+              // in its default scope), where `showFeedback` will find it.
+              const panelQuery =
+                config.defaultPanelScope === "all" ? { limit: PAGE_SIZE } : { limit: PAGE_SIZE, url: initialScope.url };
+              client
+                .getFeedbacks(config.projectName, panelQuery)
+                .then(({ feedbacks }) => {
+                  // A navigation, or the visitor opening the panel, since the
+                  // link was read: it no longer speaks for this page.
+                  if (destroyed || markerGeneration !== initialLoadGeneration || panelInstance?.isCurrentlyOpen) return;
+                  const linked = feedbacks.find((f) => f.id === focusId);
+                  if (!linked || !isClosedStatus(linked.status)) return;
+                  // Only one that would have had a pin here with closed markers shown
+                  const withClosed: MarkerFilter = { ...markerFilter, closed: true };
+                  if (pageMarkers([linked], initialScope, withClosed).length > 0) openDetail();
+                })
+                .catch((err) => log("deepLink could not load the feedback:", err));
             }
           }
         } catch (e) {
@@ -752,14 +780,12 @@ export function launch(config: SitepingConfig): SitepingInstance {
       return panelInstance.refresh();
     }
     const scope = getScope();
-    const opts = scopeAnnotationsByUrl ? { limit: PAGE_SIZE, url: scope.url } : { limit: PAGE_SIZE };
-    return client.getFeedbacks(config.projectName, opts).then(({ feedbacks }) => {
+    return client.getFeedbacks(config.projectName, markerQuery(scope, markerFilter)).then(({ feedbacks }) => {
       // Drop the result if a newer refresh superseded us (out-of-order
       // resolution), the widget was torn down, or the panel opened mid-flight
       // and now owns marker rendering itself.
       if (destroyed || generation !== markerGeneration || panelInstance?.isCurrentlyOpen) return;
-      const visible = scopeAnnotationsByUrl ? feedbacks.filter((f) => f.url === scope.url) : feedbacks;
-      markers.render(visible);
+      markers.render(pageMarkers(feedbacks, scope, markerFilter));
     });
   };
 
@@ -885,10 +911,11 @@ export function launch(config: SitepingConfig): SitepingInstance {
     },
     focusFeedback: (feedbackId: string) => {
       // Returns false when no entry matches — unknown ID, feedback filtered
-      // out by `scopeAnnotationsByUrl`, or markers not yet loaded (the
-      // initial getFeedbacks is async, and the widget exposes no public
-      // "markers ready" event today). Hosts that race against initial load
-      // can retry, or trigger focus from a user gesture instead.
+      // out by `scopeAnnotationsByUrl` or `showClosedMarkers: false`, or
+      // markers not yet loaded (the initial getFeedbacks is async, and the
+      // widget exposes no public "markers ready" event today). Hosts that
+      // race against initial load can retry, or trigger focus from a user
+      // gesture instead.
       return markers.focusFeedback(feedbackId);
     },
     // Public API must never reject onto the host — swallow the promise.
