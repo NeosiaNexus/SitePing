@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.6](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.12.5...widget-v0.12.6) (2026-11-25)
+
+
+### Features
+
+* **widget:** keep closed feedback off the page with showClosedMarkers ([#577](https://github.com/NeosiaNexus/SitePing/issues/577)) ([fae6f11](https://github.com/NeosiaNexus/SitePing/commit/fae6f11cf9945d0ef5c9b6eb2c4dc289477135eb))
+
+
+### Bug Fixes
+
+* **widget:** hide a pin whose anchor is hidden with visibility ([#576](https://github.com/NeosiaNexus/SitePing/issues/576)) ([f8a219f](https://github.com/NeosiaNexus/SitePing/commit/f8a219f5ad592b04725d74b1a03a56a6d17bf156)), closes [#573](https://github.com/NeosiaNexus/SitePing/issues/573)
+
 ## [0.12.5](https://github.com/NeosiaNexus/SitePing/compare/widget-v0.12.4...widget-v0.12.5) (2026-11-15)
 
 
