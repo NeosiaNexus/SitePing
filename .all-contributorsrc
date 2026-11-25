@@ -207,6 +207,30 @@
       "contributions": [
         "ideas"
       ]
+    },
+    {
+      "login": "Thiousi",
+      "name": "Mathieu Etienne",
+      "avatar_url": "https://avatars.githubusercontent.com/u/4822666?v=4",
+      "profile": "https://github.com/Thiousi",
+      "contributions": [
+        "code",
+        "bug",
+        "test",
+        "ideas"
+      ]
+    },
+    {
+      "login": "marius-apstl",
+      "name": "Marius",
+      "avatar_url": "https://avatars.githubusercontent.com/u/63114405?v=4",
+      "profile": "https://github.com/marius-apstl",
+      "contributions": [
+        "code",
+        "test",
+        "doc",
+        "ideas"
+      ]
     }
   ],
   "commitType": "docs"
