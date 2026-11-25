@@ -256,6 +256,18 @@ export interface SitepingBaseConfig {
    */
   defaultPanelScope?: "page" | "all" | undefined;
   /**
+   * When true (default), the page shows a marker for closed feedback too:
+   * a check for `resolved`, a slash for `wont_fix`. Set to `false` to keep
+   * only open feedback (`open`, `in_progress`) on the page: the markers'
+   * query then asks for those statuses, so its page of results holds the
+   * latest open feedback, and a closed marker never stacks with an open one.
+   * A feedback resolved from the panel loses its marker as the list reloads.
+   * The panel's list still shows closed feedback under its *All* and
+   * *Closed* tabs, and a `deepLink` to a closed feedback still opens its
+   * detail view there, with no marker to focus.
+   */
+  showClosedMarkers?: boolean | undefined;
+  /**
    * Capture a JPEG screenshot of the annotated area on submit. Defaults to
    * `false` — opt-in because:
    *
@@ -335,7 +347,9 @@ export interface SitepingBaseConfig {
    * value matches a visible feedback ID, the widget scrolls the annotation
    * into view, pins its highlight, and pulses the marker — the same visual
    * affordance a marker click produces — then opens the panel on that
-   * feedback's detail view, where its discussion thread is.
+   * feedback's detail view, where its discussion thread is. A closed
+   * feedback has no marker under `showClosedMarkers: false`: its link opens
+   * the detail view alone, when the panel's list holds it.
    *
    * - `false` / `undefined` (default): no URL parsing. Existing behavior
    *   unchanged, no host URL inspection.
@@ -529,7 +543,8 @@ export interface SitepingInstance {
    * Scroll the matching annotation into view, pin its highlight, and
    * pulse its marker. Returns `true` when a visible feedback matched the
    * given ID, `false` otherwise (unknown ID, feedback on another URL when
-   * `scopeAnnotationsByUrl` filtered it out, or markers not yet loaded).
+   * `scopeAnnotationsByUrl` filtered it out, closed feedback under
+   * `showClosedMarkers: false`, or markers not yet loaded).
    *
    * Counterpart to the `deepLink` config option for hosts that prefer to
    * drive focus from JS (e.g., a notification click handler) instead of a
