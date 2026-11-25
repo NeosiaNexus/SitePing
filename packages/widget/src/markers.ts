@@ -910,6 +910,21 @@ export class MarkerManager {
   }
 
   /**
+   * Pin a feedback's highlight and scroll to it: "Go to annotation" for a
+   * feedback with no pin on the page, a closed one under
+   * `showClosedMarkers: false`. Returns false, the highlight pinned all the
+   * same, when its anchor doesn't resolve here or the markers are hidden
+   * with the eye toggle: the caller then falls back to the stored offsets.
+   */
+  revealHighlight(feedback: FeedbackResponse): boolean {
+    this.pinHighlight(feedback);
+    const highlight = this.highlightElements[0];
+    if (this.container.style.display === "none" || !highlight) return false;
+    highlight.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
+    return true;
+  }
+
+  /**
    * Whether a feedback rendered on this page has no pin on it: every anchor
    * failed to resolve, or resolved to a hidden element. Independent of the
    * eye toggle, which hides pins the page still holds. `markers:placed`

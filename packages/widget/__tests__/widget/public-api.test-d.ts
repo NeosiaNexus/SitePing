@@ -79,6 +79,18 @@ describe("defaultPanelScope", () => {
   });
 });
 
+describe("showClosedMarkers", () => {
+  it("is a shared boolean option, in both modes", () => {
+    expectTypeOf(initSiteping).toBeCallableWith({
+      projectName: "p",
+      endpoint: "/api/siteping",
+      showClosedMarkers: false,
+    });
+    expectTypeOf(initSiteping).toBeCallableWith({ projectName: "p", store, showClosedMarkers: true });
+    expectTypeOf<SitepingConfig["showClosedMarkers"]>().toEqualTypeOf<boolean | undefined>();
+  });
+});
+
 describe("panelActions", () => {
   it("accepts button and link actions in both modes", () => {
     expectTypeOf(initSiteping).toBeCallableWith({

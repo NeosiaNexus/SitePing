@@ -37,6 +37,8 @@ function createMockMarkers() {
     pinHighlight: vi.fn(),
     // No live pin by default — "Go to annotation" falls back to the stored offsets.
     revealPin: vi.fn().mockReturnValue(false),
+    // Nor a live highlight: the anchor is lost (or the markers hidden).
+    revealHighlight: vi.fn().mockReturnValue(false),
     isLost: vi.fn().mockReturnValue(false),
     addFeedback: vi.fn(),
     destroy: vi.fn(),
@@ -1918,7 +1920,7 @@ describe("Panel", () => {
       expect(shadow.querySelector(".sp-detail-btn-goto")).not.toBeNull();
     });
 
-    it("detail onGoToAnnotation scrolls and pins the highlight", async () => {
+    it("detail onGoToAnnotation falls back to the stored offsets, with the highlight pinned", async () => {
       // url = the current page scope (pathname) — as the launcher stores it
       const fb = makeFeedback({ id: "fb-1", url: "/", annotations: [annotation] });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
@@ -1935,7 +1937,8 @@ describe("Panel", () => {
       gotoBtn.click();
 
       expect(scrollSpy).toHaveBeenCalledWith({ left: 100, top: 200, behavior: "smooth" });
-      expect(markers.pinHighlight).toHaveBeenCalledWith(fb);
+      // revealHighlight pins it, even when it finds nothing to scroll to
+      expect(markers.revealHighlight).toHaveBeenCalledWith(fb);
 
       scrollSpy.mockRestore();
     });
@@ -4647,6 +4650,91 @@ describe("Panel", () => {
 
       expect(lastMarkerRender()).toEqual([pageOpen]);
     });
+
+    describe("with showClosedMarkers", () => {
+      let stored: FeedbackResponse[];
+      /** A server over `stored` that honours the status filter, as the handler and the stores do. */
+      const serve = async (_project: string, options?: { statuses?: readonly string[] }) => {
+        const feedbacks = options?.statuses ? stored.filter((f) => options.statuses?.includes(f.status)) : stored;
+        return { feedbacks, total: feedbacks.length };
+      };
+      function rebuildWith(showClosedMarkers: boolean | undefined): void {
+        panel.destroy();
+        markers.render.mockClear();
+        panel = new Panel(shadow, colors, bus, apiClient as never, "test-project", markers as never, t, "fr", {
+          getScope: () => ({ url: "/", urlPattern: null }),
+          scopeAnnotationsByUrl: true,
+          showClosedMarkers,
+        });
+      }
+      const cardIds = () => [...shadow.querySelectorAll<HTMLElement>(".sp-card")].map((c) => c.dataset.feedbackId);
+
+      beforeEach(() => {
+        stored = [pageOpen, pageDone];
+        apiClient.getFeedbacks.mockImplementation(serve);
+      });
+
+      it.each([undefined, true])("%s keeps the closed markers, from the list's single request", async (value) => {
+        rebuildWith(value);
+
+        await panel.open();
+
+        expect(apiClient.getFeedbacks).toHaveBeenCalledTimes(1);
+        expect(lastMarkerRender()).toEqual([pageOpen, pageDone]);
+      });
+
+      it("false asks the server for the page's open feedback, while the All list still shows the closed", async () => {
+        rebuildWith(false);
+
+        await panel.open();
+
+        expect(apiClient.getFeedbacks.mock.calls.map((call) => call[1])).toEqual([
+          { page: 1, limit: 20, url: "/" },
+          { limit: 20, url: "/", statuses: ["open", "in_progress"] },
+        ]);
+        await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+        expect(cardIds().sort()).toEqual(["fb-done", "fb-open"]);
+      });
+
+      it("false lets the Open tab's list serve the markers, with a single request", async () => {
+        rebuildWith(false);
+        await panel.open();
+        apiClient.getFeedbacks.mockClear();
+
+        clickStatusTab("open");
+
+        await vi.waitFor(() => expect(cardIds()).toEqual(["fb-open"]));
+        expect(apiClient.getFeedbacks).toHaveBeenCalledTimes(1);
+        expect(lastMarkerRender()).toEqual([pageOpen]);
+      });
+
+      it("false drops a closed feedback that a server ignoring the status filter returns", async () => {
+        apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [pageOpen, pageDone], total: 2 });
+        rebuildWith(false);
+
+        await panel.open();
+        await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+        clickStatusTab("open"); // The list serves the markers here
+
+        await vi.waitFor(() => expect(markers.render).toHaveBeenCalledTimes(2));
+        expect(lastMarkerRender()).toEqual([pageOpen]);
+      });
+
+      it("false takes a feedback resolved from the panel off the page, and keeps it listed", async () => {
+        stored = [pageOpen];
+        apiClient.resolveFeedback.mockImplementation(async (id: string) => {
+          stored = stored.map((f) => (f.id === id ? { ...f, status: "resolved" as const } : f));
+        });
+        rebuildWith(false);
+        await panel.open();
+        await vi.waitFor(() => expect(lastMarkerRender()).toEqual([pageOpen]));
+
+        shadow.querySelector<HTMLButtonElement>('[data-feedback-id="fb-open"] .sp-btn-resolve')!.click();
+
+        await vi.waitFor(() => expect(lastMarkerRender()).toEqual([]));
+        expect(cardIds()).toEqual(["fb-open"]);
+      });
+    });
   });
 
   describe("loadFeedbacks error handling with prior content", () => {
@@ -5538,7 +5626,27 @@ describe("Panel on phones", () => {
       // The author's stored offsets (desktop layout) are only a fallback
       expect(scrollSpy).not.toHaveBeenCalled();
       expect(markers.pinHighlight).not.toHaveBeenCalled();
+      expect(markers.revealHighlight).not.toHaveBeenCalled();
       expect(panel.isCurrentlyOpen).toBe(false);
+    } finally {
+      scrollSpy.mockRestore();
+    }
+  });
+
+  it("'Go to annotation' follows the live highlight of a feedback with no pin", async () => {
+    // A closed feedback under `showClosedMarkers: false`: listed, but no pin
+    const fb = makeFeedback({ id: "fb-1", url: "/", status: "resolved", annotations: [annotation] });
+    apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+    markers.revealHighlight.mockReturnValue(true);
+    const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    try {
+      await panel.open();
+      shadow.querySelector<HTMLElement>('[data-feedback-id="fb-1"]')!.click();
+      shadow.querySelector<HTMLButtonElement>(".sp-detail-btn-goto")!.click();
+
+      expect(markers.revealPin).toHaveBeenCalledWith("fb-1");
+      expect(markers.revealHighlight).toHaveBeenCalledWith(fb);
+      expect(scrollSpy).not.toHaveBeenCalled();
     } finally {
       scrollSpy.mockRestore();
     }

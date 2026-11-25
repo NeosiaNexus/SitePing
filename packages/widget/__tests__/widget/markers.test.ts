@@ -603,6 +603,47 @@ describe("MarkerManager", () => {
   });
 
   // -------------------------------------------------------------------------
+  // revealHighlight — "Go to annotation" for a feedback with no pin
+  // -------------------------------------------------------------------------
+
+  describe("revealHighlight", () => {
+    let scrollIntoView = vi.fn<Element["scrollIntoView"]>();
+    const original = Element.prototype.scrollIntoView;
+    beforeEach(() => {
+      scrollIntoView = vi.fn<Element["scrollIntoView"]>();
+      Element.prototype.scrollIntoView = scrollIntoView; // jsdom lacks it
+    });
+    afterEach(() => {
+      Element.prototype.scrollIntoView = original;
+    });
+
+    it("pins and scrolls to the live highlight of a feedback without a pin", () => {
+      markers.render([]);
+
+      expect(markers.revealHighlight(makeFeedback({ id: "fb-closed", status: "resolved" }))).toBe(true);
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      const container = document.getElementById("siteping-markers")!;
+      expect(container.querySelectorAll(":scope > div:not([data-feedback-id])").length).toBeGreaterThan(0);
+    });
+
+    it("returns false when the anchor no longer resolves", () => {
+      mockState.returnNull = true;
+      markers.render([]);
+
+      expect(markers.revealHighlight(makeFeedback({ id: "fb-orphan" }))).toBe(false);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it("returns false while the markers are hidden with the eye toggle", () => {
+      markers.render([]);
+      bus.emit("annotations:toggle", false);
+
+      expect(markers.revealHighlight(makeFeedback({ id: "fb-1" }))).toBe(false);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // isLost — the panel's "Not visible on this page" (#304)
   // -------------------------------------------------------------------------
 
